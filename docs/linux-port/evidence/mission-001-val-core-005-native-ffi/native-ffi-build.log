@@ -1,0 +1,1235 @@
+== libsignal ffi ==
+    Updating git repository `https://github.com/signalapp/boring`
+    Updating git submodule `https://github.com/google/boringssl.git`
+    Updating git repository `https://github.com/signalapp/curve25519-dalek`
+    Updating crates.io index
+    Updating git repository `https://github.com/signalapp/SparsePostQuantumRatchet.git`
+ Downloading crates ...
+  Downloaded heck v0.5.0
+  Downloaded futures-core v0.3.31
+  Downloaded equivalent v1.0.2
+  Downloaded darling_macro v0.21.3
+  Downloaded cpufeatures v0.2.17
+  Downloaded compression-core v0.4.31
+  Downloaded cfg-if v1.0.4
+  Downloaded atomic-take v1.1.0
+  Downloaded assert_matches v1.5.0
+  Downloaded dyn-clonable-impl v0.9.2
+  Downloaded fastrand v2.3.0
+  Downloaded data-encoding-macro v0.1.18
+  Downloaded derive_builder_macro v0.20.2
+  Downloaded generic-array v0.14.7
+  Downloaded ghash v0.5.1
+  Downloaded hex v0.4.3
+  Downloaded futures-io v0.3.31
+  Downloaded data-encoding-macro-internal v0.1.16
+  Downloaded partial-default-derive v0.1.0
+  Downloaded http-body v1.0.1
+  Downloaded partial-default v0.1.0
+  Downloaded multimap v0.10.1
+  Downloaded hpke-rs-crypto v0.6.1
+  Downloaded pin-utils v0.1.0
+  Downloaded openssl-macros v0.1.1
+  Downloaded macro_rules_attribute-proc_macro v0.2.2
+  Downloaded log-panics v2.1.0
+  Downloaded httpdate v1.0.3
+  Downloaded openssl-probe v0.2.0
+  Downloaded home v0.5.11
+  Downloaded futures-task v0.3.31
+  Downloaded foreign-types-shared v0.3.1
+  Downloaded foreign-types-macros v0.2.3
+  Downloaded downcast-rs v1.2.1
+  Downloaded darling_macro v0.20.11
+  Downloaded convert_case v0.4.0
+  Downloaded dyn-clonable v0.9.2
+  Downloaded percent-encoding v2.3.2
+  Downloaded opaque-debug v0.3.1
+  Downloaded errno v0.3.14
+  Downloaded dyn-clone v1.0.20
+  Downloaded pbjson v0.9.0
+  Downloaded fslock v0.2.1
+  Downloaded foreign-types v0.5.0
+  Downloaded mp4san-derive v0.5.3
+  Downloaded libcrux-platform v0.0.3
+  Downloaded libcrux-hmac v0.0.6
+  Downloaded futures-sink v0.3.31
+  Downloaded fnv v1.0.7
+  Downloaded derive_utils v0.15.0
+  Downloaded adler2 v2.0.1
+  Downloaded num-conv v0.2.0
+  Downloaded ident_case v1.0.1
+  Downloaded aead v0.5.2
+  Downloaded macro_rules_attribute v0.2.2
+  Downloaded libcrux-sha2 v0.0.6
+  Downloaded itoa v1.0.17
+  Downloaded block-padding v0.3.3
+  Downloaded libcrux-macros v0.0.3
+  Downloaded intmap v3.1.3
+  Downloaded proc-macro-crate v3.4.0
+  Downloaded libcrux-intrinsics v0.0.6
+  Downloaded asn1_derive v0.23.0
+  Downloaded powerfmt v0.2.0
+  Downloaded nonzero_ext v0.3.0
+  Downloaded crypto-common v0.1.7
+  Downloaded sha1 v0.10.6
+  Downloaded scopeguard v1.2.0
+  Downloaded block-buffer v0.10.4
+  Downloaded atomic-waker v1.1.2
+  Downloaded addr2line v0.25.1
+  Downloaded inout v0.1.4
+  Downloaded ref-cast v1.0.25
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded pin-project-lite v0.2.16
+  Downloaded http-body-util v0.1.3
+  Downloaded libcrux-secrets v0.0.5
+  Downloaded protobuf-support v3.7.2
+  Downloaded mp4san v0.5.3
+  Downloaded hax-lib-macros v0.3.6
+  Downloaded glob v0.3.3
+  Downloaded rustc-hash v2.1.1
+  Downloaded pbjson-build v0.9.0
+  Downloaded prost-derive v0.14.1
+  Downloaded prost v0.14.1
+  Downloaded num_enum_derive v0.7.5
+  Downloaded sha2-asm v0.6.4
+  Downloaded paste v1.0.15
+  Downloaded poly1305 v0.8.0
+  Downloaded num_enum v0.7.5
+  Downloaded password-hash v0.5.0
+  Downloaded num-integer v0.1.46
+  Downloaded mediasan-common v0.5.3
+  Downloaded pkcs8 v0.10.2
+  Downloaded signature v2.2.0
+  Downloaded polyval v0.6.2
+  Downloaded libloading v0.8.9
+  Downloaded syn-mid v0.6.0
+  Downloaded find-msvc-tools v0.1.7
+  Downloaded either v1.15.0
+  Downloaded ed25519 v2.2.3
+  Downloaded displaydoc v0.2.5
+  Downloaded digest v0.10.7
+  Downloaded derive_builder_core v0.20.2
+  Downloaded cexpr v0.6.0
+  Downloaded cbc v0.1.2
+  Downloaded bincode v1.3.3
+  Downloaded subtle v2.6.1
+  Downloaded libcrux-traits v0.0.6
+  Downloaded rustc_version v0.4.1
+  Downloaded rustls-native-certs v0.8.3
+  Downloaded futures-macro v0.3.31
+  Downloaded sha2 v0.10.9
+  Downloaded futures-channel v0.3.31
+  Downloaded fixedbitset v0.5.7
+  Downloaded data-encoding v2.9.0
+  Downloaded argon2 v0.5.3
+  Downloaded semver v1.0.27
+  Downloaded deranged v0.5.5
+  Downloaded tower-layer v0.3.3
+  Downloaded base64ct v1.8.2
+  Downloaded hmac v0.12.1
+  Downloaded getrandom v0.2.16
+  Downloaded pin-project-internal v1.1.10
+  Downloaded once_cell v1.21.3
+  Downloaded chacha20 v0.9.1
+  Downloaded libcrux-sha3 v0.0.8
+  Downloaded hpke-rs v0.6.1
+  Downloaded convert_case v0.10.0
+  Downloaded compression-codecs v0.4.35
+  Downloaded iana-time-zone v0.1.64
+  Downloaded arrayvec v0.7.6
+  Downloaded aes-gcm-siv v0.11.1
+  Downloaded cipher v0.4.4
+  Downloaded tonic-prost v0.14.2
+  Downloaded tonic-prost-build v0.14.2
+  Downloaded futures-executor v0.3.31
+  Downloaded fs_extra v1.3.0
+  Downloaded ctr v0.9.2
+  Downloaded tonic-build v0.14.2
+  Downloaded thiserror v2.0.17
+  Downloaded universal-hash v0.5.1
+  Downloaded thiserror v1.0.69
+  Downloaded strum_macros v0.27.2
+  Downloaded cmake v0.1.57
+  Downloaded want v0.3.1
+  Downloaded utf-8 v0.7.6
+  Downloaded try-lock v0.2.5
+  Downloaded version_check v0.9.5
+  Downloaded bitflags v2.10.0
+  Downloaded tokio-macros v2.7.0
+  Downloaded time-core v0.1.8
+  Downloaded quote v1.0.43
+  Downloaded sync_wrapper v1.0.2
+  Downloaded strum v0.27.2
+  Downloaded sorted-vec v0.8.10
+  Downloaded smallvec v1.15.1
+  Downloaded tokio-socks v0.5.2
+  Downloaded thiserror-impl v2.0.17
+  Downloaded thiserror-impl v1.0.69
+  Downloaded tower-service v0.3.3
+  Downloaded which v4.4.2
+  Downloaded ref-cast-impl v1.0.25
+  Downloaded rand_chacha v0.9.0
+  Downloaded num-traits v0.2.19
+  Downloaded pin-project v1.1.10
+  Downloaded rand_core v0.6.4
+  Downloaded pbjson-types v0.9.0
+  Downloaded httparse v1.10.1
+  Downloaded rustc-demangle v0.1.26
+  Downloaded toml_datetime v0.7.5+spec-1.1.0
+  Downloaded tempfile v3.24.0
+  Downloaded static_assertions v1.1.0
+  Downloaded spki v0.7.3
+  Downloaded slab v0.4.11
+  Downloaded simd-adler32 v0.3.8
+  Downloaded shlex v1.3.0
+  Downloaded rustversion v1.0.22
+  Downloaded protobuf-codegen v3.7.2
+  Downloaded prost-types v0.14.1
+  Downloaded prost-build v0.14.1
+  Downloaded proc-macro2 v1.0.105
+  Downloaded indexmap v1.9.3
+  Downloaded log v0.4.29
+  Downloaded serde_core v1.0.228
+  Downloaded time-macros v0.2.27
+  Downloaded socket2 v0.6.3
+  Downloaded visibility v0.1.1
+  Downloaded zeroize_derive v1.4.3
+  Downloaded tokio-stream v0.1.18
+  Downloaded getrandom v0.3.4
+  Downloaded prettyplease v0.2.37
+  Downloaded darling v0.20.11
+  Downloaded crossbeam-utils v0.8.21
+  Downloaded async-trait v0.1.89
+  Downloaded clang-sys v1.8.1
+  Downloaded crc32fast v1.5.0
+  Downloaded miniz_oxide v0.8.9
+  Downloaded libcrux-hacl-rs v0.0.4
+  Downloaded asn1 v0.23.0
+  Downloaded untrusted v0.9.0
+  Downloaded webpsan v0.5.3
+  Downloaded unicode-ident v1.0.22
+  Downloaded const-oid v0.9.6
+  Downloaded blake2 v0.10.6
+  Downloaded serde_derive v1.0.228
+  Downloaded autocfg v1.5.0
+  Downloaded minimal-lexical v0.2.1
+  Downloaded memchr v2.7.6
+  Downloaded derive_builder v0.20.2
+  Downloaded crossbeam-deque v0.8.6
+  Downloaded crossbeam-epoch v0.9.18
+  Downloaded const-str v1.0.0
+  Downloaded tracing-core v0.1.36
+  Downloaded uuid v1.19.0
+  Downloaded strsim v0.11.1
+  Downloaded rand_core v0.9.3
+  Downloaded hyper-util v0.1.19
+  Downloaded toml_edit v0.23.10+spec-1.0.0
+  Downloaded tungstenite v0.28.0
+  Downloaded indexmap v2.13.0
+  Downloaded typenum v1.19.0
+  Downloaded serde v1.0.228
+  Downloaded rustls-pki-types v1.13.2
+  Downloaded tokio-tungstenite v0.28.0
+  Downloaded serde_with_macros v3.16.1
+  Downloaded nom v7.1.3
+  Downloaded itertools v0.10.5
+  Downloaded hashbrown v0.12.3
+  Downloaded zmij v1.0.12
+  Downloaded http v1.4.0
+  Downloaded anyhow v1.0.100
+  Downloaded zeroize v1.8.2
+  Downloaded unicode-xid v0.2.6
+  Downloaded derive-where v1.6.1
+  Downloaded x25519-dalek v2.0.1
+  Downloaded darling v0.21.3
+  Downloaded bitstream-io v1.10.0
+  Downloaded mio v1.2.0
+  Downloaded derive_more v0.99.20
+  Downloaded hashbrown v0.16.1
+  Downloaded libcrux-ml-kem v0.0.8
+  Downloaded auto_enums v0.8.7
+  Downloaded futures v0.3.31
+  Downloaded rangemap v1.7.1
+  Downloaded unicode-segmentation v1.12.0
+  Downloaded futures-util v0.3.31
+  Downloaded hyper v1.8.1
+  Downloaded toml_parser v1.0.6+spec-1.1.0
+  Downloaded darling_core v0.21.3
+  Downloaded chacha20poly1305 v0.10.1
+  Downloaded serde_json v1.0.149
+  Downloaded itertools v0.14.0
+  Downloaded hkdf v0.12.4
+  Downloaded darling_core v0.20.11
+  Downloaded h2 v0.4.13
+  Downloaded schemars v0.9.0
+  Downloaded rustls-platform-verifier v0.5.3
+  Downloaded rayon-core v1.13.0
+  Downloaded protobuf-parse v3.7.2
+  Downloaded flate2 v1.1.5
+  Downloaded base64 v0.22.1
+  Downloaded tracing-attributes v0.1.31
+  Downloaded async-compression v0.4.36
+  Downloaded cc v1.2.52
+  Downloaded hax-lib v0.3.6
+  Downloaded serde_with v3.16.1
+  Downloaded bytes v1.11.1
+  Downloaded rayon v1.11.0
+  Downloaded protobuf v3.7.2
+  Downloaded rustls-webpki v0.103.13
+  Downloaded winnow v0.7.14
+  Downloaded derive_more v2.1.1
+  Downloaded ed25519-dalek v2.2.0
+  Downloaded derive_more-impl v2.1.1
+  Downloaded der v0.7.10
+  Downloaded backtrace v0.3.76
+  Downloaded time v0.3.47
+  Downloaded schemars v1.2.0
+  Downloaded rand v0.9.4
+  Downloaded zerocopy-derive v0.8.33
+  Downloaded aes v0.8.4
+  Downloaded tonic v0.14.2
+  Downloaded gimli v0.32.3
+  Downloaded regex v1.12.2
+  Downloaded tokio-util v0.7.18
+  Downloaded aho-corasick v1.1.4
+  Downloaded syn v2.0.114
+  Downloaded object v0.37.3
+  Downloaded regex-syntax v0.8.8
+  Downloaded chrono v0.4.42
+  Downloaded bindgen v0.72.1
+  Downloaded zerocopy v0.8.33
+  Downloaded rustls v0.23.36
+  Downloaded rustix v0.38.44
+  Downloaded rustix v1.1.3
+  Downloaded tracing v0.1.44
+  Downloaded tokio v1.52.2
+  Downloaded regex-automata v0.4.13
+  Downloaded petgraph v0.7.1
+  Downloaded libc v0.2.186
+  Downloaded snow v0.10.0
+  Downloaded ring v0.17.14
+  Downloaded linux-raw-sys v0.4.15
+  Downloaded linux-raw-sys v0.11.0
+   Compiling rustversion v1.0.22
+   Compiling num_enum v0.7.5
+   Compiling spqr v1.5.1 (https://github.com/signalapp/SparsePostQuantumRatchet.git?tag=v1.5.1#f2589fef)
+   Compiling libsignal-protocol v0.1.0 (/workspace/Vendor/libsignal/rust/protocol)
+   Compiling libsignal-net v0.1.0 (/workspace/Vendor/libsignal/rust/net)
+   Compiling libsignal-message-backup v0.1.0 (/workspace/Vendor/libsignal/rust/message-backup)
+   Compiling libsignal-net-chat v0.1.0 (/workspace/Vendor/libsignal/rust/net/chat)
+   Compiling libsignal-bridge-types v0.1.0 (/workspace/Vendor/libsignal/rust/bridge/shared/types)
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/crypto.rs:15:5
+   |
+15 | use crate::*;
+   |     ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/hsm_enclave.rs:11:5
+   |
+11 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/net.rs:28:5
+   |
+28 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `libsignal_net::infra::errors::RetryLater`
+ --> rust/bridge/shared/types/src/net/cdsi.rs:8:5
+  |
+8 | use libsignal_net::infra::errors::RetryLater;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/net/cdsi.rs:12:5
+   |
+12 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/net/svrb.rs:22:5
+   |
+22 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/net/tokio.rs:16:5
+   |
+16 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/protocol.rs:14:5
+   |
+14 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/sgx_session.rs:11:5
+   |
+11 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/zkgroup.rs:16:5
+   |
+16 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/lib.rs:40:9
+   |
+40 |     use crate::*;
+   |         ^^^^^^^^
+
+warning: unused import: `crate::*`
+ --> rust/bridge/shared/types/src/incremental_mac.rs:9:5
+  |
+9 | use crate::*;
+  |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/message_backup.rs:15:5
+   |
+15 | use crate::*;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::*`
+  --> rust/bridge/shared/types/src/lib.rs:62:9
+   |
+62 |     use crate::*;
+   |         ^^^^^^^^
+
+warning: unused import: `crate`
+  --> rust/bridge/shared/types/src/net/registration.rs:19:5
+   |
+19 | use crate::*;
+   |     ^^^^^
+
+warning: `libsignal-bridge-types` (lib) generated 15 warnings (run `cargo fix --lib -p libsignal-bridge-types` to apply 14 suggestions)
+   Compiling libsignal-ffi v0.94.4 (/workspace/Vendor/libsignal/rust/bridge/ffi)
+   Compiling libsignal-bridge v0.1.0 (/workspace/Vendor/libsignal/rust/bridge/shared)
+warning: unused imports: `CryptographicHash` and `CryptographicMac`
+  --> rust/bridge/shared/src/crypto.rs:13:18
+   |
+13 |     Aes256Ctr32, CryptographicHash, CryptographicMac, Error, HpkeError, Result, SimpleHpkeReceiver,
+   |                  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::support::*`
+  --> rust/bridge/shared/src/crypto.rs:17:5
+   |
+17 | use crate::support::*;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `libsignal_bridge_types::support::*`
+  --> rust/bridge/shared/src/cds2.rs:12:5
+   |
+12 | use libsignal_bridge_types::support::*;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::support::*`
+  --> rust/bridge/shared/src/account_keys.rs:14:5
+   |
+14 | use crate::support::*;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::support::*`
+  --> rust/bridge/shared/src/incremental_mac.rs:14:5
+   |
+14 | use crate::support::*;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: `libsignal-bridge` (lib) generated 5 warnings (run `cargo fix --lib -p libsignal-bridge` to apply 5 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3m 38s
+-rw-r--r-- 2 root root 1.1G Jul  3 11:07 /workspace/Vendor/libsignal/target-linux-ffi-serial/debug/libsignal_ffi.a
+== openburnbar iroh ffi ==
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded askama_escape v0.10.3
+  Downloaded asn1-rs-impl v0.2.0
+  Downloaded anstyle-query v1.1.5
+  Downloaded inplace-vec-builder v0.1.1
+  Downloaded arrayref v0.3.9
+  Downloaded iroh-metrics-derive v1.0.0-rc.0
+  Downloaded idna_adapter v1.2.2
+  Downloaded identity-hash v0.1.0
+  Downloaded asn1-rs-derive v0.6.0
+  Downloaded binary-merge v0.1.2
+  Downloaded base16ct v1.0.0
+  Downloaded lazy_static v1.5.0
+  Downloaded proc-macro-hack v0.5.20+deprecated
+  Downloaded postcard-derive v0.2.2
+  Downloaded openssl-probe v0.2.1
+  Downloaded num_threads v0.1.7
+  Downloaded jni-sys v0.4.1
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded data-encoding-macro v0.1.20
+  Downloaded crypto-common v0.2.2
+  Downloaded jni-sys-macros v0.4.1
+  Downloaded cpufeatures v0.3.0
+  Downloaded parking v2.2.1
+  Downloaded cfg_aliases v0.2.1
+  Downloaded matchers v0.2.0
+  Downloaded rand_pcg v0.10.2
+  Downloaded potential_utf v0.1.5
+  Downloaded lru-slab v0.1.2
+  Downloaded block-buffer v0.12.0
+  Downloaded mime v0.3.17
+  Downloaded data-encoding-macro-internal v0.1.18
+  Downloaded irpc-derive v0.15.0
+  Downloaded itoa v1.0.18
+  Downloaded futures-macro v0.3.32
+  Downloaded genawaiter-macro v0.99.1
+  Downloaded futures-sink v0.3.32
+  Downloaded proc-macro-crate v3.5.0
+  Downloaded futures-io v0.3.32
+  Downloaded nested_enum_utils v0.2.3
+  Downloaded proc-macro-error-attr v0.4.12
+  Downloaded plain v0.2.3
+  Downloaded n0-error-macros v1.0.0-rc.0
+  Downloaded cargo-platform v0.1.9
+  Downloaded iroh-base v1.0.0-rc.0
+  Downloaded genawaiter-proc-macro v0.99.1
+  Downloaded futures-task v0.3.32
+  Downloaded futures-core v0.3.32
+  Downloaded embedded-io v0.4.0
+  Downloaded scroll_derive v0.12.1
+  Downloaded same-file v1.0.6
+  Downloaded serde_bytes v0.11.19
+  Downloaded clap_lex v1.1.0
+  Downloaded ipnet v2.12.0
+  Downloaded iroh-io v0.6.2
+  Downloaded igd-next v0.17.0
+  Downloaded rand_core v0.10.1
+  Downloaded mac-addr v0.3.0
+  Downloaded embedded-io v0.6.1
+  Downloaded num_enum_derive v0.7.6
+  Downloaded num_enum v0.7.6
+  Downloaded cobs v0.3.0
+  Downloaded proc-macro-error v0.4.12
+  Downloaded hash32 v0.2.1
+  Downloaded pin-project-lite v0.2.17
+  Downloaded pem v3.0.6
+  Downloaded oid-registry v0.8.1
+  Downloaded num-conv v0.2.1
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded colorchoice v1.0.5
+  Downloaded mime_guess v2.0.5
+  Downloaded form_urlencoded v1.2.2
+  Downloaded n0-error v1.0.0-rc.0
+  Downloaded pin-project-internal v1.1.13
+  Downloaded base64ct v1.8.3
+  Downloaded iroh-tickets v1.0.0-rc.0
+  Downloaded netlink-proto v0.12.0
+  Downloaded lru v0.18.0
+  Downloaded netlink-packet-core v0.8.1
+  Downloaded askama v0.12.1
+  Downloaded askama_parser v0.2.1
+  Downloaded iroh-dns v1.0.0-rc.0
+  Downloaded rustc-hash v2.1.2
+  Downloaded signature v3.0.0
+  Downloaded sha1_smol v1.0.1
+  Downloaded rusticata-macros v4.1.0
+  Downloaded resolv-conf v0.7.6
+  Downloaded siphasher v1.0.3
+  Downloaded serdect v0.4.3
+  Downloaded scroll v0.12.0
+  Downloaded sorted-index-buffer v0.2.1
+  Downloaded spez v0.1.2
+  Downloaded smawk v0.3.2
+  Downloaded siphasher v0.3.11
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded tagptr v0.2.0
+  Downloaded syn-mid v0.5.4
+  Downloaded strum v0.28.0
+  Downloaded postcard v1.1.3
+  Downloaded litemap v0.8.2
+  Downloaded netlink-sys v0.8.8
+  Downloaded pem-rfc7468 v1.0.0
+  Downloaded quote v1.0.45
+  Downloaded portmapper v0.17.0
+  Downloaded parking_lot_core v0.9.12
+  Downloaded noq-udp v1.0.0-rc.0
+  Downloaded n0-watcher v1.0.0-rc.0
+  Downloaded n0-future v0.3.2
+  Downloaded critical-section v1.2.0
+  Downloaded constant_time_eq v0.4.2
+  Downloaded anstyle-parse v1.0.0
+  Downloaded anstream v1.0.0
+  Downloaded iroh-util v0.4.0
+  Downloaded askama_derive v0.12.5
+  Downloaded anstyle v1.0.14
+  Downloaded genawaiter v0.99.1
+  Downloaded irpc-iroh v0.15.0
+  Downloaded lock_api v0.4.14
+  Downloaded fs-err v2.11.0
+  Downloaded pkcs8 v0.11.0
+  Downloaded fastbloom v0.17.0
+  Downloaded tinyvec_macros v0.1.1
+  Downloaded cargo_metadata v0.15.4
+  Downloaded iana-time-zone v0.1.65
+  Downloaded icu_provider v2.2.0
+  Downloaded toml_write v0.1.2
+  Downloaded futures-executor v0.3.32
+  Downloaded simdutf8 v0.1.5
+  Downloaded fastrand v2.4.1
+  Downloaded enum-assoc v1.3.0
+  Downloaded seize v0.5.1
+  Downloaded rustls-pki-types v1.14.1
+  Downloaded foldhash v0.2.0
+  Downloaded self_cell v1.2.2
+  Downloaded thread_local v1.1.9
+  Downloaded thiserror v2.0.18
+  Downloaded hyper-rustls v0.27.9
+  Downloaded uniffi_build v0.28.3
+  Downloaded uniffi v0.28.3
+  Downloaded semver v1.0.28
+  Downloaded icu_properties v2.2.0
+  Downloaded diatomic-waker v0.2.3
+  Downloaded deranged v0.5.8
+  Downloaded proc-macro2 v1.0.106
+  Downloaded pin-project v1.1.13
+  Downloaded jni-macros v0.22.4
+  Downloaded once_cell v1.21.4
+  Downloaded parking_lot v0.12.5
+  Downloaded utf8parse v0.2.2
+  Downloaded iroh-services v1.0.0-rc.0
+  Downloaded find-msvc-tools v0.1.9
+  Downloaded ed25519 v3.0.0
+  Downloaded digest v0.11.3
+  Downloaded cmov v0.5.3
+  Downloaded icu_normalizer v2.2.0
+  Downloaded netwatch v0.17.0
+  Downloaded tracing-log v0.2.0
+  Downloaded toml_datetime v1.1.1+spec-1.1.0
+  Downloaded sha2 v0.11.0
+  Downloaded spki v0.8.0
+  Downloaded spin v0.10.0
+  Downloaded icu_normalizer_data v2.2.0
+  Downloaded toml_datetime v0.6.11
+  Downloaded range-collections v0.4.6
+  Downloaded netdev v0.43.0
+  Downloaded rcan v0.3.1
+  Downloaded weedle2 v5.0.0
+  Downloaded walkdir v2.5.0
+  Downloaded uniffi_udl v0.28.3
+  Downloaded toml_parser v1.1.2+spec-1.1.0
+  Downloaded tinystr v0.8.3
+  Downloaded simple-dns v0.11.3
+  Downloaded serde_spanned v0.6.9
+  Downloaded reflink-copy v0.1.29
+  Downloaded iroh-metrics v1.0.0-rc.0
+  Downloaded writeable v0.6.3
+  Downloaded slab v0.4.12
+  Downloaded signal-hook-registry v1.4.8
+  Downloaded toml v0.8.23
+  Downloaded uniffi_checksum_derive v0.28.3
+  Downloaded tracing-serde v0.2.0
+  Downloaded textwrap v0.16.2
+  Downloaded uniffi_core v0.28.3
+  Downloaded zmij v1.0.21
+  Downloaded zerovec-derive v0.11.3
+  Downloaded uniffi_testing v0.28.3
+  Downloaded uniffi_meta v0.28.3
+  Downloaded utf8_iter v1.0.4
+  Downloaded xmltree v0.10.3
+  Downloaded papaya v0.2.4
+  Downloaded irpc v0.15.0
+  Downloaded tinyvec v1.11.0
+  Downloaded prefix-trie v0.8.4
+  Downloaded memchr v2.8.0
+  Downloaded icu_locale_core v2.2.0
+  Downloaded icu_collections v2.2.0
+  Downloaded bit-vec v0.9.1
+  Downloaded vergen v9.1.0
+  Downloaded sharded-slab v0.1.7
+  Downloaded hyper-util v0.1.20
+  Downloaded yoke v0.8.2
+  Downloaded unicode-ident v1.0.24
+  Downloaded rand v0.10.1
+  Downloaded futures-channel v0.3.32
+  Downloaded cargo-lock v10.1.0
+  Downloaded clap_derive v4.6.1
+  Downloaded built v0.8.0
+  Downloaded hybrid-array v0.4.12
+  Downloaded camino v1.2.2
+  Downloaded getrandom v0.2.17
+  Downloaded xml-rs v0.8.28
+  Downloaded toml_edit v0.25.11+spec-1.1.0
+  Downloaded futures-buffered v0.2.13
+  Downloaded toml_edit v0.22.27
+  Downloaded futures-lite v2.6.1
+  Downloaded data-encoding v2.11.0
+  Downloaded byteorder v1.5.0
+  Downloaded bitflags v2.11.1
+  Downloaded uuid v1.23.1
+  Downloaded indexmap v2.14.0
+  Downloaded num-bigint v0.4.6
+  Downloaded noq v1.0.0-rc.0
+  Downloaded toml v0.5.11
+  Downloaded chacha20 v0.10.0
+  Downloaded url v2.5.8
+  Downloaded zerofrom-derive v0.1.7
+  Downloaded zerofrom v0.1.8
+  Downloaded strum_macros v0.28.0
+  Downloaded iroh-relay v1.0.0-rc.0
+  Downloaded yoke-derive v0.8.2
+  Downloaded basic-toml v0.1.10
+  Downloaded idna v1.1.0
+  Downloaded tower v0.5.3
+  Downloaded thiserror-impl v2.0.18
+  Downloaded synstructure v0.13.2
+  Downloaded libm v0.2.16
+  Downloaded x509-parser v0.18.1
+  Downloaded unicase v2.9.0
+  Downloaded vergen-lib v9.1.0
+  Downloaded icu_properties_data v2.2.0
+  Downloaded clap v4.6.1
+  Downloaded anyhow v1.0.103
+  Downloaded zerovec v0.11.6
+  Downloaded unicode-segmentation v1.13.2
+  Downloaded typenum v1.20.0
+  Downloaded getrandom v0.4.2
+  Downloaded reqwest v0.13.3
+  Downloaded portable-atomic v1.13.1
+  Downloaded netlink-packet-route v0.30.0
+  Downloaded netlink-packet-route v0.29.0
+  Downloaded jni v0.22.4
+  Downloaded redb v4.1.0
+  Downloaded ctutils v0.4.2
+  Downloaded winnow v0.7.15
+  Downloaded moka v0.12.15
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded webpki-roots v1.0.7
+  Downloaded rcgen v0.14.8
+  Downloaded backon v1.6.0
+  Downloaded iroh-blobs v0.101.0
+  Downloaded tokio-rustls v0.26.4
+  Downloaded vergen-gitcl v9.1.0
+  Downloaded attohttpc v0.30.1
+  Downloaded uniffi_macros v0.28.3
+  Downloaded iroh v1.0.0-rc.0
+  Downloaded ryu v1.0.23
+  Downloaded rustls-platform-verifier v0.7.0
+  Downloaded futures v0.3.32
+  Downloaded heapless v0.7.17
+  Downloaded simd_cesu8 v1.1.1
+  Downloaded regex-syntax v0.8.10
+  Downloaded der-parser v10.0.0
+  Downloaded cordyceps v0.3.4
+  Downloaded rustls v0.23.40
+  Downloaded noq-proto v1.0.0-rc.0
+  Downloaded yasna v0.6.0
+  Downloaded arc-swap v1.9.1
+  Downloaded allocator-api2 v0.2.21
+  Downloaded positioned-io v0.3.5
+  Downloaded const-oid v0.10.2
+  Downloaded crossbeam-channel v0.5.15
+  Downloaded tokio v1.52.3
+  Downloaded asn1-rs v0.7.2
+  Downloaded cc v1.2.62
+  Downloaded ed25519-dalek v3.0.0-pre.7
+  Downloaded der v0.8.0
+  Downloaded zerotrie v0.2.4
+  Downloaded combine v4.6.7
+  Downloaded hickory-net v0.26.1
+  Downloaded linux-raw-sys v0.12.1
+  Downloaded aes-gcm v0.10.3
+  Downloaded hickory-resolver v0.26.1
+  Downloaded hashbrown v0.17.1
+  Downloaded futures-util v0.3.32
+  Downloaded clap_builder v4.6.0
+  Downloaded tower-http v0.6.10
+  Downloaded uniffi_bindgen v0.28.3
+  Downloaded hyper v1.9.0
+  Downloaded h2 v0.4.14
+  Downloaded goblin v0.8.2
+  Downloaded blake3 v1.8.5
+  Downloaded winnow v1.0.3
+  Downloaded chrono v0.4.44
+  Downloaded bao-tree v0.16.0
+  Downloaded syn v1.0.109
+  Downloaded syn v2.0.117
+  Downloaded curve25519-dalek v5.0.0-pre.6
+  Downloaded hickory-proto v0.26.1
+  Downloaded tokio-websockets v0.13.2
+  Downloaded rustix v1.1.4
+  Downloaded regex-automata v0.4.14
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling syn v2.0.117
+   Compiling serde_derive v1.0.228
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling libc v0.2.186
+   Compiling bytes v1.11.1
+   Compiling portable-atomic v1.13.1
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.2
+   Compiling once_cell v1.21.4
+   Compiling yoke v0.8.2
+   Compiling semver v1.0.28
+   Compiling socket2 v0.6.3
+   Compiling zerovec-derive v0.11.3
+   Compiling zerovec v0.11.6
+   Compiling mio v1.2.0
+   Compiling tokio-macros v2.7.0
+   Compiling displaydoc v0.2.5
+   Compiling tokio v1.52.3
+   Compiling smallvec v1.15.1
+   Compiling zeroize_derive v1.4.3
+   Compiling futures-macro v0.3.32
+   Compiling futures-util v0.3.32
+   Compiling zeroize v1.8.2
+   Compiling tinystr v0.8.3
+   Compiling icu_locale_core v2.2.0
+   Compiling zerotrie v0.2.4
+   Compiling potential_utf v0.1.5
+   Compiling icu_collections v2.2.0
+   Compiling icu_provider v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing v0.1.44
+   Compiling tokio-util v0.7.18
+   Compiling rustc_version v0.4.1
+   Compiling getrandom v0.4.2
+   Compiling thiserror v2.0.18
+   Compiling rustversion v1.0.22
+   Compiling rustls-pki-types v1.14.1
+   Compiling thiserror-impl v2.0.18
+   Compiling http v1.4.0
+   Compiling getrandom v0.2.17
+   Compiling ring v0.17.14
+   Compiling icu_normalizer v2.2.0
+   Compiling idna_adapter v1.2.2
+   Compiling derive_more-impl v2.1.1
+   Compiling rand v0.10.1
+   Compiling idna v1.1.0
+   Compiling rustls-webpki v0.103.13
+   Compiling ipnet v2.12.0
+   Compiling serde_json v1.0.149
+   Compiling url v2.5.8
+   Compiling rustls v0.23.40
+   Compiling derive_more v2.1.1
+   Compiling darling_core v0.20.11
+   Compiling camino v1.2.2
+   Compiling pin-project-internal v1.1.13
+   Compiling httparse v1.10.1
+   Compiling pin-project v1.1.13
+   Compiling h2 v0.4.14
+   Compiling darling_macro v0.20.11
+   Compiling http-body v1.0.1
+   Compiling spez v0.1.2
+   Compiling n0-error-macros v1.0.0-rc.0
+   Compiling thiserror v1.0.69
+   Compiling n0-error v1.0.0-rc.0
+   Compiling darling v0.20.11
+   Compiling der v0.8.0
+   Compiling thiserror-impl v1.0.69
+   Compiling spki v0.8.0
+   Compiling derive_builder_core v0.20.2
+   Compiling curve25519-dalek v5.0.0-pre.6
+   Compiling cpufeatures v0.2.17
+   Compiling rustls-native-certs v0.8.3
+   Compiling serdect v0.4.3
+   Compiling hyper v1.9.0
+   Compiling derive_builder_macro v0.20.2
+   Compiling pkcs8 v0.11.0
+   Compiling n0-future v0.3.2
+   Compiling tokio-rustls v0.26.4
+   Compiling vergen-lib v9.1.0
+   Compiling heapless v0.7.17
+   Compiling cpufeatures v0.3.0
+   Compiling uniffi_checksum_derive v0.28.3
+   Compiling polyval v0.6.2
+   Compiling ed25519 v3.0.0
+   Compiling parking_lot_core v0.9.12
+   Compiling sha2 v0.11.0
+   Compiling derive_builder v0.20.2
+   Compiling hyper-util v0.1.20
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling vergen v9.1.0
+   Compiling data-encoding-macro-internal v0.1.18
+   Compiling prefix-trie v0.8.4
+   Compiling ed25519-dalek v3.0.0-pre.7
+   Compiling noq-udp v1.0.0-rc.0
+   Compiling ghash v0.5.1
+   Compiling aes v0.8.4
+   Compiling http-body-util v0.1.3
+   Compiling vergen-gitcl v9.1.0
+   Compiling cobs v0.3.0
+   Compiling futures-executor v0.3.32
+   Compiling scroll_derive v0.12.1
+   Compiling postcard-derive v0.2.2
+   Compiling time v0.3.47
+   Compiling fastbloom v0.17.0
+   Compiling postcard v1.1.3
+   Compiling scroll v0.12.0
+   Compiling tower v0.5.3
+   Compiling futures v0.3.32
+   Compiling aes-gcm v0.10.3
+   Compiling parking_lot v0.12.5
+   Compiling hickory-proto v0.26.1
+   Compiling data-encoding-macro v0.1.20
+   Compiling uuid v1.23.1
+   Compiling basic-toml v0.1.10
+   Compiling netlink-sys v0.8.8
+   Compiling enum-assoc v1.3.0
+   Compiling async-trait v0.1.89
+   Compiling noq-proto v1.0.0-rc.0
+   Compiling moka v0.12.15
+   Compiling hickory-net v0.26.1
+   Compiling askama_derive v0.12.5
+   Compiling iroh-base v1.0.0-rc.0
+   Compiling tower-http v0.6.10
+   Compiling uniffi_meta v0.28.3
+   Compiling num_enum_derive v0.7.6
+   Compiling netlink-packet-route v0.29.0
+   Compiling hyper-rustls v0.27.9
+   Compiling strum_macros v0.28.0
+   Compiling iroh-metrics-derive v1.0.0-rc.0
+   Compiling tokio-stream v0.1.18
+   Compiling cargo-platform v0.1.9
+   Compiling askama v0.12.1
+   Compiling hickory-resolver v0.26.1
+   Compiling netdev v0.43.0
+   Compiling iroh-metrics v1.0.0-rc.0
+   Compiling cargo_metadata v0.15.4
+   Compiling noq v1.0.0-rc.0
+   Compiling strum v0.28.0
+   Compiling reqwest v0.13.3
+   Compiling num_enum v0.7.6
+   Compiling iroh-relay v1.0.0-rc.0
+   Compiling syn v1.0.109
+   Compiling netlink-proto v0.12.0
+   Compiling netlink-packet-route v0.30.0
+   Compiling n0-watcher v1.0.0-rc.0
+   Compiling attohttpc v0.30.1
+   Compiling arc-swap v1.9.1
+   Compiling toml v0.5.11
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling toml_edit v0.22.27
+   Compiling tokio-websockets v0.13.2
+   Compiling iroh-dns v1.0.0-rc.0
+   Compiling igd-next v0.17.0
+   Compiling netwatch v0.17.0
+   Compiling syn-mid v0.5.4
+   Compiling uniffi_testing v0.28.3
+   Compiling webpki-roots v1.0.7
+   Compiling seize v0.5.1
+   Compiling serde_bytes v0.11.19
+   Compiling proc-macro-hack v0.5.20+deprecated
+   Compiling papaya v0.2.4
+   Compiling uniffi_udl v0.28.3
+   Compiling proc-macro-error-attr v0.4.12
+   Compiling portmapper v0.17.0
+   Compiling toml v0.8.23
+   Compiling goblin v0.8.2
+   Compiling backon v1.6.0
+   Compiling bincode v1.3.3
+   Compiling ref-cast v1.0.25
+   Compiling uniffi_macros v0.28.3
+   Compiling iroh v1.0.0-rc.0
+   Compiling rcgen v0.14.8
+   Compiling uniffi_bindgen v0.28.3
+   Compiling cargo-lock v10.1.0
+   Compiling proc-macro-error v0.4.12
+   Compiling ref-cast-impl v1.0.25
+   Compiling irpc-derive v0.15.0
+   Compiling rustix v1.1.4
+   Compiling irpc v0.15.0
+   Compiling genawaiter-proc-macro v0.99.1
+   Compiling built v0.8.0
+   Compiling uniffi_build v0.28.3
+   Compiling jni-macros v0.22.4
+   Compiling inplace-vec-builder v0.1.1
+   Compiling range-collections v0.4.6
+   Compiling genawaiter v0.99.1
+   Compiling uniffi v0.28.3
+   Compiling iroh-services v1.0.0-rc.0
+   Compiling iroh-tickets v1.0.0-rc.0
+   Compiling iroh-io v0.6.2
+   Compiling clap_derive v4.6.1
+   Compiling tracing-log v0.2.0
+   Compiling tracing-serde v0.2.0
+   Compiling positioned-io v0.3.5
+   Compiling jni-sys-macros v0.4.1
+   Compiling bao-tree v0.16.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling jni-sys v0.4.1
+   Compiling clap v4.6.1
+   Compiling openburnbar-iroh v0.1.0 (/workspace/crates/openburnbar-iroh)
+   Compiling reflink-copy v0.1.29
+   Compiling rcan v0.3.1
+   Compiling irpc-iroh v0.15.0
+   Compiling iroh-util v0.4.0
+   Compiling uniffi_core v0.28.3
+   Compiling nested_enum_utils v0.2.3
+   Compiling combine v4.6.7
+   Compiling jni v0.22.4
+   Compiling iroh-blobs v0.101.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5m 30s
+     Running unittests src/lib.rs (crates/openburnbar-iroh/target-linux-ffi-serial/debug/deps/openburnbar_iroh-14925f85ca02fd62)
+
+running 18 tests
+test blobs::tests::iroh_blobs_alpn_matches_crate_constant ... ok
+test blobs::tests::iroh_blobs_crate_version_matches_cargo ... ok
+test datagrams::tests::mercury_audio_alpn_matches_constant ... ok
+test blobs::tests::parse_blob_ticket_rejects_garbage ... ok
+test datagrams::tests::mercury_audio_alpn_is_distinct_from_chat ... ok
+test tests::accept_rate_limiter_allows_first_attempt_then_throttles_burst ... ok
+test tests::accept_rate_limiter_isolates_distinct_sources ... ok
+test tests::accept_rate_limiter_releases_after_cooldown ... ok
+test tests::accept_rate_limiter_throttles_ip_port_rotation ... ok
+test tests::accept_source_key_coalesces_ip_ports ... ok
+test tests::frame_length_guard_allows_boundary_frame ... ok
+test tests::accept_source_key_distinguishes_ip_addresses ... ok
+test tests::frame_length_guard_rejects_before_allocation ... ok
+test tests::iroh_services_required_env_accepts_only_explicit_truthy_values ... ok
+test tests::default_iroh_services_endpoint_name_is_stable_and_human_scannable ... ok
+test blobs::tests::parse_blob_ticket_round_trips_a_real_ticket ... ok
+test blobs::tests::parse_blob_ticket_trims_surrounding_whitespace ... ok
+test tests::accept_rate_limiter_bounds_table_size ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/loopback_handshake.rs (crates/openburnbar-iroh/target-linux-ffi-serial/debug/deps/loopback_handshake-be630b5cbb0d3ac9)
+
+running 1 test
+test loopback_alpn_handshake_round_trips_a_length_prefixed_frame ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+   Doc-tests openburnbar_iroh
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling syn v2.0.117
+   Compiling serde_derive v1.0.228
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling libc v0.2.186
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling bytes v1.11.1
+   Compiling zerovec-derive v0.11.3
+   Compiling portable-atomic v1.13.1
+   Compiling displaydoc v0.2.5
+   Compiling once_cell v1.21.4
+   Compiling semver v1.0.28
+   Compiling socket2 v0.6.3
+   Compiling mio v1.2.0
+   Compiling tokio-macros v2.7.0
+   Compiling tokio v1.52.3
+   Compiling smallvec v1.15.1
+   Compiling futures-macro v0.3.32
+   Compiling zeroize_derive v1.4.3
+   Compiling futures-util v0.3.32
+   Compiling zeroize v1.8.2
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.2
+   Compiling zerovec v0.11.6
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing v0.1.44
+   Compiling tinystr v0.8.3
+   Compiling tokio-util v0.7.18
+   Compiling icu_locale_core v2.2.0
+   Compiling potential_utf v0.1.5
+   Compiling zerotrie v0.2.4
+   Compiling rustc_version v0.4.1
+   Compiling getrandom v0.4.2
+   Compiling icu_collections v2.2.0
+   Compiling paste v1.0.15
+   Compiling icu_provider v2.2.0
+   Compiling rustls-pki-types v1.14.1
+   Compiling thiserror-impl v2.0.18
+   Compiling thiserror v2.0.18
+   Compiling http v1.4.0
+   Compiling getrandom v0.2.17
+   Compiling ring v0.17.14
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling idna_adapter v1.2.2
+   Compiling derive_more-impl v2.1.1
+   Compiling rand v0.10.1
+   Compiling idna v1.1.0
+   Compiling rustls-webpki v0.103.13
+   Compiling ipnet v2.12.0
+   Compiling url v2.5.8
+   Compiling rustls v0.23.40
+   Compiling derive_more v2.1.1
+   Compiling darling_core v0.20.11
+   Compiling pin-project-internal v1.1.13
+   Compiling h2 v0.4.14
+   Compiling httparse v1.10.1
+   Compiling pin-project v1.1.13
+   Compiling darling_macro v0.20.11
+   Compiling http-body v1.0.1
+   Compiling thiserror-impl v1.0.69
+   Compiling spez v0.1.2
+   Compiling n0-error-macros v1.0.0-rc.0
+   Compiling n0-error v1.0.0-rc.0
+   Compiling darling v0.20.11
+   Compiling der v0.8.0
+   Compiling spki v0.8.0
+   Compiling derive_builder_core v0.20.2
+   Compiling curve25519-dalek v5.0.0-pre.6
+   Compiling cpufeatures v0.2.17
+   Compiling rustls-native-certs v0.8.3
+   Compiling serdect v0.4.3
+   Compiling hyper v1.9.0
+   Compiling derive_builder_macro v0.20.2
+   Compiling pkcs8 v0.11.0
+   Compiling n0-future v0.3.2
+   Compiling tokio-rustls v0.26.4
+   Compiling heapless v0.7.17
+   Compiling cpufeatures v0.3.0
+   Compiling uniffi_checksum_derive v0.28.3
+   Compiling ed25519 v3.0.0
+   Compiling polyval v0.6.2
+   Compiling sha2 v0.11.0
+   Compiling derive_builder v0.20.2
+   Compiling hyper-util v0.1.20
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling netlink-packet-core v0.8.1
+   Compiling scroll_derive v0.12.1
+   Compiling prefix-trie v0.8.4
+   Compiling data-encoding-macro-internal v0.1.18
+   Compiling camino v1.2.2
+   Compiling ed25519-dalek v3.0.0-pre.7
+   Compiling vergen-lib v9.1.0
+   Compiling noq-udp v1.0.0-rc.0
+   Compiling ghash v0.5.1
+   Compiling parking_lot_core v0.9.12
+   Compiling aes v0.8.4
+   Compiling http-body-util v0.1.3
+   Compiling cobs v0.3.0
+   Compiling basic-toml v0.1.10
+   Compiling futures-executor v0.3.32
+   Compiling postcard-derive v0.2.2
+   Compiling fastbloom v0.17.0
+   Compiling postcard v1.1.3
+   Compiling tower v0.5.3
+   Compiling futures v0.3.32
+   Compiling askama_derive v0.12.5
+   Compiling aes-gcm v0.10.3
+   Compiling parking_lot v0.12.5
+   Compiling vergen v9.1.0
+   Compiling data-encoding-macro v0.1.20
+   Compiling hickory-proto v0.26.1
+   Compiling uuid v1.23.1
+   Compiling netlink-sys v0.8.8
+   Compiling enum-assoc v1.3.0
+   Compiling async-trait v0.1.89
+   Compiling noq-proto v1.0.0-rc.0
+   Compiling moka v0.12.15
+   Compiling uniffi_meta v0.28.3
+   Compiling hickory-net v0.26.1
+   Compiling serde_json v1.0.149
+   Compiling thiserror v1.0.69
+   Compiling iroh-base v1.0.0-rc.0
+   Compiling vergen-gitcl v9.1.0
+   Compiling tower-http v0.6.10
+   Compiling num_enum_derive v0.7.6
+   Compiling netlink-packet-route v0.29.0
+   Compiling hyper-rustls v0.27.9
+   Compiling iroh-metrics-derive v1.0.0-rc.0
+   Compiling strum_macros v0.28.0
+   Compiling tokio-stream v0.1.18
+   Compiling cargo-platform v0.1.9
+   Compiling hickory-resolver v0.26.1
+   Compiling netdev v0.43.0
+   Compiling iroh-metrics v1.0.0-rc.0
+   Compiling cargo_metadata v0.15.4
+   Compiling noq v1.0.0-rc.0
+   Compiling strum v0.28.0
+   Compiling reqwest v0.13.3
+   Compiling num_enum v0.7.6
+   Compiling iroh-relay v1.0.0-rc.0
+   Compiling syn v1.0.109
+   Compiling netlink-proto v0.12.0
+   Compiling netlink-packet-route v0.30.0
+   Compiling n0-watcher v1.0.0-rc.0
+   Compiling attohttpc v0.30.1
+   Compiling toml_datetime v0.6.11
+   Compiling toml v0.5.11
+   Compiling serde_spanned v0.6.9
+   Compiling toml_edit v0.22.27
+   Compiling tokio-websockets v0.13.2
+   Compiling iroh-dns v1.0.0-rc.0
+   Compiling igd-next v0.17.0
+   Compiling netwatch v0.17.0
+   Compiling syn-mid v0.5.4
+   Compiling uniffi_testing v0.28.3
+   Compiling scroll v0.12.0
+   Compiling webpki-roots v1.0.7
+   Compiling seize v0.5.1
+   Compiling serde_bytes v0.11.19
+   Compiling goblin v0.8.2
+   Compiling askama v0.12.1
+   Compiling proc-macro-hack v0.5.20+deprecated
+   Compiling papaya v0.2.4
+   Compiling uniffi_udl v0.28.3
+   Compiling proc-macro-error-attr v0.4.12
+   Compiling portmapper v0.17.0
+   Compiling toml v0.8.23
+   Compiling backon v1.6.0
+   Compiling bincode v1.3.3
+   Compiling ref-cast v1.0.25
+   Compiling uniffi_bindgen v0.28.3
+   Compiling uniffi_macros v0.28.3
+   Compiling iroh v1.0.0-rc.0
+   Compiling rcgen v0.14.8
+   Compiling cargo-lock v10.1.0
+   Compiling proc-macro-error v0.4.12
+   Compiling ref-cast-impl v1.0.25
+   Compiling irpc-derive v0.15.0
+   Compiling uniffi_core v0.28.3
+   Compiling irpc v0.15.0
+   Compiling genawaiter-proc-macro v0.99.1
+   Compiling built v0.8.0
+   Compiling uniffi_build v0.28.3
+   Compiling jni-macros v0.22.4
+   Compiling inplace-vec-builder v0.1.1
+   Compiling range-collections v0.4.6
+   Compiling genawaiter v0.99.1
+   Compiling uniffi v0.28.3
+   Compiling iroh-services v1.0.0-rc.0
+   Compiling iroh-tickets v1.0.0-rc.0
+   Compiling iroh-io v0.6.2
+   Compiling clap_derive v4.6.1
+   Compiling tracing-serde v0.2.0
+   Compiling tracing-log v0.2.0
+   Compiling positioned-io v0.3.5
+   Compiling jni-sys-macros v0.4.1
+   Compiling tracing-subscriber v0.3.23
+   Compiling bao-tree v0.16.0
+   Compiling jni-sys v0.4.1
+   Compiling clap v4.6.1
+   Compiling openburnbar-iroh v0.1.0 (/workspace/crates/openburnbar-iroh)
+   Compiling reflink-copy v0.1.29
+   Compiling rcan v0.3.1
+   Compiling irpc-iroh v0.15.0
+   Compiling iroh-util v0.4.0
+   Compiling nested_enum_utils v0.2.3
+   Compiling combine v4.6.7
+   Compiling jni v0.22.4
+   Compiling iroh-blobs v0.101.0
+    Finished `release` profile [optimized] target(s) in 3m 16s
+-rwxr-xr-x 2 root root 11M Jul  3 11:16 /workspace/crates/openburnbar-iroh/target-linux-ffi-serial/release/libopenburnbar_iroh.so

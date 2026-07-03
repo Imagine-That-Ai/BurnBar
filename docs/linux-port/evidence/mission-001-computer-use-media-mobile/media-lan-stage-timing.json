@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-07-03T11:56:35.185Z",
+  "target": "VAL-MEDIA-001",
+  "command": "cargo test --manifest-path /workspace/crates/openburnbar-iroh/Cargo.toml --test loopback_handshake -- --nocapture",
+  "exitCode": 0,
+  "durationMs": 79715,
+  "stageTimings": [
+    {
+      "stage": "iroh-loopback-bind",
+      "budgetMs": 10000,
+      "observedBy": "cargo loopback_handshake test"
+    },
+    {
+      "stage": "alpn-handshake",
+      "budgetMs": 10000,
+      "observedBy": "cargo loopback_handshake test"
+    },
+    {
+      "stage": "length-prefixed-frame-roundtrip",
+      "budgetMs": 10000,
+      "observedBy": "cargo loopback_handshake test"
+    }
+  ],
+  "codecTraceArtifact": "computer-use-media-codec-trace.json",
+  "passed": true
+}

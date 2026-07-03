@@ -73,8 +73,12 @@ public enum BurnBarWidgetShared {
 
     /// The shared container URL for the App Group. Returns `nil` if the app group is not configured.
     public static var containerURL: URL? {
+        #if os(macOS) || os(iOS)
         FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+        #else
+        nil
+        #endif
     }
 
     /// Full path to the widget snapshot JSON file.

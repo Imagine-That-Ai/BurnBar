@@ -1,0 +1,38 @@
+# Command
+rg -n "\b(SHA256|HMAC|AES\.GCM|SymmetricKey|Curve25519\.|P256\.|HPKE\.|SharedSecret)\b" OpenBurnBarCore/Sources/OpenBurnBarCore OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore OpenBurnBarCore/Sources/OpenBurnBarIrohRelay OpenBurnBarCore/Sources/OpenBurnBarMedia --glob "!**/Platform/PlatformCrypto.swift" --glob "!**/OpenBurnBarSignalCore/**" --glob "!**/OpenBurnBarSignalSessionTransport/**"
+
+# Results
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlSigningKey.swift:60:    /// (`r‖s`) 64-byte ECDSA-over-SHA256 signature — the wire form chosen for
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlSigningKey.swift:142:    /// through the same `P256.Signing` API; in unit tests and the software
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlSigningKey.swift:143:    /// fallback a plain `P256.Signing.PrivateKey` stands in and produces a
+OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarAgentContracts.swift:489:    /// Generates a stable hash from input string using SHA256.
+OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarAgentContracts.swift:512:    /// Generates a stable hash from edge input using SHA256.
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/RemoteUnlockPolicy.swift:79:    public static let credentialEnvelopeAlgorithm = "HPKE-X25519-SHA256-CHACHAPOLY"
+OpenBurnBarCore/Sources/OpenBurnBarCore/Memory/MemoryServing.swift:100:/// HMAC is the stable identity; `messageID` is the same-device jump target.
+OpenBurnBarCore/Sources/OpenBurnBarCore/Memory/MemoryServing.swift:109:    public var crossDeviceHMAC: String       // HMAC over the canonical source-event envelope
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:9:/// (`SecureEnclave.P256.Signing.PrivateKey` on device). Both produce the raw
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:10:/// (`r‖s`) ECDSA-over-SHA256 signature `PhoneControlVerifyingKey` accepts, so
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:19:extension SecureEnclave.P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:37:    /// A NIST P-256 key — `P256.Signing.PrivateKey` in tests / software
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:38:    /// fallback, `SecureEnclave.P256.Signing.PrivateKey` on device.
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/PensieveVectorCloak.swift:58:    /// RFC 5869 HKDF-SHA256 keystream, byte-identical to `hkdfSha256` in embed.ts
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift:65:/// `enc` is the HPKE encapsulated key — for DHKEM(P-256, HKDF-SHA256) this is the
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift:126:    /// HKDF-SHA256) / HKDF-SHA256 / AES-256-GCM in HPKE Auth mode. Mirrors the
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift:457:    // HPKE Auth mode, implemented with Apple CryptoKit's `HPKE.Sender` /
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift:458:    // `HPKE.Recipient` (the same API the Remote Unlock credential envelope
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift:466:    //   suite = DHKEM(P-256, HKDF-SHA256) / HKDF-SHA256 / AES-256-GCM
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift:467:    //         = HPKE.Ciphersuite.P256_SHA256_AES_GCM_256
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/PensieveKnowledgeChunker.swift:20:/// `dedupHash`, a VAULT-KEYED HMAC of the chunk plaintext the device computes;
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/PensieveKnowledgeChunker.swift:55:/// `slugHmac` is the vault-keyed HMAC of `sourceSlug` — the opaque filter column
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/PensieveKnowledgeChunker.swift:233:            // Vault-keyed HMAC of the plaintext — the idempotency key and the
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:846:    /// HKDF<SHA256> → HMAC<SHA256> → hex recipe.
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:858:    /// same plaintext produce different hashes. Full HMAC-SHA256 digest (64 hex),
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:860:    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:content") → HMAC<SHA256>(plaintext)`.
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:869:    /// Vault-keyed HMAC of a Pensieve source slug — the opaque filter column that
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:870:    /// replaces the cleartext `sourceSlug`. Full HMAC-SHA256 digest (64 hex).
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:872:    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:slug") → HMAC<SHA256>(slug)`.
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:885:    /// which agents a user follows. This replaces it with a vault-keyed HMAC of
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:891:    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "subscription-topic") → HMAC<SHA256>("agentURI:topicID")`.
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:1127:            salt: Data("OpenBurnBar-CloudVault-HMAC-Salt-v1".utf8),
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:1128:            info: Data("OpenBurnBar-CloudVault-HMAC-v1|\(purpose)".utf8),
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated/HermesRealtimeRelayControl.swift:199:/// `signatureEd25519` field carries a raw (r‖s) 64-byte ECDSA-over-SHA256

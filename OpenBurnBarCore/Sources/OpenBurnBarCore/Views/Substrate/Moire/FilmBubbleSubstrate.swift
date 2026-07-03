@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import CoreGraphics
 
@@ -328,3 +329,5 @@ public final class FilmBubbleSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

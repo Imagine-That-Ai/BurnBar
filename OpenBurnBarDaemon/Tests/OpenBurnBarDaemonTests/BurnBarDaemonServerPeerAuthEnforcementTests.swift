@@ -1,6 +1,10 @@
 import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import XCTest
 
@@ -121,16 +125,20 @@ final class BurnBarDaemonServerPeerAuthEnforcementTests: XCTestCase {
         request: BurnBarRPCRequestEnvelope,
         socketPath: String
     ) throws -> Data {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        let fileDescriptor = socket(AF_UNIX, streamSocketType, 0)
         XCTAssertNotEqual(fileDescriptor, -1)
         defer { close(fileDescriptor) }
 
+        #if !os(Linux)
         var noSigPipe: Int32 = 1
         setsockopt(fileDescriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+        #endif
 
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
+        #if os(macOS)
         address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+        #endif
         let pathBytes = Array(socketPath.utf8)
         guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
             throw POSIXError(.ENAMETOOLONG)
@@ -171,5 +179,13 @@ final class BurnBarDaemonServerPeerAuthEnforcementTests: XCTestCase {
             if response.last == 0x0A { break }
         }
         return response
+    }
+
+    private var streamSocketType: Int32 {
+        #if os(Linux)
+        return Int32(SOCK_STREAM.rawValue)
+        #else
+        return SOCK_STREAM
+        #endif
     }
 }

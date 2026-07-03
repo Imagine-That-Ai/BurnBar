@@ -1,0 +1,211 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.664Z",
+  "lane": "W07LinuxComputerUseMediaMobile",
+  "replay": [
+    {
+      "id": "approved-action",
+      "action": {
+        "id": "move-1",
+        "kind": "pointer.move",
+        "x": 40,
+        "y": 40
+      },
+      "context": {
+        "adapterId": "x11-xtest",
+        "adapterAvailable": true,
+        "approved": true,
+        "approvalId": "approval-local-1",
+        "trustMode": "step",
+        "approvalSource": "local",
+        "denyRegions": [
+          {
+            "id": "password-field",
+            "x": 90,
+            "y": 90,
+            "width": 140,
+            "height": 60
+          }
+        ],
+        "actionsInWindow": 0,
+        "rateLimitPerWindow": 3
+      },
+      "decision": {
+        "actionId": "move-1",
+        "adapterId": "x11-xtest",
+        "allowed": true,
+        "reason": "approved",
+        "audit": {
+          "actionKind": "pointer.move",
+          "approvedBy": "mac",
+          "approvalId": "approval-local-1",
+          "trustMode": "step",
+          "denyReason": null
+        }
+      }
+    },
+    {
+      "id": "denied-region",
+      "action": {
+        "id": "click-denied-1",
+        "kind": "pointer.click",
+        "x": 120,
+        "y": 120
+      },
+      "context": {
+        "adapterId": "x11-xtest",
+        "adapterAvailable": true,
+        "approved": true,
+        "approvalId": "approval-local-1",
+        "trustMode": "step",
+        "approvalSource": "local",
+        "denyRegions": [
+          {
+            "id": "password-field",
+            "x": 90,
+            "y": 90,
+            "width": 140,
+            "height": 60
+          }
+        ],
+        "actionsInWindow": 0,
+        "rateLimitPerWindow": 3
+      },
+      "decision": {
+        "actionId": "click-denied-1",
+        "adapterId": "x11-xtest",
+        "allowed": false,
+        "reason": "deny_region",
+        "audit": {
+          "actionKind": "pointer.click",
+          "approvedBy": "denied",
+          "approvalId": null,
+          "trustMode": "step",
+          "denyReason": "deny_region"
+        }
+      }
+    },
+    {
+      "id": "denied-no-permission",
+      "action": {
+        "id": "type-no-permission-1",
+        "kind": "key.type",
+        "text": "blocked"
+      },
+      "context": {
+        "adapterId": "libei",
+        "adapterAvailable": false,
+        "approved": true,
+        "approvalId": "approval-local-2",
+        "trustMode": "step",
+        "approvalSource": "local",
+        "denyRegions": [
+          {
+            "id": "password-field",
+            "x": 90,
+            "y": 90,
+            "width": 140,
+            "height": 60
+          }
+        ],
+        "actionsInWindow": 0,
+        "rateLimitPerWindow": 3
+      },
+      "decision": {
+        "actionId": "type-no-permission-1",
+        "adapterId": "libei",
+        "allowed": false,
+        "reason": "adapter_unavailable",
+        "audit": {
+          "actionKind": "key.type",
+          "approvedBy": "denied",
+          "approvalId": null,
+          "trustMode": "step",
+          "denyReason": "adapter_unavailable"
+        }
+      }
+    },
+    {
+      "id": "downgrade-only-mobile",
+      "action": {
+        "id": "mobile-trust-elevate-1",
+        "kind": "pointer.click",
+        "x": 30,
+        "y": 30
+      },
+      "context": {
+        "adapterId": "x11-xtest",
+        "adapterAvailable": true,
+        "approved": true,
+        "approvalId": "approval-phone-1",
+        "trustMode": "manual",
+        "approvalSource": "mobile",
+        "denyRegions": [
+          {
+            "id": "password-field",
+            "x": 90,
+            "y": 90,
+            "width": 140,
+            "height": 60
+          }
+        ],
+        "actionsInWindow": 0,
+        "rateLimitPerWindow": 3,
+        "requestedTrustMode": "trusted"
+      },
+      "decision": {
+        "actionId": "mobile-trust-elevate-1",
+        "adapterId": "x11-xtest",
+        "allowed": false,
+        "reason": "mobile_cannot_elevate_trust",
+        "audit": {
+          "actionKind": "pointer.click",
+          "approvedBy": "denied",
+          "approvalId": null,
+          "trustMode": "manual",
+          "denyReason": "mobile_cannot_elevate_trust"
+        }
+      }
+    },
+    {
+      "id": "rate-limited",
+      "action": {
+        "id": "scroll-rate-1",
+        "kind": "scroll",
+        "x": 20,
+        "y": 20
+      },
+      "context": {
+        "adapterId": "x11-xtest",
+        "adapterAvailable": true,
+        "approved": true,
+        "approvalId": "approval-local-1",
+        "trustMode": "step",
+        "approvalSource": "local",
+        "denyRegions": [
+          {
+            "id": "password-field",
+            "x": 90,
+            "y": 90,
+            "width": 140,
+            "height": 60
+          }
+        ],
+        "actionsInWindow": 3,
+        "rateLimitPerWindow": 3
+      },
+      "decision": {
+        "actionId": "scroll-rate-1",
+        "adapterId": "x11-xtest",
+        "allowed": false,
+        "reason": "rate_limited",
+        "audit": {
+          "actionKind": "scroll",
+          "approvedBy": "denied",
+          "approvalId": null,
+          "trustMode": "step",
+          "denyReason": "rate_limited"
+        }
+      }
+    }
+  ]
+}

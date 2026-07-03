@@ -1,0 +1,2 @@
+exit_code=1
+No matches found for forbidden daemon RPC invention names.

@@ -1,0 +1,13 @@
+image=openburnbar-linux-toolchain:mission-001-fts5
+build_dir=/private/tmp/openburnbar-linux-mission-001/OpenBurnBarDaemon/.build-linux-w08-gate-remediation
+container_build_path=/workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation
+started_at=2026-07-03T13:31:56Z
+[0/1] Planning build
+Building for debugging...
+[0/2] Write swift-version-24593BA9C3E375BF.txt
+Build of product 'OpenBurnBarCLI' complete! (3.22s)
+swift_build_exit_code=0
+cli_bin=/private/tmp/openburnbar-linux-mission-001/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI
+container_cli=/workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, BuildID[sha1]=80bf95d49b903c4f628063a166ad0c9496479ef3, with debug_info, not stripped
+bc6f21f92e132a1731eadf572f319f7168745d2799cf2f1b7f58d7a2ed000f4e  /private/tmp/openburnbar-linux-mission-001/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI

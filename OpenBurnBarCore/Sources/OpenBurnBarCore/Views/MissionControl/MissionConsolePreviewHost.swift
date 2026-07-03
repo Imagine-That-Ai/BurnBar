@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import Observation
 import SwiftUI
@@ -365,5 +366,7 @@ struct MissionControlConsoleView_Previews: PreviewProvider {
         }
     }
 }
+
+#endif
 
 #endif

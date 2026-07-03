@@ -79,11 +79,12 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
     }
 
     public func acceptOne(timeout: TimeInterval) async throws -> IrohBackendStream {
-        try await withFFI { [handle] in
+        let queue = self.queue
+        return try await withFFI { [handle, queue] in
             let stream = try handle.acceptOne(
                 timeoutSeconds: UInt32(max(1, Int(timeout.rounded(.up))))
             )
-            return OpenBurnBarIrohFFIStream(stream: stream, queue: self.queue)
+            return OpenBurnBarIrohFFIStream(stream: stream, queue: queue)
         }
     }
 
@@ -99,7 +100,7 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
     /// Runs the Rust call on the FFI queue and surfaces UniFFI errors as
     /// `IrohBackendError`. We translate at the boundary so callers never
     /// import the FFI-generated error types.
-    private func withFFI<T>(_ block: @escaping () throws -> T) async throws -> T {
+    private func withFFI<T>(_ block: @escaping @Sendable () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
             queue.async {
                 do {

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Glass Ribbon — ported from imaginethat `glyph/stage/styles/flow/glass-ribbon.ts`.
@@ -292,3 +293,5 @@ public final class GlassRibbonSubstrate: SwarmSubstrate {
         return atan2(nx, -ny)
     }
 }
+
+#endif

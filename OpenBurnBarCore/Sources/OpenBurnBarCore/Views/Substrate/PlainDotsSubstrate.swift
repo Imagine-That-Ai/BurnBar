@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// The shared "Plain · DOTS" substrate — the family default for all six families.
@@ -10,3 +11,5 @@ public final class PlainDotsSubstrate: SwarmSubstrate {
     public init() {}
     public func paint(_ frame: SwarmSubstrateFrame, into ctx: GraphicsContext) -> Bool { false }
 }
+
+#endif

@@ -1,0 +1,458 @@
+== profile ==
+{
+  "name": "dbus-x11-xvfb-xfce-statusnotifier",
+  "displayServer": "X11 via Xvfb",
+  "desktop": "XFCE panel in dbus-run-session",
+  "trayHost": "xfce4-sntray-plugin with Ayatana AppIndicator runtime",
+  "windowManager": "openbox",
+  "purpose": "CI compositor profile for packaged Tauri .deb install/run/tray proof"
+}
+== package versions ==
+at-spi2-core=2.52.0-1build1
+ayatana-indicator-application=22.2.0-1build2
+dbus-x11=1.14.10-4ubuntu4.1
+libayatana-appindicator3-1=0.5.93-1build3
+openbox=3.6.1-12build5
+scrot=1.10-1build2
+x11-utils=7.7+6build2
+xdotool=1:3.20160805.1-5build1
+xfce4-panel=4.18.4-1ubuntu0.1
+xfce4-sntray-plugin=0.4.13.1-2build3
+xvfb=2:21.1.12-1ubuntu1.6
+== build deb ==
+reusing_deb=/evidence/OpenBurnBar_0.1.0_arm64.deb
+Package: open-burn-bar
+Version: 0.1.0
+Architecture: arm64
+Installed-Size: 12567
+Maintainer: OpenBurnBar
+Priority: optional
+Depends: libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0
+Description: OpenBurnBar Linux desktop shell
+ (none)
+== install deb ==
+Selecting previously unselected package open-burn-bar.
+(Reading database ... 76717 files and directories currently installed.)
+Preparing to unpack .../OpenBurnBar_0.1.0_arm64.deb ...
+Unpacking open-burn-bar (0.1.0) ...
+Setting up open-burn-bar (0.1.0) ...
+Processing triggers for desktop-file-utils (0.27-2build1) ...
+Processing triggers for hicolor-icon-theme (0.17-2) ...
+open-burn-bar=0.1.0 install ok installed
+desktop_file=/usr/share/applications/OpenBurnBar.desktop
+installed_bin=/usr/bin/openburnbar-linux-desktop
+== daemon socket for packaged session ==
+== daemon socket for shell session ==
+daemon_bin=/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+srw------- 1 root root 0 Jul  3 14:26 /tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
+== desktop session ==
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=127 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[112]: [session uid=0 pid=112] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[140]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=127 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.xfce.Xfconf' requested by ':1.2' (uid=0 pid=127 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[140]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+dbus-daemon[112]: [session uid=0 pid=112] Successfully activated service 'org.xfce.Xfconf'
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.14' (uid=0 pid=181 comm="/usr/bin/openburnbar-linux-desktop")
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.portal.Documents' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.16' (uid=0 pid=198 comm="/usr/libexec/xdg-document-portal")
+dbus-daemon[112]: [session uid=0 pid=112] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[112]: [session uid=0 pid=112] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: fuse device not found, try 'modprobe fuse' first
+error: fuse init failed: Can't mount path /root/.cache/doc
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.443: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.443: The preferred method to match portal implementations to desktop environments is to use the portals.conf(5) configuration file
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:213): Gtk-WARNING **: 14:26:58.448: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.453: Failed to create RealtimeKit proxy: Could not connect: No such file or directory
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.453: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.453: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:217): Gtk-WARNING **: 14:26:58.457: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.458: Failed to create file chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.458: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.458: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:219): Gtk-WARNING **: 14:26:58.462: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.462: Failed to create app chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.462: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.462: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:221): Gtk-WARNING **: 14:26:58.467: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.468: Failed to create print proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.468: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.468: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:223): Gtk-WARNING **: 14:26:58.472: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.473: Failed to create notification proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.473: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.473: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:225): Gtk-WARNING **: 14:26:58.478: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.479: Failed to create inhibit proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.479: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.479: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:227): Gtk-WARNING **: 14:26:58.484: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.485: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.485: No skeleton to export
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:229): Gtk-WARNING **: 14:26:58.489: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:231): Gtk-WARNING **: 14:26:58.493: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.494: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.494: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.494: Failed connect to PipeWire: Couldn't connect to PipeWire
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.494: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:234): Gtk-WARNING **: 14:26:58.499: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.499: Failed to create account proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.499: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.499: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:236): Gtk-WARNING **: 14:26:58.504: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.505: Failed to create email proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.505: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.505: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[112]: [session uid=0 pid=112] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=191 comm="/usr/libexec/xdg-desktop-portal")
+
+(xdg-desktop-portal-gtk:238): Gtk-WARNING **: 14:26:58.509: cannot open display: 
+dbus-daemon[112]: [session uid=0 pid=112] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.510: Failed to create dynamic_launcher proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+(/usr/libexec/xdg-desktop-portal:191): xdg-desktop-portal-WARNING **: 14:26:58.510: No skeleton to export
+dbus-daemon[112]: [session uid=0 pid=112] Successfully activated service 'org.freedesktop.portal.Desktop'
+{
+  "generatedAt": "2026-07-03T14:27:06.714Z",
+  "lane": "W06ShellEvidenceRepair",
+  "mode": "packaged-desktop-route-navigation",
+  "surface": "installed-tauri-deb-xvfb-xfce",
+  "missionWorktree": "/private/tmp/openburnbar-linux-mission-001",
+  "routeCount": 17,
+  "daemonOracle": {
+    "mode": "openburnbar-daemon-af-unix",
+    "status": "ready",
+    "detail": "Real OpenBurnBarDaemon listening on AF_UNIX socket for packaged shell session.",
+    "socketPath": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock",
+    "missionWorktree": "/private/tmp/openburnbar-linux-mission-001",
+    "missionWorktreeHost": "/private/tmp/openburnbar-linux-mission-001"
+  },
+  "routes": [
+    {
+      "index": 0,
+      "route": "overview",
+      "screenshot": "screenshot-route-overview.png",
+      "xwininfo": "window-route-overview-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Home",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 1,
+      "route": "insights",
+      "screenshot": "screenshot-route-insights.png",
+      "xwininfo": "window-route-insights-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 2,
+      "route": "database",
+      "screenshot": "screenshot-route-database.png",
+      "xwininfo": "window-route-database-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 3,
+      "route": "providers",
+      "screenshot": "screenshot-route-providers.png",
+      "xwininfo": "window-route-providers-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 4,
+      "route": "projects",
+      "screenshot": "screenshot-route-projects.png",
+      "xwininfo": "window-route-projects-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 5,
+      "route": "missions",
+      "screenshot": "screenshot-route-missions.png",
+      "xwininfo": "window-route-missions-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 6,
+      "route": "activity",
+      "screenshot": "screenshot-route-activity.png",
+      "xwininfo": "window-route-activity-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 7,
+      "route": "chat",
+      "screenshot": "screenshot-route-chat.png",
+      "xwininfo": "window-route-chat-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 8,
+      "route": "memory",
+      "screenshot": "screenshot-route-memory.png",
+      "xwininfo": "window-route-memory-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 9,
+      "route": "computer-use",
+      "screenshot": "screenshot-route-computer-use.png",
+      "xwininfo": "window-route-computer-use-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 10,
+      "route": "settings",
+      "screenshot": "screenshot-route-settings.png",
+      "xwininfo": "window-route-settings-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 11,
+      "route": "account",
+      "screenshot": "screenshot-route-account.png",
+      "xwininfo": "window-route-account-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 12,
+      "route": "updates",
+      "screenshot": "screenshot-route-updates.png",
+      "xwininfo": "window-route-updates-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 13,
+      "route": "support",
+      "screenshot": "screenshot-route-support.png",
+      "xwininfo": "window-route-support-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 14,
+      "route": "onboarding",
+      "screenshot": "screenshot-route-onboarding.png",
+      "xwininfo": "window-route-onboarding-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 15,
+      "route": "pet",
+      "screenshot": "screenshot-route-pet.png",
+      "xwininfo": "window-route-pet-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 16,
+      "route": "text-expansion",
+      "screenshot": "screenshot-route-text-expansion.png",
+      "xwininfo": "window-route-text-expansion-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    }
+  ]
+}
+{
+  "generatedAt": "2026-07-03T14:27:07.230Z",
+  "profile": "dbus-x11-xvfb-xfce-statusnotifier",
+  "package": {
+    "name": "open-burn-bar",
+    "executable": "/usr/bin/openburnbar-linux-desktop"
+  },
+  "session": {
+    "display": ":99",
+    "xdgSessionType": "x11",
+    "desktop": "XFCE",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_181_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_181_1/Menu",
+    "windowId": "12582915",
+    "reopenedWindowId": "12582915"
+  },
+  "performance": {
+    "appStartMs": 314,
+    "trayClickOpenMs": 29,
+    "ipcHealthRoundTripMs": 107,
+    "trayQuitMs": 107
+  },
+  "evidence": {
+    "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
+    "afterTrayOpenScreenshot": "screenshot-linux-desktop-after-tray-open.png",
+    "packagedRouteTranscript": "packaged-route-session-transcript.json",
+    "runtimePerfSamples": "runtime-perf-samples.jsonl",
+    "daemonSocketLog": "daemon-socket-gui-session.log",
+    "trayMenuLayout": "tray-menu-layout.txt",
+    "accessibilitySnapshot": "accessibility-tree-linux-desktop.txt"
+  }
+}
+== daemon socket log ==
+
+(xfconfd:148): xfconfd-WARNING **: 14:27:07.235: Name org.xfce.Xfconf lost on the message dbus, exiting.
+starting real OpenBurnBarDaemon
+binary=/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+socket=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
+peer_codesig=disabled-debug-only
+2026-07-03 14:26:56 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5 vault_uid_present=false
+2026-07-03 14:26:56 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=shell-session-evidence protocol_version=1 socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_defaults_loaded file_path=/root/Library/Application Support/OpenBurnBar/provider-config.json trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=default_model_variants_seeded marker_path=/root/Library/Application Support/OpenBurnBar/model-variants-seed.v1 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=shell-session-evidence socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:58 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783088818646438752 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:58 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:27:06 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783088826967376547 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:27:06 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+== uninstall deb ==
+(Reading database ... 76720 files and directories currently installed.)
+Removing open-burn-bar (0.1.0) ...
+Processing triggers for hicolor-icon-theme (0.17-2) ...
+Processing triggers for desktop-file-utils (0.27-2build1) ...
+uninstall_verified=true
+{
+  "generatedAt": "2026-07-03T14:27:07.230Z",
+  "profile": "dbus-x11-xvfb-xfce-statusnotifier",
+  "package": {
+    "name": "open-burn-bar",
+    "executable": "/usr/bin/openburnbar-linux-desktop",
+    "uninstallVerified": true,
+    "debArtifact": "OpenBurnBar_0.1.0_arm64.deb"
+  },
+  "session": {
+    "display": ":99",
+    "xdgSessionType": "x11",
+    "desktop": "XFCE",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_181_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_181_1/Menu",
+    "windowId": "12582915",
+    "reopenedWindowId": "12582915"
+  },
+  "performance": {
+    "appStartMs": 314,
+    "trayClickOpenMs": 29,
+    "ipcHealthRoundTripMs": 107,
+    "trayQuitMs": 107
+  },
+  "evidence": {
+    "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
+    "afterTrayOpenScreenshot": "screenshot-linux-desktop-after-tray-open.png",
+    "packagedRouteTranscript": "packaged-route-session-transcript.json",
+    "runtimePerfSamples": "runtime-perf-samples.jsonl",
+    "daemonSocketLog": "daemon-socket-gui-session.log",
+    "trayMenuLayout": "tray-menu-layout.txt",
+    "accessibilitySnapshot": "accessibility-tree-linux-desktop.txt"
+  }
+}

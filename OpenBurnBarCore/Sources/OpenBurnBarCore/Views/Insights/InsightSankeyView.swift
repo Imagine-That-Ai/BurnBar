@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Compact two/three-column sankey-like flow view.
@@ -80,3 +81,5 @@ public struct InsightSankeyView: View {
         ]
     }
 }
+
+#endif

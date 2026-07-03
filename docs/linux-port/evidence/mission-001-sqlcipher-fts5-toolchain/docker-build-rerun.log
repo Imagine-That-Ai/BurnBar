@@ -1,0 +1,561 @@
+^D#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 3.62kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/swift:6.2-noble@sha256:dd349c6dfc3cd3040910a84ab3e5bd5d08efdd547e5fb9f77b765abed16fe5ff
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 30B done
+#4 DONE 0.0s
+
+#5 [1/6] FROM docker.io/library/swift:6.2-noble@sha256:dd349c6dfc3cd3040910a84ab3e5bd5d08efdd547e5fb9f77b765abed16fe5ff
+#5 resolve docker.io/library/swift:6.2-noble@sha256:dd349c6dfc3cd3040910a84ab3e5bd5d08efdd547e5fb9f77b765abed16fe5ff done
+#5 sha256:de46d0480a9b8fd4ee92fb52d98ebe9ddc12214a34c77cb93d11774dc499839c 175B / 175B 0.1s done
+#5 sha256:10372718a536908cb56316d7edcd67b0c71bc925ce0070c6e894cb05376a3ada 131.20MB / 131.20MB 179.3s done
+#5 sha256:4b987da45db4d6278590ab89840c7167ea397df222f3ee4cdb77c3e15694b1a9 28.88MB / 28.88MB 766.5s done
+#5 extracting sha256:4b987da45db4d6278590ab89840c7167ea397df222f3ee4cdb77c3e15694b1a9 0.3s done
+#5 extracting sha256:10372718a536908cb56316d7edcd67b0c71bc925ce0070c6e894cb05376a3ada 1.1s done
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1402.5s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1407.6s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1412.7s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1417.8s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1422.9s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1428.0s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1433.1s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1438.2s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1443.3s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1448.4s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1453.5s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1458.6s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1463.7s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1468.8s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1473.9s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1479.0s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1484.1s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1489.2s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1494.3s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1499.4s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1504.5s
+#5 sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 1.02GB / 1.02GB 1509.0s done
+#5 DONE 1509.0s
+
+#5 [1/6] FROM docker.io/library/swift:6.2-noble@sha256:dd349c6dfc3cd3040910a84ab3e5bd5d08efdd547e5fb9f77b765abed16fe5ff
+#5 extracting sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667
+#5 extracting sha256:75a875a925df16423f26804c2d0d282f2b1fe5f38bc153d2ba5c2fcd9a66e667 14.9s done
+#5 DONE 1523.9s
+
+#5 [1/6] FROM docker.io/library/swift:6.2-noble@sha256:dd349c6dfc3cd3040910a84ab3e5bd5d08efdd547e5fb9f77b765abed16fe5ff
+#5 extracting sha256:de46d0480a9b8fd4ee92fb52d98ebe9ddc12214a34c77cb93d11774dc499839c done
+#5 DONE 1523.9s
+
+#6 [2/6] RUN apt-get update     && apt-get install -y --no-install-recommends         apt-transport-https         build-essential         ca-certificates         cargo         curl         dbus         dbus-x11         desktop-file-utils         dpkg-dev         fakeroot         file         git         gnupg         jq         libayatana-appindicator3-dev         libatspi2.0-dev         libei-dev         libgtk-3-dev         libkf5wallet-dev         libpipewire-0.3-dev         libsecret-1-dev         libreadline-dev         libsqlite3-dev         libssl-dev         libwebkit2gtk-4.1-dev         libx11-dev         libxcb1-dev         libxkbcommon-dev         libxrandr-dev         nodejs         npm         patchelf         pipewire         pkg-config         rpm         rustc         sqlite3         tcl         xdg-desktop-portal         xdg-desktop-portal-gtk         xz-utils         zlib1g-dev     && apt-get clean     && rm -rf /var/lib/apt/lists/*
+#6 2.258 Get:1 http://ports.ubuntu.com/ubuntu-ports noble InRelease [256 kB]
+#6 3.306 Get:2 http://ports.ubuntu.com/ubuntu-ports noble-updates InRelease [126 kB]
+#6 3.832 Get:3 http://ports.ubuntu.com/ubuntu-ports noble-backports InRelease [126 kB]
+#6 4.356 Get:4 http://ports.ubuntu.com/ubuntu-ports noble-security InRelease [126 kB]
+#6 4.899 Get:5 http://ports.ubuntu.com/ubuntu-ports noble/multiverse arm64 Packages [274 kB]
+#6 5.532 Get:6 http://ports.ubuntu.com/ubuntu-ports noble/restricted arm64 Packages [113 kB]
+#6 6.034 Get:7 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 Packages [19.0 MB]
+#6 38.76 Get:8 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 Packages [1776 kB]
+#6 39.11 Get:9 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 Packages [1368 kB]
+#6 40.01 Get:10 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 Packages [2112 kB]
+#6 40.65 Get:11 http://ports.ubuntu.com/ubuntu-ports noble-updates/multiverse arm64 Packages [80.1 kB]
+#6 41.06 Get:12 http://ports.ubuntu.com/ubuntu-ports noble-updates/restricted arm64 Packages [2178 kB]
+#6 42.11 Get:13 http://ports.ubuntu.com/ubuntu-ports noble-backports/main arm64 Packages [48.9 kB]
+#6 42.11 Get:14 http://ports.ubuntu.com/ubuntu-ports noble-backports/multiverse arm64 Packages [671 B]
+#6 42.11 Get:15 http://ports.ubuntu.com/ubuntu-ports noble-backports/universe arm64 Packages [36.3 kB]
+#6 42.19 Get:16 http://ports.ubuntu.com/ubuntu-ports noble-security/restricted arm64 Packages [2090 kB]
+#6 43.68 Get:17 http://ports.ubuntu.com/ubuntu-ports noble-security/universe arm64 Packages [1533 kB]
+#6 45.77 Get:18 http://ports.ubuntu.com/ubuntu-ports noble-security/main arm64 Packages [1055 kB]
+#6 47.35 Get:19 http://ports.ubuntu.com/ubuntu-ports noble-security/multiverse arm64 Packages [75.6 kB]
+#6 47.39 Fetched 32.4 MB in 47s (686 kB/s)
+#6 47.39 Reading package lists...
+#6 47.97 Reading package lists...
+#6 48.46 Building dependency tree...
+#6 48.59 Reading state information...
+#6 48.81 ca-certificates is already the newest version (20260601~24.04.1).
+#6 48.81 ca-certificates set to manually installed.
+#6 48.81 git is already the newest version (1:2.43.0-1ubuntu7.3).
+#6 48.81 gnupg is already the newest version (2.4.4-2ubuntu17.4).
+#6 48.81 gnupg set to manually installed.
+#6 48.81 pkg-config is already the newest version (1.8.1-2build1).
+#6 48.81 zlib1g-dev is already the newest version (1:1.3.dfsg-3.1ubuntu2.1).
+#6 48.81 The following additional packages will be installed:
+#6 48.81   adwaita-icon-theme at-spi2-common bubblewrap bzip2 cpp cpp-13
+#6 48.81   cpp-13-aarch64-linux-gnu cpp-aarch64-linux-gnu dbus-bin dbus-daemon
+#6 48.81   dbus-session-bus-common dbus-system-bus-common dconf-gsettings-backend
+#6 48.81   dconf-service debugedit dictionaries-common emacsen-common eslint fontconfig
+#6 48.81   fuse3 g++ g++-13 g++-13-aarch64-linux-gnu g++-aarch64-linux-gnu gcc gcc-13
+#6 48.81   gcc-13-aarch64-linux-gnu gcc-aarch64-linux-gnu gir1.2-atk-1.0
+#6 48.81   gir1.2-atspi-2.0 gir1.2-ayatanaappindicator3-0.1 gir1.2-ayatanaido3-0.4
+#6 48.81   gir1.2-dbusmenu-glib-0.4 gir1.2-freedesktop gir1.2-freedesktop-dev
+#6 48.81   gir1.2-gdkpixbuf-2.0 gir1.2-glib-2.0 gir1.2-glib-2.0-dev gir1.2-gtk-3.0
+#6 48.81   gir1.2-harfbuzz-0.0 gir1.2-javascriptcoregtk-4.1 gir1.2-pango-1.0
+#6 48.81   gir1.2-secret-1 gir1.2-soup-3.0 gir1.2-webkit2-4.1 glib-networking
+#6 48.81   glib-networking-common glib-networking-services gsettings-desktop-schemas
+#6 48.81   gstreamer1.0-plugins-base gstreamer1.0-plugins-good gtk-update-icon-cache
+#6 48.81   gyp handlebars hicolor-icon-theme humanity-icon-theme hunspell-en-us
+#6 48.81   iso-codes libaa1 libapparmor1 libarchive13t64 libasound2-data libasound2t64
+#6 48.81   libaspell15 libasyncns0 libatk-bridge2.0-0t64 libatk-bridge2.0-dev
+#6 48.81   libatk1.0-0t64 libatk1.0-dev libatspi2.0-0t64 libavahi-client3
+#6 48.81   libavahi-common-data libavahi-common3 libavc1394-0
+#6 48.81   libayatana-appindicator3-1 libayatana-ido3-0.4-0 libayatana-ido3-dev
+#6 48.81   libayatana-indicator3-7 libayatana-indicator3-dev libblkid-dev libbrotli-dev
+#6 48.81   libbz2-dev libcaca0 libcairo-gobject2 libcairo-script-interpreter2 libcairo2
+#6 48.81   libcairo2-dev libcanberra0t64 libcap2-bin libcares2 libcc1-0 libcdparanoia0
+#6 48.81   libcolord2 libcups2t64 libdatrie-dev libdatrie1 libdbus-1-3 libdbus-1-dev
+#6 48.81   libdbusmenu-glib-dev libdbusmenu-glib4 libdbusmenu-gtk3-4 libdbusmenu-qt5-2
+#6 48.81   libdconf1 libdeflate-dev libdouble-conversion3 libdpkg-perl libdrm-amdgpu1
+#6 48.81   libdrm-common libdrm2 libduktape207 libdv4t64 libdw1t64 libegl-dev
+#6 48.81   libegl-mesa0 libegl1 libegl1-mesa-dev libei1 libelf1t64 libenchant-2-2
+#6 48.81   libepoxy-dev libepoxy0 libevdev2 libfakeroot libffi-dev libflac12t64
+#6 48.81   libfontconfig-dev libfreetype-dev libfribidi-dev libfribidi0 libfsverity0
+#6 48.81   libfuse3-3 libgbm1 libgcrypt20-dev libgdk-pixbuf-2.0-0 libgdk-pixbuf-2.0-dev
+#6 48.81   libgdk-pixbuf2.0-bin libgdk-pixbuf2.0-common libgirepository-2.0-0
+#6 48.81   libgit2-1.7 libgl-dev libgl1 libgl1-mesa-dri libgles-dev libgles1 libgles2
+#6 48.81   libglib2.0-0t64 libglib2.0-bin libglib2.0-data libglib2.0-dev
+#6 48.81   libglib2.0-dev-bin libglu1-mesa libglu1-mesa-dev libglvnd-core-dev
+#6 48.81   libglvnd-dev libglvnd0 libglx-dev libglx-mesa0 libglx0 libgpg-error-dev
+#6 48.81   libgpgme11t64 libgpgmepp6t64 libgraphite2-3 libgraphite2-dev
+#6 48.81   libgstreamer-gl1.0-0 libgstreamer-plugins-base1.0-0
+#6 48.81   libgstreamer-plugins-good1.0-0 libgstreamer1.0-0 libgtk-3-0t64
+#6 48.81   libgtk-3-common libgudev-1.0-0 libharfbuzz-cairo0 libharfbuzz-dev
+#6 48.81   libharfbuzz-gobject0 libharfbuzz-icu0 libharfbuzz-subset0 libharfbuzz0b
+#6 48.81   libhttp-parser2.9 libhunspell-1.7-0 libhyphen0 libice-dev libice6
+#6 48.81   libiec61883-0 libinput-bin libinput10 libisl23 libjavascriptcoregtk-4.1-0
+#6 48.81   libjavascriptcoregtk-4.1-dev libjbig-dev libjpeg-dev libjpeg-turbo8-dev
+#6 48.81   libjpeg8-dev libjq1 libjs-async libjs-events libjs-inherits
+#6 48.81   libjs-is-typedarray libjs-prettify libjs-regenerate libjs-source-map
+#6 48.81   libjs-sprintf-js libjs-typedarray-to-buffer libjs-util libjson-glib-1.0-0
+#6 48.81   libjson-glib-1.0-common libkf5config-bin libkf5config-data libkf5config-dev
+#6 48.81   libkf5config-dev-bin libkf5configcore5 libkf5configgui5 libkf5configqml5
+#6 48.81   libkf5coreaddons-data libkf5coreaddons5 libkf5i18n-data libkf5i18n5
+#6 48.81   libkf5notifications-data libkf5notifications5 libkf5wallet-data
+#6 48.81   libkf5wallet5 libkf5widgetsaddons-data libkf5widgetsaddons5
+#6 48.81   libkf5windowsystem-data libkf5windowsystem-dev libkf5windowsystem5
+#6 48.81   libkwalletbackend5-5 liblcms2-2 liblerc-dev libllvm17t64 libllvm20 libltdl7
+#6 48.81   liblua5.3-0 liblzma-dev liblzo2-2 libmagic-mgc libmagic1t64 libmanette-0.2-0
+#6 48.81   libmd4c0 libmount-dev libmp3lame0 libmpc3 libmpfr6 libmpg123-0t64
+#6 48.81   libmtdev1t64 libnghttp2-14 libnghttp2-dev libnode-dev libnode109 libogg0
+#6 48.81   libonig5 libopengl-dev libopengl0 libopus0 liborc-0.4-0t64 libpango-1.0-0
+#6 48.81   libpango1.0-dev libpangocairo-1.0-0 libpangoft2-1.0-0 libpangoxft-1.0-0
+#6 48.81   libpcre2-16-0 libpcre2-32-0 libpcre2-dev libpcre2-posix3
+#6 48.81   libpipewire-0.3-0t64 libpipewire-0.3-modules libpixman-1-0 libpixman-1-dev
+#6 48.81   libpng-dev libpopt0 libproxy1v5 libpsl-dev libpthread-stubs0-dev libpulse0
+#6 48.81   libpython3-stdlib libqt5concurrent5t64 libqt5core5t64 libqt5dbus5t64
+#6 48.81   libqt5gui5t64 libqt5network5t64 libqt5printsupport5t64 libqt5qml5
+#6 48.81   libqt5sql5t64 libqt5test5t64 libqt5texttospeech5 libqt5widgets5t64
+#6 48.81   libqt5x11extras5 libqt5xml5t64 libraw1394-11 libroc0.3 librpm9t64
+#6 48.81   librpmbuild9t64 librpmio9t64 librpmsign9t64 libsecret-1-0 libsecret-common
+#6 48.81   libselinux1-dev libsensors-config libsensors5 libsepol-dev libsharpyuv-dev
+#6 48.81   libshout3 libslang2 libsm-dev libsm6 libsnapd-glib-2-1 libsndfile1
+#6 48.81   libsoup-3.0-0 libsoup-3.0-common libsoup-3.0-dev libspa-0.2-dev
+#6 48.81   libspa-0.2-modules libspeex1 libspeexdsp1 libssh2-1t64 libstd-rust-1.75
+#6 48.81   libstd-rust-dev libsysprof-capture-4-dev libtag1v5 libtag1v5-vanilla
+#6 48.81   libtcl8.6 libtdb1 libtext-iconv-perl libthai-data libthai-dev libthai0
+#6 48.81   libtheora0 libtiff-dev libtiffxx6 libtwolame0 libunwind8 libuv1-dev
+#6 48.81   libuv1t64 libv4l-0t64 libv4lconvert0t64 libvisual-0.4-0 libvorbis0a
+#6 48.81   libvorbisenc2 libvorbisfile3 libvpx9 libvulkan-dev libvulkan1
+#6 48.81   libwacom-common libwacom9 libwavpack1 libwayland-bin libwayland-client0
+#6 48.81   libwayland-cursor0 libwayland-dev libwayland-egl1 libwayland-server0
+#6 48.81   libwebkit2gtk-4.1-0 libwebp-dev libwebpdecoder3 libwebpdemux2 libwebpmux3
+#6 48.81   libwebrtc-audio-processing1 libx11-xcb1 libxau-dev libxcb-dri3-0 libxcb-glx0
+#6 48.81   libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-present0 libxcb-randr0
+#6 48.81   libxcb-render-util0 libxcb-render0 libxcb-render0-dev libxcb-res0
+#6 48.81   libxcb-shape0 libxcb-shm0 libxcb-shm0-dev libxcb-sync1 libxcb-util1
+#6 48.81   libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 libxcomposite-dev
+#6 48.81   libxcomposite1 libxcursor-dev libxcursor1 libxdamage-dev libxdamage1
+#6 48.81   libxdmcp-dev libxext-dev libxfixes-dev libxfixes3 libxft-dev libxft2
+#6 48.81   libxi-dev libxi6 libxinerama-dev libxinerama1 libxkbcommon-x11-0
+#6 48.81   libxkbcommon0 libxrandr2 libxrender-dev libxrender1 libxshmfence1 libxslt1.1
+#6 48.81   libxtst-dev libxtst6 libxxf86vm1 libzstd-dev lto-disabled-list make
+#6 48.81   mesa-libgallium node-abbrev node-acorn node-agent-base node-ajv
+#6 48.81   node-ajv-keywords node-ampproject-remapping node-ansi-escapes
+#6 48.81   node-ansi-regex node-ansi-styles node-anymatch node-aproba node-archy
+#6 48.81   node-are-we-there-yet node-argparse node-arrify node-assert node-async
+#6 48.81   node-async-each node-babel-helper-define-polyfill-provider
+#6 48.81   node-babel-plugin-add-module-exports node-babel-plugin-lodash
+#6 48.81   node-babel-plugin-polyfill-corejs2 node-babel-plugin-polyfill-corejs3
+#6 48.81   node-babel-plugin-polyfill-regenerator node-babel7 node-babel7-runtime
+#6 48.81   node-balanced-match node-base64-js node-binary-extensions
+#6 48.81   node-brace-expansion node-braces node-browserslist node-builtins node-busboy
+#6 48.81   node-cacache node-camelcase node-caniuse-lite node-chalk node-chokidar
+#6 48.81   node-chownr node-chrome-trace-event node-ci-info node-cjs-module-lexer
+#6 48.81   node-cli-table node-cliui node-clone node-clone-deep node-color-convert
+#6 48.81   node-color-name node-colors node-columnify node-commander node-commondir
+#6 48.81   node-concat-stream node-console-control-strings node-convert-source-map
+#6 48.81   node-copy-concurrently node-core-js node-core-js-compat node-core-js-pure
+#6 48.81   node-core-util-is node-css-loader node-css-selector-tokenizer
+#6 48.81   node-data-uri-to-buffer node-debbundle-es-to-primitive node-debug
+#6 48.81   node-decamelize node-decompress-response node-deep-equal node-deep-is
+#6 48.81   node-defaults node-define-properties node-define-property node-defined
+#6 48.81   node-del node-delegates node-depd node-diff node-doctrine
+#6 48.81   node-electron-to-chromium node-encoding node-end-of-stream
+#6 48.81   node-enhanced-resolve node-err-code node-errno node-error-ex
+#6 48.81   node-es-abstract node-es-module-lexer node-es6-error
+#6 48.81   node-escape-string-regexp node-escodegen node-eslint-scope node-eslint-utils
+#6 48.81   node-eslint-visitor-keys node-espree node-esprima node-esquery
+#6 48.81   node-esrecurse node-estraverse node-esutils node-events node-fancy-log
+#6 48.81   node-fast-deep-equal node-fast-levenshtein node-fetch node-file-entry-cache
+#6 48.81   node-fill-range node-find-cache-dir node-find-up node-flat-cache
+#6 48.81   node-flatted node-for-in node-for-own node-foreground-child
+#6 48.81   node-fs-readdir-recursive node-fs-write-stream-atomic node-fs.realpath
+#6 48.81   node-function-bind node-functional-red-black-tree node-gauge
+#6 48.81   node-get-caller-file node-get-stream node-glob node-glob-parent node-globals
+#6 48.81   node-globby node-got node-graceful-fs node-gyp node-has-flag
+#6 48.81   node-has-unicode node-hosted-git-info node-http-proxy-agent
+#6 48.81   node-https-proxy-agent node-iconv-lite node-icss-utils node-ieee754
+#6 48.81   node-iferr node-ignore node-imurmurhash node-indent-string node-inflight
+#6 48.81   node-inherits node-ini node-interpret node-ip node-ip-regex node-is-arrayish
+#6 48.81   node-is-binary-path node-is-buffer node-is-descriptor node-is-extendable
+#6 48.81   node-is-extglob node-is-glob node-is-number node-is-path-cwd
+#6 48.81   node-is-path-inside node-is-plain-obj node-is-plain-object node-is-stream
+#6 48.81   node-is-typedarray node-is-windows node-isarray node-isexe node-isobject
+#6 48.81   node-istanbul node-jest-debbundle node-jest-worker node-js-tokens
+#6 48.81   node-js-yaml node-jsesc node-json-buffer node-json-parse-better-errors
+#6 48.81   node-json-schema node-json-schema-traverse node-json-stable-stringify
+#6 48.81   node-json5 node-jsonify node-jsonparse node-kind-of node-levn
+#6 48.81   node-loader-runner node-locate-path node-lodash node-lodash-packages
+#6 48.81   node-lowercase-keys node-lru-cache node-make-dir node-memfs node-memory-fs
+#6 48.81   node-merge-stream node-micromatch node-mime node-mime-types
+#6 48.81   node-mimic-response node-minimatch node-minimist node-minipass node-mkdirp
+#6 48.81   node-move-concurrently node-ms node-mute-stream node-n3 node-negotiator
+#6 48.81   node-neo-async node-nopt node-normalize-package-data node-normalize-path
+#6 48.81   node-npm-bundled node-npm-package-arg node-npm-run-path node-npmlog
+#6 48.81   node-object-assign node-object-inspect node-once node-optimist
+#6 48.81   node-optionator node-osenv node-p-cancelable node-p-limit node-p-locate
+#6 48.81   node-p-map node-parse-json node-path-dirname node-path-exists
+#6 48.81   node-path-is-absolute node-path-is-inside node-path-type node-picocolors
+#6 48.81   node-pify node-pkg-dir node-postcss node-postcss-modules-extract-imports
+#6 48.81   node-postcss-modules-values node-postcss-value-parser node-prelude-ls
+#6 48.81   node-process-nextick-args node-progress node-promise-inflight
+#6 48.81   node-promise-retry node-promzard node-prr node-pump node-punycode
+#6 48.81   node-quick-lru node-randombytes node-read node-read-package-json
+#6 48.81   node-read-pkg node-readable-stream node-readdirp node-rechoir
+#6 48.81   node-regenerate node-regenerate-unicode-properties node-regenerator-runtime
+#6 48.81   node-regenerator-transform node-regexpp node-regexpu-core node-regjsgen
+#6 48.81   node-regjsparser node-repeat-string node-require-directory node-resolve
+#6 48.81   node-resolve-cwd node-resolve-from node-resumer node-retry node-rimraf
+#6 48.81   node-run-queue node-safe-buffer node-schema-utils node-semver
+#6 48.81   node-serialize-javascript node-set-blocking node-set-immediate-shim
+#6 48.81   node-shebang-command node-shebang-regex node-signal-exit node-slash
+#6 48.81   node-slice-ansi node-source-list-map node-source-map node-source-map-support
+#6 48.81   node-spdx-correct node-spdx-exceptions node-spdx-expression-parse
+#6 48.81   node-spdx-license-ids node-sprintf-js node-ssri node-string-decoder
+#6 48.81   node-string-width node-strip-ansi node-strip-bom node-strip-json-comments
+#6 48.81   node-supports-color node-tapable node-tape node-tar node-terser
+#6 48.81   node-text-table node-through node-time-stamp node-to-fast-properties
+#6 48.81   node-to-regex-range node-tslib node-type-check node-typedarray
+#6 48.81   node-typedarray-to-buffer node-undici
+#6 48.81   node-unicode-canonical-property-names-ecmascript
+#6 48.81   node-unicode-match-property-ecmascript
+#6 48.81   node-unicode-match-property-value-ecmascript
+#6 48.81   node-unicode-property-aliases-ecmascript node-unique-filename node-uri-js
+#6 48.81   node-util node-util-deprecate node-uuid node-v8-compile-cache node-v8flags
+#6 48.81   node-validate-npm-package-license node-validate-npm-package-name
+#6 48.81   node-watchpack node-wcwidth.js node-webassemblyjs node-webpack-sources
+#6 48.81   node-which node-wide-align node-wordwrap node-wrap-ansi node-wrappy
+#6 48.81   node-write node-write-file-atomic node-xtend node-y18n node-yallist
+#6 48.81   node-yargs node-yargs-parser pango1.0-tools pipewire-bin python3
+#6 48.81   python3-minimal python3-packaging python3-pkg-resources python3-six
+#6 48.81   python3.12 python3.12-minimal qt5-qmake qt5-qmake-bin qtbase5-dev
+#6 48.81   qtbase5-dev-tools qtchooser rpm-common rpm2cpio session-migration sgml-base
+#6 48.81   shared-mime-info sound-theme-freedesktop tcl8.6 terser ubuntu-mono uuid-dev
+#6 48.81   wayland-protocols webpack x11-common x11proto-dev xdg-dbus-proxy xkb-data
+#6 48.81   xml-core xorg-sgml-doctools xtrans-dev
+#6 48.81 Suggested packages:
+#6 48.81   bzip2-doc cargo-doc cpp-doc gcc-13-locales cpp-13-doc ispell | aspell
+#6 48.81   | hunspell wordlist debian-keyring node-babel-eslint node-esprima-fb
+#6 48.81   node-inquirer gcc-13-doc gcc-multilib autoconf automake libtool flex bison
+#6 48.81   gdb gcc-doc gdb-aarch64-linux-gnu gvfs hunspell openoffice.org-hunspell
+#6 48.81   | openoffice.org-core isoquery lrzip alsa-utils libasound2-plugins aspell
+#6 48.81   libcairo2-doc libcanberra-gtk0 libcanberra-pulse colord cups-common
+#6 48.81   libdatrie-doc bzr libdv-bin oss-compat libenchant-2-voikko freetype2-doc
+#6 48.81   libgcrypt20-doc low-memory-monitor libglib2.0-doc libxml2-utils
+#6 48.81   libgraphite2-utils libvisual-0.4-plugins gstreamer1.0-tools libgtk-3-doc
+#6 48.81   libice-doc libjs-angularjs liblcms2-utils liblzma-doc libnghttp2-doc
+#6 48.81   opus-tools libpango1.0-doc pipewire-doc pulseaudio qgnomeplatform-qt5
+#6 48.81   qt5-image-formats-plugins qt5-qmltooling-plugins libraw1394-doc readline-doc
+#6 48.81   lm-sensors libsm-doc snapd libsoup-3.0-doc speex sqlite3-doc libssl-doc
+#6 48.81   libthai-doc libwacom-bin libwayland-doc gstreamer1.0-libav
+#6 48.81   gstreamer1.0-plugins-bad gstreamer1.0-alsa libx11-doc libxcb-doc libxext-doc
+#6 48.81   make-doc node-babel-plugin-polyfill-es-shims node-babel7-debug
+#6 48.81   javascript-common livescript chai node-jest-diff node-opener graphicsmagick
+#6 48.81   python3-doc python3-tk python3-venv python3-setuptools python3.12-venv
+#6 48.81   python3.12-doc binfmt-support default-libmysqlclient-dev firebird-dev
+#6 48.81   libpq-dev unixodbc-dev alien elfutils rpmlint rpm-i18n llvm-17 lld-17
+#6 48.81   clang-17 sgml-base-doc tcl-tclreadline accountsservice evince
+#6 48.81   xdg-desktop-portal-gnome debhelper
+#6 48.81 Recommended packages:
+#6 48.81   librsvg2-common libalgorithm-merge-perl gstreamer1.0-x alsa-ucm-conf
+#6 48.81   alsa-topology-conf aspell-en | aspell-dictionary | aspell6a-dictionary
+#6 48.81   at-spi2-core bzip2-doc libpam-cap libfile-fcntllock-perl
+#6 48.81   liblocale-gettext-perl enchant-2 xdg-user-dirs gstreamer1.0-gl libgtk-3-bin
+#6 48.81   javascript-common libkf5config-doc libkf5wallet-doc libkf5windowsystem-doc
+#6 48.81   kwayland-integration qtwayland5 libpipewire-0.3-common libpng-tools
+#6 48.81   qttranslations5-l10n libqt5svg5 qt5-gtk-platformtheme libqt5sql5-sqlite
+#6 48.81   | libqt5sql5-mysql | libqt5sql5-odbc | libqt5sql5-psql | libqt5sql5-tds
+#6 48.81   | libqt5sql5-ibase qtspeech5-speechd-plugin | qtspeech5-flite-plugin
+#6 48.81   mesa-vulkan-drivers | vulkan-icd node-re2 node-require-from-string
+#6 48.81   nodejs-doc node-tap dbus-user-session wireplumber rtkit libqt5opengl5-dev
+#6 50.57 The following NEW packages will be installed:
+#6 50.57   adwaita-icon-theme apt-transport-https at-spi2-common bubblewrap
+#6 50.57   build-essential bzip2 cargo cpp cpp-13 cpp-13-aarch64-linux-gnu
+#6 50.57   cpp-aarch64-linux-gnu curl dbus dbus-bin dbus-daemon dbus-session-bus-common
+#6 50.57   dbus-system-bus-common dbus-x11 dconf-gsettings-backend dconf-service
+#6 50.57   debugedit desktop-file-utils dictionaries-common dpkg-dev emacsen-common
+#6 50.57   eslint fakeroot file fontconfig fuse3 g++ g++-13 g++-13-aarch64-linux-gnu
+#6 50.57   g++-aarch64-linux-gnu gcc gcc-13 gcc-13-aarch64-linux-gnu
+#6 50.57   gcc-aarch64-linux-gnu gir1.2-atk-1.0 gir1.2-atspi-2.0
+#6 50.57   gir1.2-ayatanaappindicator3-0.1 gir1.2-ayatanaido3-0.4
+#6 50.57   gir1.2-dbusmenu-glib-0.4 gir1.2-freedesktop gir1.2-freedesktop-dev
+#6 50.57   gir1.2-gdkpixbuf-2.0 gir1.2-glib-2.0 gir1.2-glib-2.0-dev gir1.2-gtk-3.0
+#6 50.57   gir1.2-harfbuzz-0.0 gir1.2-javascriptcoregtk-4.1 gir1.2-pango-1.0
+#6 50.57   gir1.2-secret-1 gir1.2-soup-3.0 gir1.2-webkit2-4.1 glib-networking
+#6 50.57   glib-networking-common glib-networking-services gsettings-desktop-schemas
+#6 50.57   gstreamer1.0-plugins-base gstreamer1.0-plugins-good gtk-update-icon-cache
+#6 50.57   gyp handlebars hicolor-icon-theme humanity-icon-theme hunspell-en-us
+#6 50.57   iso-codes jq libaa1 libapparmor1 libarchive13t64 libasound2-data
+#6 50.57   libasound2t64 libaspell15 libasyncns0 libatk-bridge2.0-0t64
+#6 50.57   libatk-bridge2.0-dev libatk1.0-0t64 libatk1.0-dev libatspi2.0-0t64
+#6 50.57   libatspi2.0-dev libavahi-client3 libavahi-common-data libavahi-common3
+#6 50.57   libavc1394-0 libayatana-appindicator3-1 libayatana-appindicator3-dev
+#6 50.57   libayatana-ido3-0.4-0 libayatana-ido3-dev libayatana-indicator3-7
+#6 50.57   libayatana-indicator3-dev libblkid-dev libbrotli-dev libbz2-dev libcaca0
+#6 50.57   libcairo-gobject2 libcairo-script-interpreter2 libcairo2 libcairo2-dev
+#6 50.57   libcanberra0t64 libcap2-bin libcares2 libcc1-0 libcdparanoia0 libcolord2
+#6 50.57   libcups2t64 libdatrie-dev libdatrie1 libdbus-1-3 libdbus-1-dev
+#6 50.57   libdbusmenu-glib-dev libdbusmenu-glib4 libdbusmenu-gtk3-4 libdbusmenu-qt5-2
+#6 50.57   libdconf1 libdeflate-dev libdouble-conversion3 libdpkg-perl libdrm-amdgpu1
+#6 50.57   libdrm-common libdrm2 libduktape207 libdv4t64 libdw1t64 libegl-dev
+#6 50.57   libegl-mesa0 libegl1 libegl1-mesa-dev libei-dev libei1 libelf1t64
+#6 50.57   libenchant-2-2 libepoxy-dev libepoxy0 libevdev2 libfakeroot libffi-dev
+#6 50.57   libflac12t64 libfontconfig-dev libfreetype-dev libfribidi-dev libfribidi0
+#6 50.57   libfsverity0 libfuse3-3 libgbm1 libgcrypt20-dev libgdk-pixbuf-2.0-0
+#6 50.57   libgdk-pixbuf-2.0-dev libgdk-pixbuf2.0-bin libgdk-pixbuf2.0-common
+#6 50.57   libgirepository-2.0-0 libgit2-1.7 libgl-dev libgl1 libgl1-mesa-dri
+#6 50.57   libgles-dev libgles1 libgles2 libglib2.0-0t64 libglib2.0-bin libglib2.0-data
+#6 50.57   libglib2.0-dev libglib2.0-dev-bin libglu1-mesa libglu1-mesa-dev
+#6 50.57   libglvnd-core-dev libglvnd-dev libglvnd0 libglx-dev libglx-mesa0 libglx0
+#6 50.57   libgpg-error-dev libgpgme11t64 libgpgmepp6t64 libgraphite2-3
+#6 50.57   libgraphite2-dev libgstreamer-gl1.0-0 libgstreamer-plugins-base1.0-0
+#6 50.57   libgstreamer-plugins-good1.0-0 libgstreamer1.0-0 libgtk-3-0t64
+#6 50.57   libgtk-3-common libgtk-3-dev libgudev-1.0-0 libharfbuzz-cairo0
+#6 50.57   libharfbuzz-dev libharfbuzz-gobject0 libharfbuzz-icu0 libharfbuzz-subset0
+#6 50.57   libharfbuzz0b libhttp-parser2.9 libhunspell-1.7-0 libhyphen0 libice-dev
+#6 50.57   libice6 libiec61883-0 libinput-bin libinput10 libisl23
+#6 50.57   libjavascriptcoregtk-4.1-0 libjavascriptcoregtk-4.1-dev libjbig-dev
+#6 50.57   libjpeg-dev libjpeg-turbo8-dev libjpeg8-dev libjq1 libjs-async libjs-events
+#6 50.57   libjs-inherits libjs-is-typedarray libjs-prettify libjs-regenerate
+#6 50.57   libjs-source-map libjs-sprintf-js libjs-typedarray-to-buffer libjs-util
+#6 50.57   libjson-glib-1.0-0 libjson-glib-1.0-common libkf5config-bin
+#6 50.57   libkf5config-data libkf5config-dev libkf5config-dev-bin libkf5configcore5
+#6 50.57   libkf5configgui5 libkf5configqml5 libkf5coreaddons-data libkf5coreaddons5
+#6 50.57   libkf5i18n-data libkf5i18n5 libkf5notifications-data libkf5notifications5
+#6 50.57   libkf5wallet-data libkf5wallet-dev libkf5wallet5 libkf5widgetsaddons-data
+#6 50.57   libkf5widgetsaddons5 libkf5windowsystem-data libkf5windowsystem-dev
+#6 50.57   libkf5windowsystem5 libkwalletbackend5-5 liblcms2-2 liblerc-dev libllvm17t64
+#6 50.57   libllvm20 libltdl7 liblua5.3-0 liblzma-dev liblzo2-2 libmagic-mgc
+#6 50.57   libmagic1t64 libmanette-0.2-0 libmd4c0 libmount-dev libmp3lame0 libmpc3
+#6 50.57   libmpfr6 libmpg123-0t64 libmtdev1t64 libnghttp2-dev libnode-dev libnode109
+#6 50.57   libogg0 libonig5 libopengl-dev libopengl0 libopus0 liborc-0.4-0t64
+#6 50.57   libpango-1.0-0 libpango1.0-dev libpangocairo-1.0-0 libpangoft2-1.0-0
+#6 50.57   libpangoxft-1.0-0 libpcre2-16-0 libpcre2-32-0 libpcre2-dev libpcre2-posix3
+#6 50.57   libpipewire-0.3-0t64 libpipewire-0.3-dev libpipewire-0.3-modules
+#6 50.57   libpixman-1-0 libpixman-1-dev libpng-dev libpopt0 libproxy1v5 libpsl-dev
+#6 50.57   libpthread-stubs0-dev libpulse0 libpython3-stdlib libqt5concurrent5t64
+#6 50.57   libqt5core5t64 libqt5dbus5t64 libqt5gui5t64 libqt5network5t64
+#6 50.57   libqt5printsupport5t64 libqt5qml5 libqt5sql5t64 libqt5test5t64
+#6 50.57   libqt5texttospeech5 libqt5widgets5t64 libqt5x11extras5 libqt5xml5t64
+#6 50.57   libraw1394-11 libreadline-dev libroc0.3 librpm9t64 librpmbuild9t64
+#6 50.57   librpmio9t64 librpmsign9t64 libsecret-1-0 libsecret-1-dev libsecret-common
+#6 50.57   libselinux1-dev libsensors-config libsensors5 libsepol-dev libsharpyuv-dev
+#6 50.57   libshout3 libslang2 libsm-dev libsm6 libsnapd-glib-2-1 libsndfile1
+#6 50.57   libsoup-3.0-0 libsoup-3.0-common libsoup-3.0-dev libspa-0.2-dev
+#6 50.57   libspa-0.2-modules libspeex1 libspeexdsp1 libsqlite3-dev libssh2-1t64
+#6 50.57   libssl-dev libstd-rust-1.75 libstd-rust-dev libsysprof-capture-4-dev
+#6 50.57   libtag1v5 libtag1v5-vanilla libtcl8.6 libtdb1 libtext-iconv-perl
+#6 50.57   libthai-data libthai-dev libthai0 libtheora0 libtiff-dev libtiffxx6
+#6 50.57   libtwolame0 libunwind8 libuv1-dev libuv1t64 libv4l-0t64 libv4lconvert0t64
+#6 50.57   libvisual-0.4-0 libvorbis0a libvorbisenc2 libvorbisfile3 libvpx9
+#6 50.57   libvulkan-dev libvulkan1 libwacom-common libwacom9 libwavpack1
+#6 50.57   libwayland-bin libwayland-client0 libwayland-cursor0 libwayland-dev
+#6 50.57   libwayland-egl1 libwayland-server0 libwebkit2gtk-4.1-0 libwebkit2gtk-4.1-dev
+#6 50.57   libwebp-dev libwebpdecoder3 libwebpdemux2 libwebpmux3
+#6 50.57   libwebrtc-audio-processing1 libx11-dev libx11-xcb1 libxau-dev libxcb-dri3-0
+#6 50.57   libxcb-glx0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-present0
+#6 50.57   libxcb-randr0 libxcb-render-util0 libxcb-render0 libxcb-render0-dev
+#6 50.57   libxcb-res0 libxcb-shape0 libxcb-shm0 libxcb-shm0-dev libxcb-sync1
+#6 50.57   libxcb-util1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1
+#6 50.57   libxcb1-dev libxcomposite-dev libxcomposite1 libxcursor-dev libxcursor1
+#6 50.57   libxdamage-dev libxdamage1 libxdmcp-dev libxext-dev libxfixes-dev libxfixes3
+#6 50.57   libxft-dev libxft2 libxi-dev libxi6 libxinerama-dev libxinerama1
+#6 50.57   libxkbcommon-dev libxkbcommon-x11-0 libxkbcommon0 libxrandr-dev libxrandr2
+#6 50.57   libxrender-dev libxrender1 libxshmfence1 libxslt1.1 libxtst-dev libxtst6
+#6 50.57   libxxf86vm1 libzstd-dev lto-disabled-list make mesa-libgallium node-abbrev
+#6 50.57   node-acorn node-agent-base node-ajv node-ajv-keywords
+#6 50.57   node-ampproject-remapping node-ansi-escapes node-ansi-regex node-ansi-styles
+#6 50.57   node-anymatch node-aproba node-archy node-are-we-there-yet node-argparse
+#6 50.57   node-arrify node-assert node-async node-async-each
+#6 50.57   node-babel-helper-define-polyfill-provider
+#6 50.57   node-babel-plugin-add-module-exports node-babel-plugin-lodash
+#6 50.57   node-babel-plugin-polyfill-corejs2 node-babel-plugin-polyfill-corejs3
+#6 50.57   node-babel-plugin-polyfill-regenerator node-babel7 node-babel7-runtime
+#6 50.57   node-balanced-match node-base64-js node-binary-extensions
+#6 50.57   node-brace-expansion node-braces node-browserslist node-builtins node-busboy
+#6 50.57   node-cacache node-camelcase node-caniuse-lite node-chalk node-chokidar
+#6 50.57   node-chownr node-chrome-trace-event node-ci-info node-cjs-module-lexer
+#6 50.57   node-cli-table node-cliui node-clone node-clone-deep node-color-convert
+#6 50.57   node-color-name node-colors node-columnify node-commander node-commondir
+#6 50.57   node-concat-stream node-console-control-strings node-convert-source-map
+#6 50.57   node-copy-concurrently node-core-js node-core-js-compat node-core-js-pure
+#6 50.57   node-core-util-is node-css-loader node-css-selector-tokenizer
+#6 50.57   node-data-uri-to-buffer node-debbundle-es-to-primitive node-debug
+#6 50.57   node-decamelize node-decompress-response node-deep-equal node-deep-is
+#6 50.57   node-defaults node-define-properties node-define-property node-defined
+#6 50.57   node-del node-delegates node-depd node-diff node-doctrine
+#6 50.57   node-electron-to-chromium node-encoding node-end-of-stream
+#6 50.57   node-enhanced-resolve node-err-code node-errno node-error-ex
+#6 50.57   node-es-abstract node-es-module-lexer node-es6-error
+#6 50.57   node-escape-string-regexp node-escodegen node-eslint-scope node-eslint-utils
+#6 50.57   node-eslint-visitor-keys node-espree node-esprima node-esquery
+#6 50.57   node-esrecurse node-estraverse node-esutils node-events node-fancy-log
+#6 50.57   node-fast-deep-equal node-fast-levenshtein node-fetch node-file-entry-cache
+#6 50.57   node-fill-range node-find-cache-dir node-find-up node-flat-cache
+#6 50.57   node-flatted node-for-in node-for-own node-foreground-child
+#6 50.57   node-fs-readdir-recursive node-fs-write-stream-atomic node-fs.realpath
+#6 50.57   node-function-bind node-functional-red-black-tree node-gauge
+#6 50.57   node-get-caller-file node-get-stream node-glob node-glob-parent node-globals
+#6 50.57   node-globby node-got node-graceful-fs node-gyp node-has-flag
+#6 50.57   node-has-unicode node-hosted-git-info node-http-proxy-agent
+#6 50.57   node-https-proxy-agent node-iconv-lite node-icss-utils node-ieee754
+#6 50.57   node-iferr node-ignore node-imurmurhash node-indent-string node-inflight
+#6 50.57   node-inherits node-ini node-interpret node-ip node-ip-regex node-is-arrayish
+#6 50.57   node-is-binary-path node-is-buffer node-is-descriptor node-is-extendable
+#6 50.57   node-is-extglob node-is-glob node-is-number node-is-path-cwd
+#6 50.57   node-is-path-inside node-is-plain-obj node-is-plain-object node-is-stream
+#6 50.57   node-is-typedarray node-is-windows node-isarray node-isexe node-isobject
+#6 50.57   node-istanbul node-jest-debbundle node-jest-worker node-js-tokens
+#6 50.57   node-js-yaml node-jsesc node-json-buffer node-json-parse-better-errors
+#6 50.57   node-json-schema node-json-schema-traverse node-json-stable-stringify
+#6 50.57   node-json5 node-jsonify node-jsonparse node-kind-of node-levn
+#6 50.57   node-loader-runner node-locate-path node-lodash node-lodash-packages
+#6 50.57   node-lowercase-keys node-lru-cache node-make-dir node-memfs node-memory-fs
+#6 50.57   node-merge-stream node-micromatch node-mime node-mime-types
+#6 50.57   node-mimic-response node-minimatch node-minimist node-minipass node-mkdirp
+#6 50.57   node-move-concurrently node-ms node-mute-stream node-n3 node-negotiator
+#6 50.57   node-neo-async node-nopt node-normalize-package-data node-normalize-path
+#6 50.57   node-npm-bundled node-npm-package-arg node-npm-run-path node-npmlog
+#6 50.57   node-object-assign node-object-inspect node-once node-optimist
+#6 50.57   node-optionator node-osenv node-p-cancelable node-p-limit node-p-locate
+#6 50.57   node-p-map node-parse-json node-path-dirname node-path-exists
+#6 50.57   node-path-is-absolute node-path-is-inside node-path-type node-picocolors
+#6 50.57   node-pify node-pkg-dir node-postcss node-postcss-modules-extract-imports
+#6 50.57   node-postcss-modules-values node-postcss-value-parser node-prelude-ls
+#6 50.57   node-process-nextick-args node-progress node-promise-inflight
+#6 50.57   node-promise-retry node-promzard node-prr node-pump node-punycode
+#6 50.57   node-quick-lru node-randombytes node-read node-read-package-json
+#6 50.57   node-read-pkg node-readable-stream node-readdirp node-rechoir
+#6 50.57   node-regenerate node-regenerate-unicode-properties node-regenerator-runtime
+#6 50.57   node-regenerator-transform node-regexpp node-regexpu-core node-regjsgen
+#6 50.57   node-regjsparser node-repeat-string node-require-directory node-resolve
+#6 50.57   node-resolve-cwd node-resolve-from node-resumer node-retry node-rimraf
+#6 50.57   node-run-queue node-safe-buffer node-schema-utils node-semver
+#6 50.57   node-serialize-javascript node-set-blocking node-set-immediate-shim
+#6 50.57   node-shebang-command node-shebang-regex node-signal-exit node-slash
+#6 50.57   node-slice-ansi node-source-list-map node-source-map node-source-map-support
+#6 50.57   node-spdx-correct node-spdx-exceptions node-spdx-expression-parse
+#6 50.57   node-spdx-license-ids node-sprintf-js node-ssri node-string-decoder
+#6 50.57   node-string-width node-strip-ansi node-strip-bom node-strip-json-comments
+#6 50.57   node-supports-color node-tapable node-tape node-tar node-terser
+#6 50.57   node-text-table node-through node-time-stamp node-to-fast-properties
+#6 50.57   node-to-regex-range node-tslib node-type-check node-typedarray
+#6 50.57   node-typedarray-to-buffer node-undici
+#6 50.57   node-unicode-canonical-property-names-ecmascript
+#6 50.57   node-unicode-match-property-ecmascript
+#6 50.57   node-unicode-match-property-value-ecmascript
+#6 50.57   node-unicode-property-aliases-ecmascript node-unique-filename node-uri-js
+#6 50.57   node-util node-util-deprecate node-uuid node-v8-compile-cache node-v8flags
+#6 50.57   node-validate-npm-package-license node-validate-npm-package-name
+#6 50.57   node-watchpack node-wcwidth.js node-webassemblyjs node-webpack-sources
+#6 50.57   node-which node-wide-align node-wordwrap node-wrap-ansi node-wrappy
+#6 50.57   node-write node-write-file-atomic node-xtend node-y18n node-yallist
+#6 50.57   node-yargs node-yargs-parser nodejs npm pango1.0-tools patchelf pipewire
+#6 50.57   pipewire-bin python3 python3-minimal python3-packaging python3-pkg-resources
+#6 50.57   python3-six python3.12 python3.12-minimal qt5-qmake qt5-qmake-bin
+#6 50.57   qtbase5-dev qtbase5-dev-tools qtchooser rpm rpm-common rpm2cpio rustc
+#6 50.57   session-migration sgml-base shared-mime-info sound-theme-freedesktop sqlite3
+#6 50.57   tcl tcl8.6 terser ubuntu-mono uuid-dev wayland-protocols webpack x11-common
+#6 50.57   x11proto-dev xdg-dbus-proxy xdg-desktop-portal xdg-desktop-portal-gtk
+#6 50.57   xkb-data xml-core xorg-sgml-doctools xtrans-dev xz-utils
+#6 50.57 The following packages will be upgraded:
+#6 50.57   libnghttp2-14
+#6 51.54 1 upgraded, 814 newly installed, 0 to remove and 7 not upgraded.
+#6 51.54 Need to get 317 MB of archives.
+#6 51.54 After this operation, 1466 MB of additional disk space will be used.
+#6 51.54 Get:1 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 python3.12-minimal arm64 3.12.3-1ubuntu0.13 [2265 kB]
+#6 57.87 Get:2 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 python3-minimal arm64 3.12.3-0ubuntu2.1 [27.4 kB]
+#6 57.90 Get:3 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 python3.12 arm64 3.12.3-1ubuntu0.13 [662 kB]
+#6 59.41 Get:4 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libpython3-stdlib arm64 3.12.3-0ubuntu2.1 [10.1 kB]
+#6 59.41 Get:5 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 python3 arm64 3.12.3-0ubuntu2.1 [23.0 kB]
+#6 59.41 Get:6 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 sgml-base all 1.31 [11.4 kB]
+#6 59.41 Get:7 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libdbus-1-3 arm64 1.14.10-4ubuntu4.1 [210 kB]
+#6 59.93 Get:8 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 dbus-bin arm64 1.14.10-4ubuntu4.1 [38.8 kB]
+#6 59.93 Get:9 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 dbus-session-bus-common all 1.14.10-4ubuntu4.1 [80.5 kB]
+#6 59.94 Get:10 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libapparmor1 arm64 4.0.1really4.0.1-0ubuntu0.24.04.7 [51.8 kB]
+#6 59.99 Get:11 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 dbus-daemon arm64 1.14.10-4ubuntu4.1 [115 kB]
+#6 60.46 Get:12 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 dbus-system-bus-common all 1.14.10-4ubuntu4.1 [81.6 kB]
+#6 60.46 Get:13 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 dbus arm64 1.14.10-4ubuntu4.1 [23.9 kB]
+#6 60.46 Get:14 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libglib2.0-0t64 arm64 2.80.0-6ubuntu3.8 [1532 kB]
+#6 63.08 Get:15 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 gir1.2-glib-2.0 arm64 2.80.0-6ubuntu3.8 [182 kB]
+#6 63.60 Get:16 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 iso-codes all 4.16.0-1 [3492 kB]
+#6 92.44 Get:17 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libcap2-bin arm64 1:2.66-5ubuntu2.4 [33.5 kB]
+#6 94.01 Get:18 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libelf1t64 arm64 0.190-1.1ubuntu0.1 [58.4 kB]
+#6 96.63 Get:19 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libfribidi0 arm64 1.0.13-3build1 [26.5 kB]
+#6 97.68 Get:20 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libglib2.0-data all 2.80.0-6ubuntu3.8 [49.6 kB]
+#6 98.77 Get:21 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libpopt0 arm64 1.19+dfsg-1build1 [28.4 kB]
+#6 99.36 Get:22 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libslang2 arm64 2.3.3-3build2 [476 kB]
+#6 107.2 Get:23 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libtext-iconv-perl arm64 1.7-8build3 [13.1 kB]
+#6 107.6 Get:24 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 python3-pkg-resources all 68.1.2-2ubuntu1.2 [168 kB]
+#6 110.9 Get:25 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 shared-mime-info arm64 2.4-4 [472 kB]
+#6 129.7 Get:26 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 xkb-data all 2.41-2ubuntu1.1 [397 kB]
+#6 141.8 Get:27 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libmagic-mgc arm64 1:5.45-3build1 [307 kB]
+#6 150.1 Get:28 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libmagic1t64 arm64 1:5.45-3build1 [85.7 kB]
+#6 152.2 Get:29 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 file arm64 1:5.45-3build1 [22.0 kB]
+#6 152.8 Get:30 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libfuse3-3 arm64 3.14.0-5build1 [82.1 kB]
+#6 155.4 Get:31 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 fuse3 arm64 3.14.0-5build1 [24.2 kB]
+#6 156.4 Get:32 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libdrm-common all 2.4.125-1ubuntu0.1~24.04.2 [9250 B]
+#6 156.9 Get:33 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libdrm2 arm64 2.4.125-1ubuntu0.1~24.04.2 [42.9 kB]
+#6 158.5 Get:34 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libevdev2 arm64 1.13.1+dfsg-1build1 [35.8 kB]
+#6 160.1 Get:35 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libnghttp2-14 arm64 1.59.0-1ubuntu0.4 [74.8 kB]
+#6 163.2 Get:36 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libsensors-config all 1:3.6.0-9build1 [5546 B]
+#6 163.2 Get:37 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libsensors5 arm64 1:3.6.0-9build1 [27.0 kB]
+#6 164.3 Get:38 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libuv1t64 arm64 1.48.0-1.1build1 [95.3 kB]
+#6 167.4 Get:39 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxkbcommon0 arm64 1.6.0-1build1 [122 kB]
+#6 170.4 Get:40 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 xz-utils arm64 5.6.1+really5.4.5-1ubuntu0.3 [268 kB]
+#6 176.3 Get:41 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libgdk-pixbuf2.0-common all 2.42.10+dfsg-3ubuntu3.3 [8302 B]
+#6 176.4 Get:42 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libgdk-pixbuf-2.0-0 arm64 2.42.10+dfsg-3ubuntu3.3 [146 kB]
+#6 179.0 Get:43 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 gtk-update-icon-cache arm64 3.24.41-4ubuntu1.3 [52.2 kB]
+#6 179.5 Get:44 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 hicolor-icon-theme all 0.17-2 [9976 B]
+#6 180.0 Get:45 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 humanity-icon-theme all 0.6.16 [1282 kB]
+#6 189.4 Get:46 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 ubuntu-mono all 24.04-0ubuntu1 [151 kB]
+#6 190.0 Get:47 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 adwaita-icon-theme all 46.0-1 [723 kB]
+#6 192.1 Get:48 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 apt-transport-https all 2.8.3 [3970 B]
+#6 192.1 Get:49 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 at-spi2-common all 2.52.0-1build1 [8674 B]
+#6 192.2 Get:50 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 bubblewrap arm64 0.9.0-1ubuntu0.1 [49.7 kB]
+#6 192.6 Get:51 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libisl23 arm64 0.26-3build1.1 [669 kB]
+#6 194.2 Get:52 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libmpfr6 arm64 4.2.1-1build1.1 [329 kB]
+#6 195.2 Get:53 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libmpc3 arm64 1.3.1-1build1.1 [56.4 kB]
+#6 195.3 Get:54 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 cpp-13-aarch64-linux-gnu arm64 13.3.0-6ubuntu2~24.04.1 [9560 kB]
+#6 353.5 Get:55 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 cpp-13 arm64 13.3.0-6ubuntu2~24.04.1 [1038 B]
+#6 353.5 Get:56 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 cpp-aarch64-linux-gnu arm64 4:13.2.0-7ubuntu1 [5316 B]
+#6 353.5 Get:57 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 cpp arm64 4:13.2.0-7ubuntu1 [22.4 kB]
+#6 354.1 Get:58 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libcc1-0 arm64 14.2.0-4ubuntu2~24.04.1 [49.7 kB]
+#6 355.1 Get:59 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 gcc-13-aarch64-linux-gnu arm64 13.3.0-6ubuntu2~24.04.1 [18.7 MB]

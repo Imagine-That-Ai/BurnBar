@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission Situation Room
@@ -710,3 +711,5 @@ public struct MissionActivityTicker: View {
         }
     }
 }
+
+#endif

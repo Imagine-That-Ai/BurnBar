@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "linux-cu-evidence-session",
+  "manifestHashHex": "669fd6fe04ea22b467af87c9b536663346543e853a7cd951c0f04192de238c55",
+  "index": 4,
+  "hashHex": "dee025089f695ff8b9be3f4882a0844906dad2ad4ff422dfd60de4069b1e1d67",
+  "finalizedAtMillis": 1777000002000,
+  "algorithm": "ed25519",
+  "signatureBase64": "CG/rz7ywOvYt32Wirf2Ws2Ys1c0H54tCa46NbjDY79ymvFySg2xwqM/YYMq+gcDtDhUC1RngZVTif+43qHNdAA==",
+  "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAh64VXYZ4PH2xGp/WfpLkra/qbWxcnR0PUHkhVOJ4wlY=\n-----END PUBLIC KEY-----\n"
+}

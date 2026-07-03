@@ -1,6 +1,10 @@
 import Foundation
-import CryptoKit
+import OpenBurnBarCore
+#if canImport(zlib)
 import zlib
+#elseif canImport(Czlib)
+import Czlib
+#endif
 
 /// Phase 13 audit-export writer.
 ///
@@ -267,8 +271,8 @@ public struct ComputerUseAuditExportWriter {
               let publicKeyBase64 = record.publicKeyBase64,
               let publicKeyData = Data(base64Encoded: publicKeyBase64),
               let signature = Data(base64Encoded: record.signatureBase64),
-              let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKeyData),
-              publicKey.isValidSignature(signature, for: archive) else {
+              let publicKey = try? PlatformCrypto.ed25519PublicKey(rawRepresentation: publicKeyData),
+              (try? PlatformCrypto.verifyEd25519Signature(signature, message: archive, publicKey: publicKey)) == true else {
             throw WriterError.verificationFailed("signature validation failed")
         }
         if let expectedPublicKeyHash = record.publicKeySHA256Hex,
@@ -561,7 +565,7 @@ public struct ComputerUseAuditExportSignerReadback: Codable, Hashable, Sendable 
 public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning {
     public static let algorithmName = "ed25519"
 
-    public let privateKey: Curve25519.Signing.PrivateKey
+    public let privateKey: PlatformEd25519PrivateKey
     public let signerIdentifier: String
     public let signerKind: String?
     public let trustRoot: String?
@@ -571,13 +575,11 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
         privateKey.publicKey.rawRepresentation.base64EncodedString()
     }
     public var publicKeySHA256Hex: String? {
-        CryptoKit.SHA256.hash(data: privateKey.publicKey.rawRepresentation)
-            .map { String(format: "%02x", $0) }
-            .joined()
+        PlatformCrypto.sha256Hex(privateKey.publicKey.rawRepresentation)
     }
 
     public init(
-        privateKey: Curve25519.Signing.PrivateKey,
+        privateKey: PlatformEd25519PrivateKey,
         signerIdentifier: String,
         signerKind: String? = "openburnbar_trusted_device",
         trustRoot: String? = "openburnbar-device-local-ed25519-v1"
@@ -589,16 +591,16 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
     }
 
     public func sign(_ data: Data) throws -> Data {
-        try privateKey.signature(for: data)
+        try PlatformCrypto.ed25519Signature(message: data, privateKey: privateKey)
     }
 
     public func signCanonicalPayload(_ payload: Data) throws -> Data {
-        try privateKey.signature(for: payload)
+        try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
     }
 }
 
 internal extension ComputerUseAuditHasher {
     func sha256DigestBytes(of data: Data) -> [UInt8] {
-        Array(CryptoKit.SHA256.hash(data: data))
+        Array(PlatformCrypto.sha256(data))
     }
 }

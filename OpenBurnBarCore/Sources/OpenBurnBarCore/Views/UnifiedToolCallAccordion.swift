@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Unified Tool Call Accordion
@@ -446,3 +447,5 @@ private struct StatusDot: View {
         withAnimation(UnifiedDesignSystem.Animation.mercuryPulse) { pulsing = true }
     }
 }
+
+#endif

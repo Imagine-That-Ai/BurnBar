@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Substrate descriptor + catalog
@@ -91,3 +92,5 @@ public enum SubstrateCatalog {
         substrateList.filter { $0.family == fam && $0.id != plainID }
     }
 }
+
+#endif

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import CoreGraphics
 
@@ -346,3 +347,5 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

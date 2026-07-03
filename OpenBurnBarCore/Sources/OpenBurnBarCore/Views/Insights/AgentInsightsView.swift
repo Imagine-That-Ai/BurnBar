@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Cross-platform Insights surface for a single agent (or the aggregate).
@@ -218,3 +219,5 @@ public struct AgentInsightsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+#endif

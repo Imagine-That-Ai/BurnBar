@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Top-level dispatcher that renders any `InsightWidget` into the chrome
@@ -164,3 +165,5 @@ struct InsightMermaidPlaceholderView: View {
         .frame(maxHeight: 240)
     }
 }
+
+#endif

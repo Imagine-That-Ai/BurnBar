@@ -3,6 +3,14 @@
 OpenBurnBar's direct-download release pipeline is automated via `.github/workflows/release.yml`.
 Pushing a `v*` tag builds, signs, notarizes, staples, and publishes a GitHub Release with DMG, ZIP, update feeds, checksums, SBOM, and provenance metadata.
 
+Linux release work is tracked separately in
+[`linux-port/release-runbook.md`](linux-port/release-runbook.md). Linux must
+meet the same direct-download trust shape before public metadata is published:
+installable packages, smoke logs, checksums, detached signatures, SBOM, VEX,
+Sigstore provenance, source archive, source-offer/legal preflight, and a clean
+parity ledger. Do not add public `latest-linux.json` while that runbook's
+strict verifier is blocked.
+
 ## Distribution channels
 
 OpenBurnBar should ship through both channels, but not as the exact same binary.

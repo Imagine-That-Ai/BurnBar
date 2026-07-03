@@ -1,8 +1,15 @@
 import OpenBurnBarDaemon
 import OpenBurnBarCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Dispatch
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
 
 #if canImport(Sentry)
 import Sentry
@@ -17,7 +24,7 @@ struct OpenBurnBarDaemonExecutable {
         // by launchd while the cache is still active.  A nil URLCache forces
         // all URLSession.shared requests to use an in-memory or no-cache policy,
         // preventing the disk I/O error loop that blocks the socket RPC thread.
-        URLCache.shared = URLCache(memoryCapacity: 4 * 1024 * 1024, diskCapacity: 0)
+        URLCache.shared = URLCache(memoryCapacity: 4 * 1024 * 1024, diskCapacity: 0, diskPath: nil)
 
         #if canImport(Sentry)
         try configureSentryIfAvailable(environment: ProcessInfo.processInfo.environment)
@@ -73,6 +80,32 @@ struct OpenBurnBarDaemonExecutable {
         )
         pensieveWatcher?.start()
 
+        #if os(Linux)
+        var localPeerAdvertiseHandle: BurnBarLinuxLocalPeerDiscovery.AdvertiseHandle?
+        if BurnBarLinuxLocalPeerDiscovery.isDiscoveryDisabled() == false {
+            let advertiseConfig = BurnBarLinuxLocalPeerDiscovery.AdvertiseConfiguration(
+                hostName: ProcessInfo.processInfo.hostName,
+                port: 0,
+                daemonVersion: configuration.daemonVersion,
+                protocolVersion: String(BurnBarProtocolVersion.current)
+            )
+            do {
+                localPeerAdvertiseHandle = try BurnBarLinuxLocalPeerDiscovery.startAdvertising(configuration: advertiseConfig)
+                if let localPeerAdvertiseHandle {
+                    logger.notice(
+                        "local_peer_mdns_advertise_started",
+                        metadata: ["instance": localPeerAdvertiseHandle.instanceName]
+                    )
+                }
+            } catch {
+                logger.warning(
+                    "local_peer_mdns_advertise_failed",
+                    metadata: ["error": "\(error)"]
+                )
+            }
+        }
+        #endif
+
         try await server.start()
 
         logger.notice(
@@ -86,6 +119,9 @@ struct OpenBurnBarDaemonExecutable {
         let signal = await BurnBarSignalMonitor(signals: [SIGINT, SIGTERM]).waitForSignal()
         logger.notice("shutdown_signal_received", metadata: ["signal": "\(signal)"])
         pensieveWatcher?.stop()
+        #if os(Linux)
+        localPeerAdvertiseHandle?.stop()
+        #endif
         await server.stop()
     }
 }
@@ -254,7 +290,7 @@ private enum BurnBarDaemonCommandLine {
                 socketAuthToken = try readTokenFile(arguments[index], argument: argument)
             case "--help", "-h":
                 print(Self.helpText)
-                Darwin.exit(EXIT_SUCCESS)
+                exit(EXIT_SUCCESS)
             default:
                 throw BurnBarDaemonCommandLineError.unknownArgument(argument)
             }
@@ -476,7 +512,7 @@ private enum BurnBarObservabilityError: Error, LocalizedError {
 
 // All stored properties are let; DispatchSourceSignal sources are immutable after init.
 // Formally Sendable because no mutable state exists post-init.
-private final class BurnBarSignalMonitor: Sendable {
+private final class BurnBarSignalMonitor: @unchecked Sendable {
     private let queue: DispatchQueue
     private let continuation: AsyncStream<Int32>.Continuation
     private let stream: AsyncStream<Int32>

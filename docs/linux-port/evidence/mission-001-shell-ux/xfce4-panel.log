@@ -1,0 +1,21 @@
+xfce4-panel: Failed to connect to session manager: Failed to connect to the session manager: SESSION_MANAGER environment variable not defined
+xfce4-panel-Message: 14:26:56.612: Plugin "(null)-7" was not found and has been removed from the configuration
+xfce4-panel-Message: 14:26:56.613: Plugin "pulseaudio-8" was not found and has been removed from the configuration
+xfce4-panel-Message: 14:26:56.613: Plugin "power-manager-plugin-9" was not found and has been removed from the configuration
+xfce4-panel-Message: 14:26:56.614: Plugin "notification-plugin-10" was not found and has been removed from the configuration
+libclock-Message: 14:26:56.624: could not get proxy for org.freedesktop.login1
+
+(xfce4-panel:127): libclock-WARNING **: 14:26:56.625: could not instantiate a sleep monitor
+
+(wrapper-2.0:165): libactions-WARNING **: 14:26:56.782: Calling CanShutdown failed GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.xfce.SessionManager was not provided by any .service files
+
+(wrapper-2.0:165): libactions-WARNING **: 14:26:56.783: Calling CanRestart failed GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.xfce.SessionManager was not provided by any .service files
+
+(wrapper-2.0:165): libactions-WARNING **: 14:26:56.783: Calling CanSuspend failed GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.xfce.SessionManager was not provided by any .service files
+
+(wrapper-2.0:165): libactions-WARNING **: 14:26:56.784: Calling CanHibernate failed GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.xfce.SessionManager was not provided by any .service files
+
+(wrapper-2.0:165): libactions-WARNING **: 14:26:56.784: Calling CanHybridSleep failed GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.xfce.SessionManager was not provided by any .service files
+== panel processes ==
+root       127   113 14 14:26 ?        00:00:00 xfce4-panel --disable-wm-check
+root       161   127  1 14:26 ?        00:00:00 /usr/lib/aarch64-linux-gnu/xfce4/panel/wrapper-2.0 /usr/lib/aarch64-linux-gnu/xfce4/panel/plugins/libsystray.so 6 4194316 systray Status Tray Plugin Provides status notifier items (application indicators) and legacy systray items

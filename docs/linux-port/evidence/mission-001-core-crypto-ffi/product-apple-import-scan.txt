@@ -1,0 +1,33 @@
+# Command
+rg -n "^import (AppKit|SwiftUI|UIKit|AVFoundation|CoreGraphics|LocalAuthentication|Security|CryptoKit)|^#if canImport\((Security|CryptoKit)\)" OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore OpenBurnBarCore/Sources/OpenBurnBarMedia OpenBurnBarCore/Sources/OpenBurnBarIrohRelay OpenBurnBarCore/Sources/OpenBurnBarSignalCore OpenBurnBarCore/Sources/OpenBurnBarSignalSessionTransport
+
+# Results
+OpenBurnBarCore/Sources/OpenBurnBarSignalSessionTransport/OBBSignalSessionCipherTransport.swift:1:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalSessionTransport/OBBSignalSessionCipherTransport.swift:2:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:2:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:3:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:9:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:10:import Security
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift:1:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift:2:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:1:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:2:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:9:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:10:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift:4:import LocalAuthentication
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift:5:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift:6:import Security
+OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryStreamingStats.swift:6:import UIKit
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:2:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:3:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:18:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift:4:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift:5:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/IrohHostKeyPinStore.swift:2:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/IrohHostKeyPinStore.swift:3:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/IrohHostKeyPinStore.swift:214:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/Mac/SecKeychainInteractionGate.swift:3:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/Mac/SecKeychainInteractionGate.swift:4:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeyPinStore.swift:3:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeyPinStore.swift:4:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeyPinStore.swift:283:#if canImport(Security)

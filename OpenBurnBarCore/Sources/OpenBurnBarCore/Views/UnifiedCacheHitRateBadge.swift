@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // NOTE: CacheEfficiency lives in AgentLens/Models/AgentProvider.swift for the macOS target.
@@ -92,3 +93,5 @@ public struct CacheHitRateTier {
         }
     }
 }
+
+#endif

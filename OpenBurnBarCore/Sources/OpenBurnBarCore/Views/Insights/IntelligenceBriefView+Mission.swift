@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // Insight mission launch domain types + mission-launchpad UI.
@@ -637,3 +638,5 @@ struct MissionCandidateRow: View {
         }
     }
 }
+
+#endif

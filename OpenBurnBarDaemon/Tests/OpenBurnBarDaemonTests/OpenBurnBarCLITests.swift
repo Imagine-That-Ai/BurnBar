@@ -84,6 +84,58 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertTrue(output.contains("ok=true"))
     }
 
+    func testCapabilitiesCommandIncludesSubscriptionMethods() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.run(arguments: ["capabilities"])
+
+        XCTAssertTrue(output.contains("subscription.start capability=subscription domain=subscription"))
+        XCTAssertTrue(output.contains("subscription.resume capability=subscription domain=subscription"))
+    }
+
+    func testRunAndSubscriptionCommandsFormatEvidenceSurfaces() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+
+        let created = try runner.run(arguments: ["run", "create", "--prompt", "fixture", "--mock-provider"])
+        XCTAssertTrue(created.contains("run_id=run-fixture"))
+        XCTAssertTrue(created.contains("phase=completed"))
+
+        let listed = try runner.run(arguments: ["run", "list"])
+        XCTAssertTrue(listed.contains("run-fixture phase=completed model=glm-5"))
+
+        let cancelled = try runner.run(arguments: ["run", "cancel", "run-fixture", "--reason", "operator"])
+        XCTAssertTrue(cancelled.contains("run_id=run-fixture"))
+        XCTAssertTrue(cancelled.contains("phase=cancelled"))
+
+        let retried = try runner.run(arguments: ["run", "retry", "run-fixture"])
+        XCTAssertTrue(retried.contains("run_id=run-fixture"))
+        XCTAssertTrue(retried.contains("phase=model_streaming"))
+
+        let approved = try runner.run(arguments: ["run", "approval", "approval-fixture", "--decision", "approve", "--note", "ok"])
+        XCTAssertTrue(approved.contains("approval_id=approval-fixture"))
+        XCTAssertTrue(approved.contains("decision=approve"))
+        XCTAssertTrue(approved.contains("run_id=run-fixture"))
+
+        let subscribed = try runner.run(arguments: ["subscribe", "health"])
+        XCTAssertTrue(subscribed.contains("subscription_id=sub-fixture"))
+        XCTAssertTrue(subscribed.contains("degradation=long_poll_single_response"))
+    }
+
+    func testDiagnosticsCommandWritesRedactedBundle() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cli-diagnostics-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+
+        let output = try runner.run(arguments: ["diagnostics", "--output", directory.path])
+
+        XCTAssertTrue(output.contains("auth_token=redacted"))
+        let diagnosticsURL = directory.appendingPathComponent("diagnostics.json")
+        let data = try Data(contentsOf: diagnosticsURL)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(json.contains("\"auth_token_present\""))
+        XCTAssertFalse(json.contains("socket-token"))
+    }
+
     func testSharedHealthFormatterMatchesCLIOutput() throws {
         let response = try FakeCLIClient().health()
 
@@ -459,6 +511,115 @@ struct FakeCLIClient: BurnBarCLIClient {
         )
     }
 
+    func configUpdate(snapshot: BurnBarProviderConfigurationSnapshot) throws -> BurnBarConfigResponse {
+        BurnBarConfigResponse(snapshot: snapshot)
+    }
+
+    func upsertProviderCredentialSlot(
+        _ request: BurnBarProviderCredentialSlotUpsertRequest
+    ) throws -> BurnBarProviderCredentialSlotMutationResponse {
+        let slot = BurnBarProviderCredentialSlot(
+            slotID: request.slotID ?? "slot-fixture",
+            label: request.label,
+            isEnabled: request.isEnabled
+        )
+        let snapshot = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: request.providerID,
+                    isEnabled: true,
+                    baseURL: "https://api.z.ai/api/coding/paas/v4",
+                    preferredModelIDs: ["glm-5"],
+                    credentialSlots: [slot]
+                )
+            ]
+        )
+        return BurnBarProviderCredentialSlotMutationResponse(snapshot: snapshot, slot: slot)
+    }
+
+    func attach(
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID,
+        clientName: String
+    ) throws -> BurnBarClientAttachResponse {
+        BurnBarClientAttachResponse(
+            attachedClientID: clientID,
+            negotiatedProtocolVersion: BurnBarProtocolVersion.current
+        )
+    }
+
+    func runCreate(
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID,
+        prompt: String,
+        modelID: String,
+        metadata: BurnBarRunCreateMetadata
+    ) throws -> BurnBarRunCreateResponse {
+        BurnBarRunCreateResponse(runID: BurnBarRunID(rawValue: "run-fixture"), phase: .completed)
+    }
+
+    func runList(clientID: BurnBarClientID, offset: Int, limit: Int) throws -> BurnBarRunListResponse {
+        BurnBarRunListResponse(runs: [fixtureRun(clientID: clientID)])
+    }
+
+    func runGet(runID: BurnBarRunID, clientID: BurnBarClientID) throws -> BurnBarRunDetailResponse {
+        BurnBarRunDetailResponse(run: fixtureRun(runID: runID, clientID: clientID))
+    }
+
+    func runPoll(
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID,
+        runID: BurnBarRunID?,
+        limit: Int
+    ) throws -> BurnBarRunEventBatch {
+        BurnBarRunEventBatch(
+            runs: [fixtureRun(runID: runID ?? BurnBarRunID(rawValue: "run-fixture"), clientID: clientID)],
+            approvals: [],
+            pendingToolCalls: [],
+            arbitration: BurnBarClientArbitrationSnapshot(activeClientID: clientID, attachedClientIDs: [clientID]),
+            emittedAt: Date(timeIntervalSince1970: 1_774_000_000)
+        )
+    }
+
+    func runCancel(
+        runID: BurnBarRunID,
+        clientID: BurnBarClientID,
+        reason: String?
+    ) throws -> BurnBarRunDetailResponse {
+        BurnBarRunDetailResponse(run: fixtureRun(runID: runID, clientID: clientID, phase: .cancelled))
+    }
+
+    func runRetry(runID: BurnBarRunID, clientID: BurnBarClientID) throws -> BurnBarRunDetailResponse {
+        BurnBarRunDetailResponse(run: fixtureRun(runID: runID, clientID: clientID, phase: .modelStreaming))
+    }
+
+    func approvalRespond(
+        approvalID: BurnBarApprovalID,
+        clientID: BurnBarClientID,
+        decision: BurnBarApprovalDecision,
+        note: String?
+    ) throws -> BurnBarRunDetailResponse {
+        BurnBarRunDetailResponse(run: fixtureRun(clientID: clientID))
+    }
+
+    func subscriptionStart(_ request: BurnBarSubscriptionStartRequest) throws -> BurnBarSubscriptionResponse {
+        fixtureSubscriptionResponse(
+            subscriptionID: "sub-fixture",
+            topic: request.topic,
+            seq: (request.resumeAfterSeq ?? 0) + 1,
+            recoveredAfterRestart: false
+        )
+    }
+
+    func subscriptionResume(_ request: BurnBarSubscriptionResumeRequest) throws -> BurnBarSubscriptionResponse {
+        fixtureSubscriptionResponse(
+            subscriptionID: request.subscriptionID,
+            topic: request.topic,
+            seq: request.afterSeq + 1,
+            recoveredAfterRestart: true
+        )
+    }
+
     func runResume(
         sessionID: String,
         targetHarness: String?,
@@ -487,6 +648,49 @@ struct FakeCLIClient: BurnBarCLIClient {
             argv: ["codex", "resume", sessionID],
             targetHarness: targetHarness,
             workingDirectory: "/tmp/fixture"
+        )
+    }
+
+    private func fixtureRun(
+        runID: BurnBarRunID = BurnBarRunID(rawValue: "run-fixture"),
+        clientID: BurnBarClientID,
+        phase: BurnBarRunPhase = .completed
+    ) -> BurnBarRunStateSnapshot {
+        BurnBarRunStateSnapshot(
+            runID: runID,
+            clientID: clientID,
+            sessionID: BurnBarSessionID(rawValue: "openburnbar-cli-session"),
+            phase: phase,
+            modelID: "glm-5",
+            updatedAt: Date(timeIntervalSince1970: 1_774_000_000)
+        )
+    }
+
+    private func fixtureSubscriptionResponse(
+        subscriptionID: String,
+        topic: BurnBarSubscriptionTopic,
+        seq: UInt64,
+        recoveredAfterRestart: Bool
+    ) -> BurnBarSubscriptionResponse {
+        let event = BurnBarSubscriptionEvent(
+            seq: seq,
+            topic: topic,
+            kind: recoveredAfterRestart ? "snapshot.reacquired" : "snapshot",
+            payload: .object(["fixture": .bool(true)]),
+            emittedAt: Date(timeIntervalSince1970: 1_774_000_000)
+        )
+        return BurnBarSubscriptionResponse(
+            subscriptionID: subscriptionID,
+            topic: topic,
+            firstSnapshot: event,
+            events: [event],
+            recoveredAfterRestart: recoveredAfterRestart,
+            disconnected: true,
+            terminalDelivered: topic == .run,
+            degradation: BurnBarSubscriptionDegradation(
+                code: recoveredAfterRestart ? "long_poll_reacquire_after_restart" : "long_poll_single_response",
+                message: "Fixture long-poll fallback."
+            )
         )
     }
 }

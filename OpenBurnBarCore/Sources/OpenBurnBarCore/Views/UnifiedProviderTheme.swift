@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Cross-platform provider theme backed by unified design tokens.
@@ -55,3 +56,5 @@ public struct UnifiedProviderTheme {
         )
     }
 }
+
+#endif

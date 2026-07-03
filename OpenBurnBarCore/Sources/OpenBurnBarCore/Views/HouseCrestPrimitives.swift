@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct HolographicCrestAura: View {
@@ -231,3 +232,5 @@ public struct HouseCrest: View {
         }
     }
 }
+
+#endif

@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.668Z",
+  "lane": "W06LinuxShellUx",
+  "surface": "host-vitest-policy",
+  "textExpansion": {
+    "declaredBehavior": "in-app-only",
+    "storage": "localStorage openburnbar.linux.textExpansion.v1 in this Tauri shell; daemon DB integration is a later sync boundary.",
+    "consentRequired": true,
+    "globalCapture": false,
+    "unsafePathsRejected": [
+      "evdev",
+      "uinput",
+      "global keyboard hook",
+      "Wayland compositor snooping"
+    ],
+    "parityLedgerRow": {
+      "feature": "System-wide text expansion (Wayland)",
+      "macos": "CGEvent session tap + Accessibility",
+      "linux": "In-app expansion only (v1)",
+      "substitution": "Future IME/fcitx/IBus integration with per-DE tests; no evdev/global keylogger in v1."
+    }
+  }
+}

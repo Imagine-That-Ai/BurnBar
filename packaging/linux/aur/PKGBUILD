@@ -1,0 +1,17 @@
+# Maintainer: OpenBurnBar Release Engineering <release@openburnbar.dev>
+pkgname=openburnbar
+pkgver=0.1.0
+pkgrel=0
+pkgdesc="Local-first AI agent cost and control dashboard"
+arch=("x86_64" "aarch64")
+url="https://github.com/Imagine-That-Ai/BurnBar"
+license=("AGPL-3.0-only")
+depends=("webkit2gtk" "gtk3" "libayatana-appindicator")
+source=("OpenBurnBar-${pkgver}.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/v${pkgver}/OpenBurnBar-${pkgver}-linux-${CARCH}.AppImage")
+sha256sums=("REPLACE_WITH_RELEASE_SHA256")
+
+package() {
+  install -Dm755 "${srcdir}/OpenBurnBar-${pkgver}.AppImage" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
+  install -Dm644 "${srcdir}/../openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+  install -Dm644 "${srcdir}/../openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
+}

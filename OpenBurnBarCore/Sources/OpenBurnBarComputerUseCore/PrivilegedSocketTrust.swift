@@ -1,7 +1,9 @@
 import Darwin
 import Foundation
 #if os(macOS)
+#if canImport(Security)
 import Security
+#endif
 #endif
 
 /// Failures raised by shared privileged-socket trust primitives.

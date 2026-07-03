@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Cross-platform Intelligence Brief — the Editorial Observatory.
@@ -722,3 +723,5 @@ public struct IntelligenceBriefView: View {
     /// of additional leading to hit 1.4× without breaking baseline rhythm.
     private var headlineLineSpacing: CGFloat { 4 }
 }
+
+#endif

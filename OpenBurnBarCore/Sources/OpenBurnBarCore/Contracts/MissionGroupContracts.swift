@@ -228,6 +228,10 @@ extension MissionGroupDocument {
     }
 }
 
+#if os(Linux)
+public typealias MissionConsoleForecast = MissionGroupDocument.ForecastBand
+#endif
+
 // MARK: - Forecast computer
 
 public enum MissionGroupForecastComputer {

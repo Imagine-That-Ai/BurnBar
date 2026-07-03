@@ -1,0 +1,63 @@
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:161:    public func validatePeer(socketFD: Int32, peerPID: pid_t?) throws -> BurnBarPeerCapabilityProfile {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:167:            auditToken = try Self.linuxPeerCredential(socketFD: socketFD)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:172:            reject(.auditTokenUnavailable, peerPID: peerPID)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:180:            reject(failure, peerPID: peerPID)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:186:                reject(wrapped, peerPID: peerPID)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:191:            reject(wrapped, peerPID: peerPID)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:196:    private func reject(_ failure: BurnBarDaemonPeerAuthenticationFailure, peerPID: pid_t?) {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:201:                "peer_pid": peerPID.map(String.init) ?? "unknown"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:272:    public static func linuxPeerCredential(socketFD: Int32) throws -> BurnBarLinuxPeerCredential {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:54:        let envelope: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try send(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:55:            BurnBarRPCRequestEnvelope(method: .health, authToken: authToken)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:62:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:73:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:88:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:103:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:118:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:133:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:144:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:155:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:165:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:186:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:202:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:212:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:227:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:244:            BurnBarRPCRequestEnvelopeWithParams(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:252:    private func unwrap<Response>(_ envelope: BurnBarRPCResponseEnvelope<Response>) throws -> Response {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:263:        _ request: BurnBarRPCRequestEnvelopeWithParams<Params>
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:265:        let envelope: BurnBarRPCResponseEnvelope<Response> = try send(request)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:271:    ) throws -> BurnBarRPCResponseEnvelope<Response> {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:272:        let fileDescriptor = socket(AF_UNIX, streamSocketType, 0)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:310:        return try JSONDecoder().decode(BurnBarRPCResponseEnvelope<Response>.self, from: response)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:353:                let wrote = Glibc.send(fileDescriptor, baseAddress.advanced(by: offset), remaining, Int32(MSG_NOSIGNAL))
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:368:        address.sun_family = sa_family_t(AF_UNIX)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:374:        guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:378:        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:389:        return Int32(SOCK_STREAM.rawValue)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:391:        return SOCK_STREAM
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:445:        await responseData(for: requestData, peerPID: nil)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:450:        peerPID: pid_t?,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:474:                            "peer_pid": peerPID.map(String.init) ?? "unknown"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:479:                        code: BurnBarRPCErrorCode.unauthorized,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:485:            guard let method = BurnBarRPCMethod(rawValue: incomingRequest.method) else {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:496:                    code: BurnBarRPCErrorCode.methodNotFound,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:515:                        "capability": BurnBarRPCCapability.capability(for: method).rawValue,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:516:                        "peer_pid": peerPID.map(String.init) ?? "unknown"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:521:                    code: BurnBarRPCErrorCode.unauthorized,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:528:                let clientKey = peerPID.map(String.init) ?? "unknown"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:543:                        code: BurnBarRPCErrorCode.rateLimitExceeded,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:549:            let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:653:                code: error is DecodingError ? BurnBarRPCErrorCode.invalidParams : BurnBarRPCErrorCode.internalError,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:695:    private static func peerPID(for clientFileDescriptor: Int32) -> pid_t? {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:697:        return try? BurnBarDaemonPeerAuthenticator.linuxPeerCredential(socketFD: clientFileDescriptor).pid
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:718:        let peerPID = Self.peerPID(for: clientFileDescriptor)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:729:                peerPID: peerPID
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:736:                    "peer_pid": peerPID.map(String.init) ?? "unknown"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:749:                peerPID: peerPID,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:802:        let fileDescriptor = socket(AF_UNIX, streamSocketType, 0)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:902:                let bytesWritten = send(fileDescriptor, pointer, bytesRemaining, Int32(MSG_NOSIGNAL))
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:958:        address.sun_family = sa_family_t(AF_UNIX)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:961:        let maxPathLength = MemoryLayout.size(ofValue: address.sun_path)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:970:        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:982:        return Int32(SOCK_STREAM.rawValue)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:984:        return SOCK_STREAM

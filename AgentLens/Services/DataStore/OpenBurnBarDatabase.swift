@@ -43,7 +43,7 @@ final class OpenBurnBarDatabase: Sendable {
     /// indexes and can block app launch for minutes on real user databases; on
     /// ordinary already-current launches, the database should open immediately.
     /// Skips backup for in-memory databases (tests).
-    func runMigrationsSafely() throws {
+    func runMigrationsSafely(beforeMigration: (@Sendable () throws -> Void)? = nil) throws {
         let migrationBackupURL: URL?
         do {
             if try needsBackupBeforeMigration() {
@@ -60,6 +60,7 @@ final class OpenBurnBarDatabase: Sendable {
         }
 
         do {
+            try beforeMigration?()
             try Self.migrator.migrate(dbQueue)
         } catch {
             var restoredFromBackup = false
@@ -163,7 +164,7 @@ final class OpenBurnBarDatabase: Sendable {
                     fullText,
                     content='conversations',
                     content_rowid='rowid',
-                    tokenize='porter unicode61'
+                    tokenize='porter'
                 )
                 """
             )
@@ -192,7 +193,7 @@ final class OpenBurnBarDatabase: Sendable {
                 CREATE VIRTUAL TABLE conversations_fts USING fts5(
                     inferredTaskTitle,
                     fullText,
-                    tokenize='porter unicode61'
+                    tokenize='porter'
                 )
                 """
             )
@@ -395,7 +396,7 @@ final class OpenBurnBarDatabase: Sendable {
                     documentID UNINDEXED,
                     title,
                     chunkText,
-                    tokenize='porter unicode61'
+                    tokenize='porter'
                 )
                 """
             )
@@ -702,7 +703,7 @@ final class OpenBurnBarDatabase: Sendable {
                     chunkText,
                     projectName,
                     provider,
-                    tokenize='porter unicode61'
+                    tokenize='porter'
                 )
                 """)
 
@@ -730,7 +731,7 @@ final class OpenBurnBarDatabase: Sendable {
                     bodyPreview,
                     projectName,
                     provider,
-                    tokenize='porter unicode61'
+                    tokenize='porter'
                 )
                 """)
 
@@ -1601,7 +1602,7 @@ final class OpenBurnBarDatabase: Sendable {
                     projectID UNINDEXED,
                     bodyText,
                     tags,
-                    tokenize='porter unicode61'
+                    tokenize='porter'
                 )
                 """
             )

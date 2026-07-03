@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import CoreGraphics
 
@@ -89,3 +90,5 @@ public enum SwarmGlyphSampler {
         return sampled
     }
 }
+
+#endif

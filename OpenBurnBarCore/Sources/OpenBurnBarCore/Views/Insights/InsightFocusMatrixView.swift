@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightFocusMatrixView: View {
@@ -58,3 +59,5 @@ public struct InsightFocusMatrixView: View {
         .frame(maxWidth: .infinity)
     }
 }
+
+#endif

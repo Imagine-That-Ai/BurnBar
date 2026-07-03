@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Charts
 
@@ -67,3 +68,5 @@ public struct InsightKPITileView: View {
         .frame(height: 36)
     }
 }
+
+#endif

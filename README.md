@@ -15,6 +15,11 @@ For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, n
 
 OpenBurnBar's macOS release ships through two channels: a sandboxed Mac App Store build and a Developer ID notarized DMG from GitHub Releases. For direct download, grab the latest macOS DMG, drag `OpenBurnBar.app` into `/Applications`, and launch it from your menu bar. If you want the latest tree or prefer local builds, `make install` remains the source fallback.
 
+Linux desktop release infrastructure is under active port work in
+[docs/linux-port/](docs/linux-port/). The Linux verifier intentionally blocks
+public update metadata until package, signature, provenance, source-offer,
+smoke, and parity-ledger evidence are all green.
+
 The macOS app ships as a packaged release artifact. The editor extension remains source-only for now; there is no public VS Marketplace / Open VSX listing or signed VSIX attached to releases yet.
 
 OpenBurnBar's shipped product is AGPL-3.0-only. The Nous/Hermes gateway contribution path remains MIT-compatible and is guarded separately so BurnBar product-only AGPL/libsignal release artifacts do not leak into upstream Hermes Agent PRs.

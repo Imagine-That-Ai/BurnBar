@@ -1,0 +1,2551 @@
+warning: '--list-tests' option is deprecated; use 'swift test list' instead
+Fetching https://github.com/apple/swift-crypto.git
+Fetching https://github.com/swiftlang/swift-testing
+Fetching https://github.com/apple/swift-asn1.git
+Fetching https://github.com/swiftlang/swift-syntax.git
+[1/1914] Fetching swift-asn1
+[174/19698] Fetching swift-asn1, swift-crypto
+[3338/59142] Fetching swift-asn1, swift-crypto, swift-testing
+[3339/134951] Fetching swift-asn1, swift-crypto, swift-testing, swift-syntax
+Fetched https://github.com/apple/swift-crypto.git from cache (11.44s)
+[41211/117167] Fetching swift-asn1, swift-testing, swift-syntax
+Fetched https://github.com/swiftlang/swift-testing from cache (15.63s)
+Computing version for https://github.com/apple/swift-crypto.git
+Computed https://github.com/apple/swift-crypto.git at 3.15.1 (15.95s)
+[15045/77723] Fetching swift-asn1, swift-syntax
+Fetched https://github.com/apple/swift-asn1.git from cache (35.67s)
+Computing version for https://github.com/swiftlang/swift-testing
+Fetched https://github.com/swiftlang/swift-syntax.git from cache (35.69s)
+Computed https://github.com/swiftlang/swift-testing at 0.99.0 (19.92s)
+Computing version for https://github.com/apple/swift-asn1.git
+Computed https://github.com/apple/swift-asn1.git at 1.7.1 (0.18s)
+Computing version for https://github.com/swiftlang/swift-syntax.git
+Computed https://github.com/swiftlang/swift-syntax.git at 600.0.1 (0.26s)
+Creating working copy for https://github.com/apple/swift-asn1.git
+Working copy of https://github.com/apple/swift-asn1.git resolved at 1.7.1
+Creating working copy for https://github.com/apple/swift-crypto.git
+Working copy of https://github.com/apple/swift-crypto.git resolved at 3.15.1
+Creating working copy for https://github.com/swiftlang/swift-syntax.git
+Working copy of https://github.com/swiftlang/swift-syntax.git resolved at 600.0.1
+Creating working copy for https://github.com/swiftlang/swift-testing
+Working copy of https://github.com/swiftlang/swift-testing resolved at 0.99.0
+Downloading package prebuilt https://download.swift.org/prebuilts/swift-syntax/600.0.1/swift-6.2.4-RELEASE-MacroSupport-ubuntu_noble_aarch64.tar.gz
+Downloaded https://download.swift.org/prebuilts/swift-syntax/600.0.1/swift-6.2.4-RELEASE-MacroSupport-ubuntu_noble_aarch64.tar.gz (2.72s)
+Building for debugging...
+[0/458] Write sources
+[23/458] Write swift-version-24593BA9C3E375BF.txt
+[24/458] Compiling a_dup.cc
+[25/458] Compiling a_octet.cc
+[26/458] Compiling a_i2d_fp.cc
+[27/458] Compiling _TestingInternals WillThrow.cpp
+[27/458] Compiling a_d2i_fp.cc
+[29/458] Compiling a_gentm.cc
+[30/458] Compiling a_bool.cc
+[30/458] Write sources
+[32/458] Compiling aes.cc
+[33/458] Copying android-alice-to-swift-bob.json
+[34/458] Copying SignalEnvelopeV1Vector.json
+[35/458] Compiling a_strex.cc
+[36/458] Copying MediaFrameAEADVector.json
+[36/458] Copying CryptoKitAtRestInteropVector.json
+[38/458] Compiling a_bitstr.cc
+[39/458] Copying platform-crypto-kats.json
+[40/458] Copying linux-provider-model-parity-fixture.json
+[41/458] Copying linux-provider-model-parity-fixture.sha256
+[42/458] Copying search-fixture.expected.json
+[43/458] Copying SignalTransportBindingAADVectors.json
+[44/458] Copying SignalBindingAADVectors.json
+[45/458] Copying HermesRelayWireVector.json
+[46/458] Copying HermesStreamEventVector.json
+[47/458] Compiling asn1_lib.cc
+[48/458] Compiling a_int.cc
+[49/458] Compiling a_time.cc
+[49/458] Copying BurnBarHpkeV3Vector.json
+[51/458] Copying HermesGatewayWireVector.json
+[52/458] Copying index.html
+[53/458] Copying MiningPickIcon.svg
+[54/458] Copying secret-pattern-corpus.json
+[55/458] Write sources
+[56/458] Copying pretext.bundle.min.js
+[56/458] Write sources
+[56/458] Copying MiningPickIcon-Ore.svg
+[56/458] Write sources
+[60/458] Copying MiningPickIcon-Pickaxe.svg
+[61/458] Copying ControlFrameSealVector.json
+[62/458] Compiling a_object.cc
+[63/458] Copying catalog.json
+[64/458] Compiling a_type.cc
+[65/458] Copying PrivacyInfo.xcprivacy
+[66/466] Compiling convert.cc
+[67/466] Compiling a_utctm.cc
+[68/466] Compiling fiat_p256_adx_mul.S
+[68/466] Compiling fiat_curve25519_adx_square.S
+[70/501] Compiling fiat_p256_adx_sqr.S
+[71/503] Compiling md5-x86_64-linux.S
+[72/509] Compiling a_strnid.cc
+[73/512] Compiling fiat_curve25519_adx_mul.S
+[74/512] Compiling _TestingInternals Versions.cpp
+[75/513] Compiling md5-586-apple.S
+[75/513] Compiling chacha20_poly1305_x86_64-linux.S
+[77/513] Compiling md5-586-linux.S
+[78/513] Compiling chacha20_poly1305_armv8-apple.S
+[79/513] Compiling chacha20_poly1305_x86_64-apple.S
+[80/513] Compiling md5-x86_64-apple.S
+[81/513] Compiling chacha20_poly1305_armv8-win.S
+[82/513] Compiling chacha20_poly1305_armv8-linux.S
+[83/521] Compiling chacha-x86_64-linux.S
+[84/630] Compiling chacha-x86-linux.S
+[85/630] Compiling chacha-x86_64-apple.S
+[86/630] Compiling chacha-x86-apple.S
+[87/637] Compiling aes128gcmsiv-x86_64-linux.S
+[88/637] Compiling chacha-armv4-linux.S
+[89/637] Compiling chacha-armv8-apple.S
+[90/637] Compiling chacha-armv8-win.S
+[91/637] Compiling chacha-armv8-linux.S
+[92/637] Compiling aes128gcmsiv-x86_64-apple.S
+[93/638] Compiling x86_64-mont-linux.S
+[94/638] Compiling x86-mont-linux.S
+[94/638] Compiling x86_64-mont5-apple.S
+[96/648] Compiling x86_64-mont5-linux.S
+[97/672] Compiling x86_64-mont-apple.S
+[98/758] Compiling vpaes-x86_64-linux.S
+[99/758] Compiling x86-mont-apple.S
+[100/785] Compiling vpaes-x86_64-apple.S
+[101/794] Compiling vpaes-x86-apple.S
+[102/794] Compiling vpaes-armv8-apple.S
+[102/794] Compiling vpaes-armv7-linux.S
+[104/794] Compiling vpaes-armv8-linux.S
+[105/794] Compiling vpaes-armv8-win.S
+[106/794] Compiling vpaes-x86-linux.S
+[107/794] Compiling err_data.cc
+[108/794] Compiling sha512-x86_64-apple.S
+[109/794] Compiling sha512-armv8-win.S
+[110/794] Compiling sha512-x86_64-linux.S
+[111/794] Compiling sha512-armv8-apple.S
+[112/794] Compiling sha512-armv4-linux.S
+[113/794] Compiling sha512-armv8-linux.S
+[114/794] Compiling sha512-586-apple.S
+[115/794] Compiling CCryptoBoringSSLShims shims.c
+[116/794] Compiling sha256-x86_64-linux.S
+[117/794] Compiling sha256-armv8-win.S
+[118/794] Compiling sha256-armv4-linux.S
+[119/794] Compiling sha256-x86_64-apple.S
+[120/794] Compiling sha256-586-apple.S
+[121/794] Compiling sha512-586-linux.S
+[122/794] Compiling sha256-armv8-apple.S
+[123/794] Compiling sha1-x86_64-linux.S
+[124/794] Compiling sha256-armv8-linux.S
+[125/794] Compiling sha1-x86_64-apple.S
+[126/794] Compiling sha1-armv8-win.S
+[127/794] Compiling sha1-armv8-apple.S
+[128/794] Compiling sha256-586-linux.S
+[129/794] Compiling sha1-586-apple.S
+[130/794] Compiling sha1-armv4-large-linux.S
+[131/794] Compiling rdrand-x86_64-linux.S
+[132/794] Compiling sha1-armv8-linux.S
+[133/794] Compiling rsaz-avx2-linux.S
+[133/794] Compiling rsaz-avx2-apple.S
+[135/794] Compiling rdrand-x86_64-apple.S
+[136/794] Compiling sha1-586-linux.S
+[137/794] Compiling p256_beeu-x86_64-asm-apple.S
+[138/794] Compiling p256_beeu-armv8-asm-win.S
+[138/794] Compiling p256_beeu-armv8-asm-apple.S
+[140/794] Compiling p256_beeu-x86_64-asm-linux.S
+[141/794] Compiling p256_beeu-armv8-asm-linux.S
+[142/794] Compiling p256-x86_64-asm-apple.S
+[143/794] Compiling p256-x86_64-asm-linux.S
+[144/794] Compiling p256-armv8-asm-apple.S
+[145/794] Compiling p256-armv8-asm-linux.S
+[146/794] Compiling ghashv8-armv8-linux.S
+[147/794] Compiling ghash-x86_64-apple.S
+[148/794] Compiling ghashv8-armv8-apple.S
+[148/794] Compiling ghashv8-armv7-linux.S
+[148/794] Compiling ghash-x86_64-linux.S
+[148/794] Compiling ghash-x86-linux.S
+[152/794] Compiling ghash-x86-apple.S
+[153/794] Compiling ghashv8-armv8-win.S
+[154/794] Compiling ghash-ssse3-x86_64-apple.S
+[155/794] Compiling ghash-neon-armv8-apple.S
+[156/794] Compiling ghash-ssse3-x86-linux.S
+[157/794] Compiling ghash-neon-armv8-win.S
+[158/794] Compiling ghash-ssse3-x86-apple.S
+[159/794] Compiling ghash-ssse3-x86_64-linux.S
+[160/794] Compiling p256-armv8-asm-win.S
+[161/794] Compiling ghash-armv4-linux.S
+[162/794] Compiling ghash-neon-armv8-linux.S
+[163/794] Compiling _TestingInternals Discovery.cpp
+[164/794] Compiling co-586-linux.S
+[164/794] Compiling co-586-apple.S
+[165/794] Compiling bsaes-armv7-linux.S
+[167/794] Compiling bn-armv8-apple.S
+[168/794] Compiling bn-586-linux.S
+[169/794] Compiling bn-armv8-win.S
+[170/794] Compiling bn-armv8-linux.S
+[170/794] Compiling bn-586-apple.S
+[172/794] Compiling armv4-mont-linux.S
+[173/794] Compiling armv8-mont-win.S
+[174/794] Compiling armv8-mont-apple.S
+[175/794] Compiling aesv8-gcm-armv8-win.S
+[176/794] Compiling aesv8-gcm-armv8-linux.S
+[177/794] Compiling aesv8-armv8-win.S
+[178/794] Compiling aesv8-armv8-apple.S
+[179/794] Compiling aesni-x86_64-linux.S
+[180/794] Compiling aesni-x86_64-apple.S
+[181/794] Compiling aesv8-armv8-linux.S
+[182/794] Compiling aesv8-gcm-armv8-apple.S
+[183/794] Compiling armv8-mont-linux.S
+[184/794] Compiling aesv8-armv7-linux.S
+[185/794] Compiling aesni-gcm-x86_64-apple.S
+[186/794] Compiling aesni-x86-linux.S
+[187/794] Compiling aesni-x86-apple.S
+[188/794] Compiling aesni-gcm-x86_64-linux.S
+[189/794] Compiling aes-gcm-avx512-x86_64-apple.S
+[190/794] Compiling aes-gcm-avx512-x86_64-linux.S
+[191/794] Compiling aes-gcm-avx2-x86_64-apple.S
+[192/794] Compiling aes-gcm-avx2-x86_64-linux.S
+[193/794] Compiling xwing.cc
+[194/794] Compiling x_pubkey.cc
+[195/794] Compiling x_crl.cc
+[196/794] Compiling x_spki.cc
+[197/794] Compiling x_attrib.cc
+[198/794] Compiling x_x509.cc
+[200/794] Emitting module BurnBarRemoteEngine
+[200/794] Compiling x_exten.cc
+[201/794] Compiling x_x509a.cc
+[201/794] Compiling x_sig.cc
+[203/794] Compiling x_all.cc
+[204/794] Compiling x509rset.cc
+[205/794] Compiling x509_vpm.cc
+[207/794] Emitting module OpenBurnBarAnalytics
+[207/794] Compiling x509spki.cc
+[209/794] Emitting module OpenBurnBarIrohFFI
+[209/794] Compiling x509name.cc
+[210/794] Compiling x_name.cc
+[212/794] Emitting module TestingMacros
+[212/795] Compiling x_req.cc
+[214/795] Emitting module OpenBurnBarFirestoreModels
+[214/795] Compiling x509cset.cc
+[215/795] Compiling x_algor.cc
+[216/795] Compiling x509_vfy.cc
+[217/795] Compiling x509_v3.cc
+[218/795] Compiling x509_obj.cc
+[219/795] Compiling x509_d2.cc
+[220/795] Compiling x509_txt.cc
+[221/795] Compiling x509_trs.cc
+[222/795] Compiling x509.cc
+[223/795] Compiling x509_att.cc
+[225/795] Emitting module LibSignalClient
+[225/795] Compiling x509_lu.cc
+[226/802] Compiling x509_cmp.cc
+[227/802] Compiling x509_set.cc
+[228/802] Compiling x509_ext.cc
+[229/802] Compiling x509_def.cc
+[230/802] Compiling x509_req.cc
+[231/802] Compiling v3_ncons.cc
+[232/802] Compiling v3_utl.cc
+[233/802] Compiling v3_lib.cc
+[234/802] Compiling v3_ocsp.cc
+[235/802] Compiling v3_purp.cc
+[236/802] Compiling v3_pmaps.cc
+[236/802] Compiling v3_skey.cc
+[239/802] Compiling TestingMacros TestingMacrosMain.swift
+[239/802] Compiling v3_int.cc
+[240/802] Compiling v3_pcons.cc
+[241/802] Compiling v3_prn.cc
+[243/802] Compiling TestingMacros SourceCodeCapturing.swift
+[244/802] Compiling TestingMacros SourceLocationGeneration.swift
+[244/802] Compiling v3_alt.cc
+[244/802] Compiling v3_enum.cc
+[245/802] Compiling v3_extku.cc
+[245/802] Compiling v3_crld.cc
+[245/802] Compiling v3_ia5.cc
+[245/802] Compiling v3_genn.cc
+[245/802] Compiling v3_bitst.cc
+[251/802] Compiling v3_info.cc
+[253/802] Compiling GRDB DatabasePublishers.swift
+[254/802] Compiling GRDB DatabaseQueue.swift
+[255/802] Compiling GRDB SQLOperators.swift
+[256/802] Compiling GRDB SQLOrdering.swift
+[257/802] Compiling GRDB SQLRelation.swift
+[258/802] Compiling GRDB SQLSelection.swift
+[259/802] Compiling GRDB SQLSubquery.swift
+[260/802] Compiling GRDB Table.swift
+[261/802] Compiling GRDB SQLColumnGenerator.swift
+[262/802] Compiling GRDB SQLGenerationContext.swift
+[263/802] Compiling GRDB SQLIndexGenerator.swift
+[264/811] Compiling GRDB DatabaseReader.swift
+[265/811] Compiling GRDB DatabaseRegion.swift
+[265/811] Compiling v3_conf.cc
+[267/811] Compiling GRDB DebugDumpFormat.swift
+[268/811] Compiling GRDB JSONDumpFormat.swift
+[269/811] Compiling GRDB DatabaseRegionObservation.swift
+[270/811] Compiling GRDB DatabaseSchemaCache.swift
+[271/811] Compiling GRDB DatabaseValue.swift
+[272/811] Compiling GRDB DatabaseValueConvertible.swift
+[273/811] Compiling GRDB DatabaseSnapshot.swift
+[274/811] Compiling GRDB DatabaseSnapshotPool.swift
+[275/811] Compiling GRDB DatabaseReader+dump.swift
+[276/811] Compiling GRDB DumpFormat.swift
+[277/811] Compiling TestingMacros CRC32.swift
+[278/811] Compiling TestingMacros AvailabilityGuards.swift
+[279/811] Compiling TestingMacros TagMacro.swift
+[280/811] Compiling TestingMacros TestDeclarationMacro.swift
+[281/811] Compiling TestingMacros CommentParsing.swift
+[282/811] Compiling TestingMacros ConditionArgumentParsing.swift
+[283/811] Compiling TestingMacros DiagnosticMessage.swift
+[284/811] Compiling TestingMacros DiagnosticMessage+Diagnosing.swift
+[284/811] Compiling policy.cc
+[284/811] Compiling v3_cpols.cc
+[285/811] Compiling t_crl.cc
+[285/811] Compiling v3_bcons.cc
+[285/811] Compiling t_x509a.cc
+[285/812] Compiling t_x509.cc
+[285/812] Compiling t_req.cc
+[285/812] Compiling v3_akey.cc
+[285/812] Compiling v3_akeya.cc
+[293/812] Compiling rsa_pss.cc
+[294/812] Compiling name_print.cc
+[297/812] Emitting module GRDB
+[297/812] Compiling i2d_pr.cc
+[298/812] Compiling voprf.cc
+[299/812] Wrapping AST for TestingMacros for debugging
+[300/812] Compiling a_digest.cc
+[301/812] Compiling thread_win.cc
+[302/812] Compiling pmbtoken.cc
+[303/812] Write Objects.LinkFileList
+[304/812] Compiling a_sign.cc
+[305/812] Compiling trust_token.cc
+[306/812] Compiling algorithm.cc
+[306/812] Compiling by_file.cc
+[306/812] Compiling by_dir.cc
+[309/812] Compiling asn1_gen.cc
+[310/812] Compiling thread_pthread.cc
+[311/812] Compiling thread.cc
+[312/812] Compiling a_verify.cc
+[313/812] Compiling thread_none.cc
+[314/812] Compiling siphash.cc
+[315/812] Compiling sha256.cc
+[316/812] Compiling sha512.cc
+[316/812] Compiling slhdsa.cc
+[317/812] Compiling stack.cc
+[317/812] Compiling sha1.cc
+[320/812] Compiling rsa_extra.cc
+[321/812] Compiling spake2plus.cc
+[322/812] Compiling rsa_print.cc
+[322/812] Compiling rsa_asn1.cc
+[322/812] Compiling passive.cc
+[322/812] Compiling refcount.cc
+[325/812] Compiling getentropy.cc
+[325/812] Compiling windows.cc
+[326/812] Compiling ios.cc
+[326/812] Compiling trusty.cc
+[328/812] Compiling rand.cc
+[331/812] Compiling rc4.cc
+[332/812] Compiling poly1305_arm_asm.S
+[333/812] Compiling urandom.cc
+[334/812] Compiling rsa_crypt.cc
+[335/812] Compiling poly1305.cc
+[336/812] Compiling poly1305_arm.cc
+[337/812] Compiling deterministic.cc
+[338/812] Compiling fork_detect.cc
+[340/812] Compiling GRDB Fetch.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[341/812] Compiling GRDB Map.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[342/812] Compiling GRDB RemoveDuplicates.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[343/812] Compiling GRDB Trace.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[344/812] Compiling GRDB ValueReducer.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[345/812] Compiling GRDB SharedValueObservation.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[346/812] Compiling GRDB ValueObservation.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[347/812] Compiling GRDB ValueObservationScheduler.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[348/812] Compiling GRDB resource_bundle_accessor.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[348/812] Compiling poly1305_vec.cc
+[349/812] Compiling forkunsafe.cc
+[350/812] Compiling pool.cc
+[351/812] Compiling pkcs8.cc
+[352/812] Compiling pkcs7.cc
+[353/812] Compiling pkcs8_x509.cc
+[354/812] Compiling p5_pbev2.cc
+[355/812] Compiling pem_x509.cc
+[356/812] Compiling pkcs7_x509.cc
+[357/812] Compiling pem_pkey.cc
+[358/812] Compiling pem_xaux.cc
+[360/812] Compiling GRDB SQLQueryGenerator.swift
+[361/812] Compiling GRDB SQLTableAlterationGenerator.swift
+[362/812] Compiling GRDB SQLTableGenerator.swift
+[363/812] Compiling GRDB SQLInterpolation+QueryInterface.swift
+[364/812] Compiling GRDB ColumnDefinition.swift
+[365/812] Compiling GRDB Database+SchemaDefinition.swift
+[366/812] Compiling GRDB ForeignKeyDefinition.swift
+[367/812] Compiling GRDB IndexDefinition.swift
+[368/812] Compiling GRDB TableAlteration.swift
+[369/812] Compiling GRDB MutablePersistableRecord+DAO.swift
+[370/812] Compiling GRDB MutablePersistableRecord+Delete.swift
+[371/812] Compiling GRDB MutablePersistableRecord+Insert.swift
+[372/812] Compiling GRDB MutablePersistableRecord+Save.swift
+[373/812] Compiling LibSignalClient ReceiptSerial.swift
+[374/812] Compiling LibSignalClient ServerPublicParams.swift
+[375/812] Compiling LibSignalClient ServerSecretParams.swift
+[376/812] Compiling LibSignalClient ServerZkAuthOperations.swift
+[377/812] Compiling LibSignalClient ServerZkProfileOperations.swift
+[382/812] Compiling GRDB LineDumpFormat.swift
+[383/812] Compiling GRDB ListDumpFormat.swift
+[384/812] Compiling GRDB QuoteDumpFormat.swift
+[385/812] Compiling GRDB Export.swift
+[386/812] Compiling GRDB FTS3.swift
+[386/812] Compiling pem_pk8.cc
+[387/812] Compiling mlkem.cc
+[388/812] Compiling obj_xref.cc
+[389/812] Compiling pem_lib.cc
+[391/812] Compiling GRDB OrderedDictionary.swift
+[392/812] Compiling GRDB Pool.swift
+[393/812] Compiling GRDB ReadWriteBox.swift
+[394/812] Compiling GRDB ReceiveValuesOn.swift
+[395/812] Compiling GRDB Refinable.swift
+[396/812] Compiling GRDB Utils.swift
+[397/812] Compiling GRDB DatabaseCancellable.swift
+[398/812] Compiling GRDB ValueConcurrentObserver.swift
+[399/812] Compiling GRDB ValueWriteOnlyObserver.swift
+[399/812] Compiling pem_oth.cc
+[400/812] Compiling mldsa.cc
+[401/812] Compiling poly_rq_mul.S
+[402/812] Compiling pem_info.cc
+[403/812] Compiling lhash.cc
+[404/812] Compiling fips_shared_support.cc
+[405/812] Compiling mem.cc
+[406/812] Compiling pem_all.cc
+[406/812] Compiling md5.cc
+[406/812] Compiling fuzzer_mode.cc
+[409/812] Compiling md4.cc
+[410/812] Compiling kyber.cc
+[410/812] Compiling obj.cc
+[412/812] Compiling ex_data.cc
+[414/812] Compiling GRDB DatabaseValueConvertible+RawRepresentable.swift
+[415/812] Compiling GRDB JSONRequiredEncoder.swift
+[416/812] Compiling GRDB Optional.swift
+[417/812] Compiling GRDB StandardLibrary.swift
+[418/812] Compiling GRDB TransactionClock.swift
+[419/812] Compiling GRDB TransactionObserver.swift
+[420/812] Compiling GRDB WALSnapshot.swift
+[421/812] Compiling GRDB WALSnapshotTransaction.swift
+[422/812] Compiling GRDB Database+Dump.swift
+[423/812] Compiling GRDB DatabaseWriter.swift
+[424/812] Compiling GRDB FetchRequest.swift
+[425/812] Compiling GRDB Row.swift
+[426/812] Compiling GRDB RowAdapter.swift
+[427/812] Compiling GRDB RowDecodingError.swift
+[428/812] Compiling GRDB SQL.swift
+[429/812] Compiling GRDB SQLInterpolation.swift
+[430/812] Compiling GRDB SQLRequest.swift
+[431/812] Compiling GRDB SchedulingWatchdog.swift
+[432/812] Compiling GRDB SerializedDatabase.swift
+[432/812] Compiling scrypt.cc
+[433/812] Compiling hpke.cc
+[435/812] Compiling GRDB Association.swift
+[436/812] Compiling GRDB AssociationAggregate.swift
+[437/812] Compiling GRDB BelongsToAssociation.swift
+[438/812] Compiling GRDB HasManyAssociation.swift
+[439/812] Compiling GRDB HasManyThroughAssociation.swift
+[440/812] Compiling GRDB HasOneAssociation.swift
+[441/812] Compiling GRDB HasOneThroughAssociation.swift
+[442/812] Compiling GRDB JoinAssociation.swift
+[443/812] Compiling GRDB CommonTableExpression.swift
+[444/812] Compiling GRDB NSData.swift
+[445/812] Compiling GRDB NSNull.swift
+[446/812] Compiling GRDB NSNumber.swift
+[447/812] Compiling GRDB NSString.swift
+[448/812] Compiling GRDB SQLiteDateParser.swift
+[449/812] Compiling GRDB URL.swift
+[450/812] Compiling GRDB UUID.swift
+[451/812] Compiling GRDB DatabaseValueConvertible+Decodable.swift
+[452/812] Compiling GRDB DatabaseValueConvertible+Encodable.swift
+[453/812] Compiling GRDB Statement.swift
+[454/812] Compiling GRDB StatementAuthorizer.swift
+[455/812] Compiling GRDB StatementColumnConvertible.swift
+[456/812] Compiling GRDB CGFloat.swift
+[457/812] Compiling GRDB Data.swift
+[458/812] Compiling GRDB DatabaseDateComponents.swift
+[459/812] Compiling GRDB DatabaseValueConvertible+ReferenceConvertible.swift
+[460/812] Compiling GRDB Date.swift
+[461/812] Compiling GRDB Decimal.swift
+[462/812] Compiling GRDB FTS3Pattern.swift
+[463/812] Compiling GRDB FTS3TokenizerDescriptor.swift
+[464/812] Compiling GRDB FTS4.swift
+[465/812] Compiling GRDB FTS5.swift
+[466/812] Compiling GRDB FTS5CustomTokenizer.swift
+[467/812] Compiling GRDB FTS5Pattern.swift
+[468/812] Compiling GRDB FTS5Tokenizer.swift
+[469/812] Compiling GRDB FTS5TokenizerDescriptor.swift
+[470/812] Compiling GRDB FTS5WrapperTokenizer.swift
+[470/812] Compiling pbkdf.cc
+[471/812] Compiling hrss.cc
+[472/812] Compiling p_x25519_asn1.cc
+[472/812] Compiling sign.cc
+[472/812] Compiling print.cc
+[474/812] Compiling p_x25519.cc
+[477/812] Compiling LibSignalClient ServerZkReceiptOperations.swift
+[478/812] Compiling LibSignalClient UuidCiphertext.swift
+[479/812] Compiling GRDB Record.swift
+[480/812] Compiling GRDB TableRecord.swift
+[481/812] Compiling GRDB CaseInsensitiveIdentifier.swift
+[482/812] Compiling GRDB Inflections+English.swift
+[483/812] Compiling GRDB Inflections.swift
+[484/812] Compiling GRDB LockedBox.swift
+[485/812] Compiling GRDB OnDemandFuture.swift
+[486/812] Compiling GRDB TableDefinition.swift
+[487/812] Compiling GRDB VirtualTableModule.swift
+[488/812] Compiling GRDB TableRecord+Association.swift
+[489/812] Compiling GRDB TableRecord+QueryInterfaceRequest.swift
+[490/812] Compiling GRDB EncodableRecord+Encodable.swift
+[491/812] Compiling GRDB EncodableRecord.swift
+[492/812] Compiling GRDB FetchableRecord+Decodable.swift
+[493/812] Compiling GRDB FetchableRecord+TableRecord.swift
+[494/812] Compiling GRDB FetchableRecord.swift
+[497/812] Compiling GRDB Fixits.swift
+[498/812] Compiling GRDB JSONColumn.swift
+[499/812] Compiling GRDB SQLJSONExpressible.swift
+[500/812] Compiling GRDB SQLJSONFunctions.swift
+[501/812] Compiling GRDB DatabaseMigrator.swift
+[509/812] Compiling p_rsa_asn1.cc
+[511/812] Compiling GRDB Database.swift
+[512/812] Compiling GRDB DatabaseBackupProgress.swift
+[513/812] Compiling GRDB DatabaseCollation.swift
+[514/812] Compiling GRDB DatabaseError.swift
+[515/812] Compiling GRDB DatabaseFunction.swift
+[516/812] Compiling GRDB DatabasePool.swift
+[519/812] Compiling p_rsa.cc
+[527/812] Compiling p_ed25519_asn1.cc
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/NiceBridgingUtils.swift:95:26: warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 93 |     static func convertArg(_ arg: String) -> (UnsafePointer<CChar>, NSString?) {
+ 94 |         let nsstring = arg as NSString
+ 95 |         return (nsstring.utf8String!, nsstring)
+    |                          `- warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 96 |     }
+ 97 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/NiceBridgingUtils.swift:95:26: warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 93 |     static func convertArg(_ arg: String) -> (UnsafePointer<CChar>, NSString?) {
+ 94 |         let nsstring = arg as NSString
+ 95 |         return (nsstring.utf8String!, nsstring)
+    |                          `- warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 96 |     }
+ 97 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/NiceBridgingUtils.swift:95:26: warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 93 |     static func convertArg(_ arg: String) -> (UnsafePointer<CChar>, NSString?) {
+ 94 |         let nsstring = arg as NSString
+ 95 |         return (nsstring.utf8String!, nsstring)
+    |                          `- warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 96 |     }
+ 97 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/NiceBridgingUtils.swift:95:26: warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 93 |     static func convertArg(_ arg: String) -> (UnsafePointer<CChar>, NSString?) {
+ 94 |         let nsstring = arg as NSString
+ 95 |         return (nsstring.utf8String!, nsstring)
+    |                          `- warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 96 |     }
+ 97 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[554/812] Compiling GRDB Configuration.swift
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/NiceBridgingUtils.swift:95:26: warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 93 |     static func convertArg(_ arg: String) -> (UnsafePointer<CChar>, NSString?) {
+ 94 |         let nsstring = arg as NSString
+ 95 |         return (nsstring.utf8String!, nsstring)
+    |                          `- warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 96 |     }
+ 97 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[555/812] Compiling GRDB Cursor.swift
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/NiceBridgingUtils.swift:95:26: warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 93 |     static func convertArg(_ arg: String) -> (UnsafePointer<CChar>, NSString?) {
+ 94 |         let nsstring = arg as NSString
+ 95 |         return (nsstring.utf8String!, nsstring)
+    |                          `- warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 96 |     }
+ 97 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[556/812] Compiling GRDB Database+Schema.swift
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/NiceBridgingUtils.swift:95:26: warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 93 |     static func convertArg(_ arg: String) -> (UnsafePointer<CChar>, NSString?) {
+ 94 |         let nsstring = arg as NSString
+ 95 |         return (nsstring.utf8String!, nsstring)
+    |                          `- warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 96 |     }
+ 97 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[557/812] Compiling GRDB Database+Statements.swift
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/NiceBridgingUtils.swift:95:26: warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 93 |     static func convertArg(_ arg: String) -> (UnsafePointer<CChar>, NSString?) {
+ 94 |         let nsstring = arg as NSString
+ 95 |         return (nsstring.utf8String!, nsstring)
+    |                          `- warning: 'utf8String' is deprecated: On platforms without Objective-C autorelease pools, use withCString instead [#DeprecatedDeclaration]
+ 96 |     }
+ 97 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[558/812] Compiling GRDB Migration.swift
+[559/812] Compiling GRDB FTS3+QueryInterface.swift
+[560/812] Compiling GRDB FTS5+QueryInterface.swift
+[561/812] Compiling GRDB ForeignKey.swift
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/TokioAsyncContext.swift:143:98: warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+141 |             return try await withTaskCancellationHandler(
+142 |                 operation: {
+143 |                     let start: @Sendable (UnsafeMutablePointer<Promise>) -> SignalFfiErrorRef? = { promise in
+    |                                                                                                  `- warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+144 |                         self.withNativeHandle { handle in
+145 |                             bodyHandoff(promise, handle)
+
+[#SendableMetatypes]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-metatypes>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/TokioAsyncContext.swift:143:98: warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+141 |             return try await withTaskCancellationHandler(
+142 |                 operation: {
+143 |                     let start: @Sendable (UnsafeMutablePointer<Promise>) -> SignalFfiErrorRef? = { promise in
+    |                                                                                                  `- warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+144 |                         self.withNativeHandle { handle in
+145 |                             bodyHandoff(promise, handle)
+
+[#SendableMetatypes]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-metatypes>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/TokioAsyncContext.swift:143:98: warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+141 |             return try await withTaskCancellationHandler(
+142 |                 operation: {
+143 |                     let start: @Sendable (UnsafeMutablePointer<Promise>) -> SignalFfiErrorRef? = { promise in
+    |                                                                                                  `- warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+144 |                         self.withNativeHandle { handle in
+145 |                             bodyHandoff(promise, handle)
+
+[#SendableMetatypes]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-metatypes>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/TokioAsyncContext.swift:143:98: warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+141 |             return try await withTaskCancellationHandler(
+142 |                 operation: {
+143 |                     let start: @Sendable (UnsafeMutablePointer<Promise>) -> SignalFfiErrorRef? = { promise in
+    |                                                                                                  `- warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+144 |                         self.withNativeHandle { handle in
+145 |                             bodyHandoff(promise, handle)
+
+[#SendableMetatypes]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-metatypes>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/TokioAsyncContext.swift:143:98: warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+141 |             return try await withTaskCancellationHandler(
+142 |                 operation: {
+143 |                     let start: @Sendable (UnsafeMutablePointer<Promise>) -> SignalFfiErrorRef? = { promise in
+    |                                                                                                  `- warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+144 |                         self.withNativeHandle { handle in
+145 |                             bodyHandoff(promise, handle)
+
+[#SendableMetatypes]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-metatypes>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/TokioAsyncContext.swift:143:98: warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+141 |             return try await withTaskCancellationHandler(
+142 |                 operation: {
+143 |                     let start: @Sendable (UnsafeMutablePointer<Promise>) -> SignalFfiErrorRef? = { promise in
+    |                                                                                                  `- warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+144 |                         self.withNativeHandle { handle in
+145 |                             bodyHandoff(promise, handle)
+
+[#SendableMetatypes]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-metatypes>
+/workspace/Vendor/libsignal/swift/Sources/LibSignalClient/TokioAsyncContext.swift:143:98: warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+141 |             return try await withTaskCancellationHandler(
+142 |                 operation: {
+143 |                     let start: @Sendable (UnsafeMutablePointer<Promise>) -> SignalFfiErrorRef? = { promise in
+    |                                                                                                  `- warning: capture of non-Sendable type 'Promise.Type' in an isolated closure [#SendableMetatypes]
+144 |                         self.withNativeHandle { handle in
+145 |                             bodyHandoff(promise, handle)
+
+[#SendableMetatypes]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-metatypes>
+[571/812] Compiling p_dh.cc
+[573/812] Compiling GRDB RequestProtocols.swift
+[574/812] Compiling GRDB Column.swift
+[575/812] Compiling GRDB DatabasePromise.swift
+[576/812] Compiling GRDB SQLAssociation.swift
+[577/812] Compiling GRDB SQLCollection.swift
+[578/812] Compiling GRDB SQLExpression.swift
+[579/812] Compiling GRDB SQLForeignKeyRequest.swift
+[588/812] Compiling OpenBurnBarAnalytics AnalyticsEvent.swift
+[593/812] Compiling OpenBurnBarAnalytics Analytics.swift
+[596/812] Compiling GRDB SQLFunctions.swift
+[616/812] Compiling GRDB QueryInterfaceRequest.swift
+[616/812] Compiling p_hkdf.cc
+[625/812] Compiling OpenBurnBarAnalytics AnalyticsSuperProperties.swift
+[625/812] Compiling p_dh_asn1.cc
+[626/812] Compiling p_ed25519.cc
+[627/812] Compiling p_ec_asn1.cc
+[628/812] Compiling p_dsa_asn1.cc
+[628/812] Compiling p_ec.cc
+[630/812] Compiling evp_ctx.cc
+[658/812] Compiling OpenBurnBarFirestoreModels ProviderAccountModels.swift
+[659/812] Compiling OpenBurnBarFirestoreModels PiAgentRelayModels.swift
+[660/812] Compiling OpenBurnBarAnalytics AnalyticsName.swift
+[661/812] Compiling OpenBurnBarAnalytics AnalyticsValue.swift
+[662/812] Compiling OpenBurnBarAnalytics AnalyticsTransporting.swift
+[663/812] Compiling OpenBurnBarAnalytics AnalyticsBuckets.swift
+[664/812] Compiling OpenBurnBarAnalytics AnalyticsConsentStore.swift
+[665/812] Compiling OpenBurnBarAnalytics AnalyticsIdentity.swift
+[666/813] Compiling BurnBarRemoteEngine BurnBarRemoteEngineSupport.swift
+[667/813] Compiling OpenBurnBarFirestoreModels HostedQuotaModels.swift
+[668/813] Compiling OpenBurnBarFirestoreModels InsightModels.swift
+[669/813] Compiling OpenBurnBarFirestoreModels IrohPairingModels.swift
+[670/814] Compiling OpenBurnBarFirestoreModels MediaAnalyticsModels.swift
+[671/814] Compiling OpenBurnBarFirestoreModels EntitlementModels.swift
+[672/814] Compiling OpenBurnBarFirestoreModels ModelBenchmarkModels.swift
+[673/814] Compiling OpenBurnBarFirestoreModels HermesRelayModels.swift
+[674/814] Compiling OpenBurnBarFirestoreModels DeviceLinkModels.swift
+[676/814] Compiling OpenBurnBarFirestoreModels UsageQuotaModels.swift
+[677/814] Compiling OpenBurnBarFirestoreModels MissionModels.swift
+[677/814] Compiling err.cc
+[679/814] Compiling engine.cc
+[680/814] Compiling ecdsa_p1363.cc
+[681/814] Compiling evp.cc
+[682/814] Linking TestingMacros-tool
+[683/814] Compiling ecdh.cc
+[684/814] Compiling ec_derive.cc
+[685/815] Compiling evp_asn1.cc
+[686/815] Compiling hash_to_curve.cc
+[687/815] Compiling ecdsa_asn1.cc
+[688/815] Wrapping AST for OpenBurnBarAnalytics for debugging
+[690/815] Compiling x25519-asm-arm.S
+[691/815] Compiling dsa.cc
+[692/815] Compiling dh_asn1.cc
+[694/815] Compiling OpenBurnBarIrohFFI openburnbar_iroh.swift
+[694/815] Compiling ec_asn1.cc
+[695/815] Compiling des.cc
+[696/827] Compiling params.cc
+[697/827] Compiling curve25519_64_adx.cc
+[698/827] Compiling cpu_intel.cc
+[699/827] Compiling dsa_asn1.cc
+[700/827] Compiling digest_extra.cc
+[702/855] Compiling crypto.cc
+[703/892] Compiling curve25519.cc
+[704/901] Compiling spake25519.cc
+[705/901] Compiling cpu_arm_linux.cc
+[706/901] Compiling cpu_aarch64_win.cc
+[707/901] Compiling cpu_aarch64_sysreg.cc
+[708/901] Compiling cpu_arm_freebsd.cc
+[709/901] Compiling cpu_aarch64_openbsd.cc
+[710/901] Compiling cpu_aarch64_fuchsia.cc
+[711/901] Compiling cpu_aarch64_linux.cc
+[712/901] Wrapping AST for OpenBurnBarIrohFFI for debugging
+[713/901] Compiling cpu_aarch64_apple.cc
+[714/901] Compiling tls_cbc.cc
+[715/901] Compiling conf.cc
+[715/901] Compiling e_tls.cc
+[715/901] Wrapping AST for LibSignalClient for debugging
+[718/901] Compiling e_rc4.cc
+[719/901] Compiling e_null.cc
+[720/901] Compiling get_cipher.cc
+[721/901] Compiling e_des.cc
+[722/901] Compiling e_rc2.cc
+[724/901] Compiling OpenBurnBarFirestoreModels HermesGatewayModels.swift
+[725/901] Compiling OpenBurnBarFirestoreModels ComputerUseModels.swift
+[725/901] Compiling e_aesgcmsiv.cc
+[726/901] Compiling e_aeseax.cc
+[727/902] Compiling e_aesctrhmac.cc
+[728/902] Compiling derive_key.cc
+[729/902] Compiling e_chacha20poly1305.cc
+[730/902] Compiling chacha.cc
+[732/902] Compiling cms.cc
+[732/902] Compiling buf.cc
+[734/902] Compiling unicode.cc
+[735/902] Compiling ber.cc
+[736/902] Compiling sqrt.cc
+[737/902] Compiling cbb.cc
+[738/902] Compiling cbs.cc
+[739/902] Compiling exponentiation.cc
+[740/902] Wrapping AST for OpenBurnBarFirestoreModels for debugging
+[741/902] Compiling asn1_compat.cc
+[742/902] Compiling div.cc
+[744/902] Compiling Testing Issue+Recording.swift
+[745/902] Compiling Testing Issue.swift
+[746/902] Compiling Testing TypeInfo.swift
+[747/902] Compiling Testing Configuration+EventHandling.swift
+[748/902] Compiling Testing Configuration.TestFilter.swift
+[749/902] Compiling Testing Configuration.swift
+[750/902] Compiling Testing Runner.Plan+Dumping.swift
+[751/902] Compiling Testing NumericAdditions.swift
+[752/902] Compiling Testing ResultAdditions.swift
+[753/902] Compiling Testing CError.swift
+[754/902] Compiling Testing ABIv0.swift
+[755/902] Compiling Testing ABIv0.EncodedBacktrace.swift
+[756/902] Compiling Testing ABIv0.EncodedEvent.swift
+[757/902] Compiling Testing ABIv0.EncodedInstant.swift
+[758/902] Compiling Testing ABIv0.EncodedIssue.swift
+[759/902] Compiling Testing ABIv0.EncodedMessage.swift
+[760/902] Compiling Testing ABIv0.EncodedTest.swift
+[761/902] Compiling Testing Clock.swift
+[762/902] Compiling Testing Event.swift
+[763/902] Compiling Testing Event.ConsoleOutputRecorder.swift
+[763/902] Compiling pair.cc
+[764/902] Compiling fd.cc
+[765/902] Compiling bn_asn1.cc
+[766/902] Compiling printf.cc
+[766/903] Compiling file.cc
+[767/903] Compiling bio.cc
+[767/903] Compiling blake2.cc
+[768/903] Compiling errno.cc
+[768/903] Compiling hexdump.cc
+[773/903] Compiling base64.cc
+[774/903] Compiling bio_mem.cc
+[775/903] Wrapping AST for BurnBarRemoteEngine for debugging
+[776/903] Compiling tasn_fre.cc
+[777/903] Compiling posix_time.cc
+[778/903] Compiling tasn_typ.cc
+[779/903] Compiling f_string.cc
+[780/903] Compiling tasn_new.cc
+[781/903] Compiling tasn_enc.cc
+[782/903] Compiling f_int.cc
+[783/903] Compiling tasn_utl.cc
+[784/903] Compiling asn_pack.cc
+[785/903] Compiling asn1_par.cc
+[786/903] Compiling tasn_dec.cc
+[787/903] Wrapping AST for GRDB for debugging
+[788/903] Compiling a_mbstr.cc
+[790/903] Compiling Testing ConditionTrait+Macro.swift
+[791/903] Compiling Testing ConditionTrait.swift
+[792/903] Compiling Testing HiddenTrait.swift
+[793/903] Compiling Testing ParallelizationTrait.swift
+[794/903] Compiling Testing SPIAwareTrait.swift
+[795/907] Compiling Testing Tag+Macro.swift
+[796/907] Compiling Testing Tag+Predefined.swift
+[797/907] Compiling Testing Tag.Color+Loading.swift
+[798/907] Compiling Testing Tag.Color.swift
+[802/907] Compiling Testing CartesianProduct.swift
+[803/907] Compiling Testing Environment.swift
+[804/907] Compiling Testing SystemError.swift
+[805/907] Compiling Testing Versions.swift
+[806/907] Compiling Testing Test+Discovery.swift
+[807/907] Compiling Testing Test+Macro.swift
+[808/907] Compiling Testing Test.ID.Selection.swift
+[809/907] Compiling Testing Test.ID.swift
+[810/907] Compiling Testing Test.swift
+[811/907] Compiling Testing Bug.swift
+[812/907] Compiling Testing Comment+Macro.swift
+[813/907] Compiling Testing Comment.swift
+[814/907] Compiling Testing Tag.List.swift
+[815/907] Compiling Testing Tag.swift
+[816/907] Compiling Testing TimeLimitTrait.swift
+[817/907] Compiling Testing Trait.swift
+[818/907] Compiling Testing ExpectationChecking+Macro.swift
+[819/907] Compiling Testing Confirmation.swift
+[820/907] Compiling Testing ErrorSnapshot.swift
+[828/907] Compiling Testing ExitTest.swift
+[829/907] Compiling Testing SpawnProcess.swift
+[830/907] Compiling Testing WaitFor.swift
+[831/907] Compiling Testing Expectation+Macro.swift
+[832/907] Compiling Testing Expectation.swift
+[833/907] Compiling Testing SourceLocation+Macro.swift
+[834/907] Compiling Testing SourceLocation.swift
+[835/907] Compiling Testing ArrayAdditions.swift
+[836/907] Compiling Testing CollectionDifferenceAdditions.swift
+[837/907] Compiling Testing CommandLineAdditions.swift
+[838/907] Compiling Testing Runner.Plan.swift
+[839/907] Compiling Testing Runner.RuntimeState.swift
+[840/907] Compiling Testing Runner.swift
+[841/907] Compiling Testing SkipInfo.swift
+[842/907] Compiling Testing Backtrace+Symbolication.swift
+[843/907] Compiling Testing FileHandle.swift
+[844/907] Compiling Testing GetSymbol.swift
+[845/907] Compiling Testing Graph.swift
+[846/907] Compiling Testing JSON.swift
+[847/907] Compiling Testing Locked.swift
+[848/907] Compiling Testing Event.HumanReadableOutputRecorder.swift
+[849/907] Compiling Testing Event.JUnitXMLRecorder.swift
+[850/907] Compiling Testing Event.Symbol.swift
+[851/907] Compiling Testing TimeValue.swift
+[852/907] Compiling Testing ExitCondition.swift
+[858/907] Emitting module Testing
+[859/907] Compiling Testing ABIEntryPoint.swift
+[860/907] Compiling Testing EntryPoint.swift
+[861/907] Compiling Testing SwiftPMEntryPoint.swift
+[862/907] Compiling Testing ABIv0.Record+Streaming.swift
+[863/907] Compiling Testing ABIv0.Record.swift
+[869/907] Compiling Testing KnownIssue.swift
+[870/907] Compiling Testing CustomTestArgumentEncodable.swift
+[871/907] Compiling Testing Test.Case.Generator.swift
+[872/907] Compiling Testing Test.Case.ID.swift
+[873/907] Compiling Testing Test.Case.swift
+[874/907] Compiling Testing Backtrace.swift
+[875/907] Compiling Testing CustomTestStringConvertible.swift
+[876/907] Compiling Testing Expression+Macro.swift
+[877/907] Compiling Testing Expression.swift
+[878/907] Compiling Testing SourceContext.swift
+[879/908] Wrapping AST for Testing for debugging
+[881/912] Compiling OpenBurnBarAnalyticsTests LinuxEmptyTests.swift
+[882/912] Emitting module OpenBurnBarAnalyticsTests
+[883/913] Emitting module BurnBarRemoteEngineTests
+[884/913] Compiling BurnBarRemoteEngineTests LinuxEmptyTests.swift
+[886/914] Wrapping AST for OpenBurnBarAnalyticsTests for debugging
+[887/914] Wrapping AST for BurnBarRemoteEngineTests for debugging
+[888/914] Compiling bcm.cc
+[890/922] Compiling CryptoBoringWrapper RandomBytes.swift
+[891/922] Compiling CryptoBoringWrapper CryptoKitErrors_boring.swift
+[892/922] Compiling CryptoBoringWrapper EllipticCurve.swift
+[893/922] Compiling CryptoBoringWrapper EllipticCurvePoint.swift
+[894/922] Emitting module CryptoBoringWrapper
+[895/922] Compiling CryptoBoringWrapper BoringSSLAEAD.swift
+[896/922] Compiling CryptoBoringWrapper ArbitraryPrecisionInteger.swift
+[897/922] Compiling CryptoBoringWrapper FiniteFieldArithmeticContext.swift
+[898/923] Wrapping AST for CryptoBoringWrapper for debugging
+[900/1000] Compiling Crypto CryptoKitErrors_boring.swift
+[901/1000] Compiling Crypto RNG_boring.swift
+[902/1000] Compiling Crypto SafeCompare_boring.swift
+[903/1000] Compiling Crypto Zeroization_boring.swift
+[904/1004] Compiling Crypto HPKE-Utils.swift
+[905/1004] Compiling Crypto DHKEM.swift
+[906/1004] Compiling Crypto HPKE-KEM-Curve25519.swift
+[907/1004] Compiling Crypto HPKE-NIST-EC-KEMs.swift
+[908/1004] Compiling Crypto HPKE-KEM.swift
+[909/1004] Compiling Crypto PKCS8PrivateKey.swift
+[910/1004] Compiling Crypto SEC1PrivateKey.swift
+[911/1004] Compiling Crypto SubjectPublicKeyInfo.swift
+[912/1004] Compiling Crypto CryptoError_boring.swift
+[913/1004] Compiling Crypto CryptoKitErrors.swift
+[914/1004] Compiling Crypto HPKE-Errors.swift
+[915/1004] Compiling Crypto HPKE.swift
+[916/1004] Compiling Crypto HPKE-Context.swift
+[917/1004] Compiling Crypto HPKE-KeySchedule.swift
+[918/1004] Compiling Crypto HPKE-AEAD.swift
+[919/1004] Compiling Crypto HPKE-Ciphersuite.swift
+[920/1004] Compiling Crypto HPKE-KDF.swift
+[921/1004] Compiling Crypto HPKE-KexKeyDerivation.swift
+[922/1004] Compiling Crypto HPKE-LabeledExtract.swift
+[923/1004] Compiling Crypto X25519Keys_boring.swift
+[924/1004] Compiling Crypto Curve25519.swift
+[925/1004] Compiling Crypto Ed25519Keys.swift
+[926/1004] Compiling Crypto NISTCurvesKeys.swift
+[927/1004] Compiling Crypto Digest_boring.swift
+[928/1004] Compiling Crypto Digest.swift
+[929/1004] Compiling Crypto Digests.swift
+[930/1004] Compiling Crypto HashFunctions.swift
+[931/1004] Compiling Crypto HashFunctions_SHA2.swift
+[932/1004] Compiling Crypto MessageAuthenticationCode.swift
+[933/1004] Compiling Crypto AES.swift
+[934/1004] Compiling Crypto ECDSASignature_boring.swift
+[935/1004] Compiling Crypto ECDSA_boring.swift
+[936/1004] Compiling Crypto X25519Keys.swift
+[937/1004] Compiling Crypto SymmetricKeys.swift
+[938/1004] Compiling Crypto HMAC.swift
+[939/1004] Compiling Crypto MACFunctions.swift
+[940/1004] Compiling Crypto EdDSA_boring.swift
+[941/1004] Compiling Crypto ECDSA.swift
+[942/1004] Compiling Crypto Ed25519.swift
+[943/1004] Compiling Crypto Signature.swift
+[944/1004] Compiling Crypto AESWrap.swift
+[945/1004] Compiling Crypto AESWrap_boring.swift
+[946/1004] Compiling Crypto Ed25519_boring.swift
+[947/1004] Compiling Crypto NISTCurvesKeys_boring.swift
+[948/1004] Compiling Crypto ASN1Identifier.swift
+[949/1004] Compiling Crypto ASN1Integer.swift
+[950/1004] Compiling Crypto ASN1Null.swift
+[951/1004] Compiling Crypto ASN1OctetString.swift
+[952/1004] Compiling Crypto ASN1Strings.swift
+[953/1004] Compiling Crypto Nonces.swift
+[954/1004] Compiling Crypto ASN1.swift
+[955/1004] Compiling Crypto ASN1Any.swift
+[956/1004] Compiling Crypto ASN1BitString.swift
+[957/1004] Compiling Crypto ASN1Boolean.swift
+[958/1004] Compiling Crypto HPKE-Modes.swift
+[959/1004] Compiling Crypto Insecure.swift
+[960/1004] Compiling Crypto Insecure_HashFunctions.swift
+[961/1004] Compiling Crypto KEM.swift
+[962/1004] Compiling Crypto ECDH_boring.swift
+[963/1004] Compiling Crypto DH.swift
+[964/1004] Compiling Crypto ECDH.swift
+[965/1004] Compiling Crypto HKDF.swift
+[966/1004] Emitting module Crypto
+[967/1004] Compiling Crypto AES-GCM.swift
+[968/1004] Compiling Crypto AES-GCM_boring.swift
+[969/1004] Compiling Crypto ChaChaPoly_boring.swift
+[970/1004] Compiling Crypto ChaChaPoly.swift
+[971/1004] Compiling Crypto Cipher.swift
+[972/1004] Compiling Crypto ArraySliceBigint.swift
+[973/1004] Compiling Crypto GeneralizedTime.swift
+[974/1004] Compiling Crypto ObjectIdentifier.swift
+[975/1004] Compiling Crypto ECDSASignature.swift
+[976/1004] Compiling Crypto PEMDocument.swift
+[977/1004] Compiling Crypto PrettyBytes.swift
+[978/1004] Compiling Crypto SafeCompare.swift
+[979/1004] Compiling Crypto SecureBytes.swift
+[980/1004] Compiling Crypto Zeroization.swift
+[981/1005] Wrapping AST for Crypto for debugging
+[983/1313] Compiling OpenBurnBarCore MiningPickLoader.swift
+[984/1313] Compiling OpenBurnBarCore MissionBurnForecast.swift
+[985/1313] Compiling OpenBurnBarCore MissionComposerControls.swift
+[986/1313] Compiling OpenBurnBarCore MissionConsoleHero.swift
+[987/1313] Compiling OpenBurnBarCore MissionConsolePreviewHost.swift
+[988/1313] Compiling OpenBurnBarCore MissionConsoleTypes.swift
+[989/1313] Compiling OpenBurnBarCore MissionControlConsoleView.swift
+[990/1313] Compiling OpenBurnBarCore MissionFABGauge.swift
+[991/1313] Compiling OpenBurnBarCore MissionFanOutGroup.swift
+[992/1313] Compiling OpenBurnBarCore MissionGlassSurface.swift
+[993/1313] Compiling OpenBurnBarCore MissionKindChooser.swift
+[994/1313] Compiling OpenBurnBarCore MissionRuntimeConstellation.swift
+[995/1313] Compiling OpenBurnBarCore MissionSituationRoom.swift
+[996/1313] Compiling OpenBurnBarCore NestHubMiniPreview.swift
+[997/1313] Compiling OpenBurnBarCore PixelClockPreviewView.swift
+[998/1313] Compiling OpenBurnBarCore SwarmCanvasView+Color.swift
+[999/1313] Compiling OpenBurnBarCore SwarmCanvasView+Modes.swift
+[1000/1313] Compiling OpenBurnBarCore SwarmCanvasView+ShapeData.swift
+[1001/1313] Compiling OpenBurnBarCore AgentInsightsKPIStripView.swift
+[1002/1313] Compiling OpenBurnBarCore AgentInsightsMissionRailView.swift
+[1003/1313] Compiling OpenBurnBarCore AgentInsightsRosterView.swift
+[1004/1313] Compiling OpenBurnBarCore AgentInsightsView.swift
+[1005/1313] Compiling OpenBurnBarCore InsightASCIIView.swift
+[1006/1313] Compiling OpenBurnBarCore InsightAnomalyTableView.swift
+[1007/1313] Compiling OpenBurnBarCore InsightCohortView.swift
+[1008/1313] Compiling OpenBurnBarCore InsightDistributionView.swift
+[1009/1313] Compiling OpenBurnBarCore InsightDrilldownListView.swift
+[1010/1313] Compiling OpenBurnBarCore InsightFocusMatrixView.swift
+[1011/1313] Compiling OpenBurnBarCore InsightForecastView.swift
+[1012/1313] Compiling OpenBurnBarCore InsightFormatting.swift
+[1013/1313] Compiling OpenBurnBarCore InsightFunnelView.swift
+[1014/1313] Compiling OpenBurnBarCore InsightHeatmapView.swift
+[1015/1313] Compiling OpenBurnBarCore InsightKPITileView.swift
+[1016/1313] Compiling OpenBurnBarCore InsightNarrativeView.swift
+[1017/1313] Compiling OpenBurnBarCore InsightQuotaPulseView.swift
+[1018/1313] Compiling OpenBurnBarCore InsightRadarView.swift
+[1019/1331] Compiling OpenBurnBarCore InsightRankingView.swift
+[1020/1331] Compiling OpenBurnBarCore InsightRecommendationView.swift
+[1021/1331] Compiling OpenBurnBarCore InsightSankeyView.swift
+[1022/1331] Compiling OpenBurnBarCore InsightScatterView.swift
+[1023/1331] Compiling OpenBurnBarCore InsightTimeSeriesView.swift
+[1024/1331] Compiling OpenBurnBarCore InsightUseCaseClusterView.swift
+[1025/1331] Compiling OpenBurnBarCore InsightWidgetChrome.swift
+[1026/1331] Compiling OpenBurnBarCore InsightWidgetRenderer.swift
+[1027/1331] Compiling OpenBurnBarCore IntelligenceBriefView+Components.swift
+[1028/1331] Compiling OpenBurnBarCore IntelligenceBriefView+Mission.swift
+[1029/1331] Compiling OpenBurnBarCore IntelligenceBriefView.swift
+[1030/1331] Compiling OpenBurnBarCore VerdictBulletList.swift
+[1031/1331] Compiling OpenBurnBarCore VerdictDeltaChip.swift
+[1032/1331] Compiling OpenBurnBarCore VerdictHeroView.swift
+[1033/1331] Compiling OpenBurnBarCore VerdictProvenanceChip.swift
+[1034/1331] Compiling OpenBurnBarCore VerdictRingsStrip.swift
+[1035/1331] Compiling OpenBurnBarCore VerdictTraceStripView.swift
+[1036/1331] Compiling OpenBurnBarCore LaunchSplash.swift
+[1037/1331] Compiling OpenBurnBarCore SwarmCanvasView+ShapeGenerators.swift
+[1038/1331] Compiling OpenBurnBarCore SwarmCanvasView+ShapeSampling.swift
+[1039/1331] Compiling OpenBurnBarCore SwarmCanvasView+Substrate.swift
+[1040/1331] Compiling OpenBurnBarCore SwarmCanvasView.swift
+[1041/1331] Compiling OpenBurnBarCore SwarmGlyphSampler.swift
+[1042/1331] Compiling OpenBurnBarCore SwarmLogoShape.swift
+[1043/1331] Compiling OpenBurnBarCore SwarmProviderLogoDotMap.swift
+[1044/1331] Compiling OpenBurnBarCore UnifiedCacheHitRateBadge.swift
+[1045/1331] Compiling OpenBurnBarCore UnifiedDesignSystem.swift
+[1046/1331] Compiling OpenBurnBarCore UnifiedGlassCard.swift
+[1047/1331] Compiling OpenBurnBarCore UnifiedMiniStat.swift
+[1048/1331] Compiling OpenBurnBarCore UnifiedProviderLogoView.swift
+[1049/1331] Compiling OpenBurnBarCore UnifiedProviderTheme.swift
+[1050/1331] Compiling OpenBurnBarCore UnifiedQuotaSignalView.swift
+[1051/1331] Compiling OpenBurnBarCore UnifiedSkeletonView.swift
+[1052/1331] Compiling OpenBurnBarCore UnifiedToolCallAccordion.swift
+[1053/1331] Compiling OpenBurnBarCore XAISuperGrokPacingLog.swift
+[1054/1331] Compiling OpenBurnBarCore resource_bundle_accessor.swift
+[1055/1331] Compiling OpenBurnBarCore TextExpansion.swift
+[1056/1331] Compiling OpenBurnBarCore TextExpansionInbox.swift
+[1057/1331] Compiling OpenBurnBarCore TextExpansionKeyEventCharacters.swift
+[1058/1331] Compiling OpenBurnBarCore TextExpansionSnapshotStore.swift
+[1059/1331] Compiling OpenBurnBarCore TextExpansionUsageStore.swift
+[1060/1331] Compiling OpenBurnBarCore ThreadSafeISO8601DateFormatter.swift
+[1061/1331] Compiling OpenBurnBarCore TraceContext.swift
+[1062/1331] Compiling OpenBurnBarCore UIMode.swift
+[1063/1331] Compiling OpenBurnBarCore BurnBarLogoFormationView.swift
+[1064/1331] Compiling OpenBurnBarCore CardEnvelope.swift
+[1065/1331] Compiling OpenBurnBarCore CardEnvelopeView.swift
+[1066/1331] Compiling OpenBurnBarCore CookingLoader.swift
+[1067/1331] Compiling OpenBurnBarCore EmberSurfaceBackground.swift
+[1068/1331] Compiling OpenBurnBarCore GemLogoView.swift
+[1069/1331] Compiling OpenBurnBarCore HouseCrestPrimitives.swift
+[1070/1331] Compiling OpenBurnBarCore AgentInsightsCanvasGridView.swift
+[1071/1331] Compiling OpenBurnBarCore AgentInsightsEmptyStateView.swift
+[1072/1331] Compiling OpenBurnBarCore AgentInsightsHeaderView.swift
+[1073/1331] Compiling OpenBurnBarCore VerdictComposer.swift
+[1074/1331] Compiling OpenBurnBarCore AgentIdentity.swift
+[1075/1331] Compiling OpenBurnBarCore AgentIdentityProviderBridge.swift
+[1076/1331] Compiling OpenBurnBarCore AgentManifest.swift
+[1077/1331] Compiling OpenBurnBarCore AgentPersona.swift
+[1078/1331] Compiling OpenBurnBarCore AgentProvider+LogoBackdrop.swift
+[1079/1331] Compiling OpenBurnBarCore AgentProvider.swift
+[1080/1331] Compiling OpenBurnBarCore AgentProviderLogDiscovery.swift
+[1081/1331] Compiling OpenBurnBarCore AgentTier.swift
+[1082/1331] Compiling OpenBurnBarCore AgentWatchLiveActivityAttributes.swift
+[1083/1331] Compiling OpenBurnBarCore AgentWatchLiveActivityIntents.swift
+[1084/1331] Compiling OpenBurnBarCore ApprovalPolicy.swift
+[1085/1331] Compiling OpenBurnBarCore AskAssistantIntent.swift
+[1086/1331] Compiling OpenBurnBarCore AssistantPendingPrompt.swift
+[1087/1331] Compiling OpenBurnBarCore AssistantQuickPrompt.swift
+[1088/1331] Compiling OpenBurnBarCore AssistantRuntimeID.swift
+[1089/1331] Compiling OpenBurnBarCore BudgetRule.swift
+[1090/1331] Compiling OpenBurnBarCore BurnBarLiveActivityAttributes.swift
+[1091/1331] Compiling OpenBurnBarCore SmartDisplayConfigCodec.swift
+[1092/1331] Compiling OpenBurnBarCore SmartDisplayKind.swift
+[1093/1331] Compiling OpenBurnBarCore SmartDisplayRepairStatus.swift
+[1094/1331] Compiling OpenBurnBarCore SmartHubConfig.swift
+[1095/1331] Compiling OpenBurnBarCore SmartHubDisplayConfig.swift
+[1096/1331] Compiling OpenBurnBarCore SubscriptionTopic.swift
+[1097/1331] Compiling OpenBurnBarCore SubstrateFamily.swift
+[1098/1331] Compiling OpenBurnBarCore SwarmColorDriver.swift
+[1099/1331] Compiling OpenBurnBarCore SwarmColorPalette.swift
+[1100/1331] Compiling OpenBurnBarCore ThemePrimitives.swift
+[1101/1331] Compiling OpenBurnBarCore ThreadInboxItem.swift
+[1102/1331] Compiling OpenBurnBarCore TokenUsage.swift
+[1103/1331] Compiling OpenBurnBarCore UsageRollupTypes.swift
+[1104/1331] Compiling OpenBurnBarCore WandModelRouter.swift
+[1105/1331] Compiling OpenBurnBarCore String+Extensions.swift
+[1106/1331] Compiling OpenBurnBarCore SwitcherBrowserLaunchService.swift
+[1107/1331] Compiling OpenBurnBarCore SwitcherCLILAunchService.swift
+[1108/1331] Compiling OpenBurnBarCore SwitcherProfile.swift
+[1109/1331] Compiling OpenBurnBarCore OpenBurnBarSearchContracts.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1110/1331] Compiling OpenBurnBarCore OpenBurnBarSearchPlanner.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1111/1331] Compiling OpenBurnBarCore OpenBurnBarVectorKit.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1112/1331] Compiling OpenBurnBarCore PixelClockProviderLogoAssets.generated.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1113/1331] Compiling OpenBurnBarCore PixelClockQuotaRenderer.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1114/1331] Compiling OpenBurnBarCore OpenBurnBarLinuxPaths.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1115/1331] Compiling OpenBurnBarCore PlatformCrypto.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1116/1331] Compiling OpenBurnBarCore PlatformLogger.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1117/1331] Compiling OpenBurnBarCore PretextEngine.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1118/1331] Compiling OpenBurnBarCore PretextTypes.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1119/1331] Compiling OpenBurnBarCore SendableFileSystem.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1120/1331] Compiling OpenBurnBarCore AnthropicInsightAdapter.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1121/1331] Compiling OpenBurnBarCore BurnBarHostedInsightAdapter.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1122/1331] Compiling OpenBurnBarCore HermesInsightAdapter.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:24:1: warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 22 | 
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SymmetricKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:25:1: warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 23 | #if os(Linux)
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'SharedSecret' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:26:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 24 | extension SymmetricKey: @unchecked Sendable {}
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:27:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 25 | extension SharedSecret: @unchecked Sendable {}
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:28:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 26 | extension Curve25519.Signing.PrivateKey: @unchecked Sendable {}
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:29:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 27 | extension Curve25519.Signing.PublicKey: @unchecked Sendable {}
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:30:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 28 | extension Curve25519.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:31:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 29 | extension Curve25519.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:32:1: warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 30 | extension P256.Signing.PrivateKey: @unchecked Sendable {}
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PrivateKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+ 34 | #endif
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:33:1: warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+ 31 | extension P256.Signing.PublicKey: @unchecked Sendable {}
+ 32 | extension P256.KeyAgreement.PrivateKey: @unchecked Sendable {}
+ 33 | extension P256.KeyAgreement.PublicKey: @unchecked Sendable {}
+    | |- warning: extension declares a conformance of imported type 'PublicKey' to imported protocol 'Sendable'; this will not behave correctly if the owners of 'Crypto' introduce this conformance in the future
+    | `- note: add '@retroactive' to silence this warning
+ 34 | #endif
+ 35 | 
+
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }

@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 public enum BurnBarPersistentVectorIndexError: LocalizedError {
@@ -130,7 +129,7 @@ public enum BurnBarPersistentVectorIndexKeyCodec {
 
     private static func stableKey(for chunkID: String, salt: UInt64) -> UInt64 {
         let payload = Data((salt == 0 ? chunkID : "\(salt):\(chunkID)").utf8)
-        let digest = SHA256.hash(data: payload)
+        let digest = PlatformCrypto.sha256(payload)
         let key = digest.prefix(8).reduce(UInt64.zero) { partial, byte in
             (partial << 8) | UInt64(byte)
         }

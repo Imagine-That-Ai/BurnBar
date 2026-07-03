@@ -1,0 +1,4 @@
+linux_fixture_sha256 5ce2db1c997bf6091717b488f562acfc3dfbd6b39d31ec7c4e5745fd8c14eb28
+macos_generated_sha256 5ce2db1c997bf6091717b488f562acfc3dfbd6b39d31ec7c4e5745fd8c14eb28
+checksum_match yes
+json_byte_match yes

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// A one-shot, full-bleed branded launch splash.
@@ -70,3 +71,5 @@ public extension View {
         modifier(BurnBarLaunchSplashModifier(duration: duration, onHaptic: onHaptic))
     }
 }
+
+#endif

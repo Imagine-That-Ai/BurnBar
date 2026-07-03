@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
 
 actor BurnBarTelegramBotBridge {
     static let shared = BurnBarTelegramBotBridge()

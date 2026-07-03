@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-07-03T11:55:14.629Z",
+  "lane": "W07LinuxComputerUseMediaMobile",
+  "trace": [
+    {
+      "id": "screen-hevc",
+      "target": "VAL-MEDIA-001",
+      "stage": "screen-share-keyframe",
+      "codec": "hevc",
+      "delivery": "iroh-stream",
+      "backpressure": "none",
+      "observation": "Preferred when Linux encoder and mobile decoder both advertise HEVC."
+    },
+    {
+      "id": "screen-h264-fallback",
+      "target": "VAL-MEDIA-001",
+      "stage": "screen-share-fallback",
+      "codec": "h264",
+      "delivery": "iroh-stream",
+      "backpressure": "paused-producer",
+      "observation": "Fallback preserves ordered GOP stream when HEVC is unavailable."
+    },
+    {
+      "id": "audio-opus",
+      "target": "VAL-MEDIA-001",
+      "stage": "call-audio",
+      "codec": "opus",
+      "delivery": "iroh-datagram",
+      "backpressure": "dropped-delta",
+      "observation": "Audio remains datagram-first; stale packets are dropped before queue growth."
+    },
+    {
+      "id": "agent-watch-v1",
+      "target": "VAL-MEDIA-001",
+      "stage": "agent-watch-frame",
+      "codec": "media-frame-v1",
+      "delivery": "shell-hot-path",
+      "backpressure": "dropped-delta",
+      "observation": "Cursor metadata stays the shared four-byte extension; no Linux-only fork."
+    },
+    {
+      "id": "agent-watch-v2-negotiated",
+      "target": "VAL-MEDIA-001",
+      "stage": "future-extension-negotiation",
+      "codec": "media-frame-v2",
+      "delivery": "iroh-stream",
+      "backpressure": "paused-producer",
+      "observation": "V2 metadata is negotiated before use so v1 mobile clients keep v1 payload semantics."
+    }
+  ]
+}

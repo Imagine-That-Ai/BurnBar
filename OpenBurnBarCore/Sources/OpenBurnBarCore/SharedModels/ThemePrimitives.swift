@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(SwiftUI)
 import SwiftUI
+#endif
 
 // MARK: - App Skin
 
@@ -114,6 +116,7 @@ public enum DashboardLayout: String, CaseIterable, Codable, Sendable {
 
 // MARK: - Hex Color Helpers
 
+#if canImport(SwiftUI)
 public extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -180,6 +183,7 @@ public extension Color {
     }
     #endif
 }
+#endif
 
 // MARK: - Design System Color Tokens (Hex Strings)
 
@@ -267,6 +271,7 @@ public enum DesignSystemTokens {
 // MARK: - Design System SwiftUI Colors
 
 public enum DesignSystemColors {
+#if canImport(SwiftUI)
     public static let ember   = Color(editorial: DesignSystemTokens.emberEditorial, light: DesignSystemTokens.emberLight, dark: DesignSystemTokens.emberDark)
     public static let amber   = Color(editorial: DesignSystemTokens.amberEditorial, light: DesignSystemTokens.amberLight, dark: DesignSystemTokens.amberDark)
     public static let blaze   = Color(editorial: DesignSystemTokens.blazeEditorial, light: DesignSystemTokens.blazeLight, dark: DesignSystemTokens.blazeDark)
@@ -423,6 +428,7 @@ public enum DesignSystemColors {
         }
         return palette[Int(hash % UInt64(palette.count))]
     }
+#endif
 
     // MARK: - Raw RGBA for Canvas Rendering
 

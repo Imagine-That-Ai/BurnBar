@@ -108,8 +108,12 @@ public enum SwarmSubstratePreferences {
 
     /// The live selected id, clamped to a real catalog entry. Defaults to plain.
     public static var currentID: String {
+        #if canImport(SwiftUI)
         let raw = UserDefaults.standard.string(forKey: substrateKey) ?? SubstrateCatalog.plainID
         return SubstrateCatalog.byID[raw] != nil ? raw : SubstrateCatalog.plainID
+        #else
+        return UserDefaults.standard.string(forKey: substrateKey) ?? "plain"
+        #endif
     }
 
     /// Whether the substrate layer is enabled (default off ⇒ identical to today).

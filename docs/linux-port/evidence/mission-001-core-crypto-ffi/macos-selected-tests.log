@@ -1,0 +1,1386 @@
+Fetching https://github.com/swiftlang/swift-syntax.git from cache
+Fetching https://github.com/apple/swift-crypto.git from cache
+Fetching https://github.com/swiftlang/swift-testing from cache
+Fetching https://github.com/apple/swift-asn1.git from cache
+Fetching https://github.com/sqlcipher/SQLCipher.swift.git from cache
+Fetched https://github.com/swiftlang/swift-testing from cache (0.04s)
+Fetched https://github.com/apple/swift-crypto.git from cache (0.04s)
+Fetched https://github.com/sqlcipher/SQLCipher.swift.git from cache (0.04s)
+Fetched https://github.com/swiftlang/swift-syntax.git from cache (0.04s)
+Fetched https://github.com/apple/swift-asn1.git from cache (0.04s)
+Creating working copy for https://github.com/swiftlang/swift-testing
+Creating working copy for https://github.com/sqlcipher/SQLCipher.swift.git
+Creating working copy for https://github.com/swiftlang/swift-syntax.git
+Creating working copy for https://github.com/apple/swift-asn1.git
+Creating working copy for https://github.com/apple/swift-crypto.git
+Working copy of https://github.com/sqlcipher/SQLCipher.swift.git resolved at 4.16.0
+Working copy of https://github.com/swiftlang/swift-testing resolved at 0.99.0
+Working copy of https://github.com/apple/swift-asn1.git resolved at 1.7.1
+Working copy of https://github.com/swiftlang/swift-syntax.git resolved at 600.0.1
+Working copy of https://github.com/apple/swift-crypto.git resolved at 3.15.1
+warning: 'grdb-sqlcipher': /private/tmp/openburnbar-linux-mission-001/Vendor/GRDB-SQLCipher/Package.swift:52:19: warning: 'v4' is deprecated: watchOS 9.0 is the oldest supported version [#DeprecatedDeclaration]
+50 |         .macOS(.v10_13),
+51 |         .tvOS(.v11),
+52 |         .watchOS(.v4),
+   |                   `- warning: 'v4' is deprecated: watchOS 9.0 is the oldest supported version [#DeprecatedDeclaration]
+53 |     ],
+54 |     products: [
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+warning: 'sqlcipher.swift': /private/tmp/openburnbar-worker-macos-core-v3-build/checkouts/SQLCipher.swift/Package.swift:12:19: warning: 'v4' is deprecated: watchOS 9.0 is the oldest supported version [#DeprecatedDeclaration]
+10 |         .macOS(.v10_13),
+11 |         .macCatalyst(.v13),
+12 |         .watchOS(.v4),
+   |                   `- warning: 'v4' is deprecated: watchOS 9.0 is the oldest supported version [#DeprecatedDeclaration]
+13 |         .tvOS(.v12),
+14 |         .visionOS(.v1)
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+Fetching binary artifact https://github.com/sqlcipher/SQLCipher.swift/releases/download/4.16.0/SQLCipher.xcframework.zip from cache
+Fetched https://github.com/sqlcipher/SQLCipher.swift/releases/download/4.16.0/SQLCipher.xcframework.zip from cache (1.90s)
+warning: 'grdb-sqlcipher': failed to retrieve search paths with pkg-config; maybe pkg-config is not installed
+warning: 'grdb-sqlcipher': you may be able to install sqlcipher using your system-packager:
+    brew install sqlcipher
+warning: 'openburnbarcore': you may be able to install zlib using your system-packager:
+    brew install zlib
+Building for debugging...
+[Computing dependencies]
+[Provisioning 1 / 72]
+[Pre-planning 1 / 1738]
+[Planning 295 / 1738]
+[Planning deferred tasks]
+[Constructing 3086 / 3834]
+[50 / 839] SwiftSyntax509
+[321 / 839] swift-crypto_Crypto
+[358 / 839]
+[409 / 839]
+[419 / 839]
+[433 / 847] SwiftSyntax600
+[435 / 853]
+[453 / 855] SwiftSyntax510
+[460 / 856] SwiftSyntax600
+[466 / 856] OpenBurnBarFirestoreModels
+[473 / 915]
+[477 / 943] _TestingInternals
+[483 / 957] Crypto
+[497 / 1021]
+[501 / 1021]
+[508 / 1021]
+[511 / 1021]
+[512 / 1021]
+[516 / 1021]
+[534 / 1021]
+[536 / 1021]
+[540 / 1021] SwiftSyntax
+[543 / 1021]
+[546 / 1021]
+[550 / 1021]
+[554 / 1021]
+[557 / 1021]
+[561 / 1021]
+[562 / 1021]
+[564 / 1021]
+[573 / 1021]
+[589 / 1021]
+[599 / 1021] Crypto
+[604 / 1021] SwiftSyntax
+[608 / 1021] OpenBurnBarFirestoreModels
+[610 / 1021] OpenBurnBarFirestoreModels
+[613 / 1021] OpenBurnBarAnalytics
+[618 / 1021] OpenBurnBarAnalytics-product
+[623 / 1021] GRDB
+[627 / 1021] GRDB
+[628 / 1021] OpenBurnBarAnalytics
+[630 / 1021] GRDB
+[631 / 1021] OpenBurnBarFirestoreModels
+[632 / 1021] GRDB
+[635 / 1021] GRDB
+[636 / 1021] GRDB
+[637 / 1021] GRDB
+[638 / 1021] GRDB
+[641 / 1021] Crypto
+[642 / 1021] GRDB
+[644 / 1021] GRDB
+[649 / 1021] GRDB
+[651 / 1021] GRDB-product
+[663 / 1021] Crypto
+[670 / 1021] BurnBarRemoteEngine
+[676 / 1025] OpenBurnBarAnalytics
+[678 / 1025] OpenBurnBarAnalytics-product
+[678 / 1025] BurnBarRemoteEngine
+[680 / 1025] BurnBarRemoteEngine
+[693 / 1061] SwiftParser
+[697 / 1061] SwiftBasicFormat
+[711 / 1061] SwiftParser
+[716 / 1061] SwiftParser
+[719 / 1061] SwiftParser
+[720 / 1061] SwiftParser
+[722 / 1061] SwiftParser
+[723 / 1061] SwiftParser
+[725 / 1061] SwiftDiagnostics
+[729 / 1125]
+[732 / 1125]
+[743 / 1125]
+[749 / 1125]
+[752 / 1125] SwiftDiagnostics
+[759 / 1125]
+[769 / 1125] SwiftParser-product
+[775 / 1127]
+[778 / 1127] SwiftParserDiagnostics
+[792 / 1152]
+[795 / 1152] SwiftParserDiagnostics
+[798 / 1152] SwiftOperators
+[809 / 1152] SwiftOperators
+[817 / 1152] SwiftOperators
+[824 / 1153] SwiftOperators
+[825 / 1153] SwiftOperators
+[826 / 1153] SwiftSyntaxBuilder
+[842 / 1169] SwiftSyntaxBuilder
+[844 / 1169] SwiftSyntaxBuilder
+[853 / 1170]
+[870 / 1170] OpenBurnBarCore
+[871 / 1189] SwiftSyntaxMacros
+[872 / 1189] SwiftSyntaxMacros
+[875 / 1189] SwiftSyntaxMacros
+[881 / 1189] SwiftSyntaxMacros
+[883 / 1189] SwiftSyntaxMacros-product
+[887 / 1189] SwiftSyntaxMacros
+[890 / 1189] SwiftSyntaxMacros
+[893 / 1189] SwiftSyntaxMacros
+[897 / 1189] SwiftSyntaxMacros
+[899 / 1189] SwiftSyntax
+[900 / 1189]
+[901 / 1190]
+[904 / 1200] SwiftSyntaxMacroExpansion
+[907 / 1200] SwiftSyntaxMacroExpansion
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshCausticSubstrate.swift:163:17: warning: immutable value 'sy' was never used; consider replacing with '_' or removing it [#NoUsage]
+161 |             var cy = r0
+162 |             var wy = 1 - fy
+163 |             for sy in 0..<2 {
+    |                 `- warning: immutable value 'sy' was never used; consider replacing with '_' or removing it [#NoUsage]
+164 |                 if cy >= 0 && cy < rows {
+165 |                     var cxi = c0
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshCausticSubstrate.swift:167:25: warning: immutable value 'sx' was never used; consider replacing with '_' or removing it [#NoUsage]
+165 |                     var cxi = c0
+166 |                     var wx = 1 - fx
+167 |                     for sx in 0..<2 {
+    |                         `- warning: immutable value 'sx' was never used; consider replacing with '_' or removing it [#NoUsage]
+168 |                         if cxi >= 0 && cxi < cols {
+169 |                             let ww = w * wx * wy
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[914 / 1200] SwiftSyntaxMacroExpansion
+[920 / 1200]
+[924 / 1201] OpenBurnBarCore
+[924 / 1201] SwiftSyntaxMacros
+[927 / 1201] OpenBurnBarCore
+[938 / 1214] SwiftCompilerPluginMessageHandling
+[940 / 1214] SwiftCompilerPluginMessageHandling
+[946 / 1214]
+[947 / 1215] SwiftCompilerPluginMessageHandling
+[949 / 1215] SwiftCompilerPluginMessageHandling
+[949 / 1215] SwiftCompilerPlugin
+[951 / 1217] SwiftCompilerPlugin
+[967 / 1218]
+[967 / 1218] OpenBurnBarCore
+[967 / 1218] TestingMacros
+[980 / 1237] TestingMacros
+[982 / 1237] TestingMacros
+[986 / 1237] TestingMacros
+[987 / 1237] TestingMacros
+[989 / 1237] TestingMacros
+[992 / 1238] OpenBurnBarCore
+[1000 / 1240]
+[1001 / 1241] OpenBurnBarCore
+[1010 / 1295]
+[1011 / 1295]
+[1013 / 1295]
+[1016 / 1295]
+[1018 / 1295]
+[1019 / 1295]
+[1022 / 1297] OpenBurnBarData
+[1036 / 1324] OpenBurnBarIrohRelay
+[1039 / 1324] OpenBurnBarSignalCore
+[1048 / 1324] OpenBurnBarSignalCore
+[1054 / 1324] OpenBurnBarData
+[1059 / 1324] OpenBurnBarIrohRelay
+[1066 / 1325]
+[1073 / 1326]
+[1074 / 1326]
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:358:11: warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+356 |         do {
+357 |             return publicKey.isValidSignature(signature, for: message)
+358 |         } catch {
+    |           `- warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+359 |             throw PlatformCryptoError.invalidVerifyingKey
+360 |         }
+[1074 / 1326] OpenBurnBarData
+[1076 / 1326]
+[1077 / 1326] OpenBurnBarData
+[1080 / 1328]
+[1084 / 1328] OpenBurnBarData
+[1094 / 1328] OpenBurnBarMedia
+[1095 / 1348]
+[1112 / 1348] OpenBurnBarMedia
+[1116 / 1348] OpenBurnBarMedia
+[1123 / 1349] OpenBurnBarMedia
+[1124 / 1349] OpenBurnBarMedia
+[1125 / 1349]
+[1142 / 1349] Testing
+[1143 / 1369]
+[1144 / 1369] Testing
+[1149 / 1369] OpenBurnBarCore
+[1156 / 1369] OpenBurnBarComputerUseCore
+[1158 / 1369] OpenBurnBarComputerUseCore
+[1160 / 1369] Testing
+[1163 / 1369] Testing
+[1170 / 1369] Testing
+[1172 / 1369] Testing-product
+[1190 / 1369] OpenBurnBarData
+[1198 / 1369] OpenBurnBarSignalCore-product
+[1201 / 1369] Testing
+[1243 / 1377] OpenBurnBarAnalyticsTests-product
+[1254 / 1377]
+[1254 / 1377] OpenBurnBarComputerUseCore
+[1254 / 1377] OpenBurnBarSignalSessionTransportTests-product
+[1262 / 1430]
+[1269 / 1430]
+[1277 / 1430]
+[1285 / 1430]
+[1286 / 1430]
+[1288 / 1430] OpenBurnBarComputerUseCore
+[1307 / 1432] OpenBurnBarComputerUseCore-product
+[1309 / 1432]
+[1312 / 1432]
+[1314 / 1432]
+[1315 / 1432]
+[1322 / 1432] OpenBurnBarSignalSessionTransportTests-product
+[1323 / 1432] OpenBurnBarDataTests-product
+[1332 / 1432] BurnBarRemoteEngineTests-product
+[1334 / 1441]
+[1336 / 1441]
+[1338 / 1441] OpenBurnBarSignalSessionTransportTests-product
+[1341 / 1441] OpenBurnBarDataTests-product
+[1345 / 1441] OpenBurnBarAnalyticsTests-product
+[1354 / 1449] BurnBarRemoteEngineTests-product
+[1360 / 1449] BurnBarRemoteEngineTests-product
+[1365 / 1449] OpenBurnBarIrohRelayTests-product
+[1374 / 1467] OpenBurnBarSignalCoreTests-product
+[1379 / 1467] OpenBurnBarIrohRelayTests-product
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarIrohRelayTests/IrohRelayCryptoSpotCheckTests.swift:27:13: warning: initialization of immutable value 'priv' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+25 | 
+26 |     func testFrameRoundTripWithPayload() throws {
+27 |         let priv = HermesRelayCrypto.generatePrivateKey()
+   |             `- warning: initialization of immutable value 'priv' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+28 |         let symmetric = try HermesRelayCrypto.generateSymmetricKeyData()
+29 |         let requestAAD = HermesRelayCrypto.requestAAD(uid: "u", connectionID: "c", requestID: "r")
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[1394 / 1487] OpenBurnBarIrohRelayTests-product
+[1395 / 1493] OpenBurnBarComputerUseCoreTests-product
+[1396 / 1511]
+[1409 / 1530] OpenBurnBarMediaTests-product
+[1412 / 1530] OpenBurnBarMediaTests-product
+[1415 / 1530] OpenBurnBarMediaTests-product
+[1418 / 1530] OpenBurnBarMediaTests-product
+[1419 / 1530] OpenBurnBarMediaTests-product
+[1430 / 1530] OpenBurnBarLinuxCoreFoundationTests-product
+[1435 / 1530] OpenBurnBarIrohRelayTests-product
+[1438 / 1530] OpenBurnBarCoreTests-product
+[1442 / 1530] OpenBurnBarCoreTests-product
+[1443 / 1530] OpenBurnBarCoreTests-product
+[1444 / 1530] OpenBurnBarCoreTests-product
+[1445 / 1530] OpenBurnBarCoreTests-product
+[1458 / 1530] OpenBurnBarCoreTests-product
+[1459 / 1530] OpenBurnBarCoreTests-product
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Insights/Cadence/CadenceSchedulerTests.swift:30:13: warning: variable 'comps' was never mutated; consider changing to 'let' constant
+28 | 
+29 |         // 2024-01-15 at 09:00 — outside 15-minute window
+30 |         var comps = DateComponents(year: 2024, month: 1, day: 15, hour: 9, minute: 0)
+   |             `- warning: variable 'comps' was never mutated; consider changing to 'let' constant
+31 |         let now = cal.date(from: comps)!
+32 | 
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Insights/Cadence/CadenceSchedulerTests.swift:63:13: warning: variable 'comps' was never mutated; consider changing to 'let' constant
+61 | 
+62 |         // 2024-01-07 is a Sunday at 18:05
+63 |         var comps = DateComponents(year: 2024, month: 1, day: 7, hour: 18, minute: 5)
+   |             `- warning: variable 'comps' was never mutated; consider changing to 'let' constant
+64 |         let now = cal.date(from: comps)!
+65 | 
+[1461 / 1530] OpenBurnBarCoreTests-product
+[1463 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1466 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1469 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1470 / 1530] OpenBurnBarLinuxCoreFoundationTests-product
+[1471 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1474 / 1530] OpenBurnBarMediaTests-product
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/PrivilegedTrustRealValidationTests.swift:148:13: warning: initialization of immutable value 'store' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+146 | 
+147 |     func test_nonceLedgerPath_defaultInit_matchesProbeConstant() {
+148 |         let store = FileCapabilityTokenNonceStore()
+    |             `- warning: initialization of immutable value 'store' was never used; consider replacing with assignment to '_' or removing it [#NoUsage]
+149 |         // The store's default path should match the constant (no way to read
+150 |         // the private `path` property directly, but we verify the constant
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[1476 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1478 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1480 / 1530] OpenBurnBarLinuxCoreFoundationTests-product
+[1484 / 1530] OpenBurnBarSignalCoreTests-product
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:14:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 12 |     // MARK: - iconName mapping
+ 13 | 
+ 14 |     @Test func iconName_read() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 15 |         #expect(UnifiedToolCallDisplay.iconName(for: "read_file") == "doc.text")
+ 16 |         #expect(UnifiedToolCallDisplay.iconName(for: "ReadFile") == "doc.text")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:21:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 19 |     }
+ 20 | 
+ 21 |     @Test func iconName_bash() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 22 |         #expect(UnifiedToolCallDisplay.iconName(for: "bash") == "terminal")
+ 23 |         #expect(UnifiedToolCallDisplay.iconName(for: "exec_command") == "terminal")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:28:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 26 |     }
+ 27 | 
+ 28 |     @Test func iconName_search() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 29 |         #expect(UnifiedToolCallDisplay.iconName(for: "search_files") == "magnifyingglass")
+ 30 |         #expect(UnifiedToolCallDisplay.iconName(for: "grep_search") == "magnifyingglass")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:35:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 33 |     }
+ 34 | 
+ 35 |     @Test func iconName_web() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 36 |         #expect(UnifiedToolCallDisplay.iconName(for: "web_search") == "globe")
+ 37 |         #expect(UnifiedToolCallDisplay.iconName(for: "browser_navigate") == "globe")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:42:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 40 |     }
+ 41 | 
+ 42 |     @Test func iconName_edit() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 43 |         #expect(UnifiedToolCallDisplay.iconName(for: "edit_file") == "pencil.and.outline")
+ 44 |         #expect(UnifiedToolCallDisplay.iconName(for: "patch_code") == "pencil.and.outline")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:48:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 46 |     }
+ 47 | 
+ 48 |     @Test func iconName_memory() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 49 |         #expect(UnifiedToolCallDisplay.iconName(for: "memory_store") == "brain")
+ 50 |         #expect(UnifiedToolCallDisplay.iconName(for: "skill_lookup") == "brain")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:54:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 52 |     }
+ 53 | 
+ 54 |     @Test func iconName_image() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 55 |         #expect(UnifiedToolCallDisplay.iconName(for: "image_generate") == "photo")
+ 56 |         #expect(UnifiedToolCallDisplay.iconName(for: "vision_describe") == "photo")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:60:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 58 |     }
+ 59 | 
+ 60 |     @Test func iconName_default() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 61 |         // Names that don't match any keyword fall back to the generic icon.
+ 62 |         #expect(UnifiedToolCallDisplay.iconName(for: "unknown_tool") == "wrench.and.screwdriver.fill")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:69:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 67 |     // MARK: - state classification from statusRaw
+ 68 | 
+ 69 |     @Test func state_isRunning_wins_over_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 70 |         // isRunning=true always produces .running regardless of statusRaw.
+ 71 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", statusRaw: "done", isRunning: true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:75:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 73 |     }
+ 74 | 
+ 75 |     @Test func state_done_variants() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 76 |         let doneStrings = ["done", "Done", "complete", "completed", "finished", "success", "ok", "ran"]
+ 77 |         for raw in doneStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:83:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 81 |     }
+ 82 | 
+ 83 |     @Test func state_failed_variants() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 84 |         let failStrings = ["failed", "error", "DENIED", "cancelled", "timeout", "rejected"]
+ 85 |         for raw in failStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:91:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 89 |     }
+ 90 | 
+ 91 |     @Test func state_running_from_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 92 |         let runStrings = ["running", "pending", "active", "streaming", "in_progress", "started"]
+ 93 |         for raw in runStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:99:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 97 |     }
+ 98 | 
+ 99 |     @Test func state_neutral_when_nil() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+100 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: nil, isRunning: false)
+101 |         #expect(call.state == .neutral)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:104:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+102 |     }
+103 | 
+104 |     @Test func state_neutral_when_empty() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+105 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: "   ", isRunning: false)
+106 |         #expect(call.state == .neutral)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:109:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+107 |     }
+108 | 
+109 |     @Test func state_neutral_unrecognised_string() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+110 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: "queued_v2", isRunning: false)
+111 |         // "queued" doesn't contain any recognised keyword → neutral.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:117:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+115 |     // MARK: - mostRecent & additionalCount
+116 | 
+117 |     @Test func mostRecent_returns_last_element() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+118 |         let calls = makeDisplays(count: 5)
+119 |         let recent = UnifiedToolCallAccordion.mostRecent(of: calls)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:123:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+121 |     }
+122 | 
+123 |     @Test func mostRecent_empty_returns_nil() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+124 |         #expect(UnifiedToolCallAccordion.mostRecent(of: []) == nil)
+125 |     }
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:127:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+125 |     }
+126 | 
+127 |     @Test func mostRecent_single_element() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+128 |         let single = [UnifiedToolCallDisplay(id: "only", name: "tool")]
+129 |         #expect(UnifiedToolCallAccordion.mostRecent(of: single)?.id == "only")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:132:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+130 |     }
+131 | 
+132 |     @Test func additionalCount_is_count_minus_one() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+133 |         let calls = makeDisplays(count: 5)
+134 |         #expect(UnifiedToolCallAccordion.additionalCount(of: calls) == 4)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:137:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+135 |     }
+136 | 
+137 |     @Test func additionalCount_single_is_zero() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+138 |         let single = [UnifiedToolCallDisplay(id: "x", name: "t")]
+139 |         #expect(UnifiedToolCallAccordion.additionalCount(of: single) == 0)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:142:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+140 |     }
+141 | 
+142 |     @Test func additionalCount_empty_is_zero() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+143 |         #expect(UnifiedToolCallAccordion.additionalCount(of: []) == 0)
+144 |     }
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:148:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+146 |     // MARK: - hasExpandableDetail
+147 | 
+148 |     @Test func hasExpandableDetail_false_when_no_args_or_result() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+149 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", detail: "some detail")
+150 |         // detail is shown in the collapsed row; only arguments/result gating expansion.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:154:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+152 |     }
+153 | 
+154 |     @Test func hasExpandableDetail_true_when_arguments_present() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+155 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", arguments: "{\"path\":\"/tmp\"}")
+156 |         #expect(call.hasExpandableDetail == true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:159:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+157 |     }
+158 | 
+159 |     @Test func hasExpandableDetail_true_when_result_present() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+160 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", result: "exit 0")
+161 |         #expect(call.hasExpandableDetail == true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:164:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+162 |     }
+163 | 
+164 |     @Test func hasExpandableDetail_false_when_whitespace_only() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+165 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", arguments: "   \n\t", result: "   ")
+166 |         #expect(call.hasExpandableDetail == false)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:171:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+169 |     // MARK: - State transition regression (StatusDot re-entry)
+170 | 
+171 |     @Test func state_transition_running_to_done() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+172 |         // Verifies the computed `state` value is re-evaluated correctly when
+173 |         // `statusRaw` changes — the StatusDot onChange(of:) handler depends on this.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:185:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+183 |     }
+184 | 
+185 |     @Test func state_isRunning_flag_overrides_done_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+186 |         // A call that has statusRaw="done" but isRunning=true must report .running.
+187 |         // This covers the case where a surface marks a new streaming call running
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:195:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+193 |     // MARK: - Accessibility hint logic
+194 | 
+195 |     @Test func accessibilityHint_single_call_with_args_says_details() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+196 |         // When there's exactly one call and it has arguments (expandable detail),
+197 |         // the accordion should say "Expand to see details", not "Expand 1 tool calls".
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:205:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+203 |     }
+204 | 
+205 |     @Test func accessibilityHint_multiple_calls_exposes_count() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+206 |         let many = makeDisplays(count: 3)
+207 |         // The hint should expose count when there is more than one call.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:214:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+212 |     // MARK: - isRunning semantics for paired calls (Mac transcript path regression)
+213 | 
+214 |     @Test func isRunning_false_when_tool_is_paired_with_result() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+215 |         // Simulates the Mac transcript path: a toolUse paired with its result is
+216 |         // NOT in flight — isRunning must be false.  This tests the precondition
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:228:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+226 |     }
+227 | 
+228 |     @Test func isRunning_true_only_for_last_unpaired_toolUse() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+229 |         // Simulates two calls in the same group where only the second is in flight.
+230 |         let first = UnifiedToolCallDisplay(id: "use-1", name: "read_file", result: "content", isRunning: false)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:14:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 12 |     // MARK: - iconName mapping
+ 13 | 
+ 14 |     @Test func iconName_read() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 15 |         #expect(UnifiedToolCallDisplay.iconName(for: "read_file") == "doc.text")
+ 16 |         #expect(UnifiedToolCallDisplay.iconName(for: "ReadFile") == "doc.text")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:21:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 19 |     }
+ 20 | 
+ 21 |     @Test func iconName_bash() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 22 |         #expect(UnifiedToolCallDisplay.iconName(for: "bash") == "terminal")
+ 23 |         #expect(UnifiedToolCallDisplay.iconName(for: "exec_command") == "terminal")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:28:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 26 |     }
+ 27 | 
+ 28 |     @Test func iconName_search() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 29 |         #expect(UnifiedToolCallDisplay.iconName(for: "search_files") == "magnifyingglass")
+ 30 |         #expect(UnifiedToolCallDisplay.iconName(for: "grep_search") == "magnifyingglass")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:35:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 33 |     }
+ 34 | 
+ 35 |     @Test func iconName_web() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 36 |         #expect(UnifiedToolCallDisplay.iconName(for: "web_search") == "globe")
+ 37 |         #expect(UnifiedToolCallDisplay.iconName(for: "browser_navigate") == "globe")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:42:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 40 |     }
+ 41 | 
+ 42 |     @Test func iconName_edit() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 43 |         #expect(UnifiedToolCallDisplay.iconName(for: "edit_file") == "pencil.and.outline")
+ 44 |         #expect(UnifiedToolCallDisplay.iconName(for: "patch_code") == "pencil.and.outline")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:48:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 46 |     }
+ 47 | 
+ 48 |     @Test func iconName_memory() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 49 |         #expect(UnifiedToolCallDisplay.iconName(for: "memory_store") == "brain")
+ 50 |         #expect(UnifiedToolCallDisplay.iconName(for: "skill_lookup") == "brain")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:54:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 52 |     }
+ 53 | 
+ 54 |     @Test func iconName_image() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 55 |         #expect(UnifiedToolCallDisplay.iconName(for: "image_generate") == "photo")
+ 56 |         #expect(UnifiedToolCallDisplay.iconName(for: "vision_describe") == "photo")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:60:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 58 |     }
+ 59 | 
+ 60 |     @Test func iconName_default() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 61 |         // Names that don't match any keyword fall back to the generic icon.
+ 62 |         #expect(UnifiedToolCallDisplay.iconName(for: "unknown_tool") == "wrench.and.screwdriver.fill")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:69:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 67 |     // MARK: - state classification from statusRaw
+ 68 | 
+ 69 |     @Test func state_isRunning_wins_over_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 70 |         // isRunning=true always produces .running regardless of statusRaw.
+ 71 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", statusRaw: "done", isRunning: true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:75:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 73 |     }
+ 74 | 
+ 75 |     @Test func state_done_variants() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 76 |         let doneStrings = ["done", "Done", "complete", "completed", "finished", "success", "ok", "ran"]
+ 77 |         for raw in doneStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:83:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 81 |     }
+ 82 | 
+ 83 |     @Test func state_failed_variants() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 84 |         let failStrings = ["failed", "error", "DENIED", "cancelled", "timeout", "rejected"]
+ 85 |         for raw in failStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:91:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 89 |     }
+ 90 | 
+ 91 |     @Test func state_running_from_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 92 |         let runStrings = ["running", "pending", "active", "streaming", "in_progress", "started"]
+ 93 |         for raw in runStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:99:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 97 |     }
+ 98 | 
+ 99 |     @Test func state_neutral_when_nil() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+100 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: nil, isRunning: false)
+101 |         #expect(call.state == .neutral)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:104:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+102 |     }
+103 | 
+104 |     @Test func state_neutral_when_empty() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+105 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: "   ", isRunning: false)
+106 |         #expect(call.state == .neutral)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:109:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+107 |     }
+108 | 
+109 |     @Test func state_neutral_unrecognised_string() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+110 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: "queued_v2", isRunning: false)
+111 |         // "queued" doesn't contain any recognised keyword → neutral.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:117:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+115 |     // MARK: - mostRecent & additionalCount
+116 | 
+117 |     @Test func mostRecent_returns_last_element() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+118 |         let calls = makeDisplays(count: 5)
+119 |         let recent = UnifiedToolCallAccordion.mostRecent(of: calls)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:123:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+121 |     }
+122 | 
+123 |     @Test func mostRecent_empty_returns_nil() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+124 |         #expect(UnifiedToolCallAccordion.mostRecent(of: []) == nil)
+125 |     }
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:127:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+125 |     }
+126 | 
+127 |     @Test func mostRecent_single_element() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+128 |         let single = [UnifiedToolCallDisplay(id: "only", name: "tool")]
+129 |         #expect(UnifiedToolCallAccordion.mostRecent(of: single)?.id == "only")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:132:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+130 |     }
+131 | 
+132 |     @Test func additionalCount_is_count_minus_one() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+133 |         let calls = makeDisplays(count: 5)
+134 |         #expect(UnifiedToolCallAccordion.additionalCount(of: calls) == 4)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:137:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+135 |     }
+136 | 
+137 |     @Test func additionalCount_single_is_zero() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+138 |         let single = [UnifiedToolCallDisplay(id: "x", name: "t")]
+139 |         #expect(UnifiedToolCallAccordion.additionalCount(of: single) == 0)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:142:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+140 |     }
+141 | 
+142 |     @Test func additionalCount_empty_is_zero() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+143 |         #expect(UnifiedToolCallAccordion.additionalCount(of: []) == 0)
+144 |     }
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:148:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+146 |     // MARK: - hasExpandableDetail
+147 | 
+148 |     @Test func hasExpandableDetail_false_when_no_args_or_result() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+149 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", detail: "some detail")
+150 |         // detail is shown in the collapsed row; only arguments/result gating expansion.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:154:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+152 |     }
+153 | 
+154 |     @Test func hasExpandableDetail_true_when_arguments_present() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+155 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", arguments: "{\"path\":\"/tmp\"}")
+156 |         #expect(call.hasExpandableDetail == true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:159:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+157 |     }
+158 | 
+159 |     @Test func hasExpandableDetail_true_when_result_present() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+160 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", result: "exit 0")
+161 |         #expect(call.hasExpandableDetail == true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:164:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+162 |     }
+163 | 
+164 |     @Test func hasExpandableDetail_false_when_whitespace_only() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+165 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", arguments: "   \n\t", result: "   ")
+166 |         #expect(call.hasExpandableDetail == false)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:171:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+169 |     // MARK: - State transition regression (StatusDot re-entry)
+170 | 
+171 |     @Test func state_transition_running_to_done() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+172 |         // Verifies the computed `state` value is re-evaluated correctly when
+173 |         // `statusRaw` changes — the StatusDot onChange(of:) handler depends on this.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:185:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+183 |     }
+184 | 
+185 |     @Test func state_isRunning_flag_overrides_done_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+186 |         // A call that has statusRaw="done" but isRunning=true must report .running.
+187 |         // This covers the case where a surface marks a new streaming call running
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:195:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+193 |     // MARK: - Accessibility hint logic
+194 | 
+195 |     @Test func accessibilityHint_single_call_with_args_says_details() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+196 |         // When there's exactly one call and it has arguments (expandable detail),
+197 |         // the accordion should say "Expand to see details", not "Expand 1 tool calls".
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:205:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+203 |     }
+204 | 
+205 |     @Test func accessibilityHint_multiple_calls_exposes_count() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+206 |         let many = makeDisplays(count: 3)
+207 |         // The hint should expose count when there is more than one call.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:214:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+212 |     // MARK: - isRunning semantics for paired calls (Mac transcript path regression)
+213 | 
+214 |     @Test func isRunning_false_when_tool_is_paired_with_result() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+215 |         // Simulates the Mac transcript path: a toolUse paired with its result is
+216 |         // NOT in flight — isRunning must be false.  This tests the precondition
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:228:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+226 |     }
+227 | 
+228 |     @Test func isRunning_true_only_for_last_unpaired_toolUse() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+229 |         // Simulates two calls in the same group where only the second is in flight.
+230 |         let first = UnifiedToolCallDisplay(id: "use-1", name: "read_file", result: "content", isRunning: false)
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/PrivilegedInputSocketClientTrustTests.swift:123:13: warning: result of call to 'withUnsafeMutablePointer(to:_:)' is unused [#NoUsage]
+121 |         let pathCapacity = MemoryLayout.size(ofValue: address.sun_path)
+122 |         _ = socketPath.withCString { path -> Int in
+123 |             withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+    |             `- warning: result of call to 'withUnsafeMutablePointer(to:_:)' is unused [#NoUsage]
+124 |                 pointer.withMemoryRebound(to: CChar.self, capacity: pathCapacity) {
+125 |                     strncpy($0, path, pathCapacity - 1)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/PrivilegedSocketTrustTests.swift:150:13: warning: result of call to 'withUnsafeMutablePointer(to:_:)' is unused [#NoUsage]
+148 |         let pathCapacity = MemoryLayout.size(ofValue: address.sun_path)
+149 |         _ = socketPath.withCString { path -> Int in
+150 |             withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+    |             `- warning: result of call to 'withUnsafeMutablePointer(to:_:)' is unused [#NoUsage]
+151 |                 pointer.withMemoryRebound(to: CChar.self, capacity: pathCapacity) {
+152 |                     strncpy($0, path, pathCapacity - 1)
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[1498 / 1530]
+[1509 / 1530] OpenBurnBarLinuxCoreFoundationTests-product
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/ComputerUseSafetyInvariantHarnessTests.swift:27:13: warning: variable 'model' was never mutated; consider changing to 'let' constant
+ 25 | 
+ 26 |     func test_revokedGrantProducesNoEffectAndIsAudited() {
+ 27 |         var model = ComputerUseSafetyInvariantHarness.SessionModel(phase: .activeManual, grantActive: true)
+    |             `- warning: variable 'model' was never mutated; consider changing to 'let' constant
+ 28 |         let result = ComputerUseSafetyInvariantHarness.transition(model, stimulus: .grantApplyRevoked)
+ 29 |         XCTAssertFalse(result.model.grantActive)
+[1518 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1518 / 1530] OpenBurnBarCoreTests-product
+[1518 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1520 / 1530] OpenBurnBarComputerUseCoreTests-product
+[1523 / 1530] OpenBurnBarComputerUseCoreTests-product
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:14:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 12 |     // MARK: - iconName mapping
+ 13 | 
+ 14 |     @Test func iconName_read() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 15 |         #expect(UnifiedToolCallDisplay.iconName(for: "read_file") == "doc.text")
+ 16 |         #expect(UnifiedToolCallDisplay.iconName(for: "ReadFile") == "doc.text")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:21:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 19 |     }
+ 20 | 
+ 21 |     @Test func iconName_bash() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 22 |         #expect(UnifiedToolCallDisplay.iconName(for: "bash") == "terminal")
+ 23 |         #expect(UnifiedToolCallDisplay.iconName(for: "exec_command") == "terminal")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:28:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 26 |     }
+ 27 | 
+ 28 |     @Test func iconName_search() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 29 |         #expect(UnifiedToolCallDisplay.iconName(for: "search_files") == "magnifyingglass")
+ 30 |         #expect(UnifiedToolCallDisplay.iconName(for: "grep_search") == "magnifyingglass")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:35:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 33 |     }
+ 34 | 
+ 35 |     @Test func iconName_web() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 36 |         #expect(UnifiedToolCallDisplay.iconName(for: "web_search") == "globe")
+ 37 |         #expect(UnifiedToolCallDisplay.iconName(for: "browser_navigate") == "globe")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:42:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 40 |     }
+ 41 | 
+ 42 |     @Test func iconName_edit() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 43 |         #expect(UnifiedToolCallDisplay.iconName(for: "edit_file") == "pencil.and.outline")
+ 44 |         #expect(UnifiedToolCallDisplay.iconName(for: "patch_code") == "pencil.and.outline")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:48:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 46 |     }
+ 47 | 
+ 48 |     @Test func iconName_memory() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 49 |         #expect(UnifiedToolCallDisplay.iconName(for: "memory_store") == "brain")
+ 50 |         #expect(UnifiedToolCallDisplay.iconName(for: "skill_lookup") == "brain")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:54:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 52 |     }
+ 53 | 
+ 54 |     @Test func iconName_image() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 55 |         #expect(UnifiedToolCallDisplay.iconName(for: "image_generate") == "photo")
+ 56 |         #expect(UnifiedToolCallDisplay.iconName(for: "vision_describe") == "photo")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:60:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 58 |     }
+ 59 | 
+ 60 |     @Test func iconName_default() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 61 |         // Names that don't match any keyword fall back to the generic icon.
+ 62 |         #expect(UnifiedToolCallDisplay.iconName(for: "unknown_tool") == "wrench.and.screwdriver.fill")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:69:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 67 |     // MARK: - state classification from statusRaw
+ 68 | 
+ 69 |     @Test func state_isRunning_wins_over_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 70 |         // isRunning=true always produces .running regardless of statusRaw.
+ 71 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", statusRaw: "done", isRunning: true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:75:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 73 |     }
+ 74 | 
+ 75 |     @Test func state_done_variants() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 76 |         let doneStrings = ["done", "Done", "complete", "completed", "finished", "success", "ok", "ran"]
+ 77 |         for raw in doneStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:83:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 81 |     }
+ 82 | 
+ 83 |     @Test func state_failed_variants() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 84 |         let failStrings = ["failed", "error", "DENIED", "cancelled", "timeout", "rejected"]
+ 85 |         for raw in failStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:91:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 89 |     }
+ 90 | 
+ 91 |     @Test func state_running_from_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 92 |         let runStrings = ["running", "pending", "active", "streaming", "in_progress", "started"]
+ 93 |         for raw in runStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:99:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 97 |     }
+ 98 | 
+ 99 |     @Test func state_neutral_when_nil() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+100 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: nil, isRunning: false)
+101 |         #expect(call.state == .neutral)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:104:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+102 |     }
+103 | 
+104 |     @Test func state_neutral_when_empty() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+105 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: "   ", isRunning: false)
+106 |         #expect(call.state == .neutral)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:109:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+107 |     }
+108 | 
+109 |     @Test func state_neutral_unrecognised_string() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+110 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: "queued_v2", isRunning: false)
+111 |         // "queued" doesn't contain any recognised keyword → neutral.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:117:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+115 |     // MARK: - mostRecent & additionalCount
+116 | 
+117 |     @Test func mostRecent_returns_last_element() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+118 |         let calls = makeDisplays(count: 5)
+119 |         let recent = UnifiedToolCallAccordion.mostRecent(of: calls)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:123:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+121 |     }
+122 | 
+123 |     @Test func mostRecent_empty_returns_nil() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+124 |         #expect(UnifiedToolCallAccordion.mostRecent(of: []) == nil)
+125 |     }
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:127:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+125 |     }
+126 | 
+127 |     @Test func mostRecent_single_element() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+128 |         let single = [UnifiedToolCallDisplay(id: "only", name: "tool")]
+129 |         #expect(UnifiedToolCallAccordion.mostRecent(of: single)?.id == "only")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:132:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+130 |     }
+131 | 
+132 |     @Test func additionalCount_is_count_minus_one() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+133 |         let calls = makeDisplays(count: 5)
+134 |         #expect(UnifiedToolCallAccordion.additionalCount(of: calls) == 4)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:137:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+135 |     }
+136 | 
+137 |     @Test func additionalCount_single_is_zero() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+138 |         let single = [UnifiedToolCallDisplay(id: "x", name: "t")]
+139 |         #expect(UnifiedToolCallAccordion.additionalCount(of: single) == 0)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:142:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+140 |     }
+141 | 
+142 |     @Test func additionalCount_empty_is_zero() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+143 |         #expect(UnifiedToolCallAccordion.additionalCount(of: []) == 0)
+144 |     }
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:148:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+146 |     // MARK: - hasExpandableDetail
+147 | 
+148 |     @Test func hasExpandableDetail_false_when_no_args_or_result() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+149 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", detail: "some detail")
+150 |         // detail is shown in the collapsed row; only arguments/result gating expansion.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:154:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+152 |     }
+153 | 
+154 |     @Test func hasExpandableDetail_true_when_arguments_present() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+155 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", arguments: "{\"path\":\"/tmp\"}")
+156 |         #expect(call.hasExpandableDetail == true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:159:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+157 |     }
+158 | 
+159 |     @Test func hasExpandableDetail_true_when_result_present() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+160 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", result: "exit 0")
+161 |         #expect(call.hasExpandableDetail == true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:164:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+162 |     }
+163 | 
+164 |     @Test func hasExpandableDetail_false_when_whitespace_only() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+165 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", arguments: "   \n\t", result: "   ")
+166 |         #expect(call.hasExpandableDetail == false)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:171:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+169 |     // MARK: - State transition regression (StatusDot re-entry)
+170 | 
+171 |     @Test func state_transition_running_to_done() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+172 |         // Verifies the computed `state` value is re-evaluated correctly when
+173 |         // `statusRaw` changes — the StatusDot onChange(of:) handler depends on this.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:185:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+183 |     }
+184 | 
+185 |     @Test func state_isRunning_flag_overrides_done_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+186 |         // A call that has statusRaw="done" but isRunning=true must report .running.
+187 |         // This covers the case where a surface marks a new streaming call running
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:195:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+193 |     // MARK: - Accessibility hint logic
+194 | 
+195 |     @Test func accessibilityHint_single_call_with_args_says_details() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+196 |         // When there's exactly one call and it has arguments (expandable detail),
+197 |         // the accordion should say "Expand to see details", not "Expand 1 tool calls".
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:205:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+203 |     }
+204 | 
+205 |     @Test func accessibilityHint_multiple_calls_exposes_count() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+206 |         let many = makeDisplays(count: 3)
+207 |         // The hint should expose count when there is more than one call.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:214:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+212 |     // MARK: - isRunning semantics for paired calls (Mac transcript path regression)
+213 | 
+214 |     @Test func isRunning_false_when_tool_is_paired_with_result() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+215 |         // Simulates the Mac transcript path: a toolUse paired with its result is
+216 |         // NOT in flight — isRunning must be false.  This tests the precondition
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:228:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+226 |     }
+227 | 
+228 |     @Test func isRunning_true_only_for_last_unpaired_toolUse() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+229 |         // Simulates two calls in the same group where only the second is in flight.
+230 |         let first = UnifiedToolCallDisplay(id: "use-1", name: "read_file", result: "content", isRunning: false)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:14:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 12 |     // MARK: - iconName mapping
+ 13 | 
+ 14 |     @Test func iconName_read() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 15 |         #expect(UnifiedToolCallDisplay.iconName(for: "read_file") == "doc.text")
+ 16 |         #expect(UnifiedToolCallDisplay.iconName(for: "ReadFile") == "doc.text")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:21:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 19 |     }
+ 20 | 
+ 21 |     @Test func iconName_bash() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 22 |         #expect(UnifiedToolCallDisplay.iconName(for: "bash") == "terminal")
+ 23 |         #expect(UnifiedToolCallDisplay.iconName(for: "exec_command") == "terminal")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:28:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 26 |     }
+ 27 | 
+ 28 |     @Test func iconName_search() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 29 |         #expect(UnifiedToolCallDisplay.iconName(for: "search_files") == "magnifyingglass")
+ 30 |         #expect(UnifiedToolCallDisplay.iconName(for: "grep_search") == "magnifyingglass")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:35:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 33 |     }
+ 34 | 
+ 35 |     @Test func iconName_web() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 36 |         #expect(UnifiedToolCallDisplay.iconName(for: "web_search") == "globe")
+ 37 |         #expect(UnifiedToolCallDisplay.iconName(for: "browser_navigate") == "globe")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:42:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 40 |     }
+ 41 | 
+ 42 |     @Test func iconName_edit() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 43 |         #expect(UnifiedToolCallDisplay.iconName(for: "edit_file") == "pencil.and.outline")
+ 44 |         #expect(UnifiedToolCallDisplay.iconName(for: "patch_code") == "pencil.and.outline")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:48:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 46 |     }
+ 47 | 
+ 48 |     @Test func iconName_memory() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 49 |         #expect(UnifiedToolCallDisplay.iconName(for: "memory_store") == "brain")
+ 50 |         #expect(UnifiedToolCallDisplay.iconName(for: "skill_lookup") == "brain")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:54:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 52 |     }
+ 53 | 
+ 54 |     @Test func iconName_image() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 55 |         #expect(UnifiedToolCallDisplay.iconName(for: "image_generate") == "photo")
+ 56 |         #expect(UnifiedToolCallDisplay.iconName(for: "vision_describe") == "photo")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:60:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 58 |     }
+ 59 | 
+ 60 |     @Test func iconName_default() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 61 |         // Names that don't match any keyword fall back to the generic icon.
+ 62 |         #expect(UnifiedToolCallDisplay.iconName(for: "unknown_tool") == "wrench.and.screwdriver.fill")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:69:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 67 |     // MARK: - state classification from statusRaw
+ 68 | 
+ 69 |     @Test func state_isRunning_wins_over_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 70 |         // isRunning=true always produces .running regardless of statusRaw.
+ 71 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", statusRaw: "done", isRunning: true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:75:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 73 |     }
+ 74 | 
+ 75 |     @Test func state_done_variants() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 76 |         let doneStrings = ["done", "Done", "complete", "completed", "finished", "success", "ok", "ran"]
+ 77 |         for raw in doneStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:83:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 81 |     }
+ 82 | 
+ 83 |     @Test func state_failed_variants() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 84 |         let failStrings = ["failed", "error", "DENIED", "cancelled", "timeout", "rejected"]
+ 85 |         for raw in failStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:91:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 89 |     }
+ 90 | 
+ 91 |     @Test func state_running_from_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 92 |         let runStrings = ["running", "pending", "active", "streaming", "in_progress", "started"]
+ 93 |         for raw in runStrings {
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:99:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+ 97 |     }
+ 98 | 
+ 99 |     @Test func state_neutral_when_nil() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+100 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: nil, isRunning: false)
+101 |         #expect(call.state == .neutral)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:104:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+102 |     }
+103 | 
+104 |     @Test func state_neutral_when_empty() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+105 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: "   ", isRunning: false)
+106 |         #expect(call.state == .neutral)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:109:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+107 |     }
+108 | 
+109 |     @Test func state_neutral_unrecognised_string() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+110 |         let call = UnifiedToolCallDisplay(id: "1", name: "t", statusRaw: "queued_v2", isRunning: false)
+111 |         // "queued" doesn't contain any recognised keyword → neutral.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:117:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+115 |     // MARK: - mostRecent & additionalCount
+116 | 
+117 |     @Test func mostRecent_returns_last_element() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+118 |         let calls = makeDisplays(count: 5)
+119 |         let recent = UnifiedToolCallAccordion.mostRecent(of: calls)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:123:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+121 |     }
+122 | 
+123 |     @Test func mostRecent_empty_returns_nil() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+124 |         #expect(UnifiedToolCallAccordion.mostRecent(of: []) == nil)
+125 |     }
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:127:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+125 |     }
+126 | 
+127 |     @Test func mostRecent_single_element() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+128 |         let single = [UnifiedToolCallDisplay(id: "only", name: "tool")]
+129 |         #expect(UnifiedToolCallAccordion.mostRecent(of: single)?.id == "only")
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:132:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+130 |     }
+131 | 
+132 |     @Test func additionalCount_is_count_minus_one() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+133 |         let calls = makeDisplays(count: 5)
+134 |         #expect(UnifiedToolCallAccordion.additionalCount(of: calls) == 4)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:137:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+135 |     }
+136 | 
+137 |     @Test func additionalCount_single_is_zero() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+138 |         let single = [UnifiedToolCallDisplay(id: "x", name: "t")]
+139 |         #expect(UnifiedToolCallAccordion.additionalCount(of: single) == 0)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:142:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+140 |     }
+141 | 
+142 |     @Test func additionalCount_empty_is_zero() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+143 |         #expect(UnifiedToolCallAccordion.additionalCount(of: []) == 0)
+144 |     }
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:148:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+146 |     // MARK: - hasExpandableDetail
+147 | 
+148 |     @Test func hasExpandableDetail_false_when_no_args_or_result() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+149 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", detail: "some detail")
+150 |         // detail is shown in the collapsed row; only arguments/result gating expansion.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:154:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+152 |     }
+153 | 
+154 |     @Test func hasExpandableDetail_true_when_arguments_present() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+155 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", arguments: "{\"path\":\"/tmp\"}")
+156 |         #expect(call.hasExpandableDetail == true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:159:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+157 |     }
+158 | 
+159 |     @Test func hasExpandableDetail_true_when_result_present() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+160 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", result: "exit 0")
+161 |         #expect(call.hasExpandableDetail == true)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:164:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+162 |     }
+163 | 
+164 |     @Test func hasExpandableDetail_false_when_whitespace_only() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+165 |         let call = UnifiedToolCallDisplay(id: "1", name: "tool", arguments: "   \n\t", result: "   ")
+166 |         #expect(call.hasExpandableDetail == false)
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:171:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+169 |     // MARK: - State transition regression (StatusDot re-entry)
+170 | 
+171 |     @Test func state_transition_running_to_done() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+172 |         // Verifies the computed `state` value is re-evaluated correctly when
+173 |         // `statusRaw` changes — the StatusDot onChange(of:) handler depends on this.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:185:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+183 |     }
+184 | 
+185 |     @Test func state_isRunning_flag_overrides_done_statusRaw() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+186 |         // A call that has statusRaw="done" but isRunning=true must report .running.
+187 |         // This covers the case where a surface marks a new streaming call running
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:195:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+193 |     // MARK: - Accessibility hint logic
+194 | 
+195 |     @Test func accessibilityHint_single_call_with_args_says_details() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+196 |         // When there's exactly one call and it has arguments (expandable detail),
+197 |         // the accordion should say "Expand to see details", not "Expand 1 tool calls".
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:205:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+203 |     }
+204 | 
+205 |     @Test func accessibilityHint_multiple_calls_exposes_count() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+206 |         let many = makeDisplays(count: 3)
+207 |         // The hint should expose count when there is more than one call.
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:214:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+212 |     // MARK: - isRunning semantics for paired calls (Mac transcript path regression)
+213 | 
+214 |     @Test func isRunning_false_when_tool_is_paired_with_result() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+215 |         // Simulates the Mac transcript path: a toolUse paired with its result is
+216 |         // NOT in flight — isRunning must be false.  This tests the precondition
+
+/private/tmp/openburnbar-linux-mission-001/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/UnifiedToolCallAccordionTests.swift:228:6: warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+226 |     }
+227 | 
+228 |     @Test func isRunning_true_only_for_last_unpaired_toolUse() {
+    |      `- warning: 'Test' is deprecated: Swift Testing is now included in the Swift 6 toolchain. Remove your 'swift-testing' package dependency to silence this warning. [#DeprecatedDeclaration]
+229 |         // Simulates two calls in the same group where only the second is in flight.
+230 |         let first = UnifiedToolCallDisplay(id: "use-1", name: "read_file", result: "content", isRunning: false)
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[1524 / 1530] OpenBurnBarCoreTests-product
+[1526 / 1530] OpenBurnBarCoreTests-product
+[1529 / 1530] OpenBurnBarCoreTests-product
+Build complete! (51.29 sec)
+Test Suite 'Selected tests' started at 2026-07-03 00:51:06.604.
+Test Suite 'OpenBurnBarLinuxCoreFoundationTests.xctest' started at 2026-07-03 00:51:06.605.
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 00:51:06.605.
+Test Case '-[OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests testNativeFFIAvailabilityEvidenceIsExplicit]' started.
+Test Case '-[OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests testNativeFFIAvailabilityEvidenceIsExplicit]' passed (0.001 seconds).
+Test Case '-[OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests testPlatformCryptoKATsFromCommittedFixture]' started.
+Test Case '-[OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests testPlatformCryptoKATsFromCommittedFixture]' passed (0.005 seconds).
+Test Case '-[OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests testProviderModelFixtureChecksumAndContracts]' started.
+Test Case '-[OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests testProviderModelFixtureChecksumAndContracts]' passed (0.004 seconds).
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 00:51:06.617.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.011 (0.011) seconds
+Test Suite 'OpenBurnBarLinuxCoreFoundationTests.xctest' passed at 2026-07-03 00:51:06.617.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.011 (0.011) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 00:51:06.617.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.011 (0.013) seconds
+NATIVE_FFI_STATUS signal=non-shipping:libsignal-missing iroh=non-shipping:OpenBurnBarIrohFFI-unlinked media=pure-swift-contract cu=pure-swift-contract
+KAT_PLATFORM_CRYPTO_SHA256 f7112ec0801eb1157ac3bc7e469549122f13e868531d73d55199056cd52aef89
+KAT_HASH_SHA256 2b78548bf4d51c75d3ed7118cebfb22520f51d23aa7940a3525265738dd26ba2
+KAT_HMAC_SHA256 92cb90fa61c9e0d021a529af41f1e87ceeb0da80362fb1229f8079526fb26d39
+KAT_AES_GCM_COMBINED_SHA256 3cdec0ddbaeeb39ba103824488fc05833c57d53030ec65b9840dce0e42952565
+KAT_ED25519_SIGNATURE_SHA256 e60ce08488040df0713ef510c966eaf79e739f1deb2855aa0ef433ba7d054db1
+KAT_CANONICAL_JSON_SHA256 7328d2f6bd351d7b7eb796d0c66ecd468f4e715cad7b446f34f56f4f5c1e4541
+KAT_HPKE_V3_OPENED_SHA256 72dbb7336c76780023f83da4c355f2eeea85733b13d3477697917790c1229084
+KAT_CLOUDVAULT_PAYLOAD_SHA256 0cd6d39d24ce12a9b54e7039588f6b7cc2ef1d3e97548125040a621f84495f21
+MODEL_FIXTURE_SHA256 5ce2db1c997bf6091717b488f562acfc3dfbd6b39d31ec7c4e5745fd8c14eb28
+MODEL_PARITY_GENERATOR_PATH OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/LinuxCoreFoundationTests.swift

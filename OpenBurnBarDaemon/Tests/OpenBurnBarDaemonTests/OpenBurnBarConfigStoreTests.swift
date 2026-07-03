@@ -3,7 +3,9 @@ import OpenBurnBarCore
 import Foundation
 import XCTest
 #if os(macOS)
+#if canImport(Security)
 import Security
+#endif
 #endif
 
 final class BurnBarConfigStoreTests: XCTestCase {

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightQuotaPulseView: View {
@@ -49,3 +50,5 @@ public struct InsightQuotaPulseView: View {
         }
     }
 }
+
+#endif

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Reusable HTTP transport that talks to a Hermes relay over the
 /// OpenAI-compatible `POST /v1/chat/completions` grammar.
@@ -73,6 +76,32 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
             let task = Task {
                 do {
                     let urlRequest = try makeURLRequest(for: request, streaming: true)
+                    #if os(Linux)
+                    let (data, response) = try await urlSession.data(for: urlRequest)
+                    try Self.validate(response: response, modelID: request.modelID)
+                    let lines = (String(data: data, encoding: .utf8) ?? "")
+                        .split(whereSeparator: \.isNewline)
+                        .map(String.init)
+                    var assembled = ""
+                    var terminalUsage: HermesInsightTokenUsage?
+                    for line in lines {
+                        try Task.checkCancellation()
+                        guard line.hasPrefix("data: ") else { continue }
+                        let payload = line.dropFirst("data: ".count)
+                        if payload == "[DONE]" { break }
+                        guard let data = payload.data(using: .utf8),
+                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                            continue
+                        }
+                        if let delta = Self.deltaText(from: json), !delta.isEmpty {
+                            assembled += delta
+                            continuation.yield(.delta(delta))
+                        }
+                        if let usage = Self.usage(from: json["usage"] as? [String: Any]) {
+                            terminalUsage = usage
+                        }
+                    }
+                    #else
                     let (bytes, response) = try await urlSession.bytes(for: urlRequest)
                     try Self.validate(response: response, modelID: request.modelID)
                     var assembled = ""
@@ -94,6 +123,7 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
                             terminalUsage = usage
                         }
                     }
+                    #endif
                     try Task.checkCancellation()
                     if let terminalUsage {
                         continuation.yield(.usage(terminalUsage))

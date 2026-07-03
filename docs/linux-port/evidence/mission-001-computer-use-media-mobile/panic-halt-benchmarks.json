@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-07-03T11:55:14.763Z",
+  "target": "VAL-CU-003",
+  "rows": [
+    {
+      "path": "app-ui",
+      "status": "pass",
+      "durationMs": 3,
+      "budgetMs": 500,
+      "resourcesClosed": true,
+      "closed": [
+        "capture",
+        "input",
+        "media"
+      ],
+      "auditEntry": "app-ui.panic.halt"
+    },
+    {
+      "path": "daemon-cli",
+      "status": "pass",
+      "durationMs": 2,
+      "budgetMs": 500,
+      "resourcesClosed": true,
+      "closed": [
+        "capture",
+        "input",
+        "media"
+      ],
+      "auditEntry": "daemon-cli.panic.halt"
+    },
+    {
+      "path": "mobile-remote",
+      "status": "pass",
+      "durationMs": 2,
+      "budgetMs": 500,
+      "resourcesClosed": true,
+      "closed": [
+        "capture",
+        "input",
+        "media"
+      ],
+      "auditEntry": "mobile-remote.panic.halt"
+    },
+    {
+      "path": "global-system",
+      "status": "blocked",
+      "durationMs": 0,
+      "budgetMs": 500,
+      "resourcesClosed": false,
+      "limitation": "No compositor/global-hotkey service is available in this CI container."
+    }
+  ],
+  "passCount": 3,
+  "blockedCount": 1
+}

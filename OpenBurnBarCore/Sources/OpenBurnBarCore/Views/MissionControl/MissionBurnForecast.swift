@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission Burn Forecast Strip
@@ -181,3 +182,5 @@ public struct MissionDispatchButton: View {
         .accessibilityLabel(isDispatching ? "Dispatching mission via \(runtimeName)" : "Dispatch mission via \(runtimeName)")
     }
 }
+
+#endif

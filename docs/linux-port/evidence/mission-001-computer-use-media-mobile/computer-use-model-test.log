@@ -1,0 +1,18 @@
+npm test -- computerUseLinux
+exit_code=0
+duration_ms=838
+
+> @openburnbar/linux-desktop@0.1.0 test
+> vitest run computerUseLinux
+
+
+ RUN  v3.2.6 /private/tmp/openburnbar-linux-mission-001/apps/linux-desktop
+
+ ✓ src/computerUseLinux.test.ts (6 tests) 6ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  06:55:14
+   Duration  449ms (transform 36ms, setup 0ms, collect 35ms, tests 6ms, environment 182ms, prepare 44ms)
+
+

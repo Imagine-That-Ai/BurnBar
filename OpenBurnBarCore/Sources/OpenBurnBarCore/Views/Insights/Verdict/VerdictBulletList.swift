@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// The 1-4 bullet rows below the rings.
@@ -171,3 +172,5 @@ public struct VerdictBulletRow: View {
         return parts.joined(separator: " ")
     }
 }
+
+#endif

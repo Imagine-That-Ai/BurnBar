@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 #if canImport(AppKit)
 import AppKit
@@ -1777,5 +1778,7 @@ public struct CLILaunchRedactor {
         return result
     }
 }
+
+#endif
 
 #endif

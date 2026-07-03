@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import CoreGraphics
 
@@ -93,3 +94,5 @@ extension SwarmSimulation {
         return (handled, handled && substrate.suppressesGlyphs)
     }
 }
+
+#endif

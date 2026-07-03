@@ -1,0 +1,251 @@
+^D[0/1] Planning build
+Building for debugging...
+[0/1] Write swift-version-24593BA9C3E375BF.txt
+[2/158] Compiling GRDB Association.swift
+[3/158] Compiling GRDB AssociationAggregate.swift
+[4/158] Compiling GRDB BelongsToAssociation.swift
+[5/158] Compiling GRDB HasManyAssociation.swift
+[6/158] Compiling GRDB HasManyThroughAssociation.swift
+[7/158] Compiling GRDB HasOneAssociation.swift
+[8/158] Compiling GRDB HasOneThroughAssociation.swift
+[9/158] Compiling GRDB JoinAssociation.swift
+[10/158] Compiling GRDB CommonTableExpression.swift
+[11/167] Compiling GRDB PersistableRecord+Upsert.swift
+[12/167] Compiling GRDB PersistableRecord.swift
+[13/167] Compiling GRDB Record.swift
+[14/167] Compiling GRDB TableRecord.swift
+[15/167] Compiling GRDB CaseInsensitiveIdentifier.swift
+[16/167] Compiling GRDB Inflections+English.swift
+[17/167] Compiling GRDB Inflections.swift
+[18/167] Compiling GRDB LockedBox.swift
+[19/167] Compiling GRDB OnDemandFuture.swift
+[20/167] Compiling GRDB MutablePersistableRecord+DAO.swift
+[21/167] Compiling GRDB MutablePersistableRecord+Delete.swift
+[22/167] Compiling GRDB MutablePersistableRecord+Insert.swift
+[23/167] Compiling GRDB MutablePersistableRecord+Save.swift
+[24/167] Compiling GRDB MutablePersistableRecord+Update.swift
+[25/167] Compiling GRDB MutablePersistableRecord+Upsert.swift
+[26/167] Compiling GRDB MutablePersistableRecord.swift
+[27/167] Compiling GRDB PersistableRecord+Insert.swift
+[28/167] Compiling GRDB PersistableRecord+Save.swift
+[29/167] Compiling GRDB SQLQueryGenerator.swift
+[30/167] Compiling GRDB SQLTableAlterationGenerator.swift
+[31/167] Compiling GRDB SQLTableGenerator.swift
+[32/167] Compiling GRDB SQLInterpolation+QueryInterface.swift
+[33/167] Compiling GRDB ColumnDefinition.swift
+[34/167] Compiling GRDB Database+SchemaDefinition.swift
+[35/167] Compiling GRDB ForeignKeyDefinition.swift
+[36/167] Compiling GRDB IndexDefinition.swift
+[37/167] Compiling GRDB TableAlteration.swift
+[38/167] Compiling GRDB OrderedDictionary.swift
+[39/167] Compiling GRDB Pool.swift
+[40/167] Compiling GRDB ReadWriteBox.swift
+[41/167] Compiling GRDB ReceiveValuesOn.swift
+[42/167] Compiling GRDB Refinable.swift
+[43/167] Compiling GRDB Utils.swift
+[44/167] Compiling GRDB DatabaseCancellable.swift
+[45/167] Compiling GRDB ValueConcurrentObserver.swift
+[46/167] Compiling GRDB ValueWriteOnlyObserver.swift
+[47/167] Compiling GRDB DatabasePublishers.swift
+[48/167] Compiling GRDB DatabaseQueue.swift
+[49/167] Compiling GRDB DatabaseReader.swift
+[50/167] Compiling GRDB DatabaseRegion.swift
+[51/167] Compiling GRDB DatabaseRegionObservation.swift
+[52/167] Compiling GRDB DatabaseSchemaCache.swift
+[53/167] Compiling GRDB DatabaseSnapshot.swift
+[54/167] Compiling GRDB DatabaseSnapshotPool.swift
+[55/167] Compiling GRDB DatabaseValue.swift
+[56/167] Compiling GRDB DatabaseValueConvertible.swift
+[57/167] Compiling GRDB Statement.swift
+[58/167] Compiling GRDB StatementAuthorizer.swift
+[59/167] Compiling GRDB StatementColumnConvertible.swift
+[60/167] Compiling GRDB CGFloat.swift
+[61/167] Compiling GRDB Data.swift
+[62/167] Compiling GRDB DatabaseDateComponents.swift
+[63/167] Compiling GRDB DatabaseValueConvertible+ReferenceConvertible.swift
+[64/167] Compiling GRDB Date.swift
+[65/167] Compiling GRDB Decimal.swift
+[66/167] Compiling GRDB Fixits.swift
+[67/167] Compiling GRDB JSONColumn.swift
+[68/167] Compiling GRDB SQLJSONExpressible.swift
+[69/167] Compiling GRDB SQLJSONFunctions.swift
+[70/167] Compiling GRDB DatabaseMigrator.swift
+[71/167] Compiling GRDB Migration.swift
+[72/167] Compiling GRDB FTS3+QueryInterface.swift
+[73/167] Compiling GRDB FTS5+QueryInterface.swift
+[74/167] Compiling GRDB ForeignKey.swift
+[75/167] Compiling GRDB QueryInterfaceRequest.swift
+[76/167] Compiling GRDB RequestProtocols.swift
+[77/167] Compiling GRDB Column.swift
+[78/167] Compiling GRDB DatabasePromise.swift
+[79/167] Compiling GRDB SQLAssociation.swift
+[80/167] Compiling GRDB SQLCollection.swift
+[81/167] Compiling GRDB SQLExpression.swift
+[82/167] Compiling GRDB SQLForeignKeyRequest.swift
+[83/167] Compiling GRDB SQLFunctions.swift
+[84/167] Compiling GRDB DatabaseWriter.swift
+[85/167] Compiling GRDB FetchRequest.swift
+[86/167] Compiling GRDB Row.swift
+[87/167] Compiling GRDB RowAdapter.swift
+[88/167] Compiling GRDB RowDecodingError.swift
+[89/167] Compiling GRDB SQL.swift
+[90/167] Compiling GRDB SQLInterpolation.swift
+[91/167] Compiling GRDB SQLRequest.swift
+[92/167] Compiling GRDB SchedulingWatchdog.swift
+[93/167] Compiling GRDB SerializedDatabase.swift
+[94/167] Compiling GRDB DatabaseReader+dump.swift
+[95/167] Compiling GRDB DumpFormat.swift
+[96/167] Compiling GRDB DebugDumpFormat.swift
+[97/167] Compiling GRDB JSONDumpFormat.swift
+[98/167] Compiling GRDB LineDumpFormat.swift
+[99/167] Compiling GRDB ListDumpFormat.swift
+[100/167] Compiling GRDB QuoteDumpFormat.swift
+[101/167] Compiling GRDB Export.swift
+[102/167] Compiling GRDB FTS3.swift
+[103/167] Compiling GRDB DatabaseValueConvertible+RawRepresentable.swift
+[104/167] Compiling GRDB JSONRequiredEncoder.swift
+[105/167] Compiling GRDB Optional.swift
+[106/167] Compiling GRDB StandardLibrary.swift
+[107/167] Compiling GRDB TransactionClock.swift
+[108/167] Compiling GRDB TransactionObserver.swift
+[109/167] Compiling GRDB WALSnapshot.swift
+[110/167] Compiling GRDB WALSnapshotTransaction.swift
+[111/167] Compiling GRDB Database+Dump.swift
+[112/167] Compiling GRDB NSData.swift
+[113/167] Compiling GRDB NSNull.swift
+[114/167] Compiling GRDB NSNumber.swift
+[115/167] Compiling GRDB NSString.swift
+[116/167] Compiling GRDB SQLiteDateParser.swift
+[117/167] Compiling GRDB URL.swift
+[118/167] Compiling GRDB UUID.swift
+[119/167] Compiling GRDB DatabaseValueConvertible+Decodable.swift
+[120/167] Compiling GRDB DatabaseValueConvertible+Encodable.swift
+[121/167] Compiling GRDB FTS3Pattern.swift
+[122/167] Compiling GRDB FTS3TokenizerDescriptor.swift
+[123/167] Compiling GRDB FTS4.swift
+[124/167] Compiling GRDB FTS5.swift
+[125/167] Compiling GRDB FTS5CustomTokenizer.swift
+[126/167] Compiling GRDB FTS5Pattern.swift
+[127/167] Compiling GRDB FTS5Tokenizer.swift
+[128/167] Compiling GRDB FTS5TokenizerDescriptor.swift
+[129/167] Compiling GRDB FTS5WrapperTokenizer.swift
+[130/167] Compiling GRDB TableDefinition.swift
+[131/167] Compiling GRDB VirtualTableModule.swift
+[132/167] Compiling GRDB TableRecord+Association.swift
+[133/167] Compiling GRDB TableRecord+QueryInterfaceRequest.swift
+[134/167] Compiling GRDB EncodableRecord+Encodable.swift
+[135/167] Compiling GRDB EncodableRecord.swift
+[136/167] Compiling GRDB FetchableRecord+Decodable.swift
+[137/167] Compiling GRDB FetchableRecord+TableRecord.swift
+[138/167] Compiling GRDB FetchableRecord.swift
+[139/167] Compiling GRDB SQLOperators.swift
+[140/167] Compiling GRDB SQLOrdering.swift
+[141/167] Compiling GRDB SQLRelation.swift
+[142/167] Compiling GRDB SQLSelection.swift
+[143/167] Compiling GRDB SQLSubquery.swift
+[144/167] Compiling GRDB Table.swift
+[145/167] Compiling GRDB SQLColumnGenerator.swift
+[146/167] Compiling GRDB SQLGenerationContext.swift
+[147/167] Compiling GRDB SQLIndexGenerator.swift
+[148/167] Compiling GRDB Fetch.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[149/167] Compiling GRDB Map.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[150/167] Compiling GRDB RemoveDuplicates.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[151/167] Compiling GRDB Trace.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[152/167] Compiling GRDB ValueReducer.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[153/167] Compiling GRDB SharedValueObservation.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[154/167] Compiling GRDB ValueObservation.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[155/167] Compiling GRDB ValueObservationScheduler.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[156/167] Compiling GRDB resource_bundle_accessor.swift
+/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift:46:30: warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 43 |     public func immediateInitialValue() -> Bool { false }
+ 44 | 
+ 45 |     public func schedule(_ action: @escaping () -> Void) {
+    |                            `- note: parameter 'action' is implicitly non-Sendable
+ 46 |         queue.async(execute: action)
+    |                              `- warning: passing non-Sendable parameter 'action' to function expecting a '@Sendable' closure
+ 47 |     }
+ 48 | }
+[157/167] Emitting module GRDB
+[158/167] Compiling GRDB Configuration.swift
+[159/167] Compiling GRDB Cursor.swift
+[160/167] Compiling GRDB Database+Schema.swift
+[161/167] Compiling GRDB Database+Statements.swift
+[162/167] Compiling GRDB Database.swift
+[163/167] Compiling GRDB DatabaseBackupProgress.swift
+[164/167] Compiling GRDB DatabaseCollation.swift
+[165/167] Compiling GRDB DatabaseError.swift
+[166/167] Compiling GRDB DatabaseFunction.swift
+[167/167] Compiling GRDB DatabasePool.swift
+Build of target: 'GRDB' complete! (5.78s)

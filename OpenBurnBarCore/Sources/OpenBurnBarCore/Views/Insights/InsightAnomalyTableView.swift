@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightAnomalyTableView: View {
@@ -107,3 +108,5 @@ struct FlowLayout: Layout {
         return positions
     }
 }
+
+#endif

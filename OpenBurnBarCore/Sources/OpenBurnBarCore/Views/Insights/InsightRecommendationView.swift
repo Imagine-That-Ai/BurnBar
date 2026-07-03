@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightRecommendationView: View {
@@ -70,3 +71,5 @@ public struct InsightRecommendationView: View {
             .foregroundStyle(color)
     }
 }
+
+#endif

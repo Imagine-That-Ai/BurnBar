@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission Kind Chooser
@@ -149,3 +150,5 @@ public struct MissionKindChooser: View {
         .accessibilityLabel("\(kind.displayName) — \(kind.tagline). \(isSelected ? "Selected." : "Tap to select.")")
     }
 }
+
+#endif

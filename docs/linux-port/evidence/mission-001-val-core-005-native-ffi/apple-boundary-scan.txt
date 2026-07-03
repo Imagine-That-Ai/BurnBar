@@ -1,0 +1,484 @@
+== OpenBurnBarCore Package Linux exclusions and native FFI wiring ==
+6-
+7-let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+8:let irohLinuxNativeLibraryDir = packageRoot
+9-    .appendingPathComponent("../crates/openburnbar-iroh/target-linux-ffi-serial/release")
+10-    .standardizedFileURL
+--
+119-] + (hasIrohNativeProduct ? [
+120-    .library(
+121:        name: "OpenBurnBarIrohFFI",
+122:        targets: ["OpenBurnBarIrohFFI"]
+123-    )
+124-] : []) + (hasBurnBarRemoteXCFramework ? [
+--
+130-
+131-let irohRelayDependencies: [Target.Dependency] = hasIrohNativeProduct
+132:    ? ["OpenBurnBarCore", "OpenBurnBarIrohFFI"]
+133-    : ["OpenBurnBarCore"]
+134-
+--
+139-    ),
+140-    .target(
+141:        name: "OpenBurnBarIrohFFI",
+142-        dependencies: ["OpenBurnBarIroh"],
+143-        path: "Sources/OpenBurnBarIroh/Generated",
+144-        exclude: [
+145-            "openburnbar_iroh.modulemap",
+146:            "openburnbar_irohFFI.h"
+147-        ],
+148-        // Generated UniFFI bindings (never hand-edited; AAR parity) target Swift 5.
+149-        swiftSettings: [.swiftLanguageMode(.v5)],
+150-        linkerSettings: [
+151:            .linkedFramework("SystemConfiguration", .when(platforms: [.macOS, .iOS]))
+152-        ]
+153-    )
+--
+157-let irohLinuxNativeTargets: [Target] = [
+158-    .systemLibrary(
+159:        name: "openburnbar_irohFFI",
+160:        path: "Sources/openburnbar_irohFFI"
+161-    ),
+162-    .target(
+163:        name: "OpenBurnBarIrohFFI",
+164:        dependencies: ["openburnbar_irohFFI"],
+165-        path: "Sources/OpenBurnBarIroh/Generated",
+166-        exclude: [
+167-            "openburnbar_iroh.modulemap",
+168:            "openburnbar_irohFFI.h"
+169-        ],
+170-        sources: ["openburnbar_iroh.swift"],
+--
+173-            .unsafeFlags(
+174-                [
+175:                    "-L", irohLinuxNativeLibraryDir,
+176-                    "-lopenburnbar_iroh",
+177-                    "-Xlinker", "-rpath",
+178:                    "-Xlinker", irohLinuxNativeLibraryDir,
+179-                ],
+180-                .when(platforms: [.linux])
+--
+331-
+332-#if os(Linux)
+333:let openBurnBarCoreExcludes = [
+334-    "Views/Substrate",
+335-    "Views/Square",
+--
+340-    "Services/Insights/Share"
+341-]
+342:let computerUseCoreExcludes = [
+343-    "Mac",
+344-    "PrivilegedInputKillSwitch.swift",
+--
+387-}
+388-#else
+389:let openBurnBarCoreExcludes: [String] = []
+390:let computerUseCoreExcludes: [String] = []
+391-let openBurnBarCoreTestExcludes: [String] = []
+392-let computerUseCoreTestExcludes: [String] = []
+--
+417-                swiftCryptoDependency
+418-            ],
+419:            exclude: openBurnBarCoreExcludes,
+420-            resources: [
+421-                // SwiftPM's `.process` rule flattens nested resource folders
+--
+443-            dependencies: irohRelayDependencies + [swiftCryptoDependency],
+444-            linkerSettings: [
+445:                .linkedFramework("SystemConfiguration", .when(platforms: [.macOS, .iOS]))
+446-            ]
+447-        ),
+--
+457-            name: "OpenBurnBarComputerUseCore",
+458-            dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia", "Czlib", swiftCryptoDependency],
+459:            exclude: computerUseCoreExcludes,
+460-            linkerSettings: [
+461:                .linkedFramework("Security", .when(platforms: [.macOS])),
+462:                .linkedFramework("LocalAuthentication", .when(platforms: [.macOS])),
+463-                .linkedLibrary("z")
+464-            ]
+
+== Signal Security PAL gates ==
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift:1:#if !canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-2-#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-3-import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-4-#else
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-7-import Foundation
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-8-import OpenBurnBarCore
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-9-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift:10:enum OpenBurnBarSignalLinuxKeyValueStore {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-11-    struct Entry: Codable, Sendable {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-12-        var dataBase64: String
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalLinuxKeyValueStore.swift-13-        var metadata: [String: String]
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-6-#endif
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-7-import LibSignalClient
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-8-import OpenBurnBarCore
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:9:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-10-import Security
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-11-#endif
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-12-
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-138-    ) throws -> IdentityChange {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-139-        try withLock {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-140-            let account = identityAccount(address)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:141:            let old = try keychainRead(account)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-142-            let new = Data(identity.serialize())
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:143:            try keychainWrite(new, account: account)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-144-            // Mirrors InMemorySignalProtocolStore: unchanged/new => .newOrUnchanged, else replaced.
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-145-            return (old == nil || old == new) ? .newOrUnchanged : .replacedExisting
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-146-        }
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-162-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-163-        guard allowsTestingTOFU else { return false }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-164-        return try withLock {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:165:            guard let existing = try keychainRead(identityAccount(address)) else { return true } // TOFU
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-166-            return existing == Data(identity.serialize())
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-167-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-168-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-169-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-170-    public func identity(for address: ProtocolAddress, context: StoreContext) throws -> IdentityKey? {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-171-        try withLock {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:172:            guard let bytes = try keychainRead(identityAccount(address)) else { return nil }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-173-            return try IdentityKey(bytes: bytes)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-174-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-175-    }
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-178-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-179-    public func loadPreKey(id: UInt32, context: StoreContext) throws -> PreKeyRecord {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-180-        try withLock {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:181:            guard let bytes = try keychainRead("prekey:\(id)") else {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-182-                throw SignalError.invalidKeyIdentifier("no prekey with this identifier")
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-183-            }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-184-            return try PreKeyRecord(bytes: bytes)
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-186-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-187-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-188-    public func storePreKey(_ record: PreKeyRecord, id: UInt32, context: StoreContext) throws {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:189:        try withLock { try keychainWrite(Data(record.serialize()), account: "prekey:\(id)") }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-190-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-191-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-192-    public func removePreKey(id: UInt32, context: StoreContext) throws {
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-197-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-198-    public func loadSignedPreKey(id: UInt32, context: StoreContext) throws -> SignedPreKeyRecord {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-199-        try withLock {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:200:            guard let bytes = try keychainRead("signed-prekey:\(id)") else {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-201-                throw SignalError.invalidKeyIdentifier("no signed prekey with this identifier")
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-202-            }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-203-            return try SignedPreKeyRecord(bytes: bytes)
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-205-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-206-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-207-    public func storeSignedPreKey(_ record: SignedPreKeyRecord, id: UInt32, context: StoreContext) throws {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:208:        try withLock { try keychainWrite(Data(record.serialize()), account: "signed-prekey:\(id)") }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-209-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-210-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-211-    // MARK: - KyberPreKeyStore
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-212-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-213-    public func loadKyberPreKey(id: UInt32, context: StoreContext) throws -> KyberPreKeyRecord {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-214-        try withLock {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:215:            guard let bytes = try keychainRead("kyber-prekey:\(id)") else {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-216-                throw SignalError.invalidKeyIdentifier("no kyber prekey with this identifier")
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-217-            }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-218-            return try KyberPreKeyRecord(bytes: bytes)
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-220-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-221-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-222-    public func storeKyberPreKey(_ record: KyberPreKeyRecord, id: UInt32, context: StoreContext) throws {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:223:        try withLock { try keychainWrite(Data(record.serialize()), account: "kyber-prekey:\(id)") }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-224-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-225-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-226-    public func markKyberPreKeyUsed(
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-236-            // read-modify-write runs under the lock so concurrent decrypts cannot lose an append.
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-237-            let account = "kyber-prekey-used:\(id):\(signedPreKeyId)"
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-238-            let base = Data(baseKey.serialize())
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:239:            let seen = (try keychainRead(account)) ?? Data()
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-240-            let chunk = base.count
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-241-            if chunk > 0 {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-242-                var offset = 0
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-247-                    offset += chunk
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-248-                }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-249-            }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:250:            try keychainWrite(seen + base, account: account)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-251-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-252-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-253-
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-316-            guard existing.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-317-            return SymmetricKey(data: existing)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-318-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:319:        #if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-320-        var bytes = [UInt8](repeating: 0, count: 32)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-321-        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-322-        guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-329-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-330-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-331-    private static func staticKeychainRead(keychainService: String, account: String) throws -> Data? {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:332:        #if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-333-        let query: [String: Any] = [
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-334-            kSecClass as String: kSecClassGenericPassword,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-335-            kSecAttrService as String: keychainService,
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-344-        guard let data = item as? Data else { throw CloudVaultCryptoError.keychainDataMissing }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-345-        return data
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-346-        #else
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:347:        return try OpenBurnBarSignalLinuxKeyValueStore.read(service: keychainService, account: account)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-348-        #endif
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-349-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-350-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-351-    private static func staticKeychainWrite(_ data: Data, keychainService: String, account: String) throws {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:352:        #if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-353-        let base: [String: Any] = [
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-354-            kSecClass as String: kSecClassGenericPassword,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-355-            kSecAttrService as String: keychainService,
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-367-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-368-        throw CloudVaultCryptoError.keychainError(Int(addStatus))
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-369-        #else
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:370:        try OpenBurnBarSignalLinuxKeyValueStore.write(data, service: keychainService, account: account)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-371-        #endif
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-372-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-373-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:374:    private func keychainRead(_ account: String) throws -> Data? {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:375:        #if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-376-        let query: [String: Any] = [
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-377-            kSecClass as String: kSecClassGenericPassword,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-378-            kSecAttrService as String: keychainService,
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-387-        guard let data = item as? Data else { throw CloudVaultCryptoError.keychainDataMissing }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-388-        return data
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-389-        #else
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:390:        return try OpenBurnBarSignalLinuxKeyValueStore.read(service: keychainService, account: account)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-391-        #endif
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-392-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-393-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-394-    /// Atomic upsert (no destructive delete-then-add window): add, and on a duplicate update
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-395-    /// in place, so a partial failure can never erase the existing value (e.g. the replay blob).
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:396:    private func keychainWrite(_ data: Data, account: String) throws {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:397:        #if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-398-        let base: [String: Any] = [
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-399-            kSecClass as String: kSecClassGenericPassword,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-400-            kSecAttrService as String: keychainService,
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-412-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-413-        throw CloudVaultCryptoError.keychainError(Int(addStatus))
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-414-        #else
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:415:        try OpenBurnBarSignalLinuxKeyValueStore.write(data, service: keychainService, account: account)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-416-        #endif
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-417-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-418-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-419-    private func keychainDelete(_ account: String) throws {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:420:        #if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-421-        let query: [String: Any] = [
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-422-            kSecClass as String: kSecClassGenericPassword,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-423-            kSecAttrService as String: keychainService,
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-428-            throw CloudVaultCryptoError.keychainError(Int(status))
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-429-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-430-        #else
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:431:        try OpenBurnBarSignalLinuxKeyValueStore.delete(service: keychainService, account: account)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-432-        #endif
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-433-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift-434-}
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-6-import Foundation
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-7-import LibSignalClient
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-8-import OpenBurnBarCore
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:9:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-10-import Security
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-11-#endif
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-12-
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-77-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-78-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-79-    private func load(account: String, deviceId: String) throws -> OpenBurnBarSignalIdentityKeypair? {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:80:        #if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-81-        let query: [String: Any] = [
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-82-            kSecClass as String: kSecClassGenericPassword,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-83-            kSecAttrService as String: service,
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-100-        let keyVersion = comment.flatMap(Int.init) ?? 1
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-101-        return try material(fromPrivateKeyData: privateKeyData, deviceId: deviceId, keyVersion: keyVersion)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-102-        #else
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:103:        guard let entry = try OpenBurnBarSignalLinuxKeyValueStore.readEntry(
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-104-            service: service,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-105-            account: account
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-106-        ) else {
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-112-    }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-113-
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-114-    private func save(_ privateKeyData: Data, keyVersion: Int, account: String) throws {
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:115:        #if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-116-        let query: [String: Any] = [
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-117-            kSecClass as String: kSecClassGenericPassword,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-118-            kSecAttrService as String: service,
+--
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-128-            throw CloudVaultCryptoError.keychainError(Int(status))
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-129-        }
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-130-        #else
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:131:        try OpenBurnBarSignalLinuxKeyValueStore.write(
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-132-            privateKeyData,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-133-            service: service,
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift-134-            account: account,
+
+== Direct Apple imports in assigned Linux contract products ==
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:10:import Security
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:10:import Security
+OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryVideoToolboxCapabilityProbe.swift:4:import VideoToolbox
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift:4:import LocalAuthentication
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift:6:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift:5:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/IrohHostKeyPinStore.swift:3:import Security
+OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryStreamingStats.swift:6:import UIKit
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeyPinStore.swift:4:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/Mac/SecKeychainInteractionGate.swift:4:import Security
+
+== Vendored Signal Linux testing-only FFI gates ==
+Vendor/libsignal/swift/Sources/LibSignalClient/Net.swift-441-// This test endpoint isn't generated in device builds, to save on code size.
+Vendor/libsignal/swift/Sources/LibSignalClient/Net.swift:442:#if !os(Linux) && (!os(iOS) || targetEnvironment(simulator))
+Vendor/libsignal/swift/Sources/LibSignalClient/Net.swift-443-
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/Net.swift-447-        let otp = try invokeFnReturningString {
+Vendor/libsignal/swift/Sources/LibSignalClient/Net.swift:448:            signal_testing_create_otp_from_base64($0, username, enclaveSecret)
+Vendor/libsignal/swift/Sources/LibSignalClient/Net.swift-449-        }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-9-// These testing endpoints aren't generated in device builds, to save on code size.
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:10:#if !os(Linux) && (!os(iOS) || targetEnvironment(simulator))
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-11-
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-30-                try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:31:                    signal_testing_fake_chat_connection_take_authenticated_chat(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-32-                        $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-44-                try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:45:                    signal_testing_fake_chat_connection_take_remote(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-46-                        $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-78-                try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:79:                    signal_testing_fake_chat_connection_take_unauthenticated_chat(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-80-                        $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-93-                try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:94:                    signal_testing_fake_chat_connection_take_remote(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-95-                        $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-124-                try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:125:                    signal_testing_fake_chat_connection_take_provisioning_chat(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-126-                        $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-138-                try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:139:                    signal_testing_fake_chat_connection_take_remote(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-140-                        $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-234-                failOnError(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:235:                    signal_testing_fake_chat_remote_end_send_raw_server_request(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-236-                        handle.const(),
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-247-                withNativeHandle { handle in
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:248:                    signal_testing_fake_chat_remote_end_receive_incoming_request(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-249-                        promise,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-270-                try checkError(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:271:                    signal_testing_fake_chat_remote_end_send_server_response(nativeHandle.const(), response.const())
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-272-                )
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-280-                withNativeHandle { handle in
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:281:                    signal_testing_fake_chat_remote_end_receive_incoming_grpc_request(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-282-                        promise,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-303-                fakeResponse.withNativeHandle { response in
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:304:                    signal_testing_fake_chat_remote_end_send_server_grpc_response(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-305-                        promise,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-318-            try invokeFnReturningData {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:319:                signal_testing_fake_chat_remote_end_json_to_binproto($0, name, message)
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-320-            }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-323-            try invokeFnReturningData {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:324:                signal_testing_fake_chat_remote_end_grpc_frame_for_message_length($0, UInt32(result.count))
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-325-            }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-345-                failOnError(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:346:                    signal_testing_fake_chat_remote_end_send_raw_server_response(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-347-                        handle.const(),
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-357-            failOnError(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:358:                signal_testing_fake_chat_remote_end_inject_connection_interrupted(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-359-                    handle.const()
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-378-            try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:379:                signal_testing_fake_chat_server_create($0)
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-380-            }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-397-            self.withNativeHandle { nativeHandle in
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:398:                signal_testing_fake_chat_server_get_next_remote(promise, asyncContext.const(), nativeHandle.const())
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-399-            }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-413-                        try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:414:                            signal_testing_fake_chat_response_create(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-415-                                $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-480-                try invokeFnReturningNativeHandle {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:481:                    signal_testing_fake_chat_connection_create_provisioning(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-482-                        $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-500-                try invokeFnReturningNativeHandle {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift:501:                    signal_testing_fake_chat_connection_create(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatConnection+Fake.swift-502-                        $0,
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-74-        // These testing endpoints aren't generated in device builds, to save on code size.
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift:75:        #if !os(Linux) && (!os(iOS) || targetEnvironment(simulator))
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-76-        internal var method: String {
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-79-                    try invokeFnReturningString {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift:80:                        signal_testing_chat_request_get_method($0, request.const())
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-81-                    }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-89-                    try invokeFnReturningString {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift:90:                        signal_testing_chat_request_get_path($0, request.const())
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-91-                    }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-99-                    try invokeFnReturningData {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift:100:                        signal_testing_chat_request_get_body($0, request.const())
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-101-                    }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-109-                    let headerNames = try invokeFnReturningStringArray {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift:110:                        signal_testing_chat_request_get_header_names($0, request.const())
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-111-                    }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-114-                        headers[k] = try invokeFnReturningString {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift:115:                            signal_testing_chat_request_get_header_value($0, request.const(), k)
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-116-                        }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-126-                failOnError(
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift:127:                    signal_testing_fake_chat_remote_end_next_grpc_message(&messageOffsets, body, 0)
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-128-                )
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-135-                    try invokeFnReturningString {
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift:136:                        signal_testing_fake_chat_remote_end_binproto_to_json($0, name, message)
+Vendor/libsignal/swift/Sources/LibSignalClient/ChatServiceTypes.swift-137-                    }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-9-// These APIs aren't available in device builds, to save on code size.
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift:10:#if !os(Linux) && (!os(iOS) || targetEnvironment(simulator))
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-11-
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-36-            try invokeFnReturningValueByPointer(.init()) {
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift:37:                signal_comparable_backup_read_unencrypted($0, stream, length, purpose.rawValue)
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-38-            }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-50-                try invokeFnReturningStringArray {
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift:51:                    signal_comparable_backup_get_unknown_fields($0, result.const())
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-52-                }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-68-                try invokeFnReturningString {
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift:69:                    signal_comparable_backup_get_comparable_string($0, result.const())
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-70-                }
+--
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-77-    ) -> SignalFfiErrorRef? {
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift:78:        signal_comparable_backup_destroy(handle.pointer)
+Vendor/libsignal/swift/Sources/LibSignalClient/ComparableBackup.swift-79-    }

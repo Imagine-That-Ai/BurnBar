@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 #if canImport(UIKit)
 import UIKit
@@ -133,3 +134,5 @@ public struct PlatformColor: Sendable {
     }
     #endif
 }
+
+#endif

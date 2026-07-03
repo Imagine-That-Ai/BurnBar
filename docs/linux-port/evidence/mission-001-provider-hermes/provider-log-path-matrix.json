@@ -1,0 +1,48 @@
+{
+  "platform": "linux",
+  "providers": {
+    "claudeCode": {
+      "filePattern": "*.jsonl",
+      "logical": "~/.claude/projects"
+    },
+    "cline": {
+      "filePattern": "*.json",
+      "logical": "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"
+    },
+    "codex": {
+      "filePattern": "state_5.sqlite",
+      "logical": "~/.codex"
+    },
+    "cursorAgent": {
+      "filePattern": "*.jsonl",
+      "logical": "~/.cursor-agent/sessions"
+    },
+    "geminiCLI": {
+      "filePattern": "*.json",
+      "logical": "~/.gemini/tmp"
+    },
+    "goose": {
+      "filePattern": "sessions.db",
+      "logical": "~/.local/share/goose/sessions"
+    },
+    "openCode": {
+      "filePattern": "opencode.db",
+      "logical": "~/.local/share/opencode"
+    },
+    "warp": {
+      "filePattern": "warp_network*.log",
+      "logical": "~/.config/Warp"
+    },
+    "windsurf": {
+      "filePattern": "state.vscdb",
+      "logical": "~/.config/Windsurf - Next/User/globalStorage"
+    },
+    "xAI": {
+      "filePattern": "summary.json",
+      "logical": "~/.grok/sessions"
+    }
+  },
+  "schema": "openburnbar-linux-provider-log-discovery-v1",
+  "session_identity": "provider.rawValue|standardized resolved log root path",
+  "xdg_notes": "Daemon support dir uses XDG_CONFIG_HOME/OpenBurnBar fallback ~/.config/OpenBurnBar via OpenBurnBarLinuxPaths; VS Code globalStorage uses ~/.config on Linux."
+}

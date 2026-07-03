@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-07-03T11:56:35.792Z",
+  "targetIds": [
+    "VAL-CU-001",
+    "VAL-CU-002",
+    "VAL-CU-003",
+    "VAL-MEDIA-001",
+    "VAL-MOBILE-001",
+    "VAL-SEC-003"
+  ],
+  "modelTest": {
+    "command": "npm test -- computerUseLinux",
+    "exitCode": 0,
+    "durationMs": 838
+  },
+  "audit": "audit-signing-verification.json",
+  "halt": "panic-halt-benchmarks.json",
+  "media": {
+    "irohLoopbackCommand": "docker inner Linux iroh loopback",
+    "exitCode": 0,
+    "durationMs": 81019,
+    "timing": "media-lan-stage-timing.json",
+    "codecTrace": "computer-use-media-codec-trace.json"
+  },
+  "mobile": {
+    "replay": "computer-use-mobile-protocol-replay.json"
+  },
+  "platform": {
+    "dockerProbe": {
+      "skipped": false,
+      "exitCode": 0,
+      "durationMs": 81019
+    },
+    "portalLog": "portal-capture-log.txt",
+    "x11Input": "x11-input-transcript.json",
+    "limitations": "platform-limitation-matrix.json"
+  }
+}

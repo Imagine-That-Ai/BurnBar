@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission Console Hero
@@ -236,3 +237,5 @@ public struct MissionConsoleHero: View {
         .accessibilityLabel("Close Mission Console")
     }
 }
+
+#endif

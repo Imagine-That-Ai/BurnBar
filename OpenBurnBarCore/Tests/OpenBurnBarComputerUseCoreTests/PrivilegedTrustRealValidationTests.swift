@@ -1,5 +1,7 @@
 import Darwin
+#if canImport(Security)
 import Security
+#endif
 import XCTest
 @testable import OpenBurnBarComputerUseCore
 

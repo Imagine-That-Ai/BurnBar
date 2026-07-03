@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 #if canImport(AppKit)
 import AppKit
@@ -290,5 +291,7 @@ private extension BrowserServiceProvider {
         storageMarkers[0]
     }
 }
+
+#endif
 
 #endif

@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.670Z",
+  "lane": "W06LinuxShellUx",
+  "method": "dom-model-transcript",
+  "surface": "host-vitest",
+  "steps": [
+    {
+      "action": "Tab",
+      "target": ".skip-link",
+      "expected": "Skip to content receives focus"
+    },
+    {
+      "action": "Activate",
+      "target": ".skip-link",
+      "expected": "Focus moves to #main landmark"
+    },
+    {
+      "action": "Tab",
+      "target": ".nav-link[aria-current=\"page\"]",
+      "expected": "Current route exposed to assistive tech"
+    },
+    {
+      "action": "Keyboard activate nav",
+      "target": "button.nav-link:overview",
+      "route": "overview",
+      "expected": "Route Overview becomes aria-current=page"
+    },
+    {
+      "action": "Keyboard activate nav",
+      "target": "button.nav-link:insights",
+      "route": "insights",
+      "expected": "Route Insights becomes aria-current=page"
+    },
+    {
+      "action": "Keyboard activate nav",
+      "target": "button.nav-link:database",
+      "route": "database",
+      "expected": "Route Database becomes aria-current=page"
+    },
+    {
+      "action": "Keyboard activate nav",
+      "target": "button.nav-link:providers",
+      "route": "providers",
+      "expected": "Route Providers & models becomes aria-current=page"
+    },
+    {
+      "action": "Tab",
+      "target": ".status-pill[role=status]",
+      "expected": "Daemon status announced as live region"
+    }
+  ]
+}

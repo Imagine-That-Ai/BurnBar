@@ -1,0 +1,142 @@
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testProviderModelFixtureChecksumAndContracts =====
+[0/1] Planning build
+Test Suite 'Selected tests' started at 2026-07-03 13:09:32.775
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:32.775
+Test Case 'LinuxCoreFoundationTests.testProviderModelFixtureChecksumAndContracts' started at 2026-07-03 13:09:32.775
+MODEL_FIXTURE_SHA256 5ce2db1c997bf6091717b488f562acfc3dfbd6b39d31ec7c4e5745fd8c14eb28
+MODEL_PARITY_GENERATOR_PATH OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/LinuxCoreFoundationTests.swift
+Test Case 'LinuxCoreFoundationTests.testProviderModelFixtureChecksumAndContracts' passed (0.012 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:32.788
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.012 (0.012) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:32.788
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.012 (0.012) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testProviderModelFixtureChecksumAndContracts =====
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testPlatformCryptoKATsFromCommittedFixture =====
+Test Suite 'Selected tests' started at 2026-07-03 13:09:33.064
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:33.065
+Test Case 'LinuxCoreFoundationTests.testPlatformCryptoKATsFromCommittedFixture' started at 2026-07-03 13:09:33.065
+KAT_PLATFORM_CRYPTO_SHA256 f7112ec0801eb1157ac3bc7e469549122f13e868531d73d55199056cd52aef89
+KAT_HASH_SHA256 2b78548bf4d51c75d3ed7118cebfb22520f51d23aa7940a3525265738dd26ba2
+KAT_HMAC_SHA256 92cb90fa61c9e0d021a529af41f1e87ceeb0da80362fb1229f8079526fb26d39
+KAT_AES_GCM_COMBINED_SHA256 3cdec0ddbaeeb39ba103824488fc05833c57d53030ec65b9840dce0e42952565
+KAT_ED25519_SIGNATURE_SHA256 e60ce08488040df0713ef510c966eaf79e739f1deb2855aa0ef433ba7d054db1
+KAT_CANONICAL_JSON_SHA256 7328d2f6bd351d7b7eb796d0c66ecd468f4e715cad7b446f34f56f4f5c1e4541
+KAT_HPKE_V3_OPENED_SHA256 72dbb7336c76780023f83da4c355f2eeea85733b13d3477697917790c1229084
+KAT_CLOUDVAULT_PAYLOAD_SHA256 0cd6d39d24ce12a9b54e7039588f6b7cc2ef1d3e97548125040a621f84495f21
+Test Case 'LinuxCoreFoundationTests.testPlatformCryptoKATsFromCommittedFixture' passed (0.014 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:33.080
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.014 (0.014) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:33.080
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.014 (0.014) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testPlatformCryptoKATsFromCommittedFixture =====
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testPlatformCryptoAndLoggerSeams =====
+Test Suite 'Selected tests' started at 2026-07-03 13:09:33.362
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:33.363
+Test Case 'LinuxCoreFoundationTests.testPlatformCryptoAndLoggerSeams' started at 2026-07-03 13:09:33.363
+Test Case 'LinuxCoreFoundationTests.testPlatformCryptoAndLoggerSeams' passed (0.002 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:33.364
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:33.364
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testPlatformCryptoAndLoggerSeams =====
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testHermesAndMediaKATsFromFixture =====
+Test Suite 'Selected tests' started at 2026-07-03 13:09:33.635
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:33.636
+Test Case 'LinuxCoreFoundationTests.testHermesAndMediaKATsFromFixture' started at 2026-07-03 13:09:33.636
+KAT_HERMES_REQUEST_AAD_SHA256 65d0f370c3b5084ec8ea188231d41c6c72464d1ab9104f0cdd6753c1efc8f91f
+KAT_MEDIA_WIRE_SHA256 e0af4bd8f72e3c9853521b16fbe556d91b969bc3bc1ffadd831f5279ae7c7d51
+Test Case 'LinuxCoreFoundationTests.testHermesAndMediaKATsFromFixture' passed (0.008 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:33.644
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.008 (0.008) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:33.644
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.008 (0.008) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testHermesAndMediaKATsFromFixture =====
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testHermesHTTPTransportUsesOfflineFoundationNetworkingStub =====
+Test Suite 'Selected tests' started at 2026-07-03 13:09:33.927
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:33.928
+Test Case 'LinuxCoreFoundationTests.testHermesHTTPTransportUsesOfflineFoundationNetworkingStub' started at 2026-07-03 13:09:33.928
+Test Case 'LinuxCoreFoundationTests.testHermesHTTPTransportUsesOfflineFoundationNetworkingStub' passed (0.007 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:33.935
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.007 (0.007) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:33.935
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.007 (0.007) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testHermesHTTPTransportUsesOfflineFoundationNetworkingStub =====
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testNativeSignalAtRestContractsUseLibSignal =====
+Test Suite 'Selected tests' started at 2026-07-03 13:09:34.220
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:34.221
+Test Case 'LinuxCoreFoundationTests.testNativeSignalAtRestContractsUseLibSignal' started at 2026-07-03 13:09:34.221
+NATIVE_SIGNAL_STATUS libsignal=available publicKeyBytes=33 ciphertextBytes=76
+Test Case 'LinuxCoreFoundationTests.testNativeSignalAtRestContractsUseLibSignal' passed (0.016 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:34.237
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.016 (0.016) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:34.237
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.016 (0.016) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testNativeSignalAtRestContractsUseLibSignal =====
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testNativeFFIAvailabilityEvidenceIsExplicit =====
+Test Suite 'Selected tests' started at 2026-07-03 13:09:34.524
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:34.525
+Test Case 'LinuxCoreFoundationTests.testNativeFFIAvailabilityEvidenceIsExplicit' started at 2026-07-03 13:09:34.525
+NATIVE_FFI_STATUS signal=native-libsignal iroh=native-openburnbar-iroh media=pure-swift-contract cu=pure-swift-contract
+Test Case 'LinuxCoreFoundationTests.testNativeFFIAvailabilityEvidenceIsExplicit' passed (0.008 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:34.533
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.008 (0.008) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:34.533
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.008 (0.008) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testNativeFFIAvailabilityEvidenceIsExplicit =====
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testIrohLoopbackRoundTripsRelayFrame =====
+Test Suite 'Selected tests' started at 2026-07-03 13:09:34.810
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:34.811
+Test Case 'LinuxCoreFoundationTests.testIrohLoopbackRoundTripsRelayFrame' started at 2026-07-03 13:09:34.811
+Test Case 'LinuxCoreFoundationTests.testIrohLoopbackRoundTripsRelayFrame' passed (0.004 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:34.814
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:34.814
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testIrohLoopbackRoundTripsRelayFrame =====
+===== swift test filter OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testComputerUseAuditExportRoundTripsThroughZlib =====
+Test Suite 'Selected tests' started at 2026-07-03 13:09:35.109
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:35.110
+Test Case 'LinuxCoreFoundationTests.testComputerUseAuditExportRoundTripsThroughZlib' started at 2026-07-03 13:09:35.110
+KAT_CU_GZIP_SHA256 5382bb980c7b6f495b6a9e577e36dee04e8a8364e7899d3d7720f0f91751902d
+Test Case 'LinuxCoreFoundationTests.testComputerUseAuditExportRoundTripsThroughZlib' passed (0.013 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:35.123
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.013 (0.013) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:35.123
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.013 (0.013) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+===== completed OpenBurnBarLinuxCoreFoundationTests.LinuxCoreFoundationTests/testComputerUseAuditExportRoundTripsThroughZlib =====

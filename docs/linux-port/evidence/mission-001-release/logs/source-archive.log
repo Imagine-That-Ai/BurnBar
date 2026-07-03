@@ -1,0 +1,7 @@
+## git archive --format=tar --prefix=OpenBurnBar-0.1.0/ --output=/private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-source-9978c055ff59.tar HEAD
+cwd=.
+exit_code=0
+### stdout
+
+### stderr
+

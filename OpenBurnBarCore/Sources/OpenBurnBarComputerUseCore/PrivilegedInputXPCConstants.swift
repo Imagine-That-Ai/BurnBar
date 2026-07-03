@@ -1,5 +1,9 @@
-import Darwin
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Mach service and install paths for the minimal privileged input-execution leaf (WS1).
 public enum PrivilegedInputXPCConstants: Sendable {

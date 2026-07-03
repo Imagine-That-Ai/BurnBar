@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-07-03T11:55:14.629Z",
+  "lane": "W07LinuxComputerUseMediaMobile",
+  "invariants": {
+    "noGlobalKeylogging": true,
+    "noSilentAutopilot": true,
+    "waylandCaptureRequiresPortalConsent": true,
+    "mobileTrustDowngradeOnly": true,
+    "signedHeadRequired": true,
+    "unavailableHardwareBecomesBlockedEvidence": true
+  }
+}

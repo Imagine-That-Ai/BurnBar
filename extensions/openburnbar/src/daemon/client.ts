@@ -5,6 +5,11 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  defaultBurnBarSocketAuthTokenFile,
+  defaultBurnBarSocketPath
+} from '../platform/paths';
+
+import {
   BURNBAR_PROTOCOL_VERSION,
   type BurnBarCatalog,
   type BurnBarCatalogResponse,
@@ -55,34 +60,15 @@ import type {
   BurnBarControllerSummaryResponse
 } from '../types';
 
-const DEFAULT_BURNBAR_SOCKET_PATH = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'OpenBurnBar',
-  'openburnbar-daemon.sock'
-);
-const DEFAULT_BURNBAR_SUPPORT_DIR = join(homedir(), 'Library', 'Application Support', 'OpenBurnBar');
-const DEFAULT_BURNBAR_SOCKET_AUTH_TOKEN_FILE = join(DEFAULT_BURNBAR_SUPPORT_DIR, 'daemon-socket-auth-token');
 const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(homedir(), 'Library', 'LaunchAgents', 'com.openburnbar.daemon.plist');
 const DEFAULT_MAX_IN_FLIGHT = 8;
 
 function resolveDefaultSocketPath(): string {
-  return (
-    process.env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? process.env.BURNBAR_DAEMON_SOCKET_PATH ?? DEFAULT_BURNBAR_SOCKET_PATH
-  );
+  return defaultBurnBarSocketPath();
 }
 
 function resolveDefaultAuthTokenFilePath(): string {
-  return (
-    process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ??
-    process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ??
-    (process.env.OPENBURNBAR_DAEMON_SUPPORT_DIR
-      ? join(process.env.OPENBURNBAR_DAEMON_SUPPORT_DIR, 'daemon-socket-auth-token')
-      : process.env.BURNBAR_DAEMON_SUPPORT_DIR
-        ? join(process.env.BURNBAR_DAEMON_SUPPORT_DIR, 'daemon-socket-auth-token')
-        : DEFAULT_BURNBAR_SOCKET_AUTH_TOKEN_FILE)
-  );
+  return defaultBurnBarSocketAuthTokenFile();
 }
 
 function readTrimmedFile(path: string): string | undefined {

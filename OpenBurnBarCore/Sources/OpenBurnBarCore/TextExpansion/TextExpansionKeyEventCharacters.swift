@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 #if canImport(AppKit)
 import AppKit
 import CoreGraphics
@@ -74,4 +75,6 @@ public enum TextExpansionKeyEventCharacters {
         return base[keyCode]
     }
 }
+#endif
+
 #endif

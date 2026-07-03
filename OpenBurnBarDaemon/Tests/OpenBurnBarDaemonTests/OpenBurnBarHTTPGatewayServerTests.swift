@@ -1,7 +1,13 @@
 import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
+#if canImport(os)
 import os
+#endif
 import Foundation
 import XCTest
 
@@ -5543,21 +5549,27 @@ private final class GatewayHarness: @unchecked Sendable {
     }
 
     private static func verifyCanBind(port: Int) throws {
-        let socketFD = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        let socketFD = socket(AF_INET, streamSocketType, 0)
         guard socketFD >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
-        defer { Darwin.close(socketFD) }
+        defer { close(socketFD) }
 
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
+        #if os(macOS)
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.stride)
+        #endif
         address.sin_port = in_port_t(port).bigEndian
         address.sin_addr.s_addr = 0x0100007F
 
         let bindResult = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                #if os(Linux)
+                Glibc.bind(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                #else
                 Darwin.bind(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                #endif
             }
         }
         guard bindResult == 0 else {
@@ -5580,26 +5592,40 @@ private final class GatewayHarness: @unchecked Sendable {
     }
 
     private static func connectToLoopback(port: Int) throws {
-        let socketFD = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        let socketFD = socket(AF_INET, streamSocketType, 0)
         guard socketFD >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
-        defer { Darwin.close(socketFD) }
+        defer { close(socketFD) }
 
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
+        #if os(macOS)
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.stride)
+        #endif
         address.sin_port = in_port_t(port).bigEndian
         address.sin_addr.s_addr = 0x0100007F
 
         let connectResult = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                #if os(Linux)
+                Glibc.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                #else
                 Darwin.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                #endif
             }
         }
         guard connectResult == 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .ECONNREFUSED)
         }
+    }
+
+    private static var streamSocketType: Int32 {
+        #if os(Linux)
+        return Int32(SOCK_STREAM.rawValue)
+        #else
+        return SOCK_STREAM
+        #endif
     }
 }
 

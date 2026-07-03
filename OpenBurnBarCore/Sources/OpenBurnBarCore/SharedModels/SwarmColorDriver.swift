@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(SwiftUI)
 import SwiftUI
+#endif
 
 // MARK: - Swarm Color Driver
 //
@@ -208,9 +210,11 @@ public struct RGBA: Hashable, Sendable {
         self.a = a
     }
 
+    #if canImport(SwiftUI)
     public var color: Color {
         Color(red: r, green: g, blue: b).opacity(a)
     }
+    #endif
 
     /// Quantized 8-bit-per-channel bucket key. Two RGBA values that round to the
     /// same byte triple share a bucket, which makes Canvas fill batching stable

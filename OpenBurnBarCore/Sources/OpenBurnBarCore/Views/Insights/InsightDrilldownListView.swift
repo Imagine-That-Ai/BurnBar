@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightDrilldownListView: View {
@@ -58,3 +59,5 @@ public struct InsightDrilldownListView: View {
         .padding(.vertical, 6)
     }
 }
+
+#endif

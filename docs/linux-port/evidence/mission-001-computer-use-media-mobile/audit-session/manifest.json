@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "linux-cu-evidence-session",
+  "mode": "linux-local-agency",
+  "trustMode": "manual",
+  "startedAtMillis": 1777000000000,
+  "userId": "fixture-user",
+  "linuxPeerNodeId": "linux-peer-node-fixture",
+  "phoneViewerNodeId": "mobile-peer-fixture",
+  "scopeRuleIds": [
+    "deny-password-fields"
+  ],
+  "entitlementProductId": "com.openburnbar.hostedComputerUseSync.monthly",
+  "actionCap": 50,
+  "sessionTimeoutSeconds": 1800
+}

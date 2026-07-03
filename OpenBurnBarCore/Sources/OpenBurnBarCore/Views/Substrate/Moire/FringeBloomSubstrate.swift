@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Fringe Bloom — a real two-grating interferogram rendered as a CONTINUOUS glowing field.
@@ -417,3 +418,5 @@ public final class FringeBloomSubstrate: SwarmSubstrate {
         }
     }
 }
+
+#endif

@@ -3,9 +3,59 @@
 
 import PackageDescription
 
+var packagePlatforms: [SupportedPlatform]? = [.macOS(.v14)]
+var packageDependencies: [Package.Dependency] = [
+    .package(path: "../OpenBurnBarCore"),
+    // Vendored to match the app target: GRDB must import SQLCipher on Apple platforms
+    // and the system sqlcipher pkg-config module on Linux.
+    .package(path: "../Vendor/GRDB-SQLCipher"),
+]
+var daemonTargetDependencies: [Target.Dependency] = [
+    .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
+    .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
+    .product(name: "GRDB", package: "GRDB-SQLCipher"),
+]
+var daemonLinkerSettings: [LinkerSetting] = []
+var daemonExecutableDependencies: [Target.Dependency] = ["OpenBurnBarDaemon"]
+var daemonExcludes: [String] = []
+
+#if os(macOS)
+packageDependencies.append(contentsOf: [
+    .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
+    .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.18.0"),
+])
+daemonTargetDependencies.append(.product(name: "SQLCipher", package: "SQLCipher.swift"))
+daemonLinkerSettings = [.unsafeFlags(["-framework", "Network", "-framework", "CoreServices"])]
+daemonExecutableDependencies.append(.product(name: "Sentry", package: "sentry-cocoa"))
+#elseif os(Linux)
+packagePlatforms = nil
+daemonExcludes = [
+    "ElderWandFusionOrchestrator.swift",
+    "ElderWandToolLoop.swift",
+    "ElderWandWebTools.swift",
+    "OpenBurnBarHTTPGatewayElderWandIntegration.swift",
+    "OpenBurnBarHTTPGatewayError.swift",
+    "OpenBurnBarHTTPGatewayRequests.swift",
+    "OpenBurnBarHTTPGatewayResponseTypes.swift",
+    "OpenBurnBarHTTPGatewayServer.swift",
+    "OpenBurnBarHTTPGatewayServer+Connection.swift",
+    "OpenBurnBarHTTPGatewayServer+CrossVendorDegrade.swift",
+    "OpenBurnBarHTTPGatewayServer+Endpoints.swift",
+    "OpenBurnBarHTTPGatewayServer+HTTPTransport.swift",
+    "OpenBurnBarHTTPGatewayServer+ModelCatalog.swift",
+    "OpenBurnBarHTTPGatewayServer+RoutePipeline.swift",
+    "OpenBurnBarHTTPGatewayServer+UsageLogging.swift",
+    "GatewayModelCatalogSource.swift",
+    "GatewayRouteLogging.swift",
+    "GatewayStreamingUsageAccumulator.swift",
+    "OpenBurnBarSwitcherShell.swift",
+    "PensieveKnowledgeWatcher.swift",
+]
+#endif
+
 let package = Package(
     name: "OpenBurnBarDaemon",
-    platforms: [.macOS(.v14)],
+    platforms: packagePlatforms,
     products: [
         .executable(
             name: "OpenBurnBarDaemon",
@@ -40,33 +90,20 @@ let package = Package(
             targets: ["OpenBurnBarRemoteAccessAgentCore"]
         )
     ],
-    dependencies: [
-        .package(path: "../OpenBurnBarCore"),
-        // Vendored to match the app target: GRDB must import SQLCipher, not system sqlite3.
-        .package(path: "../Vendor/GRDB-SQLCipher"),
-        .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
-        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.18.0")
-    ],
+    dependencies: packageDependencies,
     targets: [
         .target(
             name: "OpenBurnBarDaemon",
-            dependencies: [
-                .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
-                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
-                .product(name: "GRDB", package: "GRDB-SQLCipher"),
-                .product(name: "SQLCipher", package: "SQLCipher.swift")
-            ],
+            dependencies: daemonTargetDependencies,
+            exclude: daemonExcludes,
             cSettings: [
                 .define("SQLITE_HAS_CODEC")
             ],
-            linkerSettings: [.unsafeFlags(["-framework", "Network", "-framework", "CoreServices"])]
+            linkerSettings: daemonLinkerSettings
         ),
         .executableTarget(
             name: "OpenBurnBarDaemonExecutable",
-            dependencies: [
-                "OpenBurnBarDaemon",
-                .product(name: "Sentry", package: "sentry-cocoa")
-            ]
+            dependencies: daemonExecutableDependencies
         ),
         .executableTarget(
             name: "OpenBurnBarCLI",

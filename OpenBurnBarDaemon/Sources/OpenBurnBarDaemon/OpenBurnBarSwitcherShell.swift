@@ -3,7 +3,11 @@ import GRDB
 import OpenBurnBarCore
 #if os(macOS)
 import LocalAuthentication
+#if canImport(Security)
+#if canImport(Security)
 import Security
+#endif
+#endif
 #endif
 
 public enum BurnBarSwitcherShellError: LocalizedError, Equatable {

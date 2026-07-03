@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission Fan-Out Group Card (Hermes Square §6.4)
@@ -322,3 +323,5 @@ private struct StaggeredChildTile<Content: View>: View {
         return winnerCelebrationTick > 0 && winnerCelebrationTick % 2 == 1 ? 1.04 : 1.0
     }
 }
+
+#endif

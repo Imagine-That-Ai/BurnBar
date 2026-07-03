@@ -1,0 +1,15 @@
+{
+  "mission": "mission-001",
+  "lane": "W06LinuxShellUx",
+  "thresholdsMs": {
+    "app.start": 2500,
+    "route.navigation": 250,
+    "ipc.health.roundtrip": 800,
+    "tray.open": 400,
+    "chat.firstToken.progress": 300,
+    "db.migration.open.query": 300,
+    "parser.incremental.run": 300,
+    "memory.search": 300,
+    "media.control.stage": 300
+  }
+}

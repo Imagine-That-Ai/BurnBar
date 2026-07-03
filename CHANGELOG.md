@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Linux release lane** — adds fail-closed Linux package metadata, release
+  artifact verifiers, parity-ledger enforcement, CI/nightly workflow scaffolding,
+  and docs/runbooks for AppImage/deb/rpm/AUR/Flatpak-tail promotion without
+  publishing unsigned or untested `latest-linux.json` metadata.
+
 ## [1.0.27] - 2026-07-03
 
 ### Fixed

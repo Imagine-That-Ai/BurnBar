@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // Grid resolution for the scalar height field. Bumped 52→60 so the WIDER empty
@@ -465,3 +466,5 @@ public final class MeshIsolineSubstrate: SwarmSubstrate {
         return lerp(lerp(a, b, ux), lerp(c, d, ux), uy)
     }
 }
+
+#endif

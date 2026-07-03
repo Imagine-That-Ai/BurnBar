@@ -1,0 +1,25 @@
+## python3 scripts/generate-sbom.py --version 0.1.0 --repo-root /private/tmp/openburnbar-linux-mission-001 --output /private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.spdx.json
+cwd=.
+exit_code=0
+### stdout
+Generating SBOM for OpenBurnBar v0.1.0...
+  Repo root: /private/tmp/openburnbar-linux-mission-001
+  SPM dependencies: 34
+  npm dependencies: 1845
+  Cargo dependencies: 579
+  Gradle dependencies: 69
+  Total packages: 2528
+  Written to: /private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.spdx.json
+
+### stderr
+WARNING: Could not parse Package.resolved at /private/tmp/openburnbar-linux-mission-001/Vendor/GRDB-SQLCipher/Package.resolved
+
+
+## python3 scripts/supply-chain/generate-vex.py --sbom /private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.spdx.json --output /private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.openvex.json --product-version 0.1.0
+cwd=.
+exit_code=0
+### stdout
+Wrote VEX → /private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.openvex.json
+
+### stderr
+

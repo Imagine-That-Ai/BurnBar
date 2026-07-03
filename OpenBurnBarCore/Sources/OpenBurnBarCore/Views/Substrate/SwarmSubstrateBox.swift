@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Resolves + caches the live ``SwarmSubstrate`` instance for a swarm host from
@@ -38,3 +39,5 @@ public final class SwarmSubstrateBox: ObservableObject {
                 enabled: SwarmSubstratePreferences.isEnabled)
     }
 }
+
+#endif

@@ -1,0 +1,22 @@
+
+> openburnbar@1.0.27 test:unit
+> vitest run --coverage.enabled false test/daemonClient.test.ts test/controller.test.ts
+
+sh: vitest: command not found
+extension_focused_test_exit_code=127
+blocker=extensions/openburnbar/node_modules missing; run npm ci --prefix extensions/openburnbar before extension-focused evidence.
+paths_source=extensions/openburnbar/src/platform/paths.ts (static sample in extension-linux-path-sample.json)
+health_alert=state/controller.ts -> alertDaemonUnreachable(socketPath)
+extension_focused_test_exit_code=127
+blocker=extensions/openburnbar/node_modules missing; run npm ci --prefix extensions/openburnbar before extension-focused evidence.
+paths_source=extensions/openburnbar/src/platform/paths.ts (static sample in extension-linux-path-sample.json)
+health_alert=state/controller.ts -> alertDaemonUnreachable(socketPath)
+extension_focused_test_exit_code=127
+blocker=extensions/openburnbar/node_modules missing; run npm ci --prefix extensions/openburnbar before extension-focused evidence.
+paths_source=extensions/openburnbar/src/platform/paths.ts (static sample in extension-linux-path-sample.json)
+health_alert=state/controller.ts -> alertDaemonUnreachable(socketPath)
+extension_focused_test_exit_code=127
+blocker=extensions/openburnbar/node_modules missing; run npm ci --prefix extensions/openburnbar before extension-focused evidence.
+paths_source=extensions/openburnbar/src/platform/paths.ts (static sample in extension-linux-path-sample.json)
+health_alert=state/controller.ts -> alertDaemonUnreachable(socketPath)
+extension_focused_test_exit_code=127

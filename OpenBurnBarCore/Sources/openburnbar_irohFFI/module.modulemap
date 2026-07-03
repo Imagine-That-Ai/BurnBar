@@ -1,0 +1,5 @@
+module openburnbar_irohFFI {
+    header "../OpenBurnBarIroh/Generated/openburnbar_irohFFI.h"
+    link "openburnbar_iroh"
+    export *
+}

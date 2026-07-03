@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 #if canImport(AppKit)
 import AppKit
@@ -373,5 +374,7 @@ public final class InMemorySwitcherProfileStoreAdapter: SwitcherProfileStoreAdap
         state.withLock { $0.profiles[profile.id] = profile }
     }
 }
+
+#endif
 
 #endif

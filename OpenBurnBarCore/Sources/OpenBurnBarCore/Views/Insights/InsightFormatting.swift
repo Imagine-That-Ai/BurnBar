@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import SwiftUI
 
@@ -98,3 +99,5 @@ public enum InsightFormatting {
         }
     }
 }
+
+#endif

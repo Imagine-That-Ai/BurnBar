@@ -1,5 +1,9 @@
 import XCTest
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+ import Crypto
+#endif
 @testable import OpenBurnBarComputerUseCore
 
 final class CapabilityTokenVerifierTests: XCTestCase {

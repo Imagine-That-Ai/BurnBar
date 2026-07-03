@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightNarrativeView: View {
@@ -45,3 +46,5 @@ public struct InsightNarrativeView: View {
         }
     }
 }
+
+#endif

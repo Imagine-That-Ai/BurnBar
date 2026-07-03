@@ -20,16 +20,80 @@ node -e 'console.log(JSON.stringify({ nodeSmoke: true, platform: process.platfor
 echo "== rust-cargo =="
 rustc --version
 cargo --version
+protoc --version
+cmake --version | head -n 1
 tmp_cargo="$(mktemp -d)"
-trap 'rm -rf "$tmp_cargo"' EXIT
+tmp_sqlcipher_db="$(mktemp /tmp/openburnbar-sqlcipher-fts5.XXXXXX.db)"
+tmp_sqlcipher_wrong_out="$(mktemp /tmp/openburnbar-sqlcipher-wrong.XXXXXX.out)"
+tmp_sqlcipher_wrong_err="$(mktemp /tmp/openburnbar-sqlcipher-wrong.XXXXXX.err)"
+tmp_plain_sqlite_out="$(mktemp /tmp/openburnbar-plain-sqlite.XXXXXX.out)"
+tmp_plain_sqlite_err="$(mktemp /tmp/openburnbar-plain-sqlite.XXXXXX.err)"
+rm -f "$tmp_sqlcipher_db"
+trap 'rm -rf "$tmp_cargo" "$tmp_sqlcipher_db" "$tmp_sqlcipher_wrong_out" "$tmp_sqlcipher_wrong_err" "$tmp_plain_sqlite_out" "$tmp_plain_sqlite_err"' EXIT
 cargo new --quiet --bin "$tmp_cargo/openburnbar_linux_smoke"
 cargo run --quiet --manifest-path "$tmp_cargo/openburnbar_linux_smoke/Cargo.toml"
 
 echo "== sqlite-sqlcipher =="
 sqlite3 --version
+which sqlcipher
 sqlcipher -version
 pkg-config --modversion sqlite3
-pkg-config --modversion sqlcipher || echo "sqlcipher.pc unavailable; binary and dpkg package evidence recorded"
+pkg-config --modversion sqlcipher
+pkg-config --cflags --libs sqlcipher
+ldd "$(command -v sqlcipher)"
+cat /usr/local/share/openburnbar/sqlcipher-build.txt
+cat /usr/local/share/openburnbar/sqlcipher-source.sha256
+
+echo "== sqlcipher-codec-fts5 =="
+sqlcipher_version="$(sqlcipher -batch :memory: 'PRAGMA cipher_version;')"
+if [[ -z "$sqlcipher_version" ]]; then
+  echo "SQLCipher codec is unavailable: PRAGMA cipher_version returned no row" >&2
+  exit 1
+fi
+echo "cipher_version=${sqlcipher_version}"
+compile_options="$(sqlcipher -batch :memory: 'PRAGMA compile_options;')"
+printf '%s\n' "$compile_options"
+if ! grep -qx 'HAS_CODEC' <<<"$compile_options"; then
+  echo "SQLCipher compile options do not include HAS_CODEC" >&2
+  exit 1
+fi
+if ! grep -qx 'ENABLE_FTS5' <<<"$compile_options"; then
+  echo "SQLCipher compile options do not include ENABLE_FTS5" >&2
+  exit 1
+fi
+sqlcipher -batch "$tmp_sqlcipher_db" >/dev/null <<'SQL'
+PRAGMA key = 'openburnbar-linux-toolchain-smoke';
+CREATE TABLE docs(id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL);
+CREATE VIRTUAL TABLE docs_fts USING fts5(title, body, content='docs', content_rowid='id');
+INSERT INTO docs(id, title, body) VALUES
+  (1, 'Toolchain', 'SQLCipher encrypted searchable schema proof'),
+  (2, 'Plain SQLite', 'This row proves ordinary sqlite is not the selected storage engine');
+INSERT INTO docs_fts(rowid, title, body) SELECT id, title, body FROM docs;
+SQL
+fts5_result="$(sqlcipher -batch "$tmp_sqlcipher_db" "PRAGMA key = 'openburnbar-linux-toolchain-smoke'; SELECT title || '|' || body FROM docs_fts WHERE docs_fts MATCH 'encrypted AND searchable';" | tail -n 1)"
+echo "fts5_query_result=${fts5_result}"
+if [[ "$fts5_result" != "Toolchain|SQLCipher encrypted searchable schema proof" ]]; then
+  echo "Unexpected encrypted FTS5 query result: ${fts5_result}" >&2
+  exit 1
+fi
+encrypted_header_hex="$(dd if="$tmp_sqlcipher_db" bs=16 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+echo "encrypted_header_hex=${encrypted_header_hex}"
+if [[ "$encrypted_header_hex" == "53514c69746520666f726d6174203300" ]]; then
+  echo "SQLCipher smoke database has a plaintext SQLite header" >&2
+  exit 1
+fi
+if sqlite3 "$tmp_sqlcipher_db" 'SELECT count(*) FROM sqlite_master;' >"$tmp_plain_sqlite_out" 2>"$tmp_plain_sqlite_err"; then
+  echo "Plain sqlite3 unexpectedly opened the SQLCipher smoke database" >&2
+  cat "$tmp_plain_sqlite_out" >&2
+  exit 1
+fi
+echo "plain_sqlite_rejected=$(tr '\n' ' ' < "$tmp_plain_sqlite_err")"
+if sqlcipher -batch "$tmp_sqlcipher_db" "PRAGMA key = 'wrong-openburnbar-key'; SELECT count(*) FROM sqlite_master;" >"$tmp_sqlcipher_wrong_out" 2>"$tmp_sqlcipher_wrong_err"; then
+  echo "SQLCipher unexpectedly opened the smoke database with the wrong key" >&2
+  cat "$tmp_sqlcipher_wrong_out" >&2
+  exit 1
+fi
+echo "wrong_key_rejected=$(tr '\n' ' ' < "$tmp_sqlcipher_wrong_err")"
 
 echo "== linux-desktop-libs =="
 pkg-config --modversion webkit2gtk-4.1
@@ -72,9 +136,10 @@ dpkg-query -W -f='${binary:Package}=${Version}\n' \
   npm \
   rustc \
   cargo \
+  curl \
+  tcl \
   sqlite3 \
-  sqlcipher \
-  libsqlcipher-dev \
+  libreadline-dev \
   libwebkit2gtk-4.1-dev \
   libayatana-appindicator3-dev \
   libsecret-1-dev \
@@ -96,6 +161,7 @@ dpkg-query -W -f='${binary:Package}=${Version}\n' \
   rpm \
   gnupg \
   patchelf \
-  file
+  file \
+  zlib1g-dev
 
 echo "openburnbar-linux-toolchain-smoke-ok"

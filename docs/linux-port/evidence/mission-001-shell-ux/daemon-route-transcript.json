@@ -1,0 +1,189 @@
+{
+  "generatedAt": "2026-07-03T14:27:06.714Z",
+  "lane": "W06ShellEvidenceRepair",
+  "mode": "packaged-desktop-route-navigation",
+  "surface": "installed-tauri-deb-xvfb-xfce",
+  "missionWorktree": "/private/tmp/openburnbar-linux-mission-001",
+  "routeCount": 17,
+  "daemonOracle": {
+    "mode": "openburnbar-daemon-af-unix",
+    "status": "ready",
+    "detail": "Real OpenBurnBarDaemon listening on AF_UNIX socket for packaged shell session.",
+    "socketPath": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock",
+    "missionWorktree": "/private/tmp/openburnbar-linux-mission-001",
+    "missionWorktreeHost": "/private/tmp/openburnbar-linux-mission-001"
+  },
+  "routes": [
+    {
+      "index": 0,
+      "route": "overview",
+      "screenshot": "screenshot-route-overview.png",
+      "xwininfo": "window-route-overview-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Home",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 1,
+      "route": "insights",
+      "screenshot": "screenshot-route-insights.png",
+      "xwininfo": "window-route-insights-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 2,
+      "route": "database",
+      "screenshot": "screenshot-route-database.png",
+      "xwininfo": "window-route-database-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 3,
+      "route": "providers",
+      "screenshot": "screenshot-route-providers.png",
+      "xwininfo": "window-route-providers-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 4,
+      "route": "projects",
+      "screenshot": "screenshot-route-projects.png",
+      "xwininfo": "window-route-projects-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 5,
+      "route": "missions",
+      "screenshot": "screenshot-route-missions.png",
+      "xwininfo": "window-route-missions-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 6,
+      "route": "activity",
+      "screenshot": "screenshot-route-activity.png",
+      "xwininfo": "window-route-activity-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 7,
+      "route": "chat",
+      "screenshot": "screenshot-route-chat.png",
+      "xwininfo": "window-route-chat-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 8,
+      "route": "memory",
+      "screenshot": "screenshot-route-memory.png",
+      "xwininfo": "window-route-memory-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 9,
+      "route": "computer-use",
+      "screenshot": "screenshot-route-computer-use.png",
+      "xwininfo": "window-route-computer-use-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 10,
+      "route": "settings",
+      "screenshot": "screenshot-route-settings.png",
+      "xwininfo": "window-route-settings-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 11,
+      "route": "account",
+      "screenshot": "screenshot-route-account.png",
+      "xwininfo": "window-route-account-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 12,
+      "route": "updates",
+      "screenshot": "screenshot-route-updates.png",
+      "xwininfo": "window-route-updates-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 13,
+      "route": "support",
+      "screenshot": "screenshot-route-support.png",
+      "xwininfo": "window-route-support-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 14,
+      "route": "onboarding",
+      "screenshot": "screenshot-route-onboarding.png",
+      "xwininfo": "window-route-onboarding-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 15,
+      "route": "pet",
+      "screenshot": "screenshot-route-pet.png",
+      "xwininfo": "window-route-pet-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 16,
+      "route": "text-expansion",
+      "screenshot": "screenshot-route-text-expansion.png",
+      "xwininfo": "window-route-text-expansion-xwininfo.txt",
+      "windowId": "12582915",
+      "action": "ctrl+shift+Right",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    }
+  ],
+  "validatorGuidance": "Routes were reached in the installed packaged Tauri .deb under the CI compositor profile; daemon rows are constrained by daemon-session-oracle.json."
+}

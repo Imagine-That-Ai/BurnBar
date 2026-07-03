@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Wisp Plasma — ported from imaginethat `glyph/stage/styles/aurora/wisp.ts`.
@@ -205,3 +206,5 @@ public final class WispSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

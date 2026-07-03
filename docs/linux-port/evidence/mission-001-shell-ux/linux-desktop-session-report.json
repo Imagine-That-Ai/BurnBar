@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-07-03T14:27:07.230Z",
+  "profile": "dbus-x11-xvfb-xfce-statusnotifier",
+  "package": {
+    "name": "open-burn-bar",
+    "executable": "/usr/bin/openburnbar-linux-desktop",
+    "uninstallVerified": true,
+    "debArtifact": "OpenBurnBar_0.1.0_arm64.deb"
+  },
+  "session": {
+    "display": ":99",
+    "xdgSessionType": "x11",
+    "desktop": "XFCE",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_181_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_181_1/Menu",
+    "windowId": "12582915",
+    "reopenedWindowId": "12582915"
+  },
+  "performance": {
+    "appStartMs": 314,
+    "trayClickOpenMs": 29,
+    "ipcHealthRoundTripMs": 107,
+    "trayQuitMs": 107
+  },
+  "evidence": {
+    "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
+    "afterTrayOpenScreenshot": "screenshot-linux-desktop-after-tray-open.png",
+    "packagedRouteTranscript": "packaged-route-session-transcript.json",
+    "runtimePerfSamples": "runtime-perf-samples.jsonl",
+    "daemonSocketLog": "daemon-socket-gui-session.log",
+    "trayMenuLayout": "tray-menu-layout.txt",
+    "accessibilitySnapshot": "accessibility-tree-linux-desktop.txt"
+  }
+}

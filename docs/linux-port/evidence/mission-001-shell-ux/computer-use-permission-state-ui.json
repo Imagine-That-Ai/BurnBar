@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.663Z",
+  "lane": "W07LinuxComputerUseMediaMobile",
+  "states": [
+    {
+      "id": "portal-requested",
+      "target": "VAL-CU-001",
+      "state": "degraded",
+      "uiLabel": "Portal capture pending",
+      "evidence": "No frame is accepted until portal approval returns a PipeWire node."
+    },
+    {
+      "id": "portal-denied",
+      "target": "VAL-CU-001",
+      "state": "denied",
+      "uiLabel": "Capture denied",
+      "evidence": "Denial keeps session readable and disables capture/input controls."
+    },
+    {
+      "id": "portal-revoked",
+      "target": "VAL-CU-001",
+      "state": "revoked",
+      "uiLabel": "Capture revoked",
+      "evidence": "Revocation closes capture and moves the session to degraded state."
+    },
+    {
+      "id": "input-approved",
+      "target": "VAL-CU-002",
+      "state": "approved",
+      "uiLabel": "Input approved",
+      "evidence": "Approved actions still pass deny-region, trust, and rate-limit gates."
+    },
+    {
+      "id": "panic-active",
+      "target": "VAL-CU-003",
+      "state": "approved",
+      "uiLabel": "Panic halt armed",
+      "evidence": "Halt paths close capture, input, media, and append a terminal audit row."
+    }
+  ]
+}

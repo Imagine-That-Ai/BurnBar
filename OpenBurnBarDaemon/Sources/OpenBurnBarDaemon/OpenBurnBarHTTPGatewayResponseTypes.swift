@@ -5,7 +5,15 @@
 // from `private` to module-internal only so this extension can hold them.
 
 import OpenBurnBarCore
+#if canImport(CryptoKit)
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
+#else
+import Crypto
+#endif
 import Foundation
 import Network
 

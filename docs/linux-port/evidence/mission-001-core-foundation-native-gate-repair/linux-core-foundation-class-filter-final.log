@@ -1,0 +1,72 @@
+[0/1] Planning build
+Building for debugging...
+[0/5] Write sources
+[1/5] Write swift-version-24593BA9C3E375BF.txt
+[3/6] Compiling OpenBurnBarLinuxCoreFoundationTests LinuxCoreFoundationTests.swift
+[4/6] Emitting module OpenBurnBarLinuxCoreFoundationTests
+[5/7] /workspace/OpenBurnBarCore/.build-linux-core-foundation-native-gate-final/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/all-discovered-tests.swift
+[6/8] Write sources
+[8/15] Emitting module OpenBurnBarCorePackageDiscoveredTests
+[9/20] Compiling OpenBurnBarCorePackageDiscoveredTests BurnBarRemoteEngineTests.swift
+[10/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarAnalyticsTests.swift
+[11/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarComputerUseCoreTests.swift
+[12/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarCoreTests.swift
+[13/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarDataTests.swift
+[14/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarIrohRelayTests.swift
+[15/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarLinuxCoreFoundationTests.swift
+[16/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarMediaTests.swift
+[17/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarSignalCoreTests.swift
+[18/20] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarSignalSessionTransportTests.swift
+[19/20] Compiling OpenBurnBarCorePackageDiscoveredTests all-discovered-tests.swift
+[20/22] Wrapping AST for OpenBurnBarCorePackageDiscoveredTests for debugging
+[21/26] /workspace/OpenBurnBarCore/.build-linux-core-foundation-native-gate-final/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.derived/runner.swift
+[22/27] Write sources
+[23/27] Wrapping AST for OpenBurnBarLinuxCoreFoundationTests for debugging
+[25/29] Emitting module OpenBurnBarCorePackageTests
+[26/29] Compiling OpenBurnBarCorePackageTests runner.swift
+[27/29] Write Objects.LinkFileList
+[28/29] Linking OpenBurnBarCorePackageTests.xctest
+Build complete! (34.29s)
+Test Suite 'Selected tests' started at 2026-07-03 13:17:10.074
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:17:10.075
+Test Case 'LinuxCoreFoundationTests.testHermesAndMediaKATsFromFixture' started at 2026-07-03 13:17:10.075
+KAT_HERMES_REQUEST_AAD_SHA256 65d0f370c3b5084ec8ea188231d41c6c72464d1ab9104f0cdd6753c1efc8f91f
+KAT_MEDIA_WIRE_SHA256 e0af4bd8f72e3c9853521b16fbe556d91b969bc3bc1ffadd831f5279ae7c7d51
+Test Case 'LinuxCoreFoundationTests.testHermesAndMediaKATsFromFixture' passed (0.007 seconds)
+Test Case 'LinuxCoreFoundationTests.testHermesHTTPTransportUsesOfflineFoundationNetworkingStub' started at 2026-07-03 13:17:10.082
+Test Case 'LinuxCoreFoundationTests.testHermesHTTPTransportUsesOfflineFoundationNetworkingStub' passed (0.006 seconds)
+Test Case 'LinuxCoreFoundationTests.testIrohLoopbackRoundTripsRelayFrame' started at 2026-07-03 13:17:10.088
+Test Case 'LinuxCoreFoundationTests.testIrohLoopbackRoundTripsRelayFrame' passed (0.003 seconds)
+Test Case 'LinuxCoreFoundationTests.testNativeFFIAvailabilityEvidenceIsExplicit' started at 2026-07-03 13:17:10.090
+NATIVE_FFI_STATUS signal=native-libsignal iroh=native-openburnbar-iroh media=pure-swift-contract cu=pure-swift-contract
+Test Case 'LinuxCoreFoundationTests.testNativeFFIAvailabilityEvidenceIsExplicit' passed (0.007 seconds)
+Test Case 'LinuxCoreFoundationTests.testNativeSignalAtRestContractsUseLibSignal' started at 2026-07-03 13:17:10.097
+NATIVE_SIGNAL_STATUS libsignal=available publicKeyBytes=33 ciphertextBytes=76
+Test Case 'LinuxCoreFoundationTests.testNativeSignalAtRestContractsUseLibSignal' passed (0.005 seconds)
+Test Case 'LinuxCoreFoundationTests.testPlatformCryptoAndLoggerSeams' started at 2026-07-03 13:17:10.102
+Test Case 'LinuxCoreFoundationTests.testPlatformCryptoAndLoggerSeams' passed (0.0 seconds)
+Test Case 'LinuxCoreFoundationTests.testPlatformCryptoKATsFromCommittedFixture' started at 2026-07-03 13:17:10.103
+KAT_PLATFORM_CRYPTO_SHA256 f7112ec0801eb1157ac3bc7e469549122f13e868531d73d55199056cd52aef89
+KAT_HASH_SHA256 2b78548bf4d51c75d3ed7118cebfb22520f51d23aa7940a3525265738dd26ba2
+KAT_HMAC_SHA256 92cb90fa61c9e0d021a529af41f1e87ceeb0da80362fb1229f8079526fb26d39
+KAT_AES_GCM_COMBINED_SHA256 3cdec0ddbaeeb39ba103824488fc05833c57d53030ec65b9840dce0e42952565
+KAT_ED25519_SIGNATURE_SHA256 e60ce08488040df0713ef510c966eaf79e739f1deb2855aa0ef433ba7d054db1
+KAT_CANONICAL_JSON_SHA256 7328d2f6bd351d7b7eb796d0c66ecd468f4e715cad7b446f34f56f4f5c1e4541
+KAT_HPKE_V3_OPENED_SHA256 72dbb7336c76780023f83da4c355f2eeea85733b13d3477697917790c1229084
+KAT_CLOUDVAULT_PAYLOAD_SHA256 0cd6d39d24ce12a9b54e7039588f6b7cc2ef1d3e97548125040a621f84495f21
+Test Case 'LinuxCoreFoundationTests.testPlatformCryptoKATsFromCommittedFixture' passed (0.008 seconds)
+Test Case 'LinuxCoreFoundationTests.testProviderModelFixtureChecksumAndContracts' started at 2026-07-03 13:17:10.111
+MODEL_FIXTURE_SHA256 5ce2db1c997bf6091717b488f562acfc3dfbd6b39d31ec7c4e5745fd8c14eb28
+MODEL_PARITY_GENERATOR_PATH OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/LinuxCoreFoundationTests.swift
+Test Case 'LinuxCoreFoundationTests.testProviderModelFixtureChecksumAndContracts' passed (0.004 seconds)
+Test Case 'LinuxCoreFoundationTests.testZComputerUseAuditExportRoundTripsThroughZlib' started at 2026-07-03 13:17:10.116
+KAT_CU_GZIP_SHA256 d0c173683f0ef686d5ee98a83f0c07d04a108e88c64a19668f374e49c5e9c545
+Test Case 'LinuxCoreFoundationTests.testZComputerUseAuditExportRoundTripsThroughZlib' passed (0.008 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:17:10.124
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.049 (0.049) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:17:10.124
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.049 (0.049) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

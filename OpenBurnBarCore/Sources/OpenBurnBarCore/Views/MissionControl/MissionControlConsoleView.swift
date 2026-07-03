@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission Control Console (Root View)
@@ -342,3 +343,5 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
         }
     }
 }
+
+#endif

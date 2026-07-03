@@ -1,0 +1,108 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.668Z",
+  "lane": "W06LinuxShellUx",
+  "routes": [
+    {
+      "route": "overview",
+      "label": "Overview",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/overview"
+    },
+    {
+      "route": "insights",
+      "label": "Insights",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/insights"
+    },
+    {
+      "route": "database",
+      "label": "Database",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/database"
+    },
+    {
+      "route": "providers",
+      "label": "Providers & models",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/providers"
+    },
+    {
+      "route": "projects",
+      "label": "Projects",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/projects"
+    },
+    {
+      "route": "missions",
+      "label": "Missions",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/missions"
+    },
+    {
+      "route": "activity",
+      "label": "Activity & logs",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/activity"
+    },
+    {
+      "route": "chat",
+      "label": "Chat / Hermes",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/chat"
+    },
+    {
+      "route": "memory",
+      "label": "Memory",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/memory"
+    },
+    {
+      "route": "computer-use",
+      "label": "Computer Use",
+      "expectedState": "system-surface",
+      "reloadUrl": "app://openburnbar-linux/#/computer-use"
+    },
+    {
+      "route": "settings",
+      "label": "Settings",
+      "expectedState": "diagnostics",
+      "reloadUrl": "app://openburnbar-linux/#/settings"
+    },
+    {
+      "route": "account",
+      "label": "Account & sync",
+      "expectedState": "diagnostics",
+      "reloadUrl": "app://openburnbar-linux/#/account"
+    },
+    {
+      "route": "updates",
+      "label": "Updates",
+      "expectedState": "diagnostics",
+      "reloadUrl": "app://openburnbar-linux/#/updates"
+    },
+    {
+      "route": "support",
+      "label": "Support & diagnostics",
+      "expectedState": "diagnostics",
+      "reloadUrl": "app://openburnbar-linux/#/support"
+    },
+    {
+      "route": "onboarding",
+      "label": "First-run setup",
+      "expectedState": "system-surface",
+      "reloadUrl": "app://openburnbar-linux/#/onboarding"
+    },
+    {
+      "route": "pet",
+      "label": "Pet companion",
+      "expectedState": "system-surface",
+      "reloadUrl": "app://openburnbar-linux/#/pet"
+    },
+    {
+      "route": "text-expansion",
+      "label": "Text expansion",
+      "expectedState": "system-surface",
+      "reloadUrl": "app://openburnbar-linux/#/text-expansion"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+fixture_path=/workspace/docs/linux-port/evidence/mission-001-discovery-devices-extension/avahi-parsable-fixture.txt
+note=Parser/fixture proof via linked OpenBurnBarCLI; not live mDNS.
+[
+  {
+    "hostName" : "2a48d94a738e.local",
+    "instanceName" : "OpenBurnBar validator",
+    "port" : 8317,
+    "txt" : {
+      "caps" : "cast,cli,homeassistant,http,pixelclock,smarthub",
+      "gateway" : "loopback",
+      "peer" : "peer-linux-validator",
+      "platform" : "linux",
+      "proto" : "1",
+      "socket" : "unix"
+    }
+  }
+]
+local_peer_parse_fixture_exit_code=0

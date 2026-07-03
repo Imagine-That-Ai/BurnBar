@@ -1,0 +1,264 @@
+Fetching https://github.com/apple/swift-crypto.git
+Fetching https://github.com/swiftlang/swift-syntax.git
+Fetching https://github.com/swiftlang/swift-testing
+Fetching https://github.com/sqlcipher/SQLCipher.swift.git
+Fetching https://github.com/apple/swift-asn1.git
+[1/131] Fetching sqlcipher.swift
+[106/2045] Fetching sqlcipher.swift, swift-asn1
+[164/19829] Fetching sqlcipher.swift, swift-asn1, swift-crypto
+[1307/59273] Fetching sqlcipher.swift, swift-asn1, swift-crypto, swift-testing
+[3742/135082] Fetching sqlcipher.swift, swift-asn1, swift-crypto, swift-testing, swift-syntax
+Fetched https://github.com/sqlcipher/SQLCipher.swift.git from cache (5.40s)
+[6325/134951] Fetching swift-asn1, swift-crypto, swift-testing, swift-syntax
+Fetched https://github.com/swiftlang/swift-testing from cache (18.75s)
+[24939/95507] Fetching swift-asn1, swift-crypto, swift-syntax
+Fetched https://github.com/apple/swift-crypto.git from cache (23.37s)
+Computing version for https://github.com/apple/swift-crypto.git
+[21643/77723] Fetching swift-asn1, swift-syntax
+Computed https://github.com/apple/swift-crypto.git at 3.15.1 (23.75s)
+Fetched https://github.com/apple/swift-asn1.git from cache (43.74s)
+Computing version for https://github.com/swiftlang/swift-testing
+Fetched https://github.com/swiftlang/swift-syntax.git from cache (43.76s)
+Computed https://github.com/swiftlang/swift-testing at 0.99.0 (20.21s)
+Computing version for https://github.com/apple/swift-asn1.git
+Computed https://github.com/apple/swift-asn1.git at 1.7.1 (0.19s)
+Computing version for https://github.com/swiftlang/swift-syntax.git
+Computed https://github.com/swiftlang/swift-syntax.git at 600.0.1 (0.22s)
+Creating working copy for https://github.com/swiftlang/swift-testing
+Working copy of https://github.com/swiftlang/swift-testing resolved at 0.99.0
+Creating working copy for https://github.com/apple/swift-crypto.git
+Working copy of https://github.com/apple/swift-crypto.git resolved at 3.15.1
+Creating working copy for https://github.com/apple/swift-asn1.git
+Working copy of https://github.com/apple/swift-asn1.git resolved at 1.7.1
+Creating working copy for https://github.com/swiftlang/swift-syntax.git
+Working copy of https://github.com/swiftlang/swift-syntax.git resolved at 600.0.1
+Downloading package prebuilt https://download.swift.org/prebuilts/swift-syntax/600.0.1/swift-6.2.4-RELEASE-MacroSupport-ubuntu_noble_aarch64.tar.gz
+Downloaded https://download.swift.org/prebuilts/swift-syntax/600.0.1/swift-6.2.4-RELEASE-MacroSupport-ubuntu_noble_aarch64.tar.gz (4.81s)
+Building for debugging...
+[0/453] Write sources
+[22/453] Write swift-version-24593BA9C3E375BF.txt
+[23/453] Write sources
+[24/455] Compiling a_i2d_fp.cc
+[25/455] Compiling aes.cc
+[26/455] Compiling a_d2i_fp.cc
+[27/455] Compiling a_dup.cc
+[28/455] Compiling tasn_typ.cc
+[29/455] Compiling a_bool.cc
+[30/455] Compiling a_gentm.cc
+[30/455] Copying SignalEnvelopeV1Vector.json
+[30/455] Copying android-alice-to-swift-bob.json
+[33/455] Copying MediaFrameAEADVector.json
+[33/455] Copying CryptoKitAtRestInteropVector.json
+[33/455] Copying platform-crypto-kats.json
+[36/455] Copying search-fixture.expected.json
+[36/455] Copying linux-provider-model-parity-fixture.sha256
+[38/455] Copying linux-provider-model-parity-fixture.json
+[39/455] Copying SignalBindingAADVectors.json
+[40/455] Copying SignalTransportBindingAADVectors.json
+[41/455] Copying HermesStreamEventVector.json
+[42/455] Copying HermesGatewayWireVector.json
+[42/455] Copying HermesRelayWireVector.json
+[44/455] Copying BurnBarHpkeV3Vector.json
+[45/455] Copying secret-pattern-corpus.json
+[46/455] Copying pretext.bundle.min.js
+[47/455] Copying index.html
+[48/455] Copying MiningPickIcon.svg
+[49/455] Copying MiningPickIcon-Pickaxe.svg
+[50/455] Copying MiningPickIcon-Ore.svg
+[50/455] Write sources
+[53/455] Copying ControlFrameSealVector.json
+[54/455] Copying catalog.json
+[54/455] Copying PrivacyInfo.xcprivacy
+[54/455] Compiling pair.cc
+[54/455] Write sources
+[58/455] Compiling a_time.cc
+[59/455] Compiling tasn_utl.cc
+[60/457] Compiling tasn_new.cc
+[61/457] Compiling a_int.cc
+[62/459] Compiling a_object.cc
+[62/459] Compiling a_bitstr.cc
+[63/459] Compiling fiat_p256_adx_sqr.S
+[65/459] Compiling a_type.cc
+[66/477] Compiling a_mbstr.cc
+[67/498] Compiling fiat_p256_adx_mul.S
+[68/506] Compiling fiat_curve25519_adx_mul.S
+[69/506] Compiling fiat_curve25519_adx_square.S
+[70/520] Compiling md5-x86_64-apple.S
+[71/632] Compiling chacha20_poly1305_armv8-apple.S
+[72/632] Compiling chacha20_poly1305_armv8-win.S
+[73/632] Compiling md5-586-linux.S
+[74/640] Compiling chacha20_poly1305_x86_64-apple.S
+[75/641] Compiling md5-x86_64-linux.S
+[76/746] Compiling err_data.cc
+[77/755] Compiling chacha20_poly1305_x86_64-linux.S
+[78/762] Compiling chacha20_poly1305_armv8-linux.S
+[79/789] Compiling CCryptoBoringSSLShims shims.c
+[80/789] Compiling chacha-x86-linux.S
+[80/789] Compiling md5-586-apple.S
+[82/789] Compiling a_strnid.cc
+[83/789] Compiling chacha-armv8-win.S
+[83/789] Compiling chacha-armv4-linux.S
+[83/789] Compiling chacha-x86_64-apple.S
+[85/789] Compiling chacha-x86_64-linux.S
+[87/789] Compiling chacha-armv8-linux.S
+[87/789] Compiling chacha-x86-apple.S
+[89/789] Compiling chacha-armv8-apple.S
+[90/789] Compiling x86_64-mont5-linux.S
+[91/789] Compiling aes128gcmsiv-x86_64-apple.S
+[92/789] Compiling x86_64-mont-apple.S
+[93/789] Compiling aes128gcmsiv-x86_64-linux.S
+[94/789] Compiling x86_64-mont-linux.S
+[95/789] Compiling x86-mont-apple.S
+[96/789] Compiling vpaes-armv8-win.S
+[97/789] Compiling vpaes-x86-linux.S
+[98/789] Compiling x86-mont-linux.S
+[99/789] Compiling vpaes-x86_64-apple.S
+[99/789] Compiling vpaes-armv8-linux.S
+[100/789] Compiling vpaes-x86-apple.S
+[102/789] Compiling x86_64-mont5-apple.S
+[103/789] Compiling vpaes-x86_64-linux.S
+[104/789] Compiling vpaes-armv8-apple.S
+[105/789] Compiling sha256-x86_64-linux.S
+[106/789] Compiling sha512-x86_64-linux.S
+[107/789] Compiling sha512-x86_64-apple.S
+[108/789] Compiling vpaes-armv7-linux.S
+[109/789] Compiling sha512-armv8-apple.S
+[110/789] Compiling sha512-armv8-win.S
+[111/789] Compiling sha512-armv8-linux.S
+[112/789] Compiling sha256-x86_64-apple.S
+[113/789] Compiling sha512-armv4-linux.S
+[114/789] Compiling sha512-586-linux.S
+[115/789] Compiling sha256-armv8-apple.S
+[115/789] Compiling sha256-armv8-win.S
+[117/789] Compiling sha256-armv4-linux.S
+[117/789] Compiling sha256-armv8-linux.S
+[119/789] Compiling sha256-586-apple.S
+[120/789] Compiling sha1-x86_64-linux.S
+[121/789] Compiling sha512-586-apple.S
+[122/789] Compiling sha256-586-linux.S
+[122/789] Compiling sha1-armv8-win.S
+[124/789] Compiling rdrand-x86_64-linux.S
+[125/789] Compiling rdrand-x86_64-apple.S
+[125/789] Compiling p256_beeu-x86_64-asm-linux.S
+[126/789] Compiling sha1-586-linux.S
+[128/789] Compiling rsaz-avx2-apple.S
+[129/789] Compiling sha1-armv8-apple.S
+[130/789] Compiling rsaz-avx2-linux.S
+[131/789] Compiling sha1-586-apple.S
+[132/789] Compiling sha1-armv8-linux.S
+[133/789] Compiling sha1-armv4-large-linux.S
+[134/789] Compiling p256-armv8-asm-win.S
+[135/789] Compiling p256-x86_64-asm-apple.S
+[136/789] Compiling p256-x86_64-asm-linux.S
+[137/789] Compiling sha1-x86_64-apple.S
+[137/789] Compiling p256_beeu-armv8-asm-win.S
+[139/789] Compiling p256_beeu-armv8-asm-linux.S
+[140/789] Compiling ghashv8-armv8-win.S
+[141/789] Compiling p256_beeu-armv8-asm-apple.S
+[142/789] Compiling p256-armv8-asm-linux.S
+[142/789] Compiling ghashv8-armv8-apple.S
+[144/789] Compiling ghash-x86-linux.S
+[145/789] Compiling ghash-x86_64-linux.S
+[146/789] Compiling ghashv8-armv7-linux.S
+[147/789] Compiling ghash-x86-apple.S
+[148/789] Compiling ghashv8-armv8-linux.S
+[149/789] Compiling p256_beeu-x86_64-asm-apple.S
+[150/789] Compiling p256-armv8-asm-apple.S
+[151/789] Compiling ghash-x86_64-apple.S
+[152/789] Compiling ghash-ssse3-x86_64-apple.S
+[153/789] Compiling ghash-neon-armv8-linux.S
+[154/789] Compiling co-586-linux.S
+[155/789] Compiling ghash-neon-armv8-apple.S
+[156/789] Compiling ghash-ssse3-x86-apple.S
+[157/789] Compiling bn-armv8-win.S
+[158/789] Compiling co-586-apple.S
+[159/789] Compiling ghash-neon-armv8-win.S
+[160/789] Compiling ghash-ssse3-x86_64-linux.S
+[161/789] Compiling bn-armv8-apple.S
+[162/789] Compiling ghash-ssse3-x86-linux.S
+[162/789] Compiling bn-586-apple.S
+[164/789] Compiling armv8-mont-win.S
+[165/789] Compiling bsaes-armv7-linux.S
+[166/789] Compiling ghash-armv4-linux.S
+[167/789] Compiling bn-586-linux.S
+[167/789] Compiling bn-armv8-linux.S
+[169/789] Compiling aesv8-gcm-armv8-win.S
+[170/789] Compiling armv4-mont-linux.S
+[171/789] Compiling armv8-mont-apple.S
+[172/789] Compiling armv8-mont-linux.S
+[173/789] Compiling aesv8-armv8-win.S
+[174/789] Compiling aesv8-armv8-apple.S
+[175/789] Compiling aesv8-gcm-armv8-linux.S
+[176/789] Compiling aesv8-gcm-armv8-apple.S
+[177/789] Compiling aesv8-armv7-linux.S
+[178/789] Compiling aesni-x86_64-linux.S
+[178/789] Compiling aesni-gcm-x86_64-linux.S
+[180/789] Compiling aesni-x86-apple.S
+[181/789] Compiling aes-gcm-avx512-x86_64-linux.S
+[182/789] Compiling aesv8-armv8-linux.S
+[183/789] Compiling aes-gcm-avx512-x86_64-apple.S
+[184/789] Compiling aesni-x86-linux.S
+[185/789] Compiling aes-gcm-avx2-x86_64-linux.S
+[186/789] Compiling aesni-gcm-x86_64-apple.S
+[187/789] Compiling aesni-x86_64-apple.S
+[188/789] Compiling aes-gcm-avx2-x86_64-apple.S
+[190/789] Emitting module OpenBurnBarAnalytics
+[190/789] Compiling xwing.cc
+[192/789] Emitting module BurnBarRemoteEngine
+[192/789] Compiling x_spki.cc
+[193/789] Compiling x_attrib.cc
+[194/789] Compiling x_sig.cc
+[195/789] Compiling x_exten.cc
+[197/789] Emitting module OpenBurnBarFirestoreModels
+[198/789] Emitting module OpenBurnBarIrohFFI
+[198/789] Compiling x_crl.cc
+[200/789] Emitting module TestingMacros
+[200/790] Compiling x_x509.cc
+[201/790] Compiling x_x509a.cc
+[202/790] Compiling x_all.cc
+[203/790] Compiling x509name.cc
+[204/790] Compiling x509_vfy.cc
+[205/790] Compiling x509cset.cc
+[206/790] Compiling x_req.cc
+[207/790] Compiling x_pubkey.cc
+[208/790] Compiling x509_v3.cc
+[209/790] Compiling x509_vpm.cc
+[210/790] Compiling x509_txt.cc
+[211/790] Compiling x509spki.cc
+[212/790] Compiling x509_set.cc
+[213/790] Compiling x_algor.cc
+[214/790] Compiling x_name.cc
+[215/790] Compiling x509rset.cc
+[215/790] Compiling x509_obj.cc
+[215/790] Compiling x509_trs.cc
+[218/790] Compiling x509_def.cc
+[219/790] Compiling x509_d2.cc
+[220/790] Compiling x509_cmp.cc
+[221/790] Compiling x509_req.cc
+[222/790] Compiling x509_lu.cc
+[223/790] Compiling x509_att.cc
+[224/790] Compiling v3_ocsp.cc
+[225/790] Compiling v3_pcons.cc
+[226/790] Compiling v3_pmaps.cc
+[227/790] Compiling v3_ncons.cc
+[228/790] Compiling x509.cc
+[229/790] Compiling x509_ext.cc
+[230/790] Compiling v3_purp.cc
+[231/790] Compiling v3_lib.cc
+[232/790] Compiling v3_prn.cc
+[233/790] Compiling v3_skey.cc
+[234/790] Compiling v3_int.cc
+[235/790] Compiling v3_utl.cc
+[236/790] Compiling v3_ia5.cc
+[237/790] Compiling v3_genn.cc
+[239/790] Compiling TestingMacros TestingMacrosMain.swift
+[240/790] Compiling GRDB DatabaseReader.swift
+[241/790] Compiling GRDB DatabaseRegion.swift
+[242/790] Compiling TestingMacros CommentParsing.swift
+[243/790] Compiling TestingMacros DiagnosticMessage+Diagnosing.swift
+[244/790] Compiling TestingMacros SourceCodeCapturing.swift
+[245/790] Compiling TestingMacros TestDeclarationMacro.swift
+[246/790] Compiling TestingMacros SourceLocationGeneration.swift
+[247/790] Compiling TestingMacros TagMacro.swift
+[247/790] Compiling v3_crld.cc
+[248/790] Compiling v3_info.cc

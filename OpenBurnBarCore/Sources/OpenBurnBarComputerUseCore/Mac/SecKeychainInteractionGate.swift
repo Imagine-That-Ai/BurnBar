@@ -1,6 +1,8 @@
 import Foundation
 #if os(macOS)
+#if canImport(Security)
 import Security
+#endif
 #endif
 
 #if os(macOS)

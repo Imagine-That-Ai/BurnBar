@@ -178,10 +178,14 @@ public extension ProviderQuotaBucket {
     var resetsAtDisplay: (relative: String, absolute: String)? {
         guard let resetsAt = Self.displayResetDate(resetsAt, name: name, window: window) else { return nil }
         let now = Date()
+        #if os(Linux)
+        let relative = Self.relativeResetsLabel(for: resetsAt, relativeTo: now)
+        #else
         let relative = Self.makeRelativeResetsFormatter().localizedString(
             for: resetsAt,
             relativeTo: now
         )
+        #endif
         let absolute = resetsAt.formatted(date: .abbreviated, time: .shortened)
         return (relative: relative, absolute: absolute)
     }
@@ -303,12 +307,31 @@ public extension ProviderQuotaBucket {
         "remaining_percentage", "percentRemaining", "percent_remaining"
     ]
 
+    #if os(Linux)
+    private static func relativeResetsLabel(for date: Date, relativeTo now: Date) -> String {
+        let seconds = Int(date.timeIntervalSince(now).rounded())
+        let magnitude = abs(seconds)
+        let days = magnitude / 86_400
+        let hours = (magnitude % 86_400) / 3_600
+        let minutes = (magnitude % 3_600) / 60
+        let value: String
+        if days > 0 {
+            value = hours > 0 ? "\(days)d \(hours)h" : "\(days)d"
+        } else if hours > 0 {
+            value = minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
+        } else {
+            value = "\(max(1, minutes))m"
+        }
+        return seconds >= 0 ? "in \(value)" : "\(value) ago"
+    }
+    #else
     private static func makeRelativeResetsFormatter() -> RelativeDateTimeFormatter {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
         f.dateTimeStyle = .numeric
         return f
     }
+    #endif
 }
 
 public extension ProviderQuotaBucket {

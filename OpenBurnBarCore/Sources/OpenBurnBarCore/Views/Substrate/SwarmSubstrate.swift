@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import CoreGraphics
 
@@ -144,3 +145,5 @@ public struct SwarmSubstrateFrame {
 public extension SwarmSubstrate {
     var suppressesGlyphs: Bool { false }
 }
+
+#endif

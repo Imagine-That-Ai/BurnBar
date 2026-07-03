@@ -140,16 +140,24 @@ public enum MercuryRuntimeHealthProbe {
     public static func snapshot(
         timestampMillis: UInt64 = UInt64(Date().timeIntervalSince1970 * 1000)
     ) -> MercuryRuntimeHealthSnapshot {
-        MercuryRuntimeHealthSnapshot(
+        #if os(Linux)
+        let isLowPowerModeEnabled = false
+        let thermalState = MercuryThermalState.unknown
+        #else
+        let isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+        let thermalState = thermalState(ProcessInfo.processInfo.thermalState)
+        #endif
+        return MercuryRuntimeHealthSnapshot(
             timestampMillis: timestampMillis,
             cpuUsagePercent: cpuUsagePercent(),
             batteryLevelPercent: batteryLevelPercent(),
             isCharging: isCharging(),
-            isLowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
-            thermalState: thermalState(ProcessInfo.processInfo.thermalState)
+            isLowPowerModeEnabled: isLowPowerModeEnabled,
+            thermalState: thermalState
         )
     }
 
+    #if !os(Linux)
     private static func thermalState(_ state: ProcessInfo.ThermalState) -> MercuryThermalState {
         switch state {
         case .nominal:
@@ -164,6 +172,7 @@ public enum MercuryRuntimeHealthProbe {
             return .unknown
         }
     }
+    #endif
 
     private static func cpuUsagePercent() -> Double? {
         #if canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import CoreGraphics
 
@@ -232,3 +233,5 @@ enum SwarmLogoShape {
         return values
     }
 }
+
+#endif

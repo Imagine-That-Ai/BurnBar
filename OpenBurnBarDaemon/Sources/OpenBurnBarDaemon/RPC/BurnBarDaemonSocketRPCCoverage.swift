@@ -106,6 +106,11 @@ enum BurnBarDaemonSocketRPCCoverage {
         .approvalRespond
     ]
 
+    static let subscription: Set<BurnBarRPCMethod> = [
+        .subscriptionStart,
+        .subscriptionResume
+    ]
+
     static let search: Set<BurnBarRPCMethod> = [
         .searchQuery
     ]
@@ -142,6 +147,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(missionControl)
             .union(client)
             .union(runWorkspaceApproval)
+            .union(subscription)
             .union(search)
             .union(memory)
             .union(code)
@@ -157,6 +163,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if missionControl.contains(method) { return "mission_control" }
         if client.contains(method) { return "client" }
         if runWorkspaceApproval.contains(method) { return "run_workspace_approval" }
+        if subscription.contains(method) { return "subscription" }
         if search.contains(method) { return "search" }
         if memory.contains(method) { return "memory" }
         if code.contains(method) { return "code" }

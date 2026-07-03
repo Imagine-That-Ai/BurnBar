@@ -1,8 +1,14 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+ import Crypto
+#endif
 import LibSignalClient
 import OpenBurnBarCore
+#if canImport(Security)
 import Security
+#endif
 
 /// L41 client runtime (item 4): a durable libsignal protocol store that persists this
 /// device's X3DH/PQXDH + Double Ratchet state for REAL Signal sessions — the
@@ -310,15 +316,20 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
             guard existing.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
             return SymmetricKey(data: existing)
         }
+        #if canImport(Security)
         var bytes = [UInt8](repeating: 0, count: 32)
         let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
         let data = Data(bytes)
+        #else
+        let data = try PlatformCrypto.secureRandomBytes(count: 32)
+        #endif
         try staticKeychainWrite(data, keychainService: keychainService, account: sessionStoreKeyAccount)
         return SymmetricKey(data: data)
     }
 
     private static func staticKeychainRead(keychainService: String, account: String) throws -> Data? {
+        #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -332,9 +343,13 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
         guard let data = item as? Data else { throw CloudVaultCryptoError.keychainDataMissing }
         return data
+        #else
+        return try OpenBurnBarSignalLinuxKeyValueStore.read(service: keychainService, account: account)
+        #endif
     }
 
     private static func staticKeychainWrite(_ data: Data, keychainService: String, account: String) throws {
+        #if canImport(Security)
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -351,9 +366,13 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
             return
         }
         throw CloudVaultCryptoError.keychainError(Int(addStatus))
+        #else
+        try OpenBurnBarSignalLinuxKeyValueStore.write(data, service: keychainService, account: account)
+        #endif
     }
 
     private func keychainRead(_ account: String) throws -> Data? {
+        #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -367,11 +386,15 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
         guard let data = item as? Data else { throw CloudVaultCryptoError.keychainDataMissing }
         return data
+        #else
+        return try OpenBurnBarSignalLinuxKeyValueStore.read(service: keychainService, account: account)
+        #endif
     }
 
     /// Atomic upsert (no destructive delete-then-add window): add, and on a duplicate update
     /// in place, so a partial failure can never erase the existing value (e.g. the replay blob).
     private func keychainWrite(_ data: Data, account: String) throws {
+        #if canImport(Security)
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -388,9 +411,13 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
             return
         }
         throw CloudVaultCryptoError.keychainError(Int(addStatus))
+        #else
+        try OpenBurnBarSignalLinuxKeyValueStore.write(data, service: keychainService, account: account)
+        #endif
     }
 
     private func keychainDelete(_ account: String) throws {
+        #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -400,5 +427,8 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw CloudVaultCryptoError.keychainError(Int(status))
         }
+        #else
+        try OpenBurnBarSignalLinuxKeyValueStore.delete(service: keychainService, account: account)
+        #endif
     }
 }

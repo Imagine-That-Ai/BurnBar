@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import OpenBurnBarCore
 
@@ -82,7 +86,7 @@ public final class PTYInteractiveSession: @unchecked Sendable {
         }
     }
 
-    private struct State {
+    private struct State: @unchecked Sendable {
         var controllerFD: Int32 = -1
         var readSource: DispatchSourceRead?
         var transcript = Data()

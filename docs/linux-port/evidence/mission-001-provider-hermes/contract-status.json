@@ -1,0 +1,83 @@
+{
+  "contracts": {
+    "VAL-DATA-004": {
+      "attempted": [
+        "No parser corpus runner wired for Linux in mission-001 scripts"
+      ],
+      "evidence": [
+        "parser-oracle-mount-blocker.md"
+      ],
+      "prerequisite": "Linux parser corpus parity job against macOS/oracle fixtures (VAL-DATA-004).",
+      "status": "blocked"
+    },
+    "VAL-DATA-005": {
+      "attempted": [
+        "Direct Linux XCTest binary runs cover checkpoint/watermark persistence and rollback after failure injection."
+      ],
+      "evidence": [
+        "worker verification: OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderParserIngestionPreservesProvenanceCheckpointsAndWatermarks",
+        "worker verification: OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderParserFailureInjectionRollsBackUsageAndCursorState"
+      ],
+      "prerequisite": "Full Hermes UI/parser integration evidence still requires the missing browser shell surface.",
+      "status": "partial_pass"
+    },
+    "VAL-HERMES-001": {
+      "attempted": [
+        "No Linux Hermes tab UI in apps/linux-desktop for this contract"
+      ],
+      "evidence": [
+        "hermes-chat-ui-blocker.md"
+      ],
+      "prerequisite": "Real Hermes UI surface on Linux desktop or accepted deferral.",
+      "status": "blocked"
+    },
+    "VAL-HERMES-002": {
+      "attempted": [
+        "CLI index/search/recall are reachable through the daemon with OPENBURNBAR_INDEX_DATABASE_PATH; index/search produce goldenable output, recall returns an empty memory set."
+      ],
+      "evidence": [
+        "cli-hermes-transcript.txt"
+      ],
+      "prerequisite": "Project-memory watch/audit/analytics/golden recall evidence and VAL-DATA-006 remain missing from this assignment surface.",
+      "status": "partial_blocked"
+    },
+    "VAL-HERMES-003": {
+      "evidence": [
+        "llmsafe-content-linux-fixture.json",
+        "fixtures/prompt-injection-attack.txt",
+        "fixtures/dual-envelope-alignment.md",
+        "hermes-chat-ui-blocker.md"
+      ],
+      "note": "LLMSafeContent fixture + documented dual envelope vs wrapUntrustedCode.",
+      "status": "partial_pass"
+    },
+    "VAL-PROVIDER-001": {
+      "evidence": [
+        "provider-log-path-matrix.json",
+        "provider-discovery-edge-fixture.json",
+        "provider-discovery-edge-transcript.txt"
+      ],
+      "note": "Linux path matrix plus direct Linux XCTest binary proves XDG, symlink, rotation, partial-file, and session identity cases. SwiftPM --filter still hangs after runner startup in this toolchain, so the transcript records the direct XCTest surface.",
+      "status": "focused_pass"
+    },
+    "VAL-PROVIDER-002": {
+      "attempted": [
+        "scripts/linux-port/run-provider-hermes-evidence.sh provider-discovery-edge fixture"
+      ],
+      "evidence": [
+        "parser-oracle-mount-blocker.md"
+      ],
+      "prerequisite": "End-to-end ingestion against live provider log trees with permission-denied and rotation oracles; macOS golden corpus not mounted in this worktree run.",
+      "status": "blocked"
+    },
+    "VAL-PROVIDER-003": {
+      "evidence": [
+        "cli-transcript.txt (from IPC bundle)",
+        "cli-hermes-transcript.txt"
+      ],
+      "note": "Mock-provider run create/list/get/poll/cancel/retry/approval plus daemon restart list/get/poll persistence via Linux AF_UNIX CLI.",
+      "status": "focused_pass"
+    }
+  },
+  "lane": "W04ProviderHermesEngine"
+}

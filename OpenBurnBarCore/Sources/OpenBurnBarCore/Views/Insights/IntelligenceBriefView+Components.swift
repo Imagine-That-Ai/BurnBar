@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // Supporting brief view components, modifiers, and formatting helpers.
@@ -704,3 +705,5 @@ public enum IntelligenceBriefCitationPrompt {
         }
     }
 }
+
+#endif

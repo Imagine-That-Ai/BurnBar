@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Smoked Glass Slab — faithful port of imaginethat `volumetric/smoked-glass.ts`
@@ -438,3 +439,5 @@ public final class SmokedGlassSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

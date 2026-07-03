@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Horizontal rail of mission candidates ranked High → Low.
@@ -181,3 +182,5 @@ private struct MissionCard: View {
         }
     }
 }
+
+#endif

@@ -1,5 +1,8 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
 
 public typealias BurnBarConnectorTransport = @Sendable (_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
 
@@ -481,7 +484,7 @@ public actor BurnBarConnectorPlaneService {
         case let string as String:
             return .string(string)
         case let number as NSNumber:
-            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            if String(cString: number.objCType) == "c" {
                 return .bool(number.boolValue)
             }
             return .number(number.doubleValue)

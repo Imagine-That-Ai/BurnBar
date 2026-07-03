@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// A small mono delta chip rendered next to numbers and bullet claims.
@@ -86,3 +87,5 @@ public struct VerdictDeltaChip: View {
         return "\(directionWord) \(label) \(delta.baseline)"
     }
 }
+
+#endif

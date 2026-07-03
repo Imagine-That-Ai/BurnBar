@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.668Z",
+  "lane": "W06LinuxShellUx",
+  "surface": "host-vitest-env-matrix",
+  "pet": [
+    {
+      "desktop": "KDE Wayland",
+      "tier": "overlay-pass-through",
+      "compositor": "kde/wayland",
+      "evidence": "Compositor reports overlay support; pet uses always-on-top pass-through when the window manager allows it."
+    },
+    {
+      "desktop": "GNOME Wayland",
+      "tier": "draggable-contained",
+      "compositor": "gnome/wayland",
+      "evidence": "GNOME Wayland does not expose global click-through overlays. Pet runs in a draggable contained tier with explicit copy."
+    },
+    {
+      "desktop": "X11 session",
+      "tier": "overlay-pass-through",
+      "compositor": "xfce/x11",
+      "evidence": "Compositor reports overlay support; pet uses always-on-top pass-through when the window manager allows it."
+    }
+  ]
+}

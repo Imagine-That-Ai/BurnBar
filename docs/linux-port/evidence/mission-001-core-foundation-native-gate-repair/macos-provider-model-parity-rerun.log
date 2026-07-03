@@ -1,0 +1,17 @@
+warning: 'grdb-sqlcipher': failed to retrieve search paths with pkg-config; maybe pkg-config is not installed
+warning: 'grdb-sqlcipher': you may be able to install sqlcipher using your system-packager:
+    brew install sqlcipher
+warning: 'openburnbarcore': you may be able to install zlib using your system-packager:
+    brew install zlib
+Building for debugging...
+[Computing dependencies]
+[Pre-planning 1 / 273]
+[Planning deferred tasks]
+[3 / 26]
+[4 / 9] ModelParityGenerator-product
+[6 / 11] ModelParityGenerator-product
+[7 / 11] ModelParityGenerator-product
+[9 / 11] ModelParityGenerator-product
+Build complete! (2.92 sec)
+MACOS_MODEL_FIXTURE_SHA256 5ce2db1c997bf6091717b488f562acfc3dfbd6b39d31ec7c4e5745fd8c14eb28
+MODEL_PARITY_GENERATOR_PATH OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/LinuxCoreFoundationTests.swift

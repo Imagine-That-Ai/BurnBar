@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-07-03T09:56:10Z",
+  "surface": "Playwright real browser on http://127.0.0.1:1420/?daemonFixture=1#/overview",
+  "steps": [
+    {
+      "action": "Tab",
+      "expected": "Skip link receives focus",
+      "observed": {
+        "tag": "A",
+        "text": "Skip to content"
+      }
+    },
+    {
+      "action": "Enter",
+      "expected": "Skip link keeps the route stable and focuses the main landmark",
+      "observed": {
+        "url": "http://127.0.0.1:1420/?daemonFixture=1#/overview",
+        "tag": "MAIN",
+        "id": "main",
+        "textPrefix": "OverviewLocal peer health and recent activity"
+      }
+    }
+  ]
+}

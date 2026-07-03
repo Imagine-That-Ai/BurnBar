@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Cooking Loader
@@ -165,4 +166,6 @@ public struct ModeAwareLoader: View {
     }
     .padding(40)
 }
+#endif
+
 #endif

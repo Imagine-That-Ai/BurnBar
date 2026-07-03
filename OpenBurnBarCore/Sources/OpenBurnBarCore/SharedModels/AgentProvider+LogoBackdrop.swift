@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Monochrome Logo Backdrop
@@ -31,3 +32,5 @@ public extension AgentProvider {
         }
     }
 }
+
+#endif

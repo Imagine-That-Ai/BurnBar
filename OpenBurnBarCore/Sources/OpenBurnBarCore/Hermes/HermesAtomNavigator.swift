@@ -1,5 +1,4 @@
 import Foundation
-import OSLog
 
 // MARK: - Hermes Atom Navigator
 //
@@ -29,9 +28,9 @@ public protocol HermesAtomNavigator: AnyObject, Sendable {
 // Logs to OS log so missed wiring is visible during development.
 
 public final class NoopHermesAtomNavigator: HermesAtomNavigator {
-    private let logger = Logger(subsystem: "com.openburnbar.core", category: "HermesAtomNavigator")
+    private let logger = PlatformLogger(subsystem: "com.openburnbar.core", category: "HermesAtomNavigator")
     public init() {}
     @MainActor public func open(_ atom: HermesAtom) {
-        logger.notice("Atom tapped but no navigator is wired: \(String(describing: atom), privacy: .public)")
+        logger.notice("Atom tapped but no navigator is wired: \(String(describing: atom))")
     }
 }

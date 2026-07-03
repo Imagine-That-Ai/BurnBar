@@ -1,0 +1,42 @@
+# Command
+rg -n "^(#if canImport\((CryptoKit|Security)\)|(@preconcurrency )?import (Crypto|CryptoKit|Security))" OpenBurnBarCore/Sources
+
+# Results
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:2:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:3:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:9:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift:10:import Security
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift:1:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift:2:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:1:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:2:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:9:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift:10:import Security
+OpenBurnBarCore/Sources/OpenBurnBarSignalSessionTransport/OBBSignalSessionCipherTransport.swift:1:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarSignalSessionTransport/OBBSignalSessionCipherTransport.swift:2:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift:5:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift:6:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:2:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:3:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift:18:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift:4:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift:5:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeyPinStore.swift:3:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeyPinStore.swift:4:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeyPinStore.swift:283:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/Mac/SecKeychainInteractionGate.swift:3:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/Mac/SecKeychainInteractionGate.swift:4:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/IrohHostKeyPinStore.swift:2:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/IrohHostKeyPinStore.swift:3:import Security
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/IrohHostKeyPinStore.swift:214:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultDeviceKeypair.swift:2:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultDeviceKeypair.swift:3:import Security
+OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:2:#if canImport(CryptoKit)
+OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:3:import CryptoKit
+OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:5:@preconcurrency import Crypto
+OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:7:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformCrypto.swift:8:import Security
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:2:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift:3:import Security
+OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/Verdict/VerdictCache.swift:2:#if canImport(Security)
+OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/Verdict/VerdictCache.swift:3:import Security

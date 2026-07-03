@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission Runtime Constellation
@@ -201,3 +202,5 @@ public struct MissionRuntimeConstellation: View {
         }
     }
 }
+
+#endif

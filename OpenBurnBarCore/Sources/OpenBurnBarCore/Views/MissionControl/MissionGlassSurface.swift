@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission Glass Surface
@@ -217,3 +218,5 @@ public extension View {
         modifier(MissionGlassSurface(variant: variant, cornerRadius: cornerRadius))
     }
 }
+
+#endif

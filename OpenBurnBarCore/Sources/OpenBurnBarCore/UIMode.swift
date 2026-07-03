@@ -1,4 +1,6 @@
+#if canImport(SwiftUI)
 import SwiftUI
+#endif
 
 // MARK: - UI Mode
 /// App-wide visual persona. Each mode adapts typography, color, spacing,
@@ -31,6 +33,7 @@ public enum UIMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+#if canImport(SwiftUI)
 // MARK: - UIMode Theme
 /// Mode-specific design token overrides. Delegates to `UnifiedDesignSystem`
 /// for standard mode and computes adapted values for each persona.
@@ -231,3 +234,5 @@ public extension EnvironmentValues {
         UIModeTheme(mode: uiMode)
     }
 }
+
+#endif

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Silk Streamline — ported from imaginethat `glyph/stage/styles/flow/silk-streamline.ts`.
@@ -405,3 +406,5 @@ public final class SilkStreamlineSubstrate: SwarmSubstrate {
         return lerp(lerp(a, b, ux), lerp(c, d, ux), uy)
     }
 }
+
+#endif

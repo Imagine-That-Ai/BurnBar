@@ -48,8 +48,12 @@ public enum TextExpansionUsageStore {
     public static func usageURL(
         appGroupIdentifier: String = TextExpansionSnapshotStore.appGroupIdentifier
     ) -> URL? {
+        #if os(macOS) || os(iOS)
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
             .appendingPathComponent(usageFileName)
+        #else
+        nil
+        #endif
     }
 
     public static func read(from url: URL) -> TextExpansionUsageLog {

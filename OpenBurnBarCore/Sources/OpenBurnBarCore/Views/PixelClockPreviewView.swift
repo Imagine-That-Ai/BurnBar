@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import SwiftUI
 
@@ -816,3 +817,5 @@ public extension PixelClockProbeStatus {
         }
     }
 }
+
+#endif

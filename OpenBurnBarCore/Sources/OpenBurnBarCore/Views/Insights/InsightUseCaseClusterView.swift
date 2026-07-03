@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightUseCaseClusterView: View {
@@ -33,3 +34,5 @@ public struct InsightUseCaseClusterView: View {
         .foregroundStyle(color)
     }
 }
+
+#endif

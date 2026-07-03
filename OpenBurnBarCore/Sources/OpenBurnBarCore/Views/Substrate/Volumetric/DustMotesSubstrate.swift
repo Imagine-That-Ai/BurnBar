@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Dust Motes — "Motes In The Beam", faithful port of imaginethat
@@ -372,3 +373,5 @@ public final class DustMotesSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

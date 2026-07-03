@@ -108,7 +108,7 @@ public final class OpenBurnBarIrohBlobFFIBackend: IrohBlobBackend, @unchecked Se
         }
     }
 
-    private func withFFI<T>(_ block: @escaping () throws -> T) async throws -> T {
+    private func withFFI<T>(_ block: @escaping @Sendable () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
             queue.async {
                 do {

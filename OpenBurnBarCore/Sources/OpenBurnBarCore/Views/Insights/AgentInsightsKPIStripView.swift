@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Four KPI tiles, identical order on every platform: Spend · Tokens ·
@@ -94,3 +95,5 @@ private struct AgentInsightsKPITile: View {
         }
     }
 }
+
+#endif

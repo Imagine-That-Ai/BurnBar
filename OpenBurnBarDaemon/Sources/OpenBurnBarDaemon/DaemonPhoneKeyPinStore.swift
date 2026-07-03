@@ -1,9 +1,21 @@
+#if canImport(CryptoKit)
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
+#else
+import Crypto
+#endif
 import Foundation
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 #if canImport(Security)
+#if canImport(Security)
+#if canImport(Security)
 import Security
+#endif
+#endif
 #endif
 
 #if canImport(Security)

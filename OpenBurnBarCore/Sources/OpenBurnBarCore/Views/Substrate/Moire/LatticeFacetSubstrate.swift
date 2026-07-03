@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Foundation
 
@@ -371,3 +372,5 @@ public final class LatticeFacetSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

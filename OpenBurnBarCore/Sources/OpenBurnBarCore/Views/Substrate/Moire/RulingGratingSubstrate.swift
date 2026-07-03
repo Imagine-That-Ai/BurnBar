@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Ruling Grating — premium port of imaginethat `glyph/stage/styles/moire/ruling-grating.ts` drawBody.
@@ -424,3 +425,5 @@ public final class RulingGratingSubstrate: SwarmSubstrate {
         return qr * 25 + qg * 5 + qb
     }
 }
+
+#endif

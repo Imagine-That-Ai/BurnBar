@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Ember Surface Background
@@ -353,3 +354,5 @@ private struct SimmerBubbleParticle: View {
             .foregroundStyle(.primary)
     }
 }
+
+#endif

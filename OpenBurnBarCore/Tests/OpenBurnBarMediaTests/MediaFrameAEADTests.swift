@@ -1,5 +1,9 @@
 import XCTest
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+ import Crypto
+#endif
 @testable import OpenBurnBarMedia
 
 /// F7 — per-frame media AEAD.

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Header band for an Insights page.
@@ -193,3 +194,5 @@ public struct AgentInsightsHeaderView: View {
         }
     }
 }
+
+#endif

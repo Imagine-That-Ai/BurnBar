@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(os)
 import os
+#endif
 
 // MARK: - Thread-Safe Date Formatter
 
@@ -97,7 +99,8 @@ extension ThreadSafeISO8601DateFormatter {
     /// Both formatters are configured once at init and never mutated afterwards;
     /// every parse still happens under the lock because `ISO8601DateFormatter`
     /// is not documented as thread-safe.
-    private final class SyncFormatterCache: Sendable {
+    private final class SyncFormatterCache: @unchecked Sendable {
+#if canImport(os)
         /// `ISO8601DateFormatter` is not Sendable and is not documented as
         /// thread-safe for concurrent parsing, so both formatters live inside an
         /// `OSAllocatedUnfairLock` (itself Sendable). Every parse runs under the
@@ -120,6 +123,32 @@ extension ThreadSafeISO8601DateFormatter {
         func parseBasic(_ string: String) -> Date? {
             formatters.withLockUnchecked { $0.basic.date(from: string) }
         }
+#else
+        private let lock = NSLock()
+        private let fractional: ISO8601DateFormatter
+        private let basic: ISO8601DateFormatter
+
+        init() {
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let basic = ISO8601DateFormatter()
+            basic.formatOptions = [.withInternetDateTime]
+            self.fractional = fractional
+            self.basic = basic
+        }
+
+        func parseFractionalOrBasic(_ string: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return fractional.date(from: string) ?? basic.date(from: string)
+        }
+
+        func parseBasic(_ string: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return basic.date(from: string)
+        }
+#endif
     }
 
     private static let syncCache = SyncFormatterCache()

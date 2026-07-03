@@ -1,7 +1,13 @@
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import OpenBurnBarComputerUseCore
+#if canImport(Security)
 import Security
+#endif
 @testable import OpenBurnBarDaemon
 import XCTest
 
@@ -78,12 +84,16 @@ final class BurnBarDaemonPeerAuthenticatorTests: XCTestCase {
         let profile = try authenticator.validatePeer(socketFD: pair.acceptedFD, peerPID: nil)
         XCTAssertTrue(profile.permits(.health))
         XCTAssertTrue(profile.permits(.codeSearch))
+        XCTAssertTrue(profile.permits(.runCreate))
+        XCTAssertTrue(profile.permits(.runList))
+        XCTAssertTrue(profile.permits(.runGet))
+        XCTAssertTrue(profile.permits(.runPoll))
         XCTAssertTrue(profile.permits(.runResume))
         XCTAssertFalse(profile.permits(.configUpdate))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.workspaceExecuteTool))
-        XCTAssertFalse(profile.permits(.runCreate))
+        XCTAssertFalse(profile.permits(.runCancel))
     }
 
     func test_peerIdentityMapsBundleIdentifierToAuthorityProfile() {
@@ -163,7 +173,7 @@ struct DaemonTestUnixSocketConnection {
         )
         let socketPath = directory + "/test.sock"
 
-        let listener = socket(AF_UNIX, SOCK_STREAM, 0)
+        let listener = socket(AF_UNIX, streamSocketType, 0)
         guard listener >= 0 else { throw POSIXError(.EIO) }
 
         var address = sockaddr_un()
@@ -187,14 +197,18 @@ struct DaemonTestUnixSocketConnection {
             throw POSIXError(.EIO)
         }
 
-        let client = socket(AF_UNIX, SOCK_STREAM, 0)
+        let client = socket(AF_UNIX, streamSocketType, 0)
         guard client >= 0 else {
             close(listener)
             throw POSIXError(.EIO)
         }
         let connectStatus = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                #if os(Linux)
+                Glibc.connect(client, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+                #else
                 Darwin.connect(client, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+                #endif
             }
         }
         let accepted = accept(listener, nil, nil)
@@ -216,5 +230,13 @@ struct DaemonTestUnixSocketConnection {
         close(clientFD)
         close(listenerFD)
         unlink(socketPath)
+    }
+
+    private static var streamSocketType: Int32 {
+        #if os(Linux)
+        return Int32(SOCK_STREAM.rawValue)
+        #else
+        return SOCK_STREAM
+        #endif
     }
 }

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import SwiftUI
 
@@ -712,3 +713,5 @@ public enum MissionConsoleFormatting {
         return "\(Int(delta / 86_400))d ago"
     }
 }
+
+#endif

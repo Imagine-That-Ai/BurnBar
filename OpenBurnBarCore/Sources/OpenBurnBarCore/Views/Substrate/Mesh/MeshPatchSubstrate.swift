@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import CoreGraphics
 
@@ -476,3 +477,5 @@ public final class MeshPatchSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

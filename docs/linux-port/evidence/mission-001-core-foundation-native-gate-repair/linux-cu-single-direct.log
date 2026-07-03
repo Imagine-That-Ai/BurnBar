@@ -1,0 +1,9 @@
+Test Suite 'Selected tests' started at 2026-07-03 13:08:50.088
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:08:50.089
+Test Case 'LinuxCoreFoundationTests.testComputerUseAuditExportRoundTripsThroughZlib' started at 2026-07-03 13:08:50.089
+KAT_CU_GZIP_SHA256 7d6a107fcf4871c7a63817118b547315e84fbe8a4dda8627d0373df90d5534f1
+Test Case 'LinuxCoreFoundationTests.testComputerUseAuditExportRoundTripsThroughZlib' passed (0.016 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:08:50.104
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.016 (0.016) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:08:50.104
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.016 (0.016) seconds

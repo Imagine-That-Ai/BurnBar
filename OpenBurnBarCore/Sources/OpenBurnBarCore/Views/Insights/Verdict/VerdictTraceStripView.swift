@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Vercel-style horizontal flame strip rendered under the verdict hero.
@@ -146,3 +147,5 @@ public struct VerdictTraceStripView: View {
         return parts.joined(separator: " ")
     }
 }
+
+#endif

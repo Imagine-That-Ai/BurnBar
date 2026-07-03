@@ -1,0 +1,36 @@
+### forbidden parallel transport names
+
+### AF_UNIX hardening scan
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:685:                if code == EINTR {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:769:            try BurnBarUnixDomainSocket.writeAll(responseData, to: clientFileDescriptor)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:792:                attributes: [.posixPermissions: 0o700]
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:810:        guard itemType == S_IFSOCK || itemType == S_IFREG else {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:815:        return itemType == S_IFSOCK ? "socket" : "file"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:863:        guard chmod(socketPath, S_IRUSR | S_IWUSR) == 0 else {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:884:                if code == EINTR {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:907:    static func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:919:                let bytesWritten = send(fileDescriptor, pointer, bytesRemaining, Int32(MSG_NOSIGNAL))
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:925:                    if code == EINTR {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:984:        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:484:        try writeAll(payload, to: fileDescriptor)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:538:    private func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:545:                let wrote = Glibc.send(fileDescriptor, baseAddress.advanced(by: offset), remaining, Int32(MSG_NOSIGNAL))
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:562:        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:567:            throw POSIXError(.ENAMETOOLONG)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:915:        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: diagnosticsURL.path)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:276:            getsockopt(socketFD, SOL_SOCKET, SO_PEERCRED, pointer, &length)
+
+### capability/subscription classification scan
+OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift:112:    case subscriptionStart = "subscription.start"
+OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift:113:    case subscriptionResume = "subscription.resume"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift:40:    case subscription
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift:100:        case .subscriptionStart, .subscriptionResume:
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift:172:    public static let cliSupport = methodScoped([
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift:192:        .subscriptionStart,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift:193:        .subscriptionResume
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCSubscription.swift:11:        case .subscriptionStart:
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCSubscription.swift:22:        case .subscriptionResume:
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonSocketRPCCoverage.swift:110:        .subscriptionStart,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonSocketRPCCoverage.swift:111:        .subscriptionResume
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:522:                    "rpc_request_capability_denied",
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:636:            case .subscriptionStart, .subscriptionResume:

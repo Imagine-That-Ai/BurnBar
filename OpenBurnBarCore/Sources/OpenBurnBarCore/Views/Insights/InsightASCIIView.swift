@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightASCIIView: View {
@@ -26,3 +27,5 @@ public struct InsightASCIIView: View {
         }
     }
 }
+
+#endif

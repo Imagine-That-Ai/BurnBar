@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Crepuscular Shafts — faithful port of imaginethat `volumetric/sunshaft.ts`.
@@ -377,3 +378,5 @@ public final class SunshaftSubstrate: SwarmSubstrate {
         return t * t * t * (t * (t * 6 - 15) + 10)
     }
 }
+
+#endif

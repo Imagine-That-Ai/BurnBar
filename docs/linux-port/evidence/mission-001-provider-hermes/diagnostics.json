@@ -1,0 +1,485 @@
+{
+  "capabilities" : [
+    {
+      "capability" : "lifecycle",
+      "domain" : "lifecycle",
+      "method" : "auth.bootstrap"
+    },
+    {
+      "capability" : "lifecycle",
+      "domain" : "lifecycle",
+      "method" : "daemon.health"
+    },
+    {
+      "capability" : "lifecycle",
+      "domain" : "lifecycle",
+      "method" : "daemon.catalog"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.config.get"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.config.update"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.credential_slot.upsert"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.credential_slot.remove"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.model_variant.upsert"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.model_variant.remove"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.model_alias.upsert"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.model_alias.remove"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.custom_model.upsert"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.custom_model.remove"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.model_display_name.set"
+    },
+    {
+      "capability" : "config",
+      "domain" : "config",
+      "method" : "daemon.provider.model_display_name.clear"
+    },
+    {
+      "capability" : "observability",
+      "domain" : "usage",
+      "method" : "daemon.usage.record"
+    },
+    {
+      "capability" : "observability",
+      "domain" : "usage",
+      "method" : "daemon.usage.recent"
+    },
+    {
+      "capability" : "observability",
+      "domain" : "observability",
+      "method" : "daemon.proxy.route_log.recent"
+    },
+    {
+      "capability" : "observability",
+      "domain" : "observability",
+      "method" : "daemon.proxy.route_log.clear"
+    },
+    {
+      "capability" : "tooling",
+      "domain" : "tooling",
+      "method" : "daemon.connector.plane.get"
+    },
+    {
+      "capability" : "tooling",
+      "domain" : "tooling",
+      "method" : "daemon.connector.config.update"
+    },
+    {
+      "capability" : "tooling",
+      "domain" : "tooling",
+      "method" : "daemon.connector.action"
+    },
+    {
+      "capability" : "tooling",
+      "domain" : "tooling",
+      "method" : "daemon.browser.tooling.get"
+    },
+    {
+      "capability" : "tooling",
+      "domain" : "tooling",
+      "method" : "daemon.browser.tooling.update"
+    },
+    {
+      "capability" : "tooling",
+      "domain" : "tooling",
+      "method" : "daemon.browser.action"
+    },
+    {
+      "capability" : "computer_use",
+      "domain" : "computer_use",
+      "method" : "daemon.computer_use.session.start"
+    },
+    {
+      "capability" : "computer_use",
+      "domain" : "computer_use",
+      "method" : "daemon.computer_use.invoke"
+    },
+    {
+      "capability" : "computer_use",
+      "domain" : "computer_use",
+      "method" : "daemon.computer_use.approval.pending"
+    },
+    {
+      "capability" : "computer_use",
+      "domain" : "computer_use",
+      "method" : "daemon.computer_use.approval.respond"
+    },
+    {
+      "capability" : "computer_use",
+      "domain" : "computer_use",
+      "method" : "daemon.computer_use.panic_halt"
+    },
+    {
+      "capability" : "computer_use",
+      "domain" : "computer_use",
+      "method" : "daemon.computer_use.audit_export"
+    },
+    {
+      "capability" : "config",
+      "domain" : "computer_use",
+      "method" : "daemon.phone_control.pin.provision"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.controller.summary"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.controller.runtime_snapshot"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.controller.project.list"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.controller.project.get"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.controller.project.upsert"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.controller.review.record"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.question.create"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.question.get"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.question.list"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.question.answer"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.followup.create"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.followup.list"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.followup.done"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.followup.snooze"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.followup.calendar"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.mission.create"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.mission.list"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.mission.get"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.mission.approve"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.mission.cancel"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.mission.packet.dispatch"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.mission.result.record"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.notification.config.get"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.notification.config.update"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.notification.health"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.notification.command"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.simulator.run"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.simulator.list"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.simulator.replay"
+    },
+    {
+      "capability" : "mission_control",
+      "domain" : "mission_control",
+      "method" : "daemon.projection.rebuild"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "run.create"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "run.list"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "run.get"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "run.poll"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "run.cancel"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "run.retry"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "workspace.executeTool"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "workspace.toolResult"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "approval.respond"
+    },
+    {
+      "capability" : "client",
+      "domain" : "client",
+      "method" : "client.attach"
+    },
+    {
+      "capability" : "client",
+      "domain" : "client",
+      "method" : "client.claimControl"
+    },
+    {
+      "capability" : "client",
+      "domain" : "client",
+      "method" : "client.detach"
+    },
+    {
+      "capability" : "search",
+      "domain" : "search",
+      "method" : "daemon.search.query"
+    },
+    {
+      "capability" : "memory_write",
+      "domain" : "memory",
+      "method" : "daemon.memory.remember"
+    },
+    {
+      "capability" : "memory_read",
+      "domain" : "memory",
+      "method" : "daemon.memory.recall"
+    },
+    {
+      "capability" : "memory_write",
+      "domain" : "memory",
+      "method" : "daemon.memory.forget"
+    },
+    {
+      "capability" : "memory_read",
+      "domain" : "memory",
+      "method" : "daemon.memory.audit_trail"
+    },
+    {
+      "capability" : "memory_read",
+      "domain" : "memory",
+      "method" : "daemon.memory.analytics"
+    },
+    {
+      "capability" : "code_write",
+      "domain" : "code",
+      "method" : "daemon.code.index_project"
+    },
+    {
+      "capability" : "code_read",
+      "domain" : "code",
+      "method" : "daemon.code.search"
+    },
+    {
+      "capability" : "code_read",
+      "domain" : "code",
+      "method" : "daemon.code.context_pack"
+    },
+    {
+      "capability" : "code_read",
+      "domain" : "code",
+      "method" : "daemon.code.get_symbol"
+    },
+    {
+      "capability" : "code_read",
+      "domain" : "code",
+      "method" : "daemon.code.find_references"
+    },
+    {
+      "capability" : "code_read",
+      "domain" : "code",
+      "method" : "daemon.code.call_graph"
+    },
+    {
+      "capability" : "code_read",
+      "domain" : "code",
+      "method" : "daemon.code.diagnostics"
+    },
+    {
+      "capability" : "code_read",
+      "domain" : "code",
+      "method" : "daemon.code.index_status"
+    },
+    {
+      "capability" : "code_read",
+      "domain" : "code",
+      "method" : "daemon.code.explore"
+    },
+    {
+      "capability" : "code_write",
+      "domain" : "code",
+      "method" : "daemon.code.watch_project"
+    },
+    {
+      "capability" : "code_operator",
+      "domain" : "code",
+      "method" : "daemon.code.ops_diagnostics"
+    },
+    {
+      "capability" : "run",
+      "domain" : "run_workspace_approval",
+      "method" : "run.resume"
+    },
+    {
+      "capability" : "subscription",
+      "domain" : "subscription",
+      "method" : "subscription.start"
+    },
+    {
+      "capability" : "subscription",
+      "domain" : "subscription",
+      "method" : "subscription.resume"
+    }
+  ],
+  "cli" : {
+    "auth_token_present" : true,
+    "socket_path" : "\/tmp\/tmp.OdgrZcsZRK\/socket\/openburnbar.sock"
+  },
+  "daemon" : {
+    "ok" : true,
+    "protocol" : 1,
+    "socket_path" : "\/tmp\/tmp.OdgrZcsZRK\/socket\/openburnbar.sock",
+    "version" : "evidence-daemon"
+  },
+  "generated_at" : "2026-07-03T12:38:56Z"
+}

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Charts
 
@@ -50,3 +51,5 @@ public struct InsightScatterView: View {
         .frame(maxWidth: .infinity, minHeight: 200)
     }
 }
+
+#endif

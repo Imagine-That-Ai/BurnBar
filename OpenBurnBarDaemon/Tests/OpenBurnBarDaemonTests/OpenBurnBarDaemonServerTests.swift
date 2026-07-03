@@ -1,6 +1,10 @@
 import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import XCTest
 
@@ -1074,9 +1078,10 @@ final class BurnBarDaemonServerTests: XCTestCase {
         _ envelope: Envelope,
         socketPath: String
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        let fileDescriptor = socket(AF_UNIX, streamSocketType, 0)
         XCTAssertNotEqual(fileDescriptor, -1)
 
+        #if !os(Linux)
         var noSigPipe: Int32 = 1
         setsockopt(
             fileDescriptor,
@@ -1085,6 +1090,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             &noSigPipe,
             socklen_t(MemoryLayout<Int32>.size)
         )
+        #endif
 
         var address = try socketAddress(for: socketPath)
         let connectResult = withUnsafePointer(to: &address) { pointer in
@@ -1144,7 +1150,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
     }
 
     private func makeStaleSocket(at socketPath: String) throws -> Int32 {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        let fileDescriptor = socket(AF_UNIX, streamSocketType, 0)
         guard fileDescriptor != -1 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
@@ -1152,7 +1158,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
         var address = try socketAddress(for: socketPath)
         let bindResult = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
+                #if os(Linux)
+                Glibc.bind(fileDescriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
+                #else
                 Darwin.bind(fileDescriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
+                #endif
             }
         }
 
@@ -1174,7 +1184,9 @@ final class BurnBarDaemonServerTests: XCTestCase {
     private func socketAddress(for socketPath: String) throws -> sockaddr_un {
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
+        #if os(macOS)
         address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+        #endif
 
         let pathBytes = Array(socketPath.utf8)
         guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
@@ -1189,6 +1201,14 @@ final class BurnBarDaemonServerTests: XCTestCase {
         }
 
         return address
+    }
+
+    private var streamSocketType: Int32 {
+        #if os(Linux)
+        return Int32(SOCK_STREAM.rawValue)
+        #else
+        return SOCK_STREAM
+        #endif
     }
 
     private func socketPermissions(at socketPath: String) -> mode_t? {

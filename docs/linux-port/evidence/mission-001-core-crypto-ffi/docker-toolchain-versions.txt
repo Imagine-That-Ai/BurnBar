@@ -1,0 +1,6 @@
+rustc 1.96.0 (ac68faa20 2026-05-25)
+cargo 1.96.0 (30a34c682 2026-05-25)
+1.96.0-aarch64-unknown-linux-gnu (default)
+Swift version 6.2.4 (swift-6.2.4-RELEASE)
+Target: aarch64-unknown-linux-gnu
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.7) 2.39

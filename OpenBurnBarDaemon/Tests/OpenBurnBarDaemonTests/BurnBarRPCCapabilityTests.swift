@@ -26,6 +26,8 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryRemember), .memoryWrite)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeSearch), .codeRead)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeIndexProject), .codeWrite)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .subscriptionStart), .subscription)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .subscriptionResume), .subscription)
     }
 
     func test_fullProfilePermitsEveryMethod() {
@@ -44,6 +46,8 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.memoryRecall))
         XCTAssertTrue(profile.permits(.codeSearch))
         XCTAssertTrue(profile.permits(.codeIndexStatus))
+        XCTAssertFalse(profile.permits(.subscriptionStart))
+        XCTAssertFalse(profile.permits(.subscriptionResume))
         // Refused: every agency-bearing surface.
         XCTAssertFalse(profile.permits(.configUpdate))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
@@ -88,7 +92,14 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.codeWatchProject))
         XCTAssertTrue(profile.permits(.codeSearch))
         XCTAssertTrue(profile.permits(.codeIndexStatus))
+        XCTAssertTrue(profile.permits(.clientAttach))
+        XCTAssertTrue(profile.permits(.runCreate))
+        XCTAssertTrue(profile.permits(.runList))
+        XCTAssertTrue(profile.permits(.runGet))
+        XCTAssertTrue(profile.permits(.runPoll))
         XCTAssertTrue(profile.permits(.runResume))
+        XCTAssertTrue(profile.permits(.subscriptionStart))
+        XCTAssertTrue(profile.permits(.subscriptionResume))
 
         // The CLI must not inherit whole capability groups just because one
         // supported command lives there.
@@ -97,7 +108,8 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.workspaceExecuteTool))
-        XCTAssertFalse(profile.permits(.runCreate))
+        XCTAssertFalse(profile.permits(.runCancel))
+        XCTAssertFalse(profile.permits(.runRetry))
         XCTAssertFalse(profile.permits(.missionCreate))
         XCTAssertFalse(profile.permits(.missionCancel))
         XCTAssertFalse(profile.permits(.memoryRemember))

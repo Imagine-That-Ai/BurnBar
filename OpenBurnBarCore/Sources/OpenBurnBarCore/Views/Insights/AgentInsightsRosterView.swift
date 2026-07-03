@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Roster landing — the screen the Insights tab opens onto.
@@ -235,3 +236,5 @@ private struct AgentInsightsRosterRow: View {
         }
     }
 }
+
+#endif

@@ -1,6 +1,10 @@
 import XCTest
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 @testable import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
 

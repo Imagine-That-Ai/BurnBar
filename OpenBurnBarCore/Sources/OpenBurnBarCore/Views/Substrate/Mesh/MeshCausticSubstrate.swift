@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Caustic Pool — a continuous web of light through water.
@@ -607,3 +608,5 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
         }
     }
 }
+
+#endif

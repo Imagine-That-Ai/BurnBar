@@ -1,0 +1,16 @@
+starting real OpenBurnBarDaemon
+binary=/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+socket=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
+peer_codesig=disabled-debug-only
+2026-07-03 14:26:56 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5 vault_uid_present=false
+2026-07-03 14:26:56 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=shell-session-evidence protocol_version=1 socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_defaults_loaded file_path=/root/Library/Application Support/OpenBurnBar/provider-config.json trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=default_model_variants_seeded marker_path=/root/Library/Application Support/OpenBurnBar/model-variants-seed.v1 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=shell-session-evidence socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:56 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:58 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783088818646438752 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:26:58 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:27:06 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783088826967376547 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5
+2026-07-03 14:27:06 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=6593B78B-3D63-4B1F-A49E-B62F346D3BA5

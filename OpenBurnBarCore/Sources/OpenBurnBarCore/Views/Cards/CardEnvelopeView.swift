@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Card Envelope View (Hermes Square §6.6)
@@ -442,3 +443,5 @@ public struct CardUnknownView: View {
             )
     }
 }
+
+#endif

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Cut Star Sapphire — faithful port of imaginethat `constellation/starsapphire.ts`
@@ -300,3 +301,5 @@ public final class StarSapphireSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

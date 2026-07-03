@@ -1,0 +1,4 @@
+docker run --rm --mount type=bind,src=/private/tmp/openburnbar-linux-mission-001,dst=/workspace,readonly --mount type=bind,src=/private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-computer-use-media-mobile,dst=/evidence -w /workspace -e OB_CU_EVIDENCE_INNER=1 -e OB_EVIDENCE_OUT=/evidence openburnbar-linux-toolchain:mission-001 node /workspace/scripts/linux-port/run-computer-use-evidence.mjs
+exit_code=0
+duration_ms=81019
+

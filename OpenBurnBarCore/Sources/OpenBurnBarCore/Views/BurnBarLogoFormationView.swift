@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import CoreGraphics
@@ -1024,3 +1025,5 @@ private struct FormationHero: View {
         .frame(width: width, height: height)
     }
 }
+
+#endif

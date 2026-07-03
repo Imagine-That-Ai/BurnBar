@@ -1,0 +1,36 @@
+[
+  {
+    "adapter" : "pixel_clock",
+    "blocker" : "Install avahi-utils for mDNS browse.",
+    "discoveryMethod" : "_http._tcp awtrix_*",
+    "evidence" : "CLI devices pixel-clock discover",
+    "status" : "blocked"
+  },
+  {
+    "adapter" : "google_cast",
+    "blocker" : "Install avahi-utils for Cast browse.",
+    "discoveryMethod" : "_googlecast._tcp",
+    "evidence" : "CLI devices iot cast status",
+    "status" : "blocked"
+  },
+  {
+    "adapter" : "home_assistant",
+    "blocker" : "Requires OPENBURNBAR_HOME_ASSISTANT_URL for control beyond discovery.",
+    "discoveryMethod" : "_home-assistant._tcp",
+    "evidence" : "CLI devices iot homeassistant status",
+    "status" : "config_required"
+  },
+  {
+    "adapter" : "smart_hub_bridge",
+    "discoveryMethod" : "loopback_http",
+    "evidence" : "CLI devices iot smarthub status",
+    "status" : "local_bridge"
+  },
+  {
+    "adapter" : "awtrix_http",
+    "blocker" : "Install avahi-utils.",
+    "discoveryMethod" : "_http._tcp",
+    "evidence" : "CLI devices discover awtrix",
+    "status" : "blocked"
+  }
+]

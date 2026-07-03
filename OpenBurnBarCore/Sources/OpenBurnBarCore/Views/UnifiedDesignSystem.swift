@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Unified Design System
@@ -150,3 +151,5 @@ public enum UnifiedDesignSystem {
         endPoint: .bottomTrailing
     )
 }
+
+#endif

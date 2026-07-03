@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mission FAB Gauge
@@ -318,4 +319,6 @@ struct MissionFABGauge_Previews: PreviewProvider {
         .previewLayout(.sizeThatFits)
     }
 }
+#endif
+
 #endif

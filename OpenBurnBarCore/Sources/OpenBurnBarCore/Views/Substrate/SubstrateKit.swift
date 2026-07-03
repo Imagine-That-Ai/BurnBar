@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import CoreGraphics
 #if canImport(AppKit)
@@ -346,3 +347,5 @@ public enum SubstrateRamp {
         return a.mix(with: b, amount: f)
     }
 }
+
+#endif

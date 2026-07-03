@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// Content-addressed cache for `InsightAnalysisResult`.
@@ -71,9 +70,7 @@ public actor InsightAnalysisCache {
     ) -> String {
         let contextHash = contextContentHash ?? digestContentHash
         let payload = "\(schemaVersion)\u{1F}\(prompt)\u{1F}\(digestContentHash)\u{1F}\(contextHash)\u{1F}\(modelID)\u{1F}\(instruction.rawValue)"
-        return SHA256.hash(data: Data(payload.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        return PlatformCrypto.sha256Hex(Data(payload.utf8))
     }
 
     public func lookup(key: String) -> CachedResult? {

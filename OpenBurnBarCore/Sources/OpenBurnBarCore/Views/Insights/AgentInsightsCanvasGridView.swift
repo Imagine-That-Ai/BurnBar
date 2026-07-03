@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Grid of saved canvases scoped to the current agent. Tap a card to
@@ -94,3 +95,5 @@ private struct CanvasCard: View {
         .accessibilityLabel("Canvas: \(canvas.title)")
     }
 }
+
+#endif

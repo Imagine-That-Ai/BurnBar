@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Drawn Constellation — faithful port of imaginethat `constellation/stellarium.ts`
@@ -326,3 +327,5 @@ public final class StellariumSubstrate: SwarmSubstrate {
         }
     }
 }
+
+#endif

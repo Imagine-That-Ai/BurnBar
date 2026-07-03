@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightFunnelView: View {
@@ -29,3 +30,5 @@ public struct InsightFunnelView: View {
         }
     }
 }
+
+#endif

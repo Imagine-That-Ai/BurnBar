@@ -1,6 +1,50 @@
 import OpenBurnBarComputerUseCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
+#if canImport(CryptoKit)
+import CryptoKit
+#else
+import Crypto
+#endif
+
+#if os(Linux)
+public typealias OSStatus = Int32
+public let errSecCSReqFailed: OSStatus = -67050
+
+struct BurnBarLinuxPeerSocketCredentials {
+    var pid: pid_t = 0
+    var uid: uid_t = 0
+    var gid: gid_t = 0
+}
+
+public struct BurnBarLinuxPeerCredential: Equatable, Sendable {
+    public let pid: pid_t
+    public let uid: uid_t
+    public let gid: gid_t
+    public let executablePath: String
+    public let executableSHA256: String
+
+    public init(
+        pid: pid_t,
+        uid: uid_t,
+        gid: gid_t,
+        executablePath: String,
+        executableSHA256: String
+    ) {
+        self.pid = pid
+        self.uid = uid
+        self.gid = gid
+        self.executablePath = executablePath
+        self.executableSHA256 = executableSHA256
+    }
+}
+
+public typealias audit_token_t = BurnBarLinuxPeerCredential
+#endif
 
 /// Failures raised when authenticating a peer of the main daemon JSON-RPC socket.
 ///
@@ -119,7 +163,11 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
 
         let auditToken: audit_token_t
         do {
+            #if os(Linux)
+            auditToken = try Self.linuxPeerCredential(socketFD: socketFD)
+            #else
             auditToken = try OpenBurnBarPrivilegedTrust.peerAuditToken(socketFD: socketFD)
+            #endif
         } catch {
             reject(.auditTokenUnavailable, peerPID: peerPID)
             throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
@@ -131,11 +179,14 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         } catch let failure as BurnBarDaemonPeerAuthenticationFailure {
             reject(failure, peerPID: peerPID)
             throw failure
-        } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
-            let wrapped = BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: status)
-            reject(wrapped, peerPID: peerPID)
-            throw wrapped
         } catch {
+            #if os(macOS)
+            if case let PrivilegedSocketTrustError.codeSignatureInvalid(status) = error {
+                let wrapped = BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: status)
+                reject(wrapped, peerPID: peerPID)
+                throw wrapped
+            }
+            #endif
             let wrapped = BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
             reject(wrapped, peerPID: peerPID)
             throw wrapped
@@ -169,9 +220,113 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
             throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: status)
         }
+        #elseif os(Linux)
+        return try validateLinuxPeerCredential(auditToken)
         #else
         _ = auditToken
-        return .app
+        throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
         #endif
     }
+
+    #if os(Linux)
+    public static func validateLinuxPeerCredential(
+        _ credential: BurnBarLinuxPeerCredential,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        currentUID: uid_t = geteuid()
+    ) throws -> BurnBarDaemonPeerIdentity {
+        guard credential.uid == currentUID else {
+            throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
+        }
+
+        let executableName = URL(fileURLWithPath: credential.executablePath).lastPathComponent
+        let identity: BurnBarDaemonPeerIdentity
+        switch executableName {
+        case "OpenBurnBarCLI", "openburnbar-cli", "openburnbar":
+            identity = .cli
+        case "OpenBurnBarDaemon", "OpenBurnBarDaemonExecutable", "openburnbar-daemon":
+            identity = .daemon
+        case "OpenBurnBar", "OpenBurnBarApp":
+            identity = .app
+        default:
+            throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
+        }
+
+        let allowedRoots = linuxAllowedPeerRoots(environment: environment)
+        if !allowedRoots.isEmpty {
+            let standardized = URL(fileURLWithPath: credential.executablePath).standardizedFileURL.path
+            guard allowedRoots.contains(where: { standardized.hasPrefix($0) }) else {
+                throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
+            }
+        }
+
+        let pins = linuxPeerHashPins(environment: environment)
+        if let expected = pins[credential.executablePath] ?? pins[executableName], !expected.isEmpty {
+            guard constantTimeTokensEqual(credential.executableSHA256.lowercased(), expected.lowercased()) else {
+                throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
+            }
+        }
+
+        return identity
+    }
+
+    public static func linuxPeerCredential(socketFD: Int32) throws -> BurnBarLinuxPeerCredential {
+        var credential = BurnBarLinuxPeerSocketCredentials()
+        var length = socklen_t(MemoryLayout<BurnBarLinuxPeerSocketCredentials>.size)
+        let status = withUnsafeMutablePointer(to: &credential) { pointer in
+            getsockopt(socketFD, SOL_SOCKET, SO_PEERCRED, pointer, &length)
+        }
+        guard status == 0, length == socklen_t(MemoryLayout<BurnBarLinuxPeerSocketCredentials>.size) else {
+            throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
+        }
+        let executablePath = try linuxExecutablePath(pid: credential.pid)
+        let sha256 = try linuxExecutableSHA256(path: executablePath)
+        return BurnBarLinuxPeerCredential(
+            pid: credential.pid,
+            uid: credential.uid,
+            gid: credential.gid,
+            executablePath: executablePath,
+            executableSHA256: sha256
+        )
+    }
+
+    private static func linuxExecutablePath(pid: pid_t) throws -> String {
+        let linkPath = "/proc/\(pid)/exe"
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let count = readlink(linkPath, &buffer, buffer.count - 1)
+        guard count > 0 else {
+            throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
+        }
+        buffer[Int(count)] = 0
+        return String(cString: buffer)
+    }
+
+    private static func linuxExecutableSHA256(path: String) throws -> String {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func linuxAllowedPeerRoots(environment: [String: String]) -> [String] {
+        let raw = environment["OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS"]
+            ?? environment["BURNBAR_DAEMON_LINUX_PEER_ROOTS"]
+        return (raw ?? "")
+            .split(separator: ":")
+            .map { URL(fileURLWithPath: String($0)).standardizedFileURL.path }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func linuxPeerHashPins(environment: [String: String]) -> [String: String] {
+        let raw = environment["OPENBURNBAR_DAEMON_LINUX_PEER_SHA256_PINS"]
+            ?? environment["BURNBAR_DAEMON_LINUX_PEER_SHA256_PINS"]
+            ?? ""
+        var pins: [String: String] = [:]
+        for entry in raw.split(separator: ",") {
+            let parts = entry.split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { continue }
+            pins[parts[0].trimmingCharacters(in: .whitespacesAndNewlines)] =
+                parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return pins
+    }
+    #endif
 }

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Cross-platform mini stat chip used in provider cards and dashboards.
@@ -44,3 +45,5 @@ public struct UnifiedMiniStat: View {
         )
     }
 }
+
+#endif

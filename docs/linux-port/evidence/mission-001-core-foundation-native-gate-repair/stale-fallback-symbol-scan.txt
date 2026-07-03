@@ -1,0 +1,3 @@
+command rg -n OpenBurnBarSignalCoreAvailability|OpenBurnBarSignalSessionTransportAvailability|libSignalUnavailable|non-shipping:libsignal|OpenBurnBarIrohFFI-unlinked OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests
+rg_exit_code 1
+scan_result no_hits_in_native_linux_foundation_target

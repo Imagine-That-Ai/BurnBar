@@ -5,8 +5,12 @@ public enum TextExpansionSnapshotStore {
     public static let snapshotFileName = "text-expansion-snippets.json"
 
     public static func snapshotURL(appGroupIdentifier: String = appGroupIdentifier) -> URL? {
+        #if os(macOS) || os(iOS)
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
             .appendingPathComponent(snapshotFileName)
+        #else
+        nil
+        #endif
     }
 
     public static func write(_ snapshot: TextExpansionSnapshot, to url: URL) throws {

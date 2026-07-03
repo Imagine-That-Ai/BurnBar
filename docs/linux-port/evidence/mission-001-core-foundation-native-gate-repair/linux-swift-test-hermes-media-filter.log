@@ -1,0 +1,15 @@
+[0/1] Planning build
+Test Suite 'Selected tests' started at 2026-07-03 13:09:06.051
+Test Suite 'LinuxCoreFoundationTests' started at 2026-07-03 13:09:06.052
+Test Case 'LinuxCoreFoundationTests.testHermesAndMediaKATsFromFixture' started at 2026-07-03 13:09:06.052
+KAT_HERMES_REQUEST_AAD_SHA256 65d0f370c3b5084ec8ea188231d41c6c72464d1ab9104f0cdd6753c1efc8f91f
+KAT_MEDIA_WIRE_SHA256 e0af4bd8f72e3c9853521b16fbe556d91b969bc3bc1ffadd831f5279ae7c7d51
+Test Case 'LinuxCoreFoundationTests.testHermesAndMediaKATsFromFixture' passed (0.01 seconds)
+Test Suite 'LinuxCoreFoundationTests' passed at 2026-07-03 13:09:06.062
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.01 (0.01) seconds
+Test Suite 'Selected tests' passed at 2026-07-03 13:09:06.062
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.01 (0.01) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.4 (5ee435b15ad40ec)
+↳ Target Platform: aarch64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

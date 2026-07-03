@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 /// Cross-platform provider logo view.
 /// Uses bundled asset catalog images on both macOS and iOS with SF Symbol fallback.
 ///
@@ -109,4 +110,6 @@ public struct UnifiedProviderLogoView: View {
     }
     .padding()
 }
+#endif
+
 #endif

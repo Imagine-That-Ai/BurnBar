@@ -109,6 +109,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case codeWatchProject = "daemon.code.watch_project"
     case codeOpsDiagnostics = "daemon.code.ops_diagnostics"
     case runResume = "run.resume"
+    case subscriptionStart = "subscription.start"
+    case subscriptionResume = "subscription.resume"
 }
 
 public struct BurnBarRPCRequestEnvelope: Codable, Hashable, Sendable {
@@ -183,6 +185,145 @@ public struct BurnBarRPCResponseEnvelope<Result: Codable & Sendable>: Codable, S
         self.protocolVersion = protocolVersion
         self.result = result
         self.error = error
+    }
+}
+
+public enum BurnBarSubscriptionTopic: String, Codable, Hashable, Sendable, CaseIterable {
+    case daemonHealth = "daemon.health"
+    case run = "run"
+}
+
+public struct BurnBarSubscriptionBackpressurePolicy: Codable, Hashable, Sendable {
+    public let mode: String
+    public let maxBufferedEvents: Int
+    public let coalescesByTopic: Bool
+    public let disconnectAfterSeconds: Double
+
+    public init(
+        mode: String = "coalesce_latest",
+        maxBufferedEvents: Int = 1,
+        coalescesByTopic: Bool = true,
+        disconnectAfterSeconds: Double = 30
+    ) {
+        self.mode = mode
+        self.maxBufferedEvents = maxBufferedEvents
+        self.coalescesByTopic = coalescesByTopic
+        self.disconnectAfterSeconds = disconnectAfterSeconds
+    }
+}
+
+public struct BurnBarSubscriptionDegradation: Codable, Hashable, Sendable {
+    public let code: String
+    public let message: String
+    public let parityLedgerRow: String
+
+    public init(code: String, message: String, parityLedgerRow: String) {
+        self.code = code
+        self.message = message
+        self.parityLedgerRow = parityLedgerRow
+    }
+}
+
+public struct BurnBarSubscriptionEvent: Codable, Hashable, Sendable {
+    public let seq: UInt64
+    public let topic: BurnBarSubscriptionTopic
+    public let kind: String
+    public let payload: BurnBarJSONValue
+    public let terminal: Bool
+    public let emittedAt: Date
+
+    public init(
+        seq: UInt64,
+        topic: BurnBarSubscriptionTopic,
+        kind: String,
+        payload: BurnBarJSONValue,
+        terminal: Bool = false,
+        emittedAt: Date = Date()
+    ) {
+        self.seq = seq
+        self.topic = topic
+        self.kind = kind
+        self.payload = payload
+        self.terminal = terminal
+        self.emittedAt = emittedAt
+    }
+}
+
+public struct BurnBarSubscriptionStartRequest: Codable, Hashable, Sendable {
+    public let topic: BurnBarSubscriptionTopic
+    public let runID: BurnBarRunID?
+    public let clientID: BurnBarClientID?
+    public let resumeAfterSeq: UInt64?
+
+    public init(
+        topic: BurnBarSubscriptionTopic,
+        runID: BurnBarRunID? = nil,
+        clientID: BurnBarClientID? = nil,
+        resumeAfterSeq: UInt64? = nil
+    ) {
+        self.topic = topic
+        self.runID = runID
+        self.clientID = clientID
+        self.resumeAfterSeq = resumeAfterSeq
+    }
+}
+
+public struct BurnBarSubscriptionResumeRequest: Codable, Hashable, Sendable {
+    public let subscriptionID: String
+    public let topic: BurnBarSubscriptionTopic
+    public let runID: BurnBarRunID?
+    public let clientID: BurnBarClientID?
+    public let afterSeq: UInt64
+
+    public init(
+        subscriptionID: String,
+        topic: BurnBarSubscriptionTopic,
+        runID: BurnBarRunID? = nil,
+        clientID: BurnBarClientID? = nil,
+        afterSeq: UInt64
+    ) {
+        self.subscriptionID = subscriptionID
+        self.topic = topic
+        self.runID = runID
+        self.clientID = clientID
+        self.afterSeq = afterSeq
+    }
+}
+
+public struct BurnBarSubscriptionResponse: Codable, Hashable, Sendable {
+    public let subscriptionID: String
+    public let topic: BurnBarSubscriptionTopic
+    public let firstSnapshot: BurnBarSubscriptionEvent
+    public let events: [BurnBarSubscriptionEvent]
+    public let nextSeq: UInt64
+    public let backpressure: BurnBarSubscriptionBackpressurePolicy
+    public let disconnected: Bool
+    public let terminalDelivered: Bool
+    public let recoveredAfterRestart: Bool
+    public let degradation: BurnBarSubscriptionDegradation?
+
+    public init(
+        subscriptionID: String,
+        topic: BurnBarSubscriptionTopic,
+        firstSnapshot: BurnBarSubscriptionEvent,
+        events: [BurnBarSubscriptionEvent],
+        nextSeq: UInt64,
+        backpressure: BurnBarSubscriptionBackpressurePolicy = BurnBarSubscriptionBackpressurePolicy(),
+        disconnected: Bool = false,
+        terminalDelivered: Bool = false,
+        recoveredAfterRestart: Bool = false,
+        degradation: BurnBarSubscriptionDegradation? = nil
+    ) {
+        self.subscriptionID = subscriptionID
+        self.topic = topic
+        self.firstSnapshot = firstSnapshot
+        self.events = events
+        self.nextSeq = nextSeq
+        self.backpressure = backpressure
+        self.disconnected = disconnected
+        self.terminalDelivered = terminalDelivered
+        self.recoveredAfterRestart = recoveredAfterRestart
+        self.degradation = degradation
     }
 }
 

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Polar Ice Prism — faithful port of imaginethat `aurora/ice-prism.ts` drawBody (L170-331).
@@ -311,3 +312,5 @@ public final class IcePrismSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

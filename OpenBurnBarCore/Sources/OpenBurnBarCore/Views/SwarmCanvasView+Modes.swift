@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Foundation
 import CoreGraphics
@@ -283,3 +284,5 @@ extension SwarmSimulation {
             && averageDistance <= threshold * 1.75
     }
 }
+
+#endif

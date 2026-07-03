@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import SwiftUI
@@ -276,4 +277,6 @@ private struct InkDrop: Shape {
     .padding(60)
     .background(Color(hex: "F2F2F4"))
 }
+#endif
+
 #endif

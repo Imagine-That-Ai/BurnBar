@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightRadarView: View {
@@ -72,3 +73,5 @@ public struct InsightRadarView: View {
         return CGFloat(index) * (2 * .pi / CGFloat(count)) - .pi / 2
     }
 }
+
+#endif

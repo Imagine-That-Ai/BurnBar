@@ -7,6 +7,7 @@ OpenBurnBar ships privileged-input capabilities. Release artifacts therefore car
 | Artifact | Provenance | Attestation |
 |----------|------------|-------------|
 | Release DMG + ZIP | GitHub Actions OIDC → release-artifact predicate | `cosign attest-blob` bundle (keyless via `id-token: write`) |
+| Linux AppImage/deb/rpm | GitHub Actions OIDC → linux-release-artifact predicate | `cosign attest-blob` bundle plus detached Ed25519/package signatures before `latest-linux.json` promotion |
 | SPDX SBOM | Same workflow job as release build | `cosign attest-blob` bundle + GitHub Release asset |
 | Checksums file | SHA-256/512 in `checksums-v*.txt` | `cosign attest-blob` bundle |
 | OpenVEX sidecar | Generated from SBOM at build time | `cosign attest-blob` bundle + GitHub Release asset |
@@ -14,6 +15,8 @@ OpenBurnBar ships privileged-input capabilities. Release artifacts therefore car
 Workflows:
 
 - [`.github/workflows/release.yml`](../../.github/workflows/release.yml) — builds, SBOM, VEX, cosign attestations on tag releases.
+- [`.github/workflows/linux-pr-gate.yml`](../../.github/workflows/linux-pr-gate.yml) — Linux PR packaging, ledger, and release-metadata preflight.
+- [`.github/workflows/linux-nightly.yml`](../../.github/workflows/linux-nightly.yml) — Linux nightly real-surface matrix and evidence upload.
 - [`.github/workflows/supply-chain-provenance.yml`](../../.github/workflows/supply-chain-provenance.yml) — standalone re-attestation / provenance verification (`workflow_dispatch`).
 - [`.github/workflows/openburnbar-pr-harness.yml`](../../.github/workflows/openburnbar-pr-harness.yml) — PR SBOM + VEX + ecosystem deny checks.
 
@@ -93,6 +96,13 @@ cosign verify-blob-attestation \
 
 Do not check the SOTA release-attestation signoff box until the script exits 0
 against the exact release tag being claimed.
+
+For Linux, do not check the release-attestation signoff box until
+`node scripts/linux-port/verify-linux-release.mjs` exits 0 and the CI release
+job has produced cosign bundles under the `linux-release.yml` tag identity.
+Local missing OIDC, Ed25519 signing material, AUR credentials, or Flathub
+credentials is a named release blocker, not permission to publish weaker update
+metadata.
 
 ## Related docs
 

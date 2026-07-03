@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import CoreGraphics
 
@@ -232,3 +233,5 @@ enum SwarmProviderLogoDotMap {
         "81MkAPSNJAD1xiQA9wAkAPg5JAAL0SQADQskAA5EJAAPfiQAELckAO+nJTrw4SU68holOvNTJTr0jSU6DQslOg5EJToPfiU6"
     ].joined()
 }
+
+#endif

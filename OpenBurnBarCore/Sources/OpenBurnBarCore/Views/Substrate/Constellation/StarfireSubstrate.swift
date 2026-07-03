@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Stellar Plasma — faithful port of imaginethat `constellation/starfire.ts` drawBody (L75-147).
@@ -156,3 +157,5 @@ public final class StarfireSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

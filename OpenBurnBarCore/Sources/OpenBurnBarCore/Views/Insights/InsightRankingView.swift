@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Charts
 
@@ -32,3 +33,5 @@ public struct InsightRankingView: View {
         .frame(maxWidth: .infinity, minHeight: CGFloat(max(60, data.rows.count * 22)))
     }
 }
+
+#endif

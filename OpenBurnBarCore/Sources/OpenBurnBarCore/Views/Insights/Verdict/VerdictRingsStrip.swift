@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// The three-ring strip rendered immediately under the verdict hero.
@@ -158,3 +159,5 @@ extension ProviderTint {
         }
     }
 }
+
+#endif

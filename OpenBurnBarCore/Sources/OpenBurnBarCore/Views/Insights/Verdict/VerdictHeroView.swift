@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// The always-present verdict hero — the dominant frame on the Insights
@@ -268,3 +269,5 @@ public struct VerdictHeroView: View {
             .stroke(verdict.moodSwatch.color.opacity(0.25), lineWidth: 1)
     }
 }
+
+#endif

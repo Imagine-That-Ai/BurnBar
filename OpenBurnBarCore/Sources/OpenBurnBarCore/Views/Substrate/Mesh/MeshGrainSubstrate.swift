@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Living Grain — faithful port of imaginethat `glyph/stage/styles/mesh/mesh-grain.ts` drawBody.
@@ -376,3 +377,5 @@ public final class MeshGrainSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

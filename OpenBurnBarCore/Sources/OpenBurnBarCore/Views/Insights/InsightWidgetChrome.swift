@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Shared chrome wrapper for every widget on the canvas.
@@ -147,3 +148,5 @@ public struct InsightWidgetChrome<Body: View>: View {
         }
     }
 }
+
+#endif

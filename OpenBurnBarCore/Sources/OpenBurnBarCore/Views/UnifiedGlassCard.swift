@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Cross-platform frosted glass card with gradient sheen and luminous border.
@@ -148,3 +149,5 @@ public struct UnifiedGlassCard<Content: View>: View {
         }
     }
 }
+
+#endif

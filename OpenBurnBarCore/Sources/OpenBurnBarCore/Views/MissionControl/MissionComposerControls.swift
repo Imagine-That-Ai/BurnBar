@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Composer Controls
@@ -628,3 +629,5 @@ private extension Sequence where Element: Hashable {
         return filter { seen.insert($0).inserted }
     }
 }
+
+#endif

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Charts
 
@@ -124,3 +125,5 @@ struct InsightTreemapView: View {
         return result
     }
 }
+
+#endif

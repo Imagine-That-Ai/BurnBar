@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Dendritic Frost — premium port of imaginethat `constellation/rimefrost.ts`
@@ -274,3 +275,5 @@ public final class RimefrostSubstrate: SwarmSubstrate {
         return true
     }
 }
+
+#endif

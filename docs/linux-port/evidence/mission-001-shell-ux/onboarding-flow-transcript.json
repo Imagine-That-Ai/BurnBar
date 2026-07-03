@@ -1,0 +1,79 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.668Z",
+  "lane": "W06LinuxShellUx",
+  "method": "first-run-localStorage-state-machine",
+  "surface": "host-vitest",
+  "steps": [
+    {
+      "action": "first-run",
+      "persistedState": {
+        "completed": false,
+        "step": 0,
+        "skippedSteps": [],
+        "daemonAck": false,
+        "secretStoreAck": false,
+        "portalAck": false,
+        "trayLimitAck": false
+      },
+      "expected": "Wizard starts at daemon/socket setup and does not silently grant Linux permissions."
+    },
+    {
+      "action": "retry-check",
+      "persistedState": {
+        "completed": false,
+        "step": 0,
+        "skippedSteps": [],
+        "daemonAck": false,
+        "secretStoreAck": false,
+        "portalAck": false,
+        "trayLimitAck": false
+      },
+      "expected": "Retry probes daemon health without advancing or losing the current step."
+    },
+    {
+      "action": "skip-step",
+      "persistedState": {
+        "completed": false,
+        "step": 1,
+        "skippedSteps": [
+          0
+        ],
+        "daemonAck": false,
+        "secretStoreAck": false,
+        "portalAck": false,
+        "trayLimitAck": false
+      },
+      "expected": "Skip records the skipped daemon step and resumes at Secret Service setup."
+    },
+    {
+      "action": "restart-resume",
+      "persistedState": {
+        "completed": false,
+        "step": 1,
+        "skippedSteps": [
+          0
+        ],
+        "daemonAck": false,
+        "secretStoreAck": false,
+        "portalAck": false,
+        "trayLimitAck": false
+      },
+      "expected": "A fresh app session reads localStorage and resumes the incomplete wizard."
+    },
+    {
+      "action": "complete",
+      "persistedState": {
+        "completed": true,
+        "step": 4,
+        "skippedSteps": [
+          0
+        ],
+        "daemonAck": false,
+        "secretStoreAck": false,
+        "portalAck": false,
+        "trayLimitAck": false
+      },
+      "expected": "Completion is persisted so later launches can open the dashboard."
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Mining Pick Loader
@@ -311,4 +312,6 @@ public extension MiningPickLoader {
     }
     .padding(40)
 }
+#endif
+
 #endif

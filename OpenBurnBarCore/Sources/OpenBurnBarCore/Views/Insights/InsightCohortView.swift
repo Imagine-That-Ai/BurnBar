@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 public struct InsightCohortView: View {
@@ -51,3 +52,5 @@ public struct InsightCohortView: View {
         return UnifiedDesignSystem.Colors.whimsy.opacity(0.15 + 0.65 * v)
     }
 }
+
+#endif

@@ -1,0 +1,7 @@
+^D[0/1] Planning build
+Building for debugging...
+[0/4] Write swift-version-24593BA9C3E375BF.txt
+[1/4] Wrapping AST for GRDB for debugging
+[2/4] Write Objects.LinkFileList
+[3/4] Linking libGRDB-dynamic.so
+Build of product 'GRDB-dynamic' complete! (0.45s)

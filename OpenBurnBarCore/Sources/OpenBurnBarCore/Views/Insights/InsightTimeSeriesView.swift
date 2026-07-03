@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Charts
 
@@ -393,3 +394,5 @@ public struct InsightTimeSeriesView: View {
         }
     }
 }
+
+#endif

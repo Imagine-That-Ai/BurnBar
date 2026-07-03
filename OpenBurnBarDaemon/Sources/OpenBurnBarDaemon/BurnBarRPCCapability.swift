@@ -36,6 +36,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case client
     /// Run lifecycle + workspace tool execution + approvals.
     case run
+    /// Additive BurnBarRPC subscription long-poll/resume surface.
+    case subscription
     /// Indexed search queries.
     case search
     /// Project-scoped durable memory reads.
@@ -95,6 +97,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .runCreate, .runList, .runGet, .runPoll, .runCancel, .runRetry, .runResume,
              .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
             return .run
+        case .subscriptionStart, .subscriptionResume:
+            return .subscription
         case .searchQuery:
             return .search
         case .memoryRemember, .memoryForget:
@@ -179,7 +183,14 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .codeWatchProject,
         .codeSearch,
         .codeIndexStatus,
-        .runResume
+        .clientAttach,
+        .runCreate,
+        .runList,
+        .runGet,
+        .runPoll,
+        .runResume,
+        .subscriptionStart,
+        .subscriptionResume
     ])
 
     /// Intersect with `other` so a peer can only ever be FURTHER attenuated,

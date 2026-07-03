@@ -1,7 +1,13 @@
 import Foundation
 import GRDB
+#if canImport(Security)
 import Security
+#endif
+#if canImport(SQLCipher)
 import SQLCipher
+#else
+import CSQLite
+#endif
 
 // MARK: - Daemon Database Cipher
 //
@@ -69,6 +75,7 @@ enum BurnBarDaemonDatabaseCipher {
     /// been provisioned (encryption never enabled) or the Keychain is unreadable
     /// (e.g. device locked). Mirrors `DatabaseEncryptionService.getKey()`.
     static func resolveKey() -> String? {
+#if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -82,6 +89,9 @@ enum BurnBarDaemonDatabaseCipher {
             return nil
         }
         return String(data: data, encoding: .utf8)
+#else
+        return nil
+#endif
     }
 
     /// Resolve the app key AND validate its charset, returning it only when it is
@@ -317,11 +327,19 @@ enum BurnBarDaemonDatabaseCipher {
         }
         let code = keyData.withUnsafeBytes { rawBuffer in
             if let databaseName {
+#if canImport(SQLCipher)
                 return databaseName.withCString { databaseNameCString in
                     sqlite3_key_v2(handle, databaseNameCString, rawBuffer.baseAddress, CInt(rawBuffer.count))
                 }
+#else
+                return SQLITE_MISUSE
+#endif
             }
+#if canImport(SQLCipher)
             return sqlite3_key(handle, rawBuffer.baseAddress, CInt(rawBuffer.count))
+#else
+            return _sqlite3_key(handle, rawBuffer.baseAddress, CInt(rawBuffer.count))
+#endif
         }
         guard code == SQLITE_OK else {
             throw BurnBarDaemonDatabaseCipherError.keyApplicationFailed(

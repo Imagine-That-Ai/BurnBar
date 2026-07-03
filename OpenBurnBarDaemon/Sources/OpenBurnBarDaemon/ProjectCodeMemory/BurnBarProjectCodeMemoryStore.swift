@@ -1,9 +1,23 @@
+#if canImport(CoreServices)
 import CoreServices
+#endif
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import OpenBurnBarCore
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 let projectCodeMemorySQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 let projectCodeMemoryQueueKey = DispatchSpecificKey<UUID>()
@@ -88,11 +102,15 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let storageBudgetBytes: Int
         let timer: DispatchSourceTimer
         let pollIntervalSeconds: TimeInterval
+#if canImport(CoreServices)
         var fseventStream: FSEventStreamRef?
+#endif
         var lastSignature: String
         /// Event-driven change source (sub-second responsiveness). The timer above is
         /// the reliability backstop for volumes/conditions where FSEvents can miss.
+#if canImport(CoreServices)
         var eventStream: FSEventStreamRef?
+#endif
         var onFileSystemEvent: (() -> Void)?
 
         init(
@@ -120,11 +138,13 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
 
         deinit {
+#if canImport(CoreServices)
             if let fseventStream {
                 FSEventStreamStop(fseventStream)
                 FSEventStreamInvalidate(fseventStream)
                 FSEventStreamRelease(fseventStream)
             }
+#endif
             timer.cancel()
             teardownEventStream()
         }
@@ -134,11 +154,13 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         /// that reference; invalidation guarantees no further callbacks fire afterward,
         /// so there is no use-after-free on teardown.
         func teardownEventStream() {
+#if canImport(CoreServices)
             guard let stream = eventStream else { return }
             eventStream = nil
             FSEventStreamStop(stream)
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
+#endif
         }
     }
 
@@ -874,7 +896,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             guard let self, let watcher else { return }
             self.reindexWatcherIfChanged(watcher)
         }
+#if canImport(CoreServices)
         watcher.eventStream = Self.makeFileSystemEventStream(root: root, queue: queue, watcher: watcher)
+#endif
 
         databaseSync {
             if let previous = projectWatchers[projectID] {
@@ -924,6 +948,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
     }
 
+#if canImport(CoreServices)
     /// FSEvents C callback bridges back to the watcher through the retained `info`.
     private static let fileSystemEventCallback: FSEventStreamCallback = { _, info, _, _, _, _ in
         guard let info else { return }
@@ -964,6 +989,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         FSEventStreamStart(stream)
         return stream
     }
+#endif
 
     private func auditEvent(
         action: String,

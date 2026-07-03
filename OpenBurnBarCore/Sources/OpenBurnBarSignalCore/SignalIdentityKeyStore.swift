@@ -1,8 +1,14 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+ import Crypto
+#endif
 import Foundation
 import LibSignalClient
 import OpenBurnBarCore
+#if canImport(Security)
 import Security
+#endif
 
 public struct OpenBurnBarSignalIdentityKeypair: Sendable, Hashable {
     public let identityKeyId: String
@@ -71,6 +77,7 @@ public struct OpenBurnBarSignalIdentityKeyStore: Sendable {
     }
 
     private func load(account: String, deviceId: String) throws -> OpenBurnBarSignalIdentityKeypair? {
+        #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -92,9 +99,20 @@ public struct OpenBurnBarSignalIdentityKeyStore: Sendable {
         let comment = dict[kSecAttrComment as String] as? String
         let keyVersion = comment.flatMap(Int.init) ?? 1
         return try material(fromPrivateKeyData: privateKeyData, deviceId: deviceId, keyVersion: keyVersion)
+        #else
+        guard let entry = try OpenBurnBarSignalLinuxKeyValueStore.readEntry(
+            service: service,
+            account: account
+        ) else {
+            return nil
+        }
+        let keyVersion = entry.metadata["keyVersion"].flatMap(Int.init) ?? 1
+        return try material(fromPrivateKeyData: entry.data, deviceId: deviceId, keyVersion: keyVersion)
+        #endif
     }
 
     private func save(_ privateKeyData: Data, keyVersion: Int, account: String) throws {
+        #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -109,6 +127,14 @@ public struct OpenBurnBarSignalIdentityKeyStore: Sendable {
         guard status == errSecSuccess else {
             throw CloudVaultCryptoError.keychainError(Int(status))
         }
+        #else
+        try OpenBurnBarSignalLinuxKeyValueStore.write(
+            privateKeyData,
+            service: service,
+            account: account,
+            metadata: ["keyVersion": "\(keyVersion)"]
+        )
+        #endif
     }
 
     private func material(

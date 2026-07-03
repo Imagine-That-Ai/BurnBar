@@ -1,7 +1,11 @@
 import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 import XCTest
 
 private let burnBarResumeServiceTestsSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

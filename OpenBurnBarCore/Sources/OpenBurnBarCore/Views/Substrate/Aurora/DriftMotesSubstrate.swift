@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Drift Motes — faithful port of imaginethat `aurora/drift-motes.ts` drawBody.
@@ -316,3 +317,5 @@ public final class DriftMotesSubstrate: SwarmSubstrate {
         }
     }
 }
+
+#endif

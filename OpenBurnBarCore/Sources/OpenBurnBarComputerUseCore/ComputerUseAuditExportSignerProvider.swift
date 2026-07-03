@@ -1,9 +1,12 @@
-import CryptoKit
 import Foundation
 import OpenBurnBarCore
 #if os(macOS)
 import LocalAuthentication
+#if canImport(Security)
 import Security
+#endif
+#else
+public typealias OSStatus = Int32
 #endif
 
 public protocol ComputerUseAuditExportSignerProviding: Sendable {
@@ -117,7 +120,7 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
 
     public func signer() throws -> ComputerUseEd25519AuditExportSigner {
         let key = try loadOrCreateKey()
-        let fingerprint = Data(SHA256.hash(data: key.publicKey.rawRepresentation))
+        let fingerprint = PlatformCrypto.sha256(key.publicKey.rawRepresentation)
             .prefix(12)
             .map { String(format: "%02x", $0) }
             .joined()
@@ -128,7 +131,7 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
         )
     }
 
-    private func loadOrCreateKey() throws -> Curve25519.Signing.PrivateKey {
+    private func loadOrCreateKey() throws -> PlatformEd25519PrivateKey {
         if let data = try keyStore.data(service: service, account: account) {
             return try decodeKey(data)
         }
@@ -137,12 +140,12 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
             return migrated
         }
 
-        let fresh = Curve25519.Signing.PrivateKey()
+        let fresh = PlatformCrypto.ed25519PrivateKey()
         try keyStore.set(fresh.rawRepresentation, service: service, account: account)
         return fresh
     }
 
-    private func migrateLegacyRawKeyIfPresent() throws -> Curve25519.Signing.PrivateKey? {
+    private func migrateLegacyRawKeyIfPresent() throws -> PlatformEd25519PrivateKey? {
         guard let legacyRawKeyURL,
               fileSystem.fileExists(atPath: legacyRawKeyURL.path) else {
             return nil
@@ -154,12 +157,12 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
         return key
     }
 
-    private func decodeKey(_ data: Data) throws -> Curve25519.Signing.PrivateKey {
+    private func decodeKey(_ data: Data) throws -> PlatformEd25519PrivateKey {
         guard data.count == 32 else {
             throw ComputerUseAuditExportSignerStoreError.invalidStoredKey
         }
         do {
-            return try Curve25519.Signing.PrivateKey(rawRepresentation: data)
+            return try PlatformCrypto.ed25519PrivateKey(rawRepresentation: data)
         } catch {
             throw ComputerUseAuditExportSignerStoreError.invalidStoredKey
         }

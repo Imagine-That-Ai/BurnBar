@@ -1,7 +1,11 @@
 import Foundation
 import OpenBurnBarComputerUseCore
 #if canImport(Darwin)
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 #endif
 
 /// T-DMN-03 — pre-exec re-verification of the daemon's OWN on-disk binary.
@@ -84,11 +88,14 @@ public struct DaemonSelfCodeSignatureVerifier: Sendable {
         } catch let failure as VerificationFailure {
             reject(failure)
             throw failure
-        } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
-            let wrapped = VerificationFailure.codeSignatureInvalid(status: status)
-            reject(wrapped)
-            throw wrapped
         } catch {
+            #if os(macOS)
+            if case let PrivilegedSocketTrustError.codeSignatureInvalid(status) = error {
+                let wrapped = VerificationFailure.codeSignatureInvalid(status: status)
+                reject(wrapped)
+                throw wrapped
+            }
+            #endif
             let wrapped = VerificationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
             reject(wrapped)
             throw wrapped

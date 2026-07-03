@@ -1,6 +1,8 @@
 import Foundation
 import OpenBurnBarComputerUseCore
+#if canImport(Security)
 import Security
+#endif
 @testable import OpenBurnBarDaemon
 import XCTest
 

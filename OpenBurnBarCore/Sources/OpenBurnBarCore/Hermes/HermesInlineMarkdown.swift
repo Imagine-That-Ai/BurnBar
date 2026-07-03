@@ -80,6 +80,10 @@ public enum HermesInlineMarkdown {
     /// right for cards, banners, and any surface where tappable atom chips
     /// would be overkill but raw markdown markers would be wrong.
     public static func attributedString(_ text: String) -> AttributedString {
+        #if os(Linux)
+        let flattened = expand(HermesAtomParser.parse(text)).map(\.text).joined()
+        return AttributedString(flattened)
+        #else
         var result = AttributedString()
         for run in HermesAtomParser.parse(text) {
             var piece = AttributedString(run.text)
@@ -98,6 +102,7 @@ public enum HermesInlineMarkdown {
             result.append(piece)
         }
         return result
+        #endif
     }
 
     // MARK: - Body expansion

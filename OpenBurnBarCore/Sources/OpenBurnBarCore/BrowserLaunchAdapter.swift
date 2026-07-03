@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 #if canImport(AppKit)
 import AppKit
@@ -585,5 +586,7 @@ public struct BrowserFilesystemGuard {
         return result
     }
 }
+
+#endif
 
 #endif

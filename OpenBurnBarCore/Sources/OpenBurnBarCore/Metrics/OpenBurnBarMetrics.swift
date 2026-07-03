@@ -1,5 +1,4 @@
 import Foundation
-import OSLog
 
 // MARK: - OpenBurnBar Metrics
 
@@ -14,7 +13,7 @@ import OSLog
 /// OpenBurnBarMetrics.counter(name: "sync_success", labels: ["provider": "firebase"])
 /// ```
 public enum OpenBurnBarMetrics {
-    private static let logger = Logger(subsystem: "com.openburnbar.metrics", category: "export")
+    private static let logger = PlatformLogger(subsystem: "com.openburnbar.metrics", category: "export")
 
     /// Emits a gauge metric (point-in-time value).
     public static func gauge(
@@ -23,7 +22,7 @@ public enum OpenBurnBarMetrics {
         labels: [String: String] = [:]
     ) {
         let labelStr = formatLabels(labels)
-        logger.info("metric_type=gauge metric_name=\(name) metric_value=\(value, format: .fixed(precision: 4)) \(labelStr)")
+        logger.info("metric_type=gauge metric_name=\(name) metric_value=\(formatted(value)) \(labelStr)")
     }
 
     /// Emits a histogram metric (sampled value for distribution analysis).
@@ -33,7 +32,7 @@ public enum OpenBurnBarMetrics {
         labels: [String: String] = [:]
     ) {
         let labelStr = formatLabels(labels)
-        logger.info("metric_type=histogram metric_name=\(name) metric_value=\(value, format: .fixed(precision: 4)) \(labelStr)")
+        logger.info("metric_type=histogram metric_name=\(name) metric_value=\(formatted(value)) \(labelStr)")
     }
 
     /// Emits a counter metric (monotonically increasing value).
@@ -43,7 +42,11 @@ public enum OpenBurnBarMetrics {
         labels: [String: String] = [:]
     ) {
         let labelStr = formatLabels(labels)
-        logger.info("metric_type=counter metric_name=\(name) metric_delta=\(delta, format: .fixed(precision: 4)) \(labelStr)")
+        logger.info("metric_type=counter metric_name=\(name) metric_delta=\(formatted(delta)) \(labelStr)")
+    }
+
+    private static func formatted(_ value: Double) -> String {
+        String(format: "%.4f", value)
     }
 
     private static func formatLabels(_ labels: [String: String]) -> String {

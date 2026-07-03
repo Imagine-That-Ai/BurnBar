@@ -15,8 +15,12 @@ public enum TextExpansionInbox {
     public static func inboxURL(
         appGroupIdentifier: String = TextExpansionSnapshotStore.appGroupIdentifier
     ) -> URL? {
+        #if os(macOS) || os(iOS)
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
             .appendingPathComponent(inboxFileName)
+        #else
+        nil
+        #endif
     }
 
     public static func read(from url: URL) -> [TextExpansionSnippet] {

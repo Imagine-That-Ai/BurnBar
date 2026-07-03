@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 import Foundation
 import CoreGraphics
@@ -1003,3 +1004,5 @@ extension SwarmSimulation {
         return outline
     }
 }
+
+#endif

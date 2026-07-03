@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Silk Filament — "Raked Light Filaments", faithful port of imaginethat
@@ -433,3 +434,5 @@ public final class SilkFilamentSubstrate: SwarmSubstrate {
         ))
     }
 }
+
+#endif

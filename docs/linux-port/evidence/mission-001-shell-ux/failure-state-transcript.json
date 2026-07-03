@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.670Z",
+  "lane": "W06LinuxShellUx",
+  "surface": "host-vitest",
+  "cases": [
+    {
+      "id": "daemon-offline",
+      "route": "overview",
+      "condition": "bridge=null or health.ok=false",
+      "userMessage": "Packaged shell required for live daemon health (browser preview mode).",
+      "remediation": "Start openburnbar-cli service foreground; verify AF_UNIX socket."
+    },
+    {
+      "id": "tray-degraded",
+      "route": "support",
+      "condition": "trayDegraded=true",
+      "userMessage": "Tray degraded: use window reopen from launcher.",
+      "remediation": "Install Ayatana AppIndicator; pin app when DE hides tray."
+    },
+    {
+      "id": "onboarding-incomplete",
+      "route": "onboarding",
+      "condition": "onboarding.completed=false",
+      "userMessage": "First-run wizard blocks dashboard until Continue or Skip.",
+      "remediation": "Complete onboarding or enable daemon fixture for host smoke."
+    },
+    {
+      "id": "text-expansion-no-consent",
+      "route": "text-expansion",
+      "condition": "consent=null",
+      "userMessage": "Acknowledge in-app-only expansion before saving snippets.",
+      "remediation": "Check consent box and save snippet."
+    }
+  ]
+}

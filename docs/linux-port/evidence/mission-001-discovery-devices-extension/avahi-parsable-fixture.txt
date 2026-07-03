@@ -1,0 +1,3 @@
+# Captured from V07 live-avahi-probe.log (Ubuntu Avahi 0.8 disposable container).
+# Used for parser/fixture proof only — not live mDNS success.
+=;lo;IPv4;OpenBurnBar\032validator;_openburnbar._tcp;local;2a48d94a738e.local;127.0.0.1;8317;"socket=unix" "proto=1" "platform=linux" "peer=peer-linux-validator" "gateway=loopback" "caps=cast,cli,homeassistant,http,pixelclock,smarthub"

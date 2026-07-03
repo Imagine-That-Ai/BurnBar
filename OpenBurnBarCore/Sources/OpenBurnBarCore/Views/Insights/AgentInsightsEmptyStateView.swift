@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Renders when an agent has no recorded signal *and* no scoped canvases.
@@ -67,3 +68,5 @@ public struct AgentInsightsEmptyStateView: View {
         }
     }
 }
+
+#endif

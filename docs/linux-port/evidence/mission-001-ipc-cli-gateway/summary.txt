@@ -1,0 +1,5 @@
+evidence_dir=/workspace/docs/linux-port/evidence/mission-001-ipc-cli-gateway
+daemon_pid=120
+gateway_port=19404
+socket_path=/tmp/tmp.OdgrZcsZRK/socket/openburnbar.sock
+result=complete

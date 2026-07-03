@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Cross-platform skeleton loading view with ember-tinted shimmer animation.
@@ -52,3 +53,5 @@ public struct UnifiedSkeletonView: View {
     }
     .padding()
 }
+
+#endif

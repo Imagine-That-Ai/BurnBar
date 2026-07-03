@@ -1,0 +1,117 @@
+== rust toolchain ==
+rustc 1.96.0 (ac68faa20 2026-05-25)
+cargo 1.96.0 (30a34c682 2026-05-25)
+== produced artifacts ==
+/tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.rlib
+-rw-r--r-- 2 root root 12M Jul  3 05:53 /tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.rlib
+e63df85a339212ad1d63312dd9456d022114911a0b18c4dc39799b8bba260997  /tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.rlib
+/tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.a
+-rw-r--r-- 2 root root 186M Jul  3 05:53 /tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.a
+564038956f584b5150b5514b7dd1f13a4527b1c6e13c28bf7927ef0ee4ff8556  /tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.a
+/tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.d
+-rw-r--r-- 1 root root 253 Jul  3 05:53 /tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.d
+402ab3f2a655e8e174498f7011f42848398607c49d5aecd5978067a89e4bbc03  /tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.d
+/tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.so
+-rwxr-xr-x 2 root root 11M Jul  3 05:53 /tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.so
+1e1c5638d0a35baa92c11876066c516d47a22b621e89ef21e65f01c5a8abd170  /tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.so
+/tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.rlib
+-rw-r--r-- 2 root root 12M Jul  3 05:53 /tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.rlib
+e63df85a339212ad1d63312dd9456d022114911a0b18c4dc39799b8bba260997  /tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.rlib
+/tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.a
+-rw-r--r-- 2 root root 186M Jul  3 05:53 /tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.a
+564038956f584b5150b5514b7dd1f13a4527b1c6e13c28bf7927ef0ee4ff8556  /tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.a
+/tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.so
+-rwxr-xr-x 2 root root 11M Jul  3 05:53 /tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.so
+1e1c5638d0a35baa92c11876066c516d47a22b621e89ef21e65f01c5a8abd170  /tmp/openburnbar-iroh-target/release/deps/libopenburnbar_iroh.so
+/tmp/openburnbar-iroh-target/release/deps/openburnbar_iroh.d
+-rw-r--r-- 1 root root 508 Jul  3 05:53 /tmp/openburnbar-iroh-target/release/deps/openburnbar_iroh.d
+8fae5fb9b8762f0c9e365b920c91a791883c8f4cadcc774ce1ec0659beb6dd67  /tmp/openburnbar-iroh-target/release/deps/openburnbar_iroh.d
+== file libopenburnbar_iroh.so ==
+/tmp/openburnbar-iroh-target/release/libopenburnbar_iroh.so: ELF 64-bit LSB shared object, ARM aarch64, version 1 (SYSV), dynamically linked, BuildID[sha1]=906f49359df1160927eeda2867ec20c0c0d07cb8, stripped
+== ldd libopenburnbar_iroh.so ==
+	linux-vdso.so.1 (0x0000ffff811bc000)
+	libgcc_s.so.1 => /lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffff806d0000)
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000ffff80620000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff80460000)
+	/lib/ld-linux-aarch64.so.1 (0x0000ffff81180000)
+== exported symbols sample ==
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_f32
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_f64
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_i16
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_i32
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_i64
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_i8
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_pointer
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_rust_buffer
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_u16
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_u32
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_u64
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_u8
+0000000000143b84 T ffi_openburnbar_iroh_rust_future_cancel_void
+0000000000143b88 T ffi_openburnbar_iroh_rust_future_complete_f32
+0000000000143b8c T ffi_openburnbar_iroh_rust_future_complete_f64
+0000000000143b90 T ffi_openburnbar_iroh_rust_future_complete_i16
+0000000000143b94 T ffi_openburnbar_iroh_rust_future_complete_i32
+0000000000143b98 T ffi_openburnbar_iroh_rust_future_complete_i64
+0000000000143b9c T ffi_openburnbar_iroh_rust_future_complete_i8
+0000000000143b98 T ffi_openburnbar_iroh_rust_future_complete_pointer
+0000000000143ba0 T ffi_openburnbar_iroh_rust_future_complete_rust_buffer
+0000000000143b90 T ffi_openburnbar_iroh_rust_future_complete_u16
+0000000000143b94 T ffi_openburnbar_iroh_rust_future_complete_u32
+0000000000143b98 T ffi_openburnbar_iroh_rust_future_complete_u64
+0000000000143b9c T ffi_openburnbar_iroh_rust_future_complete_u8
+0000000000143ba4 T ffi_openburnbar_iroh_rust_future_complete_void
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_f32
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_f64
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_i16
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_i32
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_i64
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_i8
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_pointer
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_rust_buffer
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_u16
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_u32
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_u64
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_u8
+0000000000143ba8 T ffi_openburnbar_iroh_rust_future_free_void
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_f32
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_f64
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_i16
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_i32
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_i64
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_i8
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_pointer
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_rust_buffer
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_u16
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_u32
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_u64
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_u8
+0000000000143bac T ffi_openburnbar_iroh_rust_future_poll_void
+0000000000143bb0 T ffi_openburnbar_iroh_rustbuffer_alloc
+0000000000143bb4 T ffi_openburnbar_iroh_rustbuffer_free
+0000000000143bb8 T ffi_openburnbar_iroh_rustbuffer_from_bytes
+0000000000143bbc T ffi_openburnbar_iroh_rustbuffer_reserve
+0000000000143bc0 T ffi_openburnbar_iroh_uniffi_contract_version
+0000000000143bc8 T uniffi_openburnbar_iroh_checksum_constructor_irohblobnode_new
+0000000000143bd0 T uniffi_openburnbar_iroh_checksum_constructor_irohendpointhandle_new
+0000000000143bd8 T uniffi_openburnbar_iroh_checksum_func_generate_secret_key_material
+0000000000143be0 T uniffi_openburnbar_iroh_checksum_func_iroh_blobs_alpn
+0000000000143be8 T uniffi_openburnbar_iroh_checksum_func_iroh_blobs_crate_version
+0000000000143bf0 T uniffi_openburnbar_iroh_checksum_func_mercury_audio_alpn
+0000000000143bf8 T uniffi_openburnbar_iroh_checksum_func_openburnbar_alpn
+0000000000143c00 T uniffi_openburnbar_iroh_checksum_func_openburnbar_iroh_protocol_version
+0000000000143c08 T uniffi_openburnbar_iroh_checksum_func_parse_blob_ticket
+0000000000143c10 T uniffi_openburnbar_iroh_checksum_method_irohblobnode_bootstrap
+0000000000143c18 T uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob
+0000000000143c20 T uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob_internal
+0000000000143c28 T uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob_with_expected_size
+0000000000143c30 T uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity
+0000000000143c38 T uniffi_openburnbar_iroh_checksum_method_irohblobnode_publish_blob
+0000000000143c40 T uniffi_openburnbar_iroh_checksum_method_irohblobnode_shutdown
+0000000000143c48 T uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_close_channel
+0000000000143c50 T uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_max_datagram_size
+0000000000143c58 T uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_recv
+0000000000143c60 T uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_send
+0000000000143c68 T uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_datagram_channel
+0000000000143c70 T uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_one
+0000000000143c78 T uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_bootstrap

@@ -1,0 +1,13 @@
+### generator
+Generated BurnBarRPC IPC canon for 94 methods.
+generator_exit_code=0
+check_exit_code=0
+{
+  "ok": false,
+  "missing": [
+    "subscription.resume",
+    "subscription.start"
+  ],
+  "extra": []
+}
+fixture_exit_code=1

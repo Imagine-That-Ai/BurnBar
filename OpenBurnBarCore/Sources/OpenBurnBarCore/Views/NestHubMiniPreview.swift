@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import SwiftUI
 
@@ -707,3 +708,5 @@ public struct NestHubPreviewSnapshot: Equatable, Sendable {
         ]
     )
 }
+
+#endif

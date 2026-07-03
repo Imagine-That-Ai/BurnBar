@@ -15,7 +15,11 @@
 // If the answer to any is "no" or "unknown", deprioritize Mission Control expansion
 // and invest in core tracking, search, and sync reliability instead.
 
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 import OpenBurnBarCore
 

@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-07-03T11:55:14.754Z",
+  "targets": [
+    "VAL-SEC-003",
+    "VAL-CU-002",
+    "VAL-CU-003"
+  ],
+  "manifestHashHex": "669fd6fe04ea22b467af87c9b536663346543e853a7cd951c0f04192de238c55",
+  "headHashHex": "dee025089f695ff8b9be3f4882a0844906dad2ad4ff422dfd60de4069b1e1d67",
+  "entryCount": 4,
+  "signatureValid": true,
+  "validChain": {
+    "valid": true,
+    "reason": null,
+    "index": null
+  },
+  "tamper": {
+    "entry": {
+      "valid": false,
+      "reason": "parent_hash_mismatch",
+      "index": 2
+    },
+    "headSignatureValidAfterHashChange": false,
+    "manifest": {
+      "valid": false,
+      "reason": "manifest_hash_mismatch"
+    },
+    "archiveHashChanged": true
+  },
+  "files": {
+    "manifest": "audit-session/manifest.json",
+    "chain": "audit-session/chain.jsonl",
+    "head": "audit-session/head.json",
+    "signedHead": "audit-session/signed_head.json",
+    "exportArchive": "computer-use-audit-export.tar.gz",
+    "tamperedArchive": "computer-use-audit-export.tampered.tar.gz"
+  },
+  "archiveHashHex": "6ab542ac067f74e7e98f2a9171fa0e5025b88b9129272b2846d008126707a9ae",
+  "tamperedArchiveHashHex": "17a587124f4fae18dd23dd9f0e8c2e5e8d5611f14bbf6c07236864831b32c576",
+  "openTimestamps": {
+    "configured": false,
+    "probe": {
+      "cmd": "OpenTimestamps not configured",
+      "code": 0,
+      "stdout": "",
+      "stderr": "No OTS_ENDPOINT or OPENBURNBAR_OTS_URL set; anchoring path recorded as unconfigured."
+    }
+  },
+  "tar": {
+    "cmd": "tar -czf /private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-computer-use-media-mobile/computer-use-audit-export.tar.gz -C /private/tmp/openburnbar-linux-mission-001/docs/linux-port/evidence/mission-001-computer-use-media-mobile/audit-session .",
+    "code": 0,
+    "signal": null,
+    "durationMs": 9,
+    "stdout": "",
+    "stderr": ""
+  }
+}

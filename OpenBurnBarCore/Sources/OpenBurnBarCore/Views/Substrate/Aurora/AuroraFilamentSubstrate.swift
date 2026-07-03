@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Aurora Filament — faithful port of imaginethat `aurora/filament.ts` drawBody.
@@ -270,3 +271,5 @@ public final class AuroraFilamentSubstrate: SwarmSubstrate {
                with: .color(core))
     }
 }
+
+#endif

@@ -1,6 +1,10 @@
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 public actor BurnBarDaemonServer {
@@ -51,6 +55,7 @@ public actor BurnBarDaemonServer {
     private var acceptLoopTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var oauthRefreshTask: Task<Void, Never>?
+    var subscriptionCursors: [String: UInt64] = [:]
     var localAuthVerifiedComputerUseSessions: [String: Date] = [:]
 
     public init(
@@ -175,46 +180,56 @@ public actor BurnBarDaemonServer {
         )
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
-           path.isEmpty == false,
-           FileManager.default.fileExists(atPath: path) {
+           path.isEmpty == false {
+            let databaseURL = URL(fileURLWithPath: path)
+            try? FileManager.default.createDirectory(
+                at: databaseURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let existingDatabaseFile = FileManager.default.fileExists(atPath: path)
             // RR-1: one-time plaintext→encrypted migration of the shared SQLite
             // file BEFORE any service opens it. No-op on a stock-SQLite build or
             // when no key is provisioned, so the disclosed-plaintext file is left
             // exactly as-is (do-not-brick). On failure we log and continue —
             // the original plaintext file is untouched and still opens below.
-            do {
-                _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
-                    at: path,
-                    logger: BurnBarDaemonLogger(category: "database-cipher")
-                )
-            } catch {
-                logger.warning(
-                    "daemon_database_encrypted_migration_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
-            }
-            do {
-                self.indexedSearch = try BurnBarIndexedSearchService(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "indexed-search")
-                )
-            } catch {
-                logger.warning(
-                    "indexed_search_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
+            if existingDatabaseFile {
+                do {
+                    _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+                        at: path,
+                        logger: BurnBarDaemonLogger(category: "database-cipher")
+                    )
+                } catch {
+                    logger.warning(
+                        "daemon_database_encrypted_migration_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                }
+                do {
+                    self.indexedSearch = try BurnBarIndexedSearchService(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "indexed-search")
+                    )
+                } catch {
+                    logger.warning(
+                        "indexed_search_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                    self.indexedSearch = nil
+                }
+                do {
+                    self.resumeService = try BurnBarResumeService(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "resume-service")
+                    )
+                } catch {
+                    logger.warning(
+                        "resume_service_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                    self.resumeService = nil
+                }
+            } else {
                 self.indexedSearch = nil
-            }
-            do {
-                self.resumeService = try BurnBarResumeService(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "resume-service")
-                )
-            } catch {
-                logger.warning(
-                    "resume_service_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
                 self.resumeService = nil
             }
             do {
@@ -400,7 +415,7 @@ public actor BurnBarDaemonServer {
         acceptLoopTask = nil
         acceptTask?.cancel()
 
-        shutdown(listenerFileDescriptor, SHUT_RDWR)
+        shutdown(listenerFileDescriptor, Int32(SHUT_RDWR))
         close(listenerFileDescriptor)
         _ = await acceptTask?.result
 
@@ -618,6 +633,12 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
+            case .subscriptionStart, .subscriptionResume:
+                return try await handleSubscriptionRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
             case .searchQuery:
                 return try await handleSearchRPC(
                     method: method,
@@ -689,10 +710,14 @@ public actor BurnBarDaemonServer {
     }
 
     private static func peerPID(for clientFileDescriptor: Int32) -> pid_t? {
+        #if os(Linux)
+        return try? BurnBarDaemonPeerAuthenticator.linuxPeerCredential(socketFD: clientFileDescriptor).pid
+        #else
         var pid: pid_t = 0
         var pidSize = socklen_t(MemoryLayout<pid_t>.size)
         let result = getsockopt(clientFileDescriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidSize)
         return result == 0 ? pid : nil
+        #endif
     }
 
     private static func handleClientConnection(
@@ -791,7 +816,7 @@ private enum BurnBarUnixDomainSocket {
     }
 
     static func makeListeningSocket(at socketPath: String) throws -> Int32 {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        let fileDescriptor = socket(AF_UNIX, streamSocketType, 0)
         guard fileDescriptor != -1 else {
             throw BurnBarDaemonError.failedToCreateSocket(
                 code: errno,
@@ -890,7 +915,11 @@ private enum BurnBarUnixDomainSocket {
 
             while bytesRemaining > 0 {
                 let pointer = baseAddress.advanced(by: writeOffset)
+                #if os(Linux)
+                let bytesWritten = send(fileDescriptor, pointer, bytesRemaining, Int32(MSG_NOSIGNAL))
+                #else
                 let bytesWritten = write(fileDescriptor, pointer, bytesRemaining)
+                #endif
                 if bytesWritten < 0 {
                     let code = errno
                     if code == EINTR {
@@ -909,6 +938,9 @@ private enum BurnBarUnixDomainSocket {
     }
 
     static func configureNoSigPipe(for fileDescriptor: Int32) {
+        #if os(Linux)
+        _ = fileDescriptor
+        #else
         var value: Int32 = 1
         setsockopt(
             fileDescriptor,
@@ -917,6 +949,7 @@ private enum BurnBarUnixDomainSocket {
             &value,
             socklen_t(MemoryLayout<Int32>.size)
         )
+        #endif
     }
 
     static func configureIOTimeouts(for fileDescriptor: Int32, seconds: Int = 30) {
@@ -959,5 +992,13 @@ private enum BurnBarUnixDomainSocket {
         }
 
         return address
+    }
+
+    private static var streamSocketType: Int32 {
+        #if os(Linux)
+        return Int32(SOCK_STREAM.rawValue)
+        #else
+        return SOCK_STREAM
+        #endif
     }
 }

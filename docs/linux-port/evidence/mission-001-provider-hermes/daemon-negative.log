@@ -1,0 +1,16 @@
+starting negative daemon
+socket=/tmp/tmp.OdgrZcsZRK/negative/openburnbar.sock
+peer_codesig=enforced
+2026-07-03 12:38:59 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=daemon_self_code_signature_verified path=/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:38:59 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9 vault_uid_present=false
+2026-07-03 12:38:59 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=negative-daemon protocol_version=1 socket_path=/tmp/tmp.OdgrZcsZRK/negative/openburnbar.sock trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:38:59 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/tmp.OdgrZcsZRK/negative/openburnbar.sock trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:38:59 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=negative-daemon socket_path=/tmp/tmp.OdgrZcsZRK/negative/openburnbar.sock trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:38:59 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:39:00 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_rejected detail=codeSignatureInvalid(status: -67050) peer_pid=233 trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:39:00 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_rejected error=codeSignatureInvalid(status: -67050) peer_pid=233 trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:39:00 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=first_controller_attached session_id=openburnbar-cli-session trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:39:00 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=first_controller_attached trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:39:00 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:39:00 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_request_capability_denied capability=config method=daemon.config.update peer_pid=241 request_id=187958B7-22F0-4B42-82BC-22D3A59A6352 trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9
+2026-07-03 12:39:00 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=421A0CCA-F27C-4CE1-9612-977CE30276A9

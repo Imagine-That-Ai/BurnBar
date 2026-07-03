@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-07-03T14:26:54.665Z",
+  "lane": "W07LinuxComputerUseMediaMobile",
+  "frames": [
+    {
+      "id": "approval-request",
+      "direction": "linux-to-mobile",
+      "type": "controlApprovalRequest",
+      "protocolVersion": 1,
+      "linuxCapabilityMetadata": {
+        "peerPlatform": "linux",
+        "capture": "portal-pipewire",
+        "input": "libei-atspi-uinput-xtest"
+      },
+      "backwardCompatibility": "additive-capability-only"
+    },
+    {
+      "id": "approval-deny",
+      "direction": "mobile-to-linux",
+      "type": "controlApprovalResponse",
+      "protocolVersion": 1,
+      "backwardCompatibility": "unchanged-frame"
+    },
+    {
+      "id": "phone-input",
+      "direction": "mobile-to-linux",
+      "type": "controlInputIntent",
+      "protocolVersion": 1,
+      "linuxCapabilityMetadata": {
+        "trustChange": "downgrade-only"
+      },
+      "backwardCompatibility": "additive-capability-only"
+    },
+    {
+      "id": "media-frame",
+      "direction": "linux-to-mobile",
+      "type": "mediaStreamFrame",
+      "protocolVersion": 1,
+      "linuxCapabilityMetadata": {
+        "mediaFrameHeader": "shared-18-byte-v1-with-cursor-extension",
+        "codecFallback": "h264"
+      },
+      "backwardCompatibility": "additive-capability-only"
+    },
+    {
+      "id": "panic-halt",
+      "direction": "mobile-to-linux",
+      "type": "controlPanicHalt",
+      "protocolVersion": 1,
+      "backwardCompatibility": "unchanged-frame"
+    }
+  ],
+  "wireDiff": {
+    "removedFields": [],
+    "renamedFields": [],
+    "linuxAdditions": [
+      "linuxCapabilityMetadata"
+    ],
+    "compatible": true
+  }
+}

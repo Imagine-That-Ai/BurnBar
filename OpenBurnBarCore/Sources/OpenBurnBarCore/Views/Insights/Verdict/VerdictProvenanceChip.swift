@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Small pill rendered under the verdict hero showing who authored the
@@ -85,3 +86,5 @@ public struct VerdictProvenanceChip: View {
         }
     }
 }
+
+#endif

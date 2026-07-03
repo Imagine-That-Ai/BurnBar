@@ -1,0 +1,1251 @@
+{
+  "dependencies" : [
+    {
+      "identity" : "swift",
+      "path" : "/workspace/Vendor/libsignal/swift",
+      "type" : "fileSystem"
+    },
+    {
+      "identity" : "grdb-sqlcipher",
+      "path" : "/workspace/Vendor/GRDB-SQLCipher",
+      "type" : "fileSystem"
+    },
+    {
+      "identity" : "swift-testing",
+      "requirement" : {
+        "range" : [
+          {
+            "lower_bound" : "0.11.0",
+            "upper_bound" : "1.0.0"
+          }
+        ]
+      },
+      "type" : "sourceControl",
+      "url" : "https://github.com/swiftlang/swift-testing"
+    },
+    {
+      "identity" : "swift-crypto",
+      "requirement" : {
+        "range" : [
+          {
+            "lower_bound" : "3.0.0",
+            "upper_bound" : "4.0.0"
+          }
+        ]
+      },
+      "type" : "sourceControl",
+      "url" : "https://github.com/apple/swift-crypto.git"
+    }
+  ],
+  "manifest_display_name" : "OpenBurnBarCore",
+  "name" : "OpenBurnBarCore",
+  "path" : "/workspace/OpenBurnBarCore",
+  "platforms" : [
+    {
+      "name" : "macos",
+      "version" : "14.0"
+    },
+    {
+      "name" : "ios",
+      "version" : "17.0"
+    }
+  ],
+  "products" : [
+    {
+      "name" : "OpenBurnBarCore",
+      "targets" : [
+        "OpenBurnBarCore"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarAnalytics",
+      "targets" : [
+        "OpenBurnBarAnalytics"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarIrohRelay",
+      "targets" : [
+        "OpenBurnBarIrohRelay"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarMedia",
+      "targets" : [
+        "OpenBurnBarMedia"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "BurnBarRemoteEngine",
+      "targets" : [
+        "BurnBarRemoteEngine"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarComputerUseCore",
+      "targets" : [
+        "OpenBurnBarComputerUseCore"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarFirestoreModels",
+      "targets" : [
+        "OpenBurnBarFirestoreModels"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarData",
+      "targets" : [
+        "OpenBurnBarData"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarSignalCore",
+      "targets" : [
+        "OpenBurnBarSignalCore"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarSignalSessionTransport",
+      "targets" : [
+        "OpenBurnBarSignalSessionTransport"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    },
+    {
+      "name" : "OpenBurnBarIrohFFI",
+      "targets" : [
+        "OpenBurnBarIrohFFI"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    }
+  ],
+  "swift_languages_versions" : [
+    "6"
+  ],
+  "targets" : [
+    {
+      "c99name" : "openburnbar_irohFFI",
+      "module_type" : "SystemLibraryTarget",
+      "name" : "openburnbar_irohFFI",
+      "path" : "Sources/openburnbar_irohFFI",
+      "product_memberships" : [
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarMedia",
+        "OpenBurnBarComputerUseCore",
+        "OpenBurnBarSignalSessionTransport",
+        "OpenBurnBarIrohFFI"
+      ],
+      "sources" : [
+
+      ],
+      "type" : "system-target"
+    },
+    {
+      "c99name" : "OpenBurnBarSignalSessionTransportTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarSignalSessionTransportTests",
+      "path" : "Tests/OpenBurnBarSignalSessionTransportTests",
+      "product_dependencies" : [
+        "Testing",
+        "LibSignalClient"
+      ],
+      "sources" : [
+        "OBBSignalSessionOverIrohTests.swift",
+        "OBBSignalSessionTransportUnavailableTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarSignalSessionTransport",
+        "OpenBurnBarSignalCore",
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarCore"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarSignalSessionTransport",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarSignalSessionTransport",
+      "path" : "Sources/OpenBurnBarSignalSessionTransport",
+      "product_dependencies" : [
+        "LibSignalClient"
+      ],
+      "product_memberships" : [
+        "OpenBurnBarSignalSessionTransport"
+      ],
+      "sources" : [
+        "OBBSignalSessionCipherTransport.swift",
+        "OBBSignalSessionTransportUnavailable.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarCore",
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarSignalCore"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarSignalCoreTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarSignalCoreTests",
+      "path" : "Tests/OpenBurnBarSignalCoreTests",
+      "product_dependencies" : [
+        "Testing",
+        "LibSignalClient"
+      ],
+      "resources" : [
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/CryptoKitAtRestInteropVector.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/SignalEnvelopeV1Vector.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/android-alice-to-swift-bob.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        }
+      ],
+      "sources" : [
+        "CloudVaultDeviceTrustChainTests.swift",
+        "CloudVaultRotationHandoffKATTests.swift",
+        "CryptoKitAtRestInteropTests.swift",
+        "OBBSignalIdentityPinTests.swift",
+        "OBBSignalInteropFixtureGen.swift",
+        "OBBSignalInteropKatTests.swift",
+        "OBBSignalProtocolStoreSessionTests.swift",
+        "OpenBurnBarSignalCoreUnavailableTests.swift",
+        "SignalAtRestFallbackPolicyTests.swift",
+        "SignalAtRestSealerTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarSignalCore",
+        "OpenBurnBarCore"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarSignalCore",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarSignalCore",
+      "path" : "Sources/OpenBurnBarSignalCore",
+      "product_dependencies" : [
+        "Crypto",
+        "LibSignalClient"
+      ],
+      "product_memberships" : [
+        "OpenBurnBarSignalCore",
+        "OpenBurnBarSignalSessionTransport"
+      ],
+      "sources" : [
+        "CloudVaultDeviceTrustChain.swift",
+        "OBBSignalPreKeyGenerator.swift",
+        "OBBSignalProtocolStore.swift",
+        "OpenBurnBarSignalCoreUnavailable.swift",
+        "SignalAtRestFallbackPolicy.swift",
+        "SignalAtRestSealer.swift",
+        "SignalIdentityKeyStore.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarCore"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarMediaTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarMediaTests",
+      "path" : "Tests/OpenBurnBarMediaTests",
+      "product_dependencies" : [
+        "Testing"
+      ],
+      "resources" : [
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarMediaTests/Fixtures/MediaFrameAEADVector.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        }
+      ],
+      "sources" : [
+        "LinuxEmptyTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarMedia",
+        "OpenBurnBarCore",
+        "OpenBurnBarIrohRelay"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarMedia",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarMedia",
+      "path" : "Sources/OpenBurnBarMedia",
+      "product_dependencies" : [
+        "Crypto"
+      ],
+      "product_memberships" : [
+        "OpenBurnBarMedia",
+        "OpenBurnBarComputerUseCore"
+      ],
+      "sources" : [
+        "BitrateController.swift",
+        "MediaAnalyticsEvent.swift",
+        "MediaBudgetEnvelope.swift",
+        "MediaCapabilityGate.swift",
+        "MediaControlStreamRegistry.swift",
+        "MediaFileTransferService.swift",
+        "MediaFrame.swift",
+        "MediaFrameAEAD.swift",
+        "MediaFrameSealSession.swift",
+        "MediaFrameV2.swift",
+        "MediaPacketCodec.swift",
+        "MediaServeTaskTeardownRegistry.swift",
+        "MediaSessionMetadata.swift",
+        "MediaStreamClass.swift",
+        "MercuryPeer.swift",
+        "MercuryStreamingCapabilities.swift",
+        "MercuryStreamingPolicy.swift",
+        "MercuryStreamingStats.swift",
+        "MercuryVideoToolboxCapabilityProbe.swift",
+        "VideoDecoderConfigurationPayload.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarCore",
+        "OpenBurnBarIrohRelay"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarLinuxCoreFoundationTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarLinuxCoreFoundationTests",
+      "path" : "Tests/OpenBurnBarLinuxCoreFoundationTests",
+      "product_dependencies" : [
+        "Crypto",
+        "Testing"
+      ],
+      "resources" : [
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/Fixtures/linux-provider-model-parity-fixture.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/Fixtures/linux-provider-model-parity-fixture.sha256",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/Fixtures/platform-crypto-kats.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        }
+      ],
+      "sources" : [
+        "AgentProviderLogDiscoveryLinuxTests.swift",
+        "LLMSafeContentLinuxTests.swift",
+        "LinuxCoreFoundationTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarCore",
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarMedia",
+        "OpenBurnBarComputerUseCore",
+        "OpenBurnBarSignalCore",
+        "OpenBurnBarSignalSessionTransport"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarIrohRelayTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarIrohRelayTests",
+      "path" : "Tests/OpenBurnBarIrohRelayTests",
+      "product_dependencies" : [
+        "Testing"
+      ],
+      "sources" : [
+        "LinuxEmptyTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarCore"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarIrohRelay",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarIrohRelay",
+      "path" : "Sources/OpenBurnBarIrohRelay",
+      "product_dependencies" : [
+        "Crypto"
+      ],
+      "product_memberships" : [
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarMedia",
+        "OpenBurnBarComputerUseCore",
+        "OpenBurnBarSignalSessionTransport"
+      ],
+      "sources" : [
+        "HermesIrohEcho.swift",
+        "IrohBlobBackend.swift",
+        "IrohInboundPeerPolicy.swift",
+        "IrohPairingDirectory.swift",
+        "IrohPairingReplayGuard.swift",
+        "IrohRelayFrameCodec.swift",
+        "IrohRelayPairing.swift",
+        "IrohRelayProtocol.swift",
+        "IrohRelayTransport.swift",
+        "IrohTransportAudit.swift",
+        "IrohXcframeworkBackend.swift",
+        "IrohXcframeworkTransport.swift",
+        "LoopbackIrohRelayTransport.swift",
+        "OpenBurnBarIrohBlobFFIBridge.swift",
+        "OpenBurnBarIrohFFIBridge.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarCore",
+        "OpenBurnBarIrohFFI"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarIrohFFI",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarIrohFFI",
+      "path" : "Sources/OpenBurnBarIroh/Generated",
+      "product_memberships" : [
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarMedia",
+        "OpenBurnBarComputerUseCore",
+        "OpenBurnBarSignalSessionTransport",
+        "OpenBurnBarIrohFFI"
+      ],
+      "sources" : [
+        "openburnbar_iroh.swift"
+      ],
+      "target_dependencies" : [
+        "openburnbar_irohFFI"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarFirestoreModels",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarFirestoreModels",
+      "path" : "Sources/OpenBurnBarFirestoreModels",
+      "product_memberships" : [
+        "OpenBurnBarCore",
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarMedia",
+        "OpenBurnBarComputerUseCore",
+        "OpenBurnBarFirestoreModels",
+        "OpenBurnBarData",
+        "OpenBurnBarSignalCore",
+        "OpenBurnBarSignalSessionTransport"
+      ],
+      "sources" : [
+        "ComputerUseModels.swift",
+        "DeviceLinkModels.swift",
+        "EntitlementModels.swift",
+        "HermesGatewayModels.swift",
+        "HermesRelayModels.swift",
+        "HostedQuotaModels.swift",
+        "InsightModels.swift",
+        "IrohPairingModels.swift",
+        "MediaAnalyticsModels.swift",
+        "MissionModels.swift",
+        "ModelBenchmarkModels.swift",
+        "PiAgentRelayModels.swift",
+        "ProviderAccountModels.swift",
+        "UsageQuotaModels.swift"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarDataTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarDataTests",
+      "path" : "Tests/OpenBurnBarDataTests",
+      "product_dependencies" : [
+        "GRDB",
+        "Testing"
+      ],
+      "resources" : [
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarDataTests/Fixtures/search-fixture.expected.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        }
+      ],
+      "sources" : [
+        "OpenBurnBarDataLinuxTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarData",
+        "OpenBurnBarCore"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarData",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarData",
+      "path" : "Sources/OpenBurnBarData",
+      "product_dependencies" : [
+        "GRDB"
+      ],
+      "product_memberships" : [
+        "OpenBurnBarData"
+      ],
+      "sources" : [
+        "OpenBurnBarDataLogger.swift",
+        "OpenBurnBarDataMigrationTypes.swift",
+        "OpenBurnBarDatabase+MemoryMigrations.swift",
+        "OpenBurnBarDatabase+MigrationBackup.swift",
+        "OpenBurnBarDatabase.swift",
+        "OpenBurnBarDatabaseConnectionConfiguration.swift",
+        "OpenBurnBarLocalDatabase.swift",
+        "OpenBurnBarProviderParserIngestion.swift",
+        "OpenBurnBarSchemaHasher.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarCore"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarCoreTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarCoreTests",
+      "path" : "Tests/OpenBurnBarCoreTests",
+      "product_dependencies" : [
+        "Testing"
+      ],
+      "resources" : [
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/BurnBarHpkeV3Vector.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesGatewayWireVector.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesRelayWireVector.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesStreamEventVector.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/SignalBindingAADVectors.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/SignalTransportBindingAADVectors.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        }
+      ],
+      "sources" : [
+        "LinuxEmptyTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarCore",
+        "OpenBurnBarFirestoreModels"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarCore",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarCore",
+      "path" : "Sources/OpenBurnBarCore",
+      "product_dependencies" : [
+        "Crypto"
+      ],
+      "product_memberships" : [
+        "OpenBurnBarCore",
+        "OpenBurnBarIrohRelay",
+        "OpenBurnBarMedia",
+        "OpenBurnBarComputerUseCore",
+        "OpenBurnBarData",
+        "OpenBurnBarSignalCore",
+        "OpenBurnBarSignalSessionTransport"
+      ],
+      "resources" : [
+        {
+          "path" : "/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/MiningPickIcon-Ore.svg",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/MiningPickIcon-Pickaxe.svg",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/MiningPickIcon.svg",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/Pretext/index.html",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/Pretext/pretext.bundle.min.js",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        },
+        {
+          "path" : "/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/secret-pattern-corpus.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        }
+      ],
+      "sources" : [
+        "AgentInsights/AgentInsightsBundle.swift",
+        "AgentInsights/AgentInsightsBundleAssembler.swift",
+        "AgentInsights/AgentInsightsScope.swift",
+        "AgentInsights/AgentInsightsViewModel.swift",
+        "AppCheckDebugTokenEnvironment.swift",
+        "BrowserLaunchAdapter.swift",
+        "BurnBarHNSWVectorIndex.swift",
+        "BurnBarLockedState.swift",
+        "BurnBarPersistentVectorIndex.swift",
+        "BurnBarRunCreateMetadata.swift",
+        "BurnBarSignpostVectorIndex.swift",
+        "CLIAuthDiscovery.swift",
+        "ChromeProfileDiscovery.swift",
+        "ClientTelemetrySanitizer.swift",
+        "Contracts/BurnBarApprovalContracts.swift",
+        "Contracts/BurnBarClientContracts.swift",
+        "Contracts/BurnBarComputerUseContracts.swift",
+        "Contracts/BurnBarConnectorContracts.swift",
+        "Contracts/BurnBarEventContracts.swift",
+        "Contracts/BurnBarProjectCodeMemoryContracts.swift",
+        "Contracts/BurnBarProviderContracts.swift",
+        "Contracts/BurnBarProxyRouteLogContracts.swift",
+        "Contracts/BurnBarRPCContracts.swift",
+        "Contracts/BurnBarRPCIPCCanon.generated.swift",
+        "Contracts/BurnBarRunContracts.swift",
+        "Contracts/BurnBarToolContracts.swift",
+        "Contracts/CLIAgentMissionPersonaScopeApplier.swift",
+        "Contracts/MiniProgramHostContracts.swift",
+        "Contracts/MissionGroupContracts.swift",
+        "Contracts/PersonaScopeEnvelope.swift",
+        "Contracts/RollbackContracts.swift",
+        "Contracts/VoiceCommandContracts.swift",
+        "Demo/InsightVerdictDemoFixture.swift",
+        "Errors/OpenBurnBarError.swift",
+        "Hermes/HermesAtom.swift",
+        "Hermes/HermesAtomNavigator.swift",
+        "Hermes/HermesAtomParser.swift",
+        "Hermes/HermesAtomURL.swift",
+        "Hermes/HermesInlineMarkdown.swift",
+        "Hermes/HermesSourceLinkExtractor.swift",
+        "Hermes/HermesSystemPromptBuilder.swift",
+        "Membership/GatedFeature.swift",
+        "Memory/FakeMemoryService.swift",
+        "Memory/LLMSafeContent.swift",
+        "Memory/MemorySecretPIIGate.swift",
+        "Memory/MemoryServing.swift",
+        "Metrics/OpenBurnBarMetrics.swift",
+        "OpenBurnBarAgentContracts.swift",
+        "OpenBurnBarCatalog.swift",
+        "OpenBurnBarDistributedNotifications.swift",
+        "OpenBurnBarIdentifiers.swift",
+        "OpenBurnBarJSONValue.swift",
+        "OpenBurnBarMissionControlContracts.swift",
+        "OpenBurnBarMissionControlMissionsContracts.swift",
+        "OpenBurnBarMissionNextActionPlanner.swift",
+        "OpenBurnBarSearchContracts.swift",
+        "OpenBurnBarSearchPlanner.swift",
+        "OpenBurnBarVectorKit.swift",
+        "PixelClockProviderLogoAssets.generated.swift",
+        "PixelClockQuotaRenderer.swift",
+        "Platform/OpenBurnBarLinuxPaths.swift",
+        "Platform/PlatformCrypto.swift",
+        "Platform/PlatformLogger.swift",
+        "Pretext/PretextEngine.swift",
+        "Pretext/PretextTypes.swift",
+        "SendableFileSystem.swift",
+        "Services/Insights/Adapters/AnthropicInsightAdapter.swift",
+        "Services/Insights/Adapters/BurnBarHostedInsightAdapter.swift",
+        "Services/Insights/Adapters/HermesInsightAdapter.swift",
+        "Services/Insights/Adapters/HermesInsightChatTransport.swift",
+        "Services/Insights/Adapters/HermesInsightHTTPTransport.swift",
+        "Services/Insights/Adapters/LocalRuleBasedAdapter.swift",
+        "Services/Insights/Adapters/OllamaInsightAdapter.swift",
+        "Services/Insights/Adapters/OpenAICompatibleInsightAdapter.swift",
+        "Services/Insights/Adapters/OpenAIInsightAdapter.swift",
+        "Services/Insights/Adapters/PiInsightAdapter.swift",
+        "Services/Insights/Cadence/CadenceArtifact.swift",
+        "Services/Insights/Cadence/CadenceScheduler.swift",
+        "Services/Insights/Cadence/MonthlyReviewRenderer.swift",
+        "Services/Insights/Cadence/MorningBriefRenderer.swift",
+        "Services/Insights/Cadence/WeeklyRecapRenderer.swift",
+        "Services/Insights/Cadence/YearInCodingRenderer.swift",
+        "Services/Insights/InMemoryInsightDataSource.swift",
+        "Services/Insights/InsightAggregator.swift",
+        "Services/Insights/InsightAnalysisAuditLog.swift",
+        "Services/Insights/InsightAnalysisCache.swift",
+        "Services/Insights/InsightAnalysisEngine.swift",
+        "Services/Insights/InsightAnalysisModelPrompt.swift",
+        "Services/Insights/InsightAuditLog.swift",
+        "Services/Insights/InsightCache.swift",
+        "Services/Insights/InsightCanvasStore.swift",
+        "Services/Insights/InsightDataSource.swift",
+        "Services/Insights/InsightDigestBuilder.swift",
+        "Services/Insights/InsightExecutor.swift",
+        "Services/Insights/InsightInvestigation.swift",
+        "Services/Insights/InsightInvestigationBudget.swift",
+        "Services/Insights/InsightJSONSchema.swift",
+        "Services/Insights/InsightMissionApprovalPolicy.swift",
+        "Services/Insights/InsightModelCatalog.swift",
+        "Services/Insights/InsightModelGateway.swift",
+        "Services/Insights/InsightPromptEngine.swift",
+        "Services/Insights/InsightProviderFamilyCatalog.swift",
+        "Services/Insights/InsightProviderGatewayRegistry.swift",
+        "Services/Insights/InsightToolBroker.swift",
+        "Services/Insights/InsightToolDefinitions.swift",
+        "Services/Insights/Trace/InsightSessionTraceBuilder.swift",
+        "Services/Insights/Verdict/InsightVoicePostProcessor.swift",
+        "Services/Insights/Verdict/RuleBasedVerdictEngine.swift",
+        "Services/Insights/Verdict/VerdictCache.swift",
+        "Services/Insights/Verdict/VerdictComposer.swift",
+        "SharedModels/AgentIdentity.swift",
+        "SharedModels/AgentIdentityProviderBridge.swift",
+        "SharedModels/AgentManifest.swift",
+        "SharedModels/AgentPersona.swift",
+        "SharedModels/AgentProvider+LogoBackdrop.swift",
+        "SharedModels/AgentProvider.swift",
+        "SharedModels/AgentProviderLogDiscovery.swift",
+        "SharedModels/AgentTier.swift",
+        "SharedModels/AgentWatchLiveActivityAttributes.swift",
+        "SharedModels/AgentWatchLiveActivityIntents.swift",
+        "SharedModels/ApprovalPolicy.swift",
+        "SharedModels/AskAssistantIntent.swift",
+        "SharedModels/AssistantPendingPrompt.swift",
+        "SharedModels/AssistantQuickPrompt.swift",
+        "SharedModels/AssistantRuntimeID.swift",
+        "SharedModels/BudgetRule.swift",
+        "SharedModels/BurnBarLiveActivityAttributes.swift",
+        "SharedModels/BurnBarProviderAuthRegistry.swift",
+        "SharedModels/BurnBarWidgetSnapshot.swift",
+        "SharedModels/CLIAgentResumePresentation.swift",
+        "SharedModels/CLIAgentSessionRecord.swift",
+        "SharedModels/CLIRuntimeModelCatalog.swift",
+        "SharedModels/CastleStatus.swift",
+        "SharedModels/ChatTilePreferences.swift",
+        "SharedModels/ChatViewMode.swift",
+        "SharedModels/ChunkReassemblyValidator.swift",
+        "SharedModels/CloudSyncModels.swift",
+        "SharedModels/CloudVaultCrypto.swift",
+        "SharedModels/CloudVaultDeviceKeypair.swift",
+        "SharedModels/DeveloperIDReleaseCapability.swift",
+        "SharedModels/ElderWandPreset.swift",
+        "SharedModels/EscrowDeviceSafetyCode.swift",
+        "SharedModels/EscrowModels.swift",
+        "SharedModels/Formatting.swift",
+        "SharedModels/FusionSessionSpend.swift",
+        "SharedModels/Generated/HermesRealtimeRelayControl.swift",
+        "SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
+        "SharedModels/Generated/HermesRealtimeRelayMedia.swift",
+        "SharedModels/Generated/HermesRealtimeRelayRemoteUnlock.swift",
+        "SharedModels/Generated/HermesRealtimeRelaySystemPermission.swift",
+        "SharedModels/HermesAttachment.swift",
+        "SharedModels/HermesAttachmentEncoder.swift",
+        "SharedModels/HermesConnectionTypes.swift",
+        "SharedModels/HermesInventoryModels.swift",
+        "SharedModels/HermesOpenAICompatibleStreamParser.swift",
+        "SharedModels/HermesRatchetCrypto.swift",
+        "SharedModels/HermesRealtimeRelayFrameType.swift",
+        "SharedModels/HermesRealtimeRelayTypes+Behavior.swift",
+        "SharedModels/HermesRelayAuthenticatedRequest.swift",
+        "SharedModels/HermesRelayCrypto.swift",
+        "SharedModels/HermesSkillRunTypes.swift",
+        "SharedModels/HermesSquareFeatureFlags.swift",
+        "SharedModels/HermesStreamEvent.swift",
+        "SharedModels/HermesSubProvider.swift",
+        "SharedModels/InsightVerdictWidgetSnapshot.swift",
+        "SharedModels/Insights/InsightAnalysis.swift",
+        "SharedModels/Insights/InsightCanvas.swift",
+        "SharedModels/Insights/InsightCanvasTemplate.swift",
+        "SharedModels/Insights/InsightCitation.swift",
+        "SharedModels/Insights/InsightDataBinding.swift",
+        "SharedModels/Insights/InsightDigest.swift",
+        "SharedModels/Insights/InsightFilter.swift",
+        "SharedModels/Insights/InsightFreshness.swift",
+        "SharedModels/Insights/InsightGatewayError.swift",
+        "SharedModels/Insights/InsightInvestigateEvent.swift",
+        "SharedModels/Insights/InsightInvestigateRequest.swift",
+        "SharedModels/Insights/InsightLayout.swift",
+        "SharedModels/Insights/InsightModelTag.swift",
+        "SharedModels/Insights/InsightTaxonomy.swift",
+        "SharedModels/Insights/InsightTheme.swift",
+        "SharedModels/Insights/InsightTokenUsage.swift",
+        "SharedModels/Insights/InsightWidget.swift",
+        "SharedModels/Insights/InsightWidgetData.swift",
+        "SharedModels/Insights/InsightWidgetKind.swift",
+        "SharedModels/Insights/InsightWidgetSpec.swift",
+        "SharedModels/Insights/Verdict/InsightVerdict.swift",
+        "SharedModels/Insights/Verdict/InsightVoiceSchemaV2.swift",
+        "SharedModels/Insights/Verdict/ProviderTint.swift",
+        "SharedModels/Insights/Verdict/VerdictAcceptAction.swift",
+        "SharedModels/Insights/Verdict/VerdictAnomaly.swift",
+        "SharedModels/Insights/Verdict/VerdictBullet.swift",
+        "SharedModels/Insights/Verdict/VerdictBulletType.swift",
+        "SharedModels/Insights/Verdict/VerdictDelta.swift",
+        "SharedModels/Insights/Verdict/VerdictNumber.swift",
+        "SharedModels/Insights/Verdict/VerdictRecommendation.swift",
+        "SharedModels/Insights/Verdict/VerdictRing.swift",
+        "SharedModels/Insights/Verdict/VerdictTraceStrip.swift",
+        "SharedModels/Insights/Verdict/VerdictWindow.swift",
+        "SharedModels/ModelIOCapabilities.swift",
+        "SharedModels/PensieveKnowledgeChunker.swift",
+        "SharedModels/PensieveVectorCloak.swift",
+        "SharedModels/PiConnectionTypes.swift",
+        "SharedModels/PinnedAgentGridConfig.swift",
+        "SharedModels/PixelClockConfig.swift",
+        "SharedModels/ProviderAccountDeviceLinkTypes+Generated.swift",
+        "SharedModels/ProviderAccountDeviceLinkTypes.swift",
+        "SharedModels/ProviderAccountTypes.swift",
+        "SharedModels/ProviderConnectionTypes.swift",
+        "SharedModels/ProviderEndpointProfileRegistry.swift",
+        "SharedModels/ProviderQuotaPacing.swift",
+        "SharedModels/ProviderQuotaTypes.swift",
+        "SharedModels/ProviderRouteEndpointResolver.swift",
+        "SharedModels/ProviderRoutingStateBuilder.swift",
+        "SharedModels/ProviderRuntimeFailoverTypes.swift",
+        "SharedModels/QueuedTurn.swift",
+        "SharedModels/RuntimeConnectionPreferenceTypes.swift",
+        "SharedModels/SignalEnvelopeAAD.swift",
+        "SharedModels/SmartDisplayConfigCodec.swift",
+        "SharedModels/SmartDisplayKind.swift",
+        "SharedModels/SmartDisplayRepairStatus.swift",
+        "SharedModels/SmartHubConfig.swift",
+        "SharedModels/SmartHubDisplayConfig.swift",
+        "SharedModels/SubscriptionTopic.swift",
+        "SharedModels/SubstrateFamily.swift",
+        "SharedModels/SwarmColorDriver.swift",
+        "SharedModels/SwarmColorPalette.swift",
+        "SharedModels/ThemePrimitives.swift",
+        "SharedModels/ThreadInboxItem.swift",
+        "SharedModels/TokenUsage.swift",
+        "SharedModels/UsageRollupTypes.swift",
+        "SharedModels/WandModelRouter.swift",
+        "String+Extensions.swift",
+        "SwitcherBrowserLaunchService.swift",
+        "SwitcherCLILAunchService.swift",
+        "SwitcherProfile.swift",
+        "TextExpansion/TextExpansion.swift",
+        "TextExpansion/TextExpansionInbox.swift",
+        "TextExpansion/TextExpansionKeyEventCharacters.swift",
+        "TextExpansion/TextExpansionSnapshotStore.swift",
+        "TextExpansion/TextExpansionUsageStore.swift",
+        "ThreadSafeISO8601DateFormatter.swift",
+        "TraceContext.swift",
+        "UIMode.swift",
+        "Views/BurnBarLogoFormationView.swift",
+        "Views/Cards/CardEnvelope.swift",
+        "Views/Cards/CardEnvelopeView.swift",
+        "Views/CookingLoader.swift",
+        "Views/EmberSurfaceBackground.swift",
+        "Views/GemLogoView.swift",
+        "Views/HouseCrestPrimitives.swift",
+        "Views/Insights/AgentInsightsCanvasGridView.swift",
+        "Views/Insights/AgentInsightsEmptyStateView.swift",
+        "Views/Insights/AgentInsightsHeaderView.swift",
+        "Views/Insights/AgentInsightsKPIStripView.swift",
+        "Views/Insights/AgentInsightsMissionRailView.swift",
+        "Views/Insights/AgentInsightsRosterView.swift",
+        "Views/Insights/AgentInsightsView.swift",
+        "Views/Insights/InsightASCIIView.swift",
+        "Views/Insights/InsightAnomalyTableView.swift",
+        "Views/Insights/InsightCohortView.swift",
+        "Views/Insights/InsightDistributionView.swift",
+        "Views/Insights/InsightDrilldownListView.swift",
+        "Views/Insights/InsightFocusMatrixView.swift",
+        "Views/Insights/InsightForecastView.swift",
+        "Views/Insights/InsightFormatting.swift",
+        "Views/Insights/InsightFunnelView.swift",
+        "Views/Insights/InsightHeatmapView.swift",
+        "Views/Insights/InsightKPITileView.swift",
+        "Views/Insights/InsightNarrativeView.swift",
+        "Views/Insights/InsightQuotaPulseView.swift",
+        "Views/Insights/InsightRadarView.swift",
+        "Views/Insights/InsightRankingView.swift",
+        "Views/Insights/InsightRecommendationView.swift",
+        "Views/Insights/InsightSankeyView.swift",
+        "Views/Insights/InsightScatterView.swift",
+        "Views/Insights/InsightTimeSeriesView.swift",
+        "Views/Insights/InsightUseCaseClusterView.swift",
+        "Views/Insights/InsightWidgetChrome.swift",
+        "Views/Insights/InsightWidgetRenderer.swift",
+        "Views/Insights/IntelligenceBriefView+Components.swift",
+        "Views/Insights/IntelligenceBriefView+Mission.swift",
+        "Views/Insights/IntelligenceBriefView.swift",
+        "Views/Insights/Verdict/VerdictBulletList.swift",
+        "Views/Insights/Verdict/VerdictDeltaChip.swift",
+        "Views/Insights/Verdict/VerdictHeroView.swift",
+        "Views/Insights/Verdict/VerdictProvenanceChip.swift",
+        "Views/Insights/Verdict/VerdictRingsStrip.swift",
+        "Views/Insights/Verdict/VerdictTraceStripView.swift",
+        "Views/LaunchSplash.swift",
+        "Views/MiningPickLoader.swift",
+        "Views/MissionControl/MissionBurnForecast.swift",
+        "Views/MissionControl/MissionComposerControls.swift",
+        "Views/MissionControl/MissionConsoleHero.swift",
+        "Views/MissionControl/MissionConsolePreviewHost.swift",
+        "Views/MissionControl/MissionConsoleTypes.swift",
+        "Views/MissionControl/MissionControlConsoleView.swift",
+        "Views/MissionControl/MissionFABGauge.swift",
+        "Views/MissionControl/MissionFanOutGroup.swift",
+        "Views/MissionControl/MissionGlassSurface.swift",
+        "Views/MissionControl/MissionKindChooser.swift",
+        "Views/MissionControl/MissionRuntimeConstellation.swift",
+        "Views/MissionControl/MissionSituationRoom.swift",
+        "Views/NestHubMiniPreview.swift",
+        "Views/PixelClockPreviewView.swift",
+        "Views/SwarmCanvasView+Color.swift",
+        "Views/SwarmCanvasView+Modes.swift",
+        "Views/SwarmCanvasView+ShapeData.swift",
+        "Views/SwarmCanvasView+ShapeGenerators.swift",
+        "Views/SwarmCanvasView+ShapeSampling.swift",
+        "Views/SwarmCanvasView+Substrate.swift",
+        "Views/SwarmCanvasView.swift",
+        "Views/SwarmGlyphSampler.swift",
+        "Views/SwarmLogoShape.swift",
+        "Views/SwarmProviderLogoDotMap.swift",
+        "Views/UnifiedCacheHitRateBadge.swift",
+        "Views/UnifiedDesignSystem.swift",
+        "Views/UnifiedGlassCard.swift",
+        "Views/UnifiedMiniStat.swift",
+        "Views/UnifiedProviderLogoView.swift",
+        "Views/UnifiedProviderTheme.swift",
+        "Views/UnifiedQuotaSignalView.swift",
+        "Views/UnifiedSkeletonView.swift",
+        "Views/UnifiedToolCallAccordion.swift",
+        "XAISuperGrokPacingLog.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarFirestoreModels"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarComputerUseCoreTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarComputerUseCoreTests",
+      "path" : "Tests/OpenBurnBarComputerUseCoreTests",
+      "product_dependencies" : [
+        "Testing"
+      ],
+      "resources" : [
+        {
+          "path" : "/workspace/OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/Fixtures/ControlFrameSealVector.json",
+          "rule" : {
+            "process" : {
+
+            }
+          }
+        }
+      ],
+      "sources" : [
+        "LinuxEmptyTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarComputerUseCore",
+        "OpenBurnBarCore",
+        "OpenBurnBarMedia"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarComputerUseCore",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarComputerUseCore",
+      "path" : "Sources/OpenBurnBarComputerUseCore",
+      "product_dependencies" : [
+        "Crypto"
+      ],
+      "product_memberships" : [
+        "OpenBurnBarComputerUseCore"
+      ],
+      "sources" : [
+        "AgentCapabilityGrant.swift",
+        "AgentCapabilityGrantWire.swift",
+        "AgentDesktopToolDefinitions.swift",
+        "AppCheckAttestationBinding.swift",
+        "CapabilityToken.swift",
+        "CapabilityTokenIssuer.swift",
+        "CapabilityTokenIssuerTrustMaterial.swift",
+        "CapabilityTokenSigning.swift",
+        "CapabilityTokenVerifier.swift",
+        "ComputerUseActionDescriptor.swift",
+        "ComputerUseAuditChain.swift",
+        "ComputerUseAuditExportSignerProvider.swift",
+        "ComputerUseAuditExportWriter.swift",
+        "ComputerUseAuditHeadFinalizer.swift",
+        "ComputerUseAuditLogger.swift",
+        "ComputerUseAuditSignedHead.swift",
+        "ComputerUseAuditVerifier.swift",
+        "ComputerUseBudgetEnvelope.swift",
+        "ComputerUseCapabilityGate.swift",
+        "ComputerUseDenyRegistry.swift",
+        "ComputerUseOpenTimestampsClient.swift",
+        "ComputerUseOpenTimestampsProofVerifier.swift",
+        "ComputerUsePhoneControlSigner.swift",
+        "ComputerUseSafetyInvariantHarness.swift",
+        "ComputerUseScopeLibrary.swift",
+        "ComputerUseScopeRule.swift",
+        "ComputerUseSessionMetadata.swift",
+        "ControlFrameSeal.swift",
+        "ControlFrameSealSession.swift",
+        "ControllerKeyPinStore.swift",
+        "ControllerKeySafetyCode.swift",
+        "CryptoSendableCompat.swift",
+        "IrohHostKeyPinStore.swift",
+        "MacInputCore.swift",
+        "PhoneControlAttestationPolicy.swift",
+        "PhoneControlAuthoritySigningKey.swift",
+        "PhoneControlSigningKey.swift",
+        "PhoneControlStepUpPolicy.swift",
+        "PrivilegedInputDispatchContract.swift",
+        "PrivilegedInputXPCConstants.swift",
+        "RemoteUnlockBlockerPresentation.swift",
+        "RemoteUnlockCertificationReport.swift",
+        "RemoteUnlockCredentialEnvelopeCrypto.swift",
+        "RemoteUnlockPolicy.swift",
+        "RemoteUnlockSessionContextSnapshot.swift",
+        "RemoteUnlockSetupProbe.swift",
+        "SystemPermissionItem.swift",
+        "SystemPermissionKind.swift",
+        "SystemPermissionToolFailureClassifier.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarCore",
+        "OpenBurnBarMedia",
+        "Czlib"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "OpenBurnBarAnalyticsTests",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarAnalyticsTests",
+      "path" : "Tests/OpenBurnBarAnalyticsTests",
+      "product_dependencies" : [
+        "Testing"
+      ],
+      "sources" : [
+        "LinuxEmptyTests.swift"
+      ],
+      "target_dependencies" : [
+        "OpenBurnBarAnalytics"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "OpenBurnBarAnalytics",
+      "module_type" : "SwiftTarget",
+      "name" : "OpenBurnBarAnalytics",
+      "path" : "Sources/OpenBurnBarAnalytics",
+      "product_memberships" : [
+        "OpenBurnBarAnalytics"
+      ],
+      "sources" : [
+        "Analytics.swift",
+        "AnalyticsBuckets.swift",
+        "AnalyticsConsentStore.swift",
+        "AnalyticsEvent.swift",
+        "AnalyticsIdentity.swift",
+        "AnalyticsName.swift",
+        "AnalyticsSuperProperties.swift",
+        "AnalyticsTransporting.swift",
+        "AnalyticsValue.swift"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "Czlib",
+      "module_type" : "SystemLibraryTarget",
+      "name" : "Czlib",
+      "path" : "Sources/Czlib",
+      "product_memberships" : [
+        "OpenBurnBarComputerUseCore"
+      ],
+      "sources" : [
+
+      ],
+      "type" : "system-target"
+    },
+    {
+      "c99name" : "BurnBarRemoteEngineTests",
+      "module_type" : "SwiftTarget",
+      "name" : "BurnBarRemoteEngineTests",
+      "path" : "Tests/BurnBarRemoteEngineTests",
+      "product_dependencies" : [
+        "Testing"
+      ],
+      "sources" : [
+        "LinuxEmptyTests.swift"
+      ],
+      "target_dependencies" : [
+        "BurnBarRemoteEngine"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "BurnBarRemoteEngine",
+      "module_type" : "SwiftTarget",
+      "name" : "BurnBarRemoteEngine",
+      "path" : "Sources/BurnBarRemoteEngine",
+      "product_memberships" : [
+        "BurnBarRemoteEngine"
+      ],
+      "sources" : [
+        "BurnBarRemoteEngineSupport.swift"
+      ],
+      "type" : "library"
+    }
+  ],
+  "tools_version" : "6.0"
+}

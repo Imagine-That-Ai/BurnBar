@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// Cross-platform quota signal view — the battery-bar visualization.
@@ -393,3 +394,5 @@ public struct QuotaSignalStatus {
         }
     }
 }
+
+#endif
