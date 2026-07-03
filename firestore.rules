@@ -235,7 +235,7 @@ service cloud.firestore {
         && request.resource.data.parentEntryHashHex is string
         && request.resource.data.parentEntryHashHex.matches("^[A-Fa-f0-9]{64}$")
         && (!("approvalLatencyMillis" in request.resource.data) || (request.resource.data.approvalLatencyMillis is int && request.resource.data.approvalLatencyMillis >= 0))
-        && (!("visionTokensCostUSD" in request.resource.data) || (request.resource.data.visionTokensCostUSD is number && request.resource.data.visionTokensCostUSD >= 0))
+        && (!("visionTokensCostUSD" in request.resource.data) || (request.resource.data.visionTokensCostUSD is number && request.resource.data.visionTokensCostUSD >= 0 && request.resource.data.visionTokensCostUSD <= 25))
         && request.resource.data.recordedAt is timestamp
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1
@@ -3678,18 +3678,7 @@ service cloud.firestore {
     // Cloud Function reconciles drift from `iroh_audit_events`.
     match /users/{userId}/media_quota_usage/{day} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.id == day
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1
-        && request.resource.data.bytesUploadedFile is number
-        && request.resource.data.bytesDownloadedFile is number
-        && request.resource.data.fileTransfersInitiated is number
-        && request.resource.data.fileTransfersFailed is number
-        && request.resource.data.screenShareSecondsUsed is number
-        && request.resource.data.screenShareSessions is number
-        && request.resource.data.videoCallSecondsUsed is number
-        && request.resource.data.videoCallSessions is number;
+      allow create, update: if false;
       allow delete: if false;
     }
 
@@ -4506,15 +4495,15 @@ service cloud.firestore {
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowEnvelopeDocument();
-      allow delete: if ownsUserNamespace(userId);
+      allow delete: if false;
     }
 
     match /users/{userId}/escrow_audit_events/{eventId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
+      allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields();
-      allow delete: if ownsUserNamespace(userId);
+      allow update, delete: if false;
     }
 
     match /users/{userId}/cloud_profile/{profileId} {
