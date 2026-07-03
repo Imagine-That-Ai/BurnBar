@@ -1,32 +1,6 @@
 import XCTest
 import OpenBurnBarCore
-@testable import OpenBurnBar
 
-/// Marker so `Bundle(for:)` resolves the `OpenBurnBarTests` resource bundle, where
-/// the committed portable wrap vectors are copied (`project.yml` bundles
-/// `tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json` as a test resource).
-private final class LLMSafeWrapBundleMarker {}
-
-/// VAL-P0-HARNESS-025 — proves the shipped `LLMSafeContent.wrapUntrusted` /
-/// `resealTruncatedUntrusted` (`AgentLens/Services/ContextBuilder.swift`, the R18
-/// crown-jewel prompt-injection wrap) reproduces the **portable** contract vectors
-/// **byte-for-byte**.
-///
-/// The vectors (`tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json`) freeze the
-/// exact output bytes for a set of named cases so a future Windows / Kotlin / TS
-/// re-implementation can be diffed against this Mac oracle. They are regenerated
-/// (bootstrap-only) by `scripts/ci/generate-llm-safe-wrap-vectors.sh`, which extracts
-/// the shipped `enum LLMSafeContent` verbatim; THIS test is the durable oracle that
-/// locks the compiled shipped symbol against drift.
-///
-/// Named coverage (each a distinct vector):
-///   * `defang-embedded-close-sentinel-and-ignore-instructions` — embedded
-///     `</UNTRUSTED_CONTENT>` + "ignore previous instructions" payload,
-///   * `defang-case-insensitive-sentinel` — mixed/lower-case sentinel,
-///   * `provenance-stamp-and-sanitize` — quotes / angle-brackets / CR-LF / sentinel,
-///   * `truncation-reseal-severed-close` / `-lost-rule-tail` / `-noop-complete-block`.
-///
-/// Non-goal: hoisting `wrapUntrusted` into Core (gated post-G0-Option-A).
 final class LLMSafeWrapVectorTests: XCTestCase {
 
     // MARK: - Vector document shape
@@ -50,21 +24,20 @@ final class LLMSafeWrapVectorTests: XCTestCase {
     }
 
     private func loadDocument() throws -> WrapVectorDocument {
-        let bundle = Bundle(for: LLMSafeWrapBundleMarker.self)
-        let url = try XCTUnwrap(
-            bundle.url(forResource: "llm-safe-wrap-vectors", withExtension: "json")
-                ?? bundle.url(forResource: "llm-safe-wrap-vectors", withExtension: "json", subdirectory: "llm-safe-wrap"),
-            "portable wrap vectors not bundled — run scripts/ci/generate-llm-safe-wrap-vectors.sh and ensure "
-            + "tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json is in the OpenBurnBarTests resources"
-        )
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle(for: LLMSafeWrapVectorTests.self)
+        #endif
+        guard let url = bundle.url(forResource: "llm-safe-wrap-vectors", withExtension: "json") else {
+            XCTFail("portable wrap vectors not bundled under resource name llm-safe-wrap-vectors.json")
+            throw NSError(domain: "LLMSafeWrapVectorTests", code: 404, userInfo: nil)
+        }
         return try JSONDecoder().decode(WrapVectorDocument.self, from: Data(contentsOf: url))
     }
 
     // MARK: - The byte-for-byte match (the contract's core evidence)
 
-    /// Every committed vector must be reproduced **byte-for-byte** by the shipped
-    /// function. This is the R18 parity oracle: if the shipped wrap drifts from the
-    /// frozen bytes, this fails and forces a conscious vector regeneration.
     func testShippedWrapReproducesPortableVectorsByteForByte() throws {
         let doc = try loadDocument()
         XCTAssertEqual(doc.schema, "obb-llm-safe-wrap-v1")
@@ -88,18 +61,14 @@ final class LLMSafeWrapVectorTests: XCTestCase {
             }
             XCTAssertEqual(
                 produced, vector.expectedOutput,
-                "shipped LLMSafeContent.\(vector.function) diverged from committed vector \(vector.name) — "
-                + "regenerate with scripts/ci/generate-llm-safe-wrap-vectors.sh"
+                "shipped LLMSafeContent.\(vector.function) diverged from committed vector \(vector.name)"
             )
-            // Defensive byte-level equality (catches any Unicode-normalization drift
-            // that `String ==` could mask).
             XCTAssertEqual(
                 Array(produced.utf8), Array(vector.expectedOutput.utf8),
                 "byte-for-byte UTF-8 mismatch on vector \(vector.name)"
             )
         }
 
-        // The three contract-required named cases must be present.
         XCTAssertTrue(names.contains("defang-embedded-close-sentinel-and-ignore-instructions"),
                       "missing the defang case")
         XCTAssertTrue(names.contains("provenance-stamp-and-sanitize"),
@@ -108,7 +77,7 @@ final class LLMSafeWrapVectorTests: XCTestCase {
                       "missing a truncation-reseal case")
     }
 
-    // MARK: - Semantic guards (a wrong committed vector cannot define wrong behavior)
+    // MARK: - Semantic guards
 
     func testDefangVectorSemantics() throws {
         let doc = try loadDocument()
@@ -133,14 +102,13 @@ final class LLMSafeWrapVectorTests: XCTestCase {
             vector.expectedOutput.range(of: LLMSafeContent.untrustedOpenMarker),
             "output must carry the genuine open marker"
         )
-        // After the marker comes `"<sanitized value>">`.
         let afterMarker = vector.expectedOutput[openRange.upperBound...]
         XCTAssertEqual(afterMarker.first, "\"", "the provenance attribute must open with a quote")
         let afterQuote = afterMarker.dropFirst()
         let closeQuote = try XCTUnwrap(afterQuote.range(of: "\">"), "the provenance attribute must close with `\">`")
         let value = String(afterQuote[..<closeQuote.lowerBound])
 
-        XCTAssertFalse(value.contains("\""), "double-quotes must be replaced (attribute cannot be broken out of)")
+        XCTAssertFalse(value.contains("\""), "double-quotes must be replaced")
         XCTAssertFalse(value.contains("<"), "`<` must be stripped from provenance")
         XCTAssertFalse(value.contains(">"), "`>` must be stripped from provenance")
         XCTAssertFalse(value.contains("\n"), "newlines must be collapsed to spaces")
@@ -162,7 +130,6 @@ final class LLMSafeWrapVectorTests: XCTestCase {
                       "reseal must re-append the never-overridden CRITICAL RULE after the restored close tag")
     }
 
-    /// Reseal on an already-sealed, complete block is a no-op (idempotence guard).
     func testTruncationResealNoOpOnCompleteBlock() throws {
         let doc = try loadDocument()
         let vector = try XCTUnwrap(doc.vectors.first { $0.name == "truncation-reseal-noop-complete-block" })

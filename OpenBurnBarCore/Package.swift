@@ -6,7 +6,13 @@ import Foundation
 
 let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD"] == "1"
-#if os(Linux)
+// Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-3): this manifest is
+// host-evaluated, and this marker is an *Apple-vs-non-Apple* switch (Vendor
+// `.xcframework`s only exist for Apple). Windows joins Linux on the non-Apple
+// side: no Vendor xcframeworks, so every `has*XCFramework` flag is false and the
+// binaryTargets/products they gate are pruned exactly as on Linux. The Apple
+// `#else` branch (which probes `../Vendor/*.xcframework`) stays byte-identical.
+#if os(Linux) || os(Windows)
 let hasIrohXCFramework = false
 let hasSignalFfiIOSXCFramework = false
 let hasSignalFfiMacXCFramework = false
@@ -300,41 +306,85 @@ let swiftTestingAppleDependency: Target.Dependency = .product(
     condition: .when(platforms: [.macOS, .iOS])
 )
 let swiftCryptoDependency: Target.Dependency = .product(name: "Crypto", package: "swift-crypto")
+// Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-2): OpenBurnBarCore's
+// crypto is centralized in `Platform/PlatformSupport.swift`, which resolves to
+// CryptoKit on Apple via `#if canImport(CryptoKit)` and to swift-crypto's
+// `Crypto` module only in the `#else` (non-Apple) branch. Gate Core's
+// swift-crypto product to Windows/Linux so the **Apple** link/product graph
+// gains no swift-crypto (macOS/iOS keep using CryptoKit, byte-identical to the
+// pre-port baseline); off-Apple, `import Crypto` in PlatformSupport resolves
+// against this product. The other targets that also link swift-crypto
+// (SignalCore/IrohRelay/Media/ComputerUseCore/LinuxSecurity) keep the
+// unconditional `swiftCryptoDependency` and are pruned off-Apple separately.
+let swiftCryptoNonAppleDependency: Target.Dependency = .product(
+    name: "Crypto",
+    package: "swift-crypto",
+    condition: .when(platforms: [.windows, .linux])
+)
 
-#if os(Linux)
+// Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-3): the exclude/prune
+// lists below are the *non-Apple* file seam. They are **empty on Apple** (the
+// `#else` branch), so macOS/iOS compile the whole target byte-identically to the
+// pre-port baseline; populated off-Apple, they carve the Foundation(+swift-crypto)
+// Engine subset out of the UI/Vendor-coupled remainder. Windows joins Linux here
+// so the production `OpenBurnBarCore` target is pruned identically on both
+// non-Apple hosts. Host-evaluated, so `os(Windows)` is true only on a Windows host.
+#if os(Linux) || os(Windows)
 let openBurnBarCoreExcludes = [
     "Views",
     "CLITerminalSessionSupervisor.swift",
     "BrowserLaunchAdapter.swift",
     "BurnBarPersistentVectorIndex.swift",
+    // HNSW index references BurnBarPersistentVectorIndexError (excluded above);
+    // the vector index is not part of the Foundation Engine subset.
+    "BurnBarHNSWVectorIndex.swift",
     "ChromeProfileDiscovery.swift",
     "OpenBurnBarAgentContracts.swift",
-    "Services/Insights/InsightAnalysisCache.swift",
-    "Services/Insights/InsightAnalysisEngine.swift",
-    "Services/Insights/InsightAnalysisModelPrompt.swift",
-    "Services/Insights/InsightCache.swift",
-    "Services/Insights/InsightDigestBuilder.swift",
-    "Services/Insights/Verdict/RuleBasedVerdictEngine.swift",
-    "Services/Insights/Verdict/VerdictCache.swift",
+    // Firebase App Check debug-token env writer uses POSIX setenv (Windows CRT
+    // uses _putenv_s); App Check is not part of the Engine subset.
+    "AppCheckDebugTokenEnvironment.swift",
+    // Contracts referencing types defined in excluded files:
+    //   BurnBarRunContracts   -> BurnBarAgentLoopState (OpenBurnBarAgentContracts)
+    //   MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views)
+    "Contracts/BurnBarRunContracts.swift",
+    // Consumes BurnBarRunStateSnapshot (defined in the excluded BurnBarRunContracts).
+    "Contracts/BurnBarEventContracts.swift",
+    "Contracts/MissionGroupContracts.swift",
+    // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
+    // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
+    // the prior partial set that left model files referencing excluded types.
+    "AgentInsights",
+    "Demo/InsightVerdictDemoFixture.swift",
+    "Services/Insights",
     "SwitcherBrowserLaunchService.swift",
-    "TextExpansion/TextExpansionKeyEventCharacters.swift",
+    // TextExpansion is an Apple keyboard-extension feature (App Group stores); not
+    // in the Engine subset and not referenced outside its own directory.
+    "TextExpansion",
     "UIMode.swift",
     "SharedModels/AgentProvider+LogoBackdrop.swift",
     "SharedModels/AgentWatchLiveActivityAttributes.swift",
     "SharedModels/BurnBarLiveActivityAttributes.swift",
+    // Uses CloudVaultCrypto (excluded) for sealed-payload encryption.
+    "SharedModels/CLIAgentSessionRecord.swift",
+    // References CLIAgentRuntime + CLIAgentSessionRecord (excluded above).
+    "SharedModels/CLIAgentResumePresentation.swift",
+    // Uses PiAgentRelayCrypto (defined in the excluded HermesRelayCrypto).
+    "SharedModels/PiConnectionTypes.swift",
     "SharedModels/CloudVaultCrypto.swift",
     "SharedModels/CloudVaultDeviceKeypair.swift",
     "SharedModels/EscrowDeviceSafetyCode.swift",
     "SharedModels/HermesRatchetCrypto.swift",
+    // Uses HermesRelayCrypto (excluded) for relay-envelope open/seal.
+    "SharedModels/HermesRelayAuthenticatedRequest.swift",
     "SharedModels/HermesRelayCrypto.swift",
-    "SharedModels/Insights/InsightAnalysis.swift",
+    "SharedModels/Insights",
+    "SharedModels/InsightVerdictWidgetSnapshot.swift",
     "SharedModels/PensieveKnowledgeChunker.swift",
     "SharedModels/PensieveVectorCloak.swift",
     "SharedModels/PixelClockSettingsModel.swift",
     "SharedModels/SmartHubDisplaySettingsModel.swift",
     "SharedModels/SwarmColorDriver.swift",
-    "SharedModels/ThemePrimitives.swift",
-    "Services/Insights/Share"
+    "SharedModels/ThemePrimitives.swift"
 ]
 let computerUseCoreExcludes = [
     "Mac",
@@ -411,7 +461,7 @@ let firstPartyTargetsBase: [Target] = [
             // production build, not just the test target.
             dependencies: [
                 "OpenBurnBarFirestoreModels",
-                swiftCryptoDependency
+                swiftCryptoNonAppleDependency
             ],
             exclude: openBurnBarCoreExcludes,
             resources: [
@@ -488,6 +538,34 @@ let firstPartyTargetsBase: [Target] = [
             path: "Sources/OpenBurnBarSignalSessionTransport",
             exclude: signalSessionTransportFallbackExcludes,
             sources: signalSessionTransportSources
+        ),
+        // Windows-port Phase-1 walking skeleton (PHASE1_CORE_SPLIT_PLAN.md, PR-5).
+        // A Foundation-only executable that drives the vertical slice — one
+        // provider -> parse -> auth -> one dashboard tile — over REAL Core APIs,
+        // proving the split Engine is consumable end-to-end off the macOS app.
+        //
+        // It depends ONLY on the OpenBurnBarCore library and every Core type it
+        // uses is Foundation-only and NOT in `openBurnBarCoreExcludes`, so it
+        // compiles in the non-Apple Windows/Linux Engine subset while staying
+        // present on the macOS host (SwiftPM manifests are host-evaluated, as the
+        // `#if os(Linux)` excludes above show) so `swift run` works on macOS today.
+        //
+        // Deliberately NOT gated behind `#if os(Windows) || os(Linux)`: that
+        // guidance exists to keep an added target out of the Apple app product
+        // graph, but host-evaluation would also delete it from the macOS host and
+        // break the mandated `swift run` verification. The same "never perturbs the
+        // Apple product graph" outcome is achieved structurally instead — this
+        // target declares NO product in `packageProducts` (only the implicit
+        // executable product SwiftPM needs for `swift run`) and is absent from the
+        // app's `project.yml`, so the XcodeGen app scheme never resolves, links, or
+        // builds it. It is a never-referenced leaf on every platform.
+        .executableTarget(
+            name: "OpenBurnBarWalkingSkeleton",
+            dependencies: ["OpenBurnBarCore"],
+            path: "Sources/OpenBurnBarWalkingSkeleton",
+            resources: [
+                .copy("Fixtures/openai_stream.sse")
+            ]
         ),
         .testTarget(
             name: "OpenBurnBarLinuxCoreFoundationTests",

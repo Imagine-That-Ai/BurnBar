@@ -265,3 +265,8 @@ Vendor/OpenBurnBarSignalFfiMac.xcframework/
 crates/**/target/
 .serena/cache/
 node_modules/
+
+# Dotnet build output directories (C# / WinUI)
+**/bin/
+**/obj/
+

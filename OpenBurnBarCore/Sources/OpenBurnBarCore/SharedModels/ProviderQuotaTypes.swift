@@ -178,10 +178,14 @@ public extension ProviderQuotaBucket {
     var resetsAtDisplay: (relative: String, absolute: String)? {
         guard let resetsAt = Self.displayResetDate(resetsAt, name: name, window: window) else { return nil }
         let now = Date()
+        #if canImport(Darwin)
         let relative = Self.makeRelativeResetsFormatter().localizedString(
             for: resetsAt,
             relativeTo: now
         )
+        #else
+        let relative = Self.fallbackRelativeResetsString(for: resetsAt, relativeTo: now)
+        #endif
         let absolute = resetsAt.formatted(date: .abbreviated, time: .shortened)
         return (relative: relative, absolute: absolute)
     }
@@ -303,12 +307,34 @@ public extension ProviderQuotaBucket {
         "remaining_percentage", "percentRemaining", "percent_remaining"
     ]
 
+    #if canImport(Darwin)
     private static func makeRelativeResetsFormatter() -> RelativeDateTimeFormatter {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
         f.dateTimeStyle = .numeric
         return f
     }
+    #else
+    // `RelativeDateTimeFormatter` is Apple-only. Off-Apple we format the relative
+    // reset string by hand ("in 2h 14m" / "3h ago") so the quota reset row stays
+    // populated on the Windows/Linux Engine subset. Not localized — the Apple path
+    // keeps the localized formatter.
+    private static func fallbackRelativeResetsString(for date: Date, relativeTo now: Date) -> String {
+        let delta = date.timeIntervalSince(now)
+        let isPast = delta < 0
+        var remaining = Int(abs(delta).rounded())
+        let days = remaining / 86_400; remaining %= 86_400
+        let hours = remaining / 3_600; remaining %= 3_600
+        let minutes = remaining / 60
+        var parts: [String] = []
+        if days > 0 { parts.append("\(days)d") }
+        if hours > 0 { parts.append("\(hours)h") }
+        if minutes > 0, days == 0 { parts.append("\(minutes)m") }
+        if parts.isEmpty { parts.append("0m") }
+        let body = parts.joined(separator: " ")
+        return isPast ? "\(body) ago" : "in \(body)"
+    }
+    #endif
 }
 
 public extension ProviderQuotaBucket {

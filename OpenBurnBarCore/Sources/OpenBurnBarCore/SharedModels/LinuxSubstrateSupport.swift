@@ -1,19 +1,13 @@
-#if os(Linux)
+// Windows joins Linux on the non-Apple path: the real `SubstrateCatalog` lives in
+// `Views/Substrate/SubstrateCatalog.swift`, which the manifest excludes off-Apple
+// (the `Views` folder). This stub supplies the two members `SubstrateFamily.swift`
+// (compiled on every platform) references, so the Engine subset resolves on Linux
+// and Windows alike. On Apple the guard is false and the real catalog compiles.
+#if os(Linux) || os(Windows)
 import Foundation
 
-public struct RGBA: Hashable, Sendable {
-    public let r: Double
-    public let g: Double
-    public let b: Double
-    public let a: Double
-
-    public init(r: Double, g: Double, b: Double, a: Double = 1.0) {
-        self.r = r
-        self.g = g
-        self.b = b
-        self.a = a
-    }
-}
+// `RGBA` is now provided cross-platform by `SharedModels/RGBA.swift` (Foundation
+// core), so the Linux fallback stub was removed to avoid a duplicate definition.
 
 public enum SubstrateCatalog {
     public static let plainID = "plain"
