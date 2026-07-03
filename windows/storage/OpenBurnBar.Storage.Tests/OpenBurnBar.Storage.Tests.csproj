@@ -1,11 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Byte-compat proof for the Windows storage layer (VAL-P0-DB-010, the R2
-    crown-jewel kill-risk). Opens the COMMITTED Mac-produced SQLCipher fixture
-    (AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v53.sqlcipher) with
-    the pinned compatibility-4 cipher profile + the non-secret fixture key, then
-    reproduces the committed schema hash + FTS5 bm25()/snippet() vector.
+    Byte-compat proof suite for the Windows storage layer — the R2 crown-jewel
+    kill-risk. This single test project now carries BOTH storage seams that were
+    developed in parallel and reconciled in the integration branch:
+
+      • VAL-P0-DB-010 (read seam, #1198): opens the COMMITTED Mac-produced
+        SQLCipher fixture with the pinned compatibility-4 cipher profile + the
+        non-secret fixture key, reproduces the committed schema hash + FTS5
+        bm25()/snippet() vector, and exercises the DataStore-shaped read API.
+      • VAL-P0-DB-011 (write/migration seam, #1201): WRITES a token_usage row in
+        a transaction, reopens the file, and asserts the row round-trips AND the
+        schema hash + migration marker + user_version are unchanged — proving a
+        Windows write leaves the file byte-compatible and reopenable on Mac.
 
     Runs on the macOS authoring host today via `dotnet test`: the SAME managed
     assembly ships on Windows; the native SQLCipher comes from
@@ -30,6 +37,21 @@
 
   <ItemGroup>
     <ProjectReference Include="../OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Link (do NOT duplicate) the committed encrypted fixture into the test output
+      so the write-seam suite (VAL-P0-DB-011) opens the SAME bytes the Mac
+      validator opens. It copies the fixture to a temp working file before
+      mutating, so the committed file is never modified. The read seam
+      (VAL-P0-DB-010) locates the same fixture in-place via RepoFixtures (repo-root
+      walk), so this Content link is additive and harms neither path.
+    -->
+    <Content Include="../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v53.sqlcipher">
+      <Link>Fixtures/openburnbar-db-compat-v53.sqlcipher</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

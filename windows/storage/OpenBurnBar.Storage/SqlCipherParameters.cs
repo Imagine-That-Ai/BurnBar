@@ -79,6 +79,41 @@ public static class SqlCipherParameters
     }
 
     /// <summary>
+    /// Validate that <paramref name="passphrase"/> contains only the base64
+    /// alphabet plus <c>-</c> before it is interpolated into a single-quoted
+    /// <c>PRAGMA key = '…'</c> literal. None of these characters can escape a
+    /// single-quoted SQL string literal, so injection is impossible. This mirrors
+    /// <c>DatabaseEncryptionService.validateEncryptionKey</c> /
+    /// <c>BurnBarDaemonDatabaseCipher</c>'s charset guard exactly, keeping the
+    /// Mac and Windows keying paths interchangeable. (The read seam's
+    /// <see cref="KeyAndPin"/> additionally doubles embedded quotes, so it accepts
+    /// arbitrary passphrases; the write opener validates up front instead.)
+    /// </summary>
+    /// <exception cref="ArgumentException">The passphrase is empty or contains a disallowed character.</exception>
+    public static void ValidatePassphrase(string passphrase)
+    {
+        if (string.IsNullOrEmpty(passphrase))
+        {
+            throw new ArgumentException("Encryption passphrase must not be empty.", nameof(passphrase));
+        }
+
+        foreach (char c in passphrase)
+        {
+            bool ok = (c >= 'A' && c <= 'Z')
+                || (c >= 'a' && c <= 'z')
+                || (c >= '0' && c <= '9')
+                || c == '+' || c == '/' || c == '=' || c == '-';
+            if (!ok)
+            {
+                throw new ArgumentException(
+                    "Encryption passphrase contains a character outside the base64 alphabet + '-'; "
+                    + "refusing to interpolate it into a PRAGMA key literal.",
+                    nameof(passphrase));
+            }
+        }
+    }
+
+    /// <summary>
     /// Key an already-open connection and pin the compatibility-4 cipher profile,
     /// in the SQLCipher-required order: <c>PRAGMA key</c> first, then
     /// <c>cipher_compatibility = 4</c> and the individual page/KDF pins, then a
