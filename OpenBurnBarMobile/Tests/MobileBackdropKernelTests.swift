@@ -35,7 +35,8 @@ final class MobileBackdropKernelTests: XCTestCase {
                 "storm-signal",
                 "origami",
                 "ink-diffusion",
-                "petroleum-sheen"
+                "petroleum-sheen",
+                "boids"
             ]
         )
     }

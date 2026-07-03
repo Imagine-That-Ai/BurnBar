@@ -72,6 +72,26 @@ const validPiRelayRequest = {
   createdAt: Timestamp.fromMillis(Date.now()),
 };
 
+const validHermesRelayConnection = {
+  id: "relay-host-current",
+  displayName: "Mac Hermes Relay",
+  mode: "relayLink",
+  status: "online",
+  capabilities: ["remote_relay", "realtime_relay_v1"],
+  hostInstallationId: "691d5f27-491b-4660-9769-62fde0d3704f",
+  relayPublicKey: "A".repeat(88),
+  relayKeyVersion: 3,
+  relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm",
+  realtimeRelayURL: "wss://relay.openburnbar.test/v1",
+  realtimeRelayStatus: "online",
+  realtimeRelayLastSeenAt: new Date().toISOString(),
+  realtimeRelayProtocolVersion: 1,
+  lastSeenAt: new Date().toISOString(),
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  schemaVersion: 2,
+};
+
 // A privileged-path fixture for an existing key-wrapper doc. We never need the
 // create validator to pass — the test only asserts the owner cannot DELETE.
 const seededKeyWrapper = {
@@ -190,6 +210,41 @@ async function main() {
 
   // --- pi_agent_relay_requests: sender-auth parity with the Hermes lane ---
   await withEntitlement(testEnv, aliceUid, async () => {
+    await step("Hermes relay connection with hostInstallationId is accepted", async () => {
+      await assertSucceeds(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/hermes_connections/${validHermesRelayConnection.id}`),
+          validHermesRelayConnection
+        )
+      );
+    });
+
+    await step("Hermes legacy replacement pointer is accepted", async () => {
+      const legacyConnection = {
+        ...validHermesRelayConnection,
+        id: "relay-host-legacy",
+        status: "offline",
+        capabilities: ["remote_relay"],
+        realtimeRelayStatus: "offline",
+        replacedByConnectionId: validHermesRelayConnection.id,
+      };
+      await assertSucceeds(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/hermes_connections/${legacyConnection.id}`),
+          legacyConnection
+        )
+      );
+    });
+
+    await step("Hermes relay connection rejects oversized hostInstallationId", async () => {
+      await assertFails(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/hermes_connections/${validHermesRelayConnection.id}`),
+          { ...validHermesRelayConnection, hostInstallationId: "h".repeat(257) }
+        )
+      );
+    });
+
     await step("pi relay request WITHOUT sender-auth fields is rejected", async () => {
       const { senderPublicKey, senderDeviceId, senderPeerNodeId, senderCounter, ...unbound } =
         validPiRelayRequest;

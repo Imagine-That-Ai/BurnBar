@@ -13,8 +13,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "1.0.27"
-    CURRENT_PROJECT_VERSION: 67
+    MARKETING_VERSION: "1.0.28"
+    CURRENT_PROJECT_VERSION: 68
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
@@ -38,7 +38,12 @@ packages:
     exactVersion: 4.16.0
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
-    from: "11.0.0"
+    # 12.x bundles the iOS 27-compatible gRPC; 11.15/grpc-1.69 SIGBUSes in
+    # BoringSSL (OPENSSL_cleanse) the first time Firestore opens its TLS
+    # channel on iOS 27, which forced a Firestore-network kill switch on
+    # mobile (AppDelegate.disableFirestoreNetworkOnIncompatibleOSIfNeeded).
+    # Keep >= 12 so that shim never has to come back.
+    from: "12.15.0"
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: "8.0.0"
@@ -733,6 +738,23 @@ targets:
       - path: AgentLens/Resources/KernelBackdrop
         type: folder
         buildPhase: resources
+    preBuildScripts:
+      - name: Guard source-built gRPC (iOS 27 Firestore crash)
+        script: |
+          # The prebuilt grpc-binary SIGSEGVs in BoringSSL (OPENSSL_cleanse via
+          # ssl_cert_dup -> create_tsi_ssl_handshaker) the first time Firestore
+          # opens its TLS channel on iOS 27 — verified on-device 2026-07-03 with
+          # Firebase 12.15/grpc-binary 1.69.1. Firestore MUST be built from
+          # source (grpc-ios + BoringSSL-SwiftPM): resolve packages with
+          # FIREBASE_SOURCE_FIRESTORE=1 in the environment. This tripwire turns
+          # a silent runtime crash into a build error when the graph regresses.
+          # See docs/FIREBASE_IOS27_GRPC.md.
+          resolved="$SRCROOT/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+          if [ -f "$resolved" ] && grep -q '"grpc-binary"' "$resolved"; then
+            echo "error: Package graph resolved with prebuilt grpc-binary, which crashes Firestore on iOS 27. Re-resolve with FIREBASE_SOURCE_FIRESTORE=1 (see docs/FIREBASE_IOS27_GRPC.md)."
+            exit 1
+          fi
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobile

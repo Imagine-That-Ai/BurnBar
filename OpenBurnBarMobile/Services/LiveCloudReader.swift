@@ -82,6 +82,7 @@ final class LiveCloudReader: CloudReader {
 
             let macDeviceId: String?
             let macName: String
+            let macLastSeen: Date?
             if let macDoc = devicesSnap.documents.max(by: { lhs, rhs in
                 let left = CloudDeviceActivityDateResolver.date(from: lhs.data()) ?? .distantPast
                 let right = CloudDeviceActivityDateResolver.date(from: rhs.data()) ?? .distantPast
@@ -90,9 +91,11 @@ final class LiveCloudReader: CloudReader {
                 let d = macDoc.data()
                 macDeviceId = d["deviceId"] as? String ?? macDoc.documentID
                 macName = d["deviceName"] as? String ?? "Mac"
+                macLastSeen = CloudDeviceActivityDateResolver.date(from: d)
             } else {
                 macDeviceId = nil
                 macName = "Mac"
+                macLastSeen = nil
             }
 
             let syncStatusCollection = db.collection("users/\(uid)/sync_status")
@@ -102,7 +105,15 @@ final class LiveCloudReader: CloudReader {
                     return Self.syncStatusSnapshot(
                         deviceID: macDeviceId,
                         displayName: macName,
-                        data: doc.data()
+                        data: doc.data(),
+                        fallbackLastSeen: macLastSeen
+                    )
+                } else if let macLastSeen {
+                    return Self.syncStatusSnapshot(
+                        deviceID: macDeviceId,
+                        displayName: macName,
+                        data: nil,
+                        fallbackLastSeen: macLastSeen
                     )
                 }
             }
@@ -132,10 +143,12 @@ final class LiveCloudReader: CloudReader {
         deviceID: String,
         displayName: String,
         data: [String: Any]?,
+        fallbackLastSeen: Date? = nil,
         readAt: Date = Date()
     ) -> CloudSyncStatusSnapshot {
         let lastPublished = (data?["lastSyncAt"] as? Timestamp)?.dateValue()
             ?? (data?["updatedAt"] as? Timestamp)?.dateValue()
+            ?? fallbackLastSeen
         let lastError = data?["lastError"] as? String
 
         return CloudSyncStatusSnapshot(
