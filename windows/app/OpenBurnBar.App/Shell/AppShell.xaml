@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppShell — the WinUI 3 NavigationView app frame (Phase 3 W6-SHELL).
+
+  The Windows analog of the macOS NavigationSplitView: a left sidebar of the 12 top-level
+  surfaces (built from NavCatalog), a header with the Command Palette entry (Ctrl+K) and an
+  Appearance flyout, and a content Frame that hosts the selected surface. Destinations are
+  populated in code-behind so NavCatalog stays the single source of truth.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Shell.AppShell"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <NavigationView x:Name="Nav"
+                    IsBackButtonVisible="Collapsed"
+                    IsSettingsVisible="False"
+                    PaneDisplayMode="Left"
+                    OpenPaneLength="240"
+                    SelectionChanged="Nav_SelectionChanged">
+
+        <NavigationView.Header>
+            <Grid ColumnSpacing="8" Padding="4,4,12,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="HeaderTitle"
+                           Grid.Column="0"
+                           VerticalAlignment="Center"
+                           FontSize="20"
+                           FontWeight="SemiBold" />
+
+                <!-- Command Palette entry (Ctrl+K). -->
+                <Button Grid.Column="1"
+                        Click="Palette_Click"
+                        ToolTipService.ToolTip="Command palette (Ctrl+K)">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE721;" />
+                        <TextBlock Text="Search" />
+                        <TextBlock Text="Ctrl K" Opacity="0.55" FontSize="11" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <!-- Appearance flyout (theme/appearance-mode plumbing). -->
+                <Button Grid.Column="2" ToolTipService.ToolTip="Appearance">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;" />
+                    <Button.Flyout>
+                        <Flyout x:Name="AppearanceFlyout" Opening="AppearanceFlyout_Opening">
+                            <theme:AppearanceModeControl x:Name="AppearanceControl" MinWidth="300" />
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+        </NavigationView.Header>
+
+        <Frame x:Name="ContentFrame" />
+    </NavigationView>
+</UserControl>
