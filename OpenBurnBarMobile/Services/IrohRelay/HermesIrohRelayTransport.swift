@@ -318,6 +318,17 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             now: now()
         )
         let transport = try await transport(relayURL: verifiedTarget.relayURL)
+        // The Mac's inbound allowlist admits QUIC NodeIds; without this
+        // self-report the media/control dials connect and are then purged
+        // ~2s later (the chat dial path persisted the id, but Mercury never
+        // dials chat, so the id never landed and every session flapped).
+        let mediaLocalNodeId = identity?.nodeId ?? ""
+        #if DEBUG
+        NSLog("OpenBurnBarMercury iroh_local_node_id id=%@", mediaLocalNodeId.isEmpty ? "EMPTY" : mediaLocalNodeId)
+        #endif
+        if !mediaLocalNodeId.isEmpty {
+            await persistIrohPeerNodeId(mediaLocalNodeId, uid: uid)
+        }
         return try await transport.connect(
             to: verifiedTarget,
             timeout: Self.defaultMediaControlConnectTimeout
@@ -337,6 +348,17 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             now: now()
         )
         let transport = try await transport(relayURL: verifiedTarget.relayURL)
+        // The Mac's inbound allowlist admits QUIC NodeIds; without this
+        // self-report the media/control dials connect and are then purged
+        // ~2s later (the chat dial path persisted the id, but Mercury never
+        // dials chat, so the id never landed and every session flapped).
+        let mediaLocalNodeId = identity?.nodeId ?? ""
+        #if DEBUG
+        NSLog("OpenBurnBarMercury iroh_local_node_id id=%@", mediaLocalNodeId.isEmpty ? "EMPTY" : mediaLocalNodeId)
+        #endif
+        if !mediaLocalNodeId.isEmpty {
+            await persistIrohPeerNodeId(mediaLocalNodeId, uid: uid)
+        }
         return try await transport.connect(
             to: verifiedTarget,
             timeout: connectTimeout
@@ -431,6 +453,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             }
             stage = "dial_start"
             let localNodeId = identity?.nodeId ?? ""
+            #if DEBUG
+            NSLog("OpenBurnBarMercury iroh_local_node_id id=%@ identitySet=%d", localNodeId.isEmpty ? "EMPTY" : localNodeId, identity != nil ? 1 : 0)
+            #endif
             if !localNodeId.isEmpty {
                 await persistIrohPeerNodeId(localNodeId, uid: uid)
             }
@@ -992,9 +1017,12 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     ],
                     merge: true
                 )
+            #if DEBUG
+            NSLog("OpenBurnBarMercury iroh_node_id_persisted deviceId=%@", deviceId)
+            #endif
         } catch {
             #if DEBUG
-            print("HermesIrohRelayTransport irohPeerNodeId persist failed: \(irohPublicErrorClass(error))")
+            NSLog("OpenBurnBarMercury iroh_node_id_persist_failed error=%@", "\(error)")
             #endif
         }
     }
