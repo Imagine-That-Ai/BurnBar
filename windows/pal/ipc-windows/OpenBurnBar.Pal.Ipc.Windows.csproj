@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows named-pipe peer-auth + ConPTY harness scaffold (W1 / R16).
+
+    This is the platform half of VAL-P0-CONPTY-018: it wires the portable
+    signed-nonce handshake (OpenBurnBar.Pal.Ipc) into real Win32 primitives —
+    a hardened named pipe (SDDL DACL + FIRST_PIPE_INSTANCE), peer authentication
+    (client PID/SID + image + loaded-module validation), CNG/TPM-backed
+    credentials, a ConPTY session, and Job-Object process-tree kill.
+
+    Target framework note: this targets plain net10.0 (NOT net10.0-windows) so the
+    scaffold COMPILES on the macOS authoring host as extra evidence — every Win32
+    surface is reached through hand-written P/Invoke plus BCL types that carry
+    [SupportedOSPlatform("windows")]. It does not RUN off-Windows; the interactive
+    ConPTY + live handshake proof is VAL-P0-CONPTY-019 on a Windows dev host
+    (docs/windows-port/runbooks/CONPTY-019-dev-host-runbook.md).
+
+    RELEASE_HARDENED: define this constant in the shipping build to compile OUT the
+    developer bypass on the peer-auth gate (R16: "compile out disable-env in
+    release"). See NamedPipePeerAuthListener.cs.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>OpenBurnBar.Pal.Ipc.Windows</RootNamespace>
+    <AssemblyName>OpenBurnBar.Pal.Ipc.Windows</AssemblyName>
+    <!-- Keep the scaffold honest: warnings are errors here too. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- This assembly is Windows-only; the [assembly: SupportedOSPlatform("windows")]
+         attribute in Interop/NativeMethods.cs satisfies CA1416 while still letting
+         the scaffold compile on the macOS authoring host. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ipc/OpenBurnBar.Pal.Ipc.csproj" />
+  </ItemGroup>
+
+</Project>

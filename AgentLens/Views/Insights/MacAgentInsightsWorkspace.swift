@@ -32,6 +32,7 @@ struct MacAgentInsightsWorkspace: View {
     @State private var rosterLastSeen: [AgentProvider: Date] = [:]
     @State private var compareScopes: [AgentInsightsScope] = []
     @State private var isComparing = false
+    @Environment(\.dashboardLiveBackdropActive) private var dashboardLiveBackdropActive
 
     private let shortcutProviders: [AgentProvider] = Array(AgentProvider.allCases.prefix(9))
 
@@ -61,7 +62,7 @@ struct MacAgentInsightsWorkspace: View {
             sidebar
                 .frame(width: 320)
                 .background {
-                    if settingsManager.useWebsiteBackground {
+                    if dashboardLiveBackdropActive || settingsManager.useWebsiteBackground {
                         Color.clear.liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md), fallback: .ultraThinMaterial)
                     } else {
                         UnifiedDesignSystem.Colors.surface
@@ -76,7 +77,9 @@ struct MacAgentInsightsWorkspace: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            if settingsManager.useWebsiteBackground {
+            if dashboardLiveBackdropActive {
+                Color.clear
+            } else if settingsManager.useWebsiteBackground {
                 if settingsManager.useConstellationBackground {
                     ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
                 } else {

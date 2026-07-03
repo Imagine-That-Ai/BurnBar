@@ -68,7 +68,9 @@ describe("enforceHighRiskOwnerAction", () => {
       subjectId: "anthropic_default",
     });
 
-    expect(enforceHighRiskComputerUseCallableWithNonce).toHaveBeenCalledWith(callableRequest, "u1", "nonce-2");
+    expect(enforceHighRiskComputerUseCallableWithNonce).toHaveBeenCalledWith(callableRequest, "u1", "nonce-2", {
+      allowLowerTrustDesktop: true,
+    });
     expect(requireTrustedDeviceActionProof).toHaveBeenCalledTimes(1);
     const args = requireTrustedDeviceActionProof.mock.calls[0][0];
     expect(args).toEqual(
@@ -84,6 +86,7 @@ describe("enforceHighRiskOwnerAction", () => {
     );
     expect(args.allowedPlatforms.has("iOS")).toBe(true);
     expect(args.allowedPlatforms.has("Android")).toBe(true);
+    expect(args.allowedPlatforms.has("Linux")).toBe(true);
     expect(args.allowedPlatforms.has("Web")).toBe(false);
   });
 });

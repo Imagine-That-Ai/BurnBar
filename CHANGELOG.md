@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OMP provider parity** — added Oh My Pi (`omp`) as a first-class local CLI
+  provider across Mac chat, direct mission launch, mobile relay/catalog
+  surfaces, provider identity, and quota refresh. OpenBurnBar now reads
+  redacted OMP usage via `omp usage --json --redact` and documents the provider
+  in `docs/PROVIDERS.md`.
+- **Chat workspace tiling (cmux/tmux-style) is now live in the dashboard.** The
+  chat window mounts the pane workspace, so `⌘D` splits the active pane right,
+  `⌘⇧D` splits it down, and `⌘W` closes a pane (the last pane falls through to
+  the standard window close). Dragging a chat chip from the thread rail onto a
+  pane now *suggests* where it will land: dropping in the center loads the
+  conversation into that pane, while dropping on an edge opens it in a brand-new
+  split pane on that side. Thread rows show an "open in a pane" hint, and the top
+  toolbar hides its duplicate engine pickers while tiled (each pane carries its
+  own). `AgentLens/Views/Chat/PaneWorkspace/*` + `DashboardChatWorkspaceView`.
+- **Command Deck top-chrome redesign** — collapses ~146pt of stacked chrome
+  (toolbar + tab-card strip) into one ~52pt bar with a ⌘K command palette for
+  section fuzzy-filter + session search, and ⌘1–⌘7 section shortcuts.
+
 ## [1.0.28] - 2026-07-03
 
 ### Fixed

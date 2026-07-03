@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal design-token ResourceDictionary for the shell spike.
+
+  This is a HAND-SEEDED subset so the spike renders on-brand. The real, generated
+  token set is produced by the WinUI emitter added to `packages/design-tokens`
+  (master plan §9.6 / W6). Keys mirror the macOS `Theme/DesignSystem.swift`
+  vocabulary (accent / surface / stroke / mono type ramp) so the emitter can drop
+  in later without renaming call sites.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Brand accent (OpenBurnBar ember). -->
+    <Color x:Key="OBBAccentColor">#FFFF6A3D</Color>
+    <SolidColorBrush x:Key="OBBAccentBrush" Color="{StaticResource OBBAccentColor}" />
+
+    <!-- CLI stream line colors, keyed by event kind. -->
+    <SolidColorBrush x:Key="OBBStdoutBrush" Color="#FFE8E8EA" />
+    <SolidColorBrush x:Key="OBBStderrBrush" Color="#FFFF8A7A" />
+    <SolidColorBrush x:Key="OBBToolBrush" Color="#FF6AB0FF" />
+    <SolidColorBrush x:Key="OBBSystemBrush" Color="#FF9AA0AA" />
+
+    <!-- Surfaces layered over Mica. -->
+    <SolidColorBrush x:Key="OBBSurfaceBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="OBBStrokeBrush" Color="#22FFFFFF" />
+
+    <!-- Type + shape ramp. -->
+    <x:String x:Key="OBBMonoFontFamily">Cascadia Mono, Consolas, Courier New</x:String>
+    <CornerRadius x:Key="OBBCardCornerRadius">10</CornerRadius>
+    <Thickness x:Key="OBBCardPadding">14</Thickness>
+
+</ResourceDictionary>

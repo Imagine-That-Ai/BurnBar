@@ -103,6 +103,7 @@ struct SessionLogsView: View {
     /// re-derive at midnight (or timezone change) without other input changes.
     @State private var dayChangeTick = 0
     @State private var logGroupsCache = LogGroupsCache()
+    @Environment(\.dashboardLiveBackdropActive) private var dashboardLiveBackdropActive
 
     private let defaultDisplayLimit = 15
     private var hasMultipleDevices: Bool { knownDevices.count > 1 }
@@ -422,7 +423,7 @@ struct SessionLogsView: View {
             }
         }
         .background {
-            if settingsManager.useWebsiteBackground {
+            if dashboardLiveBackdropActive {
                 Color.clear.liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md), fallback: .ultraThinMaterial)
             } else {
                 ZStack {

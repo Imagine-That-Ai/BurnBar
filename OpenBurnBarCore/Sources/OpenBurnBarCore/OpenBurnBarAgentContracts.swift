@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 public enum BurnBarAgentIntentKind: String, Codable, CaseIterable, Hashable, Sendable {
     case replaceStringInFile = "replace_string_in_file"
@@ -490,9 +489,7 @@ public struct BurnBarDAGNodeID: RawRepresentable, Codable, Hashable, Sendable {
     /// Generates a stable hash from input string using SHA256.
     /// This is deterministic across process launches unlike Swift's Hasher which is process-seeded.
     private static func deterministicIDHash(_ input: String) -> String {
-        let inputData = Data(input.utf8)
-        let hashed = SHA256.hash(data: inputData)
-        return hashed.compactMap { String(format: "%02x", $0) }.joined()
+        PlatformCrypto.sha256Hex(Data(input.utf8))
     }
 }
 public struct BurnBarDAGEdgeID: RawRepresentable, Codable, Hashable, Sendable {
@@ -515,9 +512,7 @@ public struct BurnBarDAGEdgeID: RawRepresentable, Codable, Hashable, Sendable {
     /// Generates a stable hash from edge input using SHA256.
     /// This is deterministic across process launches unlike Swift's Hasher which is process-seeded.
     private static func deterministicEdgeHash(_ input: String) -> String {
-        let inputData = Data(input.utf8)
-        let hashed = SHA256.hash(data: inputData)
-        return hashed.compactMap { String(format: "%02x", $0) }.joined()
+        PlatformCrypto.sha256Hex(Data(input.utf8))
     }
 }
 

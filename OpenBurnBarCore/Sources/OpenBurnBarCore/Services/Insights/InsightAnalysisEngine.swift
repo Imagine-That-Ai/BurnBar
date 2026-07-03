@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 public protocol InsightAnalysisEngine: Sendable {
@@ -996,7 +995,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(copy) else { return "" }
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return PlatformCrypto.sha256Hex(data)
     }
 
     private static func currency(_ value: Double) -> String {
@@ -1690,9 +1689,7 @@ public actor OrchestratedInsightAnalysisEngine: InsightAnalysisEngine {
     }
 
     private static func promptHash(_ prompt: String) -> String {
-        SHA256.hash(data: Data(prompt.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        PlatformCrypto.sha256Hex(Data(prompt.utf8))
     }
 }
 

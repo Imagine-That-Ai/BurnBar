@@ -1,0 +1,78 @@
+{
+  "mission": "mission-001",
+  "date": "2026-07-03",
+  "contracts": [
+    "VAL-MDNS-001",
+    "VAL-DEVICE-001",
+    "VAL-IOT-001",
+    "VAL-EXTENSION-001"
+  ],
+  "avahi": {
+    "registerCommand": [
+      "avahi-publish-service",
+      "--no-reverse",
+      "OpenBurnBar devbox",
+      "_openburnbar._tcp",
+      "8317",
+      "caps=cast,cli,homeassistant,http,pixelclock,smarthub",
+      "gateway=loopback",
+      "peer=peer-linux-123",
+      "platform=linux",
+      "proto=1",
+      "socket=unix"
+    ],
+    "browseCommand": [
+      "avahi-browse",
+      "--resolve",
+      "--parsable",
+      "--terminate",
+      "_openburnbar._tcp"
+    ],
+    "privacySafeTXT": true,
+    "conflictHandled": true,
+    "teardownObserved": true,
+    "disabledStateHasNoPublishCommand": true
+  },
+  "devices": {
+    "pixelClockControlPlans": [
+      "GET http://192.168.1.42:80/api/stats",
+      "POST http://192.168.1.42:80/api/custom?name=openburnbar",
+      "POST http://192.168.1.42:80/api/notify"
+    ],
+    "firmwareLane": {
+      "status": "blocked",
+      "attemptedPrerequisiteCommands": [
+        "busctl introspect org.freedesktop.NetworkManager /org/freedesktop/NetworkManager",
+        "udevadm info --export-db"
+      ],
+      "blocker": "Linux container has no NetworkManager DBus socket, no busctl, no udevadm, and no /dev/ttyUSB* or /dev/ttyACM* PixelClock serial device."
+    },
+    "iotControlPlans": [
+      "GET http://192.168.1.20:8317/local-peer/status",
+      "GET http://192.168.1.51:8009/setup/eureka_info?options=detail",
+      "GET http://192.168.1.60:8123/api/"
+    ]
+  },
+  "extension": {
+    "linuxSocketPath": "/run/user/501/openburnbar/openburnbar-daemon.sock",
+    "linuxTokenFilePath": "/home/alberto/.local/state/openburnbar/daemon-socket-auth-token",
+    "alertUtility": "alertDaemonUnreachable",
+    "offlineReconnectCovered": true,
+    "directVSCodeShowErrorOutsideAlerting": false
+  },
+  "verification": [
+    {
+      "command": "swiftc -parse-as-library -typecheck OpenBurnBarCore/Sources/OpenBurnBarCore/LinuxLocalPeerDiscovery.swift",
+      "exitCode": 0
+    },
+    {
+      "command": "npm --prefix extensions/openburnbar run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm --prefix extensions/openburnbar run test:unit -- test/daemonClient.test.ts test/controller.test.ts",
+      "exitCode": 0,
+      "observed": "2 files passed, 37 tests passed"
+    }
+  ]
+}

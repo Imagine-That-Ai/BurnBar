@@ -1044,6 +1044,7 @@ final class SmartHubBridgeController {
         case .goose:      return "0D9488"
         case .openClaw:   return "FF6B6B"
         case .openClaude: return "D97757"
+        case .omp: return "EC4899"
         case .ollama:     return "6B7280"
         case .windsurf:   return "06B6D4"
         case .warp:       return "DDE4EA"

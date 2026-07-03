@@ -998,6 +998,12 @@ jobs:
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
+      # Windows per-tree size ratchet (rooted at windows/, partitioned by
+      # app/pal/native/tests). Blocking Windows check on every PR — a red
+      # Windows budget fails HERE at merge time. Pure bash + python3.
+      - name: Windows tree budget (per-tree shrink-only ratchet)
+        run: ./scripts/debt/check-windows-tree-budget.sh
+
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
     name: Fast Feedback Gate

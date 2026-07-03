@@ -251,6 +251,17 @@ final class SwarmLogoShapeTests: XCTestCase {
         )
     }
 
+    func testLaunchBurnBarLogoTopBitmapRowRendersAboveBottomRow() {
+        let topBitmapRow = BurnBarLogoFormationGeometry.logoPoint(nx: 0.5, ny: 0)
+        let bottomBitmapRow = BurnBarLogoFormationGeometry.logoPoint(nx: 0.5, ny: 1)
+
+        XCTAssertLessThan(
+            topBitmapRow.y,
+            bottomBitmapRow.y,
+            "Top AppLogo pixels must render above bottom pixels so the splash logo is upright."
+        )
+    }
+
     func testLaunchProviderGlyphColorsAreSaturatedAndHuePreserving() {
         // A muted coral should come out more saturated (higher chroma) while keeping red
         // as its dominant channel — provider marks read as their real, vivid brand colors.

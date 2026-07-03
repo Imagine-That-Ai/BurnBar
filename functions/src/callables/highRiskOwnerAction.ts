@@ -4,7 +4,7 @@ import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestat
 import { requireTrustedDeviceActionProof } from "./computerUseSecurity.js";
 import { boundedTrimmedString } from "./shared.js";
 
-const HIGH_RISK_OWNER_ACTION_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
+const HIGH_RISK_OWNER_ACTION_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android", "Linux"]);
 
 type HighRiskOwnerActionKind =
   | "data_export"
@@ -34,7 +34,9 @@ export async function enforceHighRiskOwnerAction(
 ): Promise<void> {
   const data = recordFromUnknown(request.data);
   const nonce = boundedTrimmedString(data.nonce, "nonce", 256, true);
-  const { nonceConsumed } = await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
+  const { nonceConsumed } = await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce, {
+    allowLowerTrustDesktop: true,
+  });
   if (!nonceConsumed) {
     throw new HttpsError(
       "failed-precondition",

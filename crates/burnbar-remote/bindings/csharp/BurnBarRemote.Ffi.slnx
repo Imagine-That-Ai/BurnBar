@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="BurnBarRemote.Ffi.Tests/BurnBarRemote.Ffi.Tests.csproj" />
+  <Project Path="BurnBarRemote.Ffi/BurnBarRemote.Ffi.csproj" />
+</Solution>

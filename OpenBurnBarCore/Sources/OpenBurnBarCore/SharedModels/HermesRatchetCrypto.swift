@@ -1,6 +1,4 @@
-import CryptoKit
 import Foundation
-import Security
 
 public enum HermesRatchetError: Error, Equatable {
     case invalidBase64(String)
@@ -133,7 +131,7 @@ public enum HermesRatchetCrypto {
     public static let defaultMaxSkip = 64
 
     public static func generateKeyPair() -> HermesRatchetKeyPair {
-        let key = P256.KeyAgreement.PrivateKey()
+        let key = PlatformCrypto.p256KeyAgreementPrivateKey()
         return HermesRatchetKeyPair(
             privateKeyBase64: key.rawRepresentation.base64EncodedString(),
             publicKeyBase64: key.publicKey.x963Representation.base64EncodedString()
@@ -141,14 +139,11 @@ public enum HermesRatchetCrypto {
     }
 
     public static func randomRootKey() throws -> Data {
-        var data = Data(repeating: 0, count: 32)
-        let status = data.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, 32, buffer.baseAddress!)
+        do {
+            return try PlatformCrypto.secureRandomBytes(count: 32)
+        } catch {
+            throw HermesRatchetError.invalidKeyLength("secure random failed")
         }
-        guard status == errSecSuccess else {
-            throw HermesRatchetError.invalidKeyLength("SecRandomCopyBytes failed")
-        }
-        return data
     }
 
     public static func initiatorState(
@@ -219,14 +214,11 @@ public enum HermesRatchetCrypto {
             messageNumber: state.sendMessageNumber,
             epoch: state.epoch
         )
-        let sealed = try AES.GCM.seal(
-            plaintext,
-            using: SymmetricKey(data: derived.messageKey),
+        let combined = try PlatformCrypto.sealAESGCM(
+            plaintext: plaintext,
+            keyData: derived.messageKey,
             authenticating: envelopeAAD(header: header, associatedData: associatedData)
         )
-        guard let combined = sealed.combined else {
-            throw HermesRatchetError.invalidEnvelope
-        }
         state.sendingChainKeyBase64 = derived.chainKey.base64EncodedString()
         state.sendMessageNumber += 1
         return HermesRatchetEnvelope(header: header, ciphertextBase64: combined.base64EncodedString())
@@ -285,7 +277,7 @@ public enum HermesRatchetCrypto {
             rootKey: rootKey,
             dhOutput: try sharedSecretBytes(privateKey: currentPrivateKey, publicKey: remotePublicKey)
         )
-        let nextPrivateKey = P256.KeyAgreement.PrivateKey()
+        let nextPrivateKey = PlatformCrypto.p256KeyAgreementPrivateKey()
         let sendDerived = rootKDF(
             rootKey: receiveDerived.rootKey,
             dhOutput: try sharedSecretBytes(privateKey: nextPrivateKey, publicKey: remotePublicKey)
@@ -341,10 +333,9 @@ public enum HermesRatchetCrypto {
             throw HermesRatchetError.invalidEnvelope
         }
         do {
-            let box = try AES.GCM.SealedBox(combined: combined)
-            return try AES.GCM.open(
-                box,
-                using: SymmetricKey(data: messageKey),
+            return try PlatformCrypto.openAESGCM(
+                combined: combined,
+                keyData: messageKey,
                 authenticating: envelopeAAD(header: envelope.header, associatedData: associatedData)
             )
         } catch {
@@ -367,20 +358,18 @@ public enum HermesRatchetCrypto {
     }
 
     private static func rootKDF(rootKey: Data, dhOutput: Data) -> (rootKey: Data, chainKey: Data) {
-        let derived = HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: dhOutput),
+        let data = try! PlatformCrypto.deriveHKDFSHA256KeyData(
+            inputKeyMaterial: dhOutput,
             salt: rootKey,
             info: Data("OpenBurnBar-HermesRatchet-v1-root".utf8),
             outputByteCount: 64
         )
-        let data = data(from: derived)
         return (Data(data.prefix(32)), Data(data.suffix(32)))
     }
 
     private static func chainKDF(chainKey: Data) -> (chainKey: Data, messageKey: Data) {
-        let key = SymmetricKey(data: chainKey)
-        let next = Data(HMAC<SHA256>.authenticationCode(for: Data("OpenBurnBar-HermesRatchet-v1-chain".utf8), using: key))
-        let message = Data(HMAC<SHA256>.authenticationCode(for: Data("OpenBurnBar-HermesRatchet-v1-message".utf8), using: key))
+        let next = try! PlatformCrypto.hmacSHA256(Data("OpenBurnBar-HermesRatchet-v1-chain".utf8), keyData: chainKey)
+        let message = try! PlatformCrypto.hmacSHA256(Data("OpenBurnBar-HermesRatchet-v1-message".utf8), keyData: chainKey)
         return (next, message)
     }
 
@@ -403,7 +392,7 @@ public enum HermesRatchetCrypto {
         "\(ratchetPublicKeyBase64):\(messageNumber)"
     }
 
-    private static func privateKey(from base64: String) throws -> P256.KeyAgreement.PrivateKey {
+    private static func privateKey(from base64: String) throws -> PlatformP256KeyAgreementPrivateKey {
         guard let data = Data(base64Encoded: base64) else {
             throw HermesRatchetError.invalidBase64("privateKey")
         }
@@ -411,13 +400,13 @@ public enum HermesRatchetCrypto {
             throw HermesRatchetError.invalidKeyLength("privateKey")
         }
         do {
-            return try P256.KeyAgreement.PrivateKey(rawRepresentation: data)
+            return try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: data)
         } catch {
             throw HermesRatchetError.invalidPrivateKey("privateKey")
         }
     }
 
-    private static func publicKey(from base64: String) throws -> P256.KeyAgreement.PublicKey {
+    private static func publicKey(from base64: String) throws -> PlatformP256KeyAgreementPublicKey {
         guard let data = Data(base64Encoded: base64) else {
             throw HermesRatchetError.invalidBase64("publicKey")
         }
@@ -425,17 +414,17 @@ public enum HermesRatchetCrypto {
             throw HermesRatchetError.invalidKeyLength("publicKey")
         }
         do {
-            return try P256.KeyAgreement.PublicKey(x963Representation: data)
+            return try PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: data)
         } catch {
             throw HermesRatchetError.invalidPublicKey("publicKey")
         }
     }
 
     private static func sharedSecretBytes(
-        privateKey: P256.KeyAgreement.PrivateKey,
-        publicKey: P256.KeyAgreement.PublicKey
+        privateKey: PlatformP256KeyAgreementPrivateKey,
+        publicKey: PlatformP256KeyAgreementPublicKey
     ) throws -> Data {
-        let secret = try privateKey.sharedSecretFromKeyAgreement(with: publicKey)
+        let secret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey, publicKey: publicKey)
         var data = Data()
         secret.withUnsafeBytes { data.append(contentsOf: $0) }
         return data
@@ -453,10 +442,6 @@ public enum HermesRatchetCrypto {
         guard data.count == 32 else {
             throw HermesRatchetError.invalidKeyLength(label)
         }
-    }
-
-    private static func data(from key: SymmetricKey) -> Data {
-        key.withUnsafeBytes { Data($0) }
     }
 
     private static func appendPart(_ data: inout Data, _ part: Data) {

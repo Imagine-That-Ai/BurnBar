@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS `dotnet test` proof for FFI-007 / VAL-P0-FFI-007: C# on .NET round-trips
+    a byte-identical wire vector against the natively-built `burnbar-remote-ffi`
+    cdylib. FFI-008 reuses this project unchanged on the *-pc-windows-msvc runtime
+    (the native-library ItemGroup below is already OS-conditioned).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!--
+      Directory holding the compiled cdylib. Defaults to the debug artifact of a
+      native `cargo build -p burnbar-remote-ffi`; FFI-008/CI overrides it with
+      `-p:BurnBarRemoteNativeDir=<path>` (e.g. the msvc release target dir).
+    -->
+    <BurnBarRemoteNativeDir Condition="'$(BurnBarRemoteNativeDir)' == ''">$(MSBuildProjectDirectory)/../../../target/debug</BurnBarRemoteNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../BurnBarRemote.Ffi/BurnBarRemote.Ffi.csproj" />
+  </ItemGroup>
+
+  <!-- Committed golden wire vector (the single source of truth shared with the
+       Rust unit tests: ../../burnbar-remote-ffi/tests/golden/...). -->
+  <ItemGroup>
+    <None Include="../../../burnbar-remote-ffi/tests/golden/quality_decision_v1.wire">
+      <Link>quality_decision_v1.wire</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Native cdylib, copied next to the test binary. OS-conditioned so the same
+       project loads libburnbar_remote.dylib on macOS and burnbar_remote.dll on
+       Windows (FFI-008). -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(BurnBarRemoteNativeDir)/libburnbar_remote.dylib">
+      <Link>libburnbar_remote.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <None Include="$(BurnBarRemoteNativeDir)/burnbar_remote.dll">
+      <Link>burnbar_remote.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

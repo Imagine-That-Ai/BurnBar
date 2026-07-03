@@ -1,21 +1,27 @@
-import CryptoKit
 import Foundation
+#if canImport(Security)
 import Security
+#endif
 
 public struct CloudVaultDeviceKeypair: DeviceKeypairProtocol, Sendable {
-    private let privateKey: P256.KeyAgreement.PrivateKey
+    private let privateKey: PlatformP256KeyAgreementPrivateKey
     public let keyVersion: Int
 
     public init(service: String = "com.openburnbar.device-escrow", account: String) throws {
+        #if canImport(Security)
         if let existing = try Self.load(service: service, account: account) {
             self.privateKey = existing.privateKey
             self.keyVersion = existing.keyVersion
             return
         }
-        let created = P256.KeyAgreement.PrivateKey()
+        let created = PlatformCrypto.p256KeyAgreementPrivateKey()
         try Self.save(created, keyVersion: 1, service: service, account: account)
         self.privateKey = created
         self.keyVersion = 1
+        #else
+        self.privateKey = PlatformCrypto.p256KeyAgreementPrivateKey()
+        self.keyVersion = 1
+        #endif
     }
 
     public var publicKeyData: Data {
@@ -23,7 +29,7 @@ public struct CloudVaultDeviceKeypair: DeviceKeypairProtocol, Sendable {
     }
 
     public var publicKeyFingerprint: String {
-        Data(SHA256.hash(data: publicKeyData)).base64EncodedString()
+        PlatformCrypto.sha256(publicKeyData).base64EncodedString()
     }
 
     public func encrypt(_ plaintext: Data, for recipientPublicKey: Data) throws -> Data {
@@ -34,7 +40,8 @@ public struct CloudVaultDeviceKeypair: DeviceKeypairProtocol, Sendable {
         try CloudVaultCrypto.unwrapVaultKey(ciphertext, privateKey: privateKey)
     }
 
-    private static func load(service: String, account: String) throws -> (privateKey: P256.KeyAgreement.PrivateKey, keyVersion: Int)? {
+    #if canImport(Security)
+    private static func load(service: String, account: String) throws -> (privateKey: PlatformP256KeyAgreementPrivateKey, keyVersion: Int)? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -49,7 +56,7 @@ public struct CloudVaultDeviceKeypair: DeviceKeypairProtocol, Sendable {
         guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
         guard let dict = item as? [String: Any],
               let data = dict[kSecValueData as String] as? Data,
-              let key = try? P256.KeyAgreement.PrivateKey(rawRepresentation: data) else {
+              let key = try? PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: data) else {
             throw CloudVaultCryptoError.keychainDataMissing
         }
         let comment = dict[kSecAttrComment as String] as? String
@@ -58,7 +65,7 @@ public struct CloudVaultDeviceKeypair: DeviceKeypairProtocol, Sendable {
     }
 
     private static func save(
-        _ privateKey: P256.KeyAgreement.PrivateKey,
+        _ privateKey: PlatformP256KeyAgreementPrivateKey,
         keyVersion: Int,
         service: String,
         account: String
@@ -78,4 +85,5 @@ public struct CloudVaultDeviceKeypair: DeviceKeypairProtocol, Sendable {
             throw CloudVaultCryptoError.keychainError(Int(status))
         }
     }
+    #endif
 }

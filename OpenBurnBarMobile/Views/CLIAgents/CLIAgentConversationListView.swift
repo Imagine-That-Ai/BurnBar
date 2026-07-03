@@ -534,8 +534,12 @@ struct CLIAgentConversationListView: View {
             return "Start an Antigravity chat here. The Mac streams replies back into this mobile thread."
         case .grok:
             return "Start a Grok Build chat here. The Mac streams replies back into this mobile thread."
-        case .cursorAgent, .openClaude:
+        case .cursorAgent:
             return "Start a Cursor Agent chat here. The Mac streams replies back into this mobile thread."
+        case .openClaude:
+            return "Start an OpenClaude chat here. The Mac streams replies back into this mobile thread."
+        case .omp:
+            return "Start an OMP chat here. The Mac streams replies back into this mobile thread."
         }
     }
 
@@ -545,6 +549,7 @@ struct CLIAgentConversationListView: View {
         case .claude:   return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
         case .openClaude: return Color(hex: "D97757")
+        case .omp: return Color(hex: "EC4899")
         case .droid:    return Color(hex: "8B5CF6")
         case .forge:    return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
@@ -1453,6 +1458,7 @@ struct CLIAgentChatThreadView: View {
         case .claude: return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
         case .openClaude: return Color(hex: "D97757")
+        case .omp: return Color(hex: "EC4899")
         case .droid: return Color(hex: "8B5CF6")
         case .forge: return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
@@ -1672,6 +1678,7 @@ private extension CLIAgentRuntime {
         case .claude:      return .claudeCode
         case .openClaw:    return .openClaw
         case .openClaude:    return .openClaude
+        case .omp:         return .omp
         case .droid:       return .factory
         case .forge:       return .forgeDev
         case .antigravity: return .antigravity

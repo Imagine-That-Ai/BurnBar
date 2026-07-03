@@ -141,6 +141,13 @@ public enum CLIQuotaExhaustionClassifier {
                 "cursor agent quota",
                 "cursor agent limit"
             ]
+        case .omp:
+            cliSpecificPatterns = [
+                "omp quota",
+                "oh my pi quota",
+                "omp usage limit",
+                "provider quota"
+            ]
         case .gemini:
             cliSpecificPatterns = [
                 "gemini quota",

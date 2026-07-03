@@ -79,6 +79,37 @@ export interface EnvConfig {
   /** Require a single-use high-risk action nonce on high-risk callables (default false; staged rollout). */
   requireHighRiskNonce: boolean;
 
+  /**
+   * App Check app ids permitted to mint / carry a lower-trust desktop App Check token.
+   * Always includes the Linux and Windows placeholder app ids; extra ids can be added via
+   * `APP_CHECK_ALLOWED_APP_IDS` / `openburnbar.app_check_allowed_app_ids`. This
+   * allowlist gates the greenfield desktop mint paths only — it deliberately does
+   * NOT gate the existing Apple/Android/Web appId-equality binding (see appCheckAttestation.ts),
+   * so Apple clients are unaffected.
+   */
+  allowedAppCheckAppIDs: string[];
+
+  /**
+   * Placeholder / non-prod Firebase App Check app id used by the Windows port
+   * until the real Windows app id is provisioned (AC-012/AC-013). Never a prod id.
+   */
+  windowsAppCheckAppID: string;
+
+  /**
+   * Placeholder / non-prod Firebase App Check app id used by the Linux port
+   * until the real Linux desktop app id is provisioned. Never a prod id.
+   */
+  linuxAppCheckAppID: string;
+
+  /**
+   * Whether the MOCK desktop attestation verifier may be registered. True only in
+   * non-production (emulator/demo/test/dev) config; FORCED false in production so a
+   * mock/unverified attestation claim can never mint a real App Check token. This is
+   * the attestation gate — the mint endpoints themselves stay available for future
+   * real platform verifiers (no blanket `if(prod) disable-endpoint`).
+   */
+  allowMockAppCheckAttestation: boolean;
+
   /** Maximum credential string length (default 8192). */
   maxCredentialLength: number;
 

@@ -256,3 +256,12 @@ docs/security/SOTA_*_SIGNOFF.md
 # from the Vendor/libsignal submodule via Rust+protobuf); multi-GB, never committed.
 Vendor/OpenBurnBarSignalFfiIOS.xcframework/
 Vendor/OpenBurnBarSignalFfiMac.xcframework/
+
+# Regenerable build caches — keep on disk, never commit (added 2026-07-03, Windows-port landing)
+.tmp-openburnbar-iroh-target/
+.swiftpm-linux-build/
+.build-linux*/
+.build-*/
+crates/**/target/
+.serena/cache/
+node_modules/

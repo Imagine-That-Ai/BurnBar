@@ -804,6 +804,14 @@ extension ChatSessionController {
                             model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .omp:
+                        return self.cliBridge.chatOMPStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
                     }
                 }
                 for try await event in stream {
@@ -1059,7 +1067,7 @@ extension ChatSessionController {
                 )
                 return false
             }
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             guard settingsManager.cliAssistantAllowed else {
                 await appendAndPersistAssistantError(
                     "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
@@ -1104,6 +1112,12 @@ extension ChatSessionController {
                 "openclaude",
                 "OpenClaude CLI was not found. Install OpenClaude and ensure `openclaude` is on your PATH.",
                 "OpenClaude not found"
+            )
+        case .omp:
+            requirement = (
+                "omp",
+                "OMP CLI was not found. Install Oh My Pi and ensure `omp` is on your PATH.",
+                "OMP not found"
             )
         case .codex:
             requirement = (

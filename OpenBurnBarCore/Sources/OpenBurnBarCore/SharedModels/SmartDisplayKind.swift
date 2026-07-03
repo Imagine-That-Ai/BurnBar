@@ -77,8 +77,17 @@ public struct SmartDisplayOrder: Codable, Sendable, Equatable {
     /// destination offset. Maintains list-style semantics (destination
     /// may be `count`, meaning "after the last item").
     public mutating func move(fromOffsets sources: IndexSet, toOffset destination: Int) {
+        let orderedSources = sources.sorted()
+        guard !orderedSources.isEmpty else { return }
+
         var copy = kinds
-        copy.move(fromOffsets: sources, toOffset: destination)
+        let movingKinds = orderedSources.map { copy[$0] }
+        for index in orderedSources.reversed() {
+            copy.remove(at: index)
+        }
+
+        let clampedDestination = max(0, min(destination - orderedSources.filter { $0 < destination }.count, copy.count))
+        copy.insert(contentsOf: movingKinds, at: clampedDestination)
         kinds = SmartDisplayOrder.normalize(copy)
     }
 

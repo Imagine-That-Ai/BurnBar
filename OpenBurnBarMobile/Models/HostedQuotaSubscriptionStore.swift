@@ -41,6 +41,11 @@ protocol HostedQuotaEntitlementDirectReading: AnyObject {
     func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse?
 }
 
+@MainActor
+protocol HostedQuotaTierReading: AnyObject {
+    func fetchHostedQuotaTier() async throws -> String?
+}
+
 enum HostedQuotaPurchaseOutcome {
     case success(signedTransactionJWS: String, finish: @MainActor () async -> Void)
     case pending
@@ -297,6 +302,7 @@ final class HostedQuotaSubscriptionStore {
 
     private let functions: any HostedQuotaEntitlementServicing
     private let directReader: (any HostedQuotaEntitlementDirectReading)?
+    private let tierReader: (any HostedQuotaTierReading)?
     private let purchaseProduct: HostedQuotaProductPurchaseExecutor
     private let syncAppStore: HostedQuotaAppStoreSync
     private let fetchProducts: HostedQuotaProductCatalogFetcher
@@ -337,6 +343,7 @@ final class HostedQuotaSubscriptionStore {
     init(
         functions: any HostedQuotaEntitlementServicing = FunctionsRepository.shared,
         directReader: (any HostedQuotaEntitlementDirectReading)? = FirestoreRepository.shared,
+        tierReader: (any HostedQuotaTierReading)? = FunctionsDataVaultService.shared,
         purchaseProduct: @escaping HostedQuotaProductPurchaseExecutor = HostedQuotaSubscriptionStore.purchaseProduct,
         syncAppStore: @escaping HostedQuotaAppStoreSync = HostedQuotaSubscriptionStore.syncAppStore,
         fetchProducts: @escaping HostedQuotaProductCatalogFetcher = HostedQuotaSubscriptionStore.fetchProducts,
@@ -349,6 +356,7 @@ final class HostedQuotaSubscriptionStore {
     ) {
         self.functions = functions
         self.directReader = directReader
+        self.tierReader = tierReader
         self.purchaseProduct = purchaseProduct
         self.syncAppStore = syncAppStore
         self.fetchProducts = fetchProducts
@@ -437,6 +445,9 @@ final class HostedQuotaSubscriptionStore {
                 break
             }
         } catch {
+            if !isTopUp, await recoverExistingEntitlementAfterStoreKitFailure() {
+                return
+            }
             self.error = error.localizedDescription
         }
     }
@@ -477,6 +488,13 @@ final class HostedQuotaSubscriptionStore {
                 return
             }
 
+            if await applyDirectReadIfActive() {
+                return
+            }
+            if await applyServerResolvedTierIfActive() {
+                return
+            }
+
             // 3) No local entitlement — try the server-side fallback
             //    (works only if a prior entitlement doc exists for the
             //    signed-in UID).
@@ -485,7 +503,16 @@ final class HostedQuotaSubscriptionStore {
                 signedTransactionJWS: nil
             )
             apply(response: response)
+            if !isActive {
+                if await applyDirectReadIfActive() {
+                    return
+                }
+                await applyServerResolvedTierIfActive()
+            }
         } catch {
+            if await recoverExistingEntitlementAfterStoreKitFailure() {
+                return
+            }
             // We surface the human-readable form. The server's
             // `failed-precondition` for "no entitlement on file" is
             // expected when a brand-new user taps Restore without ever
@@ -523,6 +550,9 @@ final class HostedQuotaSubscriptionStore {
             if await applyDirectReadIfActive() {
                 return
             }
+            if await applyServerResolvedTierIfActive() {
+                return
+            }
 
             // No local entitlement to surface. Try the server-side
             // restore path so users who previously paid (and have a
@@ -534,13 +564,18 @@ final class HostedQuotaSubscriptionStore {
                 )
                 apply(response: response)
                 if !isActive {
-                    await applyDirectReadIfActive()
+                    if await applyDirectReadIfActive() {
+                        return
+                    }
+                    await applyServerResolvedTierIfActive()
                 }
             } catch {
                 // ASC roundtrip failed (e.g. owner-seeded test entitlement
                 // with no real Apple transaction). Fall back to the same
                 // entitlement doc the Firestore rules use to gate the relay.
-                if !(await applyDirectReadIfActive()) {
+                let directReadRecovered = await applyDirectReadIfActive()
+                let serverTierRecovered = directReadRecovered ? false : await applyServerResolvedTierIfActive()
+                if !directReadRecovered && !serverTierRecovered {
                     isActive = false
                     activeProductID = nil
                     expirationDate = nil
@@ -571,6 +606,44 @@ final class HostedQuotaSubscriptionStore {
         } catch {
             return false
         }
+    }
+
+    /// iOS 27 keeps Firestore networking disabled to avoid a Firebase gRPC crash,
+    /// so direct document reads can miss a live entitlement. The Data Vault
+    /// callable resolves the same tier server-side over the Functions channel.
+    @discardableResult
+    private func applyServerResolvedTierIfActive() async -> Bool {
+        guard let tierReader else { return false }
+        do {
+            guard let tier = try await tierReader.fetchHostedQuotaTier() else {
+                return false
+            }
+            return apply(serverResolvedTier: tier)
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    private func apply(serverResolvedTier rawTier: String) -> Bool {
+        let tier = rawTier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let productID: String
+        switch tier {
+        case "ultra":
+            productID = Self.cloudUltraMonthlyProductID
+        case "pro", "cloud_pro", "cloudpro":
+            productID = Self.cloudProMonthlyProductID
+        case "cloud", "premium":
+            productID = Self.productID
+        default:
+            UltraTierBridge.shared.tier = tier == "free" ? nil : tier
+            return false
+        }
+        UltraTierBridge.shared.tier = tier
+        isActive = true
+        activeProductID = productID
+        expirationDate = nil
+        return true
     }
 
     /// Walk `Transaction.currentEntitlements` and return the JWS of the
@@ -690,7 +763,33 @@ final class HostedQuotaSubscriptionStore {
         } catch {
             // Fall through to the Firestore read used by relay security rules.
         }
-        return await applyDirectReadIfActive()
+        if await applyDirectReadIfActive() {
+            return true
+        }
+        return await applyServerResolvedTierIfActive()
+    }
+
+    private func recoverExistingEntitlementAfterStoreKitFailure() async -> Bool {
+        guard isSignedIn() else { return false }
+        if await applyDirectReadIfActive() {
+            error = nil
+            return true
+        }
+        if await applyServerResolvedTierIfActive() {
+            error = nil
+            return true
+        }
+        do {
+            try await refreshEntitlement()
+            if isActive {
+                error = nil
+                return true
+            }
+        } catch {
+            // Keep the original StoreKit-facing error unless the recovery path
+            // finds a live server entitlement.
+        }
+        return false
     }
 
     private func apply(response: HostedQuotaEntitlementResponse) {
@@ -700,6 +799,28 @@ final class HostedQuotaSubscriptionStore {
         isActive = active
         activeProductID = active ? response.productID : nil
         expirationDate = active ? response.expiresAt : nil
+        UltraTierBridge.shared.tier = active ? Self.resolvedTierName(for: response.productID) : nil
+    }
+
+    private static func resolvedTierName(for productID: String) -> String? {
+        if productID == Self.cloudUltraMonthlyProductID || productID == Self.cloudUltraAnnualProductID {
+            return "ultra"
+        }
+        if productID == Self.cloudProMonthlyProductID ||
+            productID == Self.cloudProAnnualProductID ||
+            productID == Self.legacyProMaxProductID ||
+            productID == Self.proMaxProductID ||
+            productID == Self.legacyHostedComputerUseProductID ||
+            productID == Self.hostedComputerUseProductID {
+            return "pro"
+        }
+        if productID == Self.productID ||
+            productID == Self.cloudAnnualProductID ||
+            productID == Self.legacyHostedQuotaProductID ||
+            productID == Self.legacyHostedQuotaOriginalProductID {
+            return "cloud"
+        }
+        return nil
     }
 
     var isActivePro: Bool {

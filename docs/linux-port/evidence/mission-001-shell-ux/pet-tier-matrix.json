@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-07-03T11:36:59.675Z",
+  "lane": "W06LinuxShellUx",
+  "pet": [
+    {
+      "desktop": "KDE Wayland",
+      "tier": "overlay-pass-through",
+      "evidence": "Always-on-top pass-through tier allowed when compositor/window manager supports it."
+    },
+    {
+      "desktop": "GNOME Wayland",
+      "tier": "draggable-contained",
+      "evidence": "Degraded contained tier; no silent click-through claim."
+    },
+    {
+      "desktop": "X11 session",
+      "tier": "overlay-pass-through",
+      "evidence": "Legacy X11 window managers may support pass-through; user can fall back to contained route."
+    }
+  ]
+}

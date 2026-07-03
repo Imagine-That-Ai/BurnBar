@@ -141,25 +141,16 @@ struct SettingsView: View {
 
     private func sidebarRow(for tab: SettingsTab) -> some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-            if tab.logoProviders.isEmpty {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(tab.accentColor)
-                        .frame(width: 28, height: 28)
-                    if let customIcon = tab.customIcon {
-                        Image(customIcon)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 18, height: 18)
-                    } else {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                }
-            } else {
+            if !tab.logoProviders.isEmpty {
                 SettingsProviderLogoStack(providers: tab.logoProviders, size: 26, maxVisible: 5)
                     .accessibilityHidden(true)
+            } else {
+                SettingsIconTile(
+                    icon: tab.icon,
+                    iconTint: tab.accentColor,
+                    customIcon: tab.customIcon,
+                    symbolSize: 13
+                )
             }
 
             VStack(alignment: .leading, spacing: 2) {

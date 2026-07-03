@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable IPC handshake core for the Windows PAL (W1 / VAL-P0-CONPTY-018).
+
+    This library holds the PLATFORM-INDEPENDENT half of the app<->daemon named-pipe
+    peer-auth handshake: the signed-nonce challenge/response state machine, its
+    domain-separated transcript, and the crypto/clock/RNG seams it depends on.
+
+    It targets plain net10.0 (no Windows TFM, zero P/Invoke, zero OS calls) on
+    purpose: the same assembly compiles and its logic is unit-tested on the macOS
+    authoring host today (VAL-P0-CONPTY-018), then the Windows harness
+    (OpenBurnBar.Pal.Ipc.Windows, net10.0-windows) plugs CNG-backed credentials
+    into it for the live proof on a Windows dev host (VAL-P0-CONPTY-019).
+
+    Design note: docs/windows-port/design/0004-named-pipe-peer-auth.md
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Pal.Ipc</RootNamespace>
+    <AssemblyName>OpenBurnBar.Pal.Ipc</AssemblyName>
+  </PropertyGroup>
+
+</Project>

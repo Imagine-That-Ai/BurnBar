@@ -1,5 +1,8 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 public typealias BurnBarConnectorTransport = @Sendable (_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
 

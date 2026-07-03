@@ -1,0 +1,172 @@
+name: PR Windows Fast Gate
+
+# Skeleton PR gate for the greenfield Windows port tree (windows/).
+#
+# The full harness (openburnbar-pr-harness.yml) is post-merge/nightly, not a PR
+# gate, so this workflow gives the Windows lane a REAL pull_request gate today.
+# It is intentionally a skeleton:
+#   - a cheap ubuntu path-filter detects whether a PR touched windows/ (or the
+#     Windows CI/budget wiring), so non-Windows PRs skip the windows-latest job;
+#   - a windows-latest job mirrors the future build/lint/test phases but runs
+#     skeleton placeholders on the greenfield tree. Real windows-latest execution
+#     (msbuild/dotnet over the WinUI projects added by WINUI-016) is proven by
+#     CI-003;
+#   - an aggregate gate reports one required status (passes on success OR a
+#     correct skip), mirroring pr-native-fast.yml's semantics.
+#
+# The Rust crate-build workflows (build-iroh-windows.yml /
+# build-burnbar-remote-windows.yml) that produce the *-pc-windows-msvc artifacts
+# are owned by W-RUST / RUST-005 and are only referenced here, never invoked.
+#
+# The blocking Windows per-tree budget ratchet runs in fast-feedback.yml's
+# debt-budgets job; this workflow is the dedicated skeleton build/lint/test lane.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-windows-fast-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ── Cheap detector: did this PR touch the Windows tree or its CI/budget wiring? ──
+  # Runs on ubuntu so the windows-latest skeleton lane only spins up when a PR
+  # actually changes windows/ (or its wiring). For merge_group (and any non-PR
+  # trigger) the gate always runs.
+  detect-windows-changes:
+    name: Detect Windows changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      windows: ${{ steps.filter.outputs.windows }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          # PR checkouts use GitHub's synthetic merge commit. Depth 2 includes
+          # that merge commit plus its base/head parents — all this detector needs.
+          fetch-depth: 2
+
+      - name: Determine whether Windows paths changed
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Non-PR triggers (merge_group / manual) always run the Windows gate.
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            echo "windows=true" >> "$GITHUB_OUTPUT"
+            echo "Event ${EVENT_NAME}: running Windows gate unconditionally."
+            exit 0
+          fi
+
+          base="${BASE_SHA}"
+          head="${HEAD_SHA}"
+
+          if git cat-file -e "HEAD^1^{commit}" 2>/dev/null && \
+             git cat-file -e "HEAD^2^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only HEAD^1 HEAD^2)"
+          elif git cat-file -e "${base}^{commit}" 2>/dev/null && \
+               git cat-file -e "${head}^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only "${base}" "${head}")"
+          else
+            echo "windows=true" >> "$GITHUB_OUTPUT"
+            echo "Could not resolve merge parents or base/head commits; running Windows gate to stay fail-safe."
+            exit 0
+          fi
+          echo "Changed files:"
+          echo "${changed}"
+
+          if echo "${changed}" | grep -Eq \
+            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh)'; then
+            echo "windows=true" >> "$GITHUB_OUTPUT"
+            echo "Windows surface changed: running the skeleton build/lint/test lane."
+          else
+            echo "windows=false" >> "$GITHUB_OUTPUT"
+            echo "No Windows surface changed: skipping the windows-latest lane (aggregate still passes)."
+          fi
+
+  # ── PR-GATED (skeleton): windows-latest build + lint + unit ─────────────────
+  # Mirrors the future Windows phase structure. Real toolchain execution is
+  # CI-003; today these steps assert the tree/solution exist and echo the phases.
+  windows-skeleton:
+    name: Windows skeleton (build + lint + test)
+    needs: detect-windows-changes
+    if: needs.detect-windows-changes.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Verify Windows source tree + aggregating solution
+        run: |
+          set -euo pipefail
+          test -f windows/OpenBurnBar.sln
+          test -f windows/README.md
+          for area in app pal native tests; do
+            test -d "windows/${area}"
+          done
+          echo "Windows tree + OpenBurnBar.sln present (app / pal / native / tests)."
+
+      - name: Build (skeleton — real msbuild/dotnet lands in CI-003)
+        run: |
+          echo "SKELETON build: WinUI app + PAL + native shim compile once WINUI-016 adds projects to windows/OpenBurnBar.sln."
+
+      - name: Lint (skeleton — real analyzers land in CI-003)
+        run: |
+          echo "SKELETON lint: dotnet format / Roslyn analyzers over windows/ once projects exist."
+
+      - name: Unit tests (skeleton — real test run lands in CI-003)
+        run: |
+          echo "SKELETON unit tests: run the windows/tests projects once they exist."
+
+  # ── Aggregate gate ─────────────────────────────────────────────────────────
+  # Single required status. Passes when the skeleton lane succeeds OR when it was
+  # skipped because the PR touched no Windows surface. Fails if it failed or was
+  # cancelled. Mirrors pr-native-gate semantics.
+  pr-windows-gate:
+    name: PR Windows Gate
+    needs:
+      - detect-windows-changes
+      - windows-skeleton
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check Windows jobs passed (or were correctly skipped)
+        env:
+          DETECT_RESULT: ${{ needs.detect-windows-changes.result }}
+          SKELETON_RESULT: ${{ needs.windows-skeleton.result }}
+        run: |
+          set -euo pipefail
+          echo "detect-windows-changes: ${DETECT_RESULT}"
+          echo "windows-skeleton: ${SKELETON_RESULT}"
+
+          # The detector itself must have succeeded; a 'skipped' here would mean
+          # the path filter never ran, so the downstream skip cannot be trusted.
+          if [[ "${DETECT_RESULT}" != "success" ]]; then
+            echo "::error::detect-windows-changes did not succeed (${DETECT_RESULT})."
+            exit 1
+          fi
+
+          # success and skipped are both acceptable for the windows-latest job
+          # (skipped == no Windows surface changed). Anything else is a hard fail.
+          if [[ "${SKELETON_RESULT}" != "success" && "${SKELETON_RESULT}" != "skipped" ]]; then
+            echo "::error::The Windows skeleton lane failed (result=${SKELETON_RESULT})."
+            exit 1
+          fi
+
+          echo "### PR Windows Gate: skeleton build/lint/test checks passed" >> "$GITHUB_STEP_SUMMARY"
