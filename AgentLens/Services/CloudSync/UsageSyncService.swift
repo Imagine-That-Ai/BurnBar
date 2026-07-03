@@ -47,6 +47,8 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         defer { state.endSyncing() }
 
         do {
+            await publishSyncHeartbeatBestEffort(uid: uid, deviceId: deviceId, collectionsInSync: [])
+
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
             let resolvedVaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
 
@@ -93,6 +95,17 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
             await recordSyncError(error)
+        }
+    }
+
+    private func publishSyncHeartbeatBestEffort(uid: String, deviceId: String, collectionsInSync: [String]) async {
+        do {
+            try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: collectionsInSync)
+        } catch {
+            AppLogger.sync.error(
+                "usage_sync_heartbeat_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
         }
     }
 
