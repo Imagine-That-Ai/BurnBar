@@ -84,21 +84,21 @@
       "provider": "Codex",
       "parser": "CodexParser",
       "files": [{ "role": "primary", "name": "pc-codex-rollout-session.jsonl" }],
-      "layout": { "kind": "codex", "threadId": "codex-contract-001", "model": "openai/gpt-5.2-codex", "tokensUsed": 176, "createdAt": 1766577600, "updatedAt": 1766577660, "cwd": "/tmp/OpenBurnBar", "rolloutRelativePath": ".codex/sessions/2025/12/24/rollout-2025-12-24T12-00-00.jsonl", "threadsDb": ".codex/state_5.sqlite" }
+      "layout": { "kind": "codex", "threadId": "codex-contract-001", "model": "openai/gpt-5.2-codex", "tokensUsed": 176, "createdAt": 1766577600, "updatedAt": 1766577660, "cwd": "/tmp/OpenBurnBar", "rolloutRelativePath": "sessions/2025/12/24/rollout-2025-12-24T12-00-00.jsonl", "threadsDb": ".codex/state_5.sqlite" }
     },
     {
       "id": "codexRolloutSessionWithLastUsageOnly",
       "provider": "Codex",
       "parser": "CodexParser",
       "files": [{ "role": "primary", "name": "pc-codex-last-usage-only.jsonl" }],
-      "layout": { "kind": "codex", "threadId": "codex-contract-002", "model": "openai/gpt-5.2-codex", "tokensUsed": 176, "createdAt": 1766664000, "updatedAt": 1766664060, "cwd": "/tmp/OpenBurnBar", "rolloutRelativePath": ".codex/sessions/2025/12/25/rollout-2025-12-25T12-00-00.jsonl", "threadsDb": ".codex/state_5.sqlite" }
+      "layout": { "kind": "codex", "threadId": "codex-contract-002", "model": "openai/gpt-5.2-codex", "tokensUsed": 176, "createdAt": 1766664000, "updatedAt": 1766664060, "cwd": "/tmp/OpenBurnBar", "rolloutRelativePath": "sessions/2025/12/25/rollout-2025-12-25T12-00-00.jsonl", "threadsDb": ".codex/state_5.sqlite" }
     },
     {
       "id": "codexRolloutSessionWithPartialTokenCountAndDeltas",
       "provider": "Codex",
       "parser": "CodexParser",
       "files": [{ "role": "primary", "name": "pc-codex-partial-token-count.jsonl" }],
-      "layout": { "kind": "codex", "threadId": "codex-contract-003", "model": "openai/gpt-5.2-codex", "tokensUsed": 176, "createdAt": 1766750000, "updatedAt": 1766750060, "cwd": "/tmp/OpenBurnBar", "rolloutRelativePath": ".codex/sessions/2025/12/26/rollout-2025-12-26T12-00-00.jsonl", "threadsDb": ".codex/state_5.sqlite" }
+      "layout": { "kind": "codex", "threadId": "codex-contract-003", "model": "openai/gpt-5.2-codex", "tokensUsed": 176, "createdAt": 1766750000, "updatedAt": 1766750060, "cwd": "/tmp/OpenBurnBar", "rolloutRelativePath": "sessions/2025/12/26/rollout-2025-12-26T12-00-00.jsonl", "threadsDb": ".codex/state_5.sqlite" }
     },
     {
       "id": "hermesSessionSnapshot",

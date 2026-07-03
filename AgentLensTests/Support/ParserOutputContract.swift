@@ -97,12 +97,25 @@ enum ParserOutputContract {
         return Int(scaled)
     }
 
-    /// Deterministic ordering of usage rows within a fixture so parser
+    /// Deterministic total ordering of usage rows within a fixture so parser
     /// directory-iteration order can never perturb the golden.
     static func sortedUsages(_ records: [ParserOutputContractRecord]) -> [ParserOutputContractRecord] {
         records.sorted { lhs, rhs in
-            (lhs.sessionId, lhs.model, lhs.inputTokens, lhs.outputTokens, lhs.totalTokens)
-                < (rhs.sessionId, rhs.model, rhs.inputTokens, rhs.outputTokens, rhs.totalTokens)
+            if lhs.provider != rhs.provider { return lhs.provider < rhs.provider }
+            if lhs.sessionId != rhs.sessionId { return lhs.sessionId < rhs.sessionId }
+            if lhs.projectName != rhs.projectName { return lhs.projectName < rhs.projectName }
+            if lhs.model != rhs.model { return lhs.model < rhs.model }
+            if lhs.inputTokens != rhs.inputTokens { return lhs.inputTokens < rhs.inputTokens }
+            if lhs.outputTokens != rhs.outputTokens { return lhs.outputTokens < rhs.outputTokens }
+            if lhs.cacheCreationTokens != rhs.cacheCreationTokens { return lhs.cacheCreationTokens < rhs.cacheCreationTokens }
+            if lhs.cacheReadTokens != rhs.cacheReadTokens { return lhs.cacheReadTokens < rhs.cacheReadTokens }
+            if lhs.reasoningTokens != rhs.reasoningTokens { return lhs.reasoningTokens < rhs.reasoningTokens }
+            if lhs.totalTokens != rhs.totalTokens { return lhs.totalTokens < rhs.totalTokens }
+            if lhs.costNanoUSD != rhs.costNanoUSD { return lhs.costNanoUSD < rhs.costNanoUSD }
+            if lhs.usageSource != rhs.usageSource { return lhs.usageSource < rhs.usageSource }
+            if lhs.provenanceMethod != rhs.provenanceMethod { return lhs.provenanceMethod < rhs.provenanceMethod }
+            if lhs.provenanceConfidence != rhs.provenanceConfidence { return lhs.provenanceConfidence < rhs.provenanceConfidence }
+            return lhs.estimatorVersion < rhs.estimatorVersion
         }
     }
 
