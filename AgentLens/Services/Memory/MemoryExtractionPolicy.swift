@@ -30,6 +30,11 @@ enum MemoryExtractionPolicy {
     /// scheduled drain. Mirrors `AutoSummaryPolicy.maxBatchSize`.
     static let maxJobsPerPump = 8
 
+    /// Delay before a bounded pump schedules its own follow-up after hitting the job
+    /// ceiling or deadline. Keeps each pump bounded while allowing persisted startup
+    /// backlog to drain without waiting for an unrelated future chat commit.
+    static let continuationDelay: TimeInterval = 1
+
     /// Per-pump wall-clock deadline (PR-D2 must-fix #6). The pump stops claiming new
     /// jobs once this elapses, even if `maxJobsPerPump` is not reached, so a slow
     /// provider chain cannot monopolize the loop. The per-JOB wall clock is bounded
