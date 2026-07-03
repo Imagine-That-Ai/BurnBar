@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -55,34 +55,61 @@ import type {
   BurnBarControllerSummaryResponse
 } from '../types';
 
-const DEFAULT_BURNBAR_SOCKET_PATH = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'OpenBurnBar',
-  'openburnbar-daemon.sock'
-);
 const DEFAULT_BURNBAR_SUPPORT_DIR = join(homedir(), 'Library', 'Application Support', 'OpenBurnBar');
-const DEFAULT_BURNBAR_SOCKET_AUTH_TOKEN_FILE = join(DEFAULT_BURNBAR_SUPPORT_DIR, 'daemon-socket-auth-token');
 const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(homedir(), 'Library', 'LaunchAgents', 'com.openburnbar.daemon.plist');
 const DEFAULT_MAX_IN_FLIGHT = 8;
 
+export interface OpenBurnBarDaemonRuntimePathInput {
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform | string;
+  homeDir?: string;
+  uid?: number;
+}
+
+export interface OpenBurnBarDaemonRuntimePaths {
+  socketPath: string;
+  authTokenFilePath: string;
+  supportDir: string;
+  launchAgentPlistPath?: string;
+}
+
+export function resolveOpenBurnBarDaemonRuntimePaths(
+  input: OpenBurnBarDaemonRuntimePathInput = {}
+): OpenBurnBarDaemonRuntimePaths {
+  const env = input.env ?? process.env;
+  const platform = input.platform ?? process.platform;
+  const homeDir = input.homeDir ?? homedir();
+  const supportDirOverride = env.OPENBURNBAR_DAEMON_SUPPORT_DIR ?? env.BURNBAR_DAEMON_SUPPORT_DIR;
+  const socketPathOverride = env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? env.BURNBAR_DAEMON_SOCKET_PATH;
+  const authTokenFileOverride =
+    env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ?? env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE;
+
+  if (platform === 'linux') {
+    const runtimeRoot = env.XDG_RUNTIME_DIR?.trim() || join(tmpdir(), `openburnbar-${input.uid ?? 'user'}`);
+    const stateRoot = env.XDG_STATE_HOME?.trim() || join(homeDir, '.local', 'state');
+    const supportDir = supportDirOverride ?? join(stateRoot, 'openburnbar');
+    return {
+      socketPath: socketPathOverride ?? join(runtimeRoot, 'openburnbar', 'openburnbar-daemon.sock'),
+      authTokenFilePath: authTokenFileOverride ?? join(supportDir, 'daemon-socket-auth-token'),
+      supportDir
+    };
+  }
+
+  const supportDir = supportDirOverride ?? DEFAULT_BURNBAR_SUPPORT_DIR;
+  return {
+    socketPath: socketPathOverride ?? join(supportDir, 'openburnbar-daemon.sock'),
+    authTokenFilePath: authTokenFileOverride ?? join(supportDir, 'daemon-socket-auth-token'),
+    supportDir,
+    launchAgentPlistPath: DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST
+  };
+}
+
 function resolveDefaultSocketPath(): string {
-  return (
-    process.env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? process.env.BURNBAR_DAEMON_SOCKET_PATH ?? DEFAULT_BURNBAR_SOCKET_PATH
-  );
+  return resolveOpenBurnBarDaemonRuntimePaths().socketPath;
 }
 
 function resolveDefaultAuthTokenFilePath(): string {
-  return (
-    process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ??
-    process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ??
-    (process.env.OPENBURNBAR_DAEMON_SUPPORT_DIR
-      ? join(process.env.OPENBURNBAR_DAEMON_SUPPORT_DIR, 'daemon-socket-auth-token')
-      : process.env.BURNBAR_DAEMON_SUPPORT_DIR
-        ? join(process.env.BURNBAR_DAEMON_SUPPORT_DIR, 'daemon-socket-auth-token')
-        : DEFAULT_BURNBAR_SOCKET_AUTH_TOKEN_FILE)
-  );
+  return resolveOpenBurnBarDaemonRuntimePaths().authTokenFilePath;
 }
 
 function readTrimmedFile(path: string): string | undefined {
@@ -106,7 +133,11 @@ function resolveDefaultAuthToken(): string | undefined {
   }
 
   try {
-    const plist = readFileSync(DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST, 'utf8');
+    const plistPath = resolveOpenBurnBarDaemonRuntimePaths().launchAgentPlistPath;
+    if (!plistPath) {
+      return undefined;
+    }
+    const plist = readFileSync(plistPath, 'utf8');
     const match = plist.match(/<key>OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN<\/key>\s*<string>([^<]+)<\/string>/);
     return match?.[1]?.trim() || undefined;
   } catch {
