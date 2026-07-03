@@ -23,7 +23,6 @@
 		01783DB2A2E1F6A97380EA04 /* test_miniSparkline_rising.miniSparkline-rising-light.png in Resources */ = {isa = PBXBuildFile; fileRef = 353A7E4FC3803EAADCD50330 /* test_miniSparkline_rising.miniSparkline-rising-light.png */; };
 		017B435388ECE1B889AB69B5 /* VirtualHIDCapabilityDispatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631C4AF6FD2AABEED3257585 /* VirtualHIDCapabilityDispatch.swift */; };
 		01A1A438EE19DE944DE90141 /* DataStoreStartupRecoveryViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FD73D2F4621AFA82F7195E /* DataStoreStartupRecoveryViewTests.swift */; };
-		01AC55EDF165F334FF9146ED /* CommandDeckPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C37E4BF87EBE24F471A9E8B /* CommandDeckPalette.swift */; };
 		01BB7BABAC6B851A2057F0D4 /* MediaControlStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FE486D4A75385C7BDDA62CF /* MediaControlStreamCoordinator.swift */; };
 		01C44CB6243A06C7F7A2687A /* FusionImpactLedgerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76817EB7DF44621504559F85 /* FusionImpactLedgerTests.swift */; };
 		021CB6ACCE34083BF677EBBA /* FactorySessionClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40365EF9A8AF71E32DFC869C /* FactorySessionClassifier.swift */; };
@@ -524,6 +523,7 @@
 		3BB9598ABC1CD63D01E9F88B /* VectorSemanticProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F58C33AAA25B82EF7D2239 /* VectorSemanticProvider.swift */; };
 		3BBBD1F7F2B79DA57499C855 /* CursorConnectorManager+SecretBroker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9727C1A88EEC936EE5C963C5 /* CursorConnectorManager+SecretBroker.swift */; };
 		3BDCB56C8D9CF77383BD7378 /* AuroraSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533B2F243C1E772CDE2ACB9F /* AuroraSection.swift */; };
+		3BF5AF33FD6271CC53EB360D /* DashboardNavigationModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8C93BE114A2CBE76A40A56 /* DashboardNavigationModelTests.swift */; };
 		3C213F40B66FECC7110BAE25 /* VoiceIntentBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B642B0A96F46F5BA9F94C79B /* VoiceIntentBanner.swift */; };
 		3C23ACE63BA33B4B2DB9DEEA /* PetCompanionFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B30BD6EC1D0201E4187A931 /* PetCompanionFeature.swift */; };
 		3C3BAACE8AEC36CE3EC17287 /* DeterministicEmbeddingProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F043566936750728A8A885 /* DeterministicEmbeddingProviders.swift */; };
@@ -722,6 +722,7 @@
 		5636438F228E3EDE82966E74 /* CLIAgentMissionRequestListener+WandRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10C94648DE436254F968480 /* CLIAgentMissionRequestListener+WandRouting.swift */; };
 		56760F7B21ADAE3D0D85D788 /* EscrowRevocationWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B294D64D39523302F523A3 /* EscrowRevocationWatcher.swift */; };
 		56A6908C08600D40A9D9BD76 /* DataControlCenterTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D97CA78C4281EC89B7C4BDC /* DataControlCenterTheme.swift */; };
+		56CE4F60894C0E832918AC10 /* DashboardSectionSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB4A16934D46B016E929859 /* DashboardSectionSwitcher.swift */; };
 		56D03956149FB952F9CD6256 /* BurnBarConnectorPlaneURLValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893AF708EF42B5D4FA1B2EBB /* BurnBarConnectorPlaneURLValidationTests.swift */; };
 		56DFC307AFBAC9DE248434ED /* ProviderUsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB32DCAD61B1B0510FF11A2 /* ProviderUsageAPIService.swift */; };
 		56F3E43BB320F7F20F72F1EB /* retrieval-degraded-fallback.json in Resources */ = {isa = PBXBuildFile; fileRef = 125837E90F527D4A217B5981 /* retrieval-degraded-fallback.json */; };
@@ -1578,6 +1579,7 @@
 		BEA3E346193D99DD42E185D0 /* MercuryBadgePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05FD03D79F84E03BE4558CE /* MercuryBadgePicker.swift */; };
 		BEB377EB2E187EFEE04E0A81 /* SummaryAPIKeyResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55B3530BD4852334409BBC4 /* SummaryAPIKeyResolver.swift */; };
 		BEFFB1213CD316EE22BA2D52 /* RestrictedLogPathValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F2D6CF97BE26924F280D31 /* RestrictedLogPathValidatorTests.swift */; };
+		BF3585FAE8065CFAEBC3F89E /* CommandDeckPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4507D8F751656ED5ACDC688F /* CommandDeckPalette.swift */; };
 		BF36F8EE9337E373CA9D1028 /* EmbeddingProviderProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E12B438F0635692EE3E1BEA0 /* EmbeddingProviderProtocol.swift */; };
 		BF3AF223B750465073DDB359 /* HermesQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD16ED2F1D5C25CCA115829D /* HermesQuotaAdapter.swift */; };
 		BF5D672BE423535C7EC97D91 /* EmberBackdropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B455685AB374B871B6AC8C /* EmberBackdropTests.swift */; };
@@ -1898,7 +1900,6 @@
 		E30A369712CA4311AEF88359 /* ModelProviderLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A384D513ACF0354DDC6A2DDC /* ModelProviderLogoView.swift */; };
 		E3161FFC87D848C4915A9F0D /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B8CC3DB9D7E9365BCAB98EE1 /* UserNotifications.framework */; };
 		E317288AFDA8C5A484F298CA /* ElderWandSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447AF23C2987363EF3AC4B4B /* ElderWandSettings.swift */; };
-		E35C5935088075757D3B9E0B /* DashboardSectionSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 747D82BD076CD430E35F6285 /* DashboardSectionSwitcher.swift */; };
 		E39BF9ADE3BBBEEA8BA6BE10 /* BurnBarProjectCodeMemoryStore+Queries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9701D7264689D2CFF2F82A /* BurnBarProjectCodeMemoryStore+Queries.swift */; };
 		E39FC60FF24FB1712E7AC2AA /* IndexEmbeddingProviderID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515BCF65C6C0D1D29AF4F8F1 /* IndexEmbeddingProviderID.swift */; };
 		E3DD337B4899C00E6834CA8B /* HermesTabView+MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79CF9080C060A6AAED003204 /* HermesTabView+MessageBubble.swift */; };
@@ -2633,6 +2634,7 @@
 		2DDBA3FEAD1455D1A7AA6227 /* KimiParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KimiParser.swift; sourceTree = "<group>"; };
 		2DEF207ADA7CF8724EA2B687 /* MobileCloudVaultRotationPickupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCloudVaultRotationPickupTests.swift; sourceTree = "<group>"; };
 		2DFD3B4E137B70BC6DE03CA6 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
+		2E8C93BE114A2CBE76A40A56 /* DashboardNavigationModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardNavigationModelTests.swift; sourceTree = "<group>"; };
 		2E91EF1E420B345B6A666328 /* MobileWizardComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWizardComponents.swift; sourceTree = "<group>"; };
 		2E955F9A39FDDAA9DBCAD8E1 /* ClaudeCodeParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeParser.swift; sourceTree = "<group>"; };
 		2E977E87D5FFB8BAD30E4965 /* LocalNetworkDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkDiscovery.swift; sourceTree = "<group>"; };
@@ -2822,6 +2824,7 @@
 		44F4CB21408E04B265F8FA96 /* MobileMediaBudgetStatusStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileMediaBudgetStatusStore.swift; sourceTree = "<group>"; };
 		44F59ABA1137B8BA3165C1AD /* MacInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacInputController.swift; sourceTree = "<group>"; };
 		44FCD6684A7CB309C37F928C /* BudgetEnforcement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetEnforcement.swift; sourceTree = "<group>"; };
+		4507D8F751656ED5ACDC688F /* CommandDeckPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandDeckPalette.swift; sourceTree = "<group>"; };
 		451B6B1DCF1036602BD14D9D /* signals.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = signals.json; sourceTree = "<group>"; };
 		45587EEE278A6A22412A333C /* PixelClockFirmwareFlasher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelClockFirmwareFlasher.swift; sourceTree = "<group>"; };
 		45801A099E26CADD7A4AC551 /* MissionControlTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlTransport.swift; sourceTree = "<group>"; };
@@ -3203,7 +3206,6 @@
 		7449DA2D84E17F3EAF8B1407 /* MobileComputerUseRemoteConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileComputerUseRemoteConfig.swift; sourceTree = "<group>"; };
 		74764E11271AB24D2F591B3C /* HomeAssistantConfigStoreMattersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantConfigStoreMattersTests.swift; sourceTree = "<group>"; };
 		747A4B6A2B60444C6E31C740 /* VibeProxyMigrationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeProxyMigrationService.swift; sourceTree = "<group>"; };
-		747D82BD076CD430E35F6285 /* DashboardSectionSwitcher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DashboardSectionSwitcher.swift; sourceTree = "<group>"; };
 		751AB22DFD33D8774CE5181B /* SettingsAnchorModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAnchorModifiers.swift; sourceTree = "<group>"; };
 		75234823D75936E702BF46C3 /* pc-claude-cache-tokens.jsonl */ = {isa = PBXFileReference; path = "pc-claude-cache-tokens.jsonl"; sourceTree = "<group>"; };
 		7526D4CB0022B9E8F4051E76 /* RefreshBackgroundWork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshBackgroundWork.swift; sourceTree = "<group>"; };
@@ -3265,7 +3267,6 @@
 		7BF22E7C8640ED2B3A110383 /* EntitlementsAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementsAPI.swift; sourceTree = "<group>"; };
 		7BFEC9F4A72CAF655B2BAD1B /* ChatTilesSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTilesSettingsView.swift; sourceTree = "<group>"; };
 		7C1239D91C79E0EED5BB3810 /* OpenBurnBarWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OpenBurnBarWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		7C37E4BF87EBE24F471A9E8B /* CommandDeckPalette.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CommandDeckPalette.swift; sourceTree = "<group>"; };
 		7C8459B2E9084D9878961C10 /* BillingRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingRefreshCoordinator.swift; sourceTree = "<group>"; };
 		7CCAE190BA1981E9BE94C78F /* OpenBurnBarContextSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarContextSelector.swift; sourceTree = "<group>"; };
 		7CF0527476C24894E590AC55 /* DatabaseByteCompatVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseByteCompatVectorTests.swift; sourceTree = "<group>"; };
@@ -3401,6 +3402,7 @@
 		8D8581CDCA2D2B11C4D36D50 /* HomeAssistantRecoveryWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantRecoveryWizardView.swift; sourceTree = "<group>"; };
 		8D8FA436A31CC762EF50D12D /* AppearanceMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceMode.swift; sourceTree = "<group>"; };
 		8D97624563A0B67A7988A481 /* MANIFEST.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = MANIFEST.json; sourceTree = "<group>"; };
+		8DB4A16934D46B016E929859 /* DashboardSectionSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSectionSwitcher.swift; sourceTree = "<group>"; };
 		8DD413F53C19DB6C6E9B5D68 /* DirectDownloadReleaseMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectDownloadReleaseMetadata.swift; sourceTree = "<group>"; };
 		8DDD78C272747496AD869A7B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		8E1BB23607A24B250F95BD8E /* AssistantModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantModelCatalogTests.swift; sourceTree = "<group>"; };
@@ -5003,6 +5005,7 @@
 				05E46AB7A84398DB8DF0946E /* BurnBarTopRail.swift */,
 				E57FD77E72E88327A31F45CA /* BurnRailBudgetChip.swift */,
 				7257257CF3F069F34D2C5C28 /* CacheHitRateView.swift */,
+				4507D8F751656ED5ACDC688F /* CommandDeckPalette.swift */,
 				031913828125C6D25DFE02CA /* ConstellationBackgroundView.swift */,
 				2F1F300446BCD0B872E4614C /* DashboardChromeComponents.swift */,
 				5738D410BCCB5EDE1D9A40B9 /* DashboardContext.swift */,
@@ -5010,6 +5013,7 @@
 				268AA26568D1DB700D2CBF28 /* DashboardDeviceBreakdownCard.swift */,
 				8B232D75F3F8FB247B8D97E4 /* DashboardLiveCostCurve.swift */,
 				EFC21D0FB2A8E8A6888FF3F8 /* DashboardQuickSwitchView.swift */,
+				8DB4A16934D46B016E929859 /* DashboardSectionSwitcher.swift */,
 				B60B52A7E887299692C5BD50 /* DashboardSidebarComponents.swift */,
 				838BF13BC43DE5602751F054 /* DashboardSummarizingComponents.swift */,
 				E38208E4A24FF8F1DF9A2BCB /* DashboardToolbarAndBackdrop.swift */,
@@ -5017,8 +5021,6 @@
 				723A58867A3712FC44EF1E05 /* EasterEggOverlay.swift */,
 				D77F929B0D346D2383461D39 /* EasterEggScene.swift */,
 				079B18437A50CA8230C828CE /* KernelBackdropView.swift */,
-				7C37E4BF87EBE24F471A9E8B /* CommandDeckPalette.swift */,
-				747D82BD076CD430E35F6285 /* DashboardSectionSwitcher.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -7087,6 +7089,7 @@
 				947AB0A3309882400E243978 /* CloudSyncHealthStoreTests.swift */,
 				9E587FEDEC5DD035E396BA94 /* CloudVaultGatewayErrorTests.swift */,
 				CEF98A606992DE0A7AAFE1D3 /* ConversationCockpitAuthTests.swift */,
+				2E8C93BE114A2CBE76A40A56 /* DashboardNavigationModelTests.swift */,
 				DD3F6BD1A45442D11B2AB3FB /* DashboardStoreToggleTests.swift */,
 				800527800ACCAC4FDB84D21A /* DevicesStoreTests.swift */,
 				FBC74BFC9266453D2FCA2AC3 /* EasterEggSceneTests.swift */,
@@ -8234,6 +8237,8 @@
 				DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */,
 			);
 			name = OpenBurnBarRemoteAccessAgentCore;
+			packageProductDependencies = (
+			);
 			productName = OpenBurnBarRemoteAccessAgentCore;
 			productReference = E6AAF4EFE99D7BDC9691A028 /* libOpenBurnBarRemoteAccessAgentCore.a */;
 			productType = "com.apple.product-type.library.static";
@@ -8446,6 +8451,8 @@
 				65381FC60CCDA6ECB17D631F /* PBXTargetDependency */,
 			);
 			name = OpenBurnBarMobileUITests;
+			packageProductDependencies = (
+			);
 			productName = OpenBurnBarMobileUITests;
 			productReference = 2BE2310D9C9BC8E3EEED5A75 /* OpenBurnBarMobileUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -8621,7 +8628,7 @@
 				150744FEC62A2DC96820D349 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				66616F71327507BA8EFA1E89 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */,
 				0E1D99B265AABACCACDA6E07 /* XCRemoteSwiftPackageReference "ViewInspector" */,
-				1E1D262540962C6A02A311A7 /* XCLocalSwiftPackageReference "GRDB-SQLCipher" */,
+				1E1D262540962C6A02A311A7 /* XCLocalSwiftPackageReference "Vendor/GRDB-SQLCipher" */,
 				113BF79EDCC82484903F09CC /* XCLocalSwiftPackageReference "OpenBurnBarCore" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -9279,6 +9286,7 @@
 				3CA09DD9BC4E5D2BA08573CB /* CloudSyncHealthStoreTests.swift in Sources */,
 				B71943EDF8CFD9CF012E1BA5 /* CloudVaultGatewayErrorTests.swift in Sources */,
 				2C537B1262068A2E22827128 /* ConversationCockpitAuthTests.swift in Sources */,
+				3BF5AF33FD6271CC53EB360D /* DashboardNavigationModelTests.swift in Sources */,
 				2F5967A75EFF373BA23E979A /* DashboardStoreToggleTests.swift in Sources */,
 				9E95FD653E5FB6A1322D5BCB /* DevicesStoreTests.swift in Sources */,
 				3EA7739BE5614191D2D97362 /* EasterEggSceneTests.swift in Sources */,
@@ -10516,6 +10524,7 @@
 				6552E5D83D2E30703850B58C /* CodexRolloutScanner.swift in Sources */,
 				DFF52D8518EC09C711F660F6 /* CollaborationSyncService.swift in Sources */,
 				AD106EC2C2A5EAD54AD02951 /* ColorAdaptive.swift in Sources */,
+				BF3585FAE8065CFAEBC3F89E /* CommandDeckPalette.swift in Sources */,
 				D0182F62D749366C10D7199D /* ComputerUseApprovalSheet.swift in Sources */,
 				5B9082085651B4C87576F0E4 /* ComputerUseBudgetStatusStore.swift in Sources */,
 				F132B20718C12923CA019680 /* ComputerUseCapabilityTokenService.swift in Sources */,
@@ -10598,6 +10607,7 @@
 				936F501EFBF56E982AB99EED /* DashboardProjectSpendLaneView.swift in Sources */,
 				F276DEEDB260988ADD7A2520 /* DashboardProviderLaneView.swift in Sources */,
 				CA42B607C50575C094A54C90 /* DashboardQuickSwitchView.swift in Sources */,
+				56CE4F60894C0E832918AC10 /* DashboardSectionSwitcher.swift in Sources */,
 				0D2AD5F9C029923A5EEEBAC4 /* DashboardSidebarComponents.swift in Sources */,
 				666970C6989BCF2F3D0CE35C /* DashboardSidebarView.swift in Sources */,
 				0B69DA68B4243A03EC1ADA1B /* DashboardSummarizingComponents.swift in Sources */,
@@ -11133,8 +11143,6 @@
 				579B268F557F1221B812E993 /* XAISuperGrokUsageLog.swift in Sources */,
 				0B33BE9575B9D43F27E23CC1 /* ZAIQuotaAdapter.swift in Sources */,
 				E615B11154069B8CC0274FFB /* ZaiMiniMaxUsageProbe.swift in Sources */,
-				01AC55EDF165F334FF9146ED /* CommandDeckPalette.swift in Sources */,
-				E35C5935088075757D3B9E0B /* DashboardSectionSwitcher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -11185,11 +11193,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = TEMP_282DD4A0-29EB-445A-B62E-154625AFD3CC /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_61DCF5D5-5AEC-4F6A-B3CD-27FA8A7FB93D" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = TEMP_DFA7CA61-6C4B-474E-8185-5029448EE1FD /* OpenBurnBarCore */;
+			productRef = "TEMP_7D5E6424-F649-4A56-AE5B-A703025338C0" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -11242,7 +11250,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = TEMP_334C091C-DB5C-4F69-9B6D-F1141CBF4347 /* OpenBurnBarCore */;
+			productRef = "TEMP_653B4896-8C89-45C9-BA48-59773FD61850" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -11260,15 +11268,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = TEMP_B601ECE3-0CDB-414F-8C71-391C9C776CAA /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_5188D5E5-49BB-4C9F-A94A-F7A67D096DBE" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = TEMP_17690755-B3CE-40CB-9B40-0707C0A0B68E /* OpenBurnBarMedia */;
+			productRef = "TEMP_453186C5-DD42-4A28-B519-E909646BA7BA" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = TEMP_A5AE8A8D-6B58-4AE3-8D1C-74423B8125BA /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_ACC2FDB0-60BB-43DC-83DB-5068E383606B" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -11277,18 +11285,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"SQLITE_HAS_CODEC=1",
-				);
+				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited) SQLITE_HAS_CODEC=1";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_CFLAGS = (
-					"$(inherited)",
-					"-DSQLITE_HAS_CODEC",
-				);
+				OTHER_CFLAGS = "$(inherited) -DSQLITE_HAS_CODEC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.OpenBurnBarDaemon;
 				PRODUCT_NAME = OpenBurnBarDaemon;
 				SDKROOT = macosx;
@@ -11577,18 +11579,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"SQLITE_HAS_CODEC=1",
-				);
+				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited) SQLITE_HAS_CODEC=1";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_CFLAGS = (
-					"$(inherited)",
-					"-DSQLITE_HAS_CODEC",
-				);
+				OTHER_CFLAGS = "$(inherited) -DSQLITE_HAS_CODEC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.OpenBurnBarDaemon;
 				PRODUCT_NAME = OpenBurnBarDaemon;
 				SDKROOT = macosx;
@@ -11641,10 +11637,7 @@
 				CODE_SIGN_ENTITLEMENTS = AgentLens/Resources/OpenBurnBar.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"SQLITE_HAS_CODEC=1",
-				);
+				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited) SQLITE_HAS_CODEC=1";
 				INFOPLIST_FILE = "AgentLens/Resources/OpenBurnBar-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
 				INFOPLIST_KEY_CFBundleName = OpenBurnBar;
@@ -11656,10 +11649,7 @@
 					"@executable_path/../Frameworks",
 				);
 				OPENBURNBAR_USE_DEBUG_APP_CHECK = NO;
-				OTHER_CFLAGS = (
-					"$(inherited)",
-					"-DSQLITE_HAS_CODEC",
-				);
+				OTHER_CFLAGS = "$(inherited) -DSQLITE_HAS_CODEC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app;
 				PRODUCT_NAME = OpenBurnBar;
 				SDKROOT = macosx;
@@ -11778,10 +11768,7 @@
 				CODE_SIGN_ENTITLEMENTS = AgentLens/Resources/OpenBurnBar.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"SQLITE_HAS_CODEC=1",
-				);
+				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited) SQLITE_HAS_CODEC=1";
 				INFOPLIST_FILE = "AgentLens/Resources/OpenBurnBar-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
 				INFOPLIST_KEY_CFBundleName = OpenBurnBar;
@@ -11793,10 +11780,7 @@
 					"@executable_path/../Frameworks",
 				);
 				OPENBURNBAR_USE_DEBUG_APP_CHECK = NO;
-				OTHER_CFLAGS = (
-					"$(inherited)",
-					"-DSQLITE_HAS_CODEC",
-				);
+				OTHER_CFLAGS = "$(inherited) -DSQLITE_HAS_CODEC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app;
 				PRODUCT_NAME = OpenBurnBar;
 				SDKROOT = macosx;
@@ -12227,7 +12211,7 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = OpenBurnBarCore;
 		};
-		1E1D262540962C6A02A311A7 /* XCLocalSwiftPackageReference "GRDB-SQLCipher" */ = {
+		1E1D262540962C6A02A311A7 /* XCLocalSwiftPackageReference "Vendor/GRDB-SQLCipher" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "Vendor/GRDB-SQLCipher";
 		};
@@ -12547,29 +12531,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		TEMP_17690755-B3CE-40CB-9B40-0707C0A0B68E /* OpenBurnBarMedia */ = {
+		"TEMP_453186C5-DD42-4A28-B519-E909646BA7BA" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		TEMP_282DD4A0-29EB-445A-B62E-154625AFD3CC /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_5188D5E5-49BB-4C9F-A94A-F7A67D096DBE" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		TEMP_334C091C-DB5C-4F69-9B6D-F1141CBF4347 /* OpenBurnBarCore */ = {
+		"TEMP_61DCF5D5-5AEC-4F6A-B3CD-27FA8A7FB93D" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_653B4896-8C89-45C9-BA48-59773FD61850" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		TEMP_A5AE8A8D-6B58-4AE3-8D1C-74423B8125BA /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		TEMP_B601ECE3-0CDB-414F-8C71-391C9C776CAA /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		TEMP_DFA7CA61-6C4B-474E-8185-5029448EE1FD /* OpenBurnBarCore */ = {
+		"TEMP_7D5E6424-F649-4A56-AE5B-A703025338C0" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
+		};
+		"TEMP_ACC2FDB0-60BB-43DC-83DB-5068E383606B" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
