@@ -8389,6 +8389,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0F52A7D2AC1074108EE5C2CC /* Build configuration list for PBXNativeTarget "OpenBurnBarMobile" */;
 			buildPhases = (
+				A0179ED15466BB0DD8186459 /* Guard source-built gRPC (iOS 27 Firestore crash) */,
 				989FB439884BAD69F857287F /* Sources */,
 				6AA6774C598CE731F3D09BD0 /* Resources */,
 				E9A9CE05EB1CB5A0032B0BF2 /* Frameworks */,
@@ -9061,6 +9062,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\nHELPERS_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nmkdir -p \"${HELPERS_DIR}\"\nfor NAME in OpenBurnBarPrivilegedInputExecution OpenBurnBarVirtualHIDBridge OpenBurnBarPrivilegedInputKillSwitchWatchdog; do\n  SOURCE=\"${BUILT_PRODUCTS_DIR}/${NAME}\"\n  if [[ ! -x \"${SOURCE}\" ]]; then\n    echo \"warning: ${NAME} helper not built; Remote Unlock setup may be unavailable.\"\n    continue\n  fi\n  cp \"${SOURCE}\" \"${HELPERS_DIR}/${NAME}\"\n  chmod 755 \"${HELPERS_DIR}/${NAME}\"\ndone\n";
+		};
+		A0179ED15466BB0DD8186459 /* Guard source-built gRPC (iOS 27 Firestore crash) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Guard source-built gRPC (iOS 27 Firestore crash)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The prebuilt grpc-binary SIGSEGVs in BoringSSL (OPENSSL_cleanse via\n# ssl_cert_dup -> create_tsi_ssl_handshaker) the first time Firestore\n# opens its TLS channel on iOS 27 — verified on-device 2026-07-03 with\n# Firebase 12.15/grpc-binary 1.69.1. Firestore MUST be built from\n# source (grpc-ios + BoringSSL-SwiftPM): resolve packages with\n# FIREBASE_SOURCE_FIRESTORE=1 in the environment. This tripwire turns\n# a silent runtime crash into a build error when the graph regresses.\n# See docs/FIREBASE_IOS27_GRPC.md.\nresolved=\"$SRCROOT/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved\"\nif [ -f \"$resolved\" ] && grep -q '\"grpc-binary\"' \"$resolved\"; then\n  echo \"error: Package graph resolved with prebuilt grpc-binary, which crashes Firestore on iOS 27. Re-resolve with FIREBASE_SOURCE_FIRESTORE=1 (see docs/FIREBASE_IOS27_GRPC.md).\"\n  exit 1\nfi\n";
 		};
 		A3B6B6DFDAF6BB3707742792 /* Stamp Build Provenance */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -11229,11 +11249,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_B563E025-F9FE-415A-939F-FCAC42ECD7F5" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_C1304F09-F741-4724-A4DD-F6EB1EF156ED" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_A92918EC-7584-49F0-8F29-8D31EA9BB3D1" /* OpenBurnBarCore */;
+			productRef = "TEMP_59254540-F90A-43B2-8029-BC3A00BB26E8" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -11286,7 +11306,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_5C12F3FB-0080-48B0-8B74-B7E469C6C0B1" /* OpenBurnBarCore */;
+			productRef = "TEMP_E25678C3-66BB-4D2F-9CEC-DE8566C8E8A8" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -11304,15 +11324,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_7EC6F7FB-8B4E-4E8E-BFF9-63B778B0EBD4" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_1B577C0C-12EF-4119-8185-4BB033B9A11E" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_DB951764-1C07-49D4-ABAB-7F91DC1768E7" /* OpenBurnBarMedia */;
+			productRef = "TEMP_DB849D41-394E-4D1F-BCC7-DA18B5FF79A4" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_937AFF8A-0B7C-4669-8411-8574C2DBFFD2" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_0C55330F-7624-46C5-B7A5-2FBCF824FD32" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -11882,7 +11902,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 67;
+				CURRENT_PROJECT_VERSION = 68;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -11906,7 +11926,7 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.27;
+				MARKETING_VERSION = 1.0.28;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -12052,7 +12072,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 67;
+				CURRENT_PROJECT_VERSION = 68;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_PREVIEWS = YES;
@@ -12070,7 +12090,7 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.27;
+				MARKETING_VERSION = 1.0.28;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -12323,7 +12343,7 @@
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 11.0.0;
+				minimumVersion = 12.15.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -12567,29 +12587,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_5C12F3FB-0080-48B0-8B74-B7E469C6C0B1" /* OpenBurnBarCore */ = {
+		"TEMP_0C55330F-7624-46C5-B7A5-2FBCF824FD32" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_1B577C0C-12EF-4119-8185-4BB033B9A11E" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_59254540-F90A-43B2-8029-BC3A00BB26E8" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		"TEMP_7EC6F7FB-8B4E-4E8E-BFF9-63B778B0EBD4" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_C1304F09-F741-4724-A4DD-F6EB1EF156ED" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_937AFF8A-0B7C-4669-8411-8574C2DBFFD2" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_A92918EC-7584-49F0-8F29-8D31EA9BB3D1" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_B563E025-F9FE-415A-939F-FCAC42ECD7F5" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_DB951764-1C07-49D4-ABAB-7F91DC1768E7" /* OpenBurnBarMedia */ = {
+		"TEMP_DB849D41-394E-4D1F-BCC7-DA18B5FF79A4" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
+		};
+		"TEMP_E25678C3-66BB-4D2F-9CEC-DE8566C8E8A8" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

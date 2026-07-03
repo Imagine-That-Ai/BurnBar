@@ -35,8 +35,8 @@ const HEX6 = /^#[0-9a-fA-F]{6}$/;
 describe("KERNEL_INK registry", () => {
   const entries = Object.entries(KERNEL_INK);
 
-  it("covers exactly the 30 append-only kernels", () => {
-    expect(entries).toHaveLength(30);
+  it("covers exactly the 31 append-only kernels", () => {
+    expect(entries).toHaveLength(31);
   });
 
   it("has a stable, light ink foreground", () => {

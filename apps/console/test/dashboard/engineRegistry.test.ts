@@ -16,7 +16,7 @@ const FLOAT = { colorBufferFloat: true, floatBlend: true };
 
 describe("vendored kernel registry", () => {
   it("ships the curated set with unique ids and matching metadata", () => {
-    expect(KERNELS.length).toBe(30);
+    expect(KERNELS.length).toBe(31);
     expect(KERNEL_META.length).toBe(KERNELS.length);
     expect(new Set(KERNELS.map((k) => k.id)).size).toBe(KERNELS.length);
     // KERNEL_META is import-free metadata (no `create`).
@@ -32,7 +32,6 @@ describe("vendored kernel registry", () => {
     for (const dropped of [
       "caustics",
       "wave",
-      "boids",
       "attractor",
       "lenia",
       "spiral",

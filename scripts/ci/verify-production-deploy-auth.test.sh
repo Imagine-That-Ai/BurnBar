@@ -8,12 +8,15 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 copy_base_fixture() {
   local dst="$1"
-  mkdir -p "$dst/.github/workflows" "$dst/scripts/ci"
+  mkdir -p "$dst/.github/workflows" "$dst/scripts/ci" "$dst/functions"
   cp "$SOURCE_ROOT/.github/workflows/deploy-hosting.yml" "$dst/.github/workflows/deploy-hosting.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-production.yml" "$dst/.github/workflows/deploy-production.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-firestore.yml" "$dst/.github/workflows/deploy-firestore.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-cloud-run.yml" "$dst/.github/workflows/deploy-cloud-run.yml"
   cp "$SOURCE_ROOT/firebase.json" "$dst/firebase.json"
+  cp "$SOURCE_ROOT/firestore.rules" "$dst/firestore.rules"
+  cp "$SOURCE_ROOT/firestore.indexes.json" "$dst/firestore.indexes.json"
+  cp "$SOURCE_ROOT/storage.rules" "$dst/storage.rules"
   cp "$SOURCE_ROOT/scripts/ci/write-firebase-hosting-ci-config.mjs" "$dst/scripts/ci/write-firebase-hosting-ci-config.mjs"
 }
 

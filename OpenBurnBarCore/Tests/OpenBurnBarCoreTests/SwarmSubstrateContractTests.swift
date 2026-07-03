@@ -234,6 +234,6 @@ private enum KnownKernelIDs {
         "liquid-lumen", "spectral-drift", "mycelium-mesh", "oilfield",
         "suminagashi-drift", "kinetic-stipple", "agent1", "neural-bloom",
         "aether-lattice", "bat-signal", "storm-signal", "origami", "ink-diffusion",
-        "petroleum-sheen"
+        "petroleum-sheen", "boids"
     ]
 }

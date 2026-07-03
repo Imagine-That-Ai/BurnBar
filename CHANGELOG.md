@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.28] - 2026-07-03
+
+### Fixed
+
+- **Cloud device presence** - publishes the Mac sync heartbeat before encrypted
+  usage uploads can block, so signed-in iPhones can see the Mac as recently
+  active instead of "last seen: never."
+- **Mobile sync health fallback** - lets iOS build the Mac sync status from the
+  device registry when the richer `sync_status` document has not landed yet.
+- **Release signing workflow** - exports the Developer ID app provisioning
+  profile path before decoding it in GitHub Actions, preventing the notarized
+  DMG job from failing before signing.
+- **Android release metadata** - bumps the Android release bundle to
+  `versionCode` 38 / `versionName` `1.0.28` so Google Play receives the same
+  source cut as the macOS sync hotfix.
+
 ## [1.0.27] - 2026-07-03
 
 ### Fixed

@@ -2,7 +2,7 @@
 /**
  * Objective per-kernel legibility gate (inspection tool).
  *
- * For each of the 30 backdrop kernels it loads `/?kernel=<id>`, waits for the
+ * For each of the 31 backdrop kernels it loads `/?kernel=<id>`, waits for the
  * fonts + the kinetic headline to settle + ~1.2s of backdrop animation, then —
  * IN PAGE — composites the painted kernel canvases + the hero-band scrim under
  * the <h1> box and computes the WORST WCAG contrast of `--ink-fg` against any
@@ -37,7 +37,7 @@ const KERNEL_IDS = [
   "liquid-lumen", "spectral-drift", "mycelium-mesh", "oilfield",
   "suminagashi-drift", "kinetic-stipple", "neural-bloom", "agent1",
   "aether-lattice", "bat-signal", "storm-signal", "origami", "ink-diffusion",
-  "petroleum-sheen",
+  "petroleum-sheen", "boids",
 ];
 
 const AA = 4.5;

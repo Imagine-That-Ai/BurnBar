@@ -165,9 +165,13 @@ jobs:
             .github/workflows/deploy-hosting.yml
             .github/workflows/deploy-production.yml
             firebase.json
+            firestore.indexes.json
+            firestore.rules
+            functions
             scripts/ci/verify-production-deploy-auth.sh
             scripts/ci/verify-production-deploy-auth.test.sh
             scripts/ci/write-firebase-hosting-ci-config.mjs
+            storage.rules
 
       - name: Self-test production deploy auth policy
         run: bash scripts/ci/verify-production-deploy-auth.test.sh
