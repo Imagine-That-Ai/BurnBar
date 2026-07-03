@@ -16,15 +16,22 @@ import { readFileSync } from "node:fs";
 
 const siteConfig = process.argv[2];
 const source = readFileSync(siteConfig, "utf8");
-const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-const { SITE } = await import(moduleUrl);
+const withoutComments = source
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/(^|[^:])\/\/.*$/gm, "$1");
+const siteMatch = withoutComments.match(/export\s+const\s+SITE\s*=\s*\{([\s\S]*)\}\s*(?:as\s+const\s*)?;?\s*$/m);
+if (!siteMatch) {
+  throw new Error("website/src/data/site.ts must export a declarative SITE object");
+}
+const siteObject = siteMatch[1];
 
 function stringField(name) {
-  const value = SITE?.[name];
-  if (typeof value !== "string") {
-    throw new Error(`SITE.${name} must be a string`);
+  const pattern = new RegExp(`(?:^|[,\\n])\\s*${name}\\s*:\\s*([\"'])([^\"'\\\\]*(?:\\\\.[^\"'\\\\]*)*)\\1\\s*(?:,|$)`, "m");
+  const match = siteObject.match(pattern);
+  if (!match) {
+    throw new Error(`SITE.${name} must be a literal string`);
   }
-  return value;
+  return JSON.parse(`"${match[2].replace(/"/g, '\\"')}"`);
 }
 
 const base = stringField("macDownloadBaseUrl").replace(/\/+$/, "");

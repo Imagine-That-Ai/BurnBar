@@ -19,7 +19,7 @@ export const SITE = {
   macReleaseLatest: "9.9.9",
   macReleaseFile: "OpenBurnBar-9.9.9-macOS.dmg",
   macDownloadBaseUrl: "https://downloads.example.test/releases",
-};
+} as const;
 TS
 
 metadata="$(OPENBURNBAR_PRINT_PUBLIC_MACOS_DOWNLOAD_METADATA=1 bash "$verifier" "$site_config")"
