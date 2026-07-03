@@ -1,35 +1,10 @@
+// The raw `enum UIMode` now lives in `SharedModels/UIMode.swift` (Foundation
+// core). This file holds the SwiftUI token/typography/environment surface that
+// reads the mode, guarded behind `#if canImport(SwiftUI)` so the engine builds
+// without SwiftUI. On Apple platforms the guard is always true, so these symbols
+// are identical to before the split.
+#if canImport(SwiftUI)
 import SwiftUI
-
-// MARK: - UI Mode
-/// App-wide visual persona. Each mode adapts typography, color, spacing,
-/// and motion to fit a specific use-case or mood.
-public enum UIMode: String, CaseIterable, Identifiable, Sendable {
-    case standard
-    case cooking
-
-    public var id: String { rawValue }
-
-    public var displayName: String {
-        switch self {
-        case .standard: return "Standard"
-        case .cooking:  return "Cooking"
-        }
-    }
-
-    public var description: String {
-        switch self {
-        case .standard: return "The classic Aurora experience"
-        case .cooking:  return "Big, bright, and finger-friendly"
-        }
-    }
-
-    public var iconName: String {
-        switch self {
-        case .standard: return "sparkles"
-        case .cooking:  return "frying.pan" // SF Symbol fallback; replaced by SVG asset in picker
-        }
-    }
-}
 
 // MARK: - UIMode Theme
 /// Mode-specific design token overrides. Delegates to `UnifiedDesignSystem`
@@ -231,3 +206,4 @@ public extension EnvironmentValues {
         UIModeTheme(mode: uiMode)
     }
 }
+#endif
