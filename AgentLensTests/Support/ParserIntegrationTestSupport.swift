@@ -5,8 +5,29 @@ import XCTest
 
 // MARK: - Parser Integration Test Fixtures
 
-/// Fixture log file builders for parser integration tests
+/// Fixture log file builders for parser integration tests.
+///
+/// ## Portable, deterministic fixture corpus (VAL-P0-HARNESS-023 / 024)
+/// Every builder here is **deterministic**: given the same arguments it emits
+/// byte-identical output on every run and every machine. The handful of builders
+/// that historically stamped `Date()` (wall-clock) now take an injectable
+/// `now:` parameter that defaults to ``frozenReferenceDate`` so the *default*
+/// render is stable. Wall-clock stamping made the fixtures impossible to extract
+/// to a portable on-disk vector and impossible for a future Windows parser port
+/// to reproduce byte-identically — freezing the clock is the extraction.
+///
+/// The on-disk corpus (`AgentLensTests/Fixtures/ParserContract/`) is generated
+/// **from these builders** (default arguments) and proven byte-identical to them
+/// by `ParserFixtureExtractionParityTests`. `ParserContractCorpus` runs the real
+/// per-provider parser over both the inline builder output and the extracted
+/// file and proves the parser-output contract projection is identical.
 enum ParserTestFixtures {
+
+    /// Frozen reference instant used by every builder that previously stamped
+    /// `Date()`. `2025-07-01T00:00:00Z`. Chosen to be stable and obviously *not*
+    /// "now", so a leaked wall-clock stamp is easy to spot. `ISO8601DateFormatter`
+    /// with default options renders this as `2025-07-01T00:00:00Z`.
+    static let frozenReferenceDate = Date(timeIntervalSince1970: 1_751_328_000)
 
     // MARK: - Claude Code JSONL Fixtures
 
@@ -18,9 +39,10 @@ enum ParserTestFixtures {
         outputTokens: Int = 500,
         cacheCreationTokens: Int = 0,
         cacheReadTokens: Int = 0,
-        userMessage: String = "Hello, help me write a function that adds two numbers."
+        userMessage: String = "Hello, help me write a function that adds two numbers.",
+        now: Date = ParserTestFixtures.frozenReferenceDate
     ) -> String {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = ISO8601DateFormatter().string(from: now)
         return """
         {"type":"user","timestamp":"\(timestamp)","message":{"role":"user","content":[{"type":"text","text":"\(userMessage)"}]}}
         {"type":"assistant","timestamp":"\(timestamp)","message":{"role":"assistant","content":[{"type":"text","text":"Here's a simple Swift function:"},{"type":"text","text":"func add(_ a: Int, _ b: Int) -> Int { a + b }"}],"usage":{"input_tokens":\(inputTokens),"output_tokens":\(outputTokens),"cache_creation_input_tokens":\(cacheCreationTokens),"cache_read_input_tokens":\(cacheReadTokens)},"model":"\(model)"}}
@@ -60,9 +82,10 @@ enum ParserTestFixtures {
         sessionId: String = "factory-test-001",
         model: String = "glm-4",
         inputTokens: Int = 800,
-        outputTokens: Int = 400
+        outputTokens: Int = 400,
+        now: Date = ParserTestFixtures.frozenReferenceDate
     ) -> String {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = ISO8601DateFormatter().string(from: now)
         return """
         {"type":"user","timestamp":"\(timestamp)","message":{"role":"user","content":"Write a test function"}}
         {"type":"assistant","timestamp":"\(timestamp)","message":{"role":"assistant","content":"Here's the test: func test() {}","usage":{"input_tokens":\(inputTokens),"output_tokens":\(outputTokens)},"model":"\(model)"}}
@@ -75,9 +98,10 @@ enum ParserTestFixtures {
         model: String,
         inputTokens: Int,
         outputTokens: Int,
-        userMessage: String = "Hello"
+        userMessage: String = "Hello",
+        now: Date = ParserTestFixtures.frozenReferenceDate
     ) -> (jsonl: String, settings: String, metadata: String?) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = ISO8601DateFormatter().string(from: now)
         let jsonl = """
         {"type":"user","timestamp":"\(timestamp)","message":{"role":"user","content":"\(userMessage)"}}
         {"type":"assistant","timestamp":"\(timestamp)","message":{"role":"assistant","content":"Hi there","model":"\(model)","usage":{"input_tokens":\(inputTokens),"output_tokens":\(outputTokens)}}}
@@ -250,8 +274,8 @@ enum ParserTestFixtures {
     }
 
     /// Creates a session with missing usage data
-    static func sessionWithMissingUsage() -> String {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+    static func sessionWithMissingUsage(now: Date = ParserTestFixtures.frozenReferenceDate) -> String {
+        let timestamp = ISO8601DateFormatter().string(from: now)
         return """
         {"type":"user","timestamp":"\(timestamp)","message":{"role":"user","content":"Hello"}}
         {"type":"assistant","timestamp":"\(timestamp)","message":{"role":"assistant","content":"Hi"}}
@@ -259,8 +283,8 @@ enum ParserTestFixtures {
     }
 
     /// Creates a session with cache tokens only
-    static func sessionWithCacheTokens() -> String {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+    static func sessionWithCacheTokens(now: Date = ParserTestFixtures.frozenReferenceDate) -> String {
+        let timestamp = ISO8601DateFormatter().string(from: now)
         return """
         {"type":"assistant","timestamp":"\(timestamp)","message":{"role":"assistant","content":[{"type":"text","text":"Using cached context"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":0,"output_tokens":50,"cache_creation_input_tokens":1000,"cache_read_input_tokens":5000}}}
         """
