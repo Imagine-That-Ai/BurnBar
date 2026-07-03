@@ -300,6 +300,21 @@ let swiftTestingAppleDependency: Target.Dependency = .product(
     condition: .when(platforms: [.macOS, .iOS])
 )
 let swiftCryptoDependency: Target.Dependency = .product(name: "Crypto", package: "swift-crypto")
+// Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-2): OpenBurnBarCore's
+// crypto is centralized in `Platform/PlatformSupport.swift`, which resolves to
+// CryptoKit on Apple via `#if canImport(CryptoKit)` and to swift-crypto's
+// `Crypto` module only in the `#else` (non-Apple) branch. Gate Core's
+// swift-crypto product to Windows/Linux so the **Apple** link/product graph
+// gains no swift-crypto (macOS/iOS keep using CryptoKit, byte-identical to the
+// pre-port baseline); off-Apple, `import Crypto` in PlatformSupport resolves
+// against this product. The other targets that also link swift-crypto
+// (SignalCore/IrohRelay/Media/ComputerUseCore/LinuxSecurity) keep the
+// unconditional `swiftCryptoDependency` and are pruned off-Apple separately.
+let swiftCryptoNonAppleDependency: Target.Dependency = .product(
+    name: "Crypto",
+    package: "swift-crypto",
+    condition: .when(platforms: [.windows, .linux])
+)
 
 #if os(Linux)
 let openBurnBarCoreExcludes = [
@@ -411,7 +426,7 @@ let firstPartyTargetsBase: [Target] = [
             // production build, not just the test target.
             dependencies: [
                 "OpenBurnBarFirestoreModels",
-                swiftCryptoDependency
+                swiftCryptoNonAppleDependency
             ],
             exclude: openBurnBarCoreExcludes,
             resources: [
