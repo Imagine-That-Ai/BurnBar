@@ -12,7 +12,7 @@
 #   * cargo-ndk (script installs on demand via `cargo install`)
 #   * Android NDK (script installs via sdkmanager if ANDROID_HOME/ANDROID_SDK_ROOT is set)
 #   * uniffi_bindgen with Kotlin support, pinned (`=0.28.3`)
-#   * `zip` (BSD or GNU) for packing the AAR
+#   * `python3` for deterministic ZIP/JAR packing
 #   * `keytool` + `jar` from any JDK (Android requires a built-in classes.jar)
 #
 # Output:
@@ -66,6 +66,33 @@ log() { printf '[iroh-aar] %s\n' "$*" >&2; }
 abort() {
   echo "[iroh-aar] FATAL: $*" >&2
   exit 1
+}
+
+write_store_zip() {
+  local output_path="$1"
+  local base_dir="$2"
+  shift 2
+
+  python3 - "$output_path" "$base_dir" "$@" <<'PY'
+import pathlib
+import stat
+import sys
+import zipfile
+
+output_path = pathlib.Path(sys.argv[1])
+base_dir = pathlib.Path(sys.argv[2])
+entry_names = sys.argv[3:]
+
+with zipfile.ZipFile(output_path, "w") as archive:
+    for entry_name in entry_names:
+        source_path = base_dir / entry_name
+        info = zipfile.ZipInfo(entry_name, date_time=(2024, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_STORED
+        mode = stat.S_IMODE(source_path.stat().st_mode) or 0o644
+        info.external_attr = mode << 16
+        info.create_system = 3
+        archive.writestr(info, source_path.read_bytes())
+PY
 }
 
 if [[ -x "${HOME}/.cargo/bin/rustup" ]]; then
@@ -126,11 +153,20 @@ export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
 log "using NDK at ${ANDROID_NDK_HOME}"
 
 ANDROID_16KB_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
+android_remap_rustflags() {
+  local cargo_home="${CARGO_HOME:-${HOME}/.cargo}"
+  local rustup_home="${RUSTUP_HOME:-${HOME}/.rustup}"
+  printf '%s' "--remap-path-prefix=${ROOT_DIR}=."
+  printf ' %s' "--remap-path-prefix=${cargo_home}=.cargo"
+  printf ' %s' "--remap-path-prefix=${rustup_home}=.rustup"
+  printf ' %s' "--remap-path-prefix=${HOME}=~"
+}
+
 android_rustflags() {
   if [[ -n "${RUSTFLAGS:-}" ]]; then
-    printf '%s %s\n' "${RUSTFLAGS}" "${ANDROID_16KB_RUSTFLAGS}"
+    printf '%s %s %s\n' "${RUSTFLAGS}" "$(android_remap_rustflags)" "${ANDROID_16KB_RUSTFLAGS}"
   else
-    printf '%s\n' "${ANDROID_16KB_RUSTFLAGS}"
+    printf '%s %s\n' "$(android_remap_rustflags)" "${ANDROID_16KB_RUSTFLAGS}"
   fi
 }
 log "using Rust linker flags for Android 16KB ELF alignment on cargo-ndk builds"
@@ -332,8 +368,7 @@ Created-By: OpenBurnBar
 EOF
 find "${EMPTY_JAR_DIR}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 (
-  cd "${EMPTY_JAR_DIR}"
-  COPYFILE_DISABLE=1 zip -0 -X -q "${AAR_STAGING}/classes.jar" META-INF/MANIFEST.MF
+  write_store_zip "${AAR_STAGING}/classes.jar" "${EMPTY_JAR_DIR}" META-INF/MANIFEST.MF
 )
 
 # proguard.txt + R.txt (empty) — required by AGP.
@@ -345,7 +380,11 @@ rm -f "${AAR_PATH}"
 find "${AAR_STAGING}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 (
   cd "${AAR_STAGING}"
-  find . -type f | LC_ALL=C sort | COPYFILE_DISABLE=1 zip -0 -X -q "${AAR_PATH}" -@
+  aar_entries=()
+  while IFS= read -r aar_entry; do
+    aar_entries+=("${aar_entry}")
+  done < <(find . -type f -print | sed 's#^\./##' | LC_ALL=C sort)
+  write_store_zip "${AAR_PATH}" "${AAR_STAGING}" "${aar_entries[@]}"
 )
 
 log "DONE: ${AAR_PATH}"
