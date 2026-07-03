@@ -2,16 +2,17 @@
 #
 # VAL-P0-HARNESS-025 — regenerate the PORTABLE prompt-injection-wrap contract vectors.
 #
-# The vectors freeze the byte-exact output of the shipped macOS
+# The vectors freeze the byte-exact output of the shipped
 # `LLMSafeContent.wrapUntrusted` / `resealTruncatedUntrusted`
-# (`AgentLens/Services/ContextBuilder.swift`) for a set of named cases so a future
-# Windows / Kotlin / TS re-implementation can be proven byte-identical to the Mac
-# oracle. Companion Mac test: `AgentLensTests/Active/Security/LLMSafeWrapVectorTests.swift`
+# (`OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/LLMSafeContent.swift`) for a
+# set of named cases so a future Windows / Kotlin / TS re-implementation can be proven
+# byte-identical to the reference oracle. Companion Mac test:
+# `AgentLensTests/Active/Security/LLMSafeWrapVectorTests.swift`
 # (asserts the shipped function reproduces every committed vector byte-for-byte).
 #
-# The security-critical `enum LLMSafeContent` is **extracted verbatim** from
-# `ContextBuilder.swift` at generation time (never hand-copied) and compiled with a
-# tiny driver via the system `swift`. `LLMSafeContent` depends only on Foundation, so
+# The security-critical `enum LLMSafeContent` is **extracted verbatim** from the Core
+# source at generation time (never hand-copied) and compiled with a tiny driver via the
+# system `swift`. `LLMSafeContent` depends only on Foundation, so
 # this runs headlessly with no app build / SPM resolve. The generator is only a
 # bootstrap: the committed Mac XCTest is the durable oracle that locks the shipped
 # symbol against drift.
@@ -23,7 +24,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-SOURCE_FILE="AgentLens/Services/ContextBuilder.swift"
+SOURCE_FILE="OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/LLMSafeContent.swift"
 OUT_FILE="tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json"
 MODE="${1:-}"
 
@@ -36,12 +37,13 @@ work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 gen_swift="$work_dir/generate.swift"
 
-# 1) Extract the shipped enum verbatim: from `enum LLMSafeContent {` through the
-#    matching column-0 closing brace (the enum body has no other column-0 `}`).
+# 1) Extract the shipped enum verbatim: from `[public ]enum LLMSafeContent {` through
+#    the matching column-0 closing brace (the enum body has no other column-0 `}`). The
+#    Core declaration is `public`; the standalone driver compiles that unchanged.
 {
   echo "import Foundation"
   echo ""
-  awk '/^enum LLMSafeContent \{/{f=1} f{print} f && /^\}/{exit}' "$SOURCE_FILE"
+  awk '/^(public )?enum LLMSafeContent \{/{f=1} f{print} f && /^\}/{exit}' "$SOURCE_FILE"
   cat <<'DRIVER'
 
 // ---------------------------------------------------------------------------
@@ -144,7 +146,7 @@ let v6 = resealVector(
 let document = WrapVectorDocument(
     schema: "obb-llm-safe-wrap-v1",
     description: "Portable byte-exact contract vectors for LLMSafeContent.wrapUntrusted / resealTruncatedUntrusted (OWASP LLM01 prompt-injection wrap). Each vector pins the exact output bytes the shipped macOS function produces for a named case, so a Windows / Kotlin / TS re-implementation can be proven byte-identical to the Mac oracle. Regenerate with scripts/ci/generate-llm-safe-wrap-vectors.sh.",
-    source: "LLMSafeContent (AgentLens/Services/ContextBuilder.swift)",
+    source: "LLMSafeContent (OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/LLMSafeContent.swift)",
     sentinelToken: "UNTRUSTED_CONTENT",
     sentinelDefangedToken: "UNTRUSTED\u{2011}CONTENT",
     vectors: [v1, v2, v3, v4, v5, v6]
