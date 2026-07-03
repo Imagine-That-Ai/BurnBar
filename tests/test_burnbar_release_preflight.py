@@ -362,13 +362,14 @@ def test_app_test_wrapper_supports_multiple_normalized_filters():
     ]
 
 
-def test_firestore_deploy_uses_supported_firebase_cli_rules_deploy():
+def test_firestore_deploy_uses_rest_rules_release_field_mask():
     body = (ROOT / ".github/workflows/deploy-firestore.yml").read_text(encoding="utf-8")
     deployer = (ROOT / "scripts/ci/deploy-firebase-rules-releases.mjs").read_text(encoding="utf-8")
-    assert "--only firestore:indexes" in body
+    assert "--only firestore:indexes,storage" in body
+    assert "firestore:rules" not in body
     assert "deploy-firebase-rules-releases.mjs" in body
-    assert "updateMask:" not in deployer
-    assert "live API rejects an" in deployer
+    assert 'updateMask: "rulesetName"' in deployer
+    assert "Firebase Rules PATCH updates only rulesetName" in deployer
 
 
 def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
