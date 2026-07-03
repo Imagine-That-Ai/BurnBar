@@ -487,6 +487,14 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         let keys = coordinator.configEnvironmentKeys(for: .opencode)
         XCTAssertTrue(keys.isEmpty)
     }
+
+    func test_configEnvironmentKeys_forJunieDoesNotExportAPIKeyAsConfigDirectory() {
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let keys = coordinator.configEnvironmentKeys(for: .junie)
+
+        XCTAssertEqual(keys, ["JUNIE_HOME"])
+        XCTAssertFalse(keys.contains("JUNIE_API_KEY"))
+    }
 }
 
 // MARK: - SwitcherCLIFallbackPlanner Tests

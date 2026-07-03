@@ -433,7 +433,7 @@ final class SwitcherCLIAuthCoordinator {
         case .pi:
             return ["PI_HOME", "PI_CONFIG_HOME"]
         case .junie:
-            return ["JUNIE_HOME", "JUNIE_API_KEY"]
+            return ["JUNIE_HOME"]
         }
     }
 
