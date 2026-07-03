@@ -13,17 +13,6 @@ enum TimeRange: String, CaseIterable, Identifiable {
 
     var displayName: String { rawValue }
 
-    /// Ultra-short label for compact UI surfaces (Command Deck hero, chips).
-    var compactLabel: String {
-        switch self {
-        case .today: return "TODAY"
-        case .last7Days: return "7D"
-        case .last30Days: return "30D"
-        case .thisMonth: return "MONTH"
-        case .allTime: return "ALL"
-        }
-    }
-
     func dateRange() -> ClosedRange<Date>? {
         let calendar = Calendar.current
         let now = Date()
