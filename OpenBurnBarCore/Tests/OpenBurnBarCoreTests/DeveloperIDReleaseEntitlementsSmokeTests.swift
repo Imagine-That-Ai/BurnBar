@@ -1,7 +1,9 @@
 import XCTest
 @testable import OpenBurnBarCore
 
-/// Release-lane smoke: Developer-ID entitlements intentionally omit profiled capabilities.
+/// Release-lane smoke: Developer-ID entitlements include Firebase Auth's
+/// Keychain group, while hosted account capabilities stay out of the
+/// direct-download profile until the release lane explicitly supports them.
 final class DeveloperIDReleaseEntitlementsSmokeTests: XCTestCase {
     private var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
@@ -23,13 +25,13 @@ final class DeveloperIDReleaseEntitlementsSmokeTests: XCTestCase {
         XCTAssertEqual(capability, .expectedFullMacApp)
     }
 
-    func test_releaseLaneDoesNotSilentlyClaimKeychainGroups() throws {
+    func test_releaseLaneClaimsKeychainGroupOnlyForFirebaseAuth() throws {
         let release = try XCTUnwrap(
             DeveloperIDReleaseCapability.fromEntitlementsPlist(
                 at: repoRoot.appendingPathComponent("AgentLens/Resources/OpenBurnBarRelease.entitlements")
             )
         )
-        XCTAssertFalse(release.keychainAccessGroups)
+        XCTAssertTrue(release.keychainAccessGroups)
         XCTAssertFalse(release.iCloudDocuments)
         XCTAssertFalse(release.appleSignIn)
     }

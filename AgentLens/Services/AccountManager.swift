@@ -1039,7 +1039,7 @@ final class AccountManager {
 
     static func userFacingAuthErrorMessage(_ error: Error) -> String {
         if isFirebaseAuthKeychainError(error) || isGoogleSignInKeychainError(error) {
-            return "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If this is a local debug build, run it with Keychain Sharing enabled."
+            return "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If you installed a local build, rebuild it with Keychain Sharing enabled; otherwise reinstall the latest notarized OpenBurnBar download."
         }
         return error.localizedDescription
     }

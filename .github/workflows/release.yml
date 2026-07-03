@@ -805,11 +805,15 @@ jobs:
       - name: Codesign app bundle (deterministic order)
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          OPENBURNBAR_APP_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_APP_PROFILE_BASE64 }}
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
           HELPERS_DIR="$APP_PATH/Contents/Helpers"
           ENTITLEMENTS="AgentLens/Resources/OpenBurnBarRelease.entitlements"
+          APP_PROFILE="$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.provisionprofile"
+          APP_PROFILE_PLIST="$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.plist"
+          APP_SIGNING_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBarRelease-signing.entitlements"
           PRIVILEGED_INPUT_ENTITLEMENTS="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
           VIRTUAL_HID_BRIDGE_ENTITLEMENTS="OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements"
 
@@ -817,6 +821,64 @@ jobs:
             echo "::error::App bundle not found at $APP_PATH"
             exit 1
           fi
+          if [[ -z "${OPENBURNBAR_APP_PROFILE_BASE64:-}" ]]; then
+            echo "::error::OPENBURNBAR_APP_PROFILE_BASE64 is required. Store the com.openburnbar.app MAC_APP_DIRECT profile as a GitHub Actions secret."
+            exit 1
+          fi
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Contents/Info.plist")"
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          payload = "".join(os.environ["OPENBURNBAR_APP_PROFILE_BASE64"].split())
+          Path(os.environ["APP_PROFILE"]).write_bytes(base64.b64decode(payload))
+          PY
+          security cms -D -i "$APP_PROFILE" > "$APP_PROFILE_PLIST"
+          if [[ "$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$APP_PROFILE_PLIST" 2>/dev/null || true)" != "true" ]]; then
+            echo "::error::App profile must be a Developer ID / MAC_APP_DIRECT all-devices profile."
+            exit 1
+          fi
+          APP_PROFILE_TEAM_ID="$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$APP_PROFILE_PLIST" 2>/dev/null || true)"
+          APP_PROFILE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$APP_PROFILE_PLIST" 2>/dev/null || true)"
+          EXPECTED_APP_IDENTIFIER="${APP_PROFILE_TEAM_ID}.${BUNDLE_ID}"
+          if [[ ! "$APP_PROFILE_TEAM_ID" =~ ^[A-Z0-9]{10}$ || "$APP_PROFILE_IDENTIFIER" != "$EXPECTED_APP_IDENTIFIER" ]]; then
+            echo "::error::App profile must authorize $BUNDLE_ID for team ${APP_PROFILE_TEAM_ID:-<missing>}; found application identifier '${APP_PROFILE_IDENTIFIER:-missing}'."
+            exit 1
+          fi
+          APP_PROFILE_KEYCHAIN_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups" "$APP_PROFILE_PLIST" 2>/dev/null || true)"
+          if ! grep -q "${APP_PROFILE_TEAM_ID}\\.\\*\\|${EXPECTED_APP_IDENTIFIER}" <<<"$APP_PROFILE_KEYCHAIN_GROUPS"; then
+            echo "::error::App profile does not authorize the $EXPECTED_APP_IDENTIFIER Keychain access group."
+            printf '%s\n' "$APP_PROFILE_KEYCHAIN_GROUPS"
+            exit 1
+          fi
+          python3 - "$ENTITLEMENTS" "$APP_SIGNING_ENTITLEMENTS" "$APP_PROFILE_TEAM_ID" "$BUNDLE_ID" <<'PY'
+          import plistlib
+          import sys
+          from pathlib import Path
+
+          source, destination, team_id, bundle_id = sys.argv[1:5]
+
+          def expand(value):
+              if isinstance(value, str):
+                  return (
+                      value
+                      .replace("$(AppIdentifierPrefix)", f"{team_id}.")
+                      .replace("$(TeamIdentifierPrefix)", team_id)
+                      .replace("$(PRODUCT_BUNDLE_IDENTIFIER)", bundle_id)
+                  )
+              if isinstance(value, list):
+                  return [expand(item) for item in value]
+              if isinstance(value, dict):
+                  return {key: expand(item) for key, item in value.items()}
+              return value
+
+          with Path(source).open("rb") as file:
+              entitlements = plistlib.load(file)
+          with Path(destination).open("wb") as file:
+              plistlib.dump(expand(entitlements), file)
+          PY
 
           sign_one() {
             local path="$1"
@@ -898,8 +960,9 @@ jobs:
             "runtime,library" \
             "com.openburnbar.privileged-input-killswitch-watchdog"
 
+          cp "$APP_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"
           codesign --force --timestamp --options runtime,library \
-            --entitlements "$ENTITLEMENTS" \
+            --entitlements "$APP_SIGNING_ENTITLEMENTS" \
             --sign "$SIGNING_IDENTITY" \
             "$APP_PATH"
 
@@ -910,6 +973,20 @@ jobs:
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputKillSwitchWatchdog" "com.openburnbar.privileged-input-killswitch-watchdog"
+          ACTUAL_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBar-signed-entitlements.plist"
+          codesign -d --entitlements :- "$APP_PATH" > "$ACTUAL_ENTITLEMENTS" 2>/dev/null
+          ACTUAL_APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :com.apple.application-identifier" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
+          ACTUAL_TEAM_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :com.apple.developer.team-identifier" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
+          ACTUAL_KEYCHAIN_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :keychain-access-groups" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
+          if [[ "$ACTUAL_APP_IDENTIFIER" != "$EXPECTED_APP_IDENTIFIER" || "$ACTUAL_TEAM_IDENTIFIER" != "$APP_PROFILE_TEAM_ID" ]]; then
+            echo "::error::Direct-download app identity entitlements are wrong: app='${ACTUAL_APP_IDENTIFIER:-missing}' team='${ACTUAL_TEAM_IDENTIFIER:-missing}' expected app='$EXPECTED_APP_IDENTIFIER' team='$APP_PROFILE_TEAM_ID'."
+            exit 1
+          fi
+          if ! grep -q "$EXPECTED_APP_IDENTIFIER" <<<"$ACTUAL_KEYCHAIN_GROUPS"; then
+            echo "::error::Direct-download app is missing Firebase Auth Keychain group $EXPECTED_APP_IDENTIFIER."
+            printf '%s\n' "$ACTUAL_KEYCHAIN_GROUPS"
+            exit 1
+          fi
           spctl --assess --type execute -vv "$APP_PATH" || true
 
       - name: Create DMG

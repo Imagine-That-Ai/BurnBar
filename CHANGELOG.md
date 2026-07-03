@@ -25,6 +25,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runtime/tile/transcript surfaces. Junie mirrors Droid's posture: mirrored +
   archived to mobile, handoff-only (not native-resume eligible).
 
+## [1.0.27] - 2026-07-03
+
+### Fixed
+
+- **Direct-download Firebase Auth Keychain access** — signs the notarized
+  Developer ID app with the `4Y367DF25B.com.openburnbar.app` Keychain access
+  group and embeds the matching all-devices Mac App Direct provisioning profile,
+  so the downloaded app can open the Firebase Auth account page without the
+  macOS Keychain error banner.
+- **Release signing guardrails** — makes the macOS website-release builder,
+  GitHub release workflow, and public download trust gate fail if the app is
+  missing the direct-download provisioning profile, application identifier,
+  team identifier, or Firebase Auth Keychain group.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 37 / `versionName` `1.0.27` so Google Play receives the same
+  source cut as the macOS hotfix.
+
 ## [1.0.26] - 2026-07-02
 
 ### Added

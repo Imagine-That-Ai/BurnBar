@@ -219,6 +219,44 @@
   let currentMode = "swarm";
   let flowTime = 0;
 
+  // Shared ember palette for the readable glyph tokens (mirrors the per-particle
+  // color ramp in EmberParticle.draw). Used by the click-burst below.
+  function warmGlyphColor(colorIndex, opacity) {
+    if (colorIndex < 0.1) return `rgba(128, 128, 255, ${opacity})`; // cool lavender — rare
+    if (colorIndex < 0.4) return `rgba(250, 107, 6, ${opacity})`; // orange
+    if (colorIndex < 0.7) return `rgba(253, 196, 44, ${opacity})`; // gold
+    return `rgba(238, 24, 3, ${opacity})`; // deep red — primary
+  }
+
+  // Click-to-summon glyph burst. Clicking empty space drops a small, short-lived
+  // spray of token glyphs at the cursor that lift like embers and fade — a
+  // deliberate flourish layered over the ambient dust. Kept intentionally small
+  // (8–12 tokens, ~1.2s life) so it reads as elegant, not confetti. Advanced +
+  // drawn inside animate(); spawned by the window click listener (dark theme).
+  const burstGlyphs = [];
+  const BURST_MAX = 140;
+  function spawnGlyphBurst(cx, cy) {
+    const count = 8 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1.3 + Math.random() * 3.1;
+      burstGlyphs.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - (1 + Math.random() * 1.6), // ember lift
+        text: GLYPHS[Math.floor(Math.random() * GLYPHS.length)],
+        colorIndex: Math.random(),
+        size: 11 + Math.random() * 5,
+        life: 1,
+        decay: 0.011 + Math.random() * 0.006 // ~1.1–1.6s at 60fps
+      });
+    }
+    // Rapid clicks stay bounded so the flourish never turns into a pile.
+    if (burstGlyphs.length > BURST_MAX) burstGlyphs.splice(0, burstGlyphs.length - BURST_MAX);
+    ensureLoop();
+  }
+
   class EmberParticle {
     constructor() {
       this.x = Math.random() * window.innerWidth;
@@ -226,7 +264,11 @@
       this.vx = (Math.random() - 0.5) * 1.5;
       this.vy = (Math.random() - 0.5) * 1.5;
       this.size = 1 + Math.random() * 2;
-      this.type = Math.random() < 0.08 ? "glyph" : "pixel";
+      // Glyph tokens ($ / </> / tok / 429 …) are the readable "signal" in the
+      // swarm; pixels are the ambient dust. Bumped 0.08 → 0.16 so the tokens
+      // surface about twice as often while pixels still dominate the field
+      // (denser, but still elegant — not a wall of text).
+      this.type = Math.random() < 0.16 ? "glyph" : "pixel";
       this.text = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
       this.colorIndex = Math.random();
 
@@ -235,7 +277,10 @@
       this.role = null;
       this.flowProgress = Math.random();
 
-      this.baseOpacity = 0.08 + Math.random() * 0.18;
+      // Glyphs carry a higher opacity floor than pixels so the readable tokens
+      // hold their own at rest instead of dissolving into the dust.
+      this.baseOpacity =
+        this.type === "glyph" ? 0.16 + Math.random() * 0.2 : 0.08 + Math.random() * 0.18;
       this.opacity = this.baseOpacity;
     }
 
@@ -418,7 +463,7 @@
       }
 
       if (this.type === "glyph") {
-        ctx.font = `600 9px monospace`;
+        ctx.font = `600 10px monospace`;
         ctx.fillStyle = color;
         ctx.fillText(this.text, this.x, this.y);
       } else {
@@ -542,6 +587,26 @@
       p.draw();
     });
 
+    // Advance + draw any click-summoned glyph bursts on top of the swarm so
+    // they read as a deliberate flourish over the ambient dust.
+    for (let i = burstGlyphs.length - 1; i >= 0; i--) {
+      const b = burstGlyphs[i];
+      b.vy += 0.035; // gentle gravity so the ember lift arcs back down
+      b.vx *= 0.95;
+      b.vy *= 0.95;
+      b.x += b.vx;
+      b.y += b.vy;
+      b.life -= b.decay;
+      if (b.life <= 0) {
+        burstGlyphs.splice(i, 1);
+        continue;
+      }
+      const a = Math.min(1, b.life * 1.5) * 0.92; // hold bright, fade on the tail
+      ctx.font = `700 ${b.size}px monospace`;
+      ctx.fillStyle = warmGlyphColor(b.colorIndex, a);
+      ctx.fillText(b.text, b.x, b.y);
+    }
+
     rafId = requestAnimationFrame(animate);
   }
 
@@ -610,5 +675,26 @@
       new ResizeObserver(markBoxesDirty).observe(document.body);
     }
     setInterval(markBoxesDirty, 8000);
+
+    // Click empty space to summon a burst of token glyphs. The bg canvases are
+    // pointer-events:none, so this listens on the window and simply skips
+    // clicks that land on real interactive controls (links, buttons, form
+    // fields, editable text) so nothing is hijacked. Dark theme only — the
+    // swarm owns the background there; in light theme the dot-logo field is in
+    // front and this loop is parked.
+    window.addEventListener("click", (e) => {
+      if (e.detail === 0) return; // keyboard-activated click carries no cursor point
+      if (document.documentElement.getAttribute("data-theme") === "light") return;
+      const t = e.target;
+      if (
+        t &&
+        t.closest &&
+        t.closest(
+          "a, button, input, textarea, select, summary, label, [role='button'], [contenteditable], .btn"
+        )
+      )
+        return;
+      spawnGlyphBurst(e.clientX, e.clientY);
+    });
   }
 })();
