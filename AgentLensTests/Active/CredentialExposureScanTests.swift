@@ -162,4 +162,36 @@ final class CredentialExposureScanTests: XCTestCase {
         let result = try await store.scanConversationFullTextForCredentialExposure(limit: 2)
         XCTAssertLessThanOrEqual(result.jumpTargets.count, 2, "Should respect the limit")
     }
+
+    func test_credentialScan_findsPasswordAndTokenAssignments() async throws {
+        // The pre-filter must catch generic key=value patterns, including
+        // standalone PASSWORD and TOKEN assignments, to preserve recall.
+        let passwordConv = makeConversation(
+            id: "test-password",
+            fullText: "## You\nSet PASSWORD=abcdef1234567890abcdefghij\n## Assistant\nDone."
+        )
+        let tokenConv = makeConversation(
+            id: "test-token",
+            fullText: "## You\nSet TOKEN=abcdef1234567890abcdefghij\n## Assistant\nDone."
+        )
+        try await store.upsertConversation(passwordConv)
+        try await store.upsertConversation(tokenConv)
+
+        let result = try await store.scanConversationFullTextForCredentialExposure(limit: 10)
+        XCTAssertTrue(result.jumpTargets.contains { $0.conversation.id == "test-password" }, "Should find PASSWORD= assignment")
+        XCTAssertTrue(result.jumpTargets.contains { $0.conversation.id == "test-token" }, "Should find TOKEN= assignment")
+    }
+
+    func test_credentialScan_preFilterFalsePositive_doesNotCountAsMatch() async throws {
+        // A conversation containing a pre-filter keyword but no real credential
+        // should pass the pre-filter, then be rejected by the precise regex.
+        let conv = makeConversation(
+            id: "test-false-positive",
+            fullText: "## You\nI need to change my password. Can you help me reset it?\n## Assistant\nSure."
+        )
+        try await store.upsertConversation(conv)
+
+        let result = try await store.scanConversationFullTextForCredentialExposure(limit: 10)
+        XCTAssertEqual(result.totalMatches, 0, "Conversations with only credential-adjacent words should not be counted")
+    }
 }

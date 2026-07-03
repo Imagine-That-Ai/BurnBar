@@ -558,13 +558,13 @@ metadata filters, then applied regex in Swift. Added
 `fetchTranscriptScanBatchWithCredentialPreFilter` with `INSTR`-based
 WHERE clauses using distinctive credential indicator substrings (`sk-`,
 `AIza`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `api_key`, `access_token`,
-`secret_key`, `password`, `bearer `, `private_key`, `aws_access_key`,
-`slack_token`). SQLite skips conversations that don't contain any
-indicator before loading their `fullText` into Swift memory. The
-pre-filter is high-recall/low-precision; the Swift-side regex still
+`secret_key`, `secret`, `token`, `password`, `bearer `, `private_key`,
+`aws_access_key`, `slack_token`). SQLite skips conversations that don't
+contain any indicator before loading their `fullText` into Swift memory.
+The pre-filter is high-recall/low-precision; the Swift-side regex still
 provides precise filtering.
 
-Validation: `CredentialExposureScanTests` (8 tests: OpenAI key, GitHub
-token, Google API key, generic key assignment, clean conversation
-skipped, pre-filter selectivity, placeholder filtering, limit
-enforcement).
+Validation: `CredentialExposureScanTests` (10 tests: OpenAI key, GitHub
+token, Google API key, generic key assignment, `PASSWORD=` / `TOKEN=`
+recall, clean conversation skipped, pre-filter selectivity, pre-filter
+false-positive rejection, placeholder filtering, limit enforcement).

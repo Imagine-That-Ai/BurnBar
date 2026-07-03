@@ -193,10 +193,17 @@ extension ConversationStore {
             "aiza",
             // GitHub token prefixes
             "ghp_", "gho_", "ghu_", "ghs_", "ghr_",
-            // Generic key=value patterns (case-insensitive via LOWER)
+            // Generic key=value patterns (case-insensitive via LOWER).
+            // Standalone "token" and "secret" are intentionally broad: they
+            // catch the bare `TOKEN=...` and `SECRET=...` forms that the
+            // Swift-side regex matches, at the cost of loading some
+            // non-credential conversations that mention those words. The regex
+            // still provides precise filtering after the pre-filter reduces I/O.
             "api_key", "api-key", "apikey",
             "access_token", "access-token", "accesstoken",
             "secret_key", "secret-key", "secretkey",
+            "secret",
+            "token",
             "password", "passwd",
             "bearer ",
             "private_key", "private-key",

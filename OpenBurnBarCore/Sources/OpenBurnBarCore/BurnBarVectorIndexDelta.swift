@@ -92,6 +92,7 @@ public struct BurnBarVectorIndexDelta: Sendable {
     /// Brute-force search over the appended vectors. Returns (keys, scores)
     /// sorted by descending similarity. O(k) where k = appended.count.
     public func search(query: [Float], limit: Int) -> (keys: [UInt64], scores: [Float]) {
+        guard query.count == dimensions else { return ([], []) }
         guard appended.isEmpty == false else { return ([], []) }
         let preparedQuery = preparedDeltaVector(query, metric: distanceMetric)
         var best: [(key: UInt64, score: Float)] = []
