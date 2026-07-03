@@ -65,15 +65,23 @@ vi.mock("../auth.js", () => ({
 }));
 
 const { configMock } = vi.hoisted(() => ({
-  configMock: { enforceAppCheck: true, requireHighRiskNonce: false },
+  configMock: {
+    enforceAppCheck: true,
+    requireHighRiskNonce: false,
+    linuxAppCheckAppID: "1:000000000000:linux:0000000000000000placeholder",
+    windowsAppCheckAppID: "1:000000000000:windows:0000000000000000placeholder",
+  },
 }));
 vi.mock("../config.js", () => ({ getConfig: () => configMock }));
 
 import {
   APP_CHECK_ATTESTATION_CLAIM_KEY,
   HIGH_RISK_NONCE_TTL_MS,
+  appCheckTrustClassForAppId,
   consumeHighRiskNonceForUid,
+  enforceHighRiskComputerUseCallable,
   enforceHighRiskComputerUseCallableWithNonce,
+  enforceLowRiskCloudSyncCallable,
   isAppCheckAttestationClaimFresh,
   issueHighRiskNonceForUid,
   readAppCheckAttestationClaim,
@@ -98,6 +106,23 @@ function fakeRequest(): CallableRequest {
     acceptsStreaming: false,
   };
   // @ts-expect-error reason: partial CallableRequest stub for attestation tests
+  return request;
+}
+
+function requestForAppId(appId: string): CallableRequest {
+  const request = {
+    app: { appId },
+    auth: {
+      uid: "userA",
+      token: {
+        [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId, boundAtMillis: Date.now() },
+      },
+    },
+    data: {},
+    rawRequest: { headers: {} },
+    acceptsStreaming: false,
+  };
+  // @ts-expect-error reason: partial CallableRequest stub for lower-trust tests
   return request;
 }
 
@@ -149,6 +174,32 @@ describe("appCheckAttestation", () => {
     await expect(enforceHighRiskComputerUseCallableWithNonce(request, "userA", undefined)).rejects.toThrow(
       /does not match this app instance/,
     );
+  });
+
+  it("classifies Linux as lower-trust and allows it only for explicit low-risk sync", () => {
+    expect(appCheckTrustClassForAppId(configMock.linuxAppCheckAppID)).toBe("linux_lower_trust");
+    expect(appCheckTrustClassForAppId(configMock.windowsAppCheckAppID)).toBe("windows_lower_trust");
+    expect(appCheckTrustClassForAppId("1:123:ios:abc")).toBe("apple_attested");
+    expect(appCheckTrustClassForAppId("1:123:android:abc")).toBe("android_play_integrity");
+    expect(appCheckTrustClassForAppId("1:123:web:abc")).toBe("web_recaptcha");
+
+    expect(enforceLowRiskCloudSyncCallable(requestForAppId(configMock.linuxAppCheckAppID), "userA")).toEqual({
+      appId: configMock.linuxAppCheckAppID,
+      trustClass: "linux_lower_trust",
+    });
+    expect(() => enforceLowRiskCloudSyncCallable(requestForAppId(configMock.windowsAppCheckAppID), "userA")).toThrow(
+      /not allowed for low-risk cloud sync/,
+    );
+  });
+
+  it("denies generic high-risk access from lower-trust Linux unless the caller opts into a step-up path", () => {
+    const linuxRequest = requestForAppId(configMock.linuxAppCheckAppID);
+    expect(() => enforceHighRiskComputerUseCallable(linuxRequest, "userA")).toThrow(
+      /Lower-trust desktop App Check tokens require/,
+    );
+    expect(() =>
+      enforceHighRiskComputerUseCallable(linuxRequest, "userA", { allowLowerTrustDesktop: true }),
+    ).not.toThrow();
   });
 });
 

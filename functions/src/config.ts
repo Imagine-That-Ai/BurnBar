@@ -65,6 +65,79 @@ function parseAppleId(raw: unknown): number | undefined {
   return Math.floor(n);
 }
 
+/**
+ * Placeholder / non-production Firebase App Check app id for the Windows port.
+ *
+ * This is intentionally NOT a real Firebase app id: the project number is all
+ * zeros and the platform segment is `windows` (Firebase's real app ids use
+ * `ios` / `android` / `web`). It stands in until the real Windows App Check app
+ * is provisioned by the Windows OAuth client (AC-012) and the real TPM verifier
+ * (AC-013). A production deploy must never treat this as a live app id — the
+ * mock-attestation gate (`allowMockAppCheckAttestation`) is forced off in prod.
+ */
+export const PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID = "1:000000000000:windows:0000000000000000placeholder" as const;
+export const PLACEHOLDER_LINUX_APP_CHECK_APP_ID = "1:000000000000:linux:0000000000000000placeholder" as const;
+
+/**
+ * Resolve the lower-trust desktop App Check surface: placeholder app ids, the
+ * mint/binding allowlist, and whether the MOCK attestation verifier is permitted
+ * (non-prod only, fail-closed in prod).
+ */
+function resolveAppCheckAppIdSurface(
+  openburnbar: Record<string, unknown>,
+  looksProd: boolean,
+): Pick<
+  EnvConfig,
+  "allowedAppCheckAppIDs" | "windowsAppCheckAppID" | "linuxAppCheckAppID" | "allowMockAppCheckAttestation"
+> {
+  const windowsAppCheckAppID =
+    process.env.WINDOWS_APP_CHECK_APP_ID ??
+    configString(openburnbar, "windows_app_check_app_id") ??
+    PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID;
+  const linuxAppCheckAppID =
+    process.env.LINUX_APP_CHECK_APP_ID ??
+    configString(openburnbar, "linux_app_check_app_id") ??
+    PLACEHOLDER_LINUX_APP_CHECK_APP_ID;
+
+  // The lower-trust desktop placeholders are always allowed; operators may allowlist additional ids
+  // (e.g. the real Windows app id, once provisioned) via env/config. Deduped so a
+  // configured id equal to the placeholder does not appear twice.
+  const configured = parseStringList(
+    process.env.APP_CHECK_ALLOWED_APP_IDS ?? configString(openburnbar, "app_check_allowed_app_ids"),
+  );
+  const allowedAppCheckAppIDs = [...new Set([windowsAppCheckAppID, linuxAppCheckAppID, ...configured])];
+
+  // Fail-closed fence: the mock verifier can NEVER be enabled in production, no
+  // matter what an operator sets. In non-prod it defaults on (local dev / CI) but
+  // can be explicitly disabled. This keeps the mint path attestation-gated rather
+  // than endpoint-disabled: under prod config no mock verifier is registered, so a
+  // mock claim cannot verify and cannot mint, while the endpoint stays available
+  // for AC-013's real verifier.
+  const allowMockAppCheckAttestation =
+    !looksProd &&
+    toBool(
+      process.env.ALLOW_MOCK_APP_CHECK_ATTESTATION ?? configString(openburnbar, "allow_mock_app_check_attestation"),
+      true,
+    );
+
+  return { allowedAppCheckAppIDs, windowsAppCheckAppID, linuxAppCheckAppID, allowMockAppCheckAttestation };
+}
+
+/**
+ * Whether an App Check app id is on the lower-trust desktop mint/binding allowlist.
+ *
+ * Used by the greenfield desktop App Check mint paths to refuse minting a token for
+ * a non-allowlisted app id. It does NOT gate the Apple appId-equality binding, so
+ * existing Apple clients are unaffected by the desktop allowlist.
+ */
+export function isAppCheckAppIdAllowed(
+  appId: unknown,
+  config: Pick<EnvConfig, "allowedAppCheckAppIDs"> = getConfig(),
+): boolean {
+  if (typeof appId !== "string" || appId.length === 0) return false;
+  return config.allowedAppCheckAppIDs.includes(appId);
+}
+
 /** Cached config object computed once per function instance. */
 let cached: EnvConfig | undefined;
 
@@ -479,6 +552,7 @@ function buildConfig(): EnvConfig {
     kmsKeyName,
     enforceAppCheck,
     requireHighRiskNonce,
+    ...resolveAppCheckAppIdSurface(openburnbar, looksProd),
     ...buildNumericSettings(openburnbar),
     ...buildAppleProductIds(openburnbar),
     ...buildStripeSettings(ctx.stripe),

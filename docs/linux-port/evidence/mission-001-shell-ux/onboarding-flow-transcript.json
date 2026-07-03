@@ -1,0 +1,58 @@
+{
+  "generatedAt": "2026-07-03T11:36:59.675Z",
+  "lane": "W06LinuxShellUx",
+  "method": "first-run-localStorage-state-machine",
+  "steps": [
+    {
+      "action": "first-run",
+      "persistedState": {
+        "completed": false,
+        "step": 0,
+        "skippedSteps": []
+      },
+      "expected": "Wizard starts at daemon/socket setup and does not silently grant Linux permissions."
+    },
+    {
+      "action": "retry-check",
+      "persistedState": {
+        "completed": false,
+        "step": 0,
+        "skippedSteps": []
+      },
+      "expected": "Retry probes daemon health without advancing or losing the current step."
+    },
+    {
+      "action": "skip-step",
+      "persistedState": {
+        "completed": false,
+        "step": 1,
+        "skippedSteps": [
+          0
+        ]
+      },
+      "expected": "Skip records the skipped daemon step and resumes at Secret Service setup."
+    },
+    {
+      "action": "restart-resume",
+      "persistedState": {
+        "completed": false,
+        "step": 1,
+        "skippedSteps": [
+          0
+        ]
+      },
+      "expected": "A fresh app session reads localStorage and resumes the incomplete wizard."
+    },
+    {
+      "action": "complete",
+      "persistedState": {
+        "completed": true,
+        "step": 4,
+        "skippedSteps": [
+          0
+        ]
+      },
+      "expected": "Completion is persisted so later launches can open the dashboard."
+    }
+  ]
+}

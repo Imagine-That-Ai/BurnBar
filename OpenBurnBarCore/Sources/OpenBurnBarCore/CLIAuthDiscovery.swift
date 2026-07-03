@@ -234,6 +234,21 @@ public enum CLIAuthDiscovery {
                 configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: exists ? "Cursor Agent local profile" : nil
             )
+        case .omp:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.omp"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "OMP local profile" : nil
+            )
         case .gemini:
             let configDir = normalizedConfigDirectory(
                 configDirectoryOverride,

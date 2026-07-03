@@ -128,21 +128,45 @@ struct SettingsDrillRow: View {
     }
 
     private var iconSquircle: some View {
+        SettingsIconTile(
+            icon: icon,
+            iconTint: iconTint,
+            customIcon: customIcon
+        )
+    }
+}
+
+// MARK: - Settings Icon Tile
+
+struct SettingsIconTile: View {
+    let icon: String
+    let iconTint: Color
+    let customIcon: String?
+    var size: CGFloat = 28
+    var symbolSize: CGFloat = 14
+
+    private var cornerRadius: CGFloat {
+        size * 0.25
+    }
+
+    var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(iconTint)
-                .frame(width: 28, height: 28)
             if let customIcon {
                 Image(customIcon)
                     .resizable()
-                    .scaledToFit()
-                    .frame(width: 18, height: 18)
+                    .interpolation(.high)
+                    .scaledToFill()
+                    .frame(width: size, height: size)
             } else {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(iconTint)
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: symbolSize, weight: .semibold))
                     .foregroundStyle(.white)
             }
         }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .accessibilityHidden(true)
     }
 }

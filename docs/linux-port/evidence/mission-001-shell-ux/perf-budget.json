@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-07-03T11:38:38.383Z",
+  "note": "Budget harness measures built artifacts and representative shell reducers. Packaged Tauri build/run transcript supplies native tray/live IPC evidence when Docker/DE setup is available.",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "measurements": {
+    "viteBuildMs": 331.433292,
+    "distBundleReadMs": 0.09800000000001319,
+    "desktopSessionReport": "/Users/albertonunez/Documents/Developer/BurnBar/docs/linux-port/evidence/mission-001-shell-ux/linux-desktop-session-report.json",
+    "desktopSessionPresent": true
+  },
+  "linuxTauriBuild": {
+    "attempted": true,
+    "transcript": "docs/linux-port/evidence/mission-001-shell-ux/linux-tauri-build-transcript.txt"
+  },
+  "budget": {
+    "mission": "mission-001",
+    "lane": "W06LinuxShellUx",
+    "thresholdsMs": {
+      "app.start": 2500,
+      "route.navigation": 120,
+      "ipc.health.roundtrip": 800,
+      "tray.click.open": 400,
+      "chat.firstToken.progress": 2500,
+      "db.migration.open.query": 1200,
+      "parser.incremental.run": 900,
+      "memory.search": 650,
+      "media.control.stage": 500
+    }
+  },
+  "verdicts": [
+    {
+      "name": "app.start",
+      "ms": 297,
+      "limit": 2500,
+      "source": "packaged-tauri-xvfb-window-visible",
+      "pass": true
+    },
+    {
+      "name": "route.navigation",
+      "ms": 0.5679170000000227,
+      "limit": 120,
+      "source": "route-state-loop",
+      "pass": true
+    },
+    {
+      "name": "ipc.health.roundtrip",
+      "ms": 3,
+      "limit": 800,
+      "source": "packaged-tray-reconnect-to-af-unix-daemon-log",
+      "pass": true
+    },
+    {
+      "name": "tray.click.open",
+      "ms": 32,
+      "limit": 400,
+      "source": "appindicator-dbusmenu-open-to-visible-window",
+      "pass": true
+    },
+    {
+      "name": "chat.firstToken.progress",
+      "ms": 0.14066600000001017,
+      "limit": 2500,
+      "source": "progress-chunk-reducer",
+      "pass": true
+    },
+    {
+      "name": "db.migration.open.query",
+      "ms": 4.570916999999952,
+      "limit": 1200,
+      "source": "sqlite-memory-query:1",
+      "pass": true
+    },
+    {
+      "name": "parser.incremental.run",
+      "ms": 0.20120900000000574,
+      "limit": 900,
+      "source": "swift-source-incremental-file-scan",
+      "pass": true
+    },
+    {
+      "name": "memory.search",
+      "ms": 0.09083399999997255,
+      "limit": 650,
+      "source": "fixture-index-regex-search",
+      "pass": true
+    },
+    {
+      "name": "media.control.stage",
+      "ms": 0.09187500000001592,
+      "limit": 500,
+      "source": "control-frame-json-stage",
+      "pass": true
+    }
+  ],
+  "missingMetrics": [],
+  "allPass": true
+}

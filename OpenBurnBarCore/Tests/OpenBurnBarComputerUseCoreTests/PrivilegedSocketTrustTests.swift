@@ -94,6 +94,15 @@ final class PrivilegedSocketTrustTests: XCTestCase {
         }
     }
 
+    func test_trustErrorsHaveOperatorReadableDescriptions() {
+        let description = PrivilegedSocketTrustError.codeSignatureInvalid(status: -67050).localizedDescription
+
+        XCTAssertTrue(description.contains("code-signature validation failed"))
+        XCTAssertTrue(description.contains("OSStatus -67050"))
+        XCTAssertTrue(description.contains("allowed identifier"))
+        XCTAssertFalse(description.contains("PrivilegedSocketTrustError error 0"))
+    }
+
     // MARK: - Designated requirement parity with the daemon-side tests
 
     func test_designatedRequirement_enumeratesExactPrivilegedInputPeers() {

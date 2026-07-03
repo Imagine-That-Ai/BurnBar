@@ -214,7 +214,7 @@ extension AccountSwitcherSettingsView {
         switch group.cliType {
         case .codex, .claude:
             await addCLIAccount(for: group)
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp:
             editFormTargetKind = .cli
             editFormCLIType = group.cliType ?? .opencode
             showingCreateSheet = true
@@ -687,7 +687,7 @@ extension AccountSwitcherSettingsView {
             return .openAI
         case .claude:
             return .claude
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .none:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .none:
             return nil
         }
     }

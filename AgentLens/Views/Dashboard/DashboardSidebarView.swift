@@ -28,6 +28,19 @@ extension DashboardView {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                Picker("View Mode", selection: $viewMode) {
+                    Text("Agents").tag(DashboardViewMode.agents)
+                    Text("Models").tag(DashboardViewMode.models)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .onChange(of: viewMode) { _, _ in
+                    withAnimation(DesignSystem.Animation.standard) {
+                        routeHistory.removeAll()
+                        mainRoute = .overview
+                    }
+                }
+
                 VStack(spacing: DesignSystem.Spacing.sm) {
                     SidebarItem(
                         provider: nil,
@@ -162,15 +175,9 @@ extension DashboardView {
             .padding(DesignSystem.Spacing.lg)
         }
         .background {
-            // Liquid Glass rail, tuned to the active theme: the plate refracts
-            // the live backdrop and leans on the layout's signature colour, so
-            // the sidebar reads as part of each world instead of fixed chrome.
-            // (Editorial skin renders a glass-free paper surface — see
-            // `SidebarThemeGlass`.)
-            SidebarThemeGlass(
-                layout: settingsManager.dashboardLayout,
-                skin: settingsManager.appearanceSkin,
-                shape: RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+            DashboardSidebarMaterial(
+                liveBackdropActive: dashboardLiveBackdropActive,
+                moodBand: dataStore.moodBand
             )
         }
         .scrollContentBackground(.hidden)
@@ -203,5 +210,54 @@ extension DashboardView {
             routes.append(contentsOf: dashboardModelSummaries.map { .model($0.modelName) })
         }
         return routes
+    }
+}
+
+private struct DashboardSidebarMaterial: View {
+    let liveBackdropActive: Bool
+    let moodBand: MoodBand
+
+    var body: some View {
+        if liveBackdropActive {
+            liveGlass
+        } else {
+            staticSurface
+        }
+    }
+
+    private var liveGlass: some View {
+        ZStack {
+            DashboardBackdrop(moodBand: moodBand)
+                .allowsHitTesting(false)
+
+            Color.clear
+                .liquidGlassSurface(in: Rectangle(), fallback: .ultraThinMaterial)
+
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.055),
+                    DesignSystem.Colors.surface.opacity(0.12),
+                    Color.black.opacity(0.18)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var staticSurface: some View {
+        ZStack {
+            DesignSystem.Colors.surface.opacity(0.92)
+
+            LinearGradient(
+                colors: [
+                    DesignSystem.Colors.textPrimary.opacity(0.02),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
 }

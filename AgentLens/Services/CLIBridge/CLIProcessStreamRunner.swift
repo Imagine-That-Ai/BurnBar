@@ -147,6 +147,36 @@ struct CLIProcessStreamRunner: Sendable {
         }
     }
 
+    func runOMP(
+        executable: String,
+        prompt: String,
+        model: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = GenericCLIJSONOrTextParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.ompArguments(
+                    prompt: prompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .omp
+            ),
+            grantStillActive: grantStillActive,
+            continuation: continuation
+        ) { line in
+            (parser.events(fromLine: line), nil, false)
+        }
+    }
+
     func runCursorAgent(
         executable: String,
         prompt: String,
@@ -358,6 +388,8 @@ struct CLIProcessStreamRunner: Sendable {
             return .xAI
         case .cursorAgent:
             return .cursorAgent
+        case .omp:
+            return .omp
         case .gemini:
             return .geminiCLI
         case .kimi:

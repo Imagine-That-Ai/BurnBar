@@ -1,0 +1,34 @@
+{
+  "auth": {
+    "callbackCodeAccepted": "auth-code",
+    "loopbackHost": "127.0.0.1",
+    "pkceMethod": "S256",
+    "tokenCustody": "secret-service"
+  },
+  "cloudSync": {
+    "allowedPath": "users/uid-123/provider_accounts/provider-1",
+    "bolaDenied": "true",
+    "plaintextDenied": "true",
+    "watermarkAfterCommit": "1800000001000"
+  },
+  "membershipStates": [
+    "active",
+    "cancelled",
+    "paymentFailed",
+    "offline"
+  ],
+  "refusedPlaintextFallback": true,
+  "secretBackends": [
+    "secret-service:secret_service",
+    "kwallet:kwallet",
+    "headless:headless_passphrase",
+    "headless:headless_passphrase",
+    "secret-service:secret_service"
+  ],
+  "telemetry": {
+    "consentDeclinedEventCount": "0",
+    "grantedEmail": "[REDACTED]",
+    "grantedToken": "[REDACTED]",
+    "supportBundle": "[REDACTED]\nemail=[REDACTED]\npath=[REDACTED]"
+  }
+}

@@ -1,6 +1,7 @@
 import Foundation
-import CryptoKit
+#if canImport(Security)
 import Security
+#endif
 
 /// Thread-safe, two-tier cache for `InsightVerdict`.
 ///
@@ -213,24 +214,24 @@ private struct VerdictCacheDiskCrypto: Sendable {
     private static let keychainService = "com.openburnbar.insights.verdict-cache"
     private static let keychainAccount = "verdict-cache-aes-gcm-v1"
 
-    private let key: SymmetricKey
+    private let key: PlatformSymmetricKey
 
     static func make(encryptionKey: Data?) -> VerdictCacheDiskCrypto? {
         if let encryptionKey, encryptionKey.count == 32 {
-            return VerdictCacheDiskCrypto(key: SymmetricKey(data: encryptionKey))
+            guard let key = try? PlatformCrypto.symmetricKey(data: encryptionKey) else { return nil }
+            return VerdictCacheDiskCrypto(key: key)
         }
         guard let keyData = loadOrCreateKeychainKey() else { return nil }
-        return VerdictCacheDiskCrypto(key: SymmetricKey(data: keyData))
+        guard let key = try? PlatformCrypto.symmetricKey(data: keyData) else { return nil }
+        return VerdictCacheDiskCrypto(key: key)
     }
 
     func seal(_ plaintext: Data, associatedData: Data) throws -> Data {
-        guard let combined = try AES.GCM.seal(
-            plaintext,
-            using: key,
+        let combined = try PlatformCrypto.sealAESGCM(
+            plaintext: plaintext,
+            key: key,
             authenticating: associatedData
-        ).combined else {
-            throw VerdictCacheDiskCryptoError.missingCombinedBox
-        }
+        )
         return Self.magic + combined
     }
 
@@ -238,11 +239,15 @@ private struct VerdictCacheDiskCrypto: Sendable {
         guard envelope.starts(with: Self.magic) else {
             throw VerdictCacheDiskCryptoError.badMagic
         }
-        let box = try AES.GCM.SealedBox(combined: envelope.dropFirst(Self.magic.count))
-        return try AES.GCM.open(box, using: key, authenticating: associatedData)
+        return try PlatformCrypto.openAESGCM(
+            combined: Data(envelope.dropFirst(Self.magic.count)),
+            key: key,
+            authenticating: associatedData
+        )
     }
 
     private static func loadOrCreateKeychainKey() -> Data? {
+        #if canImport(Security)
         if let existing = keychainRead() {
             guard existing.count == 32 else {
                 _ = keychainDelete()
@@ -251,14 +256,14 @@ private struct VerdictCacheDiskCrypto: Sendable {
             return existing
         }
         return createKeychainKey()
+        #else
+        return nil
+        #endif
     }
 
+    #if canImport(Security)
     private static func createKeychainKey() -> Data? {
-        var keyData = Data(count: 32)
-        let status = keyData.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, buffer.count, buffer.baseAddress!)
-        }
-        guard status == errSecSuccess else { return nil }
+        guard let keyData = try? PlatformCrypto.secureRandomBytes(count: 32) else { return nil }
         guard keychainWrite(keyData) else { return nil }
         return keyData
     }
@@ -302,11 +307,11 @@ private struct VerdictCacheDiskCrypto: Sendable {
         let status = SecItemDelete(query as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
     }
+    #endif
 }
 
 private enum VerdictCacheDiskCryptoError: Error {
     case badMagic
-    case missingCombinedBox
 }
 
 private extension JSONDecoder {

@@ -24,6 +24,8 @@ type PublicHttpEndpointName =
   | "healthLive"
   | "healthReady"
   | "latestRouterRundown"
+  | "mintLinuxAppCheckToken"
+  | "mintWindowsAppCheckToken"
   | "pollCliLink"
   | "startCliLink";
 
@@ -56,6 +58,10 @@ const PUBLIC_HTTP_ENDPOINT_LIMITS: Record<PublicHttpEndpointName, { windowSecond
   healthLive: { windowSeconds: 60, maxAttempts: 60 },
   healthReady: { windowSeconds: 60, maxAttempts: 30 },
   latestRouterRundown: { windowSeconds: 60, maxAttempts: 60 },
+  // Device-attestation token mint: Linux/Windows AppCheck bootstrap. 20/hour
+  // per IP — same posture as startCliLink since each mints a session-scoped token.
+  mintLinuxAppCheckToken: { windowSeconds: 3600, maxAttempts: 20 },
+  mintWindowsAppCheckToken: { windowSeconds: 3600, maxAttempts: 20 },
   pollCliLink: { windowSeconds: 60, maxAttempts: 60 },
   // Device-enrollment bootstrap: keep the historical 20/hour ceiling from the
   // shared `cli_link_start` action; it is tighter than poll (60/min) because
@@ -234,6 +240,8 @@ export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpoin
   "healthLive",
   "healthReady",
   "latestRouterRundown",
+  "mintLinuxAppCheckToken",
+  "mintWindowsAppCheckToken",
   "pollCliLink",
   "startCliLink",
 ]);

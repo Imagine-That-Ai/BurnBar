@@ -20,6 +20,7 @@ struct ProjectsView: View {
     @State private var draft: ControllerProjectDraft?
     @State private var feedback: String?
     @State private var listAppeared = false
+    @Environment(\.dashboardLiveBackdropActive) private var dashboardLiveBackdropActive
 
     // Cached aggregate. Rebuilt only when the inputs that materially shape
     // the merge change (usages, controllerProjects). Pre-cache, this
@@ -217,7 +218,7 @@ struct ProjectsView: View {
             }
         }
         .animation(DesignSystem.Animation.standard, value: openProject?.slug)
-        .background(settingsManager.useWebsiteBackground ? Color.clear : DesignSystem.Colors.background)
+        .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
         .task { await refreshControllerProjectsIfNeeded() }
         .onAppear { rebuildMergedProjectsIfNeeded() }
         .onChange(of: dataStore.usagesVersion) { _, _ in rebuildMergedProjectsIfNeeded() }

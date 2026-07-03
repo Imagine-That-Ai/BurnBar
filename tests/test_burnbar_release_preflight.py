@@ -546,6 +546,34 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow
 
 
+def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
+    script = (ROOT / "scripts/sign-openburnbar-local.sh").read_text(encoding="utf-8")
+
+    assert 'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"' in script
+    assert 'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"' in script
+    assert '"com.openburnbar.privileged-input-execution"' in script
+    assert '"com.openburnbar.virtual-hid-bridge"' in script
+    assert '"com.openburnbar.privileged-input-killswitch-watchdog"' in script
+    assert "--options runtime,library" in script
+    assert "assert_peer_signature" in script
+    assert 'assert_peer_signature "$APP_BUNDLE" "com.openburnbar.app"' in script
+    assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.daemon"' in script
+    assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "com.openburnbar.cli"' in script
+    assert (
+        'assert_peer_signature \\\n'
+        '  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputExecution" \\\n'
+        '  "com.openburnbar.privileged-input-execution"'
+    ) in script
+    assert (
+        'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarVirtualHIDBridge" '
+        '"com.openburnbar.virtual-hid-bridge"'
+    ) in script
+    assert 'args+=(--preserve-metadata="$preserve_metadata")' in script
+    assert "--preserve-metadata=entitlements,requirements" in script
+    assert "--preserve-metadata=entitlements,requirements,flags" not in script
+    assert 'codesign --force --sign "$IDENTITY" --timestamp=none "$path"' not in script
+
+
 def test_daemon_token_file_arguments_override_inherited_environment():
     daemon_main = (
         ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift"

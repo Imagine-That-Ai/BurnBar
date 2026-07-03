@@ -139,6 +139,10 @@ final class ChatSessionController {
         didSet { if persistsViewState { UserDefaults.standard.set(chatModelOpenClaude, forKey: Self.udChatModelOpenClaude) } }
     }
 
+    var chatModelOMP: String = "" {
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelOMP, forKey: Self.udChatModelOMP) } }
+    }
+
     var hermesAvailable: Bool = false
 
     /// Mirror of `CLIBridge.hermesCatalogAuthRejected`: the gateway is up but
@@ -331,6 +335,7 @@ final class ChatSessionController {
 
     static let udChatModelCursorAgent = "chatPanel.model.cursoragent"
     static let udChatModelOpenClaude = "chatPanel.model.openclaude"
+    static let udChatModelOMP = "chatPanel.model.omp"
 
     /// Legacy keys (migrated once into per-backend keys).
     static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
@@ -446,6 +451,7 @@ final class ChatSessionController {
         chatModelAntigravity = UserDefaults.standard.string(forKey: Self.udChatModelAntigravity) ?? ""
         chatModelCursorAgent = UserDefaults.standard.string(forKey: Self.udChatModelCursorAgent) ?? ""
         chatModelOpenClaude = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaude) ?? ""
+        chatModelOMP = UserDefaults.standard.string(forKey: Self.udChatModelOMP) ?? ""
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
@@ -497,6 +503,7 @@ final class ChatSessionController {
         case .antigravity: return chatModelAntigravity
         case .cursorAgent: return chatModelCursorAgent
         case .openClaude: return chatModelOpenClaude
+        case .omp: return chatModelOMP
         }
     }
 
@@ -512,6 +519,7 @@ final class ChatSessionController {
         case .antigravity: chatModelAntigravity = value
         case .cursorAgent: chatModelCursorAgent = value
         case .openClaude: chatModelOpenClaude = value
+        case .omp: chatModelOMP = value
         }
     }
 
@@ -658,6 +666,7 @@ final class ChatSessionController {
         case .antigravity: return .antigravity
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
+        case .omp: return .omp
         }
     }
 
@@ -695,6 +704,8 @@ final class ChatSessionController {
             return chatModelCursorAgent.trimmingCharacters(in: .whitespacesAndNewlines)
         case .openClaude:
             return chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .omp:
+            return chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -744,7 +755,7 @@ final class ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             return 0
         }
     }
@@ -757,7 +768,7 @@ final class ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             return []
         }
     }
@@ -1281,7 +1292,7 @@ final class ChatSessionController {
         case .piAgent:
             baseURL = piAgentGatewayBaseURL
             bearerToken = piAgentBearerToken
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
         }
 
@@ -1491,7 +1502,7 @@ final class ChatSessionController {
         }
 
         switch backend {
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? await dataStore.chatThreadExists(id: legacy)) == true {
                 if persistsViewState { UserDefaults.standard.set(legacy, forKey: key) }

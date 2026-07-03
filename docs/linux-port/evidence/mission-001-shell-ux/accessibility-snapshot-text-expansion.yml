@@ -1,0 +1,52 @@
+- generic [ref=f5e34]:
+  - link "Skip to content" [ref=f5e35] [cursor=pointer]:
+    - /url: "#main"
+  - navigation "Primary" [ref=f5e36]:
+    - generic [ref=f5e37]: OpenBurnBar Linux
+    - status [ref=f5e38]: Packaged shell required for live daemon health (browser preview mode).
+    - generic [ref=f5e39]: Dashboard
+    - button "Overview" [ref=f5e40] [cursor=pointer]
+    - button "Insights" [ref=f5e41] [cursor=pointer]
+    - button "Database" [ref=f5e42] [cursor=pointer]
+    - button "Providers & models" [ref=f5e43] [cursor=pointer]
+    - button "Projects" [ref=f5e44] [cursor=pointer]
+    - button "Missions" [ref=f5e45] [cursor=pointer]
+    - button "Activity & logs" [ref=f5e46] [cursor=pointer]
+    - button "Chat / Hermes" [ref=f5e47] [cursor=pointer]
+    - button "Memory" [ref=f5e48] [cursor=pointer]
+    - generic [ref=f5e49]: System
+    - button "Settings" [ref=f5e50] [cursor=pointer]
+    - button "Account & sync" [ref=f5e51] [cursor=pointer]
+    - button "Updates" [ref=f5e52] [cursor=pointer]
+    - button "Support & diagnostics" [ref=f5e53] [cursor=pointer]
+    - button "First-run setup" [ref=f5e54] [cursor=pointer]
+    - button "Pet companion" [ref=f5e55] [cursor=pointer]
+    - button "Text expansion" [ref=f5e56] [cursor=pointer]
+    - 'button "Skin: editorial" [ref=f5e57] [cursor=pointer]'
+  - main [ref=f5e58]:
+    - region "Text expansion" [ref=f5e59]:
+      - heading "Text expansion" [level=2] [ref=f5e60]
+      - paragraph [ref=f5e61]: In-app snippet expansion (v1); system-wide Wayland deferred.
+      - generic [ref=f5e62]:
+        - checkbox "In-app expansion only (v1). No global key capture on Linux." [checked] [ref=f5e63]
+        - text: In-app expansion only (v1). No global key capture on Linux.
+      - generic [ref=f5e64]:
+        - generic [ref=f5e65]:
+          - text: Title
+          - textbox "Title" [active] [ref=f5e66]
+        - generic [ref=f5e67]:
+          - text: Trigger
+          - textbox "Trigger" [ref=f5e68]:
+            - /placeholder: Trigger e.g. ;;sig
+            - text: Regards, OpenBurnBarSignature;;sig
+        - generic [ref=f5e69]:
+          - text: Body
+          - textbox "Body" [ref=f5e70]:
+            - /placeholder: Expansion body
+        - generic [ref=f5e71]:
+          - checkbox "Enabled" [checked] [ref=f5e72]
+          - text: Enabled
+        - button "Add snippet" [ref=f5e73] [cursor=pointer]
+      - list
+      - paragraph [ref=f5e74]: Live buffer probe → ;;probe
+      - paragraph [ref=f5e75]: Future IME/fcitx/IBus integration with per-DE tests; no evdev/global keylogger in v1.

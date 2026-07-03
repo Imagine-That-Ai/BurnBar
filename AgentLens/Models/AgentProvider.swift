@@ -84,6 +84,7 @@ extension AgentProvider {
         case .goose: return "~/.local/share/goose/sessions"
         case .openClaw: return "~/.openclaw/sessions"
         case .openClaude: return "~/.openclaude/sessions"
+        case .omp: return "~/.omp/agent/sessions"
         case .ollama: return "~/.ollama/logs"
         case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
         case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"
@@ -123,6 +124,7 @@ extension AgentProvider {
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"
         case .openClaude: return "*.jsonl"
+        case .omp: return "*.jsonl"
         case .ollama: return "server*.log"
         case .windsurf: return "state.vscdb"
         case .warp: return "warp_network*.log"
@@ -135,7 +137,7 @@ extension AgentProvider {
     /// How well the macOS app supports this provider's local data.
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent, .openClaude:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent, .openClaude:
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
@@ -154,7 +156,7 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek, .openBurnBar:

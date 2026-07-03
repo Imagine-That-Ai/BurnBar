@@ -18,6 +18,11 @@ struct SettingsView: View {
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
     @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
     @State private var isShowingDataControlCenter = false
+    @State private var actionRegistry: SettingsActionRegistry?
+    @State private var copilotController: SettingsCopilotController?
+    @State private var cliBridge = CLIBridge()
+    @State private var copilotMode = false
+    @FocusState private var commandBarFocused: Bool
 
     init(
         settingsManager: SettingsManager,
@@ -38,16 +43,29 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
-                searchField
+                commandBar
                     .padding(.horizontal, DesignSystem.Spacing.md)
                     .padding(.top, DesignSystem.Spacing.sm)
                     .padding(.bottom, DesignSystem.Spacing.xs)
 
-                List(SettingsTab.visibleTabs, selection: $router.selectedTab) { tab in
-                    NavigationLink(value: tab) {
-                        sidebarRow(for: tab)
+                List(selection: $router.selectedTab) {
+                    // Home at top
+                    NavigationLink(value: SettingsTab.home) {
+                        sidebarRow(for: .home)
                     }
-                    .tag(tab)
+                    .tag(SettingsTab.home)
+
+                    // Grouped sections
+                    ForEach(SettingsSection.visibleSections) { section in
+                        Section(section.title) {
+                            ForEach(section.tabs.filter { SettingsTab.visibleTabs.contains($0) }) { tab in
+                                NavigationLink(value: tab) {
+                                    sidebarRow(for: tab)
+                                }
+                                .tag(tab)
+                            }
+                        }
+                    }
                 }
                 .listStyle(.sidebar)
             }
@@ -55,12 +73,15 @@ struct SettingsView: View {
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
             .onAppear {
                 Analytics.shared.track(.screenViewed, ["surface": "settings"])
+                setupCopilot()
                 consumePendingSettingsDestination()
             }
         } detail: {
             NavigationStack(path: $router.path) {
                 Group {
-                    if router.isSearching {
+                    if copilotMode, let copilotController {
+                        SettingsCopilotResultsView(router: router, copilot: copilotController)
+                    } else if router.isSearching {
                         SettingsSearchResultsView(router: router)
                     } else {
                         detailContent
@@ -106,25 +127,48 @@ struct SettingsView: View {
         }
     }
 
-    private var searchField: some View {
+    private var commandBar: some View {
         HStack(spacing: DesignSystem.Spacing.xs) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: copilotMode ? "sparkles" : "magnifyingglass")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-            TextField("Search settings", text: $router.query)
+                .foregroundStyle(copilotMode ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.textMuted)
+            TextField(copilotMode ? "Ask anything…" : "Search or ask — try: make it dark",
+                      text: $router.query)
                 .textFieldStyle(.plain)
                 .font(DesignSystem.Typography.body)
-                .accessibilityLabel("Search settings")
-            if router.isSearching {
+                .focused($commandBarFocused)
+                .accessibilityLabel("Search or ask the settings copilot")
+                .onChange(of: router.query) { _, newValue in
+                    copilotMode = false
+                    copilotController?.updateSearchResults(query: newValue)
+                }
+                .onSubmit {
+                    guard !router.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                    askCopilot()
+                }
+            if copilotMode || router.isSearching {
                 Button {
+                    copilotMode = false
                     router.reset()
+                    copilotController?.reset()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
+                .accessibilityLabel("Clear")
+            } else {
+                Button {
+                    askCopilot()
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Ask copilot")
+                .help("Ask the Settings Copilot")
             }
         }
         .padding(.horizontal, DesignSystem.Spacing.sm)
@@ -134,32 +178,35 @@ struct SettingsView: View {
                 .fill(DesignSystem.Colors.surface)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                        .stroke(copilotMode
+                                ? DesignSystem.Colors.hermesAureate.opacity(0.4)
+                                : DesignSystem.Colors.borderSubtle,
+                                lineWidth: copilotMode ? 1 : 0.5)
                 )
         )
     }
 
+    private func askCopilot() {
+        guard let copilotController else { return }
+        let query = router.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        copilotMode = true
+        copilotController.updateSearchResults(query: query)
+        Task { await copilotController.ask(query) }
+    }
+
     private func sidebarRow(for tab: SettingsTab) -> some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-            if tab.logoProviders.isEmpty {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(tab.accentColor)
-                        .frame(width: 28, height: 28)
-                    if let customIcon = tab.customIcon {
-                        Image(customIcon)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 18, height: 18)
-                    } else {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                }
-            } else {
+            if !tab.logoProviders.isEmpty {
                 SettingsProviderLogoStack(providers: tab.logoProviders, size: 26, maxVisible: 5)
                     .accessibilityHidden(true)
+            } else {
+                SettingsIconTile(
+                    icon: tab.icon,
+                    iconTint: tab.accentColor,
+                    customIcon: tab.customIcon,
+                    symbolSize: 13
+                )
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -274,8 +321,8 @@ struct SettingsView: View {
             // macOS quota-sync workstream threads that bucket in, the ring
             // self-hides (passing `nil`).
             FusionImpactView(dataStore: dataStore)
-        case .generalRoot, .updatesRoot, .daemonRoot, .accountRoot, .cloudRoot,
-             .agentsRoot,
+        case .homeRoot, .generalRoot, .updatesRoot, .daemonRoot, .accountRoot, .cloudRoot,
+             .agentsRoot, .modelProxyRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .switcherRoot, .hermesRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
@@ -298,6 +345,13 @@ struct SettingsView: View {
             conversationCloudEnabled: settingsManager.conversationCloudBackupEnabled,
             iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled
         )
+    }
+
+    private func setupCopilot() {
+        guard actionRegistry == nil else { return }
+        let registry = SettingsActionRegistry(settingsManager: settingsManager, router: router)
+        actionRegistry = registry
+        copilotController = SettingsCopilotController(registry: registry, cliBridge: cliBridge)
     }
 
     private func consumePendingSettingsDestination() {
@@ -334,7 +388,18 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var detailContent: some View {
-        switch router.selectedTab ?? .general {
+        switch router.selectedTab ?? .home {
+        case .home:
+            SettingsHomeView(
+                settingsManager: settingsManager,
+                accountManager: accountManager,
+                dataStore: dataStore,
+                daemonManager: .shared,
+                cloudSyncService: cloudSyncService,
+                runtimeContext: runtimeContext,
+                router: router
+            )
+            .navigationTitle("Home")
         case .general:
             GeneralSettingsView(
                 settingsManager: settingsManager,
@@ -406,6 +471,14 @@ struct SettingsView: View {
                 iCloudSessionMirrorService: iCloudSessionMirrorService
             )
                 .navigationTitle("Agents")
+        case .modelProxy:
+            ModelProxySettingsView(
+                settingsManager: settingsManager,
+                daemonManager: .shared,
+                dataStore: dataStore,
+                accountManager: accountManager
+            )
+            .navigationTitle("Model Proxy")
         case .alerts:
             AlertsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Alerts")
