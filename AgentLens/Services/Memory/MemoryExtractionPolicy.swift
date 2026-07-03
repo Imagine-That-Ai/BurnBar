@@ -106,8 +106,18 @@ private final class WeakMemoryExtractionKillSwitch {
 }
 
 @MainActor
+private final class WeakMemoryExtractionDrainLauncher {
+    weak var value: MemoryExtractionEngine?
+
+    init(_ value: MemoryExtractionEngine) {
+        self.value = value
+    }
+}
+
+@MainActor
 enum MemoryExtractionKillSwitchRegistry {
     private static var switches: [WeakMemoryExtractionKillSwitch] = []
+    private static var drainLaunchers: [WeakMemoryExtractionDrainLauncher] = []
 
     static func register(_ killSwitch: MemoryExtractionKillSwitch, initiallyAllowed: Bool) {
         switches.removeAll { $0.value == nil }
@@ -115,10 +125,20 @@ enum MemoryExtractionKillSwitchRegistry {
         killSwitch.set(initiallyAllowed)
     }
 
+    static func registerDrainLauncher(_ engine: MemoryExtractionEngine) {
+        drainLaunchers.removeAll { $0.value == nil }
+        drainLaunchers.append(WeakMemoryExtractionDrainLauncher(engine))
+    }
+
     static func setAll(_ allowed: Bool) {
         switches.removeAll { $0.value == nil }
         for entry in switches {
             entry.value?.set(allowed)
+        }
+        guard allowed else { return }
+        drainLaunchers.removeAll { $0.value == nil }
+        for entry in drainLaunchers {
+            entry.value?.launchDrain()
         }
     }
 }

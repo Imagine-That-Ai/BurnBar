@@ -1342,6 +1342,8 @@ struct OpenBurnBarApp: App {
 
         Task { @MainActor in
             StartupProfiler.event("live_services_start")
+            startMemoryExtractionIfNeeded(context: context)
+
             let sync: CloudSyncService
             sync = StartupProfiler.interval("cloud_sync_init") {
                 if let existingSync = context.cloudSyncService {
@@ -1376,8 +1378,6 @@ struct OpenBurnBarApp: App {
                 context.textExpansionRuntimeController?.start()
             }
             #endif
-
-            startMemoryExtractionIfNeeded(context: context)
 
             let mirror: ICloudSessionMirrorService
             mirror = StartupProfiler.interval("icloud_mirror_init") {
