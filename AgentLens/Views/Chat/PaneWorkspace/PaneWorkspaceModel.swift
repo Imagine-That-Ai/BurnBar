@@ -441,7 +441,11 @@ final class PaneWorkspaceModel {
         }
 
         pushClosedTabSnapshot(closing)
-        closing.leaves.forEach { $0.controller.teardownForPaneClose() }
+        let closingLeafIDs = Set(closing.leaves.map(\.id))
+        let survivingLeaves = allLeaves.filter { !closingLeafIDs.contains($0.id) }
+        closing.leaves.forEach {
+            teardownControllerForPaneClose($0.controller, preservingGrantsIn: survivingLeaves)
+        }
         tabs.remove(at: index)
         if selectedTabID == tabID {
             selectedTabID = tabs[min(index, tabs.count - 1)].id
@@ -462,15 +466,17 @@ final class PaneWorkspaceModel {
         }
 
         pushClosedTabSnapshot(closing)
+        let closingLeafIDs = Set(closing.leaves.map(\.id))
+        let survivingLeaves = allLeaves.filter { !closingLeafIDs.contains($0.id) }
         let survivorThread = survivor.controller.activeThreadID
         let survivorTitle = survivor.customTitle
         let survivorColor = survivor.colorToken
         let survivorUnseen = survivor.unseenCompletionAt
         let survivorAlerts = survivor.alertsEnabled
 
-        primaryController.teardownForPaneClose()
+        teardownControllerForPaneClose(primaryController, preservingGrantsIn: survivingLeaves)
         primaryController.copyPaneConversationControls(from: survivor.controller)
-        survivor.controller.teardownForPaneClose()
+        teardownControllerForPaneClose(survivor.controller, preservingGrantsIn: survivingLeaves)
         primaryController.openHistoryThread(survivorThread)
 
         let rehomed = PaneLeaf(
@@ -486,7 +492,9 @@ final class PaneWorkspaceModel {
         survivorTab.root = Self.replaceLeafNode(survivor.id, in: survivorTab.root, with: .leaf(rehomed))
         survivorTab.activeLeafID = rehomed.id
 
-        closing.leaves.filter { !$0.isPrimary }.forEach { $0.controller.teardownForPaneClose() }
+        closing.leaves.filter { !$0.isPrimary }.forEach {
+            teardownControllerForPaneClose($0.controller, preservingGrantsIn: survivingLeaves)
+        }
         tabs.remove(at: index)
         selectedTabID = survivorTab.id
         persist()
@@ -554,9 +562,10 @@ final class PaneWorkspaceModel {
                 return
             }
             let survivorThread = survivor.controller.activeThreadID
-            teardownControllerForPaneClose(primaryController, preservingGrantsIn: Self.collectLeaves(siblingNode))
+            let survivingLeaves = allLeaves.filter { $0.id != target.id }
+            teardownControllerForPaneClose(primaryController, preservingGrantsIn: survivingLeaves)
             primaryController.copyPaneConversationControls(from: survivor.controller)
-            teardownControllerForPaneClose(survivor.controller, preservingGrantsIn: [survivor])
+            teardownControllerForPaneClose(survivor.controller, preservingGrantsIn: survivingLeaves)
             primaryController.openHistoryThread(survivorThread)
             let rehomed = PaneLeaf(
                 id: survivor.id,
@@ -572,7 +581,8 @@ final class PaneWorkspaceModel {
             replaceNode(withID: parent.id, with: newSibling)
             selectedTab.activeLeafID = rehomed.id
         } else {
-            teardownControllerForPaneClose(target.controller, preservingGrantsIn: Self.collectLeaves(siblingNode))
+            let survivingLeaves = allLeaves.filter { $0.id != target.id }
+            teardownControllerForPaneClose(target.controller, preservingGrantsIn: survivingLeaves)
             replaceNode(withID: parent.id, with: siblingNode)
             selectedTab.activeLeafID = Self.firstLeaf(in: siblingNode).id
         }
