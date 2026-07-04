@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using OpenBurnBar.App.Presentation.SessionLogs;
+using OpenBurnBar.App.Theme;
 using Windows.UI;
 
 namespace OpenBurnBar.App.Converters;
@@ -65,6 +66,24 @@ public sealed partial class SessionLogAccentBrushConverter : IValueConverter
         };
 
         return new SolidColorBrush(color);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
+/// Maps a wire model ID (string) to its deterministic brand brush, so the Elder Wand chip
+/// clouds tint each chip like the macOS <c>DesignSystem.Colors.colorForModel(_:)</c> — via
+/// the ported <see cref="ProviderBrand.ColorForModel"/> family / djb2-hash fallback palette.
+/// Used by the analysis + judge chip dots and selection rings.
+/// </summary>
+public sealed partial class ElderWandModelAccentBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        string modelId = value as string ?? string.Empty;
+        return new SolidColorBrush(ProviderBrand.ColorForModelBrush(modelId));
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
