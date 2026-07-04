@@ -31,7 +31,7 @@ import Foundation
 /// Reference: CodexBar `KimiUsageFetcher.swift`
 /// (github.com/steipete/CodexBar, verified 2026-05-03)
 
-struct KimiQuotaAdapter: ProviderQuotaAdapter {
+public struct KimiQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Constants
 
@@ -71,7 +71,7 @@ struct KimiQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Fetch
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard let authToken = resolveAuthToken(context: context) else {
             return unavailableSnapshot(
                 for: .kimi,

@@ -22,11 +22,11 @@ import Foundation
 ///
 /// No estimates. No heuristics. Every number comes from droid's own tracking.
 
-struct FactoryQuotaAdapter: ProviderQuotaAdapter {
+public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Constants
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         // 1. Try the billing API first (org billing data is authoritative for plan limits)
         if let exactSnapshot = try? await fetchFactoryExactSnapshot(context: context) { // try?-ok(fallback to next source)
             return exactSnapshot

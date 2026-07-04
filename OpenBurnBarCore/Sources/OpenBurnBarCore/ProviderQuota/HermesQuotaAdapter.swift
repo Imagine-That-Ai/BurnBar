@@ -5,11 +5,11 @@ import Foundation
 /// Hermes is a runtime/chat surface, not a provider quota source. Its token
 /// and session usage belongs in usage analytics, never quota.
 
-struct HermesQuotaAdapter: ProviderQuotaAdapter {
+public struct HermesQuotaAdapter: ProviderQuotaAdapter {
 
     private static let stateDBPath = ("~/.hermes/state.db" as NSString).expandingTildeInPath
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         return ProviderQuotaSnapshot(
             provider: .hermes,
             fetchedAt: Date(),

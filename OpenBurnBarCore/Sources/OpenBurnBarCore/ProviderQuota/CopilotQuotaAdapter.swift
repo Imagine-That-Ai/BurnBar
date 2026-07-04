@@ -22,7 +22,7 @@ import Foundation
 ///
 /// Reference: CodexBar (github.com/steipete/CodexBar) — `CopilotUsageModels.swift`, `CopilotUsageFetcher.swift`
 
-struct CopilotQuotaAdapter: ProviderQuotaAdapter {
+public struct CopilotQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Response Models
 
@@ -85,7 +85,7 @@ struct CopilotQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Public API
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard let pat = resolveCopilotPAT(context: context) else {
             return unavailableSnapshot(
                 for: .copilot,

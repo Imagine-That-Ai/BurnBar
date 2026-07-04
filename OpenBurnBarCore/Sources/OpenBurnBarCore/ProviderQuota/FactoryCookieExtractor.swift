@@ -8,7 +8,7 @@ import Foundation
 /// Chrome Safe Storage. Factory quota refreshes must use an explicit
 /// OpenBurnBar-owned login session, stored under app-owned Keychain keys, or an
 /// environment override supplied by the user.
-enum FactoryCookieExtractor {
+public enum FactoryCookieExtractor {
 
     /// Browser cookie auto-extraction is disabled by design.
     static func extractCookieHeader() -> String? {

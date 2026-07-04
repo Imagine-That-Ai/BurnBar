@@ -13,8 +13,8 @@ import Foundation
 
 // MARK: - Cline
 
-struct ClineQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct ClineQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let installed = detectVSCodeExtension("cline")
         return ProviderQuotaSnapshot(
             provider: .cline,
@@ -65,8 +65,8 @@ struct ClineQuotaAdapter: ProviderQuotaAdapter {
 
 // MARK: - Roo Code
 
-struct RooCodeQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct RooCodeQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let installed = detectVSCodeExtensionGlobalStorage("roocode")
         return ProviderQuotaSnapshot(
             provider: .rooCode,
@@ -102,8 +102,8 @@ struct RooCodeQuotaAdapter: ProviderQuotaAdapter {
 
 // MARK: - Augment
 
-struct AugmentQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct AugmentQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         return ProviderQuotaSnapshot(
             provider: .augment,
             fetchedAt: Date(),
@@ -118,8 +118,8 @@ struct AugmentQuotaAdapter: ProviderQuotaAdapter {
 
 // MARK: - Goose
 
-struct GooseQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct GooseQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let gooseDir = ("~/.config/goose" as NSString).expandingTildeInPath
         let installed = FileManager.default.fileExists(atPath: gooseDir)
 
@@ -139,8 +139,8 @@ struct GooseQuotaAdapter: ProviderQuotaAdapter {
 
 // MARK: - OpenClaw
 
-struct OpenClawQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct OpenClawQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         return ProviderQuotaSnapshot(
             provider: .openClaw,
             fetchedAt: Date(),
@@ -158,8 +158,8 @@ struct OpenClawQuotaAdapter: ProviderQuotaAdapter {
 // OpenClaude (github.com/Gitlawb/openclaude) is a spawned Claude Code fork with no
 // usage API, so — like OpenClaw — it reports `.unavailable`. Distinct from
 // OpenClawQuotaAdapter, which points at the OpenClaw assistant platform.
-struct OpenClaudeQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct OpenClaudeQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         return ProviderQuotaSnapshot(
             provider: .openClaude,
             fetchedAt: Date(),
@@ -174,8 +174,8 @@ struct OpenClaudeQuotaAdapter: ProviderQuotaAdapter {
 
 // MARK: - Windsurf
 
-struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let windsurfDir = ("~/Library/Application Support/Windsurf - Next" as NSString).expandingTildeInPath
         let installed = FileManager.default.fileExists(atPath: windsurfDir)
 
@@ -195,8 +195,8 @@ struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
 
 // MARK: - Gemini CLI
 
-struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let geminiCLIPath = ("~/.gemini" as NSString).expandingTildeInPath
         let installed = FileManager.default.fileExists(atPath: geminiCLIPath)
 

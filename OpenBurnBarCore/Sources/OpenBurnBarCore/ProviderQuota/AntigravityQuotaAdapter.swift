@@ -1,7 +1,6 @@
 import Foundation
-import OpenBurnBarCore
 
-struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
+public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Model Catalog
 
@@ -80,7 +79,7 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
         #endif
     }
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let historyURL = context.homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli/history.jsonl")
         let settingsURL = context.homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli/settings.json")
         let now = Self.referenceDate(from: context)

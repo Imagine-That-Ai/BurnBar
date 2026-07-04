@@ -25,9 +25,9 @@ import Foundation
 ///
 /// Reference: CodexBar `OllamaUsageFetcher.swift` + `OllamaUsageParser.swift`
 
-struct OllamaQuotaAdapter: ProviderQuotaAdapter {
+public struct OllamaQuotaAdapter: ProviderQuotaAdapter {
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let apiKey = resolveAPIKey(context: context)
         let endpoint = resolveEndpoint(context: context)
         let hasCloudKey = apiKey != nil

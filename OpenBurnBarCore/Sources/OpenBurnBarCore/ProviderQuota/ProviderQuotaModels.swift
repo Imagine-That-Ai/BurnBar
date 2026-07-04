@@ -2,30 +2,30 @@ import Foundation
 
 // MARK: - Codex Models
 
-struct CodexRateLimitEvent: Codable, Equatable, Sendable {
+public struct CodexRateLimitEvent: Codable, Equatable, Sendable {
     let timestamp: Date
     let planType: String?
     let primary: CodexRateLimitWindow?
     let secondary: CodexRateLimitWindow?
 }
 
-struct CodexRateLimitWindow: Codable, Equatable, Sendable {
+public struct CodexRateLimitWindow: Codable, Equatable, Sendable {
     let usedPercent: Double?
     let windowMinutes: Int?
     let resetsAt: Date?
 }
 
-struct CodexRolloutFileSignature: Codable, Equatable, Sendable {
+public struct CodexRolloutFileSignature: Codable, Equatable, Sendable {
     let modifiedAt: TimeInterval
     let sizeBytes: Int64
 }
 
-struct CodexRolloutFileCacheEntry: Codable, Equatable, Sendable {
+public struct CodexRolloutFileCacheEntry: Codable, Equatable, Sendable {
     let signature: CodexRolloutFileSignature
     let latestRateLimitEvent: CodexRateLimitEvent?
 }
 
-struct CodexRolloutScanCache: Codable, Equatable, Sendable {
+public struct CodexRolloutScanCache: Codable, Equatable, Sendable {
     var schemaVersion: Int
     var fileEntries: [String: CodexRolloutFileCacheEntry]
     var latestRateLimitEvent: CodexRateLimitEvent?
@@ -39,13 +39,13 @@ struct CodexRolloutScanCache: Codable, Equatable, Sendable {
     )
 }
 
-struct CodexRateLimitScanResult: Sendable {
+public struct CodexRateLimitScanResult: Sendable {
     let latestEvent: CodexRateLimitEvent?
     let cache: CodexRolloutScanCache
     let didChangeCache: Bool
 }
 
-struct CodexRolloutEnvelope: Decodable {
+public struct CodexRolloutEnvelope: Decodable {
     let timestamp: Date
     let type: String
     let payload: Payload
@@ -102,19 +102,19 @@ struct CodexRolloutEnvelope: Decodable {
 
 // MARK: - Cursor Models
 
-struct CursorUsageSummary: Decodable {
+public struct CursorUsageSummary: Decodable {
     let billingCycleEnd: String?
     let membershipType: String?
     let isUnlimited: Bool?
     let individualUsage: CursorIndividualUsage?
 }
 
-struct CursorIndividualUsage: Decodable {
+public struct CursorIndividualUsage: Decodable {
     let plan: CursorPlanUsage?
     let onDemand: CursorOnDemandUsage?
 }
 
-struct CursorPlanUsage: Decodable {
+public struct CursorPlanUsage: Decodable {
     let used: Int?
     let limit: Int?
     let autoPercentUsed: Double?
@@ -122,22 +122,22 @@ struct CursorPlanUsage: Decodable {
     let totalPercentUsed: Double?
 }
 
-struct CursorOnDemandUsage: Decodable {
+public struct CursorOnDemandUsage: Decodable {
     let used: Int?
     let limit: Int?
 }
 
-struct CursorUserInfo: Decodable {
+public struct CursorUserInfo: Decodable {
     let id: String?
     let email: String?
     let name: String?
 }
 
-struct CursorLegacyUsageResponse: Decodable {
+public struct CursorLegacyUsageResponse: Decodable {
     let gpt4: CursorLegacyRequestUsage?
 }
 
-struct CursorLegacyRequestUsage: Decodable {
+public struct CursorLegacyRequestUsage: Decodable {
     let numRequests: Int?
     let numRequestsTotal: Int?
     let maxRequestUsage: Int?
@@ -145,13 +145,13 @@ struct CursorLegacyRequestUsage: Decodable {
 
 // MARK: - Factory Models
 
-struct FactorySessionCredentialEnvelope: Sendable {
+public struct FactorySessionCredentialEnvelope: Sendable {
     let cookieHeader: String?
     let bearerToken: String?
     let sourceLabel: String
 }
 
-struct FactoryAuthResponseEnvelope: Sendable {
+public struct FactoryAuthResponseEnvelope: Sendable {
     let planName: String?
     let tier: String?
     let organizationName: String?
@@ -164,7 +164,7 @@ struct FactoryAuthResponseEnvelope: Sendable {
     let inferredPlanTier: FactoryQuotaPlanTier
 }
 
-struct FactoryUsageEnvelope: Sendable {
+public struct FactoryUsageEnvelope: Sendable {
     struct Lane: Sendable {
         let userTokens: Double
         let totalAllowance: Double?

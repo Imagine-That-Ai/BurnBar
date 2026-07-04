@@ -1,7 +1,6 @@
 import Foundation
-import OpenBurnBarCore
 
-enum FlexibleQuotaBucketNormalizer {
+public enum FlexibleQuotaBucketNormalizer {
 
     // MARK: - Date Formatters
 
@@ -17,7 +16,7 @@ enum FlexibleQuotaBucketNormalizer {
     static func extractFlexibleBuckets(from object: Any, provider: AgentProvider, endpointLabel: String) -> [ProviderQuotaBucket] {
         let unwrapped = unwrapDataEnvelope(object)
         var buckets = recurseBuckets(in: unwrapped, provider: provider, path: [endpointLabel])
-        buckets.sort {
+        buckets.sort(by: {
             let lhsPriority = bucketSortPriority(for: provider, bucket: $0)
             let rhsPriority = bucketSortPriority(for: provider, bucket: $1)
             if lhsPriority != rhsPriority {
@@ -29,7 +28,7 @@ enum FlexibleQuotaBucketNormalizer {
                 return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
             }
             return lhsRemaining > rhsRemaining
-        }
+        })
 
         var seen = Set<String>()
         return buckets.filter { bucket in
@@ -567,7 +566,7 @@ enum FlexibleQuotaBucketNormalizer {
 
 }
 
-func quotaNonEmpty(_ value: String?) -> String? {
+public func quotaNonEmpty(_ value: String?) -> String? {
     guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
         return nil
     }

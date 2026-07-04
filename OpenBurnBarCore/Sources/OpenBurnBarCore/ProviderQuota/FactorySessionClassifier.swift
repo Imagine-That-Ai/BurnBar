@@ -41,7 +41,7 @@ import Foundation
 /// the published list with model-family prefix matching so a new Core
 /// model lands in the right bucket without an OpenBurnBar update.
 
-enum FactorySessionLane: String, Sendable, Codable {
+public enum FactorySessionLane: String, Sendable, Codable {
     /// Custom proxy / BYOK route — does NOT touch Factory's billing.
     case customProxy
     /// Frontier closed-weight model on Factory's Standard pool.
@@ -52,7 +52,7 @@ enum FactorySessionLane: String, Sendable, Codable {
     case factoryUnknown
 }
 
-enum FactorySessionClassifier {
+public enum FactorySessionClassifier {
 
     // MARK: - Droid Core Identification
 
