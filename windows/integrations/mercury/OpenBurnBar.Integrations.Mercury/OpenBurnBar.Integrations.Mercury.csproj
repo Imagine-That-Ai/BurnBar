@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Mercury media-pipeline logic for the OpenBurnBar WinUI port
+    (Phase 4 · Mercury lane).
+
+    This is the DEPENDENCY-FREE half of the Mercury screen-mirror / audio /
+    camera / file-transfer / VNC-control surface: the RFB/VNC wire codec, the
+    media-frame packet codec, the media-session state machine, the consent
+    ledger, the media-budget capability gate + fail-closed status store, and the
+    file-transfer chunker/reassembler. It has NO Windows / WinUI dependency on
+    purpose — the SAME managed assembly is:
+      • referenced by the net8.0-windows adapter project
+        (OpenBurnBar.Integrations.Mercury.Windows), whose Windows.Graphics.Capture
+        / MediaFoundation / WASAPI / camera / push adapters implement the
+        interfaces declared here, AND
+      • unit-tested on the macOS authoring host today via `dotnet test`
+        (windows/tests/mercury), exactly the pattern already proven by the
+        presentation + storage + particles seams.
+
+    Parity sources (macOS):
+      • AgentLens/Services/Media/AppleRemoteDesktopRFBClient.swift
+          -> Wire/RfbProtocol.cs + Wire/RfbArdAuth.cs (handshake, input events,
+             ServerInit, FramebufferUpdate parse, ARD security-type-30 auth)
+      • OpenBurnBarCore/.../OpenBurnBarMedia/MediaPacketCodec.swift + MediaFrame.swift
+          -> Wire/MediaFrame.cs + Wire/MediaPacketCodec.cs (byte-exact framing)
+      • OpenBurnBarCore/.../OpenBurnBarMedia/MediaStreamClass.swift
+          -> Sessions/MediaStreamClass.cs
+      • AgentLens/Services/Media/MediaSessionCoordinator.swift
+          -> Sessions/MediaSessionStateMachine.cs (phase transitions + admission recheck)
+      • OpenBurnBarCore/.../OpenBurnBarMedia/MediaBudgetEnvelope.swift
+          -> Budget/MediaBudgetEnvelope.cs + Budget/MediaBudgetStatus.cs
+      • AgentLens/Services/Media/MacMediaCapabilityGate.swift
+          -> Budget/MediaCapabilityEvaluator.cs (consent/budget/kill-switch/daily/session/concurrent)
+      • AgentLens/Services/Media/MediaBudgetStatusStore.swift
+          -> Budget/MediaBudgetStatusStore.cs (fail-closed effective status)
+      • AgentLens/Services/Media/MercuryConsentStore.swift
+          -> Consent/MercuryConsentStore.cs (mirror auto-accept grant ledger)
+      • OpenBurnBarCore/.../OpenBurnBarMedia/MediaFileTransferService.swift + MediaPacketCodec chunking
+          -> FileTransfer/FileTransferChunker.cs (chunk/reassemble)
+
+    Targets net8.0 so the net8.0-windows adapter can reference it, while the
+    net10.0 test project can reference it too (a lower TFM is consumable by a
+    higher one).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Integrations.Mercury</RootNamespace>
+    <AssemblyName>OpenBurnBar.Integrations.Mercury</AssemblyName>
+  </PropertyGroup>
+
+</Project>
