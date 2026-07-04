@@ -18,6 +18,7 @@ public static class SurfacePageResolver
         "insights" => typeof(OpenBurnBar.App.Insights.InsightsPage),
         "dashboard" => typeof(OpenBurnBar.App.Dashboard.DashboardPage),
         "missionControl" => typeof(OpenBurnBar.App.MissionControl.MissionControlPage),
+        "dataControlCenter" => typeof(OpenBurnBar.App.DataControlCenter.DataControlCenterPage),
         _ => typeof(SurfaceStubPage),
     };
 }
