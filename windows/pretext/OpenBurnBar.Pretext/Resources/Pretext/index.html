@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4" />
+<title>Pretext Bridge (WebView2)</title>
+<style>
+  /*
+    ── R22 font pinning ────────────────────────────────────────────────────────
+    Pretext measures with the canvas 2D `ctx.measureText` metric, which resolves
+    the CSS font string against whatever font FILE the engine picks. Chromium
+    (WebView2) and WebKit (macOS) can resolve the same family name to different
+    files / hinting / subpixel rounding, which is exactly risk R22
+    (docs/windows-port/design/0005-pretext-webview2-metric-parity.md).
+
+    The corpus pins `Arial`, which ships on BOTH Windows and macOS, so the Mac
+    golden is capturable and the Windows run needs no bundled font. For EXACT
+    parity in production, drop a single `.woff2` into this folder and reference it
+    identically on both platforms via the @font-face seam below (uncomment + point
+    `src` at the bundled file); then repin the corpus `font` strings to that family.
+  */
+  /*
+  @font-face {
+    font-family: "OBBPretextPinned";
+    src: url("pretext-pinned.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: block;
+  }
+  */
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #0E0D0B;
+    color: #F0EBE2;
+    font-family: Arial, "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  body { position: relative; }
+  #stage { position: absolute; inset: 0; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+  <div id="stage" aria-live="polite"></div>
+  <script src="pretext.bundle.min.js"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      // ────────────────────────────────────────────────────────────────────
+      // Bridge protocol (WebView2)
+      //
+      // This is the WebView2 peer of the WKWebView bridge in
+      // OpenBurnBarCore/.../Resources/Pretext/index.html. The METHOD TABLE is
+      // identical; only the transport channel differs:
+      //
+      //   host -> page:  window.__pretextDispatch(JSON.stringify({ id, method, params }))
+      //                  (host calls CoreWebView2.ExecuteScriptAsync — same as
+      //                   WKWebView.evaluateJavaScript)
+      //
+      //   page -> host:  window.chrome.webview.postMessage({ id, ok, value, error })
+      //                  (WKWebView used window.webkit.messageHandlers.pretext.postMessage;
+      //                   the host receives it via CoreWebView2.WebMessageReceived
+      //                   -> args.WebMessageAsJson)
+      //
+      // All heavy values (PreparedText, PreparedTextWithSegments, RichInline) stay
+      // on the JS side behind opaque integer handles. The host never sees the raw
+      // structure — it gets an ID and passes it back. Identical to the WKWebView
+      // shell.
+      // ────────────────────────────────────────────────────────────────────
+
+      var Pretext = window.Pretext;
+      var PretextRichInline = window.PretextRichInline;
+
+      var handles = new Map();
+      var nextHandle = 1;
+
+      function storeHandle(value) {
+        var id = nextHandle++;
+        handles.set(id, value);
+        return id;
+      }
+
+      function getHandle(id) {
+        var h = handles.get(id);
+        if (!h) throw new Error("Unknown pretext handle: " + id);
+        return h;
+      }
+
+      function hasBridge() {
+        return !!(window.chrome && window.chrome.webview && window.chrome.webview.postMessage);
+      }
+
+      function postReply(id, payload) {
+        if (hasBridge()) {
+          window.chrome.webview.postMessage(Object.assign({ id: id }, payload));
+        }
+      }
+
+      function ok(id, value) {
+        postReply(id, { ok: true, value: value });
+      }
+
+      function fail(id, error) {
+        postReply(id, { ok: false, error: String(error && error.message ? error.message : error) });
+      }
+
+      // ────────────────────────────────────────────────────────────────────
+      // Methods — IDENTICAL to the WKWebView shell (do not diverge).
+      // ────────────────────────────────────────────────────────────────────
+
+      var methods = {
+        ready: function () {
+          return { ok: true };
+        },
+
+        prepare: function (params) {
+          var prepared = Pretext.prepare(params.text, params.font, params.options || undefined);
+          return { handle: storeHandle(prepared) };
+        },
+
+        prepareWithSegments: function (params) {
+          var prepared = Pretext.prepareWithSegments(params.text, params.font, params.options || undefined);
+          return { handle: storeHandle(prepared) };
+        },
+
+        layout: function (params) {
+          var prepared = getHandle(params.handle);
+          var result = Pretext.layout(prepared, params.maxWidth, params.lineHeight);
+          return { height: result.height, lineCount: result.lineCount };
+        },
+
+        layoutWithLines: function (params) {
+          var prepared = getHandle(params.handle);
+          var result = Pretext.layoutWithLines(prepared, params.maxWidth, params.lineHeight);
+          return {
+            height: result.height,
+            lineCount: result.lineCount,
+            lines: result.lines.map(function (l) {
+              return { text: l.text, width: l.width };
+            })
+          };
+        },
+
+        measureLineStats: function (params) {
+          var prepared = getHandle(params.handle);
+          var stats = Pretext.measureLineStats(prepared, params.maxWidth);
+          return { lineCount: stats.lineCount, maxLineWidth: stats.maxLineWidth };
+        },
+
+        measureNaturalWidth: function (params) {
+          var prepared = getHandle(params.handle);
+          return { width: Pretext.measureNaturalWidth(prepared) };
+        },
+
+        prepareRichInline: function (params) {
+          var prepared = PretextRichInline.prepareRichInline(params.items);
+          return { handle: storeHandle(prepared) };
+        },
+
+        layoutRichInline: function (params) {
+          var prepared = getHandle(params.handle);
+          var lines = [];
+          var maxWidth = params.maxWidth;
+          PretextRichInline.walkRichInlineLineRanges(prepared, maxWidth, function (range) {
+            var line = PretextRichInline.materializeRichInlineLineRange(prepared, range);
+            lines.push({
+              width: line.width,
+              fragments: line.fragments.map(function (f) {
+                return {
+                  text: f.text,
+                  itemIndex: f.itemIndex,
+                  gapBefore: f.gapBefore || 0
+                };
+              })
+            });
+          });
+          return { lines: lines };
+        },
+
+        releaseHandle: function (params) {
+          handles.delete(params.handle);
+          return { released: true };
+        },
+
+        // Render prepared text to the visible canvas. Used by any visible Pretext
+        // view; identical heuristic to the WKWebView shell (fresh draw per call).
+        renderToCanvas: function (params) {
+          var prepared = getHandle(params.handle);
+          var stage = document.getElementById("stage");
+          stage.innerHTML = "";
+          var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var canvas = document.createElement("canvas");
+          var dpr = window.devicePixelRatio || 1;
+          var maxWidth = params.maxWidth;
+          var lineHeight = params.lineHeight;
+          var result = Pretext.layoutWithLines(prepared, maxWidth, lineHeight);
+          canvas.width = Math.ceil(maxWidth * dpr);
+          canvas.height = Math.ceil(result.height * dpr);
+          canvas.style.width = maxWidth + "px";
+          canvas.style.height = result.height + "px";
+          stage.appendChild(canvas);
+          var ctx = canvas.getContext("2d");
+          ctx.scale(dpr, dpr);
+          ctx.font = params.font;
+          ctx.textBaseline = "alphabetic";
+          ctx.fillStyle = params.color || (dark ? "#F0EBE2" : "#1C2014");
+          var baseline = lineHeight * 0.8;
+          for (var i = 0; i < result.lines.length; i++) {
+            ctx.fillText(result.lines[i].text, 0, baseline + i * lineHeight);
+          }
+          return { height: result.height, lineCount: result.lineCount };
+        }
+      };
+
+      // ────────────────────────────────────────────────────────────────────
+      // Dispatcher — IDENTICAL to the WKWebView shell.
+      // ────────────────────────────────────────────────────────────────────
+
+      window.__pretextDispatch = function (json) {
+        var msg;
+        try {
+          msg = JSON.parse(json);
+        } catch (e) {
+          return; // Malformed; nothing we can reply to.
+        }
+        var id = msg.id;
+        var method = methods[msg.method];
+        if (!method) {
+          fail(id, "Unknown method: " + msg.method);
+          return;
+        }
+        try {
+          var value = method(msg.params || {});
+          ok(id, value);
+        } catch (e) {
+          fail(id, e);
+        }
+      };
+
+      // Signal readiness once Pretext is loaded (heartbeat id === 0).
+      if (hasBridge()) {
+        window.chrome.webview.postMessage({ id: 0, ok: true, value: { ready: true } });
+      }
+    })();
+  </script>
+</body>
+</html>

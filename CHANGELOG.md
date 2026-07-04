@@ -46,9 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **SQL-side credential scan pre-filter** (B3): `INSTR`-based WHERE
     clauses skip conversations without credential indicators before
     loading `fullText` into Swift memory.
-
-### Added
-
 - **Settings overhaul — "Command Bridge"** — completely redesigned the Settings
   sidebar and navigation for discoverability:
   - **Sectioned sidebar**: the flat 14-tab list is now grouped into labeled

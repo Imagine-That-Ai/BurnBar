@@ -47,6 +47,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat or start a trusted Mercury video call.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>OpenBurnBar uses Face ID only to confirm it's you before this iPhone sends remote input -- like typing or unlocking -- to your trusted Mac during a Mercury session.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenBurnBar uses the local network to connect this iPhone or iPad to your trusted Mac for pairing, Hermes relay, and media sessions.</string>
 	<key>NSMicrophoneUsageDescription</key>

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    OpenBurnBar particle-engine renderer core (Phase 3 / W6-DS-SWARM).
+
+    PLATFORM-AGNOSTIC on purpose. This library holds the parity-critical RENDERER
+    logic — the substrate frame model (the FFI-vended snapshot from Swift Core),
+    the substrate math kit, the ISubstrateDrawingSession seam, and the substrate
+    painters (PlainDots + the Constellation/Starfire bespoke). It targets plain
+    net8.0 (NO -windows moniker) so it BUILDS AND RUNS on macOS/Linux CI and in the
+    headless perf harness, exactly like the Swift `SwarmSimulation` math is
+    reusable off-Apple.
+
+    The Win2D binding (CanvasAnimatedControl host + CanvasDrawingSession adapter)
+    lives in windows/app/OpenBurnBar.App/Particles/ and is the ONLY Windows-gated
+    piece: it implements ISubstrateDrawingSession against Win2D. Keeping the seam
+    here means the painters are compiled + perf-measured + golden-tested with no GPU.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>OpenBurnBar.Particles</RootNamespace>
+    <AssemblyName>OpenBurnBar.Particles</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- The FFI decode helper takes raw native pointers (obb_swarm_vend_frame). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Docs are thorough but this is a spike lib; don't fail the build on a stray missing-xmldoc. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

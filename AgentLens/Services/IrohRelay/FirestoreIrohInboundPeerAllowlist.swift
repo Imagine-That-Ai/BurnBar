@@ -32,6 +32,50 @@ enum FirestoreIrohInboundPeerAllowlist {
             }
         }
 
+        // Bridge for the severed QUIC-NodeId registration pipeline: the
+        // `publishIrohPeerNodeId` callable (and the Mac's `iroh_controllers`
+        // read) were both removed in June 2026, after which `controllers/*`
+        // only ever holds app-layer phone-control ids (`ios-phone-*` /
+        // `ios-se-*`) that can never equal the QUIC peer NodeId iroh surfaces
+        // — so a fresh allowlist admitted no phone at all and every Mercury
+        // dial was rejected. Mobile clients still self-report their QUIC
+        // NodeId to `devices/{deviceId}.irohPeerNodeId` before each dial
+        // (`HermesIrohRelayTransport.persistIrohPeerNodeId`). Admit those —
+        // but ONLY for devices whose escrow trustState is `trusted`, which is
+        // server-controlled (clients cannot write trustState; approval goes
+        // through the `approveEscrowDeviceTrust` callable). Fail-closed on
+        // read errors, same as the controllers read above. Follow-up: restore
+        // a server-verified registration callable and drop this bridge.
+        do {
+            let trustedEscrow = try await db
+                .collection("users").document(uid)
+                .collection("escrow_devices")
+                .whereField("trustState", isEqualTo: "trusted")
+                .getDocuments()
+            let trustedDeviceIds = Set(trustedEscrow.documents.map { doc in
+                (doc.data()["deviceId"] as? String) ?? doc.documentID
+            })
+            guard !trustedDeviceIds.isEmpty else {
+                return IrohInboundPeerPolicy(allowedPeerNodeIds: allowed)
+            }
+            let devices = try await db
+                .collection("users").document(uid)
+                .collection("devices")
+                .getDocuments()
+            for doc in devices.documents {
+                let data = doc.data()
+                let deviceId = (data["deviceId"] as? String) ?? doc.documentID
+                guard trustedDeviceIds.contains(deviceId),
+                      let nodeId = data["irohPeerNodeId"] as? String,
+                      !nodeId.isEmpty else {
+                    continue
+                }
+                allowed.insert(nodeId)
+            }
+        } catch {
+            // Fail closed: trusted-device node ids simply aren't added.
+        }
+
         return IrohInboundPeerPolicy(allowedPeerNodeIds: allowed)
     }
 }
