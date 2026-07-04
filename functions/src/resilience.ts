@@ -105,10 +105,10 @@ export const pushPolicy: IPolicy = wrap(pushTimeout, pushRetry, pushBreaker);
  * Generic external API policy: retry 3 times, circuit breaks after 8 failures.
  * Use for OpenTimestamps, external webhooks, and other third-party HTTP calls.
  */
-export const EXTERNAL_API_HALF_OPEN_AFTER_MS = 45_000;
-export const EXTERNAL_API_BREAKER_FAILURE_THRESHOLD = 8;
-export const EXTERNAL_API_RETRY_MAX_ATTEMPTS = 3;
-export const EXTERNAL_API_TIMEOUT_MS = 20_000;
+const EXTERNAL_API_HALF_OPEN_AFTER_MS = 45_000;
+const EXTERNAL_API_BREAKER_FAILURE_THRESHOLD = 8;
+const EXTERNAL_API_RETRY_MAX_ATTEMPTS = 3;
+const EXTERNAL_API_TIMEOUT_MS = 20_000;
 
 function makeExternalApiBreaker(service: string) {
   const breaker = circuitBreaker(handleAll, {
@@ -132,7 +132,7 @@ function makeExternalApiRetry() {
 
 const externalBreaker = makeExternalApiBreaker("external_api");
 const externalRetry = makeExternalApiRetry();
-export const externalTimeout = timeout(EXTERNAL_API_TIMEOUT_MS, TimeoutStrategy.Aggressive);
+const externalTimeout = timeout(EXTERNAL_API_TIMEOUT_MS, TimeoutStrategy.Aggressive);
 
 /** Generic external API resilience policy. */
 export const externalApiPolicy: IPolicy = wrap(externalTimeout, externalRetry, externalBreaker);

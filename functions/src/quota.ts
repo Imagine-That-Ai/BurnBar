@@ -589,3 +589,7 @@ function isSecretLikeKey(key: string): boolean {
   const lower = key.toLowerCase();
   return ["token", "secret", "authorization", "credential", "cookie", "password"].some((term) => lower.includes(term));
 }
+
+export const __testing__ = {
+  normalizeRunnerSnapshot,
+};

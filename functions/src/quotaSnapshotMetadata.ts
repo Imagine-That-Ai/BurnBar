@@ -11,7 +11,7 @@ type QuotaSnapshotMetadataWindowKind =
   | "lifetime"
   | "custom";
 
-export function quotaSnapshotAgeMsBucket(fetchedAt: string | undefined, now: Date = new Date()): string {
+function quotaSnapshotAgeMsBucket(fetchedAt: string | undefined, now: Date = new Date()): string {
   if (!fetchedAt) return "unknown";
   const fetchedAtMs = Date.parse(fetchedAt);
   if (!Number.isFinite(fetchedAtMs)) return "unknown";

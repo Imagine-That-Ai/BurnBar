@@ -172,7 +172,7 @@ function requireSearchHashes(raw: unknown, fieldName: string, required: boolean)
 }
 
 const CLOUD_VAULT_AAD_CONTEXT_PREFIX = "OpenBurnBar-CloudVault-aad-v2";
-export const ROAMING_PROFILE_AAD_DOMAIN = "OpenBurnBar-RoamingProfile-v1";
+const ROAMING_PROFILE_AAD_DOMAIN = "OpenBurnBar-RoamingProfile-v1";
 
 function validateCloudVaultAADPart(value: unknown, fieldName: string): string {
   const part = boundedTrimmedString(value, fieldName, 512, true);
@@ -270,7 +270,7 @@ export function requireSealedText(raw: unknown, fieldName: string, expectedAAD?:
   return stripUndefinedObject(values);
 }
 
-export function requireCloudVaultSealedPayload(
+function requireCloudVaultSealedPayload(
   raw: unknown,
   fieldName: string,
   expectedAAD?: string,

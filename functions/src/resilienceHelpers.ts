@@ -34,7 +34,7 @@ export async function externalApiWithResilience<T>(label: string, fn: () => Prom
   return withResilience(externalApiPolicy, `external:${label}`, fn);
 }
 
-export async function providerApiWithResilience<T>(provider: string, label: string, fn: () => Promise<T>): Promise<T> {
+async function providerApiWithResilience<T>(provider: string, label: string, fn: () => Promise<T>): Promise<T> {
   return withResilience(providerApiPolicy(provider), `provider:${provider}:${label}`, fn);
 }
 
