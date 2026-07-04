@@ -212,6 +212,8 @@ enum OBBCAbiParseExport {
     }
 }
 
+// NSLock-protected blocking outcome result; safe for concurrent access.
+// sendable-allowlist: nslock-blocking-outcome
 private final class OBBCAbiBlockingOutcome<T>: @unchecked Sendable {
     private let lock = NSLock()
     private var outcome: Result<T, Error>?

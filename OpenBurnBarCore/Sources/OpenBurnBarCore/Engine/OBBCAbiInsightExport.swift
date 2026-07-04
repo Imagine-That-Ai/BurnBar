@@ -152,13 +152,13 @@ enum OBBCAbiLocalCanvasBuilder {
         ])
 
         // Ranking: Top providers by cost
-        let providers = perProvider.compactMap { (key, val) -> (String, Double)? in
+        let providers = perProvider.compactMap { key, val -> (String, Double)? in
             guard let dict = val as? [String: Any], let cost = dict["cost"] as? Double else { return nil }
             return (key, cost)
         }.sorted { $0.1 > $1.1 }
 
         if !providers.isEmpty {
-            let rankingData = providers.prefix(10).map { (name, cost) in
+            let rankingData = providers.prefix(10).map { name, cost in
                 ["label": name, "value": String(format: "%.2f", cost)]
             }
             widgets.append([

@@ -347,4 +347,6 @@ struct ProviderQuotaSnapshotStore {
     }
 }
 
+// Reference type with internal synchronization; safe to share across actors.
+// sendable-allowlist: internal-lock-snapshot-store
 extension ProviderQuotaSnapshotStore: @unchecked Sendable, ProviderQuotaSnapshotPersisting {}

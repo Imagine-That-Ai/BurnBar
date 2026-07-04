@@ -27,7 +27,7 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
 
         let cloudVault = try custodian.requireHighValueSecret(id: "cloud-vault-key", secretClass: .cloudVaultKey)
         XCTAssertEqual(cloudVault.metadata.trustLevel, .kwallet)
-        XCTAssertEqual(cloudVault.metadata.note.contains("kwallet-query"), true)
+        XCTAssertTrue(cloudVault.metadata.note.contains("kwallet-query"))
 
         let plaintextBackend = LinuxInMemorySecretStoreBackend(
             backendName: "plain-file-fixture",
