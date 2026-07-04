@@ -1,0 +1,17 @@
+# The committed sample update feed is a REAL Ed25519-signed fixture, not a
+# decorative template (see windows/tests/updater/CommittedSampleFeedTests.cs).
+# The byte length, SHA-256, and Ed25519 signature recorded in
+# appcast-windows.xml / latest-windows.json are ALL computed over the EXACT
+# bytes of sample-artifact.txt. If git's autocrlf rewrote LF->CRLF on a Windows
+# checkout, the artifact would grow (620 -> 631 bytes) and every pin check would
+# fail LengthMismatch-first — flipping the whole suite red on Windows while it
+# stays green on macOS. These files MUST therefore be byte-identical on every
+# platform, independent of the user's core.autocrlf setting.
+#
+# Treat the signed artifact as binary so its bytes are never touched at all (it
+# stands in for a binary MSIX). Pin the feeds + pinned public key to LF so they
+# remain byte-identical to what was signed.
+sample-artifact.txt    -text
+appcast-windows.xml    text eol=lf
+latest-windows.json    text eol=lf
+pinned-update-key.pub  text eol=lf
