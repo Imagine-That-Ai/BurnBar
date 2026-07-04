@@ -2,20 +2,20 @@
 # Shrink-only per-tree size ratchet for the Windows source tree (windows/).
 #
 # Mirrors scripts/debt/check-swift-file-size-budget.sh, but is rooted at
-# `windows/` and PARTITIONED by the nine documented sub-trees so counters cannot
+# `windows/` and PARTITIONED by the ten documented sub-trees so counters cannot
 # collide across trees:
 #
 #   • A macOS-tree change (AgentLens/, OpenBurnBarCore/, OpenBurnBarDaemon/) or an
 #     Android-tree change (android/) is NEVER scanned — the scan root is windows/ —
 #     so it cannot move any Windows counter, and vice-versa.
-#   • Each area counter (app / pal / native / storage / particles / pretext /
-#     computeruse / integrations / tests) is computed ONLY from windows/<area>/, so
-#     growth in one area cannot move another area's counter.
+#   • Each area counter (app / pal / native / storage / cloudsync / particles /
+#     pretext / computeruse / integrations / tests) is computed ONLY from
+#     windows/<area>/, so growth in one area cannot move another area's counter.
 #
 # Fails CI if EITHER:
 #   - a NEW Windows source file crosses the size target (not in the baseline), or
 #   - a baselined file GROWS beyond its recorded line count, or
-#   - a Windows source file lives OUTSIDE the nine documented sub-trees.
+#   - a Windows source file lives OUTSIDE the ten documented sub-trees.
 # Baselined files may only shrink. As they drop below the target, regenerate the
 # baseline (`--print-live`) to ratchet down.
 #
@@ -38,7 +38,7 @@ baseline_path = Path(sys.argv[2])
 mode = sys.argv[3] if len(sys.argv) > 3 else ""
 
 WIN_ROOT = repo_root / "windows"
-AREAS = ("app", "pal", "native", "storage", "particles", "pretext", "computeruse", "integrations", "tests")
+AREAS = ("app", "pal", "native", "storage", "cloudsync", "particles", "pretext", "computeruse", "integrations", "tests")
 SOURCE_SUFFIXES = {".cs", ".xaml", ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".rs"}
 DEFAULT_TARGET = 800
 
@@ -154,7 +154,7 @@ if stray:
         print(f"    {path}", file=sys.stderr)
     print(
         "Place Windows source under "
-        "windows/{app,pal,native,storage,particles,pretext,computeruse,integrations,tests}/ "
+        "windows/{app,pal,native,storage,cloudsync,particles,pretext,computeruse,integrations,tests}/ "
         "(see windows/README.md).",
         file=sys.stderr,
     )
