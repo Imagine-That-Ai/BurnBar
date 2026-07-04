@@ -1,8 +1,8 @@
 import Foundation
-import OpenBurnBarCore
 
-struct CodexQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct CodexQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         if let oauthSnapshot = try? await CodexOAuthQuotaFetcher.fetch(context: context) { // try?-ok(quota fetch, fallback to scan)
             return oauthSnapshot
         }
@@ -184,14 +184,14 @@ private enum CodexOAuthQuotaFetcher {
         let authURL = configURL.appendingPathComponent("auth.json")
         var auth = try loadAuth(from: authURL)
         if shouldNudgeCodexAuthRefresh(auth: auth) {
-            await nudgeCodexAuthRefresh(environment: context.environment, configURL: configURL)
+            await nudgeCodexAuthRefresh(context: context, configURL: configURL)
             auth = try loadAuth(from: authURL)
         }
 
         do {
             return try await fetchUsageSnapshot(accessToken: auth.accessToken, session: context.session)
         } catch CodexOAuthQuotaError.unauthorized {
-            await nudgeCodexAuthRefresh(environment: context.environment, configURL: configURL)
+            await nudgeCodexAuthRefresh(context: context, configURL: configURL)
             auth = try loadAuth(from: authURL)
             return try await fetchUsageSnapshot(accessToken: auth.accessToken, session: context.session)
         }
@@ -342,39 +342,23 @@ private enum CodexOAuthQuotaFetcher {
     }
 
     /// Runs off the main actor (`nonisolated` `async`, SE-0338).
-    private static func nudgeCodexAuthRefresh(environment: [String: String], configURL: URL) async {
+    private static func nudgeCodexAuthRefresh(context: ProviderQuotaAdapterContext, configURL: URL) async {
+        let environment = context.environment
         guard let codexExecutable = CLILaunchAdapter.resolvePinnedExecutable(for: .codex) else {
             return
         }
-        let process = Process()
-        process.executableURL = codexExecutable
-        process.arguments = ["login", "status"]
+        guard let codexExecutable = CLILaunchAdapter.resolvePinnedExecutable(for: .codex) else {
+            return
+        }
         var env = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: environment)
         env["PATH"] = CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: environment["HOME"])
         env["CODEX_HOME"] = configURL.path
         env["CODEX_CONFIG_PATH"] = configURL.path
-        process.environment = env
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        process.standardInput = FileHandle.nullDevice
-
-        do {
-            try process.run()
-        } catch {
-            return
-        }
-
-        let deadline = Date().addingTimeInterval(8)
-        // `&& !Task.isCancelled` so cancellation bails the poll promptly (then the
-        // process is reaped below) instead of busy-spinning to the deadline: the
-        // optional-cancelled sleep below is swallowed and would otherwise re-loop.
-        while process.isRunning && Date() < deadline && !Task.isCancelled {
-            try? await Task.sleep(for: .milliseconds(100)) // try?-ok(cancellation only)
-        }
-        if process.isRunning {
-            process.terminate()
-        }
-        process.waitUntilExit()
+        _ = try? context.cliExecutor.run(
+            executable: codexExecutable.path,
+            arguments: ["login", "status"],
+            environment: env
+        )
     }
 
     private static func slug(_ value: String) -> String {

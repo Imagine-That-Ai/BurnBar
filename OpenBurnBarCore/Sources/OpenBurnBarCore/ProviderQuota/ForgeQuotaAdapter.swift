@@ -1,5 +1,4 @@
 import Foundation
-import SQLite3
 
 // MARK: - Forge Quota Adapter
 
@@ -31,7 +30,8 @@ import SQLite3
 ///
 /// Reference: Forge CLI (forgecode.dev), SQLite schema reverse-engineered 2026-05-03.
 
-struct ForgeQuotaAdapter: ProviderQuotaAdapter {
+public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     // MARK: - Constants
 
@@ -41,7 +41,7 @@ struct ForgeQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Fetch
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let metadata = readForgeMetadata()
 
         guard metadata.hasData else {
@@ -151,41 +151,32 @@ struct ForgeQuotaAdapter: ProviderQuotaAdapter {
         var modelId: String?
         var providerId: String?
 
-        // Read SQLite DB
         if FileManager.default.fileExists(atPath: Self.forgeDBPath) {
-            var db: OpaquePointer?
-            if sqlite3_open(Self.forgeDBPath, &db) == SQLITE_OK, let db {
-                defer { sqlite3_close(db) }
-
-                // Count conversations
-                var stmt: OpaquePointer?
-                if sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM conversations", -1, &stmt, nil) == SQLITE_OK {
-                    if sqlite3_step(stmt) == SQLITE_ROW {
-                        conversationCount = Int(sqlite3_column_int64(stmt, 0))
-                    }
-                    sqlite3_finalize(stmt)
+            do {
+                let reader = try SQLiteConnection.openReadOnly(path: Self.forgeDBPath)
+                defer { reader.close() }
+                let countRows = try reader.query("SELECT COUNT(*) AS c FROM conversations", arguments: [])
+                if let row = countRows.first, let n = row.int64("c") ?? row.int("c").map(Int64.init) {
+                    conversationCount = Int(n)
                 }
-
-                // Parse metrics for file changes
-                if sqlite3_prepare_v2(db,
+                let metricRows = try reader.query(
                     "SELECT metrics FROM conversations WHERE metrics IS NOT NULL AND metrics != ''",
-                    -1, &stmt, nil) == SQLITE_OK {
-                    while sqlite3_step(stmt) == SQLITE_ROW {
-                        if let text = sqlite3_column_text(stmt, 0) {
-                            let jsonStr = String(cString: text)
-                            if let data = jsonStr.data(using: .utf8),
-                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional metrics decode)
-                               let filesChanged = json["files_changed"] as? [String: [String: Any]] {
-                                for (path, changes) in filesChanged {
-                                    uniqueFiles.insert(path)
-                                    totalLinesChanged += (changes["lines_added"] as? Int ?? 0)
-                                    totalLinesChanged += (changes["lines_removed"] as? Int ?? 0)
-                                }
-                            }
+                    arguments: []
+                )
+                for row in metricRows {
+                    guard let jsonStr = row.string("metrics"), !jsonStr.isEmpty else { continue }
+                    if let data = jsonStr.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let filesChanged = json["files_changed"] as? [String: [String: Any]] {
+                        for (path, changes) in filesChanged {
+                            uniqueFiles.insert(path)
+                            totalLinesChanged += (changes["lines_added"] as? Int ?? 0)
+                            totalLinesChanged += (changes["lines_removed"] as? Int ?? 0)
                         }
                     }
-                    sqlite3_finalize(stmt)
                 }
+            } catch {
+                // Best-effort local metadata; omit DB-derived buckets when unreadable.
             }
         }
 

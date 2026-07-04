@@ -21,6 +21,22 @@ typealias KiloCodeQuotaAdapter = OpenBurnBarCore.KiloCodeQuotaAdapter
 typealias KimiQuotaAdapter = OpenBurnBarCore.KimiQuotaAdapter
 typealias OllamaQuotaAdapter = OpenBurnBarCore.OllamaQuotaAdapter
 
+typealias ClaudeQuotaAdapter = OpenBurnBarCore.ClaudeQuotaAdapter
+typealias CodexQuotaAdapter = OpenBurnBarCore.CodexQuotaAdapter
+typealias CursorQuotaAdapter = OpenBurnBarCore.CursorQuotaAdapter
+typealias ForgeQuotaAdapter = OpenBurnBarCore.ForgeQuotaAdapter
+typealias MimoQuotaAdapter = OpenBurnBarCore.MimoQuotaAdapter
+typealias MiniMaxQuotaAdapter = OpenBurnBarCore.MiniMaxQuotaAdapter
+typealias OMPQuotaAdapter = OpenBurnBarCore.OMPQuotaAdapter
+typealias WarpQuotaAdapter = OpenBurnBarCore.WarpQuotaAdapter
+typealias XAIQuotaAdapter = OpenBurnBarCore.XAIQuotaAdapter
+typealias ZAIQuotaAdapter = OpenBurnBarCore.ZAIQuotaAdapter
+typealias OpenAIQuotaAdapter = OpenBurnBarCore.OpenAIQuotaAdapter
+typealias DeepSeekQuotaAdapter = OpenBurnBarCore.DeepSeekQuotaAdapter
+typealias OpenCodeQuotaAdapter = OpenBurnBarCore.OpenCodeQuotaAdapter
+typealias ClaudeOAuthUsageFetcher = OpenBurnBarCore.ClaudeOAuthUsageFetcher
+typealias ClaudeProfileScopedKeychain = OpenBurnBarCore.ClaudeProfileScopedKeychain
+
 typealias ClineQuotaAdapter = OpenBurnBarCore.ClineQuotaAdapter
 typealias RooCodeQuotaAdapter = OpenBurnBarCore.RooCodeQuotaAdapter
 typealias AugmentQuotaAdapter = OpenBurnBarCore.AugmentQuotaAdapter

@@ -1,5 +1,4 @@
 import Foundation
-import OpenBurnBarCore
 
 /// Multi-source Claude quota adapter. Tries the cheapest, most current
 /// data first and falls back gracefully while respecting the user's
@@ -20,7 +19,8 @@ import OpenBurnBarCore
 ///    credentials were injected by tests, route credential slots, or CLI
 ///    profiles, their plan tier can annotate JSONL buckets with plan caps.
 /// 4. **Plan-only snapshot** — only for explicitly injected credentials.
-struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
+public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
     private enum ScannerPolicy {
         static let maxLineBytes = 2 * 1024 * 1024
     }
@@ -147,7 +147,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
     private static let scanCache = JSONLScanCache()
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let usesScopedConfig = Self.hasScopedClaudeConfig(environment: context.environment)
         let routeCredentialScope = Self.hasRouteCredentialScope(environment: context.environment)
         let switcherProfileScope = Self.hasSwitcherProfileScope(environment: context.environment)
@@ -187,7 +187,9 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                     baseURL: context.appPaths.claudeOAuthUsageCacheURL,
                     credentials: credentials
                 ),
-                fileManager: context.fileManager
+                fileManager: context.fileManager,
+                cliExecutor: context.cliExecutor,
+                quotaLogger: context.quotaLogger
             )
             let result = await fetcher.fetchRateLimits(
                 credentials: credentials
@@ -202,7 +204,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             // expires. Writing the rotated access+refresh tokens back keeps the
             // profile self-sufficient across expiry.
             if let refreshed = result.refreshedCredentials {
-                persistRefreshedProfileCredential(refreshed, environment: context.environment)
+                persistRefreshedProfileCredential(refreshed, context: context)
             }
             if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
                 let buckets = claudeQuotaBuckets(from: rateLimits)
@@ -680,22 +682,20 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// means the next tick must refresh again, so it is logged, not surfaced.
     private func persistRefreshedProfileCredential(
         _ credentials: ClaudeOAuthCredentials,
-        environment: [String: String]
+        context: ProviderQuotaAdapterContext
     ) {
-        guard let configDirectory = quotaNonEmpty(environment["CLAUDE_CONFIG_DIR"]) else {
+        guard let configDirectory = quotaNonEmpty(context.environment["CLAUDE_CONFIG_DIR"]) else {
             return
         }
-        let service = ClaudeCodeOAuthCredentialImporter.profileScopedKeychainService(
-            configDirectory: configDirectory
-        )
+        let service = ClaudeProfileScopedKeychain.service(forConfigDirectory: configDirectory)
         do {
-            try KeychainStore(service: service, legacyServices: [])
-                .set(credentials.routeCredentialStoragePayload(), for: NSUserName())
-        } catch {
-            AppLogger.network.error(
-                "claude_profile_credential_refresh_writeback_failed",
-                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            try context.secretStore.setString(
+                credentials.routeCredentialStoragePayload(),
+                for: NSUserName(),
+                service: service
             )
+        } catch {
+            context.quotaLogSilentFailure("claude_profile_credential_refresh_writeback_failed: \(error)")
         }
     }
 
@@ -730,7 +730,8 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         return scopedClaudeProfileMatchesDefaultLogin(
             snapshotStore: context.snapshotStore,
             profileStateURL: profileStateURL,
-            defaultStateURL: defaultStateURL
+            defaultStateURL: defaultStateURL,
+            quotaLogger: context.quotaLogger
         )
     }
 
@@ -750,7 +751,8 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     static func scopedClaudeProfileMatchesDefaultLogin(
         snapshotStore: any ProviderQuotaSnapshotPersisting,
         profileStateURL: URL,
-        defaultStateURL: URL
+        defaultStateURL: URL,
+        quotaLogger: any QuotaLogger = NoOpQuotaLogger()
     ) -> Bool {
         let profileState: [String: Any]?
         let defaultState: [String: Any]?
@@ -758,12 +760,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             profileState = try snapshotStore.readJSONObject(from: profileStateURL)
             defaultState = try snapshotStore.readJSONObject(from: defaultStateURL)
         } catch {
-            // Fail closed: a real read/parse fault must never grant statusline
-            // reuse across accounts. Log so the lost identity signal is visible.
-            AppLogger.dataStore.error(
-                "claude_scoped_profile_identity_read_failed",
-                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
-            )
+            quotaLogger.log("claude_scoped_profile_identity_read_failed: \(error)")
             return false
         }
 

@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 // MARK: - Claude OAuth Usage Fetcher
@@ -60,17 +59,23 @@ struct ClaudeOAuthUsageFetcher {
     /// Minimum gap between live calls when no cache exists. Defaults
     /// to 5 minutes — anything tighter trips the 429 wall.
     let minimumLivePollInterval: TimeInterval
+    let cliExecutor: any CLIExecutor
+    let quotaLogger: any QuotaLogger
 
     init(
         session: URLSession,
         cacheURL: URL,
         fileManager: FileManager = .default,
-        minimumLivePollInterval: TimeInterval = 300
+        minimumLivePollInterval: TimeInterval = 300,
+        cliExecutor: any CLIExecutor = NoOpCLIExecutor(),
+        quotaLogger: any QuotaLogger = NoOpQuotaLogger()
     ) {
         self.session = session
         self.cacheURL = cacheURL
         self.fileManager = FileManagerSendableBox(fileManager)
         self.minimumLivePollInterval = minimumLivePollInterval
+        self.cliExecutor = cliExecutor
+        self.quotaLogger = quotaLogger
     }
 
     static func scopedCacheURL(
@@ -84,9 +89,7 @@ struct ClaudeOAuthUsageFetcher {
             credentials.rateLimitTier,
             stableSecret
         ].joined(separator: "|")
-        let digest = SHA256.hash(data: Data(identity.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        let digest = QuotaSHA256.hexDigest(identity)
         return baseURL
             .deletingLastPathComponent()
             .appendingPathComponent("ClaudeOAuthUsage", isDirectory: true)
@@ -250,7 +253,7 @@ struct ClaudeOAuthUsageFetcher {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // Match Claude Code/CodexBar's client shape exactly. Anthropic's
         // OAuth usage edge is picky about non-CLI-looking clients.
-        request.setValue(Self.claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
+        request.setValue(claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
 
         guard let (data, response) = try? await session.data(for: request), // try?-ok(network fetch skip)
               let http = response as? HTTPURLResponse else {
@@ -274,11 +277,11 @@ struct ClaudeOAuthUsageFetcher {
         }
     }
 
-    private static func claudeCodeUserAgent() -> String {
+    private func claudeCodeUserAgent() -> String {
         "claude-code/\(detectClaudeCodeVersion() ?? "2.1.0")"
     }
 
-    private static func detectClaudeCodeVersion() -> String? {
+    private func detectClaudeCodeVersion() -> String? {
         let candidates = [
             ProcessInfo.processInfo.environment["CLAUDE_BINARY"],
             "\(NSHomeDirectory())/.claude/local/claude",
@@ -295,36 +298,23 @@ struct ClaudeOAuthUsageFetcher {
         return runClaudeVersion(executableURL: URL(fileURLWithPath: "/usr/bin/env"), arguments: ["claude", "--version"])
     }
 
-    private static func runClaudeVersion(
+    private func runClaudeVersion(
         executableURL: URL,
         arguments: [String] = ["--version"]
     ) -> String? {
-        let process = Process()
-        process.executableURL = executableURL
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-
+        let data: Data
         do {
-            try process.run()
+            data = try cliExecutor.run(
+                executable: executableURL.path,
+                arguments: arguments,
+                environment: ProcessInfo.processInfo.environment
+            )
         } catch {
             return nil
         }
-
-        let deadline = Date().addingTimeInterval(0.75)
-        while process.isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-        if process.isRunning {
-            process.terminate()
-            return nil
-        }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let output = String(data: data, encoding: .utf8) else { return nil }
         let pattern = #"\b\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?\b"#
-        guard let regex = try? NSRegularExpression(pattern: pattern), // try?-ok(literal regex pattern)
+        guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: output, range: NSRange(output.startIndex..., in: output)),
               let range = Range(match.range, in: output) else {
             return nil
@@ -363,7 +353,7 @@ struct ClaudeOAuthUsageFetcher {
         request.timeoutInterval = 12
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(Self.claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
+        request.setValue(claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
         request.httpBody = Data(bodyString.utf8)
 
         guard let (data, response) = try? await session.data(for: request), // try?-ok(network fetch skip)
@@ -423,20 +413,20 @@ struct ClaudeOAuthUsageFetcher {
         do {
             data = try Data(contentsOf: cacheURL)
         } catch {
-            AppLogger.network.error(
-                "claude_oauth_usage.cache_read_failed",
-                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
-            )
+            quotaLogger.log("claude_oauth_usage.cache_read_failed: \(error)")
             return nil
         }
         // A present-but-corrupt cache is also worth surfacing: it means the
         // cache will never satisfy a read and we'll keep paying the live
         // call (and its 429 risk) until the file is overwritten.
-        guard let json = AppLogger.parser.silently(
-            "claude_oauth_usage.cache_parse_failed",
-            try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            fallback: nil
-        ) else {
+        let json: [String: Any]?
+        do {
+            json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        } catch {
+            quotaLogger.log("claude_oauth_usage.cache_parse_failed: \(error)")
+            json = nil
+        }
+        guard let json else {
             return nil
         }
         let formatter = ISO8601DateFormatter()

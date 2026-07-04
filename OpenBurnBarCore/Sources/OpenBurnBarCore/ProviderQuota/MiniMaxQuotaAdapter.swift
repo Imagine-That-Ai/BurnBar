@@ -1,25 +1,16 @@
 import Foundation
-import OpenBurnBarCore
 
-@MainActor
-struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
-    /// Keychain used to read the Cursor-connector API-key fallback. Injected so
-    /// tests can drive a faulting backend through this seam; the default reads
-    /// the live keychain exactly as before.
-    private let keychain: KeychainStore
+import Foundation
 
-    // nonisolated so the adapter registry can construct it from a nonisolated
-    // context (the keychain seam carries no main-actor state).
-    nonisolated init(keychain: KeychainStore = KeychainStore()) {
-        self.keychain = keychain
-    }
+public struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     private enum QuotaEndpoint {
         static let tokenPlan = ProviderEndpointProfileRegistry.minimaxTokenPlan.quotaRemainsURL
             ?? "https://www.minimax.io/v1/token_plan/remains"
         static let codingPlan = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
     }
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard context.miniMaxMode == .tokenPlan else {
             return unavailableSnapshot(
                 for: .minimax,
@@ -144,7 +135,7 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
 
     private func resolveMiniMaxAPIKey(context: ProviderQuotaAdapterContext) -> String? {
         quotaNonEmpty(context.resolvedAPIKeys["minimax"] ?? nil)
-            ?? cursorConnectorKey(for: "provider.minimax.apiKey")
+            ?? cursorConnectorKey(for: "provider.minimax.apiKey", context: context)
             ?? quotaNonEmpty(context.environment["MINIMAX_API_KEY"])
     }
 
@@ -215,12 +206,7 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
         ]
     }
 
-    private func cursorConnectorKey(for account: String) -> String? {
-        let raw = keychain.credentialIfPresent(
-            for: account,
-            allowUserInteraction: false,
-            event: "minimax_quota_key_read_failed"
-        )
-        return quotaNonEmpty(raw)
+    private func cursorConnectorKey(for account: String, context: ProviderQuotaAdapterContext) -> String? {
+        context.cursorConnectorCredential(for: account)
     }
 }

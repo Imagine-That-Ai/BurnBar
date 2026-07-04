@@ -1,24 +1,22 @@
 import Foundation
 
-struct OMPQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let resolver = CLIExecutableResolver(
-            environmentProvider: { context.environment },
-            homeDirectoryProvider: { context.homeDirectoryURL.path }
-        )
-        guard let executable = await resolver.resolveExecutable(named: "omp") else {
+public struct OMPQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
+
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+        guard let executableURL = CLILaunchAdapter.resolveExecutable(for: .omp) else {
             return unavailable(message: "OMP CLI was not found. Install Oh My Pi and ensure `omp` is on your PATH.")
         }
+        let executable = executableURL.path
+        var env = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: context.environment)
+        env["PATH"] = CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: context.homeDirectoryURL.path)
+        env["PWD"] = context.homeDirectoryURL.path
 
         do {
             let data = try Self.runUsageJSON(
                 executable: executable,
-                environment: CLIExecutableResolver.agentProcessEnvironment(
-                    executablePath: executable,
-                    baseEnvironment: context.environment,
-                    homeDirectory: context.homeDirectoryURL.path
-                ),
-                workingDirectory: context.homeDirectoryURL
+                context: context,
+                environment: env
             )
             let payload = try JSONDecoder().decode(OMPUsagePayload.self, from: data)
             let buckets = payload.reports.flatMap(Self.buckets(from:))
@@ -61,30 +59,14 @@ struct OMPQuotaAdapter: ProviderQuotaAdapter {
 
     private static func runUsageJSON(
         executable: String,
-        environment: [String: String],
-        workingDirectory: URL
+        context: ProviderQuotaAdapterContext,
+        environment: [String: String]
     ) throws -> Data {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["usage", "--json", "--redact"]
-        process.environment = environment
-        process.currentDirectoryURL = workingDirectory
-        process.standardInput = FileHandle.nullDevice
-
-        let output = Pipe()
-        let error = Pipe()
-        process.standardOutput = output
-        process.standardError = error
-
-        try process.run()
-        process.waitUntilExit()
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        if process.terminationStatus == 0 {
-            return data
-        }
-        let stderr = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        throw OMPUsageError.processExit(Int(process.terminationStatus), stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+        return try context.cliExecutor.run(
+            executable: executable,
+            arguments: ["usage", "--json", "--redact"],
+            environment: environment
+        )
     }
 
     private static func buckets(from report: OMPUsageReport) -> [ProviderQuotaBucket] {
