@@ -31,6 +31,9 @@ public sealed partial class QuotaWorkspacePage : Page
         InitializeComponent();
     }
 
+    // B3: live quota requires ported ProviderQuotaService + Firestore snapshot sync (B4).
+    // Until then, QuotaSampleData demonstrates the dial UI only.
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);

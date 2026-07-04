@@ -16,6 +16,7 @@ public static class SurfacePageResolver
         "budget" => typeof(OpenBurnBar.App.Budget.BudgetPage),
         "quota" => typeof(OpenBurnBar.App.Quota.QuotaWorkspacePage),
         "insights" => typeof(OpenBurnBar.App.Insights.InsightsPage),
+        "sessionLogs" => typeof(OpenBurnBar.App.SessionLogs.SessionLogsHostPage),
         "dashboard" => typeof(OpenBurnBar.App.Dashboard.DashboardPage),
         "missionControl" => typeof(OpenBurnBar.App.MissionControl.MissionControlPage),
         "dataControlCenter" => typeof(OpenBurnBar.App.DataControlCenter.DataControlCenterPage),
