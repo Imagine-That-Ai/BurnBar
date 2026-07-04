@@ -136,15 +136,27 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable, Identifiable {
 
         self.name = key
         self.window = windowKind.rawValue
-
-        if let usedPercent {
-            self.used = usedPercent
-            self.limit = 100
-            self.remaining = max(0, 100 - usedPercent)
-        } else if unit == .percent, let remainingValue {
-            self.used = max(0, 100 - remainingValue)
-            self.limit = 100
-            self.remaining = remainingValue
+        // Branch on unit FIRST: percent-unit buckets use percent math
+        // (usedPercent, or remainingValue → 100 - remaining). Non-percent
+        // buckets (currency/tokens/requests/credits/count/sessions) use the
+        // concrete value fields directly. This keeps the derived used/limit/
+        // remaining consistent with the Firestore serializer
+        // (QuotaSnapshotSyncService.encodeBucket) which reads the value fields
+        // directly and never recomputes from usedPercent.
+        if unit == .percent {
+            if let usedPercent {
+                self.used = usedPercent
+                self.limit = 100
+                self.remaining = max(0, 100 - usedPercent)
+            } else if let remainingValue {
+                self.used = max(0, 100 - remainingValue)
+                self.limit = 100
+                self.remaining = remainingValue
+            } else {
+                self.used = usedValue ?? 0
+                self.limit = 100
+                self.remaining = max(0, 100 - self.used)
+            }
         } else {
             self.used = usedValue ?? 0
             let lim = limitValue ?? -1
@@ -154,7 +166,7 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable, Identifiable {
             } else if let limVal = limitValue, limVal > 0, let usedVal = usedValue {
                 self.remaining = max(0, limVal - usedVal)
             } else {
-                self.remaining = remainingValue ?? 0
+                self.remaining = 0
             }
         }
 
@@ -220,14 +232,20 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable, Identifiable {
             self.resetsAt = Self.decodeResetsAt(from: c)
             self.name = key
             self.window = windowKind.rawValue
-            if let usedPercent {
-                self.used = usedPercent
-                self.limit = 100
-                self.remaining = max(0, 100 - usedPercent)
-            } else if unit == .percent, let remainingValue {
-                self.used = max(0, 100 - remainingValue)
-                self.limit = 100
-                self.remaining = remainingValue
+            if unit == .percent {
+                if let usedPercent {
+                    self.used = usedPercent
+                    self.limit = 100
+                    self.remaining = max(0, 100 - usedPercent)
+                } else if let remainingValue {
+                    self.used = max(0, 100 - remainingValue)
+                    self.limit = 100
+                    self.remaining = remainingValue
+                } else {
+                    self.used = usedValue ?? 0
+                    self.limit = 100
+                    self.remaining = max(0, 100 - self.used)
+                }
             } else {
                 self.used = usedValue ?? 0
                 let lim = limitValue ?? -1
@@ -237,7 +255,7 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable, Identifiable {
                 } else if let limVal = limitValue, limVal > 0, let usedVal = usedValue {
                     self.remaining = max(0, limVal - usedVal)
                 } else {
-                    self.remaining = remainingValue ?? 0
+                    self.remaining = 0
                 }
             }
             var meta: [String: String] = ["label": label, "unit": unit.rawValue]

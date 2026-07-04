@@ -460,6 +460,7 @@ let computerUseCoreExcludes: [String] = []
 let openBurnBarCoreTestExcludes: [String] = []
 let computerUseCoreTestExcludes: [String] = []
 let legacyLinuxTestSources: [String]? = nil
+let openBurnBarCoreOffAppleTestSources: [String]? = nil
 func legacyLinuxTestExcludes(targetPath _: String) -> [String] { [] }
 // On Apple the reader links the system `SQLite3` module, so no vendored C target
 // and no Core dependency edge — the amalgamation is not compiled on Apple builds.
