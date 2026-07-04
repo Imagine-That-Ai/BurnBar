@@ -1,6 +1,5 @@
 import Foundation
-import OpenBurnBarCore
-import GRDB
+
 
 // MARK: - Forge Dev Parser
 
@@ -37,9 +36,9 @@ final class ForgeDevParser: LogParser, Sendable {
                 do {
                     result = try parseDatabase(at: dbPath)
                 } catch {
-                    AppLogger.parser.error(
-                        "forgedev_log_read_failed",
-                        metadata: ["path": dbPath, "error": error.localizedDescription]
+                    ParserDiagnostics.silentFailure(
+                        "forgedev_log_read_failed: \(dbPath) — \(error.localizedDescription)",
+                        error: error
                     )
                     continue
                 }
@@ -109,10 +108,9 @@ final class ForgeDevParser: LogParser, Sendable {
             return try parseSnapshotDatabase(at: dbPath)
         }
 
-        var config = Configuration()
-        config.readonly = true
-        let dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
-        return try parseDatabase(dbQueue: dbQueue)
+        let reader = try SQLiteConnection.openReadOnly(path: dbPath)
+        defer { reader.close() }
+        return try parseDatabase(reader: reader)
     }
 
     private func parseSnapshotDatabase(at dbPath: String) throws -> ParseResult {
@@ -136,8 +134,9 @@ final class ForgeDevParser: LogParser, Sendable {
             )
         }
 
-        let dbQueue = try DatabaseQueue(path: snapshotURL.path)
-        return try parseDatabase(dbQueue: dbQueue)
+        let reader = try SQLiteConnection.openReadOnly(path: snapshotURL.path)
+        defer { reader.close() }
+        return try parseDatabase(reader: reader)
     }
 
     private func shouldParseFromSnapshot(dbPath: String) -> Bool {
@@ -145,72 +144,69 @@ final class ForgeDevParser: LogParser, Sendable {
         return !FileManager.default.fileExists(atPath: walPath)
     }
 
-    private func parseDatabase(dbQueue: DatabaseQueue) throws -> ParseResult {
+    private func parseDatabase(reader: SQLiteReading) throws -> ParseResult {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        try dbQueue.read { db in
-            let tables = Set(try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'"))
-            guard tables.contains("conversations") else { return }
+        let tables = try reader.tableNames()
+        guard tables.contains("conversations") else {
+            return ParseResult(usages: usages, conversations: conversations)
+        }
 
-            let rows = try Row.fetchAll(
-                db,
-                sql: """
-                    SELECT conversation_id, title, workspace_id, context, created_at, updated_at, metrics
-                    FROM conversations
-                    ORDER BY created_at DESC
-                """
-            )
+        let rows = try reader.query("""
+            SELECT conversation_id, title, workspace_id, context, created_at, updated_at, metrics
+            FROM conversations
+            ORDER BY created_at DESC
+        """)
 
-            for row in rows {
-                guard let sessionId = stringValue(row, column: "conversation_id"), !sessionId.isEmpty else { continue }
+        for row in rows {
+            guard let sessionId = stringValue(row, column: "conversation_id"), !sessionId.isEmpty else { continue }
 
-                let title = stringValue(row, column: "title")
-                let workspaceId = stringValue(row, column: "workspace_id") ?? "unknown-workspace"
-                let contextJSON = jsonObject(from: stringValue(row, column: "context"))
-                let metricsJSON = jsonObject(from: stringValue(row, column: "metrics"))
+            let title = stringValue(row, column: "title")
+            let workspaceId = stringValue(row, column: "workspace_id") ?? "unknown-workspace"
+            let contextJSON = jsonObject(from: stringValue(row, column: "context"))
+            let metricsJSON = jsonObject(from: stringValue(row, column: "metrics"))
 
-                let messages = (contextJSON?["messages"] as? [Any]) ?? []
-                let summary = parseContextMessages(messages)
+            let messages = (contextJSON?["messages"] as? [Any]) ?? []
+            let summary = parseContextMessages(messages)
 
-                let model = TokenExtractionUtility.normalizeModelName(summary.model ?? "forge")
-                let projectPath = inferProjectPath(from: metricsJSON)
-                let projectName = projectPath.map { ($0 as NSString).lastPathComponent }
-                    ?? title
-                    ?? "workspace-\(workspaceId)"
+            let model = TokenExtractionUtility.normalizeModelName(summary.model ?? "forge")
+            let projectPath = inferProjectPath(from: metricsJSON)
+            let projectName = projectPath.map { ($0 as NSString).lastPathComponent }
+                ?? title
+                ?? "workspace-\(workspaceId)"
 
-                let metricsStart = dateValue(metricsJSON?["started_at"])
-                let createdAt = dateValue(rawValue(row, column: "created_at"))
-                let updatedAt = dateValue(rawValue(row, column: "updated_at"))
-                let startTime = metricsStart ?? createdAt ?? Date()
-                let endTime = updatedAt ?? startTime
+            let metricsStart = dateValue(metricsJSON?["started_at"])
+            let createdAt = dateValue(row, column: "created_at")
+            let updatedAt = dateValue(row, column: "updated_at")
+            let startTime = metricsStart ?? createdAt ?? Date()
+            let endTime = updatedAt ?? startTime
 
-                if let usage = usage(
-                    sessionId: sessionId,
-                    projectName: projectName,
-                    model: model,
-                    inputTokens: summary.inputTokens,
-                    outputTokens: summary.outputTokens,
-                    cacheReadTokens: summary.cacheReadTokens,
-                    startTime: startTime,
-                    endTime: endTime
-                ) {
-                    usages.append(usage)
-                }
+            if let usage = usage(
+                sessionId: sessionId,
+                projectName: projectName,
+                model: model,
+                inputTokens: summary.inputTokens,
+                outputTokens: summary.outputTokens,
+                cacheReadTokens: summary.cacheReadTokens,
+                startTime: startTime,
+                endTime: endTime
+            ) {
+                usages.append(usage)
+            }
 
-                if let conversation = conversation(
-                    sessionId: sessionId,
-                    projectName: projectName,
-                    title: title ?? summary.firstUser ?? projectName,
-                    summary: summary,
-                    keyFiles: collectFilePaths(from: metricsJSON),
-                    workingDirectory: projectPath,
-                    startTime: startTime,
-                    endTime: endTime,
-                    fileModifiedAt: nil
-                ) {
-                    conversations.append(conversation)
-                }
+            if let conversation = conversation(
+                sessionId: sessionId,
+                projectName: projectName,
+                title: title ?? summary.firstUser ?? projectName,
+                summary: summary,
+                keyFiles: collectFilePaths(from: metricsJSON),
+                workingDirectory: projectPath,
+                startTime: startTime,
+                endTime: endTime,
+                fileModifiedAt: nil
+            ) {
+                conversations.append(conversation)
             }
         }
 
@@ -521,29 +517,41 @@ final class ForgeDevParser: LogParser, Sendable {
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any] // try?-ok(optional JSON decode)
     }
 
-    private func rawValue(_ row: Row, column: String) -> Any? {
-        guard let value = row[column] else { return nil }
-        if let string = value as? String { return string }
-        if let integer = value as? Int64 { return integer }
-        if let integer = value as? Int { return integer }
-        if let double = value as? Double { return double }
-        if let bool = value as? Bool { return bool }
-        return nil
-    }
-
-    private func stringValue(_ row: Row, column: String) -> String? {
-        switch rawValue(row, column: column) {
-        case let value as String:
-            return value.isEmpty ? nil : value
-        case let value as Int64:
+    private func stringValue(_ row: SQLiteRow, column: String) -> String? {
+        if let value = row.string(column), !value.isEmpty {
+            return value
+        }
+        if let value = row.int64(column) {
             return String(value)
-        case let value as Int:
+        }
+        if let value = row.int(column) {
             return String(value)
-        case let value as Double:
+        }
+        if let value = row.double(column) {
             if value.rounded(.towardZero) == value {
                 return String(Int64(value))
             }
             return String(value)
+        }
+        return nil
+    }
+
+    private func dateValue(_ row: SQLiteRow, column: String) -> Date? {
+        switch row.value(column) {
+        case .integer(let value)?:
+            return TimestampNormalizationUtility.date(fromEpoch: Double(value))
+        case .real(let value)?:
+            return TimestampNormalizationUtility.date(fromEpoch: value)
+        case .text(let value)?:
+            if let date = ThreadSafeISO8601DateFormatter.parse(value) {
+                return date
+            }
+            for formatter in Self.sqliteDateFormats {
+                if let date = formatter.date(from: value) {
+                    return date
+                }
+            }
+            return nil
         default:
             return nil
         }

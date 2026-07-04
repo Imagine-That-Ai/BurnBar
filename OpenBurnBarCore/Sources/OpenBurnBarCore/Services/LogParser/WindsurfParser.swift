@@ -1,6 +1,5 @@
 import Foundation
-import OpenBurnBarCore
-import SQLite3
+
 
 // MARK: - Windsurf Parser
 
@@ -172,19 +171,25 @@ final class WindsurfParser: LogParser, Sendable {
         workspaces: inout [String: String],
         titles: inout [String: String]
     ) -> Bool {
-        var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK else { return false }
-        defer { sqlite3_close(db) }
+        let reader: SQLiteConnection
+        do {
+            reader = try SQLiteConnection.openReadOnly(path: dbPath)
+        } catch {
+            return false
+        }
+        defer { reader.close() }
 
-        let query = "SELECT value FROM ItemTable WHERE key = 'codeium.windsurf';"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else { return false }
-        defer { sqlite3_finalize(stmt) }
+        let rows: [SQLiteRow]
+        do {
+            rows = try reader.query(
+                "SELECT value FROM ItemTable WHERE key = ?",
+                arguments: [.text("codeium.windsurf")]
+            )
+        } catch {
+            return false
+        }
 
-        guard sqlite3_step(stmt) == SQLITE_ROW,
-              let valuePtr = sqlite3_column_text(stmt, 0) else { return false }
-
-        let valueString = String(cString: valuePtr)
+        guard let valueString = rows.first?.string("value") else { return false }
         guard let jsonData = valueString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { // try?-ok(parse 3rd-party JSON)
             return false
