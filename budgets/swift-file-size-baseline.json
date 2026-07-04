@@ -7,6 +7,10 @@
       "lines": 2197
     },
     {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase.swift",
+      "lines": 2200
+    },
+    {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderRouter.swift",
       "lines": 2084
     },

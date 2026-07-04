@@ -34,6 +34,7 @@ public enum AppSkin: String, CaseIterable, Codable, Sendable {
 
     private static let cache = AppSkinCache()
 
+    // AUDIT: sendable-allowlist: foundation-sdk-shim
     private final class AppSkinCache: @unchecked Sendable {
         private let lock = NSLock()
         private var cached: AppSkin?

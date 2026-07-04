@@ -27,6 +27,7 @@ public final class Locked<T: Sendable>: Sendable {
         try storage.withLockUnchecked(action)
     }
 #else
+    // AUDIT: sendable-allowlist: foundation-sdk-shim
     private final class Storage: @unchecked Sendable {
         let lock = NSLock()
         var value: T

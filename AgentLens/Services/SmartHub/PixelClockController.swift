@@ -154,6 +154,7 @@ private enum PixelClockExternalAgentActivityScanner {
     /// One-shot termination signal bridging `Process.terminationHandler` to
     /// async/await with a timeout — replaces the 20 ms sleep-poll loop that
     /// used to park a cooperative-executor thread for the whole scan.
+    /// AUDIT: sendable-allowlist: process-handle
     private final class TerminationLatch: @unchecked Sendable {
         private let lock = NSLock()
         private var signaled = false

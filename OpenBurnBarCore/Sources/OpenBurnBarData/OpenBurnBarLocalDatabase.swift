@@ -146,6 +146,7 @@ public struct OpenBurnBarDatabaseOwnershipDecision: Equatable, Sendable {
     )
 }
 
+// AUDIT: sendable-allowlist: sqlite-raw-pointer
 public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
     public static let ownershipDecision = OpenBurnBarDatabaseOwnershipDecision.linuxEngineSoleWriter
 
