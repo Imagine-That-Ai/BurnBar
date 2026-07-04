@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Nav-frame host for the memory review inbox (key "memory"). The AppShell content Frame
-  navigates Page types; MemoryReviewInboxView is the real surface. Dev-host seeds an
-  in-memory delegate-backed model until the SQLCipher memory store lands (B1–B4).
+  AppShell content page for the Memory nav destination (key "memory").
+  Hosts MemoryReviewInboxView wired to CloudSync memory_facts when configured.
 -->
 <Page
     x:Class="OpenBurnBar.App.Memory.MemoryPage"
@@ -13,5 +12,5 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <local:MemoryReviewInboxView x:Name="InboxView" />
+    <local:MemoryReviewInboxView x:Name="Inbox" />
 </Page>
