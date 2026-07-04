@@ -5,6 +5,7 @@
 // and lets that page consume the router's pending anchor (the WinUI realization of
 // SettingsView.swift's sidebar + detail NavigationStack + `.searchable`).
 
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;

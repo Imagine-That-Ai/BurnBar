@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -9,6 +10,7 @@ using OpenBurnBar.App.Components;
 using OpenBurnBar.App.Theme;
 using Windows.Foundation;
 using Windows.UI;
+using Path = Microsoft.UI.Xaml.Shapes.Path;
 
 namespace OpenBurnBar.App.Quota;
 
