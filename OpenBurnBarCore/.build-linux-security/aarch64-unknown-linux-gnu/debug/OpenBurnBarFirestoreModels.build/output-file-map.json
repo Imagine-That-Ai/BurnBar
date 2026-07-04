@@ -1,0 +1,103 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ComputerUseModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ComputerUseModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ComputerUseModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ComputerUseModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ComputerUseModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ComputerUseModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/DeviceLinkModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/DeviceLinkModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/DeviceLinkModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/DeviceLinkModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/DeviceLinkModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/EntitlementModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/EntitlementModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/EntitlementModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/EntitlementModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/EntitlementModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesGatewayModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesGatewayModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesGatewayModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesGatewayModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesGatewayModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesRelayModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesRelayModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesRelayModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesRelayModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesRelayModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HermesRelayModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HostedQuotaModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HostedQuotaModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HostedQuotaModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HostedQuotaModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/HostedQuotaModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/InsightModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/InsightModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/InsightModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/InsightModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/InsightModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/InsightModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/IrohPairingModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/IrohPairingModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/IrohPairingModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/IrohPairingModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/IrohPairingModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MediaAnalyticsModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MediaAnalyticsModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MediaAnalyticsModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MediaAnalyticsModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MediaAnalyticsModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MissionModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MissionModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MissionModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MissionModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/MissionModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ModelBenchmarkModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ModelBenchmarkModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ModelBenchmarkModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ModelBenchmarkModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ModelBenchmarkModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/PiAgentRelayModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/PiAgentRelayModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/PiAgentRelayModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/PiAgentRelayModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/PiAgentRelayModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/PiAgentRelayModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ProviderAccountModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ProviderAccountModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ProviderAccountModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ProviderAccountModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ProviderAccountModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/ProviderAccountModels.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/UsageQuotaModels.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/UsageQuotaModels.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/UsageQuotaModels.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/UsageQuotaModels~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/UsageQuotaModels.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/UsageQuotaModels.dia"
+  }
+}

@@ -1,0 +1,180 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/ConditionMacro.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionMacro.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionMacro.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionMacro~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionMacro.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionMacro.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/SourceLocationMacro.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationMacro.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationMacro.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationMacro~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationMacro.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationMacro.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/SuiteDeclarationMacro.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SuiteDeclarationMacro.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SuiteDeclarationMacro.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SuiteDeclarationMacro~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SuiteDeclarationMacro.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SuiteDeclarationMacro.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/DeclGroupSyntaxAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DeclGroupSyntaxAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DeclGroupSyntaxAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DeclGroupSyntaxAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DeclGroupSyntaxAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DeclGroupSyntaxAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/EditorPlaceholderExprSyntaxAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/EditorPlaceholderExprSyntaxAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/EditorPlaceholderExprSyntaxAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/EditorPlaceholderExprSyntaxAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/EditorPlaceholderExprSyntaxAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/EditorPlaceholderExprSyntaxAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/FunctionDeclSyntaxAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/FunctionDeclSyntaxAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/FunctionDeclSyntaxAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/FunctionDeclSyntaxAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/FunctionDeclSyntaxAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/FunctionDeclSyntaxAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/MacroExpansionContextAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/MacroExpansionContextAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/MacroExpansionContextAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/MacroExpansionContextAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/MacroExpansionContextAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/MacroExpansionContextAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/TokenSyntaxAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TokenSyntaxAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TokenSyntaxAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TokenSyntaxAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TokenSyntaxAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TokenSyntaxAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/TriviaPieceAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TriviaPieceAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TriviaPieceAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TriviaPieceAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TriviaPieceAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TriviaPieceAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/TypeSyntaxProtocolAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TypeSyntaxProtocolAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TypeSyntaxProtocolAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TypeSyntaxProtocolAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TypeSyntaxProtocolAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TypeSyntaxProtocolAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/VersionTupleSyntaxAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/VersionTupleSyntaxAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/VersionTupleSyntaxAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/VersionTupleSyntaxAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/VersionTupleSyntaxAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/VersionTupleSyntaxAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Additions/WithAttributesSyntaxAdditions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/WithAttributesSyntaxAdditions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/WithAttributesSyntaxAdditions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/WithAttributesSyntaxAdditions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/WithAttributesSyntaxAdditions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/WithAttributesSyntaxAdditions.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/Argument.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/Argument.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/Argument.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/Argument~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/Argument.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/Argument.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/AttributeDiscovery.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AttributeDiscovery.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AttributeDiscovery.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AttributeDiscovery~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AttributeDiscovery.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AttributeDiscovery.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/AvailabilityGuards.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AvailabilityGuards.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AvailabilityGuards.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AvailabilityGuards~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AvailabilityGuards.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/AvailabilityGuards.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/CRC32.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CRC32.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CRC32.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CRC32~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CRC32.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CRC32.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/CommentParsing.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CommentParsing.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CommentParsing.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CommentParsing~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CommentParsing.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/CommentParsing.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/ConditionArgumentParsing.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionArgumentParsing.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionArgumentParsing.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionArgumentParsing~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionArgumentParsing.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/ConditionArgumentParsing.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/DiagnosticMessage+Diagnosing.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage+Diagnosing.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage+Diagnosing.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage+Diagnosing~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage+Diagnosing.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage+Diagnosing.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/DiagnosticMessage.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/DiagnosticMessage.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/SourceCodeCapturing.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceCodeCapturing.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceCodeCapturing.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceCodeCapturing~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceCodeCapturing.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceCodeCapturing.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/Support/SourceLocationGeneration.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationGeneration.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationGeneration.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationGeneration~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationGeneration.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/SourceLocationGeneration.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/TagMacro.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TagMacro.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TagMacro.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TagMacro~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TagMacro.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TagMacro.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/TestDeclarationMacro.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestDeclarationMacro.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestDeclarationMacro.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestDeclarationMacro~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestDeclarationMacro.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestDeclarationMacro.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-testing/Sources/TestingMacros/TestingMacrosMain.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestingMacrosMain.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestingMacrosMain.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestingMacrosMain~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestingMacrosMain.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/TestingMacros-tool.build/TestingMacrosMain.dia"
+  }
+}

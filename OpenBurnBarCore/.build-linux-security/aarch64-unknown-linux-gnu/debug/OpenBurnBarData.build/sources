@@ -1,0 +1,9 @@
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDataLogger.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDataMigrationTypes.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MemoryMigrations.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MigrationBackup.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabaseConnectionConfiguration.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarHermesAttachment.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarLocalDatabase.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarSchemaHasher.swift

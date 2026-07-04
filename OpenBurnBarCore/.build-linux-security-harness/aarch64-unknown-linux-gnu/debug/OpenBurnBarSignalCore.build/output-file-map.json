@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalCoreUnavailable.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable.dia"
+  }
+}

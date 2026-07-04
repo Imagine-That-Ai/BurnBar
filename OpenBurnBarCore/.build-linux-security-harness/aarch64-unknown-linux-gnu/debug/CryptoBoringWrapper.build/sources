@@ -1,0 +1,7 @@
+/workspace/OpenBurnBarCore/.build-linux-security-harness/checkouts/swift-crypto/Sources/CryptoBoringWrapper/AEAD/BoringSSLAEAD.swift
+/workspace/OpenBurnBarCore/.build-linux-security-harness/checkouts/swift-crypto/Sources/CryptoBoringWrapper/CryptoKitErrors_boring.swift
+/workspace/OpenBurnBarCore/.build-linux-security-harness/checkouts/swift-crypto/Sources/CryptoBoringWrapper/EC/EllipticCurve.swift
+/workspace/OpenBurnBarCore/.build-linux-security-harness/checkouts/swift-crypto/Sources/CryptoBoringWrapper/EC/EllipticCurvePoint.swift
+/workspace/OpenBurnBarCore/.build-linux-security-harness/checkouts/swift-crypto/Sources/CryptoBoringWrapper/Util/ArbitraryPrecisionInteger.swift
+/workspace/OpenBurnBarCore/.build-linux-security-harness/checkouts/swift-crypto/Sources/CryptoBoringWrapper/Util/FiniteFieldArithmeticContext.swift
+/workspace/OpenBurnBarCore/.build-linux-security-harness/checkouts/swift-crypto/Sources/CryptoBoringWrapper/Util/RandomBytes.swift

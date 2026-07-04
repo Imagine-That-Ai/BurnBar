@@ -1,0 +1,446 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarBrowserAntiRebindTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserAntiRebindTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserAntiRebindTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserAntiRebindTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserAntiRebindTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserAntiRebindTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarBrowserToolServiceComputerUseTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserToolServiceComputerUseTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserToolServiceComputerUseTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserToolServiceComputerUseTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserToolServiceComputerUseTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarBrowserToolServiceComputerUseTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarCodexProviderExecutorTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCodexProviderExecutorTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCodexProviderExecutorTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCodexProviderExecutorTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCodexProviderExecutorTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCodexProviderExecutorTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarConnectorPlaneURLValidationTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarConnectorPlaneURLValidationTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarConnectorPlaneURLValidationTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarConnectorPlaneURLValidationTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarConnectorPlaneURLValidationTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarConnectorPlaneURLValidationTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarCrossVendorDegradeTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCrossVendorDegradeTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCrossVendorDegradeTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCrossVendorDegradeTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCrossVendorDegradeTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCrossVendorDegradeTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarCustomModelLiveCatalogTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCustomModelLiveCatalogTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCustomModelLiveCatalogTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCustomModelLiveCatalogTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCustomModelLiveCatalogTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarCustomModelLiveCatalogTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonComputerUseLocalAuthProofWiringTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonComputerUseLocalAuthProofWiringTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonComputerUseLocalAuthProofWiringTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonComputerUseLocalAuthProofWiringTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonComputerUseLocalAuthProofWiringTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonComputerUseLocalAuthProofWiringTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonControllerRuntimeSnapshotTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonControllerRuntimeSnapshotTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonControllerRuntimeSnapshotTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonControllerRuntimeSnapshotTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonControllerRuntimeSnapshotTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonControllerRuntimeSnapshotTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonDatabaseCipherTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonDatabaseCipherTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonDatabaseCipherTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonDatabaseCipherTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonDatabaseCipherTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonDatabaseCipherTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonHeartbeatTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonHeartbeatTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonHeartbeatTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonHeartbeatTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonHeartbeatTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonHeartbeatTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonMetricsCountersTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonMetricsCountersTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonMetricsCountersTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonMetricsCountersTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonMetricsCountersTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonMetricsCountersTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonPeerAuthenticatorTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerAuthenticatorTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerAuthenticatorTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerAuthenticatorTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerAuthenticatorTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerAuthenticatorTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonPeerCodesigPolicyTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerCodesigPolicyTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerCodesigPolicyTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerCodesigPolicyTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerCodesigPolicyTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonPeerCodesigPolicyTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonServer+RPCMissionControlTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServer+RPCMissionControlTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServer+RPCMissionControlTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServer+RPCMissionControlTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServer+RPCMissionControlTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServer+RPCMissionControlTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonServerPRLifecycleTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPRLifecycleTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPRLifecycleTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPRLifecycleTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPRLifecycleTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPRLifecycleTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonServerPeerAuthEnforcementTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPeerAuthEnforcementTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPeerAuthEnforcementTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPeerAuthEnforcementTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPeerAuthEnforcementTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonServerPeerAuthEnforcementTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonSocketRPCCoverageTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonSocketRPCCoverageTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonSocketRPCCoverageTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonSocketRPCCoverageTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonSocketRPCCoverageTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonSocketRPCCoverageTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonTokenFileTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonTokenFileTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonTokenFileTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonTokenFileTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonTokenFileTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarDaemonTokenFileTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarGatewayMetricsTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarGatewayMetricsTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarGatewayMetricsTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarGatewayMetricsTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarGatewayMetricsTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarGatewayMetricsTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarHNSWIntegrationTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarHNSWIntegrationTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarHNSWIntegrationTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarHNSWIntegrationTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarHNSWIntegrationTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarHNSWIntegrationTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarIndexedSearchServiceMinimalTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarIndexedSearchServiceMinimalTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarIndexedSearchServiceMinimalTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarIndexedSearchServiceMinimalTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarIndexedSearchServiceMinimalTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarIndexedSearchServiceMinimalTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarLocalOllamaLiveCatalogTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarLocalOllamaLiveCatalogTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarLocalOllamaLiveCatalogTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarLocalOllamaLiveCatalogTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarLocalOllamaLiveCatalogTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarLocalOllamaLiveCatalogTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarModelAliasConfigStoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasConfigStoreTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasConfigStoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasConfigStoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasConfigStoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasConfigStoreTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarModelAliasLiveCatalogTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasLiveCatalogTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasLiveCatalogTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasLiveCatalogTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasLiveCatalogTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelAliasLiveCatalogTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarModelDisplayOverrideConfigStoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideConfigStoreTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideConfigStoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideConfigStoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideConfigStoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideConfigStoreTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarModelDisplayOverrideLiveCatalogTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideLiveCatalogTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideLiveCatalogTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideLiveCatalogTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideLiveCatalogTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelDisplayOverrideLiveCatalogTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarModelVariantConfigStoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantConfigStoreTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantConfigStoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantConfigStoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantConfigStoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantConfigStoreTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarModelVariantExecutorTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantExecutorTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantExecutorTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantExecutorTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantExecutorTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantExecutorTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarModelVariantLiveCatalogTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantLiveCatalogTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantLiveCatalogTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantLiveCatalogTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantLiveCatalogTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarModelVariantLiveCatalogTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarProjectCodeMemoryStoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProjectCodeMemoryStoreTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProjectCodeMemoryStoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProjectCodeMemoryStoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProjectCodeMemoryStoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProjectCodeMemoryStoreTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarProxyRouteLogStoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProxyRouteLogStoreTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProxyRouteLogStoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProxyRouteLogStoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProxyRouteLogStoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarProxyRouteLogStoreTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarRPCCapabilityTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRPCCapabilityTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRPCCapabilityTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRPCCapabilityTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRPCCapabilityTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRPCCapabilityTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarRateLimiterTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRateLimiterTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRateLimiterTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRateLimiterTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRateLimiterTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRateLimiterTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarResumeServiceTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarResumeServiceTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarResumeServiceTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarResumeServiceTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarResumeServiceTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarResumeServiceTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarRunJournalPrivacyTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRunJournalPrivacyTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRunJournalPrivacyTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRunJournalPrivacyTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRunJournalPrivacyTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarRunJournalPrivacyTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarSwitcherSQLiteProfileStoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarSwitcherSQLiteProfileStoreTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarSwitcherSQLiteProfileStoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarSwitcherSQLiteProfileStoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarSwitcherSQLiteProfileStoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/BurnBarSwitcherSQLiteProfileStoreTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ClaudeInteractiveHandoffServiceTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ClaudeInteractiveHandoffServiceTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ClaudeInteractiveHandoffServiceTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ClaudeInteractiveHandoffServiceTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ClaudeInteractiveHandoffServiceTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ClaudeInteractiveHandoffServiceTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ComputerUseAuditExportSignerProviderTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseAuditExportSignerProviderTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseAuditExportSignerProviderTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseAuditExportSignerProviderTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseAuditExportSignerProviderTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseAuditExportSignerProviderTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ComputerUseRunCoordinatorPlaywrightScenarioTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorPlaywrightScenarioTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorPlaywrightScenarioTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorPlaywrightScenarioTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorPlaywrightScenarioTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorPlaywrightScenarioTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ComputerUseRunCoordinatorTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseRunCoordinatorTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ComputerUseServiceScopeResolutionTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseServiceScopeResolutionTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseServiceScopeResolutionTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseServiceScopeResolutionTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseServiceScopeResolutionTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ComputerUseServiceScopeResolutionTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ConstantTimeCompareTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ConstantTimeCompareTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ConstantTimeCompareTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ConstantTimeCompareTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ConstantTimeCompareTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ConstantTimeCompareTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/DaemonLocalAuthProofVerifierTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonLocalAuthProofVerifierTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonLocalAuthProofVerifierTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonLocalAuthProofVerifierTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonLocalAuthProofVerifierTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonLocalAuthProofVerifierTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/DaemonSelfCodeSignatureVerifierTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonSelfCodeSignatureVerifierTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonSelfCodeSignatureVerifierTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonSelfCodeSignatureVerifierTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonSelfCodeSignatureVerifierTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/DaemonSelfCodeSignatureVerifierTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/ElderWandFusionOrchestratorTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ElderWandFusionOrchestratorTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ElderWandFusionOrchestratorTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ElderWandFusionOrchestratorTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ElderWandFusionOrchestratorTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/ElderWandFusionOrchestratorTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/FactoryDroidProviderExecutorTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/FactoryDroidProviderExecutorTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/FactoryDroidProviderExecutorTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/FactoryDroidProviderExecutorTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/FactoryDroidProviderExecutorTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/FactoryDroidProviderExecutorTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/GatewayModelCatalogSourceTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/GatewayModelCatalogSourceTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/GatewayModelCatalogSourceTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/GatewayModelCatalogSourceTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/GatewayModelCatalogSourceTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/GatewayModelCatalogSourceTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/MissionControlNotificationSecretStoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/MissionControlNotificationSecretStoreTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/MissionControlNotificationSecretStoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/MissionControlNotificationSecretStoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/MissionControlNotificationSecretStoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/MissionControlNotificationSecretStoreTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarAgentStackTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAgentStackTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAgentStackTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAgentStackTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAgentStackTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAgentStackTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarAnthropicProviderExecutorStreamTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAnthropicProviderExecutorStreamTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAnthropicProviderExecutorStreamTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAnthropicProviderExecutorStreamTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAnthropicProviderExecutorStreamTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarAnthropicProviderExecutorStreamTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarCLITests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarCLITests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarCLITests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarCLITests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarCLITests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarCLITests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarConfigStoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarConfigStoreTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarConfigStoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarConfigStoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarConfigStoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarConfigStoreTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarDaemonServerTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarDaemonServerTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarDaemonServerTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarDaemonServerTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarDaemonServerTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarDaemonServerTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarHTTPGatewayServerTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarHTTPGatewayServerTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarHTTPGatewayServerTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarHTTPGatewayServerTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarHTTPGatewayServerTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarHTTPGatewayServerTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarIndexedSearchServiceTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarIndexedSearchServiceTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarIndexedSearchServiceTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarIndexedSearchServiceTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarIndexedSearchServiceTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarIndexedSearchServiceTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarLiveModelDiscoveryTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarLiveModelDiscoveryTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarLiveModelDiscoveryTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarLiveModelDiscoveryTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarLiveModelDiscoveryTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarLiveModelDiscoveryTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlDAGSchedulerRegressionTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlDAGSchedulerRegressionTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlDAGSchedulerRegressionTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlDAGSchedulerRegressionTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlDAGSchedulerRegressionTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlDAGSchedulerRegressionTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlServiceTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlServiceTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlServiceTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlServiceTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlServiceTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarMissionControlServiceTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarPlaywrightDriverTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarPlaywrightDriverTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarPlaywrightDriverTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarPlaywrightDriverTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarPlaywrightDriverTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarPlaywrightDriverTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarProviderRouterTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarProviderRouterTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarProviderRouterTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarProviderRouterTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarProviderRouterTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarProviderRouterTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarRunServiceTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarRunServiceTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarRunServiceTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarRunServiceTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarRunServiceTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarRunServiceTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarSwitcherShellTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarSwitcherShellTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarSwitcherShellTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarSwitcherShellTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarSwitcherShellTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarSwitcherShellTests.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarUsageRecorderTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarUsageRecorderTests.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarUsageRecorderTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarUsageRecorderTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarUsageRecorderTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemonTests.build/OpenBurnBarUsageRecorderTests.dia"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/Convenience.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Convenience.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Convenience.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Convenience~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Convenience.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Convenience.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/Diagnostic.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Diagnostic.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Diagnostic.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Diagnostic~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Diagnostic.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Diagnostic.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/DiagnosticDecorators/ANSIDiagnosticDecorator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/ANSIDiagnosticDecorator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/ANSIDiagnosticDecorator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/ANSIDiagnosticDecorator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/ANSIDiagnosticDecorator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/ANSIDiagnosticDecorator.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/DiagnosticDecorators/BasicDiagnosticDecorator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/BasicDiagnosticDecorator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/BasicDiagnosticDecorator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/BasicDiagnosticDecorator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/BasicDiagnosticDecorator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/BasicDiagnosticDecorator.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/DiagnosticDecorators/DiagnosticDecorator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticDecorator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticDecorator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticDecorator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticDecorator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticDecorator.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/DiagnosticsFormatter.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticsFormatter.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticsFormatter.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticsFormatter~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticsFormatter.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/DiagnosticsFormatter.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/FixIt.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/FixIt.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/FixIt.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/FixIt~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/FixIt.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/FixIt.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/GroupedDiagnostics.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/GroupedDiagnostics.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/GroupedDiagnostics.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/GroupedDiagnostics~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/GroupedDiagnostics.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/GroupedDiagnostics.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/Message.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Message.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Message.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Message~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Message.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Message.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/checkouts/swift-syntax/Sources/SwiftDiagnostics/Note.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Note.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Note.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Note~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Note.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/SwiftDiagnostics.build/Note.dia"
+  }
+}

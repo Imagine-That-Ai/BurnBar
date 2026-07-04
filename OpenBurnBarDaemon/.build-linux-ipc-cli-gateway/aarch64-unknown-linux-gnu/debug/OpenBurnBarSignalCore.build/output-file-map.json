@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalCoreUnavailable.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/OpenBurnBarSignalCoreUnavailable.dia"
+  }
+}

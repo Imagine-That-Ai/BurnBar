@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.derived/runner.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.build/runner.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.build/runner.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.build/runner~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.build/runner.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.build/runner.dia"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/LinuxEmptyTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/LinuxEmptyTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/LinuxEmptyTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/LinuxEmptyTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/LinuxEmptyTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/LinuxEmptyTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/DerivedSources/resource_bundle_accessor.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/resource_bundle_accessor.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/resource_bundle_accessor.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/resource_bundle_accessor~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/resource_bundle_accessor.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCoreTests.build/resource_bundle_accessor.dia"
+  }
+}

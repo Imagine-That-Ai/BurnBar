@@ -1,0 +1,14 @@
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/bin/Release/net8.0/OpenBurnBar.Particles.deps.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/bin/Release/net8.0/OpenBurnBar.Particles.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/bin/Release/net8.0/OpenBurnBar.Particles.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/bin/Release/net8.0/OpenBurnBar.Particles.xml
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/OpenBurnBar.Particles.GeneratedMSBuildEditorConfig.editorconfig
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/OpenBurnBar.Particles.AssemblyInfoInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/OpenBurnBar.Particles.AssemblyInfo.cs
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/OpenBurnBar.Particles.csproj.CoreCompileInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/OpenBurnBar.Particles.sourcelink.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/OpenBurnBar.Particles.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/refint/OpenBurnBar.Particles.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/OpenBurnBar.Particles.xml
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/OpenBurnBar.Particles.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/Release/net8.0/ref/OpenBurnBar.Particles.dll

@@ -1,0 +1,80 @@
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/AEADs/AES/GCM/AES-GCM.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/AEADs/AES/GCM/BoringSSL/AES-GCM_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/AEADs/ChachaPoly/BoringSSL/ChaChaPoly_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/AEADs/ChachaPoly/ChaChaPoly.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/AEADs/Cipher.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/AEADs/Nonces.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/ASN1.swift
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ASN1Any.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ASN1BitString.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ASN1Boolean.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ASN1Identifier.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ASN1Integer.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ASN1Null.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ASN1OctetString.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ASN1Strings.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ArraySliceBigint.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/GeneralizedTime.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/Basic ASN1 Types/ObjectIdentifier.swift'
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/ECDSASignature.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/PEMDocument.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/PKCS8PrivateKey.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/SEC1PrivateKey.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/ASN1/SubjectPublicKeyInfo.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/CryptoError_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/CryptoKitErrors.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Digests/BoringSSL/Digest_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Digests/Digest.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Digests/Digests.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Digests/HashFunctions.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Digests/HashFunctions_SHA2.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/HPKE-AEAD.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/HPKE-Ciphersuite.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/HPKE-KDF.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/HPKE-KexKeyDerivation.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/HPKE-LabeledExtract.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/HPKE-Utils.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/KEM/Conformances/DHKEM.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/KEM/Conformances/HPKE-KEM-Curve25519.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/KEM/Conformances/HPKE-NIST-EC-KEMs.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Ciphersuite/KEM/HPKE-KEM.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/HPKE-Errors.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/HPKE.swift
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Key Schedule/HPKE-Context.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Key Schedule/HPKE-KeySchedule.swift'
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/HPKE/Modes/HPKE-Modes.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Insecure/Insecure.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Insecure/Insecure_HashFunctions.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/KEM/KEM.swift
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Key Agreement/BoringSSL/ECDH_boring.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Key Agreement/DH.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Key Agreement/ECDH.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Key Derivation/HKDF.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Key Wrapping/AESWrap.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Key Wrapping/BoringSSL/AESWrap_boring.swift'
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Keys/EC/BoringSSL/Ed25519_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Keys/EC/BoringSSL/NISTCurvesKeys_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Keys/EC/BoringSSL/X25519Keys_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Keys/EC/Curve25519.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Keys/EC/Ed25519Keys.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Keys/EC/NISTCurvesKeys.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Keys/EC/X25519Keys.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Keys/Symmetric/SymmetricKeys.swift
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Message Authentication Codes/HMAC/HMAC.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Message Authentication Codes/MACFunctions.swift'
+'/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Message Authentication Codes/MessageAuthenticationCode.swift'
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/PRF/AES.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Signatures/BoringSSL/ECDSASignature_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Signatures/BoringSSL/ECDSA_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Signatures/BoringSSL/EdDSA_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Signatures/ECDSA.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Signatures/Ed25519.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Signatures/Signature.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Util/BoringSSL/CryptoKitErrors_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Util/BoringSSL/RNG_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Util/BoringSSL/SafeCompare_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Util/BoringSSL/Zeroization_boring.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Util/PrettyBytes.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Util/SafeCompare.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Util/SecureBytes.swift
+/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/checkouts/swift-crypto/Sources/Crypto/Util/Zeroization.swift

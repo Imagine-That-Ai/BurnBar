@@ -1,0 +1,3 @@
+module OpenBurnBarData {
+    header "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/include/OpenBurnBarData-Swift.h"
+}

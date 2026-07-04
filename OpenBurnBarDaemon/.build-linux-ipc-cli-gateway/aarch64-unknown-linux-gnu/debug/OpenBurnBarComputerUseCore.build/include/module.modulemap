@@ -1,0 +1,3 @@
+module OpenBurnBarComputerUseCore {
+    header "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarComputerUseCore.build/include/OpenBurnBarComputerUseCore-Swift.h"
+}

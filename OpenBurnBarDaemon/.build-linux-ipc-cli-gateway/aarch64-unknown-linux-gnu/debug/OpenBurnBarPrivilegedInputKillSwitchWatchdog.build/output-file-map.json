@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputKillSwitchWatchdog.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarPrivilegedInputKillSwitchWatchdog/PrivilegedInputKillSwitchWatchdogMain.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputKillSwitchWatchdog.build/PrivilegedInputKillSwitchWatchdogMain.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputKillSwitchWatchdog.build/PrivilegedInputKillSwitchWatchdogMain.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputKillSwitchWatchdog.build/PrivilegedInputKillSwitchWatchdogMain~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputKillSwitchWatchdog.build/PrivilegedInputKillSwitchWatchdogMain.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputKillSwitchWatchdog.build/PrivilegedInputKillSwitchWatchdogMain.dia"
+  }
+}

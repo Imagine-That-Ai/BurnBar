@@ -1,0 +1,3 @@
+module OpenBurnBarFirestoreModels {
+    header "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarFirestoreModels.build/include/OpenBurnBarFirestoreModels-Swift.h"
+}

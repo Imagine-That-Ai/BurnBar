@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "dgSpecHash": "oO9xzrbtR2Y=",
+  "success": true,
+  "projectFilePath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj",
+  "expectedPackageFiles": [
+    "/Users/albertonunez/.nuget/packages/microsoft.data.sqlite.core/9.0.0/microsoft.data.sqlite.core.9.0.0.nupkg.sha512",
+    "/Users/albertonunez/.nuget/packages/sqlitepclraw.bundle_e_sqlcipher/2.1.10/sqlitepclraw.bundle_e_sqlcipher.2.1.10.nupkg.sha512",
+    "/Users/albertonunez/.nuget/packages/sqlitepclraw.core/2.1.10/sqlitepclraw.core.2.1.10.nupkg.sha512",
+    "/Users/albertonunez/.nuget/packages/sqlitepclraw.lib.e_sqlcipher/2.1.10/sqlitepclraw.lib.e_sqlcipher.2.1.10.nupkg.sha512",
+    "/Users/albertonunez/.nuget/packages/sqlitepclraw.provider.e_sqlcipher/2.1.10/sqlitepclraw.provider.e_sqlcipher.2.1.10.nupkg.sha512"
+  ],
+  "logs": []
+}

@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/LinuxSecurityEvidence.build/master.swiftdeps"
+  },
+  "/workspace/docs/linux-port/evidence/mission-001-linux-cloud-security/harness/Sources/LinuxSecurityEvidence/main.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/LinuxSecurityEvidence.build/main.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/LinuxSecurityEvidence.build/main.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/LinuxSecurityEvidence.build/main~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/LinuxSecurityEvidence.build/main.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/LinuxSecurityEvidence.build/main.dia"
+  }
+}

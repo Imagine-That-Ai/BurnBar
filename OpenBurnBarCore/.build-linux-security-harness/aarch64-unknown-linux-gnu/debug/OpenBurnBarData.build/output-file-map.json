@@ -1,0 +1,68 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDataLogger.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataLogger.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataLogger.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataLogger~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataLogger.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataLogger.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDataMigrationTypes.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataMigrationTypes.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataMigrationTypes.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataMigrationTypes~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataMigrationTypes.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDataMigrationTypes.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MemoryMigrations.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MemoryMigrations.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MemoryMigrations.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MemoryMigrations~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MemoryMigrations.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MemoryMigrations.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MigrationBackup.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MigrationBackup.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MigrationBackup.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MigrationBackup~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MigrationBackup.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase+MigrationBackup.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabase.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabaseConnectionConfiguration.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabaseConnectionConfiguration.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabaseConnectionConfiguration.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabaseConnectionConfiguration~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabaseConnectionConfiguration.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarDatabaseConnectionConfiguration.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarHermesAttachment.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarHermesAttachment.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarHermesAttachment.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarHermesAttachment~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarHermesAttachment.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarHermesAttachment.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarLocalDatabase.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarLocalDatabase.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarLocalDatabase.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarLocalDatabase~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarLocalDatabase.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarLocalDatabase.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarSchemaHasher.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarSchemaHasher.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarSchemaHasher.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarSchemaHasher~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarSchemaHasher.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarData.build/OpenBurnBarSchemaHasher.dia"
+  }
+}

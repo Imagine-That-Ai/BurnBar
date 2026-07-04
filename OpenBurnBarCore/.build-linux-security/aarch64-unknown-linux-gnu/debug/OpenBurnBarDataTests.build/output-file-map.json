@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Tests/OpenBurnBarDataTests/OpenBurnBarDataLinuxTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/OpenBurnBarDataLinuxTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/OpenBurnBarDataLinuxTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/OpenBurnBarDataLinuxTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/OpenBurnBarDataLinuxTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/OpenBurnBarDataLinuxTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/DerivedSources/resource_bundle_accessor.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/resource_bundle_accessor.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/resource_bundle_accessor.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/resource_bundle_accessor~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/resource_bundle_accessor.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarDataTests.build/resource_bundle_accessor.dia"
+  }
+}

@@ -1,0 +1,3 @@
+module _CryptoExtras {
+    header "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/_CryptoExtras.build/include/_CryptoExtras-Swift.h"
+}

@@ -1,0 +1,89 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/BurnBarRemoteEngineTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/BurnBarRemoteEngineTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/BurnBarRemoteEngineTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/BurnBarRemoteEngineTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/BurnBarRemoteEngineTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/BurnBarRemoteEngineTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarAnalyticsTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarAnalyticsTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarAnalyticsTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarAnalyticsTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarAnalyticsTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarAnalyticsTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarComputerUseCoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarComputerUseCoreTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarComputerUseCoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarComputerUseCoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarComputerUseCoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarComputerUseCoreTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarCoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarCoreTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarCoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarCoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarCoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarCoreTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarDataTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarDataTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarDataTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarDataTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarDataTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarDataTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarIrohRelayTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarIrohRelayTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarIrohRelayTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarIrohRelayTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarIrohRelayTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarIrohRelayTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarLinuxCoreFoundationTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxCoreFoundationTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxCoreFoundationTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxCoreFoundationTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxCoreFoundationTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxCoreFoundationTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarLinuxSecurityTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxSecurityTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxSecurityTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxSecurityTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxSecurityTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarLinuxSecurityTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarMediaTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarMediaTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarMediaTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarMediaTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarMediaTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarMediaTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarSignalCoreTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalCoreTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalCoreTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalCoreTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalCoreTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalCoreTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/OpenBurnBarSignalSessionTransportTests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalSessionTransportTests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalSessionTransportTests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalSessionTransportTests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalSessionTransportTests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/OpenBurnBarSignalSessionTransportTests.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/all-discovered-tests.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/all-discovered-tests.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/all-discovered-tests.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/all-discovered-tests~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/all-discovered-tests.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.build/all-discovered-tests.dia"
+  }
+}

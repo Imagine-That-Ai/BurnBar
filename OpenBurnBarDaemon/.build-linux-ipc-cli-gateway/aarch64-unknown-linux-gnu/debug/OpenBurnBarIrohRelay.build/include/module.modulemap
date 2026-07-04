@@ -1,0 +1,3 @@
+module OpenBurnBarIrohRelay {
+    header "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarIrohRelay.build/include/OpenBurnBarIrohRelay-Swift.h"
+}

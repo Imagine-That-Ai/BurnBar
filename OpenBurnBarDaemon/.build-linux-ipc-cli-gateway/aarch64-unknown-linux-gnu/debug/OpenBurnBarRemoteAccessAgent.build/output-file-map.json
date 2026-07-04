@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgent.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgent/OpenBurnBarRemoteAccessAgentMain.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgent.build/OpenBurnBarRemoteAccessAgentMain.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgent.build/OpenBurnBarRemoteAccessAgentMain.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgent.build/OpenBurnBarRemoteAccessAgentMain~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgent.build/OpenBurnBarRemoteAccessAgentMain.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgent.build/OpenBurnBarRemoteAccessAgentMain.dia"
+  }
+}

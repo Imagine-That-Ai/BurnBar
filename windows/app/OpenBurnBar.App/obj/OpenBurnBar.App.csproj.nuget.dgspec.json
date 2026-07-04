@@ -1,0 +1,405 @@
+{
+  "format": 1,
+  "restore": {
+    "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj": {}
+  },
+  "projects": {
+    "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj",
+        "projectName": "OpenBurnBar.App.Settings",
+        "projectPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj",
+        "packagesPath": "/Users/albertonunez/.nuget/packages/",
+        "outputPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App.Settings/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/albertonunez/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "/Users/albertonunez/.homebrew/Cellar/dotnet/10.0.301/libexec/library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "framework": "net8.0",
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.300"
+      },
+      "frameworks": {
+        "net8.0": {
+          "framework": "net8.0",
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/Users/albertonunez/.homebrew/Cellar/dotnet/10.0.301/libexec/sdk/10.0.301/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj",
+        "projectName": "OpenBurnBar.App",
+        "projectPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj",
+        "packagesPath": "/Users/albertonunez/.nuget/packages/",
+        "outputPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/albertonunez/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0-windows10.0.19041.0"
+        ],
+        "sources": {
+          "/Users/albertonunez/.homebrew/Cellar/dotnet/10.0.301/libexec/library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0-windows10.0.19041.0": {
+            "framework": "net8.0-windows10.0.19041",
+            "targetAlias": "net8.0-windows10.0.19041.0",
+            "projectReferences": {
+              "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj": {
+                "projectPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj"
+              },
+              "/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/OpenBurnBar.Particles.csproj": {
+                "projectPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/OpenBurnBar.Particles.csproj"
+              },
+              "/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj": {
+                "projectPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.300"
+      },
+      "frameworks": {
+        "net8.0-windows10.0.19041.0": {
+          "framework": "net8.0-windows10.0.19041",
+          "targetAlias": "net8.0-windows10.0.19041.0",
+          "dependencies": {
+            "CommunityToolkit.WinUI.Controls.SettingsControls": {
+              "target": "Package",
+              "version": "[8.2.250402, )"
+            },
+            "Microsoft.Graphics.Win2D": {
+              "target": "Package",
+              "version": "[1.3.0, )"
+            },
+            "Microsoft.WindowsAppSDK": {
+              "target": "Package",
+              "version": "[1.7.250606001, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.AspNetCore.App.Runtime.win-arm64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.AspNetCore.App.Runtime.win-x86",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.osx-arm64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.win-arm64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.win-x64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.win-x86",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Runtime.win-arm64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Runtime.win-x64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Runtime.win-x86",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.Windows.SDK.NET.Ref",
+              "version": "[10.0.19041.57, 10.0.19041.57]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Runtime.win-arm64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Runtime.win-x86",
+              "version": "[8.0.28, 8.0.28]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            },
+            "Microsoft.Windows.SDK.NET.Ref.Windows": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/Users/albertonunez/.homebrew/Cellar/dotnet/10.0.301/libexec/sdk/10.0.301/PortableRuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "win-arm64": {
+          "#import": []
+        },
+        "win-x64": {
+          "#import": []
+        },
+        "win-x86": {
+          "#import": []
+        }
+      }
+    },
+    "/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/OpenBurnBar.Particles.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/OpenBurnBar.Particles.csproj",
+        "projectName": "OpenBurnBar.Particles",
+        "projectPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/OpenBurnBar.Particles.csproj",
+        "packagesPath": "/Users/albertonunez/.nuget/packages/",
+        "outputPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/particles/OpenBurnBar.Particles/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/albertonunez/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "/Users/albertonunez/.homebrew/Cellar/dotnet/10.0.301/libexec/library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "framework": "net8.0",
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.300"
+      },
+      "frameworks": {
+        "net8.0": {
+          "framework": "net8.0",
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/Users/albertonunez/.homebrew/Cellar/dotnet/10.0.301/libexec/sdk/10.0.301/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj",
+        "projectName": "OpenBurnBar.Pretext",
+        "projectPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj",
+        "packagesPath": "/Users/albertonunez/.nuget/packages/",
+        "outputPath": "/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/albertonunez/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "/Users/albertonunez/.homebrew/Cellar/dotnet/10.0.301/libexec/library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "framework": "net8.0",
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.300"
+      },
+      "frameworks": {
+        "net8.0": {
+          "framework": "net8.0",
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.28, 8.0.28]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/Users/albertonunez/.homebrew/Cellar/dotnet/10.0.301/libexec/sdk/10.0.301/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/BitrateController.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/BitrateController.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/BitrateController.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/BitrateController~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/BitrateController.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/BitrateController.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaAnalyticsEvent.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaAnalyticsEvent.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaAnalyticsEvent.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaAnalyticsEvent~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaAnalyticsEvent.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaAnalyticsEvent.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaBudgetEnvelope.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaBudgetEnvelope.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaBudgetEnvelope.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaBudgetEnvelope~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaBudgetEnvelope.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaBudgetEnvelope.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaCapabilityGate.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaCapabilityGate.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaCapabilityGate.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaCapabilityGate~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaCapabilityGate.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaCapabilityGate.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaControlStreamRegistry.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaControlStreamRegistry.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaControlStreamRegistry.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaControlStreamRegistry~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaControlStreamRegistry.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaControlStreamRegistry.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaFileTransferService.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFileTransferService.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFileTransferService.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFileTransferService~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFileTransferService.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFileTransferService.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaFrame.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrame.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrame.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrame~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrame.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrame.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaFrameAEAD.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameAEAD.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameAEAD.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameAEAD~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameAEAD.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameAEAD.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaFrameSealSession.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameSealSession.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameSealSession.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameSealSession~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameSealSession.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameSealSession.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaFrameV2.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameV2.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameV2.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameV2~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameV2.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaFrameV2.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaPacketCodec.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaPacketCodec.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaPacketCodec.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaPacketCodec~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaPacketCodec.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaPacketCodec.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaServeTaskTeardownRegistry.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaServeTaskTeardownRegistry.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaServeTaskTeardownRegistry.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaServeTaskTeardownRegistry~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaServeTaskTeardownRegistry.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaServeTaskTeardownRegistry.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaSessionMetadata.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaSessionMetadata.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaSessionMetadata.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaSessionMetadata~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaSessionMetadata.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaSessionMetadata.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaStreamClass.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaStreamClass.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaStreamClass.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaStreamClass~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaStreamClass.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MediaStreamClass.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryPeer.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryPeer.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryPeer.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryPeer~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryPeer.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryPeer.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryStreamingCapabilities.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingCapabilities.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingCapabilities.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingCapabilities~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingCapabilities.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingCapabilities.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryStreamingPolicy.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingPolicy.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingPolicy.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingPolicy~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingPolicy.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingPolicy.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryStreamingStats.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingStats.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingStats.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingStats~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingStats.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryStreamingStats.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryVideoToolboxCapabilityProbe.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryVideoToolboxCapabilityProbe.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryVideoToolboxCapabilityProbe.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryVideoToolboxCapabilityProbe~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryVideoToolboxCapabilityProbe.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/MercuryVideoToolboxCapabilityProbe.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarMedia/VideoDecoderConfigurationPayload.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/VideoDecoderConfigurationPayload.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/VideoDecoderConfigurationPayload.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/VideoDecoderConfigurationPayload~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/VideoDecoderConfigurationPayload.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarMedia.build/VideoDecoderConfigurationPayload.dia"
+  }
+}

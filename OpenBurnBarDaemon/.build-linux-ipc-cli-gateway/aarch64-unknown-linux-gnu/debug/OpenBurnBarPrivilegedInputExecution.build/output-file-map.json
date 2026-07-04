@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputExecution.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarPrivilegedInputExecution/OpenBurnBarPrivilegedInputExecutionMain.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputExecution.build/OpenBurnBarPrivilegedInputExecutionMain.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputExecution.build/OpenBurnBarPrivilegedInputExecutionMain.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputExecution.build/OpenBurnBarPrivilegedInputExecutionMain~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputExecution.build/OpenBurnBarPrivilegedInputExecutionMain.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarPrivilegedInputExecution.build/OpenBurnBarPrivilegedInputExecutionMain.dia"
+  }
+}

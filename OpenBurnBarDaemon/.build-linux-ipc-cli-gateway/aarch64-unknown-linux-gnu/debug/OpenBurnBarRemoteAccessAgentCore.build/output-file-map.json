@@ -1,0 +1,131 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/OpenBurnBarSigningIdentity.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/OpenBurnBarSigningIdentity.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/OpenBurnBarSigningIdentity.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/OpenBurnBarSigningIdentity~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/OpenBurnBarSigningIdentity.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/OpenBurnBarSigningIdentity.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/PrivilegedInputDispatchHandler.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputDispatchHandler.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputDispatchHandler.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputDispatchHandler~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputDispatchHandler.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputDispatchHandler.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/PrivilegedInputExecutionSocketServer.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputExecutionSocketServer.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputExecutionSocketServer.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputExecutionSocketServer~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputExecutionSocketServer.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputExecutionSocketServer.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/PrivilegedInputXPCPeerValidator.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputXPCPeerValidator.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputXPCPeerValidator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputXPCPeerValidator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputXPCPeerValidator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedInputXPCPeerValidator.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/PrivilegedPeerAuthenticator.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedPeerAuthenticator.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedPeerAuthenticator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedPeerAuthenticator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedPeerAuthenticator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedPeerAuthenticator.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/PrivilegedSocketAudit.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedSocketAudit.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedSocketAudit.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedSocketAudit~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedSocketAudit.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/PrivilegedSocketAudit.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteAccessConsoleUser.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessConsoleUser.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessConsoleUser.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessConsoleUser~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessConsoleUser.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessConsoleUser.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteAccessCredentialEventSourcePolicy.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialEventSourcePolicy.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialEventSourcePolicy.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialEventSourcePolicy~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialEventSourcePolicy.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialEventSourcePolicy.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteAccessCredentialTimeoutPolicy.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialTimeoutPolicy.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialTimeoutPolicy.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialTimeoutPolicy~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialTimeoutPolicy.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialTimeoutPolicy.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteAccessCredentialWorkerLaunchPlan.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialWorkerLaunchPlan.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialWorkerLaunchPlan.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialWorkerLaunchPlan~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialWorkerLaunchPlan.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessCredentialWorkerLaunchPlan.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteAccessDisplayWakePolicy.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessDisplayWakePolicy.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessDisplayWakePolicy.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessDisplayWakePolicy~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessDisplayWakePolicy.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessDisplayWakePolicy.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteAccessKeystrokePlanner.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessKeystrokePlanner.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessKeystrokePlanner.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessKeystrokePlanner~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessKeystrokePlanner.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessKeystrokePlanner.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteAccessUnicodeTypingPlan.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessUnicodeTypingPlan.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessUnicodeTypingPlan.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessUnicodeTypingPlan~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessUnicodeTypingPlan.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessUnicodeTypingPlan.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteAccessVirtualHIDReportPlanner.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessVirtualHIDReportPlanner.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessVirtualHIDReportPlanner.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessVirtualHIDReportPlanner~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessVirtualHIDReportPlanner.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteAccessVirtualHIDReportPlanner.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/RemoteUnlockSessionContextFileProvider.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteUnlockSessionContextFileProvider.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteUnlockSessionContextFileProvider.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteUnlockSessionContextFileProvider~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteUnlockSessionContextFileProvider.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/RemoteUnlockSessionContextFileProvider.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/VirtualHIDBridgeCapabilityGate.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeCapabilityGate.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeCapabilityGate.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeCapabilityGate~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeCapabilityGate.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeCapabilityGate.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/VirtualHIDBridgeInputPolicy.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeInputPolicy.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeInputPolicy.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeInputPolicy~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeInputPolicy.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDBridgeInputPolicy.dia"
+  },
+  "/workspace/OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/VirtualHIDKeyboardEngine.swift": {
+    "dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDKeyboardEngine.d",
+    "object": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDKeyboardEngine.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDKeyboardEngine~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDKeyboardEngine.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarRemoteAccessAgentCore.build/VirtualHIDKeyboardEngine.dia"
+  }
+}

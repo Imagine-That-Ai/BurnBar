@@ -1,0 +1,1160 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/master.swiftdeps"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Configuration.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Configuration.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Configuration.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Configuration~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Configuration.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Configuration.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Cursor.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Cursor.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Cursor.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Cursor~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Cursor.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Cursor.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Database+Schema.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Schema.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Schema.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Schema~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Schema.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Schema.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Database+Statements.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Statements.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Statements.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Statements~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Statements.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Statements.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Database.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseBackupProgress.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseBackupProgress.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseBackupProgress.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseBackupProgress~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseBackupProgress.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseBackupProgress.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseCollation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCollation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCollation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCollation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCollation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCollation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseError.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseError.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseError.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseError~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseError.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseError.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseFunction.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseFunction.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseFunction.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseFunction~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseFunction.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseFunction.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabasePool.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePool.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePool.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePool~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePool.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePool.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabasePublishers.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePublishers.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePublishers.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePublishers~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePublishers.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePublishers.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseQueue.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseQueue.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseQueue.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseQueue~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseQueue.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseQueue.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseReader.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseRegion.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegion.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegion.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegion~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegion.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegion.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseRegionObservation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegionObservation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegionObservation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegionObservation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegionObservation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseRegionObservation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseSchemaCache.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSchemaCache.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSchemaCache.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSchemaCache~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSchemaCache.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSchemaCache.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseSnapshot.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshot.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshot.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshot~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshot.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshot.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseSnapshotPool.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshotPool.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshotPool.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshotPool~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshotPool.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseSnapshotPool.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseValue.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValue.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValue.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValue~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValue.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValue.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseValueConvertible.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseWriter.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseWriter.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseWriter.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseWriter~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseWriter.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseWriter.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/FetchRequest.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchRequest.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchRequest.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchRequest~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchRequest.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchRequest.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Row.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Row.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Row.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Row~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Row.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Row.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/RowAdapter.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowAdapter.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowAdapter.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowAdapter~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowAdapter.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowAdapter.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/RowDecodingError.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowDecodingError.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowDecodingError.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowDecodingError~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowDecodingError.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RowDecodingError.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/SQL.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQL.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQL.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQL~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQL.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQL.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/SQLInterpolation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/SQLRequest.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRequest.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRequest.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRequest~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRequest.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRequest.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/SchedulingWatchdog.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SchedulingWatchdog.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SchedulingWatchdog.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SchedulingWatchdog~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SchedulingWatchdog.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SchedulingWatchdog.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/SerializedDatabase.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SerializedDatabase.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SerializedDatabase.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SerializedDatabase~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SerializedDatabase.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SerializedDatabase.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Statement.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Statement.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Statement.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Statement~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Statement.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Statement.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/StatementAuthorizer.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementAuthorizer.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementAuthorizer.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementAuthorizer~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementAuthorizer.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementAuthorizer.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/StatementColumnConvertible.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementColumnConvertible.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementColumnConvertible.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementColumnConvertible~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementColumnConvertible.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StatementColumnConvertible.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/CoreGraphics/CGFloat.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CGFloat.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CGFloat.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CGFloat~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CGFloat.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CGFloat.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/Data.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Data.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Data.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Data~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Data.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Data.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/DatabaseDateComponents.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseDateComponents.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseDateComponents.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseDateComponents~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseDateComponents.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseDateComponents.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/DatabaseValueConvertible+ReferenceConvertible.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+ReferenceConvertible.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+ReferenceConvertible.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+ReferenceConvertible~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+ReferenceConvertible.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+ReferenceConvertible.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/Date.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Date.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Date.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Date~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Date.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Date.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/Decimal.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Decimal.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Decimal.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Decimal~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Decimal.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Decimal.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/NSData.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSData.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSData.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSData~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSData.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSData.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/NSNull.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNull.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNull.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNull~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNull.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNull.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/NSNumber.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNumber.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNumber.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNumber~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNumber.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSNumber.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/NSString.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSString.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSString.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSString~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSString.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/NSString.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/SQLiteDateParser.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLiteDateParser.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLiteDateParser.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLiteDateParser~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLiteDateParser.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLiteDateParser.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/URL.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/URL.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/URL.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/URL~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/URL.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/URL.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/Foundation/UUID.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/UUID.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/UUID.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/UUID~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/UUID.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/UUID.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/StandardLibrary/DatabaseValueConvertible+Decodable.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Decodable.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Decodable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Decodable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Decodable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Decodable.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/StandardLibrary/DatabaseValueConvertible+Encodable.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Encodable.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Encodable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Encodable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Encodable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+Encodable.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/StandardLibrary/DatabaseValueConvertible+RawRepresentable.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+RawRepresentable.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+RawRepresentable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+RawRepresentable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+RawRepresentable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseValueConvertible+RawRepresentable.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/StandardLibrary/JSONRequiredEncoder.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONRequiredEncoder.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONRequiredEncoder.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONRequiredEncoder~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONRequiredEncoder.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONRequiredEncoder.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/StandardLibrary/Optional.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Optional.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Optional.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Optional~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Optional.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Optional.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/Support/StandardLibrary/StandardLibrary.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StandardLibrary.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StandardLibrary.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StandardLibrary~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StandardLibrary.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/StandardLibrary.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/TransactionClock.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionClock.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionClock.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionClock~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionClock.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionClock.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/TransactionObserver.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionObserver.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionObserver.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionObserver~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionObserver.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TransactionObserver.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/WALSnapshot.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshot.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshot.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshot~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshot.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshot.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Core/WALSnapshotTransaction.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshotTransaction.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshotTransaction.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshotTransaction~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshotTransaction.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/WALSnapshotTransaction.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Dump/Database+Dump.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Dump.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Dump.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Dump~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Dump.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+Dump.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Dump/DatabaseReader+dump.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader+dump.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader+dump.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader+dump~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader+dump.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseReader+dump.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Dump/DumpFormat.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DumpFormat.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DumpFormat.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DumpFormat~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DumpFormat.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DumpFormat.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Dump/DumpFormats/DebugDumpFormat.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DebugDumpFormat.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DebugDumpFormat.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DebugDumpFormat~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DebugDumpFormat.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DebugDumpFormat.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Dump/DumpFormats/JSONDumpFormat.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONDumpFormat.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONDumpFormat.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONDumpFormat~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONDumpFormat.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONDumpFormat.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Dump/DumpFormats/LineDumpFormat.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LineDumpFormat.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LineDumpFormat.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LineDumpFormat~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LineDumpFormat.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LineDumpFormat.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Dump/DumpFormats/ListDumpFormat.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ListDumpFormat.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ListDumpFormat.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ListDumpFormat~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ListDumpFormat.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ListDumpFormat.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Dump/DumpFormats/QuoteDumpFormat.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QuoteDumpFormat.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QuoteDumpFormat.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QuoteDumpFormat~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QuoteDumpFormat.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QuoteDumpFormat.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Export.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Export.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Export.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Export~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Export.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Export.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS3.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS3Pattern.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3Pattern.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3Pattern.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3Pattern~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3Pattern.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3Pattern.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS3TokenizerDescriptor.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3TokenizerDescriptor.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3TokenizerDescriptor.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3TokenizerDescriptor~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3TokenizerDescriptor.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3TokenizerDescriptor.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS4.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS4.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS4.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS4~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS4.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS4.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS5.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS5CustomTokenizer.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5CustomTokenizer.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5CustomTokenizer.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5CustomTokenizer~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5CustomTokenizer.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5CustomTokenizer.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS5Pattern.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Pattern.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Pattern.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Pattern~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Pattern.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Pattern.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS5Tokenizer.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Tokenizer.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Tokenizer.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Tokenizer~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Tokenizer.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5Tokenizer.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS5TokenizerDescriptor.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5TokenizerDescriptor.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5TokenizerDescriptor.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5TokenizerDescriptor~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5TokenizerDescriptor.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5TokenizerDescriptor.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/FTS/FTS5WrapperTokenizer.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5WrapperTokenizer.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5WrapperTokenizer.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5WrapperTokenizer~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5WrapperTokenizer.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5WrapperTokenizer.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Fixits.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fixits.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fixits.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fixits~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fixits.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fixits.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/JSON/JSONColumn.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONColumn.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONColumn.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONColumn~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONColumn.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JSONColumn.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/JSON/SQLJSONExpressible.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONExpressible.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONExpressible.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONExpressible~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONExpressible.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONExpressible.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/JSON/SQLJSONFunctions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONFunctions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONFunctions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONFunctions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONFunctions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLJSONFunctions.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Migration/DatabaseMigrator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseMigrator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseMigrator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseMigrator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseMigrator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseMigrator.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Migration/Migration.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Migration.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Migration.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Migration~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Migration.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Migration.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/FTS3+QueryInterface.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3+QueryInterface.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3+QueryInterface.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3+QueryInterface~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3+QueryInterface.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS3+QueryInterface.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/FTS5+QueryInterface.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5+QueryInterface.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5+QueryInterface.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5+QueryInterface~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5+QueryInterface.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FTS5+QueryInterface.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/ForeignKey.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKey.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKey.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKey~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKey.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKey.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/Association/Association.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Association.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Association.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Association~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Association.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Association.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/Association/AssociationAggregate.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/AssociationAggregate.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/AssociationAggregate.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/AssociationAggregate~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/AssociationAggregate.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/AssociationAggregate.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/Association/BelongsToAssociation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/BelongsToAssociation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/BelongsToAssociation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/BelongsToAssociation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/BelongsToAssociation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/BelongsToAssociation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/Association/HasManyAssociation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyAssociation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyAssociation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyAssociation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyAssociation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyAssociation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/Association/HasManyThroughAssociation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyThroughAssociation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyThroughAssociation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyThroughAssociation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyThroughAssociation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasManyThroughAssociation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/Association/HasOneAssociation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneAssociation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneAssociation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneAssociation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneAssociation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneAssociation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/Association/HasOneThroughAssociation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneThroughAssociation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneThroughAssociation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneThroughAssociation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneThroughAssociation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/HasOneThroughAssociation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/Association/JoinAssociation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JoinAssociation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JoinAssociation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JoinAssociation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JoinAssociation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/JoinAssociation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/CommonTableExpression.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CommonTableExpression.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CommonTableExpression.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CommonTableExpression~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CommonTableExpression.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CommonTableExpression.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/QueryInterfaceRequest.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QueryInterfaceRequest.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QueryInterfaceRequest.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QueryInterfaceRequest~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QueryInterfaceRequest.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/QueryInterfaceRequest.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Request/RequestProtocols.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RequestProtocols.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RequestProtocols.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RequestProtocols~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RequestProtocols.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RequestProtocols.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/Column.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Column.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Column.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Column~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Column.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Column.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/DatabasePromise.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePromise.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePromise.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePromise~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePromise.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabasePromise.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLAssociation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLAssociation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLAssociation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLAssociation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLAssociation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLAssociation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLCollection.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLCollection.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLCollection.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLCollection~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLCollection.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLCollection.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLExpression.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLExpression.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLExpression.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLExpression~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLExpression.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLExpression.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLForeignKeyRequest.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLForeignKeyRequest.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLForeignKeyRequest.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLForeignKeyRequest~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLForeignKeyRequest.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLForeignKeyRequest.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLFunctions.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLFunctions.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLFunctions.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLFunctions~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLFunctions.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLFunctions.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLOperators.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOperators.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOperators.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOperators~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOperators.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOperators.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLOrdering.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOrdering.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOrdering.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOrdering~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOrdering.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLOrdering.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLRelation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRelation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRelation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRelation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRelation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLRelation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLSelection.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSelection.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSelection.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSelection~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSelection.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSelection.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/SQLSubquery.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSubquery.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSubquery.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSubquery~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSubquery.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLSubquery.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQL/Table.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Table.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Table.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Table~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Table.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Table.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQLGeneration/SQLColumnGenerator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLColumnGenerator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLColumnGenerator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLColumnGenerator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLColumnGenerator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLColumnGenerator.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQLGeneration/SQLGenerationContext.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLGenerationContext.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLGenerationContext.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLGenerationContext~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLGenerationContext.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLGenerationContext.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQLGeneration/SQLIndexGenerator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLIndexGenerator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLIndexGenerator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLIndexGenerator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLIndexGenerator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLIndexGenerator.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQLGeneration/SQLQueryGenerator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLQueryGenerator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLQueryGenerator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLQueryGenerator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLQueryGenerator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLQueryGenerator.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQLGeneration/SQLTableAlterationGenerator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableAlterationGenerator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableAlterationGenerator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableAlterationGenerator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableAlterationGenerator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableAlterationGenerator.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQLGeneration/SQLTableGenerator.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableGenerator.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableGenerator.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableGenerator~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableGenerator.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLTableGenerator.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/SQLInterpolation+QueryInterface.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation+QueryInterface.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation+QueryInterface.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation+QueryInterface~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation+QueryInterface.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SQLInterpolation+QueryInterface.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Schema/ColumnDefinition.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ColumnDefinition.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ColumnDefinition.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ColumnDefinition~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ColumnDefinition.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ColumnDefinition.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Schema/Database+SchemaDefinition.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+SchemaDefinition.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+SchemaDefinition.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+SchemaDefinition~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+SchemaDefinition.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Database+SchemaDefinition.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Schema/ForeignKeyDefinition.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKeyDefinition.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKeyDefinition.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKeyDefinition~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKeyDefinition.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ForeignKeyDefinition.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Schema/IndexDefinition.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/IndexDefinition.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/IndexDefinition.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/IndexDefinition~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/IndexDefinition.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/IndexDefinition.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Schema/TableAlteration.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableAlteration.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableAlteration.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableAlteration~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableAlteration.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableAlteration.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Schema/TableDefinition.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableDefinition.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableDefinition.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableDefinition~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableDefinition.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableDefinition.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/Schema/VirtualTableModule.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/VirtualTableModule.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/VirtualTableModule.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/VirtualTableModule~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/VirtualTableModule.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/VirtualTableModule.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/TableRecord+Association.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+Association.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+Association.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+Association~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+Association.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+Association.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/QueryInterface/TableRecord+QueryInterfaceRequest.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+QueryInterfaceRequest.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+QueryInterfaceRequest.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+QueryInterfaceRequest~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+QueryInterfaceRequest.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord+QueryInterfaceRequest.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/EncodableRecord+Encodable.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord+Encodable.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord+Encodable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord+Encodable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord+Encodable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord+Encodable.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/EncodableRecord.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/EncodableRecord.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/FetchableRecord+Decodable.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+Decodable.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+Decodable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+Decodable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+Decodable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+Decodable.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/FetchableRecord+TableRecord.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+TableRecord.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+TableRecord.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+TableRecord~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+TableRecord.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord+TableRecord.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/FetchableRecord.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/FetchableRecord.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/MutablePersistableRecord+DAO.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+DAO.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+DAO.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+DAO~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+DAO.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+DAO.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/MutablePersistableRecord+Delete.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Delete.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Delete.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Delete~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Delete.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Delete.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/MutablePersistableRecord+Insert.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Insert.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Insert.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Insert~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Insert.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Insert.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/MutablePersistableRecord+Save.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Save.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Save.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Save~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Save.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Save.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/MutablePersistableRecord+Update.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Update.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Update.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Update~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Update.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Update.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/MutablePersistableRecord+Upsert.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Upsert.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Upsert.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Upsert~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Upsert.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord+Upsert.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/MutablePersistableRecord.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/MutablePersistableRecord.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/PersistableRecord+Insert.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Insert.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Insert.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Insert~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Insert.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Insert.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/PersistableRecord+Save.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Save.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Save.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Save~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Save.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Save.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/PersistableRecord+Upsert.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Upsert.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Upsert.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Upsert~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Upsert.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord+Upsert.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/PersistableRecord.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/PersistableRecord.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/Record.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Record.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Record.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Record~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Record.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Record.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Record/TableRecord.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/TableRecord.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/CaseInsensitiveIdentifier.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CaseInsensitiveIdentifier.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CaseInsensitiveIdentifier.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CaseInsensitiveIdentifier~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CaseInsensitiveIdentifier.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/CaseInsensitiveIdentifier.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/Inflections+English.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections+English.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections+English.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections+English~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections+English.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections+English.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/Inflections.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Inflections.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/LockedBox.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LockedBox.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LockedBox.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LockedBox~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LockedBox.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/LockedBox.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/OnDemandFuture.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OnDemandFuture.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OnDemandFuture.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OnDemandFuture~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OnDemandFuture.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OnDemandFuture.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/OrderedDictionary.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OrderedDictionary.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OrderedDictionary.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OrderedDictionary~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OrderedDictionary.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/OrderedDictionary.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/Pool.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Pool.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Pool.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Pool~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Pool.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Pool.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/ReadWriteBox.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReadWriteBox.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReadWriteBox.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReadWriteBox~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReadWriteBox.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReadWriteBox.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/ReceiveValuesOn.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReceiveValuesOn.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReceiveValuesOn.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReceiveValuesOn~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReceiveValuesOn.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ReceiveValuesOn.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/Refinable.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Refinable.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Refinable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Refinable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Refinable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Refinable.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/Utils/Utils.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Utils.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Utils.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Utils~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Utils.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Utils.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/DatabaseCancellable.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCancellable.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCancellable.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCancellable~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCancellable.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DatabaseCancellable.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Observers/ValueConcurrentObserver.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueConcurrentObserver.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueConcurrentObserver.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueConcurrentObserver~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueConcurrentObserver.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueConcurrentObserver.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Observers/ValueWriteOnlyObserver.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueWriteOnlyObserver.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueWriteOnlyObserver.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueWriteOnlyObserver~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueWriteOnlyObserver.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueWriteOnlyObserver.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Reducers/Fetch.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fetch.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fetch.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fetch~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fetch.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Fetch.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Reducers/Map.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Map.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Map.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Map~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Map.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Map.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Reducers/RemoveDuplicates.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RemoveDuplicates.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RemoveDuplicates.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RemoveDuplicates~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RemoveDuplicates.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/RemoveDuplicates.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Reducers/Trace.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Trace.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Trace.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Trace~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Trace.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/Trace.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Reducers/ValueReducer.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueReducer.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueReducer.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueReducer~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueReducer.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueReducer.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/SharedValueObservation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SharedValueObservation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SharedValueObservation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SharedValueObservation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SharedValueObservation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/SharedValueObservation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservation.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservation.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservation.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservation~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservation.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservation.dia"
+  },
+  "/workspace/Vendor/GRDB-SQLCipher/GRDB/ValueObservation/ValueObservationScheduler.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservationScheduler.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservationScheduler.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservationScheduler~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservationScheduler.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/ValueObservationScheduler.dia"
+  },
+  "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/DerivedSources/resource_bundle_accessor.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/resource_bundle_accessor.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/resource_bundle_accessor.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/resource_bundle_accessor~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/resource_bundle_accessor.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security/aarch64-unknown-linux-gnu/debug/GRDB.build/resource_bundle_accessor.dia"
+  }
+}

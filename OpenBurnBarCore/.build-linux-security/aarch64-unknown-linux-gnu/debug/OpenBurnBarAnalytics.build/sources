@@ -1,0 +1,9 @@
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/Analytics.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsBuckets.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsConsentStore.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsEvent.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsIdentity.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsName.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsSuperProperties.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsTransporting.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsValue.swift

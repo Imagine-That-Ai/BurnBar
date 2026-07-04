@@ -1,0 +1,3 @@
+module BurnBarRemoteEngine {
+    header "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/BurnBarRemoteEngine.build/include/BurnBarRemoteEngine-Swift.h"
+}

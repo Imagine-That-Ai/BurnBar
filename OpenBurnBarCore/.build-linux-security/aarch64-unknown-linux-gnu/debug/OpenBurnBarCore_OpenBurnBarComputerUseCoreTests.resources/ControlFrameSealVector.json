@@ -1,0 +1,41 @@
+{
+  "aadPrefix" : "OpenBurnBar-ControlFrameSeal-v1|",
+  "capability" : "control_seal_v1",
+  "cases" : [
+    {
+      "aadHex" : "4f70656e4275726e4261722d436f6e74726f6c4672616d655365616c2d76317c696f732d73652d3061316232633364346535663630373138323933613462357c636f6e74726f6c2e636c6970626f6172642e72657175657374",
+      "derivedKeyHex" : "cdc205d744175200319facabd74149df954dc39b942a19bef3975ac228935152",
+      "envelopeHex" : "4f42434653310121d37dcff19a0590a03116fff4e98122e8a3d92dad96b8f763d239d46c053c7d3f2776833ec5811f0eefc7cb66e2b1e3fcc952aad2c0f3a6d38f1e09a19b46586fd074cdce4cd80be2880e83b03cd5a24345cc79aa887ad0fee2d79aa77a8362957fb060cdb33fa6db",
+      "frameType" : "control.clipboard.request",
+      "hpkeSessionKeyHex" : "03080d12171c21262b30353a3f44494e53585d62676c71767b80858a8f94999e",
+      "name" : "clipboard_request",
+      "peerNodeId" : "ios-se-0a1b2c3d4e5f60718293a4b5",
+      "plaintextHex" : "7b22636c6970626f61726452657175657374223a7b2274657874223a22636f727265637420686f727365206261747465727920737461706c6520e2809420cf80e28988332e3134313539227d7d",
+      "plaintextUtf8" : "{\"clipboardRequest\":{\"text\":\"correct horse battery staple — π≈3.14159\"}}",
+      "saltHex" : "636f6e74726f6c2d7265712d30303031"
+    },
+    {
+      "aadHex" : "4f70656e4275726e4261722d436f6e74726f6c4672616d655365616c2d76317c616e64726f69642d70686f6e652d3030313132323333343435353636373738383939616162627c636f6e74726f6c2e696e7075742e696e74656e74",
+      "derivedKeyHex" : "b1bb0779b19357d8ab0cf395b1134e0f87af4a46138233fb5a195bf5a20c36c5",
+      "envelopeHex" : "4f424346533101f76c313bb99daa7e2f18d66d16a13e4042704d3375cf041b960568ecdfba145b96c04eb1ca56cd9624d02511985a63ac824ae7c6903053313b248d3e56ad618b44b0bdf5f25ce06c325f01ab43",
+      "frameType" : "control.input.intent",
+      "hpkeSessionKeyHex" : "071019222b343d464f58616a737c858e97a0a9b2bbc4cdd6dfe8f1fa08111a23",
+      "name" : "input_intent",
+      "peerNodeId" : "android-phone-00112233445566778899aabb",
+      "plaintextHex" : "7b22696e707574496e74656e74223a7b2278223a3634302c2279223a3336302c22627574746f6e223a226c656674227d7d",
+      "plaintextUtf8" : "{\"inputIntent\":{\"x\":640,\"y\":360,\"button\":\"left\"}}",
+      "saltHex" : "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"
+    }
+  ],
+  "envelopeLayout" : "magic OBCFS1(6) || version 0x01(1) || AES-256-GCM combined: nonce(12) || ciphertext || tag(16)",
+  "generator" : {
+    "command" : "BURNBAR_EMIT_AEAD_VECTORS=1 swift test --package-path OpenBurnBarCore --filter ControlFrameSealVectorTests",
+    "language" : "swift",
+    "note" : "Sealed by the production Swift CryptoKit ControlFrameSeal. All inputs (HPKE session key, salt, peerNodeId, frameType, plaintext) are deterministic frozen constants; the AES-GCM nonce inside each envelope was drawn once at emission and is frozen with the fixture. Kotlin opens the identical copy at android/app/src/test/resources/control-seal/ControlFrameSealVector.json (ControlFrameSealVectorTest)."
+  },
+  "hkdfInfo" : "OpenBurnBar-ControlFrameSeal-v1",
+  "magicHex" : "4f4243465331",
+  "primitive" : "ControlFrameSeal",
+  "schemaVersion" : 1,
+  "version" : 1
+}

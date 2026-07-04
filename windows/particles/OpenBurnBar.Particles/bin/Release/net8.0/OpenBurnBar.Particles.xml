@@ -1,0 +1,755 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>OpenBurnBar.Particles</name>
+    </assembly>
+    <members>
+        <member name="T:OpenBurnBar.Particles.Drawing.SubstrateBlend">
+            <summary>
+            Compositing mode — the C# analog of SwiftUI <c>GraphicsContext.BlendMode</c>
+            and Win2D <c>CanvasBlend</c>. Additive bloom (<see cref="F:OpenBurnBar.Particles.Drawing.SubstrateBlend.Add"/>) is what makes
+            stacked glows read as luminous plasma on a dark canvas.
+            </summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Drawing.SubstrateBlend.Normal">
+            <summary>Source-over alpha (SwiftUI <c>.normal</c> / Win2D <c>CanvasBlend.SourceOver</c>).</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Drawing.SubstrateBlend.Add">
+            <summary>Additive (SwiftUI <c>.plusLighter</c> / Win2D <c>CanvasBlend.Add</c>).</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Drawing.LineSegment">
+            <summary>
+            One line segment for a batched stroke (diffraction crosses, lattice edges).
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession">
+            <summary>
+            Abstract per-frame drawing surface the substrate painters draw into. This is
+            the seam that keeps the parity-critical painter logic platform-agnostic:
+            <list type="bullet">
+              <item>On Windows, <c>Win2DSubstrateDrawingSession</c> forwards each call to a
+              Win2D <c>CanvasDrawingSession</c> (<c>FillCircle</c>, <c>CanvasBlend.Add</c>,
+              <c>CanvasRadialGradientBrush</c>, <c>GaussianBlurEffect</c>).</item>
+              <item>Headless (macOS CI / perf harness), <c>RecordingDrawingSession</c>
+              counts commands and hashes geometry, so the painter's CPU cost and its
+              draw-command output are measurable and golden-testable without a GPU.</item>
+            </list>
+            The method surface deliberately mirrors the subset of <c>CanvasDrawingSession</c>
+            that the Swift <c>GraphicsContext</c> painters use, so the Win2D adapter is a
+            nearly 1:1 forward.
+            </summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.Blend">
+            <summary>Active compositing mode. Painters flip this to <see cref="F:OpenBurnBar.Particles.Drawing.SubstrateBlend.Add"/> for bloom passes.</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.FillCircle(System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@)">
+            <summary>Filled circle (SwiftUI <c>ctx.fill(Path(ellipseIn:))</c> / Win2D <c>FillCircle</c>).</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.DrawGlowSprite(System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@,System.Double)">
+            <summary>
+            A cached radial-glow sprite drawn centered at (cx, cy) with the given
+            outer radius and global <paramref name="opacity"/>. Mirrors the Swift
+            <c>SpriteCache.whiteGlow</c> / <c>tintedGlow</c> path (bake once, draw many).
+            On Win2D this is a cached <c>CanvasBitmap</c> (or <c>CanvasRadialGradientBrush</c>)
+            drawn with the current blend.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.DrawLineBatch(System.ReadOnlySpan{OpenBurnBar.Particles.Drawing.LineSegment},OpenBurnBar.Particles.Model.Rgba@,System.Double)">
+            <summary>
+            One batched poly-line stroke — mirrors the Swift "one <c>ctx.stroke(Path)</c>
+            per alpha tier" batching (cheap on the GPU, one geometry per color/width).
+            On Win2D this builds a single <c>CanvasGeometry</c> and strokes it once.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.PushBlurLayer(System.Double,OpenBurnBar.Particles.Drawing.SubstrateBlend)">
+            <summary>
+            Push a blurred, blended sub-layer — the C# analog of SwiftUI
+            <c>ctx.drawLayer { layer in layer.addFilter(.blur(radius:)); … }</c>. All
+            draw calls issued while the returned scope is alive are captured, blurred by
+            <paramref name="blurRadius"/>, and composited back with <paramref name="blend"/>.
+            On Win2D: render into a <c>CanvasCommandList</c>, wrap it in a
+            <c>GaussianBlurEffect</c>, then <c>DrawImage</c> onto the parent. Dispose to flush.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.FillRect(System.Double,System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@)">
+            <summary>
+            Axis-aligned filled rectangle (SwiftUI <c>ctx.fill(Path(rect))</c> / Win2D
+            <c>FillRectangle</c>). Used for full-canvas presence washes (smoked-glass floor).
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.FillRoundedQuad(System.Double,System.Double,System.Double,System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@)">
+            <summary>
+            A rotated rounded square centered at (cx, cy) — a glass CHIP. <paramref name="halfExtent"/>
+            is half the side; <paramref name="cornerRadius"/> the corner round; the quad is
+            rotated by the pre-computed (<paramref name="rotCos"/>, <paramref name="rotSin"/>).
+            SwiftUI <c>Path(roundedRect:).applying(transform)</c> / Win2D
+            <c>FillRoundedRectangle</c> under a rotation <c>Transform</c>.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.FillPolygon(System.ReadOnlySpan{OpenBurnBar.Particles.Drawing.Vec2},OpenBurnBar.Particles.Model.Rgba@)">
+            <summary>
+            A filled closed polygon over the given vertices (SwiftUI <c>ctx.fill(Path)</c> of
+            a closed subpath / Win2D <c>FillGeometry</c> of a filled <c>CanvasGeometry</c>).
+            Used for the cut-gem lambert wedges + highlight triangles. The caller
+            <c>stackalloc</c>s the small vertex span, so this never heap-allocates.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.StrokePolyline(System.ReadOnlySpan{OpenBurnBar.Particles.Drawing.Vec2},OpenBurnBar.Particles.Model.Rgba@,System.Double,System.Boolean)">
+            <summary>
+            A stroked poly-line over the given vertices (SwiftUI <c>ctx.stroke(Path)</c> /
+            Win2D <c>DrawGeometry</c> of a path). When <paramref name="closed"/> the last
+            vertex links back to the first (the crystal hex edge). Round cap + join.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.StrokeCircle(System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@,System.Double)">
+            <summary>
+            A stroked circle outline — an open star RING (SwiftUI
+            <c>ctx.stroke(Path(ellipseIn:))</c> / Win2D <c>DrawCircle</c>). Distinct from a
+            filled disc so the star-chart nodes read as rings, not dots.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.FillLinearGradientRect(System.Double,System.Double,System.Double,System.Double,System.ReadOnlySpan{OpenBurnBar.Particles.Drawing.GradientStop},System.Double,System.Double,System.Double,System.Double)">
+            <summary>
+            A rectangle filled with a linear gradient laid from (<paramref name="startX"/>,
+            <paramref name="startY"/>) to (<paramref name="endX"/>, <paramref name="endY"/>).
+            SwiftUI <c>ctx.fill(Path(rect), with: .linearGradient(...))</c> / Win2D
+            <c>FillRectangle</c> with a <c>CanvasLinearGradientBrush</c>. The volumetric
+            god-ray band. Stops are copied by the recorder / adapter (span not retained).
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.DrawShaftSprite(System.Double,System.Double,System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@,System.Double)">
+            <summary>
+            A cached anisotropic (tall) tinted luminance mask — the crepuscular SHAFT —
+            anchored at its FOOT (<paramref name="footX"/>, <paramref name="footY"/>),
+            extending up by <paramref name="height"/> along a <paramref name="rotation"/>
+            (radians) light vector, <paramref name="width"/> wide, tinted by
+            <paramref name="tint"/> at global <paramref name="opacity"/>. SwiftUI
+            <c>g.translateBy; g.rotate; g.draw(shaftSprite, in: rect(-w/2,-h,w,h))</c> / Win2D
+            a transformed <c>DrawImage</c> of a cached shaft bitmap. The isotropic radial
+            glows still go through <see cref="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.DrawGlowSprite(System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@,System.Double)"/>.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.DrawDashedLineBatch(System.ReadOnlySpan{OpenBurnBar.Particles.Drawing.LineSegment},OpenBurnBar.Particles.Model.Rgba@,System.Double,System.Double,System.Double,System.Double)">
+            <summary>
+            One batched dashed poly-line stroke (SwiftUI <c>ctx.stroke(Path, style:
+            StrokeStyle(dash:dashPhase:))</c> / Win2D <c>DrawGeometry</c> with a dashed
+            <c>CanvasStrokeStyle</c>). Used for the crawling engraved guide ticks in the
+            drawn-constellation chart; <paramref name="dashPhase"/> animates the crawl.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Drawing.RecordingDrawingSession">
+            <summary>
+            Headless <see cref="T:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession"/> that records draw commands
+            instead of rasterizing them. Two jobs:
+            <list type="number">
+              <item><b>Perf harness</b>: it does the minimum bookkeeping per call, so a
+              frame's measured wall-time is the painter's CPU cost — particle iteration +
+              draw-command emission (the parity-critical, ARM64-sensitive work) — not GPU
+              rasterization (which is Windows-only and measured separately in CI).</item>
+              <item><b>Parity golden</b>: with <see cref="P:OpenBurnBar.Particles.Drawing.RecordingDrawingSession.HashGeometry"/> on it folds every
+              command into an order-sensitive FNV-1a checksum, so a Mac↔Windows render of
+              the same <see cref="T:OpenBurnBar.Particles.Model.SwarmSubstrateFrame"/> can be compared command-for-command
+              without pixels.</item>
+            </list>
+            </summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Drawing.RecordingDrawingSession.HashGeometry">
+            <summary>When true, accumulate the geometry checksum. Off in the hot perf path.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Drawing.RecordingDrawingSession.Checksum">
+            <summary>Order-sensitive FNV-1a checksum of all recorded geometry (valid when <see cref="P:OpenBurnBar.Particles.Drawing.RecordingDrawingSession.HashGeometry"/> was on).</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Drawing.RecordingDrawingSession.TotalCommands">
+            <summary>Total draw commands emitted (fills + glows + line batches + blur pushes + extended geometry).</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Drawing.RecordingDrawingSession.Reset">
+            <summary>Reset all tallies + checksum for a fresh frame.</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Drawing.Vec2">
+            <summary>
+            A canvas-space point — the C# analog of SwiftUI <c>CGPoint</c> / Win2D
+            <c>System.Numerics.Vector2</c>. Used by the polygon / polyline geometry
+            primitives so a bespoke painter can hand the seam a filled facet or a stroked
+            crystal edge without allocating (the small fixed-size vertex spans are
+            <c>stackalloc</c>'d by the caller).
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Drawing.GradientStop">
+            <summary>
+            One stop of a linear-gradient fill — the C# analog of SwiftUI
+            <c>Gradient.Stop</c> / Win2D <c>CanvasGradientStop</c>. <see cref="F:OpenBurnBar.Particles.Drawing.GradientStop.Location"/> is
+            the 0…1 position along the gradient axis; <see cref="F:OpenBurnBar.Particles.Drawing.GradientStop.Color"/> is the resolved
+            channel value (opacity folded in).
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Ffi.SwarmSubstrateDotFfi">
+            <summary>
+            Blittable wire layout of one vended dot. Field order and meaning match Swift
+            <c>SwarmSubstrateDot</c> exactly; channels are float32 on the wire.
+            <c>InShape</c> is a byte (0/1) with 3 pad bytes so the struct stays naturally
+            aligned and blittable on both x64 and ARM64.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Ffi.SwarmFrameFlags">
+            <summary>
+            Bit flags packed into the header <c>Flags</c> field (matches the Swift scalar
+            booleans on <c>SwarmSubstrateFrame</c>).
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameHeaderFfi">
+            <summary>
+            Blittable wire layout of the per-frame scalar header. Immediately followed on
+            the wire by <c>SwarmSubstrateDotFfi[DotCount]</c>.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameFfi">
+            <summary>
+            Decodes a vended header + dot buffer into the managed
+            <see cref="T:OpenBurnBar.Particles.Model.SwarmSubstrateFrame"/> the painters consume. The exact inverse of
+            the Swift <c>obb_swarm_vend_frame</c> emitter described at the top of this file.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameFfi.Decode(OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameHeaderFfi@,System.ReadOnlySpan{OpenBurnBar.Particles.Ffi.SwarmSubstrateDotFfi})">
+            <summary>
+            Decode from a header value + a span of blittable dots (already copied out of
+            native memory, or a <c>Span&lt;T&gt;</c> over the pinned native buffer).
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameFfi.Decode(OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameHeaderFfi*,OpenBurnBar.Particles.Ffi.SwarmSubstrateDotFfi*)">
+            <summary>
+            Decode straight from raw native pointers (the shape <c>obb_swarm_vend_frame</c>
+            hands back). Copies out of native memory into a managed frame.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameFfi.Encode(OpenBurnBar.Particles.Model.SwarmSubstrateFrame)">
+            <summary>
+            REFERENCE ENCODER — the exact inverse of <see cref="M:OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameFfi.Decode(OpenBurnBar.Particles.Ffi.SwarmSubstrateFrameHeaderFfi@,System.ReadOnlySpan{OpenBurnBar.Particles.Ffi.SwarmSubstrateDotFfi})"/>,
+            and the canonical byte-layout spec the Swift <c>obb_swarm_vend_frame</c>
+            emitter must reproduce. Not used in production (Swift Core is the real
+            producer); it exists so the FFI round-trip is unit-testable on either
+            platform and so the Swift author has an executable reference.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Math.OklabColor">
+            <summary>
+            Perceptual OKLab straight-line color mix — C# port of the identical bake-time
+            helper the Swift volumetric substrates share (Sunshaft / Silk Filament
+            altitude ramps). Used ONLY at ramp-bake time (never per dot per frame), so the
+            cube-roots are cheap, and the cool→warm altitude gradient reads perceptually
+            even (a straight sRGB lerp would muddy the mid-tones). The matrices are the
+            canonical Björn Ottosson OKLab constants — byte-for-byte with the Swift port so
+            a baked ramp step resolves to the same color on macOS and Windows.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Math.OklabColor.Mix(OpenBurnBar.Particles.Model.Rgba@,OpenBurnBar.Particles.Model.Rgba@,System.Double)">
+            <summary>Perceptual OKLab straight-line mix of two sRGB colors at 0…1 (alpha forced to 1; ramps fold opacity at draw).</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Math.SubstrateKit">
+            <summary>
+            C# port of the Swift Core substrate math kit
+            (<c>Views/Substrate/SubstrateKit.cs</c> ⟵ <c>SubstrateKit.swift</c>, itself a
+            port of imaginethat-llc <c>kit-math.ts</c>). Every bespoke painter writes
+            against these primitives with zero cross-coordination, and the hash / breathe
+            flavors are bit-for-bit identical to the Swift originals so a per-point phase
+            resolves to the same value on macOS and Windows.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Math.SubstrateKit.Smootherstep(System.Double,System.Double,System.Double)">
+            <summary>
+            Ken-Perlin smootherstep (C¹ + C² continuous: <c>t³(t(6t−15)+10)</c>). The kit
+            ships only <see cref="M:OpenBurnBar.Particles.Math.SubstrateKit.Smoothstep(System.Double,System.Double,System.Double)"/>; the volumetric "inhale" width breath uses
+            this smoother flavor, matching the Swift substrates' local helper.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Math.SubstrateKit.Shash(System.Double)">
+            <summary>
+            Cheap, well-distributed hash → 0…1. Matches the Swift <c>shash</c> flavor
+            (<c>frac(sin(x*91.7+13.13)*43758.5453)</c>) exactly. Deterministic; good for
+            per-point phase/jitter.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Math.SubstrateKit.Breathe(System.Double,System.Double,System.Double)">
+            <summary>0…1 "breathing" oscillator. <paramref name="phase"/> offsets per-point; <paramref name="rate"/> scales speed.</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Math.SubstrateKit.XorShift32">
+            <summary>Tiny deterministic RNG for per-point variation that must be stable per layout (port of Swift <c>XorShift32</c>).</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Math.SubstrateKit.XorShift32.Next">
+            <summary>Next double in [0, 1).</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Math.SubstrateKit.Iris">
+            <summary>6-stop iris jewel ramp used by the mesh/moire families (port of Swift <c>SubstrateRamp.iris</c>).</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Math.SubstrateKit.SampleRamp(OpenBurnBar.Particles.Model.Rgba[],System.Double)">
+            <summary>Sample a ramp at 0…1 with linear interpolation (wraps). Port of Swift <c>SubstrateRamp.sample</c>.</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Model.Rgba">
+            <summary>
+            Straight C# port of the Swift Core <c>RGBA</c> primitive
+            (<c>OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/RGBA.swift</c>).
+            Components are in <c>[0, 1]</c>. A value type (readonly struct) so per-frame
+            color math never allocates.
+            </summary>
+            <remarks>
+            This is the numeric color channel the substrate painters read directly — no
+            string parsing, exactly like the Swift <c>SwarmSubstrateDot.rgba</c>. The
+            engine (Swift Core) resolves driver / palette / scheme + opacity into these
+            four channels before vending the frame over FFI, so the C# renderer never
+            re-derives brand color.
+            </remarks>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Model.Rgba.Mix(OpenBurnBar.Particles.Model.Rgba@,System.Double)">
+            <summary>Linear channel-wise interpolation (mirrors <c>RGBA.mix(with:amount:)</c>).</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Model.Rgba.WithOpacity(System.Double)">
+            <summary>Replace alpha, keep RGB (mirrors <c>RGBA.withOpacity</c>).</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Model.Rgba.ToWhite(System.Double)">
+            <summary>Push toward white by <paramref name="amount"/>, keep alpha (the "hot core" move, mirrors <c>RGBA.toWhite</c>).</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.Rgba.BucketKey">
+            <summary>
+            Quantized 8-bit-per-channel bucket key — byte-identical to Swift
+            <c>RGBA.bucketKey</c>. Used to batch fills by color so draw counts stay
+            bounded even when the color driver wiggles intensities continuously.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Model.SubstrateFamily">
+            <summary>
+            Port of Swift Core <c>SubstrateFamily</c>
+            (<c>SharedModels/SubstrateFamily.swift</c>). The six substrate families; each
+            owns one shared "Plain · DOTS" descriptor plus four bespoke painters.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Model.FamilyAccent">
+            <summary>
+            Per-family accent pair — byte-identical port of Swift <c>FamilyAccent</c>
+            (channels from the source <c>FAMILY_ACCENT</c> table, 0–255 → 0–1). Used to
+            seed the <see cref="T:OpenBurnBar.Particles.Model.SubstrateStage"/> fallback and picker-tile accents.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Model.UIMode">
+            <summary>App-wide visual persona — port of Swift Core <c>UIMode</c>.</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Model.SwarmSubstrateDot">
+            <summary>
+            One non-glyph particle handed to a substrate painter — C# port of Swift
+            <c>SwarmSubstrateDot</c> (<c>Views/Substrate/SwarmSubstrate.swift</c>). Its
+            color is already resolved by the engine through
+            <c>SwarmSimulation.resolvedRGBA(for:at:…)</c>, so painters read numeric
+            channels off <see cref="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.Rgba"/> with zero string parsing.
+            </summary>
+            <remarks>
+            Field order + semantics are the FFI contract (see
+            <c>Ffi/SwarmSubstrateFrameFfi.cs</c>). A struct so the per-frame dot array is
+            one contiguous block that marshals 1:1 from the Swift snapshot.
+            </remarks>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.X">
+            <summary>Canvas-space position X.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.Y">
+            <summary>Canvas-space position Y.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.Vx">
+            <summary>Velocity X (sim space) — useful for flow-direction idioms.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.Vy">
+            <summary>Velocity Y (sim space).</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.Radius">
+            <summary>Draw radius the plain DOTS path would use: <c>max(0.4, size*(inShape ?1.2:0.85))</c>.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.BaseSize">
+            <summary>Base unscaled size seed (<c>0.8…2.3</c>).</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.Rgba">
+            <summary>Engine-resolved color (driver / palette / scheme + opacity in <see cref="F:OpenBurnBar.Particles.Model.Rgba.A"/>).</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.Opacity">
+            <summary>Live particle opacity (<c>p.opacity</c>), separate from <see cref="F:OpenBurnBar.Particles.Model.Rgba.A"/>.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.InShape">
+            <summary>True when the field is forming a shape and this dot has a target.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.ColorIndex">
+            <summary>Stable 0…1 per-particle seed (palette position) — good for per-point phase.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SwarmSubstrateDot.FlowProgress">
+            <summary>0…1 bezier travel parameter (router-flow); 0 for most modes.</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Model.SubstrateStage">
+            <summary>
+            Theme palette + polarity — port of Swift <c>SubstrateStage</c> (the native
+            analog of the source <c>StageColors</c>). <c>Accent2</c>/<c>Ink</c> are derived
+            from <c>Accent</c> + scheme on the Swift side and vended as resolved channels.
+            </summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Model.SubstrateStage.Dark">
+            <summary>True when the canvas behind is dark (additive bloom reads with <c>Add</c> blend).</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Model.SwarmSubstrateFrame">
+            <summary>
+            The per-frame draw context handed to a substrate painter — C# port of Swift
+            <c>SwarmSubstrateFrame</c>. Host-transformed dot positions live in
+            <see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Dots"/>; <see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Cx"/>/<see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Cy"/>/<see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.CloudRadius"/>/
+            <see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.SizePx"/> are computed once by the engine; <see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.T"/>/
+            <see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Dt"/> drive animation; <see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Formed"/>/<see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.SettleProgress"/>
+            gate assembly.
+            </summary>
+            <remarks>
+            The parity-critical simulation math (murmuration, shape/glyph sampling, color
+            resolve) stays in Swift Core; this frame is the immutable snapshot vended over
+            FFI once per frame. The C# renderer is a pure consumer — it never mutates or
+            re-derives simulation state. See <c>Ffi/SwarmSubstrateFrameFfi.cs</c> for the
+            exact marshalled layout.
+            </remarks>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Dark">
+            <summary><c>renderScheme == .dark</c>.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Reduced">
+            <summary><c>accessibilityReduceMotion</c> (threaded in) — freezes twinkle to a poised still.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.BatteryThrottled">
+            <summary>Drops the heavy bloom + cross passes when the device is on battery-saver.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.IsShapeMode">
+            <summary>True whenever the field is forming a glyph/shape (mode != swarm).</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Formed">
+            <summary>True once the active shape has settled.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.SettleProgress">
+            <summary>Continuous 0…1 "how formed" — the close-fraction of targeted particles.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.T">
+            <summary><c>flowTime</c> — the always-advancing clock (seconds).</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Dt">
+            <summary>Normalized so <c>1 ≈ 60fps</c>.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Backdrop">
+            <summary>Backdrop plate for blend choices; null when none.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Dots">
+            <summary>Non-glyph particles, color-resolved. One contiguous frame snapshot.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Cx">
+            <summary>Cloud centroid X (computed once per frame from <see cref="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Dots"/>).</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.Cy">
+            <summary>Cloud centroid Y.</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.CloudRadius">
+            <summary>Representative cloud radius (mean distance from centroid).</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Model.SwarmSubstrateFrame.SizePx">
+            <summary>Suggested base point px (median dot radius).</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.Catalog.ConstellationFamily">
+            <summary>
+            Constellation family substrate registry — C# port of Swift
+            <c>Views/Substrate/Families/ConstellationFamily.swift</c>. The star-field / link
+            family: Stellar Plasma (Starfire, landed in #1202) + Cut Star Sapphire + Drawn
+            Constellation + Dendritic Frost. Accent pairs are byte-identical to the Swift table.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog">
+            <summary>
+            The single substrate registry — C# port of Swift
+            <c>Views/Substrate/SubstrateCatalog.swift</c>. Aggregates one shared "Plain · DOTS"
+            descriptor per family plus each family's bespoke painters. Family registries are the
+            only per-family edit points (matching the Swift design), so each ported family
+            (Constellation, Volumetric here; Flow / Aurora / Mesh / Moire as those lanes land)
+            appends its own <c>&lt;Family&gt;Family.Styles</c> array below — this file is the one
+            documented merge point.
+            </summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog.RegisteredFamilies">
+            <summary>The families whose bespoke painters are registered in the C# port so far.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog.PlainDescriptors">
+            <summary>Plain descriptors (one per registered family; all reuse <see cref="T:OpenBurnBar.Particles.Substrates.PlainDotsSubstrate"/>).</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog.SubstrateList">
+            <summary>Plain + every bespoke descriptor across the registered families.</summary>
+        </member>
+        <member name="F:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog.ById">
+            <summary>Lookup by id. The plain descriptors share id <c>"plain"</c>; the first wins.</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog.Bespoke(OpenBurnBar.Particles.Model.SubstrateFamily)">
+            <summary>The bespoke descriptors for one family (no plain).</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog.Plain(OpenBurnBar.Particles.Model.SubstrateFamily)">
+            <summary>The shared plain descriptor for one family.</summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog.Entries(OpenBurnBar.Particles.Model.SubstrateFamily)">
+            <summary>A family's full offering — its plain first, then its bespoke painters.</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.Catalog.VolumetricFamily">
+            <summary>
+            Volumetric family substrate registry — C# port of Swift
+            <c>Views/Substrate/Families/VolumetricFamily.swift</c>. Depth / cloud density fields
+            with blur: Crepuscular Shafts + Smoked Glass Slab + Silk Filament + Dust Motes.
+            Accent pairs are byte-identical to the Swift table.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.DustMotesSubstrate">
+            <summary>
+            Dust Motes — "Motes In The Beam", faithful C# port of Swift
+            <c>Views/Substrate/Volumetric/DustMotesSubstrate.swift</c> (port of imaginethat
+            <c>volumetric/dust-motes.ts</c>). The mark rendered as suspended dust drifting in
+            still air, made visible only where one wide diagonal GAUSSIAN BEAM rakes across the
+            cloud. Each point is a tiny soft radial MOTE tinted across a 24-step accent→accent2
+            altitude ramp (biased toward white so motes read sun-caught).
+            </summary>
+            <remarks>
+            A mote's brightness is its dim ambient base PLUS a flare wherever the swept beam
+            passes over its projected diagonal axis. ~38% are spring-locked cores that DON'T
+            drift and hold a floored alpha; free dust drifts on a 2-octave value-noise flow
+            field + Brownian micro-wander, leashed to <c>radius·0.05</c>. The beam center sweeps
+            on <c>sin(t·0.045)</c>; a 1.8s breath inhales its width; ~10% "lit specks" catch a
+            thin additive 4-point cross glint. DARK: soft ink radial backing + additive motes;
+            LIGHT: no ink, lower-alpha cooler motes. The whole-canvas god-ray band is one
+            <see cref="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.FillLinearGradientRect(System.Double,System.Double,System.Double,System.Double,System.ReadOnlySpan{OpenBurnBar.Particles.Drawing.GradientStop},System.Double,System.Double,System.Double,System.Double)"/> laid perpendicular to
+            the beam axis. <c>reduced</c> freezes a poised raked still frame (no drift);
+            <c>batteryThrottled</c> locks drift + drops the cross sparkles + Gaussian bloom.
+            </remarks>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Substrates.DustMotesSubstrate.Fbm(System.Double,System.Double,System.Double)">
+            <summary>Deterministic 2-octave value-noise-ish flow field (~[-0.9, 0.9]).</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.ISwarmSubstrate">
+            <summary>
+            A full-field painter that draws over the resolved particle cloud for one frame
+            — C# port of the Swift <c>SwarmSubstrate</c> protocol. Instances are created
+            once and reused across frames, so they may hold per-layout caches (sprites,
+            kNN graphs). Substrates NEVER touch the simulation; positions, velocities and
+            colors are all resolved by the engine (Swift Core) and vended in the
+            <see cref="T:OpenBurnBar.Particles.Model.SwarmSubstrateFrame"/>. A substrate only restyles how the resolved
+            dots are painted.
+            </summary>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Substrates.ISwarmSubstrate.Paint(OpenBurnBar.Particles.Model.SwarmSubstrateFrame,OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession)">
+            <summary>
+            Paint the whole field into <paramref name="session"/>. Return <c>true</c>
+            when fully handled — the renderer then skips its own dot/twinkle loops.
+            Return <c>false</c> to defer to the default dot render (what
+            <see cref="T:OpenBurnBar.Particles.Substrates.PlainDotsSubstrate"/> does).
+            </summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Substrates.ISwarmSubstrate.SuppressesGlyphs">
+            <summary>
+            Whether this substrate also wants the renderer to skip the glyph pass
+            (the <c>$</c>/<c>tok</c>/<c>429</c> brand glyphs). Default <c>false</c>.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.PlainDotsSubstrate">
+            <summary>
+            The shared "Plain · DOTS" substrate — the family default for all six families.
+            C# port of Swift <c>PlainDotsSubstrate</c>. It deliberately does nothing and
+            returns <c>false</c>, so the renderer's existing dot + twinkle + glyph render
+            runs unchanged. This guarantees parity with the pre-substrate renderer whenever
+            <c>plain</c> is selected (the default), and is the graceful fallback any
+            unfilled bespoke stub degrades to.
+            </summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.RimefrostSubstrate">
+            <summary>
+            Dendritic Frost — faithful C# port of Swift
+            <c>Views/Substrate/Constellation/RimefrostSubstrate.swift</c> (port of imaginethat
+            <c>constellation/rimefrost.ts</c>, held "melt 0" look). Each silhouette point
+            nucleates a six-armed rime crystal, drawn in depth-ordered passes so it reads as
+            luminous frost spreading across cold glass.
+            </summary>
+            <remarks>
+            (0) DARK deep Gaussian under-wash — every crystal's own brand color, lightly iced,
+            filled additively into one blurred layer so each cluster glows in its hue.
+            (1) icy BODY bloom — a cached white-blue frost radial per crystal, tinted to the
+            dot's brand color (via <see cref="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.DrawGlowSprite(System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@,System.Double)"/>'s
+            tint), with a smaller untinted white-blue sheen cap on top. (2) SIX dendrite arms —
+            3 tapering spines + two forward side-branches each, batched per alpha-bin ×
+            width-group into a handful of line batches. (3) hot frozen CORE. (4) near-white
+            frost GLINT cross on the brightest seeds (dark). Crystals grow &amp; melt on a slow
+            <c>sin(0.5·t + seed·τ + posPhase)</c> wave under an imperceptible global rotation
+            (<c>t·0.03</c>). <c>reduced</c> holds a poised grown frost-field; <c>batteryThrottled</c>
+            drops only the heaviest under-wash pass.
+            </remarks>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.SilkFilamentSubstrate">
+            <summary>
+            Silk Filament — faithful C# port of Swift
+            <c>Views/Substrate/Volumetric/SilkFilamentSubstrate.swift</c> (port of imaginethat
+            <c>volumetric/silk-filament.ts</c>). The whole mark is ONE continuous spider-silk
+            strand threaded through every silhouette point in nearest-neighbour order (via
+            <see cref="T:OpenBurnBar.Particles.Substrates.SubstrateStructure"/>), so the logo reads as a single living thread of
+            light — hence <see cref="P:OpenBurnBar.Particles.Substrates.SilkFilamentSubstrate.SuppressesGlyphs"/> = true.
+            </summary>
+            <remarks>
+            The thread is mostly dim; a soft travelling GLINT (two wrapped gaussian lobes in
+            arc-length) rakes down its length, igniting a few segments at a time. Colour is a
+            24-step OKLab altitude ramp (cyan foot → rose crown) woven with the brand accents,
+            baked once per palette change into <c>rampCore</c> (bloom/dim), <c>rampHot</c>
+            (near-white where the rake hits, dark core) and <c>rampInk</c> (light-page strand).
+            Transverse SILK SWAY nudges each vertex along its local normal; long NN leaps are
+            BROKEN so gaps read as gaps. Three depth layers: a TRUE Gaussian bloom (dark), a
+            soft body halo, and the crisp CORE — all bucketed by (altitude hue × quantized rake
+            band) into ONE geometry set per bucket, stroked a few times so the glint stays
+            smooth while stroke calls stay ≤ a few hundred. <c>reduced</c> parks the rake mid-
+            strand and zeroes the sway; <c>batteryThrottled</c> drops only the Gaussian bloom.
+            </remarks>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.SmokedGlassSubstrate">
+            <summary>
+            Smoked Glass Slab — faithful C# port of Swift
+            <c>Views/Substrate/Volumetric/SmokedGlassSubstrate.swift</c> (port of imaginethat
+            <c>volumetric/smoked-glass.ts</c>, the only SOLID material in the family). Each
+            silhouette point is a small extruded glass CHIP: a rotated rounded quad with a
+            static per-point facet normal (outward bearing from the centroid + per-seed jitter)
+            and a baked depth = screen altitude. A single slow top-light rakes the slab so the
+            per-chip <c>lit</c> migrates and specular rims crawl.
+            </summary>
+            <remarks>
+            Chips draw DEPTH-SORTED back→front (the load-bearing correctness detail). Layered:
+            a continuous frosted VOLUME (full-canvas floor + blurred haze pools) on the sparse
+            free-swarm; a DARK Gaussian bloom BED; the depth-sorted colored smoked BASE slabs
+            (rounded quads); light gated to the LIT SIDE (corner sheen, breathing interior glow,
+            hot core sprites); and a face-culled near-white specular RIM stroke on facets whose
+            <c>n·light ≥ 0.45</c>. <c>reduced</c> holds a poised still slab; <c>batteryThrottled</c>
+            drops the bloom bed + rim + interior glow. Rotated rounded quads go through
+            <see cref="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.FillRoundedQuad(System.Double,System.Double,System.Double,System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@)"/>; the full-canvas wash through
+            <see cref="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.FillRect(System.Double,System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@)"/>.
+            </remarks>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.StarfireSubstrate">
+            <summary>
+            Stellar Plasma — faithful C# port of Swift
+            <c>Views/Substrate/Constellation/StarfireSubstrate.swift</c> (itself a port of
+            imaginethat <c>constellation/starfire.ts</c> drawBody). The flagship
+            Constellation bespoke painter, proving the full Win2D idiom set: additive
+            (<see cref="F:OpenBurnBar.Particles.Drawing.SubstrateBlend.Add"/>) compositing, a Gaussian-blurred under-glow
+            layer, cached radial glow sprites, chromatic plasma discs, near-white hot
+            cores, and batched diffraction-cross strokes.
+            </summary>
+            <remarks>
+            Each silhouette point is a long-exposure star. On a DARK canvas (additive) every
+            point stacks, in z-order: (0) a deep Gaussian-blurred under-glow wash; (1) a
+            cached white radial-glow bloom; (2) a chromatic plasma disc in the point's own
+            color; (3) a near-white hot core (the legible silhouette point); (4) for the
+            brightest ~20% (seed &gt; 0.8) a slowly-rotating pure-white diffraction cross.
+            On a LIGHT canvas it collapses to a soft colored halo + colored core. Twinkle is
+            brightness/size only — no positional drift — driven purely from <c>frame.T</c> +
+            a per-point seed, with an occasional sharp scintillation flare. <c>reduced</c>
+            freezes to a poised still star-field; <c>batteryThrottled</c> drops the bloom +
+            cross passes. The exact alpha/radius constants ARE the look — they match the
+            Swift original line-for-line.
+            </remarks>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.StarSapphireSubstrate">
+            <summary>
+            Cut Star Sapphire — faithful C# port of Swift
+            <c>Views/Substrate/Constellation/StarSapphireSubstrate.swift</c> (itself a port of
+            imaginethat <c>constellation/starsapphire.ts</c> drawBody). Every silhouette point
+            is a tiny cut sky-blue star sapphire: a 6-sided gem split into wedge facets from
+            its center, each facet filled FLAT at a brightness set by its rotated normal vs a
+            slowly-drifting top-left key (orientation shading — no real 3D).
+            </summary>
+            <remarks>
+            The 6 unit verts + 6 wedge normals are precomputed ONCE (deterministic, same on
+            every gem). Real layered depth: (1) DARK — a Gaussian-blurred additive per-gem
+            bloom disc in the gem's own hue so overlapping discs pool into a luminous field;
+            (2) source-over faceted BODY — SIX lambert wedge polygons
+            (<c>shade = 0.34 + lit²·0.9</c>), a crisp darkened-brand hex edge stroke, and a
+            near-white highlight triangle on the brightest facet; (3) a hot specular CORE —
+            a cached white-glow bloom + a crisp glint disc on the brightest VERTEX, plus a
+            faint six-ray asterism for the brightest ~22% (seed &gt; 0.78). Each gem spins its
+            facet-light assignment on <c>t·0.6·(0.7+seed·0.6)</c>; the whole-cloud key drifts
+            on <c>sin(t·0.11)</c>. <c>reduced</c> freezes a poised jewel-case;
+            <c>batteryThrottled</c> drops the bloom-under layer + asterism. The exact
+            alpha/shade constants ARE the look — line-for-line with the Swift original.
+            </remarks>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Substrates.StarSapphireSubstrate.WhitePush(OpenBurnBar.Particles.Model.Rgba@,System.Double,System.Double,System.Double,System.Double)">
+            <summary>Push a brand color toward white by per-channel amounts, with a baked alpha.</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.StellariumSubstrate">
+            <summary>
+            Drawn Constellation — faithful C# port of Swift
+            <c>Views/Substrate/Constellation/StellariumSubstrate.swift</c> (port of imaginethat
+            <c>constellation/stellarium.ts</c>). An antique star-chart: a sparse, capped
+            nearest-neighbour GRAPH of luminous edges plus open-ring star NODES sitting exactly
+            on the silhouette points. The lines ARE the mark, so this idiom owns the whole
+            silhouette (<see cref="P:OpenBurnBar.Particles.Substrates.StellariumSubstrate.SuppressesGlyphs"/> = true).
+            </summary>
+            <remarks>
+            Topology (built once per layout via <see cref="T:OpenBurnBar.Particles.Substrates.SubstrateStructure"/>, cached in
+            point-index space so geometry tracks the moving dots for free): each node links its
+            1–2 nearest neighbours within a density-adaptive gate (<c>medianNN²·6 + 1</c>),
+            deduped low→high, capped at <c>maxEdges</c>; falls back to the NN-walk chain when too
+            sparse. Per frame: a dark-only Gaussian bloom layer (wide accent wash + non-guide
+            filament glow + survey-beam halo + batched star-core glow), then a wide soft body
+            pass, a crisp thin filament, a crawling DASHED guide-tick pass (<c>dashPhase = -t·9</c>),
+            a survey beam tracing <c>(t·0.11·ec)%ec</c> (dropped when reduced/throttled), and
+            per-node marks — a soft color halo, a luminous open RING, and a hot breathing core.
+            </remarks>
+        </member>
+        <member name="M:OpenBurnBar.Particles.Substrates.StellariumSubstrate.EnsureGraph(OpenBurnBar.Particles.Model.SwarmSubstrateDot[])">
+            <summary>Build the sparse, deduped constellation graph (once per topology).</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.SubstrateDescriptor">
+            <summary>
+            Static metadata for one substrate style + a factory to build its renderer — C#
+            port of Swift <c>SubstrateDescriptor</c> (<c>Views/Substrate/SubstrateCatalog.swift</c>).
+            The <see cref="P:OpenBurnBar.Particles.Substrates.SubstrateDescriptor.Make"/> factory captures nothing, so descriptors are safe to hold in
+            the static <see cref="T:OpenBurnBar.Particles.Substrates.Catalog.SubstrateCatalog"/> lists.
+            </summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Substrates.SubstrateDescriptor.Id">
+            <summary>Globally-unique id: <c>"plain"</c> or <c>"&lt;family&gt;.&lt;style&gt;"</c> (persisted).</summary>
+        </member>
+        <member name="P:OpenBurnBar.Particles.Substrates.SubstrateDescriptor.Make">
+            <summary>Builds a fresh renderer instance (cached &amp; reused by the host).</summary>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.SubstrateStructure">
+            <summary>
+            Lazily-built point-cloud structure for lattice / stroke / sketch idioms — C#
+            port of Swift <c>SubstrateStructureProvider</c> (<c>Views/Substrate/SubstrateKit.swift</c>).
+            Produces a single-stroke nearest-neighbour walk (<see cref="F:OpenBurnBar.Particles.Substrates.SubstrateStructure.Structure.Order"/>),
+            per-point k-NN lists (<see cref="F:OpenBurnBar.Particles.Substrates.SubstrateStructure.Structure.Neighbors"/>), and polyline segment-break
+            flags (<see cref="F:OpenBurnBar.Particles.Substrates.SubstrateStructure.Structure.Breaks"/>). Rebuilds only when the topology signature
+            changes, so it is free for styles that ignore it.
+            </summary>
+            <remarks>
+            In Swift this is cached ON the frame by the simulation; the C# frame is a pure
+            FFI snapshot, so each substrate that needs a graph owns one provider instance
+            (created once, reused across frames — same amortization). The O(n) uniform-grid
+            build is byte-faithful to the Swift original so a Silk strand / Stellarium chart
+            resolves the same topology on macOS and Windows.
+            </remarks>
+        </member>
+        <member name="T:OpenBurnBar.Particles.Substrates.SunshaftSubstrate">
+            <summary>
+            Crepuscular Shafts — faithful C# port of Swift
+            <c>Views/Substrate/Volumetric/SunshaftSubstrate.swift</c> (port of imaginethat
+            <c>volumetric/sunshaft.ts</c>). Each silhouette point is the FOOT of a soft
+            volumetric god-ray: a tall tinted luminance-mask shaft, pre-tinted across a 32-step
+            OKLab accent→accent2 altitude ramp (cyan foot → rose crown). The whole cloud reads
+            as raked by a SINGLE sun: every shaft leans along one slowly-swivelling global light
+            direction (<c>sin(t·0.05)·8°</c>).
+            </summary>
+            <remarks>
+            Compositing &amp; depth (DARK): one soft centered ink radial source-over first (gives
+            additive bloom a field to sum into), then the layered foot light — (2a) a TRUE
+            Gaussian bloom plate of altitude-tinted glows pooled at the locked feet; (2b) the
+            near-white core sprites (the saturated body); (2c) a tiny pure-white hot pinpoint.
+            LIGHT skips the ink/bloom and rides the shafts + saturated cores at a lifted alpha.
+            A per-core crisp definition dot fires every frame. <c>reduced</c> freezes one poised
+            raked still frame; <c>batteryThrottled</c> drops the ink halo AND the bloom plate.
+            The anisotropic tall shaft goes through
+            <see cref="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.DrawShaftSprite(System.Double,System.Double,System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@,System.Double)"/>; the isotropic ink/core/hot/
+            bloom glows through <see cref="M:OpenBurnBar.Particles.Drawing.ISubstrateDrawingSession.DrawGlowSprite(System.Double,System.Double,System.Double,OpenBurnBar.Particles.Model.Rgba@,System.Double)"/>.
+            </remarks>
+        </member>
+    </members>
+</doc>

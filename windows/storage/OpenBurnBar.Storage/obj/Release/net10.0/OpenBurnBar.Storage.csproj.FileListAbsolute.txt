@@ -1,0 +1,13 @@
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.deps.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/OpenBurnBar.Storage.csproj.AssemblyReference.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/OpenBurnBar.Storage.GeneratedMSBuildEditorConfig.editorconfig
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/OpenBurnBar.Storage.AssemblyInfoInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/OpenBurnBar.Storage.AssemblyInfo.cs
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/OpenBurnBar.Storage.csproj.CoreCompileInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/OpenBurnBar.Storage.sourcelink.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/OpenBurnBar.Storage.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/refint/OpenBurnBar.Storage.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/OpenBurnBar.Storage.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/storage/OpenBurnBar.Storage/obj/Release/net10.0/ref/OpenBurnBar.Storage.dll

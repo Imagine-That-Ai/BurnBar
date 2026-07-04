@@ -1,0 +1,14 @@
+/src/.tmp-openburnbar-iroh-target/debug/deps/blake3-97db576249cbcc78.d: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/guts.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/hazmat.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/platform.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/ffi_neon.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/portable.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/io.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/join.rs
+
+/src/.tmp-openburnbar-iroh-target/debug/deps/libblake3-97db576249cbcc78.rlib: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/guts.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/hazmat.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/platform.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/ffi_neon.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/portable.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/io.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/join.rs
+
+/src/.tmp-openburnbar-iroh-target/debug/deps/libblake3-97db576249cbcc78.rmeta: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/guts.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/hazmat.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/platform.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/ffi_neon.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/portable.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/io.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/join.rs
+
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/lib.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/guts.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/hazmat.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/platform.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/ffi_neon.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/portable.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/io.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blake3-1.8.5/src/join.rs:

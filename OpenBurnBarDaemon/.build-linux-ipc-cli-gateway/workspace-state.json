@@ -1,0 +1,92 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "grdb-sqlcipher",
+          "kind" : "fileSystem",
+          "location" : "/workspace/Vendor/GRDB-SQLCipher",
+          "name" : "GRDB-SQLCipher"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/workspace/Vendor/GRDB-SQLCipher"
+        },
+        "subpath" : "grdb-sqlcipher"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "openburnbarcore",
+          "kind" : "fileSystem",
+          "location" : "/workspace/OpenBurnBarCore",
+          "name" : "OpenBurnBarCore"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/workspace/OpenBurnBarCore"
+        },
+        "subpath" : "openburnbarcore"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "sqlcipher.swift",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/sqlcipher/SQLCipher.swift.git",
+          "name" : "SQLCipher.swift"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "07bf6bc2191a063d6f1e7c3b5f276a3fadfe36b7",
+            "version" : "4.16.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "SQLCipher.swift"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-asn1",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/apple/swift-asn1.git",
+          "name" : "swift-asn1"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "a9a5efd40eaf558a2bcd48d64b1d1646be686008",
+            "version" : "1.7.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-asn1"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-crypto",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/apple/swift-crypto.git",
+          "name" : "swift-crypto"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
+            "version" : "3.15.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-crypto"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

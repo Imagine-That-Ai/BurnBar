@@ -1,0 +1,12 @@
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/bin/Debug/net8.0/OpenBurnBar.Pretext.deps.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/bin/Debug/net8.0/OpenBurnBar.Pretext.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/bin/Debug/net8.0/OpenBurnBar.Pretext.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/OpenBurnBar.Pretext.GeneratedMSBuildEditorConfig.editorconfig
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/OpenBurnBar.Pretext.AssemblyInfoInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/OpenBurnBar.Pretext.AssemblyInfo.cs
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/OpenBurnBar.Pretext.csproj.CoreCompileInputs.cache
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/OpenBurnBar.Pretext.sourcelink.json
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/OpenBurnBar.Pretext.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/refint/OpenBurnBar.Pretext.dll
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/OpenBurnBar.Pretext.pdb
+/Users/albertonunez/Documents/Developer/BurnBar/windows/pretext/OpenBurnBar.Pretext/obj/Debug/net8.0/ref/OpenBurnBar.Pretext.dll

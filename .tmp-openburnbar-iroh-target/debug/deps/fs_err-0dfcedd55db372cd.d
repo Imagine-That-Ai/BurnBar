@@ -1,0 +1,14 @@
+/src/.tmp-openburnbar-iroh-target/debug/deps/fs_err-0dfcedd55db372cd.d: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/dir.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/errors.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/file.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/open_options.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/os.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/os/unix.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/path.rs
+
+/src/.tmp-openburnbar-iroh-target/debug/deps/libfs_err-0dfcedd55db372cd.rlib: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/dir.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/errors.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/file.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/open_options.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/os.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/os/unix.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/path.rs
+
+/src/.tmp-openburnbar-iroh-target/debug/deps/libfs_err-0dfcedd55db372cd.rmeta: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/dir.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/errors.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/file.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/open_options.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/os.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/os/unix.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/path.rs
+
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/lib.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/dir.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/errors.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/file.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/open_options.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/os.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/os/unix.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fs-err-2.11.0/src/path.rs:

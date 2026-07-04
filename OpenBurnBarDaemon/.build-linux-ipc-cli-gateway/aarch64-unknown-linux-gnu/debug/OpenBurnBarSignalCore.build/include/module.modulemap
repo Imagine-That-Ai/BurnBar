@@ -1,0 +1,3 @@
+module OpenBurnBarSignalCore {
+    header "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarSignalCore.build/include/OpenBurnBarSignalCore-Swift.h"
+}

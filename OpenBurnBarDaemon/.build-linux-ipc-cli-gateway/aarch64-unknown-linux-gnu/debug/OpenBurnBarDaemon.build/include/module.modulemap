@@ -1,0 +1,3 @@
+module OpenBurnBarDaemon {
+    header "/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon.build/include/OpenBurnBarDaemon-Swift.h"
+}

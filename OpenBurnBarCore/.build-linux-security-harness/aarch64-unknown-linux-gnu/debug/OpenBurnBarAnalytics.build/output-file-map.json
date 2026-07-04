@@ -1,0 +1,68 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/Analytics.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/Analytics.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/Analytics.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/Analytics~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/Analytics.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/Analytics.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsBuckets.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsBuckets.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsBuckets.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsBuckets~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsBuckets.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsBuckets.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsConsentStore.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsConsentStore.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsConsentStore.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsConsentStore~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsConsentStore.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsConsentStore.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsEvent.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsEvent.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsEvent.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsEvent~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsEvent.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsEvent.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsIdentity.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsIdentity.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsIdentity.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsIdentity~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsIdentity.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsIdentity.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsName.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsName.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsName.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsName~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsName.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsName.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsSuperProperties.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsSuperProperties.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsSuperProperties.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsSuperProperties~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsSuperProperties.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsSuperProperties.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsTransporting.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsTransporting.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsTransporting.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsTransporting~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsTransporting.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsTransporting.dia"
+  },
+  "/workspace/OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsValue.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsValue.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsValue.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsValue~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsValue.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/OpenBurnBarAnalytics.build/AnalyticsValue.dia"
+  }
+}

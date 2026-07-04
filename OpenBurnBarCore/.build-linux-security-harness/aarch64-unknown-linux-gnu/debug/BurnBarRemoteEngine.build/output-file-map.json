@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/BurnBarRemoteEngine.build/master.swiftdeps"
+  },
+  "/workspace/OpenBurnBarCore/Sources/BurnBarRemoteEngine/BurnBarRemoteEngineSupport.swift": {
+    "dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/BurnBarRemoteEngine.build/BurnBarRemoteEngineSupport.d",
+    "object": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/BurnBarRemoteEngine.build/BurnBarRemoteEngineSupport.swift.o",
+    "swiftmodule": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/BurnBarRemoteEngine.build/BurnBarRemoteEngineSupport~partial.swiftmodule",
+    "swift-dependencies": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/BurnBarRemoteEngine.build/BurnBarRemoteEngineSupport.swiftdeps",
+    "diagnostics": "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/BurnBarRemoteEngine.build/BurnBarRemoteEngineSupport.dia"
+  }
+}

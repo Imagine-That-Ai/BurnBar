@@ -1,0 +1,3 @@
+module GRDB {
+    header "/workspace/OpenBurnBarCore/.build-linux-security-harness/aarch64-unknown-linux-gnu/debug/GRDB.build/include/GRDB-Swift.h"
+}

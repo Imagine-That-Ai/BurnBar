@@ -1,0 +1,12 @@
+/src/.tmp-openburnbar-iroh-target/debug/deps/diatomic_waker-160897923d0f0fc2.d: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/arc_waker.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/borrowed_waker.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/loom_exports.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/primitives.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/waker.rs
+
+/src/.tmp-openburnbar-iroh-target/debug/deps/libdiatomic_waker-160897923d0f0fc2.rlib: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/arc_waker.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/borrowed_waker.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/loom_exports.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/primitives.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/waker.rs
+
+/src/.tmp-openburnbar-iroh-target/debug/deps/libdiatomic_waker-160897923d0f0fc2.rmeta: /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/lib.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/arc_waker.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/borrowed_waker.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/loom_exports.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/primitives.rs /opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/waker.rs
+
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/lib.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/arc_waker.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/borrowed_waker.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/loom_exports.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/primitives.rs:
+/opt/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/diatomic-waker-0.2.3/src/waker.rs:

@@ -1,0 +1,14 @@
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ComputerUseModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesRelayModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/InsightModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/PiAgentRelayModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ProviderAccountModels.swift
+/workspace/OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/UsageQuotaModels.swift
