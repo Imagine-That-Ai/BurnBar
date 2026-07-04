@@ -51,7 +51,31 @@ public struct SwarmCanvasView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiMode) private var uiMode
 
-    @State private var simulation: SwarmSimulation
+    /// Lazily-built simulation. `@StateObject`'s autoclosure defers the
+    /// expensive construction (particle seeding, shape samplers, color
+    /// snapshot) to first attach — with `@State(initialValue:)` every view
+    /// reconstruction built and discarded a full simulation, and hosts like the
+    /// wallpaper reconstruct this view at pointer-commit rate (~30 Hz).
+    @StateObject private var simulationBox: SwarmSimulationBox
+
+    private var simulation: SwarmSimulation { simulationBox.simulation }
+
+    #if os(macOS)
+    @StateObject private var hostWindowVisibility = HostWindowVisibility()
+    #endif
+
+    /// True when the hosting window cannot be seen (fully occluded, hidden, or
+    /// miniaturized). Decorative swarms pause their timeline instead of burning
+    /// a render core on frames nobody can see — the desktop wallpaper panel
+    /// under a fullscreen app and a dashboard buried behind other windows were
+    /// both animating 24/7 before this gate.
+    private var isHostWindowOccluded: Bool {
+        #if os(macOS)
+        hostWindowVisibility.isOccluded
+        #else
+        false
+        #endif
+    }
 
     public enum Pace {
         /// Snappy, energetic — matches the website home page.
@@ -109,29 +133,35 @@ public struct SwarmCanvasView: View {
         self.logoOffsets = logoOffsets
         self.substrate = substrate
 
-        let sim = SwarmSimulation(
-            particleCount: particleCount ?? Self.adaptiveParticleCount,
-            pace: pace,
-            enabledProviderGlyphs: normalizedProviderGlyphs,
-            excludeBrandShapes: excludeBrandShapesFromSwarm
-        )
-        sim.isAvatarEnabled = isAvatarEnabled
-        sim.isBrandTextEnabled = isBrandTextEnabled
-        sim.setAutoCyclingEnabled(isAutoCyclingEnabled)
-        sim.colorPalette = colorPalette
-        sim.motionSpeedMultiplier = motionSpeedMultiplier.clamped(to: 0.35...2.5)
-        sim.setColorDriver(colorDriver)
-        sim.enableSwarmSparkles = enableSwarmSparkles
-        sim.panOffsets = logoOffsets
-        sim.substrate = substrate
-        sim.substrateAccent = accent
-        sim.substrateBackdrop = backdropColor
-        _simulation = State(initialValue: sim)
+        let resolvedParticleCount = particleCount ?? Self.adaptiveParticleCount
+        let resolvedSpeed = motionSpeedMultiplier.clamped(to: 0.35...2.5)
+        // Everything below runs once, on first attach (the autoclosure defers
+        // it); reconstructions of the view value only capture the parameters.
+        _simulationBox = StateObject(wrappedValue: SwarmSimulationBox {
+            let sim = SwarmSimulation(
+                particleCount: resolvedParticleCount,
+                pace: pace,
+                enabledProviderGlyphs: normalizedProviderGlyphs,
+                excludeBrandShapes: excludeBrandShapesFromSwarm
+            )
+            sim.isAvatarEnabled = isAvatarEnabled
+            sim.isBrandTextEnabled = isBrandTextEnabled
+            sim.setAutoCyclingEnabled(isAutoCyclingEnabled)
+            sim.colorPalette = colorPalette
+            sim.motionSpeedMultiplier = resolvedSpeed
+            sim.setColorDriver(colorDriver)
+            sim.enableSwarmSparkles = enableSwarmSparkles
+            sim.panOffsets = logoOffsets
+            sim.substrate = substrate
+            sim.substrateAccent = accent
+            sim.substrateBackdrop = backdropColor
+            return sim
+        })
     }
 
     public var body: some View {
         let fps = Self.sanitizedFrameRate(maxFrameRate, fallback: isBatteryThrottled ? 15.0 : Self.defaultFrameRate)
-        TimelineView(.animation(minimumInterval: 1.0 / fps, paused: reduceMotion)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / fps, paused: reduceMotion || isHostWindowOccluded)) { timeline in
             Canvas(rendersAsynchronously: rendersAsynchronously) { context, size in
                 simulation.panOffsets = logoOffsets
                 simulation.advance(
@@ -171,6 +201,9 @@ public struct SwarmCanvasView: View {
             #endif
         }
         .drawingGroup(opaque: false, colorMode: .nonLinear)
+        #if os(macOS)
+        .background(HostWindowVisibilityReader(visibility: hostWindowVisibility))
+        #endif
         .accessibilityHidden(true)
         .allowsHitTesting(false)
         .onChange(of: colorDriver) {
@@ -265,6 +298,18 @@ public struct SwarmCanvasView: View {
 }
 
 // MARK: - Simulation Core
+
+/// Reference-type holder that lets `@StateObject`'s autoclosure defer
+/// `SwarmSimulation` construction to first attach. No published state — it
+/// exists purely for identity + lazy construction.
+@MainActor
+final class SwarmSimulationBox: ObservableObject {
+    let simulation: SwarmSimulation
+
+    init(_ build: () -> SwarmSimulation) {
+        simulation = build()
+    }
+}
 
 @MainActor
 public final class SwarmSimulation {
@@ -421,6 +466,33 @@ public final class SwarmSimulation {
     var shouldResetCycleTimer = false
 
     var colorDriver: SwarmColorDriver?
+
+    /// SwiftUI `Color`s keyed by quantized RGBA (`RGBA.bucketKey`). `Color`
+    /// construction/bridging is expensive at particle counts; the palette only
+    /// produces a bounded set of distinct quantized colors per frame, so this
+    /// cache turns per-frame color churn into dictionary hits. Keys encode the
+    /// exact channel values, so entries never go stale; the cap just bounds
+    /// memory across palette/driver transitions.
+    private var colorCacheByBucketKey: [UInt32: Color] = [:]
+
+    private static let colorCacheLimit = 4096
+
+    func cachedColor(forBucketKey key: UInt32) -> Color {
+        if let cached = colorCacheByBucketKey[key] {
+            return cached
+        }
+        if colorCacheByBucketKey.count >= Self.colorCacheLimit {
+            colorCacheByBucketKey.removeAll(keepingCapacity: true)
+        }
+        let color = Color(
+            red: Double((key >> 24) & 0xFF) / 255.0,
+            green: Double((key >> 16) & 0xFF) / 255.0,
+            blue: Double((key >> 8) & 0xFF) / 255.0
+        )
+        .opacity(Double(key & 0xFF) / 255.0)
+        colorCacheByBucketKey[key] = color
+        return color
+    }
 
     var resolvedLogoColorPalette: SwarmColorPalette?
 
@@ -746,10 +818,20 @@ public final class SwarmSimulation {
 
         if shouldRenderIndividually {
             // Data-driven path: each particle may have a unique color from the
-            // provider palette, so we render individually.
+            // provider palette. Colors are resolved per particle but the fills
+            // are batched by an 8-bit-per-channel bucket key — one
+            // `GraphicsContext.fill` per distinct color instead of one per
+            // particle (formerly ~900 fills + 900 SwiftUI `Color` allocations
+            // per frame; the single hottest main-thread cost in profiles).
+            // 8-bit quantization matches display precision, so the rendered
+            // output is identical.
+            var bucketPaths: [UInt32: Path] = [:]
+            bucketPaths.reserveCapacity(64)
+            var glints: [(core: CGRect, glow: CGRect, intensity: Double)] = []
+
             for (index, p) in particles.enumerated() where !p.isGlyph {
                 if isBatteryThrottled && index % 2 == 1 { continue } // Skip 50% on battery
-                let color = resolvedColor(for: p, at: index, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
+                let rgba = resolvedRGBA(for: p, at: index, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
                 let inShape = (mode != .swarm && p.tx != nil)
                 var r = max(0.4, p.size * (inShape ? 1.2 : 0.85))
 
@@ -776,21 +858,28 @@ public final class SwarmSimulation {
                 }
 
                 let rect = CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)
-                ctx.fill(Path(ellipseIn: rect), with: .color(color))
+                bucketPaths[rgba.bucketKey, default: Path()].addEllipse(in: rect)
 
                 if isSparkling {
-                    // Draw core glint
                     let sr = r * 0.35
-                    let sRect = CGRect(x: p.x - sr, y: p.y - sr, width: sr * 2, height: sr * 2)
-                    let sColor = Color.white.opacity(sparkleIntensity * 0.55)
-                    ctx.fill(Path(ellipseIn: sRect), with: .color(sColor))
-
-                    // Draw outer subtle glow halo
                     let glowR = r * 0.75
-                    let glowRect = CGRect(x: p.x - glowR, y: p.y - glowR, width: glowR * 2, height: glowR * 2)
-                    let glowColor = Color.white.opacity(sparkleIntensity * 0.15)
-                    ctx.fill(Path(ellipseIn: glowRect), with: .color(glowColor))
+                    glints.append((
+                        core: CGRect(x: p.x - sr, y: p.y - sr, width: sr * 2, height: sr * 2),
+                        glow: CGRect(x: p.x - glowR, y: p.y - glowR, width: glowR * 2, height: glowR * 2),
+                        intensity: sparkleIntensity
+                    ))
                 }
+            }
+
+            for (key, path) in bucketPaths {
+                ctx.fill(path, with: .color(cachedColor(forBucketKey: key)))
+            }
+
+            // Sparkle glints render above the batched dots (a handful per frame
+            // at most — the 6% twinkle gate keeps this loop tiny).
+            for glint in glints {
+                ctx.fill(Path(ellipseIn: glint.core), with: .color(Color.white.opacity(glint.intensity * 0.55)))
+                ctx.fill(Path(ellipseIn: glint.glow), with: .color(Color.white.opacity(glint.intensity * 0.15)))
             }
         } else {
             // Original bucket path: batch particles by color key to minimize fill calls.
@@ -807,9 +896,11 @@ public final class SwarmSimulation {
                 ))
             }
             for (key, path) in bucketPaths {
-                let baseColor = colorFromKey(key, uiMode: uiMode)
-                let finalColor = isBatteryThrottled ? baseColor.opacity(0.5) : baseColor
-                ctx.fill(path, with: .color(finalColor))
+                var rgba = rgbaFromKey(key, uiMode: uiMode)
+                if isBatteryThrottled {
+                    rgba = RGBA(r: rgba.r, g: rgba.g, b: rgba.b, a: rgba.a * 0.5)
+                }
+                ctx.fill(path, with: .color(cachedColor(forBucketKey: rgba.bucketKey)))
             }
         }
 
@@ -926,6 +1017,89 @@ public final class SwarmSimulation {
 public extension Notification.Name {
     static let cycleSwarmShapeRequested = Notification.Name("com.openburnbar.swarm.cycleSwarmShapeRequested")
 }
+
+#if os(macOS)
+// MARK: - Host-window occlusion tracking (macOS)
+
+/// Publishes whether the hosting `NSWindow` is fully occluded, so the swarm can
+/// pause its `TimelineView` when nothing it draws can reach the screen. The
+/// desktop-wallpaper panel behind a fullscreen Space and a dashboard window
+/// buried under other apps both read as occluded and stop costing CPU; the
+/// moment any pixel becomes visible again, AppKit flips the occlusion state and
+/// the timeline resumes.
+@MainActor
+final class HostWindowVisibility: ObservableObject {
+    @Published var isOccluded = false
+}
+
+struct HostWindowVisibilityReader: NSViewRepresentable {
+    let visibility: HostWindowVisibility
+
+    func makeNSView(context: Context) -> TrackerView {
+        TrackerView(visibility: visibility)
+    }
+
+    func updateNSView(_ nsView: TrackerView, context: Context) {}
+
+    @MainActor
+    final class TrackerView: NSView {
+        private let visibility: HostWindowVisibility
+        private nonisolated(unsafe) var occlusionObserver: NSObjectProtocol?
+
+        init(visibility: HostWindowVisibility) {
+            self.visibility = visibility
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) is not supported")
+        }
+
+        deinit {
+            if let occlusionObserver {
+                NotificationCenter.default.removeObserver(occlusionObserver)
+            }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let occlusionObserver {
+                NotificationCenter.default.removeObserver(occlusionObserver)
+                self.occlusionObserver = nil
+            }
+            if let window {
+                occlusionObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didChangeOcclusionStateNotification,
+                    object: window,
+                    queue: .main
+                ) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.refreshOcclusion()
+                    }
+                }
+            }
+            // Deferred: viewDidMoveToWindow can land inside a SwiftUI update
+            // pass, and publishing from within one is not allowed. One frame at
+            // the previous state is invisible.
+            Task { @MainActor [weak self] in
+                self?.refreshOcclusion()
+            }
+        }
+
+        private func refreshOcclusion() {
+            guard let window else {
+                visibility.isOccluded = false
+                return
+            }
+            let occluded = !window.occlusionState.contains(.visible)
+            if visibility.isOccluded != occluded {
+                visibility.isOccluded = occluded
+            }
+        }
+    }
+}
+#endif
 
 extension SwarmSimulation {
     /// Same-file access to the private logo samplers for `SwarmGlyphSampler`.

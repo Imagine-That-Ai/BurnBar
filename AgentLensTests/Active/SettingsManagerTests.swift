@@ -1919,8 +1919,9 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - ChatBackendID Tests
 
     func test_chatBackendID_allCases() {
-        XCTAssertEqual(ChatBackendID.allCases.count, 10)
+        XCTAssertEqual(ChatBackendID.allCases.count, 11)
         XCTAssertTrue(ChatBackendID.allCases.contains(.codex))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.omp))
         XCTAssertTrue(ChatBackendID.allCases.contains(.claude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.hermes))
         XCTAssertTrue(ChatBackendID.allCases.contains(.piAgent))
