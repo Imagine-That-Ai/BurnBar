@@ -1,11 +1,11 @@
 {
   "fixtures" : [
     {
-      "conversationCount" : 413,
+      "conversationCount" : 429,
       "fixtureId" : "antigravityBasicSession",
       "parser" : "AntigravityParser",
       "provider" : "Antigravity",
-      "usageCount" : 413,
+      "usageCount" : 429,
       "usages" : [
         {
           "cacheCreationTokens" : 5426,
@@ -348,6 +348,23 @@
           "usageSource" : "provider_log"
         },
         {
+          "cacheCreationTokens" : 1182,
+          "cacheReadTokens" : 7335,
+          "costNanoUSD" : 13695650,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 8870,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 4184,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "0cb3c32a-c884-4d90-8722-52e3a66e6ab2",
+          "totalTokens" : 21571,
+          "usageSource" : "provider_log"
+        },
+        {
           "cacheCreationTokens" : 4923,
           "cacheReadTokens" : 9792,
           "costNanoUSD" : 65858850,
@@ -362,6 +379,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "0cf97c92-84dc-40f6-8866-11e843aa7a92",
           "totalTokens" : 29451,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 72731,
+          "cacheReadTokens" : 3076695,
+          "costNanoUSD" : 1120898050,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 3149443,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 24778,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "0d13444a-5896-4714-bb93-b5934f4b1f31",
+          "totalTokens" : 6323647,
           "usageSource" : "provider_log"
         },
         {
@@ -770,6 +804,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "152f2291-2656-4a95-9299-ade33319b6e5",
           "totalTokens" : 7185,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 58712,
+          "cacheReadTokens" : 3282627,
+          "costNanoUSD" : 1227155110,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 3341684,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 43423,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "160019db-d588-4875-a2fc-aa3f7e8eef7a",
+          "totalTokens" : 6726446,
           "usageSource" : "provider_log"
         },
         {
@@ -1317,6 +1368,23 @@
           "usageSource" : "provider_log"
         },
         {
+          "cacheCreationTokens" : 1464,
+          "cacheReadTokens" : 7866,
+          "costNanoUSD" : 11236380,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 9654,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 3066,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "29c6e6fc-6f11-4c9e-a210-16a84e2a87ea",
+          "totalTokens" : 22050,
+          "usageSource" : "provider_log"
+        },
+        {
           "cacheCreationTokens" : 21056,
           "cacheReadTokens" : 35802,
           "costNanoUSD" : 26304860,
@@ -1433,6 +1501,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "2cfea10b-0a11-4e25-a587-f640f36efc4b",
           "totalTokens" : 191610,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 69371,
+          "cacheReadTokens" : 3430636,
+          "costNanoUSD" : 1306137580,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 3500324,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 52924,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "2d38b3ac-462c-4b0a-a6d9-a429496eec97",
+          "totalTokens" : 7053255,
           "usageSource" : "provider_log"
         },
         {
@@ -2014,6 +2099,23 @@
           "usageSource" : "provider_log"
         },
         {
+          "cacheCreationTokens" : 47442,
+          "cacheReadTokens" : 1307916,
+          "costNanoUSD" : 503200280,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 1355909,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 17183,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "44091723-24ae-4173-a922-011146a7d8e3",
+          "totalTokens" : 2728450,
+          "usageSource" : "provider_log"
+        },
+        {
           "cacheCreationTokens" : 815625,
           "cacheReadTokens" : 256518494,
           "costNanoUSD" : 88484974920,
@@ -2096,6 +2198,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "49adc925-ffbe-4c50-a883-41c1bb064660",
           "totalTokens" : 181256332,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 9073,
+          "cacheReadTokens" : 216393,
+          "costNanoUSD" : 102912890,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 225514,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 10418,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "4a0fb063-2d3e-425e-a0f3-69063427eb98",
+          "totalTokens" : 461398,
           "usageSource" : "provider_log"
         },
         {
@@ -2402,6 +2521,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "55b5096e-6f18-4da1-9268-a590d798c696",
           "totalTokens" : 165891652,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 167394,
+          "cacheReadTokens" : 16853389,
+          "costNanoUSD" : 5960974970,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 17020842,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 119561,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "55d661a4-03e1-427e-bb74-f3cf7817c3f0",
+          "totalTokens" : 34161186,
           "usageSource" : "provider_log"
         },
         {
@@ -3510,6 +3646,23 @@
           "usageSource" : "provider_log"
         },
         {
+          "cacheCreationTokens" : 67562,
+          "cacheReadTokens" : 4744957,
+          "costNanoUSD" : 1797808010,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 4813019,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 76514,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "7c481070-90e6-4dfb-b62a-c03762cb05a9",
+          "totalTokens" : 9702052,
+          "usageSource" : "provider_log"
+        },
+        {
           "cacheCreationTokens" : 101963,
           "cacheReadTokens" : 6661394,
           "costNanoUSD" : 2430440620,
@@ -3949,6 +4102,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "8b6e291e-c8a2-48b4-9f43-9a2565169ce6",
           "totalTokens" : 34131,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 681,
+          "cacheReadTokens" : 3498,
+          "costNanoUSD" : 9330240,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 4395,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 3081,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "8bc701af-e907-41ab-97c6-c3fd8c61f11c",
+          "totalTokens" : 11655,
           "usageSource" : "provider_log"
         },
         {
@@ -5193,6 +5363,23 @@
           "usageSource" : "provider_log"
         },
         {
+          "cacheCreationTokens" : 6421,
+          "cacheReadTokens" : 25936,
+          "costNanoUSD" : 15469380,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 32450,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 1212,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "c52aa135-cfa4-4fc8-b620-b0f61b054f71",
+          "totalTokens" : 66019,
+          "usageSource" : "provider_log"
+        },
+        {
           "cacheCreationTokens" : 1212,
           "cacheReadTokens" : 2370,
           "costNanoUSD" : 16317000,
@@ -5224,6 +5411,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "c58c8d3e-9445-4d73-9961-80aee840c0dc",
           "totalTokens" : 256006,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 774,
+          "cacheReadTokens" : 5441,
+          "costNanoUSD" : 13815630,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 6434,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 4596,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "c5fc947d-7df3-4e8d-94b2-03a5f50279eb",
+          "totalTokens" : 17245,
           "usageSource" : "provider_log"
         },
         {
@@ -5581,6 +5785,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "cf55d719-13cb-46f4-9d7b-e9087ef3abbe",
           "totalTokens" : 1787418,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 4405,
+          "cacheReadTokens" : 31189,
+          "costNanoUSD" : 18861870,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 35899,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 2334,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "cf8597c5-18a5-40b2-8d3f-628f911415dd",
+          "totalTokens" : 73827,
           "usageSource" : "provider_log"
         },
         {
@@ -6553,6 +6774,23 @@
           "usageSource" : "provider_log"
         },
         {
+          "cacheCreationTokens" : 8074,
+          "cacheReadTokens" : 32898,
+          "costNanoUSD" : 22238240,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 41472,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 2555,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "ecf1804f-b437-4059-a6fa-157bb72b8ac5",
+          "totalTokens" : 84999,
+          "usageSource" : "provider_log"
+        },
+        {
           "cacheCreationTokens" : 5565,
           "cacheReadTokens" : 11076,
           "costNanoUSD" : 74429550,
@@ -6893,6 +7131,23 @@
           "usageSource" : "provider_log"
         },
         {
+          "cacheCreationTokens" : 613,
+          "cacheReadTokens" : 3927,
+          "costNanoUSD" : 10881210,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 4790,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 3657,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "f9d5340d-51e2-4053-a6e2-579f966659e8",
+          "totalTokens" : 12987,
+          "usageSource" : "provider_log"
+        },
+        {
           "cacheCreationTokens" : 1212,
           "cacheReadTokens" : 2370,
           "costNanoUSD" : 16317000,
@@ -6907,6 +7162,23 @@
           "reasoningTokens" : 0,
           "sessionId" : "f9f11ac0-9104-4f26-923d-35910c66e427",
           "totalTokens" : 7185,
+          "usageSource" : "provider_log"
+        },
+        {
+          "cacheCreationTokens" : 241278,
+          "cacheReadTokens" : 30632952,
+          "costNanoUSD" : 10797303160,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 30874554,
+          "model" : "Gemini 3.5 Flash (High)",
+          "outputTokens" : 217426,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "fa03e39f-dfd2-46cd-8af0-2f8c7a5cadf0",
+          "totalTokens" : 61966210,
           "usageSource" : "provider_log"
         },
         {

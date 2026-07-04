@@ -4,6 +4,9 @@ public struct OMPQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+        #if !canImport(Darwin)
+        return unavailable(message: "OMP quota requires macOS CLI resolution.")
+        #else
         guard let executableURL = CLILaunchAdapter.resolveExecutable(for: .omp) else {
             return unavailable(message: "OMP CLI was not found. Install Oh My Pi and ensure `omp` is on your PATH.")
         }
@@ -43,6 +46,7 @@ public struct OMPQuotaAdapter: ProviderQuotaAdapter {
         } catch {
             return unavailable(message: "OMP usage could not be read from `omp usage --json --redact`: \(error.localizedDescription)")
         }
+        #endif
     }
 
     private func unavailable(message: String) -> ProviderQuotaSnapshot {

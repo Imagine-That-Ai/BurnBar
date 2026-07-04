@@ -347,10 +347,10 @@ private enum CodexOAuthQuotaFetcher {
 
     /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func nudgeCodexAuthRefresh(context: ProviderQuotaAdapterContext, configURL: URL) async {
+        #if !canImport(Darwin)
+        return
+        #else
         let environment = context.environment
-        guard let codexExecutable = CLILaunchAdapter.resolvePinnedExecutable(for: .codex) else {
-            return
-        }
         guard let codexExecutable = CLILaunchAdapter.resolvePinnedExecutable(for: .codex) else {
             return
         }
@@ -363,6 +363,7 @@ private enum CodexOAuthQuotaFetcher {
             arguments: ["login", "status"],
             environment: env
         )
+        #endif
     }
 
     private static func slug(_ value: String) -> String {
