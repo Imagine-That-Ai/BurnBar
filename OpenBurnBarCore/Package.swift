@@ -567,6 +567,23 @@ let firstPartyTargetsBase: [Target] = [
                 .copy("Fixtures/openai_stream.sse")
             ]
         ),
+        // Windows-port Phase-2 parser path-remap parity gate (G2). A Foundation-only
+        // executable that asserts the parser PATH layer resolves byte-identically on
+        // Windows and macOS: the Claude Code `~/.claude/projects` directory-name codec
+        // (PATH-021) over the committed capture corpus, plus the `LogPathPlatform`
+        // `%USERPROFILE%`/`%APPDATA%`/`%LOCALAPPDATA%` root remap against an inline
+        // golden. Same never-referenced-leaf shape as the walking skeleton above: it
+        // declares NO product in `packageProducts` and is absent from the app's
+        // `project.yml`, so the Apple app scheme never resolves/links/builds it, while
+        // `swift run` works on macOS today and the Windows CI runs it natively.
+        .executableTarget(
+            name: "OpenBurnBarWindowsParserPathParity",
+            dependencies: ["OpenBurnBarCore"],
+            path: "Sources/OpenBurnBarWindowsParserPathParity",
+            resources: [
+                .copy("Fixtures/claude-code-project-path-fixtures.json")
+            ]
+        ),
         .testTarget(
             name: "OpenBurnBarLinuxCoreFoundationTests",
             dependencies: [

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of MissionFABGauge (OpenBurnBarCore/.../MissionControl/MissionFABGauge.swift).
+  The "living gauge" face: a track ring, a burn-rate arc trimmed 0..sweep, one perimeter tick
+  per in-flight mission, a state-driven center glyph, and (hero size) a mono burn-per-hour
+  readout. All DECISION logic (colors, glyph, tick geometry, sweep clamp) is the portable,
+  unit-tested MissionFabGaugeState; this control only draws what that state returns. The
+  ring/arc are XAML shapes exactly as the SwiftUI Circle().trim() + Capsule() ticks are.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.MissionControl.MissionFabGaugeView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid x:Name="Root" Width="56" Height="56">
+        <!-- Track ring -->
+        <Ellipse x:Name="TrackRing"
+                 Stroke="{StaticResource PensieveColorGlassLineBrush}"
+                 StrokeThickness="4.5"
+                 Opacity="0.45" />
+
+        <!-- Burn-rate arc (geometry + brush built in code-behind). -->
+        <Path x:Name="BurnArc"
+              StrokeThickness="4.5"
+              StrokeStartLineCap="Round"
+              StrokeEndLineCap="Round" />
+
+        <!-- Per-mission perimeter ticks. -->
+        <Canvas x:Name="TicksLayer" />
+
+        <!-- Center glyph. -->
+        <FontIcon x:Name="CenterGlyph"
+                  FontFamily="Segoe MDL2 Assets"
+                  FontSize="21"
+                  Glyph="&#xE70F;"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center" />
+
+        <!-- Hero-only mono burn readout. -->
+        <TextBlock x:Name="BurnReadout"
+                   FontFamily="{StaticResource OBBMonoFontFamily}"
+                   FontSize="10"
+                   Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Bottom"
+                   Margin="0,0,0,2"
+                   Visibility="Collapsed" />
+    </Grid>
+</UserControl>

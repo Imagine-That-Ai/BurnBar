@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using OpenBurnBar.Particles.Drawing;
+using OpenBurnBar.Particles.Math;
 using OpenBurnBar.Particles.Model;
 using static OpenBurnBar.Particles.Math.SubstrateKit;
 
@@ -200,7 +201,7 @@ public sealed class StellariumSubstrate : ISwarmSubstrate
         _edgeCount = 0;
         if (count < 2) return;
 
-        SubstrateStructure.Structure s = _structure.Build(dots, 6);
+        SubstrateStructure.Structure s = _structure.Get(dots, 6);
         int[][] neigh = s.Neighbors;
 
         if (neigh.Length >= count)

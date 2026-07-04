@@ -1,0 +1,29 @@
+using System;
+
+namespace OpenBurnBar.App.Shell;
+
+/// <summary>
+/// Maps a <see cref="NavDestination.Key"/> to the real <c>Page</c> type that renders it,
+/// defaulting to the placeholder <see cref="SurfaceStubPage"/> for surfaces not yet ported.
+/// This is the seam the Phase-3 surface lanes plug their pages into as they replace the stubs
+/// one destination at a time; <see cref="AppShell"/> routes the content Frame through it.
+/// </summary>
+public static class SurfacePageResolver
+{
+    /// <summary>The real page type for a destination key, or the stub when none is registered.</summary>
+    public static Type Resolve(string key) => key switch
+    {
+        "budget" => typeof(OpenBurnBar.App.Budget.BudgetPage),
+        "quota" => typeof(OpenBurnBar.App.Quota.QuotaWorkspacePage),
+        "insights" => typeof(OpenBurnBar.App.Insights.InsightsPage),
+        "dashboard" => typeof(OpenBurnBar.App.Dashboard.DashboardPage),
+        "missionControl" => typeof(OpenBurnBar.App.MissionControl.MissionControlPage),
+        "dataControlCenter" => typeof(OpenBurnBar.App.DataControlCenter.DataControlCenterPage),
+        "chat" => typeof(OpenBurnBar.App.Chat.ChatHostPage),
+        "switcher" => typeof(OpenBurnBar.App.Switcher.SwitcherHostPage),
+        // Elder Wand is an Auxiliary (Command-Palette) destination, not a sidebar row — see
+        // NavCatalog.Auxiliary + ElderWandPage.xaml for the macOS reachability-parity rationale.
+        "elderWand" => typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
+        _ => typeof(SurfaceStubPage),
+    };
+}

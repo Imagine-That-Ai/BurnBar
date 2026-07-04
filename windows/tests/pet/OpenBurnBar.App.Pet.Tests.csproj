@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable PetCompanion core + overlay style math
+    (Phase 4 · G4 — PetCompanion lane). Runs today via `dotnet test` on the authoring
+    host, the SAME assemblies that ship on Windows. Mirrors the proven
+    presentation/dashboard/ipc test pattern (net10.0, xUnit).
+
+    Coverage:
+      • BehaviorInterpreterTests    — the REQUIRED behavior-graph proof: named triggers
+        fire named transitions on the REAL committed claudecode graph, weighted
+        selection is deterministic under a seed, unknown guards round-trip, reset.
+      • PetChatEventBridgeTests      — feed the LANDED Chat state machine's lifecycle
+        (send / stream-start / token / result) and assert the graph walks
+        idle->listen->think->speak->react, plus the Idle/Active/Summon activity states.
+      • PetReactionBrainTests        — the reaction ladder (intent/outcome/idle) + message
+        classification, verbatim parity with the Swift brain.
+      • PetDefinitionTests           — parse the REAL committed claudecode petdef fixture:
+        behavior graph, clip inventory, identity.
+      • Mulberry32Tests              — deterministic RNG bit-sequence + [0,1) range.
+      • PetGltfSceneControllerTests   — the glTF host protocol over a fake IPetGltfHost:
+        ready heartbeat, load/clip/dispose acks, error surfacing, clipEnded events, and
+        the embedded three.js shell extraction.
+      • Overlay/OverlayWindowStyleTests — the WS_EX_* bitmask + click-through toggles +
+        the focus-safety (NOACTIVATE) invariant across toggles.
+      • Overlay/PerPixelHitTestTests  — the alpha-buffer hit test (opaque body vs
+        transparent fringe; bounds; top-down vs bottom-up rows).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Pet/OpenBurnBar.App.Pet.csproj" />
+    <ProjectReference Include="../../pal/overlay/OpenBurnBar.Pal.Overlay.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The REAL committed claudecode petdef, copied verbatim so the parser test runs
+         against genuine shipped data (grounds the test in real ground truth). -->
+    <None Include="Fixtures/claudecode.petdef.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

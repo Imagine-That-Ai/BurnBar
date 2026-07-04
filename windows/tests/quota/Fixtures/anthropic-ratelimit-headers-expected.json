@@ -1,0 +1,57 @@
+{
+  "provider": "claudeCode",
+  "source": "OfficialApi",
+  "confidence": "Exact",
+  "statusMessage": "Claude quota from Anthropic rate-limit headers (Claude plan). 4 window(s) active.",
+  "nowUnix": 1783036800,
+  "buckets": [
+    {
+      "key": "claude-unified-header-probe",
+      "label": "5-hour unified window",
+      "windowKind": "RollingHours",
+      "usedValue": 88000,
+      "limitValue": 220000,
+      "remainingValue": 132000,
+      "usedPercent": 40.0,
+      "resetsAtUnix": 1783045800,
+      "unit": "Tokens",
+      "isEstimated": false
+    },
+    {
+      "key": "claude-rate-limit-requests",
+      "label": "Requests / minute",
+      "windowKind": "Custom",
+      "usedValue": 50,
+      "limitValue": 1000,
+      "remainingValue": 950,
+      "usedPercent": 5.0,
+      "resetsAtUnix": 1783036860,
+      "unit": "Requests",
+      "isEstimated": false
+    },
+    {
+      "key": "claude-rate-limit-input-tokens",
+      "label": "Input tokens / minute",
+      "windowKind": "Custom",
+      "usedValue": 20000,
+      "limitValue": 80000,
+      "remainingValue": 60000,
+      "usedPercent": 25.0,
+      "resetsAtUnix": 1783036860,
+      "unit": "Tokens",
+      "isEstimated": false
+    },
+    {
+      "key": "claude-rate-limit-output-tokens",
+      "label": "Output tokens / minute",
+      "windowKind": "Custom",
+      "usedValue": 0,
+      "limitValue": 16000,
+      "remainingValue": 16000,
+      "usedPercent": 0.0,
+      "resetsAtUnix": 1783036860,
+      "unit": "Tokens",
+      "isEstimated": false
+    }
+  ]
+}

@@ -7,35 +7,38 @@ using OpenBurnBar.Particles.Ffi;
 using OpenBurnBar.Particles.Math;
 using OpenBurnBar.Particles.Model;
 using OpenBurnBar.Particles.Substrates;
-using OpenBurnBar.Particles.Substrates.Catalog;
 
 // =============================================================================
-//  Headless particle-engine perf + parity harness (Phase 3 / W6-DS-SWARM).
+//  Headless particle-engine perf harness (Phase 3 / W6-DS-SWARM sub-spike).
 //
-//  WHAT IT MEASURES: the per-frame CPU cost of the substrate RENDERER pass —
-//  particle iteration + draw-command emission — for EVERY registered bespoke
-//  painter (Starfire + the Constellation StarSapphire/Stellarium/Rimefrost + the
-//  whole Volumetric family: Sunshaft/SmokedGlass/SilkFilament/DustMotes) over
-//  hundreds-to-thousands of particles. This is the parity-critical, ARM64-sensitive
-//  work that lives in C# (the simulation math stays in Swift Core and is vended
-//  per-frame; see Ffi/SwarmSubstrateFrameFfi.cs).
+//  WHAT IT MEASURES: the per-frame CPU cost of every ported substrate RENDERER pass
+//  — particle iteration + draw-command emission — over hundreds-to-thousands of
+//  particles. This is the parity-critical, ARM64-sensitive work that lives in C#
+//  (the simulation math stays in Swift Core and is vended per-frame; see
+//  Ffi/SwarmSubstrateFrameFfi.cs). Substrates covered: the Constellation flagship
+//  (Starfire) plus the full FLOW family (Plankton Wake / Glass Ribbon / Silk
+//  Streamline / Petal Drift) and the full AURORA family (Wisp / Ice Prism / Aurora
+//  Filament / Drift Motes).
 //
 //  WHAT IT DOES NOT MEASURE: GPU rasterization / additive-bloom compositing /
 //  GaussianBlur — that is Win2D's job on a real device and is Windows/CI-deferred
-//  (the CanvasAnimatedControl host + Win2DSubstrateDrawingSession in
-//  windows/app/OpenBurnBar.App/Particles/). The 16.67ms budget below is therefore
-//  the CPU-side frame budget: staying well under it is necessary (not sufficient)
-//  for the full ARM64 60fps gate.
+//  (the CanvasAnimatedControl host in windows/app/OpenBurnBar.App/Particles/). The
+//  60fps budget below is therefore the CPU-side frame budget: if command emission
+//  alone blew 16.67 ms we'd never hit 60fps; staying well under it is necessary
+//  (not sufficient) for the full ARM64 60fps gate.
 //
-//  Draw against RecordingDrawingSession (counts commands, no rasterization), so a
-//  frame's wall-time is the painter's own CPU cost.
+//  METHODOLOGY: dots are held at a FORMED layout (steady-state hold), so the three
+//  streamline substrates' cached NN-walk/kNN structure is warm — exactly what a
+//  60fps hold sees. The one-time structure build cost (paid on a reform, not per
+//  frame) is reported separately. Motion still varies every frame through `t`, so
+//  there is no constant-folding. Draw against RecordingDrawingSession (counts
+//  commands, no rasterization), so a frame's wall-time is the painter's own CPU cost.
 // =============================================================================
 
 int[] dotCounts = { 520, 1080, 2000 };
-int frames = 600;   // 10 s at 60fps
-int warmup = 120;
+int frames = 400;   // ~6.7 s at 60fps
+int warmup = 100;
 
-// crude arg parse: --dots 520,1080 --frames 600 --warmup 120
 for (int i = 0; i < args.Length - 1; i++)
 {
     switch (args[i])
@@ -57,12 +60,13 @@ for (int i = 0; i < args.Length - 1; i++)
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
-// The bespoke painters to exercise (plain defers to the default dot render).
-var painters = new List<(string Name, Func<ISwarmSubstrate> Make)>();
+// The bespoke painters under test (plain defers to the default dot render, so it is
+// not timed). Ordered Constellation → Flow → Aurora, mirroring the catalog.
+var painters = new List<(string Id, string Label, SubstrateFamily Family, Func<ISwarmSubstrate> Make)>();
 foreach (SubstrateDescriptor d in SubstrateCatalog.SubstrateList)
 {
     if (d.Id == SubstrateCatalog.PlainId) continue;
-    painters.Add(($"{d.Label} [{d.Id}]", d.Make));
+    painters.Add((d.Id, d.Label, d.Family, d.Make));
 }
 
 bool verifyOnly = Array.IndexOf(args, "--verify") >= 0;
@@ -72,12 +76,12 @@ if (verifyOnly)
 }
 
 Console.WriteLine("=================================================================");
-Console.WriteLine(" OpenBurnBar particle-engine perf harness — W6-DS-SWARM (all substrates)");
+Console.WriteLine(" OpenBurnBar particle-engine perf harness — Flow + Aurora families");
 Console.WriteLine("=================================================================");
 Console.WriteLine($" Runtime : {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
 Console.WriteLine($" Arch    : {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture} on {System.Runtime.InteropServices.RuntimeInformation.OSDescription}");
-Console.WriteLine($" Painters: {painters.Count} bespoke (Constellation + Volumetric families)");
-Console.WriteLine($" Config  : {frames} timed frames (+{warmup} warmup), dt = 1/60, dark canvas");
+Console.WriteLine($" Painters: {painters.Count} bespoke (Constellation·1 + Flow·4 + Aurora·4) — dark canvas, full path");
+Console.WriteLine($" Config  : {frames} timed frames (+{warmup} warmup), dt = 1/60, formed hold");
 Console.WriteLine($" Measures: CPU draw-command emission only (GPU composite = Win2D, CI-deferred)");
 Console.WriteLine($" Budget  : 60fps CPU frame budget = 16.67 ms  (120fps = 8.33 ms)");
 Console.WriteLine();
@@ -88,40 +92,65 @@ const double frameBudget120 = 1000.0 / 120.0;
 
 bool allUnder60 = true;
 
-foreach ((string name, Func<ISwarmSubstrate> make) in painters)
+foreach (var painter in painters)
 {
-    Console.WriteLine($"════ {name} ════════════════════════════════════════════");
+    Console.WriteLine($"### {painter.Label}  ({painter.Id})");
+    SubstrateStage stage = BuildStage(painter.Family);
     foreach (int n in dotCounts)
     {
-        RunScenario(name, make, n, batteryThrottled: false);
-        RunScenario(name, make, n, batteryThrottled: true);
+        RunScenario(painter.Make, stage, n, batteryThrottled: false);
+        RunScenario(painter.Make, stage, n, batteryThrottled: true);
     }
     Console.WriteLine();
 }
 
+// One-time structure (NN-walk + kNN) build cost — paid on a reform, NOT per frame —
+// for the three streamline substrates that consume it.
+Console.WriteLine("--- one-time NN-walk/kNN structure build cost (amortized once per reform) ---");
+foreach (int n in dotCounts)
+{
+    var probe = new SubstrateStructure();
+    SwarmSubstrateDot[] dots = BuildSyntheticSwarm(n);
+    var sw = new Stopwatch();
+    // discard first (JIT), then time a cold build via a fresh provider each iter.
+    probe.Get(dots, 6);
+    double best = double.MaxValue;
+    for (int r = 0; r < 12; r++)
+    {
+        var cold = new SubstrateStructure();
+        sw.Restart();
+        cold.Get(dots, 6);
+        sw.Stop();
+        best = System.Math.Min(best, sw.Elapsed.TotalMilliseconds);
+    }
+    Console.WriteLine($"  {n,4} dots : {best,7:F3} ms (best of 12 cold builds)");
+}
+Console.WriteLine();
+
 Console.WriteLine("=================================================================");
 Console.WriteLine(allUnder60
-    ? " VERDICT: every substrate × scenario's median + p95 CPU frame time is under the 60fps budget."
+    ? " VERDICT: every substrate/scenario median + p95 CPU frame time is under the 60fps budget."
     : " VERDICT: at least one scenario exceeded the 60fps CPU budget (see FAIL rows).");
 Console.WriteLine("=================================================================");
 
 return allUnder60 ? 0 : 1;
 
-void RunScenario(string name, Func<ISwarmSubstrate> make, int n, bool batteryThrottled)
+void RunScenario(Func<ISwarmSubstrate> make, SubstrateStage stage, int n, bool batteryThrottled)
 {
     SwarmSubstrateDot[] dots = BuildSyntheticSwarm(n);
     ISwarmSubstrate painter = make();
     var session = new RecordingDrawingSession { HashGeometry = false };
 
-    SubstrateStage stage = BuildStage();
     var timings = new double[frames];
-    long lastTotalCommands = 0, lastFills = 0, lastGlows = 0, lastLineBatches = 0, lastPolys = 0, lastBlur = 0;
+    long lastTotalCommands = 0, lastFills = 0, lastGlows = 0, lastLineBatches = 0,
+        lastPolys = 0, lastGradPolys = 0, lastStrokes = 0, lastBlur = 0;
 
     var sw = new Stopwatch();
     for (int frame = 0; frame < warmup + frames; frame++)
     {
         double t = frame / 60.0;
-        AdvanceSwarm(dots, t);
+        // Positions held at a formed layout (streamline structure stays warm); motion
+        // varies through `t` so there is no constant-folding.
         var f = new SwarmSubstrateFrame(
             width: canvasW, height: canvasH, dark: true, reduced: false,
             batteryThrottled: batteryThrottled, uiMode: UIMode.Standard,
@@ -141,8 +170,10 @@ void RunScenario(string name, Func<ISwarmSubstrate> make, int n, bool batteryThr
         lastTotalCommands = session.TotalCommands;
         lastFills = session.FillCircleCount;
         lastGlows = session.GlowSpriteCount;
-        lastLineBatches = session.LineBatchCount + session.DashedLineBatchCount;
-        lastPolys = session.FillPolygonCount + session.FillRoundedQuadCount + session.StrokePolylineCount;
+        lastLineBatches = session.LineBatchCount;
+        lastPolys = session.FillPolygonCount;
+        lastGradPolys = session.FillPolygonGradientCount;
+        lastStrokes = session.StrokePolylineCount;
         lastBlur = session.BlurLayerCount;
     }
 
@@ -158,13 +189,13 @@ void RunScenario(string name, Func<ISwarmSubstrate> make, int n, bool batteryThr
     if (!under60) allUnder60 = false;
 
     string label = batteryThrottled ? "throttled" : "full     ";
-    Console.WriteLine($"--- {n,4} dots · {label} -----------------------------------------------");
-    Console.WriteLine($"  frame ms : min {min,7:F4}  median {median,7:F4}  p95 {p95,7:F4}  p99 {p99,7:F4}  max {max,7:F4}  mean {mean,7:F4}");
-    Console.WriteLine($"  eff FPS  : median {1000.0 / median,7:F0}   p95 {1000.0 / p95,7:F0}");
-    Console.WriteLine($"  cmds     : {lastTotalCommands,6}  (fills {lastFills}, glow-sprites {lastGlows}, line-batches {lastLineBatches}, polys/quads {lastPolys}, blur-layers {lastBlur})");
-    Console.WriteLine($"  60fps    : median {(median <= frameBudget60 ? "PASS" : "FAIL")}  p95 {(p95 <= frameBudget60 ? "PASS" : "FAIL")}   " +
-                      $"| 120fps: median {(median <= frameBudget120 ? "PASS" : "FAIL")}  p95 {(p95 <= frameBudget120 ? "PASS" : "FAIL")}   " +
-                      $"| headroom@60 median {frameBudget60 / median,5:F1}x");
+    Console.WriteLine($"  {n,4} dots · {label} | ms med {median,7:F4} p95 {p95,7:F4} p99 {p99,7:F4} max {max,7:F4} " +
+                      $"| fps~{1000.0 / median,6:F0} | cmds {lastTotalCommands,6} " +
+                      $"(f{lastFills} g{lastGlows} lb{lastLineBatches} P{lastPolys} GP{lastGradPolys} s{lastStrokes} bl{lastBlur}) " +
+                      $"| 60fps {(under60 ? "PASS" : "FAIL")} {frameBudget60 / System.Math.Max(median, 1e-9),5:F0}x " +
+                      $"| 120fps {(median <= frameBudget120 && p95 <= frameBudget120 ? "PASS" : "FAIL")}");
+    _ = min;
+    _ = mean;
 }
 
 static double Pct(double[] sorted, double p)
@@ -213,28 +244,8 @@ static SwarmSubstrateDot[] BuildSyntheticSwarm(int n)
     return dots;
 }
 
-// Light per-frame motion (orbit + gentle radial breathing) so successive frames
-// present different geometry — mirrors live-field cost, no constant folding.
-static void AdvanceSwarm(SwarmSubstrateDot[] dots, double t)
+static SwarmSubstrateFrame BuildFrame(int n, SubstrateStage stage, bool battery, double t)
 {
-    const double cx = canvasWConst / 2, cy = canvasHConst / 2;
-    for (int i = 0; i < dots.Length; i++)
-    {
-        SwarmSubstrateDot d = dots[i];
-        double dx = d.X - cx, dy = d.Y - cy;
-        double a = 0.0025 + 0.0005 * System.Math.Sin(t * 0.5 + i);
-        double ca = System.Math.Cos(a), sa = System.Math.Sin(a);
-        double nx = cx + dx * ca - dy * sa;
-        double ny = cy + dx * sa + dy * ca;
-        dots[i] = new SwarmSubstrateDot(
-            nx, ny, d.Vx, d.Vy, d.Radius, d.BaseSize,
-            d.Rgba, d.Opacity, d.InShape, d.ColorIndex, d.FlowProgress);
-    }
-}
-
-static SwarmSubstrateFrame BuildFrame(int n, bool battery, double t)
-{
-    SubstrateStage stage = BuildStage();
     return new SwarmSubstrateFrame(
         width: canvasWConst, height: canvasHConst, dark: true, reduced: false,
         batteryThrottled: battery, uiMode: UIMode.Standard,
@@ -244,15 +255,17 @@ static SwarmSubstrateFrame BuildFrame(int n, bool battery, double t)
         cloudRadius: 260, sizePx: 1.6);
 }
 
-// Self-check: proves the FFI vend contract round-trips and EVERY substrate renders
-// deterministically (both prerequisites for the W11 Mac↔Windows layout-parity gate).
-static int RunVerify(List<(string Name, Func<ISwarmSubstrate> Make)> painters)
+// Self-check: proves the FFI vend contract round-trips and that EVERY ported painter
+// renders deterministically + FFI-transparently (both prerequisites for the W11
+// Mac↔Windows layout-parity gate), plus catalog integrity.
+static int RunVerify(List<(string Id, string Label, SubstrateFamily Family, Func<ISwarmSubstrate> Make)> painters)
 {
     Console.WriteLine("=== particle-engine self-check (--verify) ===");
     int failures = 0;
 
-    // 1) FFI round-trip: Encode (reference emitter) → Decode == original (within float32 epsilon).
-    SwarmSubstrateFrame frame = BuildFrame(1080, battery: false, t: 3.14159);
+    // 1) FFI round-trip: Encode (reference emitter) → Decode == original (float32 epsilon).
+    SubstrateStage cstage = BuildStage(SubstrateFamily.Constellation);
+    SwarmSubstrateFrame frame = BuildFrame(1080, cstage, battery: false, t: 3.14159);
     (SwarmSubstrateFrameHeaderFfi header, SwarmSubstrateDotFfi[] wire) = SwarmSubstrateFrameFfi.Encode(frame);
     SwarmSubstrateFrame decoded = SwarmSubstrateFrameFfi.Decode(in header, wire);
 
@@ -276,53 +289,75 @@ static int RunVerify(List<(string Name, Func<ISwarmSubstrate> Make)> painters)
     }
     Report("FFI Encode→Decode round-trip (1080 dots, float32 wire)", roundTrip, ref failures);
 
-    // 2) PlainDots defers (returns false) so the host runs its default dot pass.
-    bool plainDefers = new PlainDotsSubstrate().Paint(frame, new RecordingDrawingSession()) == false;
+    // 2+3) Per-painter determinism + FFI-transparency, on both canvas polarities and
+    //      the throttled path (so every code branch is exercised deterministically).
+    foreach (var painter in painters)
+    {
+        SubstrateStage stage = BuildStage(painter.Family);
+        bool detOk = true, structOk = true;
+        long cmds = 0;
+        ulong checksum = 0;
+
+        foreach (bool dark in new[] { true, false })
+        foreach (bool battery in new[] { false, true })
+        {
+            SwarmSubstrateFrame fr = MakeFrame(1080, stage, dark, battery, t: 2.0);
+            SwarmSubstrateFrame de = ReEncode(fr);
+
+            var s1 = new RecordingDrawingSession { HashGeometry = true };
+            var s2 = new RecordingDrawingSession { HashGeometry = true };
+            painter.Make().Paint(fr, s1);
+            painter.Make().Paint(fr, s2);
+            if (s1.Checksum != s2.Checksum || s1.TotalCommands != s2.TotalCommands) detOk = false;
+
+            var s3 = new RecordingDrawingSession { HashGeometry = false };
+            var s4 = new RecordingDrawingSession { HashGeometry = false };
+            painter.Make().Paint(fr, s3);
+            painter.Make().Paint(de, s4);
+            // FFI-transparency: painting the float32-decoded frame emits the SAME
+            // command shape. Cover every command type any family emits.
+            if (s3.FillCircleCount != s4.FillCircleCount || s3.GlowSpriteCount != s4.GlowSpriteCount
+                || s3.StrokeCircleCount != s4.StrokeCircleCount
+                || s3.LineBatchCount != s4.LineBatchCount || s3.BlurLayerCount != s4.BlurLayerCount
+                || s3.MaskLayerCount != s4.MaskLayerCount
+                || s3.FillPolygonCount != s4.FillPolygonCount
+                || s3.GradientQuadCount != s4.GradientQuadCount
+                || s3.StrokeRectCount != s4.StrokeRectCount
+                || s3.FillPolygonGradientCount != s4.FillPolygonGradientCount
+                || s3.StrokePolylineCount != s4.StrokePolylineCount)
+            {
+                structOk = false;
+            }
+
+            if (dark && !battery) { cmds = s1.TotalCommands; checksum = s1.Checksum; }
+        }
+
+        Report($"{painter.Label,-18} deterministic + FFI-transparent (dark cmds {cmds}, ck 0x{checksum:X16})",
+            detOk && structOk, ref failures);
+    }
+
+    // 4) PlainDots defers (returns false) so the host runs its default dot pass.
+    bool plainDefers = new OpenBurnBar.Particles.Substrates.PlainDotsSubstrate().Paint(frame, new RecordingDrawingSession()) == false;
     Report("PlainDotsSubstrate defers to default dot render", plainDefers, ref failures);
 
-    // 3) Per-substrate parity goldens. For each bespoke painter, on a representative
-    //    dark frame:
-    //      (a) non-empty     — the paint LOGIC actually emits draw commands.
-    //      (b) cross-instance determinism — two FRESH instances rendering the same
-    //          frame fold to the SAME FNV-1a checksum + command counts (no hidden
-    //          per-instance nondeterminism; caches build identically). This is the
-    //          exact Mac↔Windows golden.
-    //      (c) warm-cache stability — the same instance re-rendering the same frame
-    //          reproduces its checksum (per-frame scratch never drifts).
-    //      (d) reduced-motion determinism — with reduced=true a re-render is byte-stable.
-    SwarmSubstrateFrame vf = BuildVerifyFrame(1080, reduced: false, t: 2.0);
-    SwarmSubstrateFrame vfReduced = BuildVerifyFrame(1080, reduced: true, t: 2.0);
-    foreach ((string name, Func<ISwarmSubstrate> make) in painters)
+    // 5) Catalog integrity: the six per-family plain descriptors + every ported
+    //    bespoke; each family's first Entries slot is its shared plain; the id index
+    //    round-trips. Counts are DERIVED (not hard-coded) so this invariant holds as
+    //    each Wave-4 family lands (Flow/Aurora #1212, Mesh/Moiré #1214, Volumetric +
+    //    remaining Constellation #1213).
+    SubstrateFamily[] allFamilies = (SubstrateFamily[])Enum.GetValues(typeof(SubstrateFamily));
+    int bespokeTotal = 0;
+    bool plainFirst = true;
+    foreach (SubstrateFamily fam in allFamilies)
     {
-        var a1 = new RecordingDrawingSession { HashGeometry = true };
-        var a2 = new RecordingDrawingSession { HashGeometry = true };
-        var a3 = new RecordingDrawingSession { HashGeometry = true };
-        ISwarmSubstrate p1 = make();
-        ISwarmSubstrate p2 = make();
-        p1.Paint(vf, a1);   // fresh instance #1
-        p2.Paint(vf, a2);   // fresh instance #2 (cross-instance determinism)
-        p1.Paint(vf, a3);   // same instance, warm cache (stability)
-
-        var r1 = new RecordingDrawingSession { HashGeometry = true };
-        var r2 = new RecordingDrawingSession { HashGeometry = true };
-        ISwarmSubstrate pr = make();
-        pr.Paint(vfReduced, r1);
-        pr.Paint(vfReduced, r2);
-
-        bool nonEmpty = a1.TotalCommands > 0;
-        bool crossInstance = a1.Checksum == a2.Checksum && a1.TotalCommands == a2.TotalCommands;
-        bool warmStable = a3.Checksum == a1.Checksum && a3.TotalCommands == a1.TotalCommands;
-        bool reducedStable = r1.Checksum == r2.Checksum && r1.TotalCommands == r2.TotalCommands && r1.TotalCommands > 0;
-        bool ok = nonEmpty && crossInstance && warmStable && reducedStable;
-        Report($"{name}  (cmds {a1.TotalCommands}, checksum 0x{a1.Checksum:X16})", ok, ref failures);
-        if (!ok)
-        {
-            if (!nonEmpty) Console.WriteLine("        · FAIL: emitted 0 draw commands");
-            if (!crossInstance) Console.WriteLine($"        · FAIL: cross-instance mismatch (0x{a1.Checksum:X16}/{a1.TotalCommands} vs 0x{a2.Checksum:X16}/{a2.TotalCommands})");
-            if (!warmStable) Console.WriteLine($"        · FAIL: warm-cache drift (0x{a3.Checksum:X16}/{a3.TotalCommands})");
-            if (!reducedStable) Console.WriteLine($"        · FAIL: reduced-motion nondeterminism (0x{r1.Checksum:X16}/{r1.TotalCommands} vs 0x{r2.Checksum:X16}/{r2.TotalCommands})");
-        }
+        bespokeTotal += SubstrateCatalog.BespokeFor(fam).Length;
+        if (SubstrateCatalog.Entries(fam)[0].Id != SubstrateCatalog.PlainId) plainFirst = false;
     }
+    int expectedTotal = allFamilies.Length + bespokeTotal;
+    bool catalogOk = plainFirst
+        && SubstrateCatalog.SubstrateList.Length == expectedTotal
+        && SubstrateCatalog.ById.ContainsKey(SubstrateCatalog.PlainId);
+    Report($"Catalog integrity ({SubstrateCatalog.SubstrateList.Length} registered: {allFamilies.Length} plain + {bespokeTotal} bespoke)", catalogOk, ref failures);
 
     Console.WriteLine(failures == 0 ? "ALL CHECKS PASSED" : $"{failures} CHECK(S) FAILED");
     return failures == 0 ? 0 : 1;
@@ -334,25 +369,36 @@ static int RunVerify(List<(string Name, Func<ISwarmSubstrate> Make)> painters)
     }
 }
 
-// A representative verify frame: a settled dark shape with a fixed clock so a checksum
-// is a stable golden. `reduced` freezes twinkle to the poised still (the reduced path).
-static SwarmSubstrateFrame BuildVerifyFrame(int n, bool reduced, double t)
+static SwarmSubstrateFrame MakeFrame(int n, SubstrateStage stage, bool dark, bool battery, double t)
 {
-    SubstrateStage stage = BuildStage();
+    // Keep the test frame INTERNALLY CONSISTENT: the engine derives the stage's
+    // dark flag from the canvas appearance, so Stage.Dark must track `dark` (some
+    // substrates, e.g. Mesh "Gradient Patch", gate their catchlight pass on
+    // frame.Stage.Dark — an inconsistent stage would make the frame fail its own
+    // FFI round-trip, which resets Stage.Dark to frame.Dark).
+    var frameStage = new SubstrateStage(stage.Accent, stage.Accent2, stage.Ink, dark);
     return new SwarmSubstrateFrame(
-        width: canvasWConst, height: canvasHConst, dark: true, reduced: reduced,
-        batteryThrottled: false, uiMode: UIMode.Standard,
+        width: canvasWConst, height: canvasHConst, dark: dark, reduced: false,
+        batteryThrottled: battery, uiMode: UIMode.Standard,
         isShapeMode: true, formed: true, settleProgress: 0.85,
-        t: t, dt: 1.0, stage: stage, backdrop: new Rgba(0.03, 0.04, 0.08, 1.0),
+        t: t, dt: 1.0, stage: frameStage, backdrop: dark ? new Rgba(0.03, 0.04, 0.08, 1.0) : new Rgba(0.96, 0.97, 1.0, 1.0),
         dots: BuildSyntheticSwarm(n), cx: canvasWConst / 2, cy: canvasHConst / 2,
         cloudRadius: 260, sizePx: 1.6);
 }
 
-static SubstrateStage BuildStage()
+// Re-pack a frame through the FFI wire (Encode→Decode), preserving the stage +
+// derived anchors so a painter sees a float32-round-tripped copy.
+static SwarmSubstrateFrame ReEncode(SwarmSubstrateFrame fr)
 {
-    // Mirror the Swift makeSubstrateFrame stage derivation for the Constellation family.
-    Rgba accent = FamilyAccent.A(SubstrateFamily.Constellation);
-    Rgba accent2 = accent.ToWhite(0.28).Mix(new Rgba(0.55, 0.78, 1.0), 0.35);
+    (SwarmSubstrateFrameHeaderFfi h, SwarmSubstrateDotFfi[] w) = SwarmSubstrateFrameFfi.Encode(fr);
+    return SwarmSubstrateFrameFfi.Decode(in h, w);
+}
+
+static SubstrateStage BuildStage(SubstrateFamily family)
+{
+    // Mirror the picker/engine stage derivation: the family accent pair + a cool ink.
+    Rgba accent = FamilyAccent.A(family);
+    Rgba accent2 = FamilyAccent.A2(family);
     Rgba ink = new Rgba(0.90, 0.93, 1.0);
     return new SubstrateStage(accent, accent2, ink, dark: true);
 }

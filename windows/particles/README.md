@@ -23,15 +23,22 @@ Swift Core (already compiles on Windows, Phase 1)
 C#  OpenBurnBar.Particles  (net8.0, PLATFORM-AGNOSTIC — builds + runs on macOS)
   Model/           SwarmSubstrateFrame + SwarmSubstrateDot + SubstrateStage  (1:1 Swift port)
   Math/            SubstrateKit  (TAU/clamp/lerp/frac/smooth+smootherstep/shash/breathe/XorShift32/ramps)
-                   OklabColor    (perceptual OKLab ramp mix, bake-time only)
-  Drawing/         ISubstrateDrawingSession  ── the seam (fill/glow/line-batch/blur + polygon/
-                   rounded-quad/ring/rect/linear-gradient/oriented-shaft/dashed-batch)
+                   OklabColor          ── perceptual OKLab ramp mix (bake-time only)
+                   SubstrateStructure  ── NN-walk + kNN provider (grid, O(n)); cached by topology
+  Model/           SubstrateDescriptor ── one style's metadata + painter factory
+  Drawing/         ISubstrateDrawingSession  ── the seam: circles/glow sprites/blur+radial-mask layers
+                                                 + polygons/gradient polygons/polylines (Vec2) + rects/
+                                                 rounded-quads/rings/linear-gradient rects/oriented god-ray
+                                                 shafts/dashed batches + PointD facets + GlowProfile
                    RecordingDrawingSession   ── headless: counts commands + FNV geometry checksum
-                   SubstrateGeometry         ── Vec2 + GradientStop value types
+                   SubstrateGeometry         ── PointD + GlowProfile value types
   Substrates/      PlainDots + Constellation{Starfire, StarSapphire, Stellarium, Rimefrost}
+                   Flow/    PlanktonWake · GlassRibbon · SilkStreamline · PetalDrift
+                   Aurora/  Wisp · IcePrism · AuroraFilament · DriftMotes
+                   Mesh/    Caustic · Patch · Isoline · Grain
+                   Moire/   FringeBloom · LatticeFacet · RulingGrating · FilmBubble
                    + Volumetric{Sunshaft, SmokedGlass, SilkFilament, DustMotes}
-                   SubstrateStructure        ── O(n) kNN order/neighbors/breaks (Silk + Stellarium)
-                   Catalog/                  ── SubstrateDescriptor + family registries + SubstrateCatalog
+                   Families/ + SubstrateCatalog  ── the registry (mirrors SubstrateCatalog.swift)
   Ffi/             SwarmSubstrateFrameFfi    ── blittable wire structs + Decode()
         │
         ▼  ISubstrateDrawingSession (the ONLY Windows-gated seam)
@@ -104,6 +111,32 @@ renderer's CPU side is a non-issue even at 2000 particles; **budget the spike at
 GPU compositor**, which this harness deliberately does not (and cannot, headless)
 measure.
 
+### Flow + Aurora families — measured on this box (Apple M-series, arm64, .NET 10)
+
+All 9 bespoke painters (Constellation·Starfire + the full Flow + Aurora families),
+dark canvas, full path, formed hold, 400 timed frames. Every scenario clears the
+60fps **and** 120fps CPU budget with large headroom; worst cases below.
+
+| substrate | family | worst median ms (@2000) | 60fps CPU | draw cmds |
+|---|---|---:|:--:|---:|
+| Plankton Wake | Flow | 0.232 | PASS (72x) | 14,217 (glow+blur) |
+| Glass Ribbon | Flow | 0.560 | PASS (30x) | 10,840 (gradient quads + rail strokes) |
+| Silk Streamline | Flow | 0.075 | PASS (223x) | 970 (a handful of fat ribbons) |
+| Petal Drift | Flow | 0.612 | PASS (27x) | 6,001 (tessellated teardrops) |
+| Wisp Plasma | Aurora | 0.243 | PASS (69x) | 8,204 (glow+blur) |
+| Polar Ice Prism | Aurora | 0.170 | PASS (98x) | 11,504 (facet polys + wedges) |
+| Aurora Filament | Aurora | 0.095 | PASS (176x) | 7 (one broken wire, stacked strokes) |
+| Drift Motes | Aurora | 0.055 | PASS (301x) | 3,602 (motes capped at 900) |
+
+The three streamline substrates (Glass Ribbon / Silk Streamline / Aurora Filament)
+consume the cached NN-walk/kNN `SubstrateStructure`; its one-time cold build —
+paid on a **reform**, not per frame — is 0.27 ms @520, 0.58 ms @1080, 1.00 ms
+@2000 dots, so even a fresh topology stays comfortably within a single frame.
+
+`--verify` proves, for every painter, deterministic checksums + FFI-transparent
+command shape across both canvas polarities and the throttled path, plus catalog
+integrity (6 plain + 9 bespoke = 15 registered).
+
 ## FFI vend contract (Swift → C#)
 
 Precisely specified in `OpenBurnBar.Particles/Ffi/SwarmSubstrateFrameFfi.cs`:
@@ -118,18 +151,40 @@ centroid/cloudRadius/sizePx, and stage derivation.
 ## Status / next
 
 - ✅ Renderer core + math kit + drawing seam + FFI contract — built green on macOS.
-- ✅ **8 of 24 bespoke painters** — PlainDots + the full **Constellation** family
-  (Starfire, StarSapphire, Stellarium, Rimefrost) + the full **Volumetric** family
-  (Sunshaft, SmokedGlass, SilkFilament, DustMotes) — faithful line-for-line ports,
-  plus the shared kNN `SubstrateStructure`, `OklabColor`, and the C# `SubstrateCatalog`.
-- ✅ Extended drawing seam — polygon/rounded-quad/ring/rect/linear-gradient/oriented-
-  shaft/dashed-batch primitives added to `ISubstrateDrawingSession` +
-  `RecordingDrawingSession` (macOS-verified) + `Win2DSubstrateDrawingSession`
-  (Windows-gated).
-- ✅ Headless perf + parity harness — real numbers above; `--verify` green for all 8.
-- ✅ Win2D host + adapter kept in sync (CanvasGeometry fill/stroke, FillRoundedRectangle,
-  CanvasLinearGradientBrush, transformed shaft mask, dashed stroke) — Windows/CI-deferred
-  compile+render (not build-verifiable on macOS).
-- ⏳ **Windows/CI-deferred:** live render + GPU 60fps @ ARM64 measurement; the Swift
-  `obb_swarm_vend_frame` emitter; the remaining **16 bespoke painters** (Flow / Aurora
-  / Mesh / Moire — fanning out in sibling lanes, appending to `SubstrateCatalog`).
+
+**Wave-4 integration (`windows/integration-w4`)** consolidates the three parallel
+substrate-family lanes into one catalog + one drawing seam + one headless harness:
+
+- ✅ PlainDots + Starfire (Constellation) painters — faithful line-for-line ports (#1202).
+- ✅ **Flow family (4)** — Plankton Wake · Glass Ribbon · Silk Streamline · Petal Drift (#1212).
+- ✅ **Aurora family (4)** — Wisp · Ice Prism · Aurora Filament · Drift Motes (#1212).
+- ✅ **Mesh family (4)** — Caustic Pool · Gradient Patch · Iso Contour · Living Grain (#1214).
+- ✅ **Moiré family (4)** — Fringe Bloom · Lattice Facet · Ruling Grating · Film Bubble (#1214).
+- ✅ **Volumetric family + remaining Constellation** — Sunshaft · Smoked Glass · Dust Motes
+  · Silk Filament · Star Sapphire · Stellarium · Rimefrost (#1213).
+- ✅ Every family's bespoke painters live under `Substrates/<Family>/`, and each family's
+  registry (`Substrates/Families/<Family>Family.cs`) is aggregated by the single
+  `SubstrateCatalog` (mirrors Swift `SubstrateCatalog.swift`). Each family adds only its own
+  registry array; the catalog file is the one documented merge point.
+- ✅ `SubstrateStructure` (grid-based NN-walk + k-NN neighbor graph) ported once, shared by
+  the streamline substrates (Glass Ribbon, Silk Streamline, Aurora Filament) and the Mesh
+  "Caustic Pool" refracted filament net (connected-node lattice). `SwarmSubstrateFrame`
+  carries a lazily-built, injectable `Structure` so the sim can reuse the topology cache.
+- ✅ **Drawing seam** — the union of every family's `CanvasDrawingSession` subset:
+  circles, glow sprites (with a `GlowProfile`: glow / glass-sphere / spark), stroked
+  circles (Film-Bubble rims), filled/gradient/rotated-rounded-rect polygons + polylines
+  (facet lattices, stained-glass panes, silk ribbons, aurora filaments), batched line
+  strokes, blur layers (with a `layerOpacity` haze multiply) and a radial alpha-mask layer
+  (Ruling-Grating full-field feather). Implemented in all three sinks: the interface,
+  `RecordingDrawingSession` (command tallies + order-sensitive FNV checksum), and the
+  Windows `Win2DSubstrateDrawingSession` / sprite caches.
+- ✅ Headless perf harness is **catalog-driven** — it benchmarks every registered bespoke
+  painter and `--verify` proves each renders **deterministically** (stable checksum +
+  command counts on a repeat render) and is **FFI-transparent** (the decoded frame yields
+  the same command shape), plus a derived catalog-integrity invariant. Real numbers above.
+- ✅ Win2D host + adapter authored (CanvasAnimatedControl, CanvasBlend.Add,
+  GaussianBlurEffect, CanvasRadialGradientBrush, CanvasGeometry polygons +
+  CanvasLinearGradientBrush + CustomDashStyle, AlphaMaskEffect, OpacityEffect).
+- ⏳ **Windows/CI-deferred:** live GPU render + 60fps @ ARM64 measurement on a real device
+  (the `CanvasAnimatedControl` host is Windows-gated, not compiled/rendered on macOS CI);
+  the Swift `obb_swarm_vend_frame` emitter.

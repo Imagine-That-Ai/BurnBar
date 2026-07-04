@@ -20,8 +20,41 @@ Unpackaged WinUI 3 (C#/.NET 8, `net8.0-windows10.0.19041.0`). What it demonstrat
 | Main window | `MainWindow.xaml(.cs)` | main app window |
 | **Live CLI stream wired to a STUB** | `Views/LiveCliStreamView.xaml(.cs)`, `ViewModels/*`, `Cli/ICliStream.cs`, `Cli/StubCliStream.cs` | `CLIProcessStreamRunner` |
 | Seeded design tokens | `Theme/Tokens.xaml` | `Theme/DesignSystem.swift` |
+| **First-run onboarding wizard** (Frame-navigated, 7 steps) | `Onboarding/*` + `Onboarding/Steps/*` | `AgentLens/Views/Onboarding/*` |
 
 The **only** stub is `StubCliStream` (a canned, timed transcript); WINUI-017 / W1–W2 replace it with a
 ConPTY-backed source behind the same `ICliStream` seam. See the runbook for exact build/run/record steps.
 
 Source files here (`.cs` / `.xaml`) are ratcheted by the per-tree budget under the `app` area.
+
+### `OpenBurnBar.App.Settings/` + `OpenBurnBar.App/Settings/` — Settings shell + search (W7)
+
+The **Settings** surface, split into a portable core and its WinUI face — the Windows peer of
+`AgentLens/Views/Settings/` (`SettingsView` / `SettingsTab` + `Search/{SettingsManifest,SettingsRouter,`
+`SettingsSearchEngine,SettingsItem,SettingsSearchResultsView}`).
+
+| Piece | Where | macOS analog |
+|------|-------|--------------|
+| **Portable search core** — `net8.0`, no Windows deps: manifest (104 rows), weighted ranking engine, router path logic, route-display breadcrumbs, provider identity subset | `OpenBurnBar.App.Settings/` | `Search/*.swift` + `AgentProvider` |
+| **Real unit tests** — 75 xUnit tests run on macOS via `dotnet test` | [`../tests/settings/`](../tests/settings/) | search/manifest/router coverage |
+| **WinUI shell + leaf pages** — `NavigationView` sidebar + `AutoSuggestBox` search + `SettingsCard`/`SettingsExpander` forms (General, Appearance, Updates) with real jump-to-anchor scroll+pulse | `OpenBurnBar.App/Settings/` | `SettingsView` sidebar/detail |
+
+The portable core (`OpenBurnBar.App.Settings`, referenced by the app and by the test project) **builds
+and is unit-tested on the macOS authoring host today**. The WinUI XAML that binds it is
+XamlCompiler-deferred (same gate as WINUI-016). The `NavigationView` app-shell that will host
+`SettingsPage` as a nav destination is reconciled by the shell lane (#1203).
+
+### `Onboarding/` — first-run wizard (W7 · Bucket A)
+
+Windows port of `AgentLens/Views/Onboarding/*`. An `OnboardingWindow` (the macOS 520×620 first-run
+window) hosts `OnboardingPage`, a Frame-navigated step wizard: a gradient progress bar, the seven step
+Pages (`Steps/`) with slide transitions, and a Back / Skip / Continue footer. `FlowLayout.swift` becomes
+`FlowLayoutPanel` (a wrap `Panel`); the provider pill, the Hermes setup `ContentDialog`, and the analytics
+consent `ContentDialog` round out the surface. Everything consumes the shared design tokens
+(`Theme/Tokens.xaml`, `PensieveTokens`, `ProviderBrand`) and the LiquidGlass chokepoint.
+
+The parity-critical logic is a **portable, unit-tested** core (System-only, NO WinUI): the wizard step
+machine, the chat-backend model, the wrapping-flow math, and the Hermes reachability derivation. It is
+asserted off-Windows by `windows/tests/onboarding/OpenBurnBar.App.Onboarding.Tests` (net10.0, xUnit) —
+`dotnet test` runs today on the macOS host. The XAML views are Windows-only and are type-checked at the
+XamlCompiler gate (WINUI-017 / dev-host).

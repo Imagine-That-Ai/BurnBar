@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PetCompanion overlay window — the transparent, click-through, non-activating
+  window the desktop pet lives in (Windows peer of PetPanel.swift). The window's
+  HWND is styled WS_EX_LAYERED | TRANSPARENT | TOOLWINDOW | NOACTIVATE via the
+  shared OpenBurnBar.Pal.Overlay.ExistingWindowOverlay helper (single-source flag
+  math). It hosts:
+    * a transparent WebView2 (three.js pet, driven by WebView2PetGltfHost), and
+    * the PetChatBubbleView speech bubble (reuses the landed Chat VM).
+  Windows-gated (WinUI + WebView2 build only on Windows).
+-->
+<Window
+    x:Class="OpenBurnBar.App.Pet.PetOverlayWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:pet="using:OpenBurnBar.App.Pet"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid x:Name="RootGrid" Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- The pet render surface (transparent three.js scene). -->
+        <controls:WebView2 x:Name="PetWebView"
+                           Grid.Row="0"
+                           DefaultBackgroundColor="Transparent" />
+
+        <!-- The speech bubble, anchored under the pet. -->
+        <pet:PetChatBubbleView x:Name="Bubble"
+                              Grid.Row="1"
+                              Margin="8"
+                              Visibility="Collapsed" />
+    </Grid>
+</Window>

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Components.UnifiedToolCallAccordion"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of OpenBurnBarCore/.../UnifiedToolCallAccordion.swift — a collapsed-by-default
+      disclosure showing the most-recent tool call; tap to reveal the full history with arguments
+      and results. The collapsed-row content, the +N badge count, the status classification, and
+      the icon all come from the parity-tested ToolCallDisplay / ToolCallAccordionModel. The
+      expanded rows are built in code-behind. AccentColor tints the icon/name/stroke per surface.
+    -->
+    <Border x:Name="Root"
+            CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+            BorderThickness="0.75"
+            Background="{StaticResource PensieveColorGlassBgBrush}">
+        <StackPanel>
+            <Button x:Name="HeaderButton"
+                    Click="OnHeaderClick"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="12,8">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon x:Name="HeaderIcon"
+                              Grid.Column="0"
+                              FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                              FontSize="13"
+                              VerticalAlignment="Center" />
+                    <TextBlock x:Name="HeaderName"
+                               Grid.Column="1"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="HeaderDetail"
+                               Grid.Column="2"
+                               FontSize="12"
+                               Margin="4,0,0,0"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                    <Border x:Name="ExtraBadge"
+                            Grid.Column="3"
+                            Visibility="Collapsed"
+                            Padding="6,2"
+                            CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                            Background="{StaticResource PensieveColorInkElevatedBrush}"
+                            VerticalAlignment="Center">
+                        <TextBlock x:Name="ExtraCount"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </Border>
+                    <Ellipse x:Name="StatusDot"
+                             Grid.Column="4"
+                             Width="7"
+                             Height="7"
+                             VerticalAlignment="Center" />
+                    <FontIcon x:Name="Chevron"
+                              Grid.Column="5"
+                              FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                              Glyph="&#xE70D;"
+                              FontSize="10"
+                              VerticalAlignment="Center"
+                              Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                              RenderTransformOrigin="0.5,0.5">
+                        <FontIcon.RenderTransform>
+                            <RotateTransform x:Name="ChevronRotation" />
+                        </FontIcon.RenderTransform>
+                    </FontIcon>
+                </Grid>
+            </Button>
+
+            <StackPanel x:Name="ExpandedBody"
+                        Visibility="Collapsed"
+                        Padding="12,0,12,8"
+                        Spacing="8" />
+        </StackPanel>
+    </Border>
+</UserControl>

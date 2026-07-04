@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ConceptStatTile — the shared floating glass stat tile the five concept layouts
+  compose (Windows peer of the ConceptStatTile / stat-pill primitives in
+  AgentLens/Views/Dashboard/Layouts/Components/). A UnifiedGlassCard plate with a
+  big value, a caption, and an accent hairline.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.Layouts.ConceptStatTile"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:OpenBurnBar.App.Components"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <components:UnifiedGlassCard Interactive="True">
+        <Grid RowSpacing="4" MinWidth="120">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Height="3"
+                    Width="26"
+                    HorizontalAlignment="Left"
+                    CornerRadius="2"
+                    Background="{x:Bind AccentBrush, Mode=OneWay}" />
+
+            <TextBlock Grid.Row="1"
+                       Margin="0,6,0,0"
+                       FontSize="26"
+                       FontWeight="Bold"
+                       Text="{x:Bind Value, Mode=OneWay}" />
+
+            <TextBlock Grid.Row="2"
+                       Opacity="0.65"
+                       FontSize="12"
+                       Text="{x:Bind Caption, Mode=OneWay}" />
+        </Grid>
+    </components:UnifiedGlassCard>
+</UserControl>

@@ -77,7 +77,7 @@ public sealed class SilkFilamentSubstrate : ISwarmSubstrate
             return true;
         }
 
-        SubstrateStructure.Structure s = _structure.Build(dots, 6);
+        SubstrateStructure.Structure s = _structure.Get(dots, 6);
         int[] order = (s.Order.Length == count && AllInRange(s.Order, count)) ? s.Order : Identity(count);
 
         if (_px.Length != count)

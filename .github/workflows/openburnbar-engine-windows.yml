@@ -44,12 +44,14 @@ on:
     branches: [main]
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Package.resolved"
       - ".github/workflows/openburnbar-engine-windows.yml"
   pull_request:
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Package.resolved"
       - ".github/workflows/openburnbar-engine-windows.yml"
@@ -244,6 +246,15 @@ jobs:
         # when all walking-skeleton assertions pass, so this step IS the G1 gate.
         run: swift run --package-path OpenBurnBarCore OpenBurnBarWalkingSkeleton
 
+      # Phase-2 parser path-remap parity (G2). Runs the Foundation-only parity
+      # executable that asserts the parser PATH layer resolves BYTE-IDENTICALLY on
+      # this native Windows host: the Claude Code `~/.claude/projects` codec
+      # (PATH-021) over the committed capture corpus + the `LogPathPlatform`
+      # `%USERPROFILE%`/`%APPDATA%`/`%LOCALAPPDATA%` root remap vs an inline golden.
+      # Exits 0 only when every assertion passes, so this step IS the path-layer G2 gate.
+      - name: Run Phase-2 parser path-remap parity
+        run: swift run --package-path OpenBurnBarCore OpenBurnBarWindowsParserPathParity
+
   # ──────────────────────────────────────────────────────────────────────────
   # ARM64 leg (aarch64-unknown-windows-msvc) on the free `windows-11-arm` runner.
   # Mirrors the x64 `build` job step-for-step, diverging only where the arch
@@ -414,3 +425,10 @@ jobs:
       # only when all walking-skeleton assertions pass.
       - name: Run Phase-1 walking skeleton (ARM64)
         run: swift run --package-path OpenBurnBarCore OpenBurnBarWalkingSkeleton
+
+      # Phase-2 parser path-remap parity (G2), natively on aarch64. Same portable
+      # path-layer byte-diff as the x64 leg — Claude Code codec corpus + the
+      # `LogPathPlatform` root remap golden — proving the parser PATH contract on
+      # ARM64 Windows with no hardware.
+      - name: Run Phase-2 parser path-remap parity (ARM64)
+        run: swift run --package-path OpenBurnBarCore OpenBurnBarWindowsParserPathParity
