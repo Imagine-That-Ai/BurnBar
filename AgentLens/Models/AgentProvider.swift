@@ -49,11 +49,27 @@ enum DataConfidence {
 /// watch local logs, so these accessors only ship on macOS.
 extension AgentProvider {
     /// Filesystem directory where the provider writes session logs the
-    /// macOS file watcher can scrape. Some providers (e.g. `.openAI`) have
-    /// no local logs at all — they reuse another path so the file watcher's
-    /// exhaustive switch never crashes; the `filePattern` for those entries
-    /// pins a non-matching glob so no files are ever read.
+    /// file watcher can scrape, resolved for the current host.
+    ///
+    /// On macOS/Linux this returns the historical `~/…` logical form
+    /// (`logDirectoryMacForm`) **unchanged**, so every existing caller — which
+    /// applies `expandingTildeInPath` itself — is byte-for-byte identical to
+    /// today. On Windows `LogPathPlatform` remaps the tilde root to
+    /// `%USERPROFILE%` / `%APPDATA%` / `%LOCALAPPDATA%` (Windows-port Phase-2
+    /// parser path-remap, `docs/windows-port/PARSER_OUTPUT_CONTRACT.md`); the
+    /// result is absolute, so the caller's `expandingTildeInPath` is a harmless
+    /// no-op over it. Some providers (e.g. `.openAI`) have no local logs at all —
+    /// they reuse another path so the exhaustive switch never crashes; the
+    /// `filePattern` for those entries pins a non-matching glob so no files are
+    /// ever read.
     var logDirectory: String {
+        LogPathPlatform.resolveLogDirectory(logDirectoryMacForm)
+    }
+
+    /// The historical macOS/Linux `~/…` logical log directory per provider — the
+    /// ground-truth table. `logDirectory` layers the Windows path remap on top;
+    /// on POSIX hosts the remap is a pass-through so this value flows out unchanged.
+    private var logDirectoryMacForm: String {
         switch self {
         case .factory: return "~/.factory/sessions"
         case .claudeCode: return "~/.claude/projects"

@@ -180,6 +180,26 @@ final class ClaudeCodeParser: LogParser, Sendable {
     }
 
     private func decodeProjectName(_ encoded: String) -> String {
+        #if os(Windows)
+        // Windows-port Phase-2 parser path-remap: on Windows the project directory
+        // is encoded from a Windows `cwd` — drive form (`C--Users-Alice-project`)
+        // or UNC (`--server-share-project`) — which the macOS `-Users-` heuristic
+        // below never recognizes. Route those through the shared PATH-021 decoder
+        // (`ClaudeCodeProjectPathCodec`, now Windows-buildable in the Engine) and
+        // mirror the macOS home-relative convention (`~/<tail>` under `\Users\<user>`).
+        if !encoded.hasPrefix("-Users-") {
+            let decoded = ClaudeCodeProjectPathCodec.decode(encoded, style: .windows)
+            let backslash: Character = "\\"
+            let components = decoded.reconstructedPath
+                .split(separator: backslash, omittingEmptySubsequences: true)
+                .map(String.init)
+            if components.count >= 4,
+               components[1].caseInsensitiveCompare("Users") == .orderedSame {
+                return "~/" + components.dropFirst(3).joined(separator: "/")
+            }
+            return decoded.displayPath
+        }
+        #endif
         guard encoded.hasPrefix("-Users-") else {
             return encoded
         }
