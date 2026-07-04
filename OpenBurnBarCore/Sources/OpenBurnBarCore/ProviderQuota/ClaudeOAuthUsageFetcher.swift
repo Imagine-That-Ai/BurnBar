@@ -621,5 +621,5 @@ public struct ClaudeRateLimits: Sendable, Equatable {
 /// holds one.
 struct FileManagerSendableBox: Sendable {
     let value: FileManager
-    public init(_ value: FileManager) { self.value = value }
+    init(_ value: FileManager) { self.value = value }
 }
