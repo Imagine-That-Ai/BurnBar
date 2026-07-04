@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable computer-use INPUT PATH core for the Windows PAL (W5 / R17).
+
+    This library holds the PLATFORM-INDEPENDENT half of the ViGEm virtual-HID input
+    route — the "non-bypassable action" path from the master plan §9.5 / R17:
+
+      • the advisory-vs-non-bypassable ACTION CLASSIFICATION (which input actions may
+        ride Win32 SendInput — where the capability-token gate is only *advisory*
+        because any same-integrity process can bypass it — and which MUST route
+        through the ViGEm virtual-HID device where the gate is structurally enforced),
+      • the GATE-BEFORE-DISPATCH decision (a non-bypassable action requires a VALID,
+        signed, unexpired, unreplayed capability token BEFORE any report reaches the
+        virtual-HID sink; token-absent fails closed),
+      • the capability-token verification state machine (Ed25519 signature + TTL +
+        single-use nonce + action ∈ allowed + budget + scope/attestation/escrow
+        binding), ported 1:1 from OpenBurnBarComputerUseCore.CapabilityTokenLeafVerifier,
+      • the triple kill-switch (RC halt / signed local channel / watchdog heartbeat)
+        with fail-closed-on-RC-error (R17), and
+      • the audit record emitted BEFORE dispatch (fail-closed: no durable audit ⇒ no
+        dispatch), forward-compatible with the Ed25519 audit chain.
+
+    It targets plain net8.0 (no Windows TFM, zero P/Invoke, zero OS calls) on purpose:
+    the same assembly compiles and its logic is unit-tested on the macOS authoring host
+    today (windows/tests/input), then the Windows adapter
+    (OpenBurnBar.Pal.Input.Windows, net8.0-windows) plugs the ViGEmBus virtual controller
+    and the Win32 SendInput advisory sink in behind IVirtualHidInputSink for the live
+    proof on a Windows dev host.
+
+    Ed25519 is provided by BouncyCastle.Cryptography (pure-managed, no native deps, so it
+    restores + runs on macOS). Curve25519.Signing on macOS and Ed25519 here are the SAME
+    primitive over the SAME canonical signable bytes (CapabilityTokenCanonicalizer), so a
+    token minted by the macOS PDP verifies here byte-for-byte.
+
+    Security invariants preserved verbatim (master plan §9.5 / R17): capability-token
+    issuance/verification, Ed25519 audit-chain readiness, triple kill-switch, and
+    fail-closed-on-RC-error / fail-closed-on-audit-error.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Pal.Input</RootNamespace>
+    <AssemblyName>OpenBurnBar.Pal.Input</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pure-managed Ed25519 (matches macOS CryptoKit Curve25519.Signing over the same
+         canonical bytes). No native deps: restores + runs on macOS CI and Windows. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+  </ItemGroup>
+
+</Project>

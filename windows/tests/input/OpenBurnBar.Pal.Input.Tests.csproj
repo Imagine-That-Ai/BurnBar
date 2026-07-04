@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS unit tests for the PORTABLE ViGEm virtual-HID input path (W5 / R17). Runs on the
+    macOS authoring host today via `dotnet test`: real Ed25519 (BouncyCastle) capability
+    tokens, the advisory-vs-non-bypassable classification, the gate-before-dispatch state
+    machine, the triple kill-switch (fail-closed), and the R17 structural guarantee that the
+    ViGEm sink is unreachable without a valid token. No Windows APIs, no ViGEmBus, no
+    SendInput — those live in OpenBurnBar.Pal.Input.Windows and are proven on a Windows dev
+    host / Windows CI.
+
+    Mirrors windows/tests/ipc (net10.0, xUnit) so the toolchain is the one already proven
+    on this host.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../pal/input/OpenBurnBar.Pal.Input.csproj" />
+  </ItemGroup>
+
+</Project>
