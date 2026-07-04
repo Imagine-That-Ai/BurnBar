@@ -26,8 +26,6 @@ public static class SurfacePageResolver
         // NavCatalog.Auxiliary + ElderWandPage.xaml for the macOS reachability-parity rationale.
         "memory" => typeof(OpenBurnBar.App.Memory.MemoryPage),
         "elderWand" => typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
-        "sessionLogs" => typeof(OpenBurnBar.App.SessionLogs.SessionLogsPage),
-        "memory" => typeof(OpenBurnBar.App.Memory.MemoryPage),
         "onboarding" => typeof(OpenBurnBar.App.Onboarding.OnboardingPage),
         "settings" => typeof(OpenBurnBar.App.Settings.Winui.SettingsPage),
         _ => typeof(SurfaceStubPage),
