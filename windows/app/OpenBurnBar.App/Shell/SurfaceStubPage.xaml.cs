@@ -38,7 +38,7 @@ public sealed partial class SurfaceStubPage : Page
 
             _liveView = new LiveCliStreamView();
             LiveHost.Child = _liveView;
-            _liveView.Attach(new StubCliStream(), autoStart: true);
+            _liveView.Attach(CliStreamFactory.CreateDefault(), autoStart: true);
         }
     }
 
