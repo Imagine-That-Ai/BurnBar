@@ -37,7 +37,7 @@ import Foundation
 
 public struct XAIQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
-    
+
     // MARK: - Dependencies
 
     /// Keychain used to read the Cursor-connector management key fallback.

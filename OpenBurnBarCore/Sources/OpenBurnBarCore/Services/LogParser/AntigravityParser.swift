@@ -98,7 +98,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
         var lastProcessedInputChars = 0
         var lastProcessedAssistantChars = 0
-        
+
         var calculatedInputTokens = 0
         var calculatedCacheReadTokens = 0
         var calculatedCacheCreationTokens = 0
@@ -135,10 +135,10 @@ public final class AntigravityParser: LogParser, Sendable {
                 // User content
                 currentUserChars += content.count
                 currentUserMsgCount += 1
-                
+
                 acc.userVisibleChars += content.count
                 acc.userMessageCount += 1
-                
+
                 if !content.isEmpty {
                     acc.userWords += wordCount(content)
                     if acc.firstUserText == nil {
@@ -171,7 +171,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
                 // 1. Preceding context acts as the input context for this turn
                 let turnInputChars = currentSystemChars + currentUserChars + currentToolOutputChars + currentAssistantVisibleChars + currentToolCallArgChars
-                
+
                 // 2. Output components generated during this turn
                 let turnAssistantVisibleChars = content.count
                 let turnThinkingChars = thinking.count
@@ -204,10 +204,10 @@ public final class AntigravityParser: LogParser, Sendable {
                     // Subsequent turns: The preceding turn's total context is cached.
                     let cachedChars = lastProcessedInputChars + lastProcessedAssistantChars
                     let cachedTokens = TokenExtractionUtility.estimatedTokenCount(for: cachedChars, charsPerToken: 3.35)
-                    
+
                     let cacheRead = min(cachedTokens, estimated.input)
                     let cacheCreation = max(estimated.input - cacheRead, 0)
-                    
+
                     calculatedCacheReadTokens += cacheRead
                     calculatedCacheCreationTokens += cacheCreation
                 }

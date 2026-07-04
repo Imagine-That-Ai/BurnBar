@@ -1,6 +1,5 @@
 import Foundation
 
-
 // MARK: - Goose Parser
 
 /// Parses Goose (Block) sessions from the active Goose data directory.

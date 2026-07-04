@@ -1,6 +1,5 @@
 import Foundation
 
-
 // MARK: - Forge Dev Parser
 
 /// Parses Forge sessions from local SQLite databases, with JSONL as a last resort.

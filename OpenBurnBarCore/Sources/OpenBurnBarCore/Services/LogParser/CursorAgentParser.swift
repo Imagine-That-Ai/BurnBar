@@ -40,21 +40,21 @@ public final class CursorAgentParser: LogParser, Sendable {
 
         for item in contents {
             let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(metadata read fallback)
-            
+
             if isDirectory {
                 // Scenario 1: Nested Directory Mode
                 let sessionId = item.lastPathComponent
                 let transcriptJSONL = item.appendingPathComponent("transcript.jsonl")
                 let chatHistoryJSONL = item.appendingPathComponent("chat_history.jsonl")
                 let historyJSONL = item.appendingPathComponent("history.jsonl")
-                
+
                 let transcriptFile = fm.fileExists(atPath: transcriptJSONL.path) ? transcriptJSONL :
                                     (fm.fileExists(atPath: chatHistoryJSONL.path) ? chatHistoryJSONL :
                                     (fm.fileExists(atPath: historyJSONL.path) ? historyJSONL : nil))
-                
+
                 guard let file = transcriptFile else { continue }
                 let summaryURL = item.appendingPathComponent("summary.json")
-                
+
                 if let pair = parseSession(file: file, sessionId: sessionId, summaryURL: summaryURL) {
                     if let usage = pair.usage { usages.append(usage) }
                     if let conv = pair.conversation { conversations.append(conv) }
@@ -97,7 +97,7 @@ public final class CursorAgentParser: LogParser, Sendable {
             summaryModel = json["model"] as? String ?? (json["current_model_id"] as? String)
             summaryTitle = json["title"] as? String ?? (json["generated_title"] as? String) ?? (json["session_summary"] as? String)
             summaryProject = json["projectName"] as? String ?? (json["project"] as? String)
-            
+
             if let info = json["info"] as? [String: Any] {
                 if summaryModel == nil { summaryModel = info["model"] as? String }
                 if summaryTitle == nil { summaryTitle = info["title"] as? String }
@@ -117,7 +117,7 @@ public final class CursorAgentParser: LogParser, Sendable {
 
         var lastProcessedInputChars = 0
         var lastProcessedAssistantChars = 0
-        
+
         var calculatedInputTokens = 0
         var calculatedCacheReadTokens = 0
         var calculatedCacheCreationTokens = 0
@@ -151,10 +151,10 @@ public final class CursorAgentParser: LogParser, Sendable {
             if role == "user" || type == "USER_INPUT" {
                 currentUserChars += content.count
                 currentUserMsgCount += 1
-                
+
                 acc.userVisibleChars += content.count
                 acc.userMessageCount += 1
-                
+
                 if !content.isEmpty {
                     acc.userWords += wordCount(content)
                     if acc.firstUserText == nil {
@@ -205,10 +205,10 @@ public final class CursorAgentParser: LogParser, Sendable {
                 } else {
                     let cachedChars = lastProcessedInputChars + lastProcessedAssistantChars
                     let cachedTokens = TokenExtractionUtility.estimatedTokenCount(for: cachedChars, charsPerToken: 3.35)
-                    
+
                     let cacheRead = min(cachedTokens, estimated.input)
                     let cacheCreation = max(estimated.input - cacheRead, 0)
-                    
+
                     calculatedCacheReadTokens += cacheRead
                     calculatedCacheCreationTokens += cacheCreation
                 }
@@ -346,7 +346,7 @@ public final class CursorAgentParser: LogParser, Sendable {
         let tail = content[range.upperBound...]
         guard let toRange = tail.range(of: " to ", options: .caseInsensitive) else { return nil }
         let modelString = tail[toRange.upperBound...]
-        
+
         let endIdx: String.Index
         if let dotSpace = modelString.range(of: ". ") {
             endIdx = dotSpace.lowerBound
@@ -357,7 +357,7 @@ public final class CursorAgentParser: LogParser, Sendable {
         } else {
             endIdx = modelString.endIndex
         }
-        
+
         let model = String(modelString[..<endIdx]).trimmingCharacters(in: .whitespacesAndNewlines)
         return model.isEmpty ? nil : model
     }

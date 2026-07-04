@@ -1,7 +1,5 @@
 import Foundation
 
-import Foundation
-
 public struct MimoQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
 

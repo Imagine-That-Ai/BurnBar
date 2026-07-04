@@ -5,7 +5,6 @@ import Crypto
 #endif
 import Foundation
 
-
 // MARK: - Warp Parser
 
 /// Parses Warp local network logs for AI/agent activity.

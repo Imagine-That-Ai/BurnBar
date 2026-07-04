@@ -274,7 +274,7 @@ final class TextExpansionTests: XCTestCase {
         let snippets = [snippetB, snippetC, snippetA]
 
         var log = TextExpansionUsageLog()
-        
+
         // Initial rank (no usage): should fall back to case-insensitive alphabetical by title: Alpha, Beta, Gamma
         let ranked1 = TextExpansionUsageStore.rank(snippets, using: log)
         XCTAssertEqual(ranked1.map(\.title), ["Alpha", "Beta", "Gamma"])

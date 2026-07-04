@@ -1,6 +1,5 @@
 import Foundation
 
-
 // MARK: - Windsurf Parser
 
 /// Parses Windsurf (Codeium) Cascade sessions from local storage.

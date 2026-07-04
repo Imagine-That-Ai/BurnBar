@@ -21,7 +21,6 @@ public enum ProviderQuotaSourceKind: String, Codable, Sendable {
         }
     }
 
-
     public init(from decoder: Decoder) throws {
         let value = try decoder.singleValueContainer().decode(String.self)
         self = Self(rawValue: value) ?? .provider
@@ -109,7 +108,6 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable, Identifiable {
     public let meta: [String: String]?
 
     public var id: String { key }
-
 
     public var remainingPercent: Double? {
         if let usedPercent {

@@ -176,7 +176,6 @@ private struct CodexLayout {
     let rolloutRelativePath: String
 }
 
-
 /// Relative path + filename for copying a committed artifact into the temp HOME layout.
 private struct LayoutCopy {
     let relativeDirectory: String
@@ -381,14 +380,13 @@ private enum G2Corpus {
         CleanFixture(id: "warpBasicSession", kind: .warp, parserName: "WarpParser",
                      sessionId: "warp-contract-1", projectDir: "",
                      artifacts: [Artifact(role: .primary, resourceName: "pc-warp-basic", fileExtension: "log")],
-                     layoutCopies: [LayoutCopy(relativeDirectory: "Library/Application Support/dev.warp.Warp-Stable", fileName: "warp_network.log")]),
+                     layoutCopies: [LayoutCopy(relativeDirectory: "Library/Application Support/dev.warp.Warp-Stable", fileName: "warp_network.log")])
     ]
 
     static func bundledURL(resource: String, ext: String) -> URL? {
         Bundle.module.url(forResource: resource, withExtension: ext, subdirectory: "Fixtures/ParserContract")
             ?? Bundle.module.url(forResource: resource, withExtension: ext)
     }
-
 
     private static func artifactData(_ artifact: Artifact) throws -> Data {
         guard let url = bundledURL(resource: artifact.resourceName, ext: artifact.fileExtension) else {
@@ -544,7 +542,6 @@ private enum G2Corpus {
             }
         }
 
-
         let records = G2Contract.sortedUsages(result.usages.map(ParserOutputContractRecord.init))
         return ParserFixtureContract(
             fixtureId: fixture.id,
@@ -555,7 +552,6 @@ private enum G2Corpus {
             usages: records
         )
     }
-
 
     private static func primary(_ artifacts: [Artifact]) -> Artifact {
         artifacts.first { $0.role == .primary } ?? artifacts[0]

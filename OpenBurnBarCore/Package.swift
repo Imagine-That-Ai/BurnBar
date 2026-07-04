@@ -809,9 +809,9 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: packageProducts,
     dependencies: (hasLibSignalSwiftPackage ? [
-        .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift"),
+        .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift")
     ] : []) + (buildForLinuxBoundary ? [] : [
-        .package(path: "../Vendor/GRDB-SQLCipher"),
+        .package(path: "../Vendor/GRDB-SQLCipher")
     ]) + [
         .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0")
