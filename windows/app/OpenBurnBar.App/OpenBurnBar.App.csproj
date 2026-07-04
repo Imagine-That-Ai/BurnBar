@@ -135,6 +135,12 @@
       are unit-tested on macOS (windows/tests/pet/Overlay).
     -->
     <ProjectReference Include="../../pal/overlay/OpenBurnBar.Pal.Overlay.csproj" />
+    <!--
+      ConPTY session harness (W1 / B1): CreatePseudoConsole spawn + process-tree kill.
+      Referenced by ConPtyCliStream; the assembly compiles on macOS for authoring while
+      ConPTY only runs on Windows (VAL-P0-CONPTY-019).
+    -->
+    <ProjectReference Include="../../pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>

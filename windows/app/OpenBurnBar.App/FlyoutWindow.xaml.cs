@@ -27,7 +27,7 @@ public sealed partial class FlyoutWindow : Window
 
     private readonly AppStatePersistence _persistence;
     private readonly AppWindow _appWindow;
-    private readonly StubCliStream _stream = new();
+    private readonly ICliStream _stream = CliStreamFactory.CreateDefault();
 
     private double _width;
     private double _height;
