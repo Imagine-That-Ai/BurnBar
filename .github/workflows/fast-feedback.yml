@@ -560,6 +560,7 @@ jobs:
             extensions/openburnbar/package.json
             homebrew/burnbar.rb
             OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift
+            windows/app/OpenBurnBar.App/app.manifest
             scripts/verify-version-consistency.sh
 
       - name: Verify version consistency
