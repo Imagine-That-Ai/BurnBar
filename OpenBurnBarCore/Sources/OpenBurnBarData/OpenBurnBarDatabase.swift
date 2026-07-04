@@ -1,6 +1,5 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
 // MARK: - Shared Database Spine
 
 /// Owns the shared database writer (DatabasePool in production, DatabaseQueue in tests),
@@ -43,7 +42,7 @@ final class OpenBurnBarDatabase: Sendable {
     /// indexes and can block app launch for minutes on real user databases; on
     /// ordinary already-current launches, the database should open immediately.
     /// Skips backup for in-memory databases (tests).
-    func runMigrationsSafely() throws {
+    func runMigrationsSafely(beforeMigration: (@Sendable () throws -> Void)? = nil) throws {
         let migrationBackupURL: URL?
         do {
             if try needsBackupBeforeMigration() {
@@ -60,6 +59,7 @@ final class OpenBurnBarDatabase: Sendable {
         }
 
         do {
+            try beforeMigration?()
             try Self.migrator.migrate(dbQueue)
         } catch {
             var restoredFromBackup = false
@@ -719,9 +719,10 @@ final class OpenBurnBarDatabase: Sendable {
                 JOIN search_documents d ON d.id = scf.documentID
                 """)
 
-            try db.execute(sql: "DROP TABLE search_chunks_fts")
-            try db.execute(sql: "ALTER TABLE search_chunks_fts_new RENAME TO search_chunks_fts")
-
+            // SQLCipher+FTS5 on Linux rejects the second virtual-table create
+            // if it follows the chunk-table drop/rename in the same migration
+            // transaction. Create and wire the documents FTS table first, then
+            // swap the chunk table once both virtual tables exist.
             try db.execute(sql: """
                 CREATE VIRTUAL TABLE search_documents_fts USING fts5(
                     documentID UNINDEXED,
@@ -780,6 +781,9 @@ final class OpenBurnBarDatabase: Sendable {
                     );
                 END
                 """)
+
+            try db.execute(sql: "DROP TABLE search_chunks_fts")
+            try db.execute(sql: "ALTER TABLE search_chunks_fts_new RENAME TO search_chunks_fts")
         }
 
         migrator.registerMigration("v22_cross_device_sync") { db in
@@ -1455,8 +1459,7 @@ final class OpenBurnBarDatabase: Sendable {
                    sql: "SELECT cliType FROM switcher_profiles WHERE id = ?",
                    arguments: [activeProfileID]
                ),
-               let cliType = SwitcherCLIProfileType(rawValue: cliTypeRaw) {
-                let providerID = cliType.providerID.rawValue
+               let providerID = Self.providerIDForSwitcherCLIType(cliTypeRaw) {
                 let existing = try Int.fetchOne(
                     db,
                     sql: "SELECT COUNT(*) FROM switcher_active_profile WHERE providerID = ?",
@@ -1915,6 +1918,37 @@ final class OpenBurnBarDatabase: Sendable {
         return migrator
     }
 
+    private static func providerIDForSwitcherCLIType(_ rawValue: String) -> String? {
+        switch rawValue {
+        case "codex":
+            return "codex"
+        case "claude":
+            return "claude-code"
+        case "opencode":
+            return "opencode"
+        case "droid":
+            return "factory"
+        case "forge":
+            return "forge"
+        case "antigravity":
+            return "antigravity"
+        case "grok":
+            return "xai"
+        case "cursoragent":
+            return "cursor-agent"
+        case "omp":
+            return "omp"
+        case "gemini":
+            return "geminicli"
+        case "kimi":
+            return "kimi"
+        case "pi":
+            return "pi-agent"
+        default:
+            return nil
+        }
+    }
+
     static func sqlPlaceholders(count: Int) -> String {
         Array(repeating: "?", count: max(0, count)).joined(separator: ", ")
     }
@@ -1926,14 +1960,6 @@ final class OpenBurnBarDatabase: Sendable {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-        return formatter
-    }()
-
-    static let sqliteDateSecondsFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter
     }()
 
@@ -1969,7 +1995,6 @@ final class OpenBurnBarDatabase: Sendable {
         }
         if let string = value as? String {
             if let parsed = sqliteDateFormatter.date(from: string) { return parsed }
-            if let parsed = sqliteDateSecondsFormatter.date(from: string) { return parsed }
             return parseISO8601Date(string)
         }
         return nil
