@@ -48,68 +48,9 @@ enum DataConfidence {
 /// and how it grades the resulting token data. The mobile target doesn't
 /// watch local logs, so these accessors only ship on macOS.
 extension AgentProvider {
-    /// Filesystem directory where the provider writes session logs the
-    /// file watcher can scrape, resolved for the current host.
-    ///
-    /// On macOS/Linux this returns the historical `~/…` logical form
-    /// (`logDirectoryMacForm`) **unchanged**, so every existing caller — which
-    /// applies `expandingTildeInPath` itself — is byte-for-byte identical to
-    /// today. On Windows `LogPathPlatform` remaps the tilde root to
-    /// `%USERPROFILE%` / `%APPDATA%` / `%LOCALAPPDATA%` (Windows-port Phase-2
-    /// parser path-remap, `docs/windows-port/PARSER_OUTPUT_CONTRACT.md`); the
-    /// result is absolute, so the caller's `expandingTildeInPath` is a harmless
-    /// no-op over it. Some providers (e.g. `.openAI`) have no local logs at all —
-    /// they reuse another path so the exhaustive switch never crashes; the
-    /// `filePattern` for those entries pins a non-matching glob so no files are
-    /// ever read.
-    var logDirectory: String {
-        LogPathPlatform.resolveLogDirectory(logDirectoryMacForm)
-    }
-
-    /// The historical macOS/Linux `~/…` logical log directory per provider — the
-    /// ground-truth table. `logDirectory` layers the Windows path remap on top;
-    /// on POSIX hosts the remap is a pass-through so this value flows out unchanged.
-    private var logDirectoryMacForm: String {
-        switch self {
-        case .factory: return "~/.factory/sessions"
-        case .claudeCode: return "~/.claude/projects"
-        case .copilot: return "~/.copilot/session-state"
-        case .aider: return "~/.aider"
-        case .cursor: return "~/.cursor/ai-tracking"
-        // OpenAI is an org-billing identity (refreshed via API), not a local
-        // log source. Reuse the Codex log dir so the file watcher's switch
-        // doesn't crash when an OpenAI account row is iterated; the parser
-        // never matches files under it because the OpenAI adapter pulls
-        // remotely instead of parsing local logs.
-        case .openAI, .deepSeek: return "~/.codex"
-        case .codex: return "~/.codex"
-        case .openCode: return "~/.local/share/opencode"
-        case .zai: return "~/.factory/sessions"
-        case .minimax: return "~/.factory/sessions"
-        case .kimi: return "~/.kimi/sessions"
-        case .cline: return "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"
-        case .kiloCode: return "~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks"
-        case .rooCode: return "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks"
-        case .forgeDev: return "~/.forge/sessions"
-        case .augment: return "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment"
-        case .hermes: return "~/.hermes/sessions"
-        case .piAgent: return "~/.pi/sessions"
-        case .geminiCLI: return "~/.gemini/tmp"
-        case .antigravity: return "~/.gemini/antigravity-cli"
-        case .cursorAgent: return "~/.cursor-agent/sessions"
-        case .goose: return "~/.local/share/goose/sessions"
-        case .openClaw: return "~/.openclaw/sessions"
-        case .openClaude: return "~/.openclaude/sessions"
-        case .omp: return "~/.omp/agent/sessions"
-        case .ollama: return "~/.ollama/logs"
-        case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
-        case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"
-        case .xAI: return "~/.grok/sessions"
-        // MiMo quota is refreshed via Token Plan API; no local log directory.
-        case .mimo: return "~/.codex"
-        case .openBurnBar: return "~/.codex"
-        }
-    }
+    // `logDirectory` + `logDirectoryMacForm` moved to OpenBurnBarCore
+    // (SharedModels/AgentProvider+LogDirectory.swift) for the Windows-port G2
+    // parser lift; consumed here via `import OpenBurnBarCore`.
 
     /// Glob pattern paired with `logDirectory` that the file watcher uses
     /// to discover session log files for the provider.

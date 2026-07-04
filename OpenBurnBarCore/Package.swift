@@ -584,6 +584,23 @@ let firstPartyTargetsBase: [Target] = [
                 .copy("Fixtures/claude-code-project-path-fixtures.json")
             ]
         ),
+        // Windows-port Phase-2 G2 parser-OUTPUT parity gate. A Foundation-only
+        // executable that runs the LIFTED parsers (ClaudeCode + FactoryDroid today;
+        // Codex + Hermes ride the SQLite reader seam) over the committed
+        // ParserContract fixture corpus and byte-diffs each parser's
+        // token/cost(nano-USD int)/model/session projection against the macOS
+        // golden (`parser-output-golden.json`). Same never-referenced-leaf shape as
+        // the path-parity target above: NO product in `packageProducts`, absent
+        // from the app's `project.yml`, so the Apple app scheme never resolves it,
+        // while `swift run` works on macOS today and the Windows CI runs it natively.
+        .executableTarget(
+            name: "OpenBurnBarG2ParserParity",
+            dependencies: ["OpenBurnBarCore"],
+            path: "Sources/OpenBurnBarG2ParserParity",
+            resources: [
+                .copy("Fixtures")
+            ]
+        ),
         .testTarget(
             name: "OpenBurnBarLinuxCoreFoundationTests",
             dependencies: [
