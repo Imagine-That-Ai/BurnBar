@@ -415,6 +415,7 @@ let computerUseCoreTestExcludes = [
     "RemoteUnlockPolicyTests.swift"
 ]
 let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
+let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift"]
 func legacyLinuxTestExcludes(targetPath: String) -> [String] {
     let targetURL = packageRoot.appendingPathComponent(targetPath, isDirectory: true)
     guard let enumerator = FileManager.default.enumerator(
@@ -651,7 +652,7 @@ let firstPartyTargetsBase: [Target] = [
                 swiftTestingDependency
             ],
             exclude: openBurnBarCoreTestExcludes + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),
-            sources: legacyLinuxTestSources,
+            sources: openBurnBarCoreOffAppleTestSources,
             resources: [
                 .process("Fixtures")
             ],
