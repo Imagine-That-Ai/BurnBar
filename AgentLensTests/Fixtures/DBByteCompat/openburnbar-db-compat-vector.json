@@ -1,0 +1,52 @@
+{
+  "ftsQueries" : [
+    {
+      "label" : "porter-stem-run",
+      "match" : "run",
+      "orderedRows" : [
+        {
+          "conversationID" : "conv-beta-run",
+          "snippet" : "<b>running</b> shoes and <b>running</b> gear make <b>running</b> feel like a…"
+        },
+        {
+          "conversationID" : "conv-alpha-fox",
+          "snippet" : "the quick brown fox <b>runs</b> across the yard"
+        }
+      ]
+    },
+    {
+      "label" : "case-fold-title",
+      "match" : "GAMMA",
+      "orderedRows" : [
+        {
+          "conversationID" : "conv-gamma-db",
+          "snippet" : "database encryption keeps your data safe at rest"
+        }
+      ]
+    },
+    {
+      "label" : "fulltext-database",
+      "match" : "database",
+      "orderedRows" : [
+        {
+          "conversationID" : "conv-gamma-db",
+          "snippet" : "<b>database</b> encryption keeps your data safe at rest"
+        }
+      ]
+    },
+    {
+      "label" : "porter-stem-shoe",
+      "match" : "shoe",
+      "orderedRows" : [
+        {
+          "conversationID" : "conv-beta-run",
+          "snippet" : "running <b>shoes</b> and running gear make running feel like a…"
+        }
+      ]
+    }
+  ],
+  "migrationCount" : 56,
+  "schemaEndpoint" : "v55_search_chunks_fts_rowid",
+  "schemaHashSHA256" : "449bb66d28b726b19465611fd80a560afa9d738c0da1bfaa8324c44d1421f049",
+  "sqlcipherPin" : "SQLCipher.swift 4.16.0 (Vendor/GRDB-SQLCipher)"
+}
