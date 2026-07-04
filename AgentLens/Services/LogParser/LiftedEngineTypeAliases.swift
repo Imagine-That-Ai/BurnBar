@@ -37,6 +37,11 @@ typealias GeminiCLIParser = OpenBurnBarCore.GeminiCLIParser
 typealias GrokParser = OpenBurnBarCore.GrokParser
 typealias KimiParser = OpenBurnBarCore.KimiParser
 typealias ParserConversationCacheScrubber = OpenBurnBarCore.ParserConversationCacheScrubber
+typealias ForgeDevParser = OpenBurnBarCore.ForgeDevParser
+typealias GooseParser = OpenBurnBarCore.GooseParser
+typealias WindsurfParser = OpenBurnBarCore.WindsurfParser
+typealias WarpParser = OpenBurnBarCore.WarpParser
+typealias HermesParser = OpenBurnBarCore.HermesParser
 
 typealias ModelPricing = OpenBurnBarCore.ModelPricing
 typealias TokenExtractionUtility = OpenBurnBarCore.TokenExtractionUtility
