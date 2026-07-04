@@ -63,6 +63,12 @@ let packageProducts: [Product] = [
         name: "OpenBurnBarCore",
         targets: ["OpenBurnBarCore"]
     ),
+    // Windows-port WPD-0007: C-ABI dynamic library for in-process P/Invoke (C# DllImport).
+    .library(
+        name: "OpenBurnBarCoreCAbi",
+        type: .dynamic,
+        targets: ["OpenBurnBarCoreCAbi"]
+    ),
     // Opt-in, consent-gated Amplitude analytics core (SDK-free). Holds the
     // tri-state consent store (persisted in the shared App Group so the widget +
     // keyboard extensions read it), the recorder/wrapper, the transport-protocol
@@ -501,6 +507,17 @@ let firstPartyTargetsBase: [Target] = [
                 // subfolder. PretextEngine looks them up via Bundle.module
                 // by filename.
                 .process("Resources")
+            ]
+        ),
+        // Windows-port WPD-0007: thin re-export of OpenBurnBarCore with @_cdecl exports
+        // (`obb_parse_cli_stdout`, `obb_string_free`). Produces libOpenBurnBarCoreCAbi.dylib
+        // on macOS and OpenBurnBarCoreCAbi.dll on Windows for DllImport binding tests.
+        .target(
+            name: "OpenBurnBarCoreCAbi",
+            dependencies: ["OpenBurnBarCore"],
+            path: "Sources/OpenBurnBarCoreCAbi",
+            linkerSettings: [
+                .linkedLibrary("sqlite3", .when(platforms: [.macOS, .iOS]))
             ]
         ),
         .target(
