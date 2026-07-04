@@ -731,7 +731,7 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
 }
 
 public extension ProviderQuotaSnapshot {
-    private var quotaProvider: AgentProvider? {
+    public var quotaProvider: AgentProvider? {
         AgentProvider.fromProviderID(providerID)
             ?? AgentProvider.fromPersistedToken(provider)
             ?? AgentProvider(rawValue: provider)
@@ -759,6 +759,10 @@ public extension ProviderQuotaSnapshot {
 
     func isStale(relativeTo now: Date = Date()) -> Bool {
         isExplicitlyStale || now.timeIntervalSince(fetchedAt) > 12 * 60 * 60
+    }
+
+    func isTooOldForQuotaDecisions(relativeTo now: Date = Date()) -> Bool {
+        isStale(relativeTo: now)
     }
 
     func filteringToDisplayableQuotaSignal() -> ProviderQuotaSnapshot? {

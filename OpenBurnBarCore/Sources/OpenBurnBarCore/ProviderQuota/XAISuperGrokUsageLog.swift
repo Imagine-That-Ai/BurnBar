@@ -18,7 +18,7 @@ import Foundation
 public enum XAISuperGrokUsageLog {
 
     /// Append one event line to the SuperGrok usage log.
-    static func recordPromptDispatched(
+    public static func recordPromptDispatched(
         plan: XAIQuotaPlanTier,
         model: String? = nil,
         source: String? = nil,

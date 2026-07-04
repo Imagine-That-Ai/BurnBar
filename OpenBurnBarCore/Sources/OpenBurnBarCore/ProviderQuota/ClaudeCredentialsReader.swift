@@ -127,6 +127,7 @@ public protocol ClaudeCredentialsReading: Sendable {
 /// Claude quota refresh prompt-free and prevents OpenBurnBar from
 /// reading or mutating Claude Code's own credential stores.
 public struct NoClaudeCredentialsReader: ClaudeCredentialsReading {
+    public init() {}
     public func load() -> ClaudeOAuthCredentials? { nil }
 }
 
