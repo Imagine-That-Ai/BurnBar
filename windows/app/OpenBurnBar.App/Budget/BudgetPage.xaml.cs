@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using OpenBurnBar.App.Presentation.Budget;
 using OpenBurnBar.App.Storage;
 
 namespace OpenBurnBar.App.Budget;

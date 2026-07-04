@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Claude OAuth Usage Fetcher
 
 /// Calls `https://api.anthropic.com/api/oauth/usage` to retrieve the

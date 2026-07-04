@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 /// Multi-source Claude quota adapter. Tries the cheapest, most current
 /// data first and falls back gracefully while respecting the user's
 /// credential boundary.

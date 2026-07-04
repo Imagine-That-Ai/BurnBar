@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 /// Validates an Anthropic credential against the real Anthropic Messages API
 /// before OpenBurnBar accepts it as a routable account.
 ///

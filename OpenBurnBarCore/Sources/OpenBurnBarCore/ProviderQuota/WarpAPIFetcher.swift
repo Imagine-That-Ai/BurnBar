@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Warp GraphQL API Fetcher
 
 /// Fetches real Warp AI request credit data from the Warp GraphQL API.

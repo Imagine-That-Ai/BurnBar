@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Ollama Cloud HTML Scraper
 
 /// Scrapes Ollama Cloud usage data from `ollama.com/settings` using an

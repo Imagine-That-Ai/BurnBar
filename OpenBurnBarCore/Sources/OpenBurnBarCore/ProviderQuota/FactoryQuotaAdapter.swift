@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Factory / Droid Quota Adapter
 
 /// Reports real Factory/droid token usage from `~/.factory/sessions/**/*.settings.json`.

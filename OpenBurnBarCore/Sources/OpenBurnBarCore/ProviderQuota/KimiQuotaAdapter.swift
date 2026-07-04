@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Kimi Quota Adapter
 
 /// Fetches real Kimi (Moonshot) usage/quota from the Kimi billing API.

@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // OpenAI, DeepSeek, and OpenCode quota adapters (lifted WS-C2 SEAM).
 
 public struct OpenAIQuotaAdapter: ProviderQuotaAdapter {

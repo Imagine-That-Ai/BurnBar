@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Adapter contract (lifted to OpenBurnBarCore for Windows parity)
 
 public protocol ProviderQuotaAdapter: Sendable {

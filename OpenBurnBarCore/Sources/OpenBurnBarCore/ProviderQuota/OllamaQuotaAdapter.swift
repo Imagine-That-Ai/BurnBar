@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Ollama Quota Adapter
 
 /// Reports real Ollama Cloud quota windows when Ollama exposes them.

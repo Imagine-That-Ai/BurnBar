@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Cursor Quota Adapter
 
 /// Fetches real Cursor usage/quota from `cursor.com/api/usage-summary`.

@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Copilot Quota Adapter
 
 /// Fetches real Copilot rate-limit data from GitHub's `/copilot_internal/user` endpoint.

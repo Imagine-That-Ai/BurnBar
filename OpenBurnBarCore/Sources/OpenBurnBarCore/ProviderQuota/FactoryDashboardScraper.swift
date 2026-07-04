@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - Factory Dashboard Scraper
 
 /// Scrapes Factory usage data from the dashboard for personal (non-org) accounts.

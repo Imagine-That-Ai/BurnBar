@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 // MARK: - xAI / Grok Quota Adapter
 //
 // Reports remaining usage for both the xAI consumer plans (SuperGrok Lite,

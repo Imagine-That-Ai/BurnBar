@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 public struct ZAIQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
