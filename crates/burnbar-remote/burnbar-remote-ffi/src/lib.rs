@@ -393,8 +393,8 @@ fn encode_decision_wire(decision: &RemoteQualityDecision) -> Vec<u8> {
 fn decode_decision_wire(bytes: &[u8]) -> Result<RemoteQualityDecision, BurnBarRemoteFfiError> {
     if bytes.len() != REMOTE_WIRE_DECISION_LEN {
         return Err(BurnBarRemoteFfiError::WireTruncated {
-            expected: REMOTE_WIRE_DECISION_LEN as u32,
-            found: bytes.len() as u32,
+            expected: u32::try_from(REMOTE_WIRE_DECISION_LEN).expect("REMOTE_WIRE_DECISION_LEN fits u32"),
+            found: u32::try_from(bytes.len()).expect("byte slice length fits u32"),
         });
     }
     if bytes[0] != REMOTE_WIRE_VERSION {

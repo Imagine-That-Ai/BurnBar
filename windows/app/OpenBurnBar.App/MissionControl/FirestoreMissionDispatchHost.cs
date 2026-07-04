@@ -113,8 +113,20 @@ public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
             .ConfigureAwait(false);
         IReadOnlyList<MissionRecord> awaiting = await LoadByStatusAsync(collectionPath, "waiting_for_approval", now)
             .ConfigureAwait(false);
+        IReadOnlyList<MissionRecord> running = await LoadByStatusAsync(collectionPath, "running", now)
+            .ConfigureAwait(false);
+        IReadOnlyList<MissionRecord> claimed = await LoadByStatusAsync(collectionPath, "claimed", now)
+            .ConfigureAwait(false);
+        IReadOnlyList<MissionRecord> inProgress = await LoadByStatusAsync(collectionPath, "in_progress", now)
+            .ConfigureAwait(false);
 
-        var missions = pending.Concat(awaiting).ToList();
+        var missions = pending
+            .Concat(awaiting)
+            .Concat(running)
+            .Concat(claimed)
+            .Concat(inProgress)
+            .DistinctBy(m => m.MissionId)
+            .ToList();
 
         return MissionSnapshotBuilder.Build(
             missions,

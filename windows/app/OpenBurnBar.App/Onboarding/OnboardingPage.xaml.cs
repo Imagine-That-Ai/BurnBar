@@ -36,7 +36,10 @@ public sealed partial class OnboardingPage : Page
         }
 
         var model = new OnboardingWizardModel();
-        model.SetDetectedProviders(new[] { AgentProviderBrand.ClaudeCode, AgentProviderBrand.Codex });
+        var detected = new List<AgentProviderBrand>();
+        if (IsCliOnPath("claude")) detected.Add(AgentProviderBrand.ClaudeCode);
+        if (IsCliOnPath("codex")) detected.Add(AgentProviderBrand.Codex);
+        model.SetDetectedProviders(detected);
         model.PreselectDetectedProviders();
         model.SeedChatBackends(ChatBackendMetadata.AllCases, ChatBackendId.Codex);
 
@@ -135,5 +138,20 @@ public sealed partial class OnboardingPage : Page
     {
         Model?.Finalize();
         _context?.Dismiss?.Invoke();
+    }
+
+    private static bool IsCliOnPath(string name)
+    {
+        foreach (string dir in Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? Array.Empty<string>())
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            try
+            {
+                string exe = System.IO.Path.Combine(dir.Trim('"'), name + ".exe");
+                if (System.IO.File.Exists(exe)) return true;
+            }
+            catch { /* PATH entry too malformed to inspect — skip */ }
+        }
+        return false;
     }
 }

@@ -42,7 +42,8 @@ public sealed partial class DataSourceSettingsPage : Page
         FirebaseUidBox.Text = snap.FirebaseUid ?? string.Empty;
         FirebaseIdTokenBox.Text = snap.FirebaseIdToken ?? string.Empty;
         AppCheckTokenBox.Text = snap.AppCheckToken ?? string.Empty;
-        VaultKeyBox.Text = snap.VaultKeyB64 ?? string.Empty;
+        var encodedVaultKey = snap.VaultKeyB64;
+        VaultKeyBox.Text = encodedVaultKey ?? string.Empty;
 
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "SQLCipher: configured"
