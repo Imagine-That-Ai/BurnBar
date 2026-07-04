@@ -3,15 +3,16 @@ import OpenBurnBarCore
 
 // MARK: - Lifted parser/infra aliases (Mac side ↔ OpenBurnBarCore canonical)
 //
-// Windows-port Phase-2 (G2 parser lift). The 4 golden-covered log parsers and
-// their shared infra were lifted from the macOS app into `OpenBurnBarCore` so the
-// SAME parser code is Windows-buildable and byte-diffed by the G2 CI gate. To keep
-// the existing macOS call sites compiling without sprinkling `import OpenBurnBarCore`
-// across ~27 files, the lifted types are re-exported here as module-internal
-// typealiases — exactly the pattern already used for `AgentProvider` / `TokenUsage`
-// in `AgentLens/Models/AgentProvider.swift`. Files that use the lifted FileHandle
-// EXTENSION methods (`readAllUTF8Lines`, `readLine`) still import the module
-// directly, since extension members are not re-exported by a typealias.
+// Windows-port Phase-2 (G2 parser lift). The 11 log parsers (4 golden-covered +
+// 7 CLEAN) and their shared infra were lifted from the macOS app into
+// `OpenBurnBarCore` so the SAME parser code is Windows-buildable and byte-diffed
+// by the G2 CI gate. To keep the existing macOS call sites compiling without
+// sprinkling `import OpenBurnBarCore` across ~27 files, the lifted types are
+// re-exported here as module-internal typealiases — exactly the pattern already
+// used for `AgentProvider` / `TokenUsage` in `AgentLens/Models/AgentProvider.swift`.
+// Files that use the lifted FileHandle EXTENSION methods (`readAllUTF8Lines`,
+// `readLine`) still import the module directly, since extension members are not
+// re-exported by a typealias.
 
 typealias OpenBurnBarIdentity = OpenBurnBarCore.OpenBurnBarIdentity
 typealias OpenBurnBarAppPaths = OpenBurnBarCore.OpenBurnBarAppPaths
@@ -28,6 +29,13 @@ typealias LogParser = OpenBurnBarCore.LogParser
 
 typealias ClaudeCodeParser = OpenBurnBarCore.ClaudeCodeParser
 typealias FactoryDroidParser = OpenBurnBarCore.FactoryDroidParser
+typealias AntigravityParser = OpenBurnBarCore.AntigravityParser
+typealias AugmentParser = OpenBurnBarCore.AugmentParser
+typealias ClineFormatParser = OpenBurnBarCore.ClineFormatParser
+typealias CursorAgentParser = OpenBurnBarCore.CursorAgentParser
+typealias GeminiCLIParser = OpenBurnBarCore.GeminiCLIParser
+typealias GrokParser = OpenBurnBarCore.GrokParser
+typealias KimiParser = OpenBurnBarCore.KimiParser
 typealias ParserConversationCacheScrubber = OpenBurnBarCore.ParserConversationCacheScrubber
 
 typealias ModelPricing = OpenBurnBarCore.ModelPricing
