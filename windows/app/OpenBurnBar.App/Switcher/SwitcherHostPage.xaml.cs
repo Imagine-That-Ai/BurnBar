@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Presentation.Switcher;
+using OpenBurnBar.App.Storage;
 
 namespace OpenBurnBar.App.Switcher;
 
@@ -24,7 +25,7 @@ public sealed partial class SwitcherHostPage : Page
     {
         Loaded -= OnLoaded;
 
-        var viewModel = new SwitcherSettingsViewModel(SwitcherSampleData.CreateDevHostStore());
+        var viewModel = new SwitcherSettingsViewModel(WindowsStorageDevHost.CreateSwitcherProfileStore());
         SwitcherView.SetModel(viewModel);
         viewModel.Load();
     }

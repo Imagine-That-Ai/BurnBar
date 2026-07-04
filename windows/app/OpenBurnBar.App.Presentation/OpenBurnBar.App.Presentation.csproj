@@ -39,4 +39,8 @@
     <AssemblyName>OpenBurnBar.App.Presentation</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\storage\OpenBurnBar.Storage\OpenBurnBar.Storage.csproj" />
+  </ItemGroup>
+
 </Project>
