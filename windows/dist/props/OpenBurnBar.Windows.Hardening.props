@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Managed PE-hardening props for the OpenBurnBar WinUI app (Phase 5 · R19 library-validation
+  equivalent). Imported by windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj.
+
+  This is the MANAGED third of the R19 hardening trio (see
+  windows/dist/OpenBurnBar.Dist.Hardening/HardeningPolicy.cs for all three). It sets the PE-level
+  flags the C# toolchain honors so the shipped OpenBurnBar.App.exe gets full ASLR entropy and a
+  deterministic, reproducible image:
+
+    • HighEntropyVA=true  → IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA (64-bit high-entropy ASLR).
+    • Deterministic=true  → byte-reproducible output (Authenticode + provenance friendly).
+
+  The other two layers are applied elsewhere and documented for completeness:
+    • RUNTIME search-order hardening — the app calls
+      OpenBurnBar.Dist.Hardening.DllSearchHardening.Apply() at the very start of Main
+      (SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) + SetDllDirectory("")).
+    • LINK-TIME native hardening — OpenBurnBar.Windows.NativeHardening.props (/DEPENDENTLOADFLAG,
+      /guard:cf, /HIGHENTROPYVA, /DYNAMICBASE, /NXCOMPAT) imported by in-tree native .vcxproj.
+
+  The exact required flags/properties live in HardeningPolicy and are asserted against THIS file
+  by windows/tests/dist so the props can never silently drift from the policy.
+
+  NOTE: DEP/ASLR/CFG on the managed apphost itself come from the prebuilt .NET apphost; the
+  strongest control the C# build can add to the shipped EXE without relinking is HighEntropyVA,
+  which is set here. The runtime SetDefaultDllDirectories shim is what closes the DLL-planting
+  gap for the managed process.
+-->
+<Project>
+
+  <PropertyGroup>
+    <!-- 64-bit high-entropy ASLR for the shipped managed EXE. -->
+    <HighEntropyVA>true</HighEntropyVA>
+    <!-- Byte-reproducible build (helps Authenticode determinism + release provenance). -->
+    <Deterministic>true</Deterministic>
+    <!-- Marker so a build can assert the hardening props were imported. -->
+    <OpenBurnBarWindowsHardeningApplied>true</OpenBurnBarWindowsHardeningApplied>
+  </PropertyGroup>
+
+</Project>

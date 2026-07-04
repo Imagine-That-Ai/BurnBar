@@ -64,6 +64,22 @@ public static class NavCatalog
         new("settings",          "Settings",           "Preferences & configuration",     "\uE713", isFooter: true),
     };
 
+    /// <summary>
+    /// Secondary surfaces that are resolvable + navigable but are NOT sidebar rows — the Windows
+    /// analog of macOS surfaces gated behind a Settings leaf / chat-header entry rather than one of
+    /// the 12 top-level nav destinations. Kept out of <see cref="All"/> so the 12-row sidebar +
+    /// Ctrl 1..9 parity holds; surfaced through the Command Palette so they stay reachable, and
+    /// resolved by <see cref="SurfacePageResolver"/> the same as any destination.
+    ///
+    /// Elder Wand (<c>.gatedFeature(.elderWand)</c>, macOS "Analysis Models") is the first: reached
+    /// here from the palette until the integration wave wires its live Settings-leaf / chat-header
+    /// entry. See <c>windows/app/OpenBurnBar.App/ElderWand/ElderWandConfiguratorView.xaml</c>.
+    /// </summary>
+    public static IReadOnlyList<NavDestination> Auxiliary { get; } = new List<NavDestination>
+    {
+        new("elderWand", "Analysis Models", "Elder Wand analysis, judge & research budget", "\uE734"),
+    };
+
     /// <summary>Menu (non-footer) destinations, in order.</summary>
     public static IEnumerable<NavDestination> Menu => All.Where(d => !d.IsFooter);
 
@@ -73,7 +89,12 @@ public static class NavCatalog
     /// <summary>The default destination shown on launch.</summary>
     public static NavDestination Default => All[0];
 
-    /// <summary>Resolve a destination by its <see cref="NavDestination.Key"/>, or <c>null</c>.</summary>
+    /// <summary>
+    /// Resolve a destination by its <see cref="NavDestination.Key"/> across the sidebar catalog
+    /// (<see cref="All"/>) and the palette-only <see cref="Auxiliary"/> surfaces, or <c>null</c>.
+    /// </summary>
     public static NavDestination? Find(string? key) =>
-        key is null ? null : All.FirstOrDefault(d => d.Key == key);
+        key is null
+            ? null
+            : All.FirstOrDefault(d => d.Key == key) ?? Auxiliary.FirstOrDefault(d => d.Key == key);
 }
