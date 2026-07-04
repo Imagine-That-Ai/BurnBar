@@ -143,8 +143,19 @@ public sealed partial class AppShell : UserControl
 
         _currentKey = destination.Key;
         HeaderTitle.Text = destination.Title;
-        ContentFrame.Navigate(typeof(SurfaceStubPage), destination);
+        ContentFrame.Navigate(ResolvePageType(destination), destination);
     }
+
+    /// <summary>
+    /// Resolve the real page type for a destination, falling back to <see cref="SurfaceStubPage"/>
+    /// for surfaces not yet ported. Real Phase-3 surfaces register their page here as they land;
+    /// Mission Control is the first live console.
+    /// </summary>
+    private static Type ResolvePageType(NavDestination destination) => destination.Key switch
+    {
+        "missionControl" => typeof(OpenBurnBar.App.MissionControl.MissionControlPage),
+        _ => typeof(SurfaceStubPage),
+    };
 
     private void Palette_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
         => CommandPaletteRequested?.Invoke(this, EventArgs.Empty);

@@ -18,6 +18,11 @@
       • AgentLens/Services/TranscriptBlockParser.swift         -> SessionLogs/TranscriptBlockParser.cs
       • AgentLens/Views/SessionLogs/SessionLogsView.swift      -> SessionLogs/SessionLogGrouping.cs + SessionLogsViewModel.cs
       • OpenBurnBarCore/.../Memory/MemoryServing.swift         -> Memory/MemoryModels.cs (record subset the inbox reads)
+      • OpenBurnBarCore/.../MissionControl/MissionConsoleTypes.swift -> MissionControl/MissionEnums.cs + MissionModels.cs + MissionForecastComputer.cs + MissionFormatting.cs
+      • OpenBurnBarCore/.../MissionControl/MissionFABGauge.swift     -> MissionControl/MissionFabGaugeState.cs
+      • OpenBurnBarCore/.../MissionControl/MissionConsoleHero.swift  -> MissionControl/MissionHeroText.cs
+      • OpenBurnBarCore/.../MissionControl/MissionRuntimeConstellation.swift + MissionKindChooser.swift -> MissionControl/MissionRuntimeCardItem.cs + MissionKindChipItem.cs
+      • AgentLens/Views/Dashboard/MissionConsoleMacHost.swift  -> MissionControl/MissionSnapshotBuilder.cs + MissionRecord.cs + MissionConsoleViewModel.cs
 
     Targets net8.0 so the net8.0-windows WinUI app can reference it, while the
     net10.0 test + storage-adapter projects can reference it too (a lower TFM is
