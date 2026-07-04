@@ -1,0 +1,1 @@
+{"actionId":"act-1","clientId":"client-1","destinationId":"dest-1","expiresAt":"2026-07-03T10:10:00Z","id":"appr-1","requestedAt":"2026-07-03T10:00:00Z","schemaVersion":1,"status":"pending","summary":"Run tests","toolName":"bash"}

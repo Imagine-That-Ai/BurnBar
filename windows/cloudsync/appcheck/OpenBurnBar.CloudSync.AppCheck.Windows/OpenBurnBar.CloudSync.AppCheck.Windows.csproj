@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows TPM attestation producer for the App Check client (Phase 2 · CloudSync
+    · App Check client lane). R14 / AC-013 / DEV-HOST DEFERRED.
+
+    This is the PLATFORM half of the attestation seam: the REAL CNG
+    NCryptCreateClaim(NCRYPT_CLAIM_PLATFORM) producer that proves the client is a
+    genuine, unmodified app on genuine hardware via a TPM key-attestation claim. It
+    sits behind the portable IAttestationProducer interface, so the whole
+    mint/refresh/attach lifecycle is unit-tested off-Windows (with the mock
+    producer) and only this thin TPM shim is Windows-bound.
+
+    Target framework note: net8.0-windows10.0.19041.0 (CNG ncrypt.dll + TPM). On the
+    macOS authoring host this project reaches the Windows-only build gate
+    (NETSDK1100); EnableWindowsTargeting=true is set so the C# cross-compiles on
+    macOS for evidence that every P/Invoke + type Roslyn-resolves and compiles
+    clean. It does NOT run off-Windows — a real Platform Crypto Provider + TPM is a
+    Windows dev-host step, and the end-to-end verify additionally needs AC-013's
+    server-side TPM verifier (the server today registers only the mock verifier).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>OpenBurnBar.CloudSync.AppCheck.Windows</RootNamespace>
+    <AssemblyName>OpenBurnBar.CloudSync.AppCheck.Windows</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.CloudSync.AppCheck/OpenBurnBar.CloudSync.AppCheck.csproj" />
+  </ItemGroup>
+
+</Project>
