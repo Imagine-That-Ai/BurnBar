@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherDestinationPickerSheet.swift.
+  A "Switch Account" ContentDialog: for a profile, list the candidate sign-in destinations
+  (planned by the portable SwitcherDestinationPlanner) as branded cards. Selecting a card sets
+  SelectedDestination and closes; the host opens that destination's sign-in URL.
+-->
+<ContentDialog
+    x:Class="OpenBurnBar.App.Switcher.AccountDestinationPickerDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.Switcher"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Switch Account"
+    CloseButtonText="Cancel"
+    DefaultButton="None">
+
+    <ContentDialog.Resources>
+        <local:HexToBrushConverter x:Key="HexToBrush" />
+    </ContentDialog.Resources>
+
+    <StackPanel Spacing="10" MinWidth="340">
+        <TextBlock x:Name="PromptText"
+                   FontSize="12" TextWrapping="Wrap"
+                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+
+        <ItemsControl x:Name="DestinationList">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:DestinationCardViewModel">
+                    <Button Click="OnDestinationClick"
+                            Margin="0,3"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}">
+                        <Grid ColumnSpacing="12" Padding="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16"
+                                    VerticalAlignment="Center"
+                                    Background="{x:Bind AccentColorHex, Converter={StaticResource HexToBrush}, ConverterParameter=30}">
+                                <FontIcon Glyph="{x:Bind Glyph}" FontSize="15"
+                                          Foreground="{x:Bind AccentColorHex, Converter={StaticResource HexToBrush}}" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Label}" FontSize="13"
+                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                <TextBlock Text="{x:Bind Subtitle}" FontSize="11"
+                                           Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                            </StackPanel>
+                            <FontIcon Grid.Column="2" Glyph="&#xE8A7;" FontSize="12"
+                                      VerticalAlignment="Center"
+                                      Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                        </Grid>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</ContentDialog>
