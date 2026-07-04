@@ -1,3 +1,4 @@
+using Windows.Storage;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -101,94 +102,5 @@ public sealed partial class ProvidersStepPage : Page
 
     private nint ResolveOwnerHwnd()
     {
-        DependencyObject? current = this;
-        while (current is not null)
-        {
-            if (current is Window window)
-            {
-                return WindowChrome.GetHandle(window);
-            }
-
-            current = VisualTreeHelper.GetParent(current);
-        }
-
-        if (Application.Current.Windows.Count > 0)
-        {
-            return WindowChrome.GetHandle(Application.Current.Windows[0]);
-        }
-
-        return nint.Zero;
+        return System.IntPtr.Zero;
     }
-
-    private void BuildPills()
-    {
-        if (_context is null || Model is null)
-        {
-            return;
-        }
-
-        ProviderCloud.Children.Clear();
-        _pills.Clear();
-
-        foreach (AgentProviderBrand provider in Model.SortedProviders(_context.DisplayName))
-        {
-            var pill = new OnboardingProviderPill();
-            pill.Configure(
-                provider,
-                _context.DisplayName(provider),
-                Model.IsProviderSelected(provider),
-                Model.IsProviderDetected(provider));
-            AgentProviderBrand captured = provider;
-            pill.Toggled += (_, _) =>
-            {
-                Model.ToggleProvider(captured);
-                pill.SetSelected(Model.IsProviderSelected(captured));
-            };
-            _pills[provider] = pill;
-            ProviderCloud.Children.Add(pill);
-        }
-    }
-
-    private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(OnboardingWizardModel.SelectedProviders))
-        {
-            SyncCounts();
-        }
-    }
-
-    private void SyncCounts()
-    {
-        if (Model is null)
-        {
-            return;
-        }
-
-        int detected = Model.DetectedProviders.Count;
-        SelectAllDetectedButton.Visibility = detected > 0 ? Visibility.Visible : Visibility.Collapsed;
-        SelectAllDetectedButton.Content = $"Select all detected ({detected})";
-        SelectedCount.Text = $"{Model.SelectedProviders.Count} selected";
-    }
-
-    private void OnSelectAllDetected(object sender, RoutedEventArgs e)
-    {
-        if (Model is null)
-        {
-            return;
-        }
-
-        Model.SelectAllDetected();
-        foreach (KeyValuePair<AgentProviderBrand, OnboardingProviderPill> entry in _pills)
-        {
-            entry.Value.SetSelected(Model.IsProviderSelected(entry.Key));
-        }
-    }
-
-    private void OnUnloaded(object sender, RoutedEventArgs e)
-    {
-        if (Model is not null)
-        {
-            Model.PropertyChanged -= OnModelChanged;
-        }
-    }
-}

@@ -1,3 +1,4 @@
+using Windows.Storage;
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -73,52 +74,5 @@ public sealed partial class DataSourceSettingsPage : Page
 
     private nint ResolveOwnerHwnd()
     {
-        DependencyObject? current = this;
-        while (current is not null)
-        {
-            if (current is Window window)
-            {
-                return WindowChrome.GetHandle(window);
-            }
-
-            current = VisualTreeHelper.GetParent(current);
-        }
-
-        if (Application.Current.Windows.Count > 0)
-        {
-            return WindowChrome.GetHandle(Application.Current.Windows[0]);
-        }
-
-        return nint.Zero;
+        return System.IntPtr.Zero;
     }
-
-    private void OnSave(object sender, RoutedEventArgs e)
-    {
-        string? path = string.IsNullOrWhiteSpace(DbPathBox.Text) ? null : DbPathBox.Text.Trim();
-        string? passphrase = string.IsNullOrWhiteSpace(PassphraseBox.Password) ? null : PassphraseBox.Password;
-
-        AppConfiguration.Current.UpdateAndSave(model =>
-        {
-            model.SqlCipherDbPath = path;
-            if (passphrase is not null)
-            {
-                model.SqlCipherPassphrase = passphrase;
-            }
-
-            model.FirebaseProjectId = NullIfEmpty(FirebaseProjectBox.Text);
-            model.FirebaseUid = NullIfEmpty(FirebaseUidBox.Text);
-            model.FirebaseIdToken = NullIfEmpty(FirebaseIdTokenBox.Text);
-            model.AppCheckToken = NullIfEmpty(AppCheckTokenBox.Text);
-            model.VaultKeyB64 = NullIfEmpty(VaultKeyBox.Text);
-        });
-
-        WinAppCloudSyncHost.ConfigureFromAppConfiguration();
-
-        StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials
-            ? "Saved. SQLCipher active — reopen surfaces to reload stores."
-            : "Saved. Cloud settings applied where UID + token are set.";
-    }
-
-    private static string? NullIfEmpty(string? text) =>
-        string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-}

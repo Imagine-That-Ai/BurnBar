@@ -35,11 +35,11 @@ public static class CloudSyncInsightSource
                 (InsightWidgetKind.KpiTile, 2) => new KpiData(
                     MetricLabel: "Sessions",
                     Value: summary.SessionCount,
-                    ValueFormat: ValueFormat.Number),
+                    ValueFormat: ValueFormat.Tokens),
                 (InsightWidgetKind.KpiTile, 4) => new KpiData(
                     MetricLabel: "Tokens",
                     Value: summary.TotalTokens,
-                    ValueFormat: ValueFormat.Number),
+                    ValueFormat: ValueFormat.Tokens),
                 _ => InsightSampleData.ForKind(kind, seed),
             };
         }

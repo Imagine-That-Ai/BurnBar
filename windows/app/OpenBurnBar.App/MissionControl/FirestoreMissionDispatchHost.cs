@@ -100,7 +100,7 @@ public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
             new KeyValuePair<string, CloudSyncValue>("updatedAt", CloudSyncValue.Of(updatedAt)),
         });
 
-        string documentPath = $"{_userRootPath}/{MissionRequestsCollection}/{ask.MissionId}";
+        string documentPath = $"{_userRootPath}/{MissionRequestsCollection}/{ask.Id}";
         await _writeQueue.SetAsync(documentPath, patch, merge: true).ConfigureAwait(false);
     }
 
@@ -125,7 +125,7 @@ public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
             .Concat(running)
             .Concat(claimed)
             .Concat(inProgress)
-            .DistinctBy(m => m.MissionId)
+            .DistinctBy(m => m.Id)
             .ToList();
 
         return MissionSnapshotBuilder.Build(

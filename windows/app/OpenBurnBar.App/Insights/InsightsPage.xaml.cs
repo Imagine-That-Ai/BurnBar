@@ -37,11 +37,11 @@ public sealed partial class InsightsPage : Page
                 2 => new KpiData(
                     MetricLabel: "Sessions",
                     Value: summary.SessionCount,
-                    ValueFormat: ValueFormat.Number),
+                    ValueFormat: ValueFormat.Tokens),
                 4 => new KpiData(
                     MetricLabel: "Tokens",
                     Value: summary.TotalTokens,
-                    ValueFormat: ValueFormat.Number),
+                    ValueFormat: ValueFormat.Tokens),
                 _ => null,
             };
         };
