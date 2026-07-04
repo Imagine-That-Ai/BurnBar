@@ -32,17 +32,17 @@
 | 2 | `chat` | `DashboardMainRoute.chat` + Pretext-backed bubbles | `ChatHostPage` → `ChatSurfaceView` + `WebView2PretextHost` | `presentation/Chat/*Tests.cs` | WebView2 + portable transcript models; engine parse via Phase 2 | **Authored** | `docs/windows-port/design/0005-pretext-webview2-metric-parity.md` |
 | 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights/*Tests.cs` (geometry, templates, render plan) | In-memory sample + view models; Firestore rollup deferred | **Authored** | **#1256** |
 | 4 | `quota` | `DashboardMainRoute.quota` | `QuotaWorkspacePage` | `OpenBurnBar.App.Quota.Tests` + `presentation/` quota geometry | Quota parsers (C2 lift) + sample data; live adapters in flight | **Authored** / engine **in flight** | **#1250** parsers; C2 branch `windows/c2-quota-lift` (no PR # yet) |
-| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SurfaceStubPage` (+ embedded `LiveCliStreamView` on stub) | `presentation/SessionLogGroupingTests`, `StorageSessionLogReadSourceTests` | `OpenBurnBar.Storage.SessionLogs` read seam when wired; stub stream today | **Stub shell** / read seam **real** | **#1251** (storage/session); B1 ConPTY for live CLI |
-| 6 | `memory` | `DashboardMainRoute.memoryReview` | `SurfaceStubPage` (hosts `MemoryReviewInboxView` when navigated from integration) | `presentation/MemoryReviewInboxModelTests.cs` | Portable inbox model; GRDB/memory tables via storage seam | **Stub nav** / model **authored** | G2 memory sync per `MEMORY_BACKEND_PLAN.md` |
+| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | `presentation/SessionLogGroupingTests`, `StorageSessionLogReadSourceTests` | `OpenBurnBar.Storage.SessionLogs` read seam (B2) + ConPTY CLI (B1) | **Real** (storage-backed) | **#1267** (integration); B1 ConPTY; B2 SQLCipher |
+| 6 | `memory` | `DashboardMainRoute.memoryReview` | `MemoryPage` | `presentation/MemoryReviewInboxModelTests.cs` | CloudSync memory_facts (B4) when configured; read-only on review | **Real** (cloud-backed) | **#1267** (integration); B4 CloudSync |
 | 7 | `missionControl` | `DashboardMainRoute.missions` / Mission Control console | `MissionControlPage` | `presentation/MissionControl/*Tests.cs` | `MissionDispatchDemoHost` + sample; Firestore dispatch in flight | **Authored** | Branch `windows/b6-mission-dispatch` (in flight) |
 | 8 | `budget` | Settings Budget + `BudgetLedger` (product core) | `BudgetPage` | `presentation/Budget/*Tests.cs` | Seeded rules (`BudgetPage` seed pattern); cloud budget deferred | **Authored** | Master plan §10.1 Budget row |
 | 9 | `dataControlCenter` | `DataControlCenter/` settings workbench | `DataControlCenterPage` | `presentation/DataControlCenter*Tests.cs` | Registry/sorting portable; callable hub deferred | **Authored** | **#1256** |
 | 10 | `switcher` | `AccountSwitcherSettingsView` | `SwitcherHostPage` | `presentation/Switcher/*Tests.cs` | `SwitcherSampleData` until encrypted profile store (B2) | **Authored** / store **in flight** | `windows/b2-sqlcipher-persistence` (in flight) |
-| 11 | `onboarding` | Onboarding wizard (`Views/Onboarding/`) | `OnboardingPage` (exists; resolver still **stub** until integration wave) | `OpenBurnBar.App.Onboarding.Tests` | Portable wizard model | **Authored** / nav **stub** | Onboarding tests green on macOS CI |
-| 12 | `settings` | Settings shell + ~40 leaves | `SettingsPage` tree (footer nav); resolver default **stub** until full wire | `OpenBurnBar.App.Settings.Tests` | Manifest/router portable | **Authored** / shell wire **partial** | Settings test project |
+| 11 | `onboarding` | Onboarding wizard (`Views/Onboarding/`) | `OnboardingPage` | `OpenBurnBar.App.Onboarding.Tests` | Portable wizard model + DB config step | **Real** (registered in resolver) | **#1267** (integration) |
+| 12 | `settings` | Settings shell + ~40 leaves | `SettingsPage` tree | `OpenBurnBar.App.Settings.Tests` | Manifest/router portable + DataSourceSettingsPage (SQLCipher + Firebase config) | **Real** (registered + data source settings) | **#1267** (integration) |
 | 13 | `elderWand` | `.gatedFeature(.elderWand)` / Analysis Models | `ElderWandPage` (auxiliary, palette) | `presentation/ElderWand*Tests.cs` | `ElderWandSampleData` | **Authored** | **#1256**; accepted drift: sidebar vs Settings-leaf entry (§4) |
 
-**Resolver ground truth:** nine keys map to real `Page` types in `SurfacePageResolver.cs`; remaining catalog keys fall through to `SurfaceStubPage` until the integration wave replaces them one-by-one (**#1256**).
+**Resolver ground truth:** all 12 `NavCatalog.All` keys + 1 `NavCatalog.Auxiliary` key (elderWand) = **13/13** map to real `Page` types in `SurfacePageResolver.cs`.  is only the `_ ` catch-all for unknown keys (**#1267** integration).
 
 ---
 
@@ -60,7 +60,7 @@
 | **App Check (R14)** | Apple App Attest | TPM `NCryptCreateClaim` + mint backend | `OpenBurnBar.CloudSync.AppCheck.Tests` | **Server half built**; Win11 Pro TPM pass **Alberto** | HANDOFF §R14; not **#1253** alone |
 | **Rust transport** | `burnbar-remote`, `openburnbar-iroh` | `*-pc-windows-msvc` targets | `build-*-windows.yml` workflows | **Targets authored** | **WPD-0002**; **#1253** (A3 CI) |
 | **Engine host (Option A)** | `OpenBurnBarCore` Engine subset | Swift-on-Windows compile + walking skeleton | `openburnbar-engine-windows.yml` | **Proven on dev host**; CI gate hardening | **#1252** (B0 ADR **WPD-0007** narrative); **#1257** (B0 spike) |
-| **UniFFI / interim parse** | In-process Swift | **Interim:** `swift run` CLI wrapper (B0 spike) until UniFFI bindgen stable | B0 end-to-end spike tests | **Accepted interim** (§4) | **#1257** |
+| **C-ABI engine binding** | In-process Swift | `@_cdecl` export (`obb_parse_cli_stdout`) + C# P/Invoke test (1/1 macOS) | Engine binding test project | **Proven on macOS**; Windows CI pending | **#1267** (integration) |
 | **Computer Use core** | `OpenBurnBarComputerUseCore` | PAL input + policy tests | `OpenBurnBar.ComputerUse.Tests`, `OpenBurnBar.Pal.Input.Tests` | **Phase 4** (G4); not G5 blocker for local peer v1 | WS-D deferred render pass |
 
 **G2 headline (not yet certified in this bundle):** multi-provider session corpus → **byte-identical** `ParserOutputContractRecord` vs Mac golden on Windows — tracked as **FIX** until `pr-windows-full` / engine lane records green logs in §5.
@@ -185,4 +185,4 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 
 ---
 
-*Bundle version: 2026-07-04 · Branch: `windows/e3-parity-certification` · Author: WS-E3 parity-cert lane.*
+*Bundle version: 2026-07-04 (updated for integration PR #1267) · Branch: `windows/integration-all-prs`*
