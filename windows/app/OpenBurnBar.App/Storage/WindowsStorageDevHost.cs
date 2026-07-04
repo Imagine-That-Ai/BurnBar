@@ -21,8 +21,9 @@ internal static class WindowsStorageDevHost
     /// </summary>
     public static (string? Path, string? Passphrase) ResolveCredentials()
     {
-        string? path = Environment.GetEnvironmentVariable("OPENBURNBAR_SQLCIPHER_PATH");
-        string? passphrase = Environment.GetEnvironmentVariable("OPENBURNBAR_SQLCIPHER_PASSPHRASE");
+        var config = OpenBurnBar.App.Configuration.AppConfiguration.Current;
+        string? path = config.EffectiveSqlCipherDbPath();
+        string? passphrase = config.EffectiveSqlCipherPassphrase();
         if (!string.IsNullOrWhiteSpace(path) && !string.IsNullOrWhiteSpace(passphrase) && File.Exists(path))
         {
             return (path, passphrase);

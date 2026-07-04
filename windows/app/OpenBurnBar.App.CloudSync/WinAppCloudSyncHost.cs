@@ -1,3 +1,4 @@
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.DataControlCenter;
 using OpenBurnBar.App.Presentation.Memories;
 using OpenBurnBar.CloudSync.Crypto;
@@ -63,25 +64,32 @@ public static class WinAppCloudSyncHost
         }
     }
 
-    public static void ConfigureFromEnvironment()
+    public static void ConfigureFromAppConfiguration()
     {
-        string? project = Environment.GetEnvironmentVariable("OPENBURNBAR_FIREBASE_PROJECT_ID")
-                          ?? "openburnbar-dev";
-        string? uid = Environment.GetEnvironmentVariable("OPENBURNBAR_FIREBASE_UID");
+        AppConfiguration config = AppConfiguration.Current;
+        string? uid = config.EffectiveFirebaseUid();
         if (string.IsNullOrWhiteSpace(uid))
         {
             return;
         }
 
+        string project = config.EffectiveFirebaseProjectId();
         byte[] vaultKey = CloudVaultCrypto.GenerateVaultKey();
-        string? keyB64 = Environment.GetEnvironmentVariable("OPENBURNBAR_VAULT_KEY_B64");
+        string? keyB64 = config.EffectiveVaultKeyB64();
         if (!string.IsNullOrWhiteSpace(keyB64))
         {
             vaultKey = Convert.FromBase64String(keyB64);
         }
 
-        ConfigureForDevHost(project, uid, vaultKey);
+        ConfigureForDevHost(
+            project,
+            uid,
+            vaultKey,
+            idToken: config.EffectiveFirebaseIdToken(),
+            appCheckToken: config.EffectiveAppCheckToken());
     }
+
+    public static void ConfigureFromEnvironment() => ConfigureFromAppConfiguration();
 
     public static DataControlCenterViewModel CreateDataControlViewModel()
     {

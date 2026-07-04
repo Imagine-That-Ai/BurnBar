@@ -40,7 +40,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        WinAppCloudSyncHost.ConfigureFromEnvironment();
+        WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         _theme = new ThemeService(_state);
 
         // Windows are created eagerly but stay hidden — the tray owns visibility, exactly like
