@@ -4,12 +4,12 @@ import OpenBurnBarCore
 // MARK: - Shared Token Extraction Utilities
 
 /// Extracted token usage fields from a provider's usage dictionary.
-struct ExtractedTokenUsage {
-    let input: Int
-    let output: Int
-    let cacheCreation: Int
-    let cacheRead: Int
-    let reasoningTokens: Int
+public struct ExtractedTokenUsage {
+    public let input: Int
+    public let output: Int
+    public let cacheCreation: Int
+    public let cacheRead: Int
+    public let reasoningTokens: Int
 
     /// Returns true when all explicit buckets (input, output, cacheCreation, cacheRead, reasoningTokens) are zero/absent.
     /// This indicates that fallback estimation should be used rather than normalization.
@@ -25,14 +25,14 @@ struct ExtractedTokenUsage {
 }
 
 /// Estimated token counts derived from character-level content analysis.
-struct EstimatedTokens {
-    let input: Int
-    let output: Int
+public struct EstimatedTokens {
+    public let input: Int
+    public let output: Int
 }
 
 /// Shared utilities for parsing token usage from heterogeneous provider JSON formats.
 /// Used by ClaudeCodeParser, FactoryDroidParser, ModelFilterParser, and others.
-enum TokenExtractionUtility {
+public enum TokenExtractionUtility {
     /// Factory-style logs sometimes persist only a preview of large tool output blocks,
     /// plus a marker like "[Showing lines 1-50 of 317 total lines]". We add a
     /// conservative allowance for that hidden text when falling back to transcript
@@ -46,7 +46,7 @@ enum TokenExtractionUtility {
     /// Controls which fallback estimator is used when exact token counts are unavailable.
     /// - characterRatio: Default character-based estimation (charsPerToken ~3.35 for visible, ~2.45 for reasoning)
     /// - tokenizerAssisted: Higher-precision estimation using actual tokenizer when available
-    enum FallbackEstimator: String {
+    public enum FallbackEstimator: String, Sendable {
         case characterRatio = "char-ratio-v1"
         case tokenizerAssisted = "tokenizer-v1"
     }
@@ -57,13 +57,13 @@ enum TokenExtractionUtility {
     /// read-only parser tasks during each refresh pass).
     private static let _fallbackEstimator = Locked<FallbackEstimator>(.characterRatio)
 
-    static var fallbackEstimator: FallbackEstimator {
+    public static var fallbackEstimator: FallbackEstimator {
         get { _fallbackEstimator.read() }
         set { _fallbackEstimator.write(newValue) }
     }
 
     /// Returns the estimator version string for use in provenance metadata.
-    static var currentEstimatorVersion: String {
+    public static var currentEstimatorVersion: String {
         fallbackEstimator.rawValue
     }
 
@@ -84,7 +84,7 @@ enum TokenExtractionUtility {
     ///
     /// - Returns: An `ExtractedTokenUsage` with all explicit buckets preserved. The caller should check
     ///   `hasNoExplicitBuckets` to determine if fallback estimation is needed.
-    static func extractUsageTokens(
+    public static func extractUsageTokens(
         _ usage: [String: Any],
         inputHint: Int = 0,
         outputHint: Int = 0
@@ -221,7 +221,7 @@ enum TokenExtractionUtility {
     private static let ignoredContentKeys: Set<String> = ["type", "role", "id", "tool_use_id", "name"]
 
     /// Measures visible and reasoning character counts from arbitrary JSON content structures.
-    static func contentMetrics(from value: Any, key: String? = nil) -> (visibleChars: Int, reasoningChars: Int) {
+    public static func contentMetrics(from value: Any, key: String? = nil) -> (visibleChars: Int, reasoningChars: Int) {
         switch value {
         case let text as String:
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -314,7 +314,7 @@ enum TokenExtractionUtility {
     ///
     /// - VAL-TOKEN-008: When `fallbackEstimator` is `.tokenizerAssisted`, uses tokenizer-aware
     ///   estimation. When `.characterRatio` (default), uses character-ratio heuristics.
-    static func estimateFallbackTokens(
+    public static func estimateFallbackTokens(
         userVisibleChars: Int,
         assistantVisibleChars: Int,
         assistantReasoningChars: Int,
@@ -386,13 +386,13 @@ enum TokenExtractionUtility {
     }
 
     /// Estimate token count from character count, adjusting for CJK content.
-    static func estimatedTokenCount(for characters: Int, charsPerToken: Double) -> Int {
+    public static func estimatedTokenCount(for characters: Int, charsPerToken: Double) -> Int {
         guard characters > 0 else { return 0 }
         return Int((Double(characters) / charsPerToken).rounded(.up))
     }
 
     /// Detect whether text is predominantly CJK and return appropriate chars-per-token ratio.
-    static func charsPerToken(for text: String, defaultRatio: Double = 3.35) -> Double {
+    public static func charsPerToken(for text: String, defaultRatio: Double = 3.35) -> Double {
         guard !text.isEmpty else { return defaultRatio }
         let sample = String(text.prefix(2000))
         var cjkCount = 0
@@ -420,7 +420,7 @@ enum TokenExtractionUtility {
     // MARK: - Model Detection
 
     /// Detect a model hint from content that contains "model:" annotations.
-    static func detectModelHint(from value: Any) -> String? {
+    public static func detectModelHint(from value: Any) -> String? {
         switch value {
         case let text as String:
             guard text.lowercased().contains("model:") else { return nil }
@@ -473,7 +473,7 @@ enum TokenExtractionUtility {
     }
 
     /// Strip `custom:` prefix from model names.
-    static func normalizeModelName(_ model: String) -> String {
+    public static func normalizeModelName(_ model: String) -> String {
         var normalized = model.trimmingCharacters(in: .whitespacesAndNewlines)
         // Case-insensitive prefix strip so "Custom:" and "custom:" both reduce
         // to the bare model name. The "custom:" prefix is a Cursor convention
@@ -489,14 +489,14 @@ enum TokenExtractionUtility {
     }
 
     /// Stable lowercase key for grouping usages by model.
-    static func normalizeModelKey(_ model: String) -> String {
+    public static func normalizeModelKey(_ model: String) -> String {
         normalizeModelName(model)
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
     }
 
     /// Human-readable display name for a model string.
-    static func displayNameForModel(_ rawName: String) -> String {
+    public static func displayNameForModel(_ rawName: String) -> String {
         let key = normalizeModelKey(rawName)
         guard !key.isEmpty else { return rawName }
         // Title-case: replace hyphens/underscores with spaces, capitalize each word
@@ -515,7 +515,7 @@ enum TokenExtractionUtility {
 
     // MARK: - JSON Helpers
 
-    static func firstIntValue(in dictionary: [String: Any], paths: [[String]]) -> Int? {
+    public static func firstIntValue(in dictionary: [String: Any], paths: [[String]]) -> Int? {
         for path in paths {
             if let value = nestedValue(in: dictionary, path: path),
                let intValue = parseInt(value) {
@@ -525,7 +525,7 @@ enum TokenExtractionUtility {
         return nil
     }
 
-    static func nestedValue(in dictionary: [String: Any], path: [String]) -> Any? {
+    public static func nestedValue(in dictionary: [String: Any], path: [String]) -> Any? {
         var cursor: Any = dictionary
         for key in path {
             guard let dict = cursor as? [String: Any], let next = dict[key] else {
@@ -536,7 +536,7 @@ enum TokenExtractionUtility {
         return cursor
     }
 
-    static func parseInt(_ value: Any?) -> Int? {
+    public static func parseInt(_ value: Any?) -> Int? {
         guard let value else { return nil }
         if let intValue = value as? Int {
             return max(intValue, 0)
@@ -572,7 +572,7 @@ enum TokenExtractionUtility {
     ///   2. `{"event_msg":{…}}` — legacy nested envelope.
     ///   3. `{"token_count":{…}}` — direct token_count payload.
     ///   4. `{"input_tokens":…, "output_tokens":…}` — root-level usage payload.
-    static func codexTokenCountInfo(from json: [String: Any]) -> [String: Any]? {
+    public static func codexTokenCountInfo(from json: [String: Any]) -> [String: Any]? {
         // Current format: {"type":"event_msg","payload":{"type":"token_count","info":{…}}}
         if let type = json["type"] as? String,
            type == "event_msg",
@@ -607,7 +607,7 @@ enum TokenExtractionUtility {
     /// The returned `input` is the *raw* inclusive prompt size (as reported by Codex),
     /// which already contains the `cacheRead` (cached input) portion. The parser is
     /// responsible for subtracting cacheRead before storing on `TokenUsage`.
-    static func codexCumulativeTotalsFromTokenCountInfo(_ info: [String: Any]) -> (input: Int, output: Int, cacheRead: Int)? {
+    public static func codexCumulativeTotalsFromTokenCountInfo(_ info: [String: Any]) -> (input: Int, output: Int, cacheRead: Int)? {
         // VAL-TOKEN-010: Current Codex rollout logs use `total_token_usage` for cumulative
         // counts. Check this first so authoritative totals win over ambiguous delta events.
         if let totalUsage = info["total_token_usage"] as? [String: Any],
@@ -644,12 +644,12 @@ enum TokenExtractionUtility {
 
 /// Normalizes timestamps originating from heterogeneous logs/storage (seconds/ms/us/ns),
 /// and guarantees Firestore-safe Date values.
-enum TimestampNormalizationUtility {
+public enum TimestampNormalizationUtility {
     /// Firestore Timestamp supports year 0001 through 9999.
     static let firestoreMinEpochSeconds = -62_135_596_800.0
     static let firestoreMaxEpochSeconds = 253_402_300_799.0
 
-    static func normalizedEpochSeconds(_ raw: Double?) -> Double? {
+    public static func normalizedEpochSeconds(_ raw: Double?) -> Double? {
         guard var seconds = raw, seconds.isFinite else { return nil }
 
         var attempts = 0
@@ -665,14 +665,14 @@ enum TimestampNormalizationUtility {
         return seconds
     }
 
-    static func date(fromEpoch raw: Double?, fallback: Date = Date()) -> Date {
+    public static func date(fromEpoch raw: Double?, fallback: Date = Date()) -> Date {
         if let seconds = normalizedEpochSeconds(raw) {
             return Date(timeIntervalSince1970: seconds)
         }
         return firestoreSafeDate(fallback)
     }
 
-    static func firestoreSafeDate(_ date: Date, fallback: Date = Date()) -> Date {
+    public static func firestoreSafeDate(_ date: Date, fallback: Date = Date()) -> Date {
         if let seconds = normalizedEpochSeconds(date.timeIntervalSince1970) {
             return Date(timeIntervalSince1970: seconds)
         }

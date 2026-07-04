@@ -261,7 +261,7 @@ public final class CLITerminalSessionSupervisor: Sendable {
         let fd = pipe.fileHandleForReading.fileDescriptor
         let bufferSize = 4096
         var buffer = [UInt8](repeating: 0, count: bufferSize)
-        
+
         let readSource = DispatchSource.makeReadSource(
             fileDescriptor: fd,
             queue: queue

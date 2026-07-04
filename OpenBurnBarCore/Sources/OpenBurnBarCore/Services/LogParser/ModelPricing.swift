@@ -4,13 +4,13 @@ import Foundation
 import OpenBurnBarCore
 #endif
 
-struct ModelPricing {
-    let inputPerMToken: Double
-    let outputPerMToken: Double
-    let cacheCreationPerMToken: Double?
-    let cacheReadPerMToken: Double
+public struct ModelPricing: Sendable {
+    public let inputPerMToken: Double
+    public let outputPerMToken: Double
+    public let cacheCreationPerMToken: Double?
+    public let cacheReadPerMToken: Double
 
-    init(
+    public init(
         inputPerMToken: Double,
         outputPerMToken: Double,
         cacheReadPerMToken: Double
@@ -23,7 +23,7 @@ struct ModelPricing {
         )
     }
 
-    init(
+    public init(
         inputPerMToken: Double,
         outputPerMToken: Double,
         cacheReadPerMToken: Double,
@@ -35,7 +35,7 @@ struct ModelPricing {
         self.cacheReadPerMToken = cacheReadPerMToken
     }
 
-    static func lookup(model: String, providerID: String? = nil) -> ModelPricing {
+    public static func lookup(model: String, providerID: String? = nil) -> ModelPricing {
         let normalizedModel = TokenExtractionUtility.normalizeModelName(model)
         #if canImport(OpenBurnBarCore)
         let pricing = OpenBurnBarCatalogLookup.shared.pricing(
@@ -48,7 +48,7 @@ struct ModelPricing {
         #endif
     }
 
-    static func hasCatalogPricing(model: String, providerID: String? = nil) -> Bool {
+    public static func hasCatalogPricing(model: String, providerID: String? = nil) -> Bool {
         let normalizedModel = TokenExtractionUtility.normalizeModelName(model)
         #if canImport(OpenBurnBarCore)
         return OpenBurnBarCatalogLookup.shared.pricing(
@@ -60,7 +60,7 @@ struct ModelPricing {
         #endif
     }
 
-    func cost(
+    public func cost(
         inputTokens: Int,
         outputTokens: Int,
         cacheCreationTokens: Int = 0,

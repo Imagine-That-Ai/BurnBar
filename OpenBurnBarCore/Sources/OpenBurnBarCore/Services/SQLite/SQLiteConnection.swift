@@ -3,17 +3,17 @@
 // uses on Apple — linking whichever SQLite is present:
 //   • Apple (macOS/iOS): the system `SQLite3` module (`#if canImport(SQLite3)`), so
 //     the 8.8 MB vendored amalgamation is never compiled on Apple builds.
-//   • Off-Apple (Windows/Linux): the vendored `CSQLite` amalgamation target, since
-//     the Swift Windows SDK ships no system SQLite.
+//   • Off-Apple (Windows/Linux): the vendored `OpenBurnBarCoreCSQLite`
+//     amalgamation target, since the Swift Windows SDK ships no system SQLite.
 // Both expose identical `sqlite3_*` symbols, so the Swift logic below is the SAME
 // on every platform — the macOS G2 run therefore exercises the exact reader code
 // the Windows CI leg runs.
 #if canImport(SQLite3)
 import SQLite3
-#elseif canImport(CSQLite)
-import CSQLite
+#elseif canImport(OpenBurnBarCoreCSQLite)
+import OpenBurnBarCoreCSQLite
 #else
-#error("No SQLite backend available: neither the system SQLite3 module (Apple) nor the vendored CSQLite target (off-Apple) is importable.")
+#error("No SQLite backend available: neither the system SQLite3 module (Apple) nor the vendored OpenBurnBarCoreCSQLite target (off-Apple) is importable.")
 #endif
 import Foundation
 

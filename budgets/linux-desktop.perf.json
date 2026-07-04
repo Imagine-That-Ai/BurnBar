@@ -11,5 +11,15 @@
     "parser.incremental.run": 900,
     "memory.search": 650,
     "media.control.stage": 500
+  },
+  "trendPolicy": {
+    "name": "current-threshold-enforced-until-baseline",
+    "baselineSource": "none",
+    "rule": "Every current sample must stay under threshold; add historical p50/p95 rows once mission-001 has two validated Linux runs."
+  },
+  "macosComparison": {
+    "status": "blocked",
+    "reason": "The macOS app does not expose an equivalent Linux-shell Tauri runner or tray/AppIndicator path; the comparison is recorded as an explicit blocker instead of a silent pass.",
+    "acceptedBlocker": "VAL-PERF-001-macos-source-comparison-unavailable"
   }
 }

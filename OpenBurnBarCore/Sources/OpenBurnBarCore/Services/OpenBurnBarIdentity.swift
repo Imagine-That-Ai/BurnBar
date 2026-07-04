@@ -1,85 +1,85 @@
 import Foundation
 
-enum OpenBurnBarIdentity {
-    static let productName = "OpenBurnBar"
-    static let legacyProductName = "AgentLens"
+public enum OpenBurnBarIdentity {
+    public static let productName = "OpenBurnBar"
+    public static let legacyProductName = "AgentLens"
 
-    static let bundleIdentifier = "com.openburnbar.app"
-    static let legacyBundleIdentifiers = [
+    public static let bundleIdentifier = "com.openburnbar.app"
+    public static let legacyBundleIdentifiers = [
         "com.burnbar.app",
         "com.agentlens.app"
     ]
 
-    static let supportDirectoryName = "OpenBurnBar"
-    static let legacySupportDirectoryNames = [
+    public static let supportDirectoryName = "OpenBurnBar"
+    public static let legacySupportDirectoryNames = [
         "BurnBar",
         "AgentLens"
     ]
 
-    static let databaseFileName = "openburnbar.sqlite"
-    static let legacyDatabaseFileNames = [
+    public static let databaseFileName = "openburnbar.sqlite"
+    public static let legacyDatabaseFileNames = [
         "burnbar.sqlite",
         "agentlens.sqlite"
     ]
 
-    static let cursorConnectorKeychainService = "com.openburnbar.cursor-connector"
-    static let legacyCursorConnectorKeychainServices = [
+    public static let cursorConnectorKeychainService = "com.openburnbar.cursor-connector"
+    public static let legacyCursorConnectorKeychainServices = [
         "com.burnbar.cursor-connector",
         "com.agentlens.cursor-connector"
     ]
-    static let controllerRuntimeKeychainService = "com.openburnbar.controller-runtime"
-    static let legacyControllerRuntimeKeychainServices = ["com.burnbar.controller-runtime"]
-    static let controllerTelegramBotTokenAccount = "provider.controller.telegram.apiKey"
-    static let chatGatewayKeychainService = "com.openburnbar.chat-gateway-secrets"
-    static let legacyChatGatewayKeychainServices = ["com.burnbar.chat-gateway-secrets"]
-    static let providerAPIKeychainService = "com.openburnbar.provider-api-keys"
-    static let legacyProviderAPIKeychainServices = ["com.burnbar.provider-api-keys"]
-    static let openClawBearerTokenAccount = "settings.chat.openclaw.bearerToken"
-    static let hermesBearerTokenAccount = "settings.chat.hermes.bearerToken"
-    static let piAgentBearerTokenAccount = "settings.chat.piagent.bearerToken"
-    static let gatewayAuthTokenAccount = "settings.gateway.http.authToken"
-    static let daemonSocketAuthTokenAccount = "daemon.socket.authToken"
-    static let switcherAuthKeychainService = "com.openburnbar.switcher-auth"
-    static let homeAssistantKeychainService = "com.openburnbar.home-assistant"
-    static let homeAssistantAccessTokenAccount = "smarthub.homeAssistant.accessToken"
-    static let homeAssistantWebhookSecretAccount = "smarthub.homeAssistant.webhookSecret"
+    public static let controllerRuntimeKeychainService = "com.openburnbar.controller-runtime"
+    public static let legacyControllerRuntimeKeychainServices = ["com.burnbar.controller-runtime"]
+    public static let controllerTelegramBotTokenAccount = "provider.controller.telegram.apiKey"
+    public static let chatGatewayKeychainService = "com.openburnbar.chat-gateway-secrets"
+    public static let legacyChatGatewayKeychainServices = ["com.burnbar.chat-gateway-secrets"]
+    public static let providerAPIKeychainService = "com.openburnbar.provider-api-keys"
+    public static let legacyProviderAPIKeychainServices = ["com.burnbar.provider-api-keys"]
+    public static let openClawBearerTokenAccount = "settings.chat.openclaw.bearerToken"
+    public static let hermesBearerTokenAccount = "settings.chat.hermes.bearerToken"
+    public static let piAgentBearerTokenAccount = "settings.chat.piagent.bearerToken"
+    public static let gatewayAuthTokenAccount = "settings.gateway.http.authToken"
+    public static let daemonSocketAuthTokenAccount = "daemon.socket.authToken"
+    public static let switcherAuthKeychainService = "com.openburnbar.switcher-auth"
+    public static let homeAssistantKeychainService = "com.openburnbar.home-assistant"
+    public static let homeAssistantAccessTokenAccount = "smarthub.homeAssistant.accessToken"
+    public static let homeAssistantWebhookSecretAccount = "smarthub.homeAssistant.webhookSecret"
 
-    static let dailyDigestNotificationIdentifier = "openburnbar.daily-digest"
-    static let legacyDailyDigestNotificationIdentifiers = [
+    public static let dailyDigestNotificationIdentifier = "openburnbar.daily-digest"
+    public static let legacyDailyDigestNotificationIdentifiers = [
         "burnbar.daily-digest",
         "agentlens.daily-digest"
     ]
 
-    static let deviceIDKey = "com.openburnbar.deviceId"
-    static let legacyDeviceIDKeys = [
+    public static let deviceIDKey = "com.openburnbar.deviceId"
+    public static let legacyDeviceIDKeys = [
         "com.burnbar.deviceId",
         "com.agentlens.deviceId"
     ]
 }
 
-struct OpenBurnBarAppPaths {
-    let applicationSupportRoot: URL
+public struct OpenBurnBarAppPaths: Sendable {
+    public let applicationSupportRoot: URL
 
-    static func live(fileManager: FileManager = .default) -> OpenBurnBarAppPaths {
+    public static func live(fileManager: FileManager = .default) -> OpenBurnBarAppPaths {
         let appSupportRoot = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
     }
 
-    var supportDirectory: URL {
+    public var supportDirectory: URL {
         applicationSupportRoot.appendingPathComponent(OpenBurnBarIdentity.supportDirectoryName, isDirectory: true)
     }
 
-    var legacySupportDirectories: [URL] {
+    public var legacySupportDirectories: [URL] {
         OpenBurnBarIdentity.legacySupportDirectoryNames.map {
             applicationSupportRoot.appendingPathComponent($0, isDirectory: true)
         }
     }
 
-    var databaseURL: URL {
+    public var databaseURL: URL {
         supportDirectory.appendingPathComponent(OpenBurnBarIdentity.databaseFileName)
     }
 
-    var databaseSidecarURLs: [URL] {
+    public var databaseSidecarURLs: [URL] {
         [
             databaseURL,
             URL(fileURLWithPath: databaseURL.path + "-wal"),
@@ -87,53 +87,53 @@ struct OpenBurnBarAppPaths {
         ]
     }
 
-    var startupRecoveryDirectory: URL {
+    public var startupRecoveryDirectory: URL {
         supportDirectory.appendingPathComponent("StartupRecovery", isDirectory: true)
     }
 
-    func startupRecoveryArchiveDirectory(timestamp: String) -> URL {
+    public func startupRecoveryArchiveDirectory(timestamp: String) -> URL {
         startupRecoveryDirectory.appendingPathComponent(timestamp, isDirectory: true)
     }
 
-    var providerQuotaSnapshotsURL: URL {
+    public var providerQuotaSnapshotsURL: URL {
         supportDirectory.appendingPathComponent("provider_quotas.json")
     }
 
-    var providerRoutingEventsURL: URL {
+    public var providerRoutingEventsURL: URL {
         supportDirectory.appendingPathComponent("provider_routing_events.json")
     }
 
-    var codexRolloutScanCacheURL: URL {
+    public var codexRolloutScanCacheURL: URL {
         supportDirectory.appendingPathComponent("codex_rollout_scan_cache.json")
     }
 
     /// Scratch directory for adapter-side caches (e.g. xAI team-id discovery).
     /// Files inside are best-effort caches and can be regenerated.
-    var providerQuotaScratchDirectory: URL {
+    public var providerQuotaScratchDirectory: URL {
         supportDirectory.appendingPathComponent("ProviderQuotaScratch", isDirectory: true)
     }
 
-    var vectorIndexesRootURL: URL {
+    public var vectorIndexesRootURL: URL {
         supportDirectory.appendingPathComponent("VectorIndexes", isDirectory: true)
     }
 
-    var claudeCodeParserCacheURL: URL {
+    public var claudeCodeParserCacheURL: URL {
         supportDirectory.appendingPathComponent("claude_code_parser_cache.json")
     }
 
-    var factoryDroidParserCacheURL: URL {
+    public var factoryDroidParserCacheURL: URL {
         supportDirectory.appendingPathComponent("factory_droid_parser_cache.json")
     }
 
-    var claudeStatuslineBridgeScriptURL: URL {
+    public var claudeStatuslineBridgeScriptURL: URL {
         supportDirectory.appendingPathComponent("claude_statusline_bridge.sh")
     }
 
-    var claudeStatuslineSnapshotURL: URL {
+    public var claudeStatuslineSnapshotURL: URL {
         supportDirectory.appendingPathComponent("claude_statusline_snapshot.json")
     }
 
-    var claudeStatuslineBridgeMetadataURL: URL {
+    public var claudeStatuslineBridgeMetadataURL: URL {
         supportDirectory.appendingPathComponent("claude_statusline_bridge_metadata.json")
     }
 
@@ -141,35 +141,35 @@ struct OpenBurnBarAppPaths {
     /// `resets_at` windows. Used by `ClaudeOAuthUsageFetcher` to avoid
     /// re-polling Anthropic's aggressive 429 wall once a fresh
     /// payload is cached for the current 5h/7d window.
-    var claudeOAuthUsageCacheURL: URL {
+    public var claudeOAuthUsageCacheURL: URL {
         supportDirectory.appendingPathComponent("claude_oauth_usage_cache.json")
     }
 
-    var claudeQuotaBridgeScriptURL: URL {
+    public var claudeQuotaBridgeScriptURL: URL {
         claudeStatuslineBridgeScriptURL
     }
 
-    var claudeQuotaSnapshotURL: URL {
+    public var claudeQuotaSnapshotURL: URL {
         claudeStatuslineSnapshotURL
     }
 
-    var claudeQuotaBridgeMetadataURL: URL {
+    public var claudeQuotaBridgeMetadataURL: URL {
         claudeStatuslineBridgeMetadataURL
     }
 
     /// Isolated on-disk workspace for one chat thread (CLI / Hermes / OpenClaw file roots).
-    func chatWorkspaceURL(forThreadID threadID: String) -> URL {
+    public func chatWorkspaceURL(forThreadID threadID: String) -> URL {
         supportDirectory
             .appendingPathComponent("ChatWorkspaces", isDirectory: true)
             .appendingPathComponent(threadID, isDirectory: true)
     }
 
     /// Legacy Hermes-only path; new code should use `chatWorkspaceURL(forThreadID:)`.
-    func hermesChatWorkspaceURL(forThreadID threadID: String) -> URL {
+    public func hermesChatWorkspaceURL(forThreadID threadID: String) -> URL {
         chatWorkspaceURL(forThreadID: threadID)
     }
 
-    var legacyDatabaseCandidates: [URL] {
+    public var legacyDatabaseCandidates: [URL] {
         var candidates = [supportDirectory.appendingPathComponent(OpenBurnBarIdentity.databaseFileName)]
         for legacyName in OpenBurnBarIdentity.legacyDatabaseFileNames {
             candidates.append(supportDirectory.appendingPathComponent(legacyName))
@@ -191,11 +191,11 @@ struct OpenBurnBarAppPaths {
     }
 }
 
-struct OpenBurnBarDefaultsMigration {
+public struct OpenBurnBarDefaultsMigration {
     let defaults: UserDefaults
     let legacyDomains: [String]
 
-    func migrateIfNeeded() {
+    public func migrateIfNeeded() {
         for domain in legacyDomains {
             guard let persisted = defaults.persistentDomain(forName: domain), !persisted.isEmpty else { continue }
             for (key, value) in persisted where defaults.object(forKey: key) == nil {
@@ -205,12 +205,12 @@ struct OpenBurnBarDefaultsMigration {
     }
 }
 
-struct OpenBurnBarFilesystemMigration {
+public struct OpenBurnBarFilesystemMigration {
     let fileManager: FileManager
     let paths: OpenBurnBarAppPaths
 
     @discardableResult
-    func prepareSupportDirectory() throws -> URL {
+    public func prepareSupportDirectory() throws -> URL {
         for legacyDirectory in paths.legacySupportDirectories where directoryExists(at: legacyDirectory) {
             try moveOrMergeLegacyDirectory(from: legacyDirectory, to: paths.supportDirectory)
         }
@@ -292,23 +292,20 @@ struct OpenBurnBarFilesystemMigration {
     }
 }
 
-enum OpenBurnBarMigration {
-    static func migrateUserDefaults(defaults: UserDefaults = .standard) {
-        OpenBurnBarDefaultsMigration(
-            defaults: defaults,
-            legacyDomains: OpenBurnBarIdentity.legacyBundleIdentifiers
-        ).migrateIfNeeded()
-    }
+public enum OpenBurnBarMigration {
 
-    @discardableResult
-    static func prepareSupportDirectory(
+    public static func prepareSupportDirectory(
         fileManager: FileManager = .default,
         paths: OpenBurnBarAppPaths? = nil
     ) throws -> URL {
         let resolvedPaths = paths ?? OpenBurnBarAppPaths.live(fileManager: fileManager)
-        return try OpenBurnBarFilesystemMigration(
-            fileManager: fileManager,
-            paths: resolvedPaths
-        ).prepareSupportDirectory()
+        return try OpenBurnBarFilesystemMigration(fileManager: fileManager, paths: resolvedPaths).prepareSupportDirectory()
+    }
+
+    public static func migrateUserDefaults(defaults: UserDefaults = .standard) {
+        OpenBurnBarDefaultsMigration(
+            defaults: defaults,
+            legacyDomains: OpenBurnBarIdentity.legacyBundleIdentifiers
+        ).migrateIfNeeded()
     }
 }

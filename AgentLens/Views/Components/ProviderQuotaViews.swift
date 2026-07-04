@@ -167,7 +167,7 @@ struct ProviderQuotaOverviewPanel: View {
                     }
 
                     if let snapshot {
-                        QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                        QuotaSourceBadge(source: snapshot.sourceKind, confidence: snapshot.confidence)
                     }
 
                     Image(systemName: "chevron.right")
@@ -259,7 +259,7 @@ private struct ProviderQuotaSettingsCard: View {
                         }
 
                         if let snapshot {
-                            QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                            QuotaSourceBadge(source: snapshot.sourceKind, confidence: snapshot.confidence)
                         }
                     }
                 }

@@ -5,7 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const outDir = path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
+const outDir = process.env.OB_EVIDENCE_OUT
+  ? path.resolve(process.env.OB_EVIDENCE_OUT)
+  : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 fs.mkdirSync(outDir, { recursive: true });
 
 const dockerArgs = [

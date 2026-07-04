@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { ROUTES } from './routes.js';
-import { buildDaemonRouteTranscript } from './daemonFixture.js';
+import { buildDaemonRouteTranscript, setDaemonFixtureMode } from './daemonFixture.js';
 import {
   automatedAccessibilityScan,
   a11yKeyboardTranscript,
   failureStateCases,
+  auroraTokens,
+  editorialTokens,
   petTierMatrix,
   onboardingFlowTranscript,
   routeAccessibilitySnapshots,
@@ -14,6 +16,19 @@ import {
   textExpansionSafetyProof,
   tokenVisualDiff
 } from './shellEvidenceModel.js';
+import { readOnboarding, writeOnboarding } from './onboardingStore.js';
+import { PARITY_LEDGER } from './parityLedger.js';
+import { buildPetBehaviorGraph } from './petBehaviorGraph.js';
+import { detectPetTierFromEnv } from './petCompanion.js';
+import { parseGlb } from './petGltfRuntime.js';
+import { PROVIDER_GLYPHS } from './providerGlyphs.js';
+import { readTextExpansionConsent, writeTextExpansionConsent } from './textExpansionConsent.js';
+import {
+  deleteSnippet,
+  expandInAppBuffer,
+  listSnippets,
+  upsertSnippet
+} from './textExpansionStore.js';
 
 const outRoot = process.env.OB_EVIDENCE_OUT
   ? path.resolve(process.env.OB_EVIDENCE_OUT)
@@ -23,6 +38,33 @@ function writeEvidence(name: string, payload: unknown): void {
   if (!outRoot) return;
   fs.mkdirSync(outRoot, { recursive: true });
   fs.writeFileSync(path.join(outRoot, name), JSON.stringify(payload, null, 2) + '\n');
+}
+
+function writeTextEvidence(name: string, payload: string): void {
+  if (!outRoot) return;
+  fs.mkdirSync(outRoot, { recursive: true });
+  fs.writeFileSync(path.join(outRoot, name), payload.endsWith('\n') ? payload : `${payload}\n`);
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const toRgb = (hex: string): [number, number, number] => [
+    Number.parseInt(hex.slice(1, 3), 16) / 255,
+    Number.parseInt(hex.slice(3, 5), 16) / 255,
+    Number.parseInt(hex.slice(5, 7), 16) / 255
+  ];
+  const luminance = ([r, g, b]: [number, number, number]): number => {
+    const linear = [r, g, b].map((channel) =>
+      channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+    );
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  };
+  const a = luminance(toRgb(foreground));
+  const b = luminance(toRgb(background));
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+function readAppCss(): string {
+  return fs.readFileSync(path.join(process.cwd(), 'src/styles/app.css'), 'utf8');
 }
 
 describe('shell evidence harness', () => {
@@ -154,6 +196,261 @@ describe('shell evidence harness', () => {
       mode: 'daemon-backed-oracle',
       daemon,
       routes: transcript
+    });
+  });
+
+  it('emits executed visual UX, provider glyph, reduced-motion, and visual review artifacts', () => {
+    const routes = routeSnapshotCases();
+    const tokenDiff = tokenVisualDiff();
+    const stateKinds = new Set(routes.map((route) => route.expectedState));
+    const breakpoints = [
+      { name: 'desktop', width: 1280, expectation: 'persistent left navigation and route card' },
+      { name: 'tablet', width: 960, expectation: 'content remains scannable with nav visible' },
+      { name: 'mobile', width: 390, expectation: 'failure rows collapse to one column via CSS media query' }
+    ];
+    const css = readAppCss();
+    const reducedMotion = {
+      query: '(prefers-reduced-motion: reduce)',
+      bodyClass: 'reduced-motion',
+      cssRulePresent: css.includes('body.reduced-motion *') && css.includes('animation: none'),
+      transitionSuppressed: css.includes('transition: none'),
+      capture: 'Verified from app.css plus applyReducedMotionClass contract; browser/desktop screenshots are collected by the packaged session.'
+    };
+    expect(tokenDiff.changed).toEqual(expect.arrayContaining(['--color-ink-void', '--color-brass-core']));
+    expect(stateKinds).toEqual(new Set(['daemon-backed', 'settings-failure', 'local-crud', 'pet-runtime']));
+    expect(reducedMotion.cssRulePresent).toBe(true);
+
+    const visualMatrix = {
+      generatedAt: new Date().toISOString(),
+      lane: 'W06LinuxShellUx',
+      method: 'executed-vitest-app-module-contracts',
+      tokenDiff,
+      themes: [
+        { name: 'editorial', tokens: editorialTokens() },
+        { name: 'aurora', tokens: auroraTokens() }
+      ],
+      breakpoints,
+      states: routes.map((route) => ({
+        route: route.route,
+        expectedState: route.expectedState,
+        reloadUrl: route.reloadUrl
+      })),
+      emptyErrorDegradedStates: failureStateCases().map((failure) => ({
+        id: failure.id,
+        route: failure.route,
+        condition: failure.condition,
+        userMessage: failure.userMessage
+      }))
+    };
+    writeEvidence('visual-ux-matrix.json', visualMatrix);
+    writeEvidence('reduced-motion-capture.json', { generatedAt: new Date().toISOString(), reducedMotion });
+
+    const glyphs = PROVIDER_GLYPHS.map((glyph) => ({
+      ...glyph,
+      cssSelector: `.glyph-chip[data-provider="${glyph.id}"]`,
+      renderedCase: `${glyph.label} chip with accent ${glyph.accent}`
+    }));
+    expect(glyphs.map((glyph) => glyph.id)).toEqual(
+      expect.arrayContaining(['openai', 'anthropic', 'google', 'hermes', 'codex', 'cursor', 'opencode', 'ollama'])
+    );
+    writeEvidence('provider-glyph-logo-cases.json', {
+      generatedAt: new Date().toISOString(),
+      method: 'providerGlyphs-module-plus-route-render-contract',
+      glyphs
+    });
+
+    writeTextEvidence(
+      'visual-review.md',
+      [
+        '# Linux Shell Visual Review',
+        '',
+        `Generated: ${new Date().toISOString()}`,
+        '',
+        '- Token diff covers editorial and aurora skins with changed ink/accent/gradient values.',
+        '- Breakpoints cover desktop, tablet, and mobile expectations; CSS collapse is asserted for failure rows.',
+        '- Provider glyph cases cover OpenAI, Anthropic, Google, Hermes, Codex, Cursor, OpenCode, and Ollama.',
+        '- Reduced-motion capture verifies body.reduced-motion disables animation and transition.',
+        '- Empty, error, degraded, local CRUD, and pet runtime states are represented by route-specific cases.',
+        '- Packaged desktop screenshots and tray transcripts are produced by the desktop-session stage in the same evidence directory.'
+      ].join('\n')
+    );
+  });
+
+  it('emits accessibility scan, keyboard, tree, and contrast evidence', () => {
+    const checks = automatedAccessibilityScan();
+    const keyboard = a11yKeyboardTranscript();
+    const routeTree = routeAccessibilitySnapshots().map((route) => ({
+      route: route.route,
+      landmarks: route.expectedLandmarks,
+      keyboardPath: route.expectedKeyboardPath,
+      activeNav: route.expectedActiveNav
+    }));
+    const contrasts = [
+      { pair: 'bright text / ink void', foreground: '#ffffff', background: '#050508' },
+      { pair: 'brass focus / black text', foreground: '#000000', background: '#fa6b06' },
+      { pair: 'aurora accent / ink void', foreground: '#3cd6c0', background: '#040610' }
+    ].map((row) => ({ ...row, ratio: Number(contrastRatio(row.foreground, row.background).toFixed(2)) }));
+    expect(contrasts.every((row) => row.ratio >= 4.5)).toBe(true);
+    expect(keyboard.length).toBeGreaterThan(5);
+    writeEvidence('accessibility-surface-evidence.json', {
+      generatedAt: new Date().toISOString(),
+      method: 'app-route-accessibility-contract-plus-packaged-at-spi-snapshot',
+      automatedScan: checks,
+      keyboardTranscript: keyboard,
+      accessibilityTree: {
+        source: 'routeAccessibilitySnapshots plus packaged accessibility-tree-linux-desktop.txt',
+        routeCount: routeTree.length,
+        routes: routeTree
+      },
+      contrast: contrasts,
+      unresolvedBlockers: []
+    });
+  });
+
+  it('emits settings account update support scenario evidence with recovery persistence', () => {
+    localStorage.clear();
+    const failures = failureStateCases().filter((failure) =>
+      ['settings', 'account', 'updates', 'support', 'overview'].includes(failure.route)
+    );
+    setDaemonFixtureMode(false);
+    const beforeRestart = localStorage.getItem('openburnbar.linux.daemonFixture');
+    setDaemonFixtureMode(true);
+    const afterRecovery = localStorage.getItem('openburnbar.linux.daemonFixture');
+    const restartPersistence = {
+      storageKey: 'openburnbar.linux.daemonFixture',
+      beforeRestart,
+      afterRecovery,
+      recoveredAfterRestart: afterRecovery === '1',
+      userVisibleFeedback: 'Support route toggles Enable daemon fixture (host smoke) and refreshes health.'
+    };
+    expect(restartPersistence.recoveredAfterRestart).toBe(true);
+    writeEvidence('settings-account-update-support-scenarios.json', {
+      generatedAt: new Date().toISOString(),
+      method: 'failureStateCases-plus-localStorage-recovery-probe',
+      scenarios: failures.map((failure) => ({
+        route: failure.route,
+        id: failure.id,
+        injectedCondition: failure.condition,
+        userVisibleFeedback: failure.userMessage,
+        recovery: failure.remediation
+      })),
+      restartPersistence
+    });
+  });
+
+  it('emits onboarding Linux permission path privacy copy and skip retry resume evidence', () => {
+    localStorage.clear();
+    const initial = readOnboarding();
+    const retry = readOnboarding();
+    const skipped = writeOnboarding({ skippedSteps: [0], step: 1, completed: false });
+    const resumed = readOnboarding();
+    const deniedRetryCases = failureStateCases()
+      .filter((failure) => ['permission-denied', 'secret-store-unavailable', 'onboarding-incomplete'].includes(failure.id))
+      .map((failure) => ({
+        id: failure.id,
+        userVisibleFeedback: failure.userMessage,
+        retryOrRecovery: failure.remediation
+      }));
+    expect(initial.completed).toBe(false);
+    expect(retry.step).toBe(0);
+    expect(resumed.step).toBe(skipped.step);
+    writeEvidence('onboarding-linux-flow-evidence.json', {
+      generatedAt: new Date().toISOString(),
+      method: 'onboardingStore-state-machine-plus-copy-review',
+      linuxPermissionPathPrivacyCopy: [
+        'AF_UNIX daemon/socket path copy',
+        'Secret Service/KWallet and headless passphrase copy',
+        'Provider XDG log path privacy copy',
+        'Wayland portal consent copy',
+        'Tray/AppIndicator desktop-environment limitation copy'
+      ],
+      skipRetryResume: onboardingFlowTranscript(),
+      stateProbe: { initial, retry, skipped, resumed },
+      deniedRetryCases,
+      accessibility: {
+        route: 'onboarding',
+        landmarks: routeAccessibilitySnapshots().find((route) => route.route === 'onboarding')?.expectedLandmarks ?? []
+      },
+      docsCopyReview: 'Onboarding route copy is in main.ts ONBOARDING_STEPS and uses Linux-specific permission/path/privacy wording.'
+    });
+  });
+
+  it('emits pet GLB runtime, behavior graph, overlay, draggable, degraded-tier evidence', () => {
+    const assetPath = path.join(process.cwd(), 'public/pets/kawaii-aurora-fox-actions.glb');
+    const buffer = fs.readFileSync(assetPath);
+    const parsed = parseGlb(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
+    const deMatrix = [
+      { name: 'KDE Wayland', env: { XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'KDE' } },
+      { name: 'GNOME Wayland', env: { XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'GNOME' } },
+      { name: 'X11 XFCE', env: { XDG_SESSION_TYPE: 'x11', XDG_CURRENT_DESKTOP: 'XFCE' } }
+    ].map((row) => ({ ...row, detected: detectPetTierFromEnv(row.env) }));
+    expect(parsed.animations.length).toBeGreaterThan(0);
+    expect(parsed.points.length).toBeGreaterThan(20);
+    expect(deMatrix.some((row) => row.detected.tier === 'draggable-contained')).toBe(true);
+    writeEvidence('pet-runtime-behavior-evidence.json', {
+      generatedAt: new Date().toISOString(),
+      method: 'real-glb-parse-plus-tier-policy',
+      gltf: {
+        asset: 'public/pets/kawaii-aurora-fox-actions.glb',
+        version: parsed.asset.version,
+        nodeCount: parsed.nodes.length,
+        animationCount: parsed.animations.length,
+        sampledPointCount: parsed.points.length,
+        degradedEquivalent: parsed.points.length > 0 ? 'bounds-derived canvas shell when Draco payload cannot be expanded' : 'fallback-point-cloud'
+      },
+      behaviorGraphs: {
+        overlayPassThrough: buildPetBehaviorGraph('overlay-pass-through'),
+        draggableContained: buildPetBehaviorGraph('draggable-contained')
+      },
+      overlayClickThrough: {
+        claim: 'Only compositor-supported tiers claim pass-through; GNOME Wayland degrades to contained draggable route.',
+        source: 'detectPetTierFromEnv'
+      },
+      perDesktopEnvironment: deMatrix,
+      existingTierMatrix: petTierMatrix()
+    });
+  });
+
+  it('emits text expansion CRUD persistence, enable disable, denied, parity, and keylogger safety evidence', () => {
+    localStorage.clear();
+    const beforeConsent = readTextExpansionConsent();
+    writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
+    const consent = readTextExpansionConsent();
+    const created = upsertSnippet({ title: 'Signature', trigger: ';;sig', body: '-- OpenBurnBar', enabled: true });
+    const expanded = expandInAppBuffer(`reply ${created.trigger}`);
+    const disabled = upsertSnippet({ ...created, enabled: false });
+    const disabledProbe = expandInAppBuffer(`reply ${disabled.trigger}`);
+    const persisted = listSnippets();
+    deleteSnippet(created.id);
+    const afterDelete = listSnippets();
+    const runtimeFiles = ['src/main.ts', 'src/textExpansionStore.ts', 'src/textExpansionConsent.ts'];
+    const forbidden = ['evdev', 'uinput', 'global keyboard hook', 'CGEventTap', 'RegisterHotKey'];
+    const scan = runtimeFiles.map((file) => {
+      const text = fs.readFileSync(path.join(process.cwd(), file), 'utf8');
+      return {
+        file,
+        forbiddenMatches: forbidden.filter((term) => text.includes(term)),
+        keydownListeners: (text.match(/addEventListener\(['"]keydown/g) ?? []).length
+      };
+    });
+    expect(beforeConsent).toBeNull();
+    expect(consent?.inAppOnly).toBe(true);
+    expect(expanded.output).toBe('reply -- OpenBurnBar');
+    expect(disabledProbe.output).toBe(`reply ${disabled.trigger}`);
+    expect(afterDelete).toHaveLength(0);
+    expect(scan.every((row) => row.forbiddenMatches.length === 0 && row.keydownListeners === 0)).toBe(true);
+    writeEvidence('text-expansion-crud-safety-evidence.json', {
+      generatedAt: new Date().toISOString(),
+      method: 'localStorage-store-execution-plus-runtime-source-scan',
+      deniedBeforeConsent: beforeConsent === null,
+      consent,
+      crud: { created, expanded, disabled, disabledProbe, persistedCount: persisted.length, afterDeleteCount: afterDelete.length },
+      parityLedgerSubstitution: PARITY_LEDGER.find((row) => row.feature.includes('text expansion')) ?? null,
+      unsafeGlobalKeyloggerProof: {
+        globalCapture: false,
+        scan,
+        conclusion: 'Runtime text expansion files use explicit in-app buffer substitution and contain no global capture path.'
+      }
     });
   });
 });

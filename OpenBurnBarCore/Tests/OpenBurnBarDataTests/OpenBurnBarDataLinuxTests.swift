@@ -7,7 +7,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
     private let passphrase = "openburnbar-linux-data-tests-passphrase-2026"
     private let wrongPassphrase = "openburnbar-linux-data-tests-wrong-passphrase"
 
-    public override func setUpWithError() throws {
+    override public func setUpWithError() throws {
         try super.setUpWithError()
         #if os(Linux)
         continueAfterFailure = false

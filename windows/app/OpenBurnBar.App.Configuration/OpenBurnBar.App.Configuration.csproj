@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Runtime app configuration: SQLCipher path/passphrase, Firebase dev-host tokens, vault key.
+    net8.0, no WinUI — loaded at startup from env (override) + app_config.json (user settings).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.Configuration</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.Configuration</AssemblyName>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenBurnBar.App.Configuration.Tests" />
+  </ItemGroup>
+</Project>

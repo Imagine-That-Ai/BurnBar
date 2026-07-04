@@ -150,6 +150,10 @@ excluded:
   - OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated
   - OpenBurnBarCore/Sources/BurnBarRemote/Generated
   - packages/data-domains/gen
+  # Windows utility tool scripts (not production code; force_try and large_tuple
+  # are intentional patterns in throwaway tooling):
+  - windows/pretext/tools
+  - windows/cloudsync/tools
 
 # Per-rule overrides to prevent false positives on existing code
 force_cast:

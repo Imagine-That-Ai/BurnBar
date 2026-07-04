@@ -27,18 +27,20 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
 
         let cloudVault = try custodian.requireHighValueSecret(id: "cloud-vault-key", secretClass: .cloudVaultKey)
         XCTAssertEqual(cloudVault.metadata.trustLevel, .kwallet)
-        XCTAssertEqual(cloudVault.metadata.note.contains("kwallet-query"), true)
+        XCTAssertTrue(cloudVault.metadata.note.contains("kwallet-query"))
 
-        let plaintextBackend = LinuxInMemorySecretStoreBackend(
-            backendName: "plain-file-fixture",
-            trustLevel: .explicitLowerTrustFile,
-            secrets: ["refresh-token": "do-not-store-in-file"]
-        )
-        let plaintextCustodian = LinuxSecretCustodian(backends: [plaintextBackend])
-        XCTAssertThrowsError(
-            try plaintextCustodian.requireHighValueSecret(id: "refresh-token", secretClass: .refreshToken)
-        ) { error in
-            XCTAssertEqual(error as? LinuxSecretStoreError, .plaintextFallbackRefused(secretClass: .refreshToken))
+        for secretClass in LinuxHighValueSecretClass.allCases {
+            let plaintextBackend = LinuxInMemorySecretStoreBackend(
+                backendName: "plain-file-fixture",
+                trustLevel: .explicitLowerTrustFile,
+                secrets: [secretClass.rawValue: "do-not-store-in-file"]
+            )
+            let plaintextCustodian = LinuxSecretCustodian(backends: [plaintextBackend])
+            XCTAssertThrowsError(
+                try plaintextCustodian.requireHighValueSecret(id: secretClass.rawValue, secretClass: secretClass)
+            ) { error in
+                XCTAssertEqual(error as? LinuxSecretStoreError, .plaintextFallbackRefused(secretClass: secretClass))
+            }
         }
     }
 
@@ -67,7 +69,7 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(auditKey.metadata.note.contains("systemd credentials"))
     }
 
-    func testPKCELoopbackAuthAndTokenCustody() throws {
+    func testPKCELoopbackAuthAndTokenCustody() async throws {
         let flow = LinuxPKCELoopbackFlow(
             authBaseURL: URL(string: "https://securetoken.google.com/auth")!,
             clientID: "linux-client",
@@ -98,6 +100,14 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         ])
         let tokenStore = LinuxAuthTokenStore(custodian: custodian)
         XCTAssertEqual(try tokenStore.restoreRefreshToken().trustLevel, .secretService)
+
+        let signOut = LinuxAuthSessionController(tokenStore: tokenStore) { metadata in
+            XCTAssertEqual(metadata.backend, "org.freedesktop.secrets.test")
+            XCTAssertEqual(metadata.secretClass, .refreshToken)
+        }
+        let signOutResult = try await signOut.signOut()
+        XCTAssertTrue(signOutResult.remoteRevocationAttempted)
+        XCTAssertTrue(signOutResult.localSessionCleared)
     }
 
     func testStripeMembershipRestoreFixtureHasNoStoreKitDependency() async throws {
@@ -124,29 +134,32 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
 
     func testTelemetryConsentRedactionAndSupportBundleSample() {
         let redactor = LinuxTelemetryRedactor()
-        let seeded = "token=sk-ant-abcdefghijklmnopqrstuvwxyz refreshToken=secret123 email=alberto@example.com path=/home/alberto/.config/openburnbar/session.json"
+        let seeded = "token=sk-ant-abcdefghijklmnopqrstuvwxyz refreshToken=secret123 email=alberto@example.com path=/home/alberto/.config/openburnbar/session.json cookie=sessionid apiKey=key123 prompt=private words"
         let redacted = redactor.redact(seeded)
         XCTAssertFalse(redacted.contains("sk-ant"))
         XCTAssertFalse(redacted.contains("secret123"))
         XCTAssertFalse(redacted.contains("alberto@example.com"))
         XCTAssertFalse(redacted.contains("/home/alberto"))
+        XCTAssertFalse(redacted.contains("sessionid"))
+        XCTAssertFalse(redacted.contains("key123"))
+        XCTAssertFalse(redacted.contains("private words"))
         XCTAssertTrue(redacted.contains("[REDACTED]"))
 
-        var captured: [(String, [String: String])] = []
+        let captured = TelemetryCaptureBox()
         let recorderOff = LinuxTelemetryRecorder(consent: .declined) { event, properties in
             captured.append((event, properties))
         }
         recorderOff.record(event: "linux.auth.error", properties: ["detail": seeded])
-        XCTAssertTrue(captured.isEmpty)
+        XCTAssertTrue(captured.events.isEmpty)
 
         let recorderOn = LinuxTelemetryRecorder(consent: .granted) { event, properties in
             captured.append((event, properties))
         }
         recorderOn.record(event: "linux.auth.error", properties: ["detail": seeded, "trust_class": "linux_lower_trust"])
-        XCTAssertEqual(captured.count, 1)
-        XCTAssertEqual(captured[0].0, "linux.auth.error")
-        XCTAssertEqual(captured[0].1["trust_class"], "linux_lower_trust")
-        XCTAssertFalse(captured[0].1["detail"]?.contains("alberto@example.com") ?? true)
+        XCTAssertEqual(captured.events.count, 1)
+        XCTAssertEqual(captured.events[0].0, "linux.auth.error")
+        XCTAssertEqual(captured.events[0].1["trust_class"], "linux_lower_trust")
+        XCTAssertFalse(captured.events[0].1["detail"]?.contains("alberto@example.com") ?? true)
 
         let bundle = LinuxSupportBundle().render(entries: [seeded, "trust_class=linux_lower_trust"])
         XCTAssertTrue(bundle.contains("trust_class=linux_lower_trust"))
@@ -189,5 +202,22 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         tx.recordProcessed(remoteUpdateMillis: 1_800_000_010_000)
         tx.commit()
         XCTAssertEqual(try tx.watermarkAfterCommit(), 1_800_000_010_000)
+    }
+}
+
+private final class TelemetryCaptureBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [(String, [String: String])] = []
+
+    func append(_ event: (String, [String: String])) {
+        lock.lock()
+        storage.append(event)
+        lock.unlock()
+    }
+
+    var events: [(String, [String: String])] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }

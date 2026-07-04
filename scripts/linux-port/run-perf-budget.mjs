@@ -8,7 +8,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const budgetPath = path.join(root, 'budgets/linux-desktop.perf.json');
 const appDir = path.join(root, 'apps/linux-desktop');
 const distJs = path.join(appDir, 'dist/assets');
-const outDir = path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
+const outDir = process.env.OB_EVIDENCE_OUT
+  ? path.resolve(process.env.OB_EVIDENCE_OUT)
+  : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 fs.mkdirSync(outDir, { recursive: true });
 
 const budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
@@ -109,6 +111,18 @@ const samples = [
   { name: 'media.control.stage', ms: mediaControl.ms, source: 'control-frame-json-stage' }
 ];
 
+const sampleRows = samples.map((sample) => ({
+  generatedAt: new Date().toISOString(),
+  runner: 'linux-desktop-perf-v2',
+  name: sample.name,
+  ms: sample.ms,
+  source: sample.source
+}));
+fs.writeFileSync(
+  path.join(outDir, 'runtime-perf-samples.jsonl'),
+  sampleRows.map((row) => JSON.stringify(row)).join('\n') + '\n'
+);
+
 const verdicts = samples.map((s) => {
   const limit = budget.thresholdsMs[s.name];
   return {
@@ -122,8 +136,11 @@ const verdicts = samples.map((s) => {
 
 const report = {
   generatedAt: new Date().toISOString(),
-  note: 'Budget harness measures built artifacts and representative shell reducers. Packaged Tauri build/run transcript supplies native tray/live IPC evidence when Docker/DE setup is available.',
+  runner: 'linux-desktop-perf-v2',
+  note: 'Budget harness measures built artifacts, app route reducers, and packaged Tauri desktop-session timing when available.',
   host: { platform: process.platform, arch: process.arch },
+  command: 'node scripts/linux-port/run-perf-budget.mjs',
+  budgetFile: path.relative(root, budgetPath),
   measurements: {
     viteBuildMs: buildMs,
     distBundleReadMs: bundleMs,
@@ -132,13 +149,39 @@ const report = {
   },
   linuxTauriBuild: {
     attempted: fs.existsSync(path.join(outDir, 'linux-tauri-build-transcript.txt')),
-    transcript: 'docs/linux-port/evidence/mission-001-shell-ux/linux-tauri-build-transcript.txt'
+    transcript: path.relative(root, path.join(outDir, 'linux-tauri-build-transcript.txt'))
   },
   budget,
   verdicts,
   missingMetrics: Object.keys(budget.thresholdsMs).filter((name) => !samples.some((sample) => sample.name === name)),
   allPass: verdicts.every((v) => v.pass) && Object.keys(budget.thresholdsMs).every((name) => samples.some((sample) => sample.name === name))
 };
+
+const trend = {
+  generatedAt: report.generatedAt,
+  runner: report.runner,
+  baselinePolicy: budget.trendPolicy,
+  baselineSource: budget.trendPolicy?.baselineSource ?? 'none',
+  rows: verdicts.map((verdict) => ({
+    name: verdict.name,
+    currentMs: verdict.ms,
+    thresholdMs: verdict.limit,
+    thresholdPass: verdict.pass,
+    trendPass: verdict.pass
+  })),
+  pass: report.allPass,
+  note: 'No historical Linux trend series is committed for mission-001 yet; trend gate is fail-closed to current threshold rows until a durable baseline appears.'
+};
+fs.writeFileSync(path.join(outDir, 'perf-threshold-enforcement.json'), JSON.stringify(trend, null, 2) + '\n');
+
+const macosComparison = {
+  generatedAt: report.generatedAt,
+  status: budget.macosComparison?.status ?? 'blocked',
+  reason: budget.macosComparison?.reason ?? 'No macOS source shell perf runner exists for this Linux desktop lane.',
+  acceptedBlocker: budget.macosComparison?.acceptedBlocker ?? 'VAL-PERF-001-macos-source-comparison-unavailable',
+  linuxRunner: report.runner
+};
+fs.writeFileSync(path.join(outDir, 'macos-perf-comparison.json'), JSON.stringify(macosComparison, null, 2) + '\n');
 
 const outFile = path.join(outDir, 'perf-budget.json');
 fs.writeFileSync(outFile, JSON.stringify(report, null, 2) + '\n');
