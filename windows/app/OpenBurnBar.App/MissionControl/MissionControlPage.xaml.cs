@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Particles;
+using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Presentation.MissionControl;
 
 namespace OpenBurnBar.App.MissionControl;
@@ -22,10 +23,11 @@ public sealed partial class MissionControlPage : Page
     public MissionControlPage()
     {
         InitializeComponent();
+        var root = WinAppCloudSyncHost.Root;
         _viewModel = new MissionConsoleViewModel(MissionDispatchHostFactory.Create(
-            gateway: null,
-            credentials: null,
-            firebaseUid: null));
+            gateway: root?.Gateway,
+            credentials: root?.Credentials,
+            firebaseUid: root?.FirebaseUid));
 
         Hero.ViewModel = _viewModel;
         Composer.ViewModel = _viewModel;
