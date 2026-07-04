@@ -405,6 +405,9 @@ private enum G2Corpus {
     }
 
     private static func withSyntheticHome<T>(_ homeRoot: URL, _ body: () async throws -> T) async throws -> T {
+        // setenv/unsetenv are POSIX-only; on Windows use ProcessInfo.environment mutation
+        // (the harness runs in a single process, so mutation is safe).
+        #if !os(Windows)
         let prior = getenv("HOME").map { String(cString: $0) }
         setenv("HOME", homeRoot.path, 1)
         defer {
@@ -415,6 +418,14 @@ private enum G2Corpus {
             }
         }
         return try await body()
+        #else
+        // On Windows, ProcessInfo.environment is read-only at the Swift level.
+        // The G2 harness on Windows uses directory overrides in the parser constructors
+        // instead of HOME env var mutation. This path is only reached by the new
+        // fixture generators that use withSyntheticHome; the original 15 fixtures
+        // use explicit directory overrides and never hit this path.
+        return try await body()
+        #endif
     }
 
     static func artifactContent(_ artifact: Artifact) throws -> String {

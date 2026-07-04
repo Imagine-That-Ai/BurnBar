@@ -22,29 +22,26 @@ public sealed partial class InsightsPage : Page
         InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
         {
             if (kind != InsightWidgetKind.KpiTile)
-                return null; // Only KPI tiles have real data from the DB.
+                return null;
 
             var summary = OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary();
             if (!summary.HasData)
-                return null; // No DB configured — use sample data.
+                return null;
 
             return seed switch
             {
-                1 => InsightWidgetData.Kpi(
-                    value: summary.TotalSpend.ToString("F2"),
-                    label: "Cost (this month)",
-                    subtext: $"${summary.TotalSpend:F2} spent",
-                    trend: null),
-                2 => InsightWidgetData.Kpi(
-                    value: summary.SessionCount.ToString(),
-                    label: "Sessions",
-                    subtext: $"{summary.SessionCount} sessions",
-                    trend: null),
-                4 => InsightWidgetData.Kpi(
-                    value: summary.TotalTokens.ToString("N0"),
-                    label: "Tokens",
-                    subtext: $"{summary.TotalTokens:N0} tokens",
-                    trend: null),
+                1 => new KpiData(
+                    MetricLabel: "Cost (this month)",
+                    Value: summary.SpendThisMonthUsd,
+                    ValueFormat: ValueFormat.Currency),
+                2 => new KpiData(
+                    MetricLabel: "Sessions",
+                    Value: summary.SessionCount,
+                    ValueFormat: ValueFormat.Number),
+                4 => new KpiData(
+                    MetricLabel: "Tokens",
+                    Value: summary.TotalTokens,
+                    ValueFormat: ValueFormat.Number),
                 _ => null,
             };
         };

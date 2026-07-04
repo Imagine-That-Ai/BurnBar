@@ -27,6 +27,5 @@ public sealed partial class SurfaceStubPage : Page
         SubtitleText.Text = destination.Subtitle;
 
         PlaceholderCard.Visibility = Visibility.Visible;
-        LiveHost.Visibility = Visibility.Collapsed;
     }
 }

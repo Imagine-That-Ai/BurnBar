@@ -23,32 +23,27 @@ public static class CloudSyncInsightSource
     /// </summary>
     public static InsightWidgetData ResolveKpi(InsightWidgetKind kind, int seed)
     {
-        // Try real data from the SQLCipher DB for KPI tiles.
         var summary = OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary();
         if (summary.HasData)
         {
-            return kind switch
+            return (kind, seed) switch
             {
-                InsightWidgetKind.KpiTile when seed == 1 => InsightWidgetData.Kpi(
-                    value: summary.TotalSpend.ToString("F2"),
-                    label: "Cost (this month)",
-                    subtext: $"${summary.TotalSpend:F2} spent",
-                    trend: null),
-                InsightWidgetKind.KpiTile when seed == 2 => InsightWidgetData.Kpi(
-                    value: summary.SessionCount.ToString(),
-                    label: "Sessions",
-                    subtext: $"{summary.SessionCount} sessions",
-                    trend: null),
-                InsightWidgetKind.KpiTile when seed == 4 => InsightWidgetData.Kpi(
-                    value: summary.TotalTokens.ToString("N0"),
-                    label: "Tokens",
-                    subtext: $"{summary.TotalTokens:N0} tokens",
-                    trend: null),
+                (InsightWidgetKind.KpiTile, 1) => new KpiData(
+                    MetricLabel: "Cost (this month)",
+                    Value: summary.SpendThisMonthUsd,
+                    ValueFormat: ValueFormat.Currency),
+                (InsightWidgetKind.KpiTile, 2) => new KpiData(
+                    MetricLabel: "Sessions",
+                    Value: summary.SessionCount,
+                    ValueFormat: ValueFormat.Number),
+                (InsightWidgetKind.KpiTile, 4) => new KpiData(
+                    MetricLabel: "Tokens",
+                    Value: summary.TotalTokens,
+                    ValueFormat: ValueFormat.Number),
                 _ => InsightSampleData.ForKind(kind, seed),
             };
         }
 
-        // No DB configured — use the sample data (the SampleChip stays visible).
         return InsightSampleData.ForKind(kind, seed);
     }
 }
