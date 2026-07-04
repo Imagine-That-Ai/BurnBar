@@ -22,7 +22,10 @@ public sealed partial class MissionControlPage : Page
     public MissionControlPage()
     {
         InitializeComponent();
-        _viewModel = new MissionConsoleViewModel(new MissionDispatchDemoHost());
+        _viewModel = new MissionConsoleViewModel(MissionDispatchHostFactory.Create(
+            gateway: null,
+            credentials: null,
+            firebaseUid: null));
 
         Hero.ViewModel = _viewModel;
         Composer.ViewModel = _viewModel;
