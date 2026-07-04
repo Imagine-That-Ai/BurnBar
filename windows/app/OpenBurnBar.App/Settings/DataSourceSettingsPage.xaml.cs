@@ -76,3 +76,4 @@ public sealed partial class DataSourceSettingsPage : Page
     {
         return System.IntPtr.Zero;
     }
+}
