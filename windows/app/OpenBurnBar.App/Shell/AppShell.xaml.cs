@@ -143,7 +143,18 @@ public sealed partial class AppShell : UserControl
 
         _currentKey = destination.Key;
         HeaderTitle.Text = destination.Title;
-        ContentFrame.Navigate(typeof(SurfaceStubPage), destination);
+
+        // Real surfaces replace the stub per key as they land (Phase 3 buckets). The Insights
+        // surface (template gallery + Win2D chart canvas) is the first chart-heavy destination
+        // to go live; the remaining keys still show the parity stub.
+        if (destination.Key == "insights")
+        {
+            ContentFrame.Navigate(typeof(Insights.InsightsPage));
+        }
+        else
+        {
+            ContentFrame.Navigate(typeof(SurfaceStubPage), destination);
+        }
     }
 
     private void Palette_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
