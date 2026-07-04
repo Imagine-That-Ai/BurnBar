@@ -20,7 +20,8 @@ builds, lints, and ratchets. No product code lives here yet.
 | [`storage/`](storage/) | The **SQLCipher storage layer** — opens the *same* Mac-produced encrypted database with the pinned compatibility-4 cipher profile and exposes the read + write DataStore-shaped seam the Engine calls via the PAL. The R2 (DB byte-compat) un-prune. Includes `storage/OpenBurnBar.Storage.SessionLogs`, the net10.0 adapter mapping the read seam onto the presentation `ISessionLogReadSource` for the SessionLogs surface. | W2–W7 |
 | [`particles/`](particles/) | The **Win2D particle-engine renderer** — the platform-agnostic swarm/substrate engine library (`OpenBurnBar.Particles`: substrate math, frame model, FFI spec) + a headless perf harness. The WinUI-facing host lives in `app/OpenBurnBar.App/Particles/`. | W6 |
 | [`pretext/`](pretext/) | The **Pretext text-layout engine** — the managed `OpenBurnBar.Pretext` engine + JS bridge that drive an offscreen WebView2 host for text metrics, with a Mac-golden metric-parity harness. The WinUI host lives in `app/OpenBurnBar.App/Pretext/`. | W6 |
-| [`tests/`](tests/) | **Unit, integration, and parity test projects** for the app, PAL, and native shim. Includes `tests/presentation` (net10.0, xUnit) — the macOS-runnable proof of the SessionLogs + Memory + Switcher view-models: the inbox model, grouping/filter, transcript parser, an end-to-end SessionLogs read through the SQLCipher adapter against the committed byte-compat fixture, and the account-switcher destination routing / grouping / form-validation / add-switch-drain state machine. | W7, W11 |
+| [`integrations/`](integrations/) | **Third-party device / service integrations.** Each integration is a portable, dependency-free library (protocol wire codecs, discovery record parse/build, session + wizard state machines) plus a thin `net8.0-windows` adapter (the real sockets / OS discovery) behind interfaces. Ships `integrations/cast/` — **Google Cast**: the CASTV2 protobuf framing, the `_googlecast._tcp` mDNS parse/build, the receiver launch + reconnect state machines, and the setup-wizard state machine + view-model (`OpenBurnBar.Integrations.Cast`, net8.0), with the TLS socket + live Dnssd browser in `OpenBurnBar.Integrations.Cast.Windows` (net8.0-windows). | W7 |
+| [`tests/`](tests/) | **Unit, integration, and parity test projects** for the app, PAL, native shim, and integrations (`tests/integrations-cast` proves the portable Cast protocol/discovery/wizard libs via `dotnet test`). Includes `tests/presentation` (net10.0, xUnit) — the macOS-runnable proof of the SessionLogs + Memory + Switcher view-models: the inbox model, grouping/filter, transcript parser, an end-to-end SessionLogs read through the SQLCipher adapter against the committed byte-compat fixture, and the account-switcher destination routing / grouping / form-validation / add-switch-drain state machine. | W7, W11 |
 
 ## The aggregating solution
 
@@ -34,7 +35,7 @@ those PRs only *add* to a known-good aggregator rather than inventing the top-le
 ## Where new Windows source goes
 
 Every Windows **source file** (`.cs`, `.xaml`, `.cpp`, `.cxx`, `.cc`, `.c`, `.h`, `.hpp`, `.rs`)
-must live under one of the seven documented sub-trees above. The per-tree budget
+must live under one of the eight documented sub-trees above. The per-tree budget
 ([`scripts/debt/check-windows-tree-budget.sh`](../scripts/debt/check-windows-tree-budget.sh))
 fails a PR that drops source directly under `windows/` outside those areas, so the layout stays
 self-enforcing.
