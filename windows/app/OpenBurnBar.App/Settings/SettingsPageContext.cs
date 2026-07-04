@@ -4,6 +4,7 @@
 // the tab a placeholder should describe, and the callback the results list invokes
 // when a match is chosen.
 
+using System;
 using OpenBurnBar.App.Settings;
 
 namespace OpenBurnBar.App.Settings.Winui;

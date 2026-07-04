@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -61,7 +62,7 @@ public sealed partial class MissionFabGaugeView : UserControl
         CenterGlyph.Glyph = MissionFabGaugeState.GlyphName(c);
         CenterGlyph.FontSize = MissionGaugeSizeInfo.GlyphSize(c.Size);
         CenterGlyph.Foreground = arcBrush;
-        AutomationName = MissionFabGaugeState.AccessibilityLabel(c);
+        AutomationProperties.SetName(this, MissionFabGaugeState.AccessibilityLabel(c));
 
         if (c.Size == MissionGaugeSize.Hero)
         {

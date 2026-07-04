@@ -423,7 +423,6 @@ public sealed class Win2DSubstrateDrawingSession : ISubstrateDrawingSession
             StartCap = CanvasCapStyle.Round,
             EndCap = CanvasCapStyle.Round,
             LineJoin = CanvasLineJoin.Round,
-            DashStyle = CanvasDashStyle.Custom,
             CustomDashStyle = new[] { (float)(d.On / w), (float)(System.Math.Max(1e-3, d.Off) / w) },
             DashOffset = (float)(d.Phase / w),
             DashCap = CanvasCapStyle.Round,

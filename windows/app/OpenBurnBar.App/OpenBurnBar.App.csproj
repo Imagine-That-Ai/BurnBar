@@ -31,6 +31,7 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <DefaultLanguage>en-US</DefaultLanguage>
     <!--
@@ -43,6 +44,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Using Include="Microsoft.UI" />
+    <Using Include="Microsoft.UI.Text" />
+    <Using Include="Microsoft.UI.Xaml.Automation" />
+    <Using Remove="System.IO.Path" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!--
       Windows App SDK 1.7 (stable). Brings WinUI 3, MicaBackdrop, the bootstrapper,
       and Microsoft.Windows.SDK.BuildTools transitively (no separate ref needed).
@@ -52,7 +60,7 @@
       Windows build ever needs to pin the WebView2 runtime independently, add an
       explicit Microsoft.Web.WebView2 PackageReference matching WindowsAppSDK 1.7.
     -->
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260508005" />
     <!--
       Win2D (Phase 3 / W6-DS-SWARM). The GPU renderer for the particle-engine
       substrate layer: CanvasAnimatedControl host + CanvasDrawingSession adapter in

@@ -5,6 +5,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
+using Path = Microsoft.UI.Xaml.Shapes.Path;
+using Ellipse = Microsoft.UI.Xaml.Shapes.Ellipse;
 using Windows.UI;
 
 namespace OpenBurnBar.App.Components;
