@@ -22,6 +22,7 @@ let BLOB_ENVELOPE_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
 let BLOB_INTEGRITY_HASH_VERSION = 1
 let CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION = 2
 let SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"
+let ROAMING_PROFILE_AAD_DOMAIN = "OpenBurnBar-RoamingProfile-v1"
 let ESCROW_HKDF_INFO = "OpenBurnBar-Escrow-v1"
 let HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
 let HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
@@ -234,6 +235,58 @@ root["sealPayload"] = [
     try sealPayloadVector(name: "sealpayload-v2-default", key: keyC, nonce: hexToData("404142434445464748494a4b"), data: Data("sealed payload body".utf8), aad: nil),
     try sealPayloadVector(name: "sealpayload-v2-path-aad", key: keyC, nonce: hexToData("505152535455565758595a5b"), data: Data("mission event".utf8), aad: ("user_alice", "cloudMissions", "m_1", "sealedPayload", "sealedPayload"))
 ]
+
+// ── RoamingProfilePayload CloudVault envelope ───────────────────────────────
+let roamingProfilePayload: [String: Any] = [
+    "schemaVersion": 1,
+    "routerMode": "same_model_failover",
+    "crossProviderFailoverEnabled": false,
+    "accountOrder": ["anthropic-primary"],
+    "providerAccounts": [
+        [
+            "id": "anthropic-primary",
+            "providerID": "anthropic",
+            "label": "Claude Code",
+            "identityHint": "user@example.com",
+            "status": "connected",
+            "credentialKind": "bearer",
+            "storageScope": "device_keychain",
+            "redactedLabel": "Stored in Mac Keychain",
+            "sourceDeviceID": "mac-vector",
+            "isDefault": true,
+            "sortKey": 0,
+            "schemaVersion": 2,
+            "createdAt": "2026-05-29T10:00:00Z",
+            "updatedAt": "2026-05-29T10:05:00Z"
+        ]
+    ],
+    "ollamaEndpoints": [
+        ["id": "local", "baseURL": "http://127.0.0.1:11434", "label": "Local Ollama", "priority": 1]
+    ],
+    "equivalenceOverrides": [
+        ["canonicalModelID": "gpt-5.5", "action": "pin", "classID": "frontier"]
+    ],
+    "quotaDisplayPreferences": [
+        "providerOrder": ["anthropic", "openai"],
+        "visibleProviders": ["anthropic"],
+        "hiddenBuckets": ["anthropic:daily"],
+        "bucketOrders": ["anthropic": ["5h", "weekly"]],
+        "percentageDisplayMode": "remainingPercent",
+        "cumulativeAcrossAccounts": false
+    ],
+    "updatedAt": "2026-05-29T10:05:00Z",
+    "sourceDeviceID": "mac-vector"
+]
+let roamingPlaintext = try JSONSerialization.data(withJSONObject: roamingProfilePayload, options: [.sortedKeys])
+var roamingVector = try sealPayloadVector(
+    name: "roaming-profile-v1",
+    key: keyC,
+    nonce: hexToData("5c5d5e5f6061626364656667"),
+    data: roamingPlaintext,
+    aad: ("user_alice", "roaming_profile", "current", "sealedPayload", ROAMING_PROFILE_AAD_DOMAIN)
+)
+roamingVector["payload"] = roamingProfilePayload
+root["roamingProfile"] = [roamingVector]
 
 // ── recovery wrap ────────────────────────────────────────────────────────────
 func recoveryVector(name: String, recoveryKey: String, vaultKey: Data, nonce: Data) throws -> [String: Any] {

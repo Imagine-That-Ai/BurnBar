@@ -166,6 +166,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         return BurnBarProviderProxyResponse(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse),
             body: data,
             usage: Self.extractProxyUsage(responseBody: data)
         )
@@ -249,6 +250,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "application/json",
+            headers: response.headers,
             body: translatedBody,
             usage: response.usage
         )
@@ -278,6 +280,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "application/json",
+            headers: response.headers,
             body: translatedBody,
             usage: response.usage
         )
@@ -1128,6 +1131,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "text/event-stream",
+            headers: response.headers,
             body: output,
             usage: response.usage
         )
@@ -1210,6 +1214,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "text/event-stream",
+            headers: response.headers,
             body: output,
             usage: response.usage
         )

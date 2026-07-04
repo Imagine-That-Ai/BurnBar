@@ -9,7 +9,8 @@ import Security
 extension BurnBarOpenAICompatibleProviderExecutor {
 
     static func shouldUseOllamaNativeAPI(route: BurnBarProviderRoute, baseURL: URL) -> Bool {
-        guard route.providerID.lowercased() == "ollama" else { return false }
+        let providerID = route.providerID.lowercased()
+        guard providerID == "ollama" || providerID == "ollama-local" else { return false }
         return !baseURL.path.lowercased().hasSuffix("/v1")
     }
 
@@ -135,13 +136,15 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         requestBody: Data,
         responseBody: Data,
         modelID: String,
-        streamRequested: Bool
+        streamRequested: Bool,
+        headers: [String: String] = [:]
     ) throws -> BurnBarProviderProxyResponse {
         if streamRequested {
             return try openAIStreamResponseFromOllama(
                 requestBody: requestBody,
                 responseBody: responseBody,
-                modelID: modelID
+                modelID: modelID,
+                headers: headers
             )
         }
 
@@ -151,6 +154,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "application/json",
+            headers: headers,
             body: body,
             usage: ollamaProxyUsage(requestBody: requestBody, response: decoded)
         )
@@ -189,7 +193,8 @@ extension BurnBarOpenAICompatibleProviderExecutor {
     static func openAIStreamResponseFromOllama(
         requestBody: Data,
         responseBody: Data,
-        modelID: String
+        modelID: String,
+        headers: [String: String] = [:]
     ) throws -> BurnBarProviderProxyResponse {
         let responseID = "chatcmpl-\(UUID().uuidString)"
         let created = Int(Date().timeIntervalSince1970)
@@ -258,6 +263,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "text/event-stream",
+            headers: headers,
             body: sse,
             usage: finalResponse.map { ollamaProxyUsage(requestBody: requestBody, response: $0) }
         )

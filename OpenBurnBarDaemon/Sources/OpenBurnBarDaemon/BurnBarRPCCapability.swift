@@ -66,7 +66,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .providerModelDisplayNameSet, .providerModelDisplayNameClear:
             return .config
         case .usageRecord, .usageRecent,
-             .proxyRouteLogRecent, .proxyRouteLogClear:
+             .proxyRouteLogRecent, .proxyRouteLogClear,
+             .quotaSignalsRecent, .quotaSignalsClear:
             return .observability
         case .connectorPlaneGet, .connectorConfigUpdate, .connectorAction,
              .browserToolingGet, .browserToolingUpdate, .browserAction:

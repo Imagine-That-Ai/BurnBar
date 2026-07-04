@@ -62,6 +62,192 @@ public struct BurnBarProviderCredentialSlot: Codable, Hashable, Identifiable, Se
     }
 }
 
+public struct BurnBarOllamaEndpointConfig: Codable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public var baseURL: String
+    public var apiKeyRef: String?
+    public var label: String
+    public var priority: Int
+    public var enabled: Bool
+
+    public init(
+        id: String,
+        baseURL: String,
+        apiKeyRef: String? = nil,
+        label: String = "",
+        priority: Int = 0,
+        enabled: Bool = true
+    ) {
+        self.id = id
+        self.baseURL = baseURL
+        self.apiKeyRef = apiKeyRef
+        self.label = label
+        self.priority = priority
+        self.enabled = enabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case baseURL
+        case apiKeyRef
+        case label
+        case priority
+        case enabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decoded = BurnBarOllamaEndpointConfig(
+            id: try container.decode(String.self, forKey: .id),
+            baseURL: try container.decode(String.self, forKey: .baseURL),
+            apiKeyRef: try container.decodeIfPresent(String.self, forKey: .apiKeyRef),
+            label: try container.decodeIfPresent(String.self, forKey: .label) ?? "",
+            priority: try container.decodeIfPresent(Int.self, forKey: .priority) ?? 0,
+            enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        )
+        do {
+            self = try Self.normalized(decoded)
+        } catch {
+            throw DecodingError.dataCorruptedError(
+                forKey: .baseURL,
+                in: container,
+                debugDescription: error.localizedDescription
+            )
+        }
+    }
+
+    public static func normalized(_ endpoint: BurnBarOllamaEndpointConfig) throws -> BurnBarOllamaEndpointConfig {
+        let normalizedID = endpoint.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedID.isEmpty else {
+            throw ValidationError.emptyID
+        }
+
+        let normalizedBaseURL = try normalizedHTTPBaseURL(endpoint.baseURL)
+        let normalizedAPIKeyRef = endpoint.apiKeyRef?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty
+        let normalizedLabel = endpoint.label
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty ?? normalizedID
+
+        return BurnBarOllamaEndpointConfig(
+            id: normalizedID,
+            baseURL: normalizedBaseURL,
+            apiKeyRef: normalizedAPIKeyRef,
+            label: normalizedLabel,
+            priority: endpoint.priority,
+            enabled: endpoint.enabled
+        )
+    }
+
+    public static func normalizedList(_ endpoints: [BurnBarOllamaEndpointConfig]) throws -> [BurnBarOllamaEndpointConfig] {
+        var seen = Set<String>()
+        var normalized: [BurnBarOllamaEndpointConfig] = []
+        normalized.reserveCapacity(endpoints.count)
+
+        for endpoint in endpoints {
+            let normalizedEndpoint = try Self.normalized(endpoint)
+            let key = normalizedEndpoint.id.lowercased()
+            guard seen.insert(key).inserted else {
+                throw ValidationError.duplicateID(normalizedEndpoint.id)
+            }
+            normalized.append(normalizedEndpoint)
+        }
+
+        return normalized.sorted { lhs, rhs in
+            if lhs.priority != rhs.priority {
+                return lhs.priority < rhs.priority
+            }
+            return lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
+        }
+    }
+
+    public static func synthesizedLegacyDefault(
+        providerBaseURL: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> BurnBarOllamaEndpointConfig {
+        let baseURL = normalizedOllamaServerRoot(environment["OLLAMA_HOST"])
+            ?? normalizedOllamaServerRoot(providerBaseURL)
+            ?? "http://localhost:11434"
+        return BurnBarOllamaEndpointConfig(
+            id: "default",
+            baseURL: baseURL,
+            label: "Default endpoint",
+            priority: 0,
+            enabled: true
+        )
+    }
+
+    public static func normalizedOllamaServerRoot(_ rawValue: String?) -> String? {
+        guard var rawValue = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return nil
+        }
+        if !rawValue.contains("://") {
+            rawValue = "http://\(rawValue)"
+        }
+        guard var components = URLComponents(string: rawValue),
+              let scheme = components.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              components.host?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return nil
+        }
+
+        let normalizedPath = components.percentEncodedPath
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if normalizedPath.caseInsensitiveCompare("v1") == .orderedSame
+            || normalizedPath.lowercased().hasSuffix("/v1") {
+            var parts = normalizedPath.split(separator: "/").map(String.init)
+            if parts.last?.caseInsensitiveCompare("v1") == .orderedSame {
+                parts.removeLast()
+                components.percentEncodedPath = parts.isEmpty ? "" : "/" + parts.joined(separator: "/")
+            }
+        }
+        if components.percentEncodedPath == "/" {
+            components.percentEncodedPath = ""
+        }
+        components.query = nil
+        components.fragment = nil
+        return components.string?.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    private static func normalizedHTTPBaseURL(_ rawValue: String) throws -> String {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              components.host?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            throw ValidationError.invalidBaseURL(rawValue)
+        }
+        if components.percentEncodedPath == "/" {
+            components.percentEncodedPath = ""
+        }
+        components.fragment = nil
+        guard let value = components.string?.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+              !value.isEmpty else {
+            throw ValidationError.invalidBaseURL(rawValue)
+        }
+        return value
+    }
+
+    public enum ValidationError: Error, LocalizedError, Hashable {
+        case emptyID
+        case duplicateID(String)
+        case invalidBaseURL(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .emptyID:
+                return "Ollama endpoint id must not be empty."
+            case .duplicateID(let id):
+                return "Ollama endpoint id '\(id)' is duplicated."
+            case .invalidBaseURL(let baseURL):
+                return "Ollama endpoint baseURL '\(baseURL)' must be an http(s) URL."
+            }
+        }
+    }
+}
+
 public enum BurnBarProviderCredentialSlotRoutingPolicy {
     public static let defaultExhaustionRetryInterval: TimeInterval = 30 * 60
 
@@ -525,6 +711,10 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
     public var disabledAdvertisedModelIDs: [String]
     public var preferredCredentialSlotID: String?
     public var credentialSlots: [BurnBarProviderCredentialSlot]
+    /// Local Ollama endpoint slots. Only `providerID == "ollama-local"` uses
+    /// this field; when absent, the daemon synthesizes a legacy `default`
+    /// endpoint from `OLLAMA_HOST`, the provider base URL, or localhost.
+    public var ollamaEndpoints: [BurnBarOllamaEndpointConfig]
     /// User-defined thinking-level variants. Each variant ships as its own
     /// row in `/v1/models` and in every wired CLI's picker, while still
     /// routing through `baseModelID`.
@@ -548,6 +738,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         disabledAdvertisedModelIDs: [String] = [],
         preferredCredentialSlotID: String? = nil,
         credentialSlots: [BurnBarProviderCredentialSlot] = [],
+        ollamaEndpoints: [BurnBarOllamaEndpointConfig] = [],
         modelVariants: [BurnBarModelVariant] = [],
         modelAliases: [BurnBarModelAlias] = [],
         modelDisplayOverrides: [BurnBarModelDisplayOverride] = [],
@@ -560,6 +751,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         self.disabledAdvertisedModelIDs = Self.normalizedDisabledAdvertisedModelIDs(disabledAdvertisedModelIDs)
         self.preferredCredentialSlotID = preferredCredentialSlotID
         self.credentialSlots = credentialSlots
+        self.ollamaEndpoints = (try? BurnBarOllamaEndpointConfig.normalizedList(ollamaEndpoints)) ?? ollamaEndpoints
         self.modelVariants = Self.normalizedModelVariants(modelVariants)
         self.modelAliases = Self.normalizedModelAliases(modelAliases)
         self.modelDisplayOverrides = Self.normalizedModelDisplayOverrides(modelDisplayOverrides)
@@ -746,6 +938,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         case disabledAdvertisedModelIDs
         case preferredCredentialSlotID
         case credentialSlots
+        case ollamaEndpoints
         case modelVariants
         case modelAliases
         case modelDisplayOverrides
@@ -763,6 +956,23 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         )
         preferredCredentialSlotID = try container.decodeIfPresent(String.self, forKey: .preferredCredentialSlotID)
         credentialSlots = try container.decodeIfPresent([BurnBarProviderCredentialSlot].self, forKey: .credentialSlots) ?? []
+        if let decodedOllamaEndpoints = try container.decodeIfPresent([BurnBarOllamaEndpointConfig].self, forKey: .ollamaEndpoints) {
+            do {
+                ollamaEndpoints = try BurnBarOllamaEndpointConfig.normalizedList(decodedOllamaEndpoints)
+            } catch {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .ollamaEndpoints,
+                    in: container,
+                    debugDescription: error.localizedDescription
+                )
+            }
+        } else if providerID.caseInsensitiveCompare("ollama-local") == .orderedSame {
+            ollamaEndpoints = [
+                BurnBarOllamaEndpointConfig.synthesizedLegacyDefault(providerBaseURL: baseURL)
+            ]
+        } else {
+            ollamaEndpoints = []
+        }
         modelVariants = Self.normalizedModelVariants(
             try container.decodeIfPresent([BurnBarModelVariant].self, forKey: .modelVariants) ?? []
         )
@@ -775,6 +985,24 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         customModels = Self.normalizedCustomModels(
             try container.decodeIfPresent([BurnBarCustomModel].self, forKey: .customModels) ?? []
         )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(providerID, forKey: .providerID)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(preferredModelIDs, forKey: .preferredModelIDs)
+        try container.encode(disabledAdvertisedModelIDs, forKey: .disabledAdvertisedModelIDs)
+        try container.encodeIfPresent(preferredCredentialSlotID, forKey: .preferredCredentialSlotID)
+        try container.encode(credentialSlots, forKey: .credentialSlots)
+        if !ollamaEndpoints.isEmpty {
+            try container.encode(ollamaEndpoints, forKey: .ollamaEndpoints)
+        }
+        try container.encode(modelVariants, forKey: .modelVariants)
+        try container.encode(modelAliases, forKey: .modelAliases)
+        try container.encode(modelDisplayOverrides, forKey: .modelDisplayOverrides)
+        try container.encode(customModels, forKey: .customModels)
     }
 
     private static func normalizedDisabledAdvertisedModelIDs(_ modelIDs: [String]) -> [String] {

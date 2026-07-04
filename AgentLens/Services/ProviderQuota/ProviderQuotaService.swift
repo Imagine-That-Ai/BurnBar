@@ -1439,11 +1439,56 @@ final class ProviderQuotaService {
     }
 
     private func persistSnapshots() {
+        let persistedSnapshots = deduplicatedPersistedSnapshots()
         snapshotStore.persistSnapshots(snapshotsByProvider, accountSnapshots: snapshotsByAccountID)
+        recordSnapshotWrittenTelemetry(for: persistedSnapshots)
         let syncableSnapshots = snapshotsForCloudSync.filter { $0.source != .unavailable }
         if !syncableSnapshots.isEmpty {
             onSnapshotsPersistedForCloudSync?(syncableSnapshots)
         }
+    }
+
+    private func deduplicatedPersistedSnapshots() -> [ProviderQuotaSnapshot] {
+        Array(
+            (Array(snapshotsByProvider.values) + Array(snapshotsByAccountID.values))
+                .reduce(into: [String: ProviderQuotaSnapshot]()) { result, snapshot in
+                    let key = ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)
+                    guard let existing = result[key] else {
+                        result[key] = snapshot
+                        return
+                    }
+                    if snapshot.fetchedAt >= existing.fetchedAt {
+                        result[key] = snapshot
+                    }
+                }
+                .values
+        )
+    }
+
+    private func recordSnapshotWrittenTelemetry(for snapshots: [ProviderQuotaSnapshot], now: Date = Date()) {
+        for snapshot in snapshots {
+            TelemetryService.shared.record(
+                feature: .providerQuotaRefresh,
+                outcome: .success,
+                attributes: [
+                    "quota_event": "snapshot_written",
+                    "provider": snapshot.providerID.rawValue,
+                    "source": snapshot.source.rawValue,
+                    "snapshot_age_bucket": Self.snapshotAgeBucket(fetchedAt: snapshot.fetchedAt, now: now)
+                ]
+            )
+        }
+    }
+
+    static func snapshotAgeBucket(fetchedAt: Date, now: Date = Date()) -> String {
+        let ageSeconds = now.timeIntervalSince(fetchedAt)
+        if ageSeconds < 0 { return "future" }
+        if ageSeconds < 60 { return "<1m" }
+        if ageSeconds < 5 * 60 { return "1-5m" }
+        if ageSeconds < 20 * 60 { return "5-20m" }
+        if ageSeconds < 60 * 60 { return "20-60m" }
+        if ageSeconds < 4 * 60 * 60 { return "1-4h" }
+        return ">=4h"
     }
 
     private func loadPersistedRoutingEvents() {

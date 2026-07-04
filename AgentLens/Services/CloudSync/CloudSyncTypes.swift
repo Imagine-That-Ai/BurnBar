@@ -34,6 +34,7 @@ protocol CloudSyncing: AnyObject {
     func uploadPendingChatThreads() async
     func uploadPendingSessionLogs() async
     func syncSharedArtifacts(maxRemoteArtifacts: Int) async
+    func syncRoamingProfile() async
     func downloadRemoteData(uid: String?) async
     func updateLocalDeviceName(_ name: String) async
     func fetchCloudTotal(uid: String?) async

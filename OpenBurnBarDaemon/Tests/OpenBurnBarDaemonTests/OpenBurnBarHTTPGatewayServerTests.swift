@@ -797,6 +797,62 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(entry.attempts.first?.providerLogoKey, "ZaiProviderLogo")
     }
 
+    func testGatewayCapturesRateLimitHeadersAsQuotaSignals() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#,
+            path: "/v1/models"
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-quota-signal","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+            path: "/v1/chat/completions",
+            headers: [
+                "x-ratelimit-remaining": "17",
+                "x-ratelimit-limit": "20",
+                "x-ratelimit-reset": "2026-07-04T08:00:00Z",
+                "Authorization": "Bearer must-not-persist",
+                "X-Not-Quota": "ignore"
+            ]
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"zai/primary/glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let signals = try await harness.quotaSignalStore.recent(limit: 5)
+        let signal = try XCTUnwrap(signals.first)
+        XCTAssertEqual(signal.signalTier, .trafficHeaders)
+        XCTAssertEqual(signal.providerID, "zai")
+        XCTAssertEqual(signal.accountID, "primary")
+        XCTAssertEqual(signal.requestPath, "/v1/chat/completions")
+        XCTAssertEqual(signal.endpoint, "Chat Completions")
+        XCTAssertEqual(signal.remaining, 17)
+        XCTAssertEqual(signal.limit, 20)
+        XCTAssertEqual(signal.resetsAt, ISO8601DateFormatter().date(from: "2026-07-04T08:00:00Z"))
+
+        let headerNames = Set(signal.headers.map(\.name))
+        XCTAssertEqual(headerNames, ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"])
+        XCTAssertFalse(headerNames.contains("authorization"))
+        XCTAssertFalse(headerNames.contains("x-not-quota"))
+    }
+
     func testGatewayRecordsEachRepeatedUpstreamDispatchInUsageLedger() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -5288,6 +5344,7 @@ private final class GatewayHarness: @unchecked Sendable {
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
+    let quotaSignalStore: BurnBarQuotaSignalStore
     private var server: BurnBarHTTPGatewayServer
     private let authToken: String?
     private let rateLimit: BurnBarRateLimitConfiguration?
@@ -5339,6 +5396,10 @@ private final class GatewayHarness: @unchecked Sendable {
             fileURL: tempDirectory.appendingPathComponent("proxy-route-events.jsonl"),
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
+        self.quotaSignalStore = BurnBarQuotaSignalStore(
+            fileURL: tempDirectory.appendingPathComponent("quota-signals.jsonl"),
+            logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
         self.modelHealthStore = BurnBarGatewayModelHealthStore(
             fileURL: tempDirectory.appendingPathComponent("gateway-model-health.json")
         )
@@ -5358,6 +5419,7 @@ private final class GatewayHarness: @unchecked Sendable {
             configStore: configStore,
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
+            quotaSignalStore: quotaSignalStore,
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
             factoryExecutor: factoryExecutor,
@@ -5385,6 +5447,7 @@ private final class GatewayHarness: @unchecked Sendable {
             configStore: configStore,
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
+            quotaSignalStore: quotaSignalStore,
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
             factoryExecutor: factoryExecutor,
@@ -5666,16 +5729,31 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         let body: Data
         let delayNanoseconds: UInt64
         let path: String?
+        let headers: [String: String]
     }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var queuedResponses: [Response] = []
     nonisolated(unsafe) private static var requests: [GatewayUpstreamRequest] = []
 
-    static func enqueue(status: Int, body: String, delayNanoseconds: UInt64 = 0, path: String? = nil) {
+    static func enqueue(
+        status: Int,
+        body: String,
+        delayNanoseconds: UInt64 = 0,
+        path: String? = nil,
+        headers: [String: String] = [:]
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        queuedResponses.append(Response(status: status, body: Data(body.utf8), delayNanoseconds: delayNanoseconds, path: path))
+        queuedResponses.append(
+            Response(
+                status: status,
+                body: Data(body.utf8),
+                delayNanoseconds: delayNanoseconds,
+                path: path,
+                headers: headers
+            )
+        )
     }
 
     static func recordedRequests() -> [GatewayUpstreamRequest] {
@@ -5712,7 +5790,8 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
                 status: 200,
                 body: Data(Self.defaultAnthropicModelCatalogBody.utf8),
                 delayNanoseconds: 0,
-                path: requestPath
+                path: requestPath,
+                headers: [:]
             )
             shouldRecordRequest = false
         } else if let index = Self.queuedResponses.firstIndex(where: { $0.path == nil }) {
@@ -5722,7 +5801,8 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
                 status: 500,
                 body: Data(#"{"error":"missing fixture"}"#.utf8),
                 delayNanoseconds: 0,
-                path: nil
+                path: nil,
+                headers: [:]
             )
         }
         if shouldRecordRequest {
@@ -5755,11 +5835,15 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
     }
 
     private func send(_ response: Response) {
+        var headerFields = response.headers
+        if headerFields["Content-Type"] == nil && headerFields["content-type"] == nil {
+            headerFields["Content-Type"] = "application/json"
+        }
         let httpResponse = HTTPURLResponse(
             url: request.url!,
             statusCode: response.status,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: headerFields
         )!
         client?.urlProtocol(self, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: response.body)

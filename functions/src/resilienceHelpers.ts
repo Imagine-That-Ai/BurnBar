@@ -3,7 +3,14 @@
  * @see resilience.ts
  */
 
-import { externalApiPolicy, firestorePolicy, pushPolicy, stripePolicy, withResilience } from "./resilience.js";
+import {
+  externalApiPolicy,
+  firestorePolicy,
+  providerApiPolicy,
+  pushPolicy,
+  stripePolicy,
+  withResilience,
+} from "./resilience.js";
 import { assertOutboundFetchTargetResolved } from "./ssrfGuard.js";
 
 interface ResilientFetchOptions {
@@ -27,6 +34,10 @@ export async function externalApiWithResilience<T>(label: string, fn: () => Prom
   return withResilience(externalApiPolicy, `external:${label}`, fn);
 }
 
+export async function providerApiWithResilience<T>(provider: string, label: string, fn: () => Promise<T>): Promise<T> {
+  return withResilience(providerApiPolicy(provider), `provider:${provider}:${label}`, fn);
+}
+
 /** Outbound HTTP from Functions (quota runner, insights, benchmarks). */
 export async function resilientFetch(
   label: string,
@@ -38,4 +49,16 @@ export async function resilientFetch(
   // hosts unless explicitly opted in (the GCP metadata identity fetch).
   await assertOutboundFetchTargetResolved(url, options?.allowPrivateHosts ?? false);
   return externalApiWithResilience(label, () => fetch(url, init));
+}
+
+/** Outbound HTTP from provider quota adapters. */
+export async function providerResilientFetch(
+  provider: string,
+  label: string,
+  url: string | URL,
+  init?: RequestInit,
+  options?: ResilientFetchOptions,
+): Promise<Response> {
+  await assertOutboundFetchTargetResolved(url, options?.allowPrivateHosts ?? false);
+  return providerApiWithResilience(provider, label, () => fetch(url, init));
 }

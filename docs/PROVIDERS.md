@@ -79,6 +79,34 @@
 
 ---
 
+## Ollama Local Endpoints
+
+`ollama-local` supports multiple local or LAN Ollama daemons through
+`ollamaEndpoints` on the provider config:
+
+```json
+{
+  "providerID": "ollama-local",
+  "baseURL": "http://localhost:11434/v1",
+  "ollamaEndpoints": [
+    {"id": "desktop", "label": "Desktop", "baseURL": "http://localhost:11434", "priority": 0, "enabled": true},
+    {"id": "studio", "label": "Studio", "baseURL": "http://studio.local:11434", "priority": 10, "enabled": true}
+  ]
+}
+```
+
+When the array is absent, the daemon synthesizes one enabled `default` endpoint
+from `OLLAMA_HOST`, then the legacy provider base URL with `/v1` stripped, then
+`http://localhost:11434`. Each enabled endpoint becomes its own route slot
+(`credentialSlotID == endpoint.id`), so cooldown on one local daemon does not
+remove the others from routing.
+
+Endpoint `baseURL` values must be `http` or `https`. `apiKeyRef` is optional and
+points at a daemon secret-store key for secured LAN proxies; local Ollama uses an
+empty key by default.
+
+---
+
 ## Endpoint Reference
 
 | Provider | Endpoint | Method | Response Shape |

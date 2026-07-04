@@ -134,6 +134,14 @@ extension BurnBarHTTPGatewayServer {
                         formatFamily: formatFamily,
                         route: route
                     )
+                    await recordQuotaSignalIfAvailable(
+                        headers: relay.headers,
+                        route: route,
+                        requestPath: logContext.requestPath,
+                        endpoint: logContext.endpoint,
+                        httpStatus: relay.httpStatus,
+                        streamed: true
+                    )
                     let attemptStatus: BurnBarProxyRouteFinalStatus = relay.interrupted ? .interrupted : .exact
                     routeLogAttempts.append(routeAttempt(
                         sequence: routeLogAttempts.nextSequence,
@@ -174,6 +182,14 @@ extension BurnBarHTTPGatewayServer {
                 modelID: requestedModel.originalID,
                 formatFamily: formatFamily,
                 route: route
+            )
+            await recordQuotaSignalIfAvailable(
+                headers: response.headers,
+                route: route,
+                requestPath: logContext.requestPath,
+                endpoint: logContext.endpoint,
+                httpStatus: response.statusCode,
+                streamed: false
             )
             await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
             routeLogAttempts.append(routeAttempt(

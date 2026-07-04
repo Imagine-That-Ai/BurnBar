@@ -7,13 +7,23 @@ public struct BurnBarResolvedProviderConfiguration: Sendable {
         public let apiKey: String?
     }
 
+    public struct ResolvedOllamaEndpoint: Sendable {
+        public let endpoint: BurnBarOllamaEndpointConfig
+        public let slot: BurnBarProviderCredentialSlot
+        public let apiKey: String?
+    }
+
     public let provider: BurnBarCatalogProvider
     public let settings: BurnBarProviderSettings
     public let preferredModels: [BurnBarCatalogModel]
     public let credentialSlots: [ResolvedCredentialSlot]
+    public let ollamaEndpoints: [ResolvedOllamaEndpoint]
     public let apiKey: String?
 
     public var hasCredential: Bool {
+        if provider.local && !ollamaEndpoints.isEmpty {
+            return true
+        }
         if credentialSlots.contains(where: {
             guard let apiKey = $0.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) else {
                 return false
@@ -24,6 +34,22 @@ public struct BurnBarResolvedProviderConfiguration: Sendable {
         }
         guard let apiKey else { return false }
         return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public init(
+        provider: BurnBarCatalogProvider,
+        settings: BurnBarProviderSettings,
+        preferredModels: [BurnBarCatalogModel],
+        credentialSlots: [ResolvedCredentialSlot],
+        ollamaEndpoints: [ResolvedOllamaEndpoint] = [],
+        apiKey: String?
+    ) {
+        self.provider = provider
+        self.settings = settings
+        self.preferredModels = preferredModels
+        self.credentialSlots = credentialSlots
+        self.ollamaEndpoints = ollamaEndpoints
+        self.apiKey = apiKey
     }
 }
 
@@ -811,7 +837,14 @@ public actor BurnBarConfigStore {
             var resolvedSlots: [BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot] = []
             resolvedSlots.reserveCapacity(mutableSettings.credentialSlots.count)
             for slot in mutableSettings.credentialSlots {
-                let key = try await secretStore.secret(for: slotSecretStoreKey(providerID: settings.providerID, slotID: slot.slotID))
+                let endpointAPIKeyRef = Self.ollamaEndpoint(
+                    slotID: slot.slotID,
+                    settings: mutableSettings
+                )?.apiKeyRef
+                let key = try await secretStore.secret(
+                    for: endpointAPIKeyRef
+                        ?? slotSecretStoreKey(providerID: settings.providerID, slotID: slot.slotID)
+                )
                 var resolvedSlot = slot
                 if slot.status == .missingSecret,
                    shouldRepairMissingSecretSlot(providerID: settings.providerID, slot: slot),
@@ -824,6 +857,16 @@ public actor BurnBarConfigStore {
                     _ = try upsertProvider(mutableSettings)
                 }
                 resolvedSlots.append(.init(slot: resolvedSlot, apiKey: key))
+            }
+            let resolvedOllamaEndpoints: [BurnBarResolvedProviderConfiguration.ResolvedOllamaEndpoint] = mutableSettings.ollamaEndpoints.compactMap { endpoint in
+                guard let resolvedSlot = resolvedSlots.first(where: { $0.slot.slotID == endpoint.id }) else {
+                    return nil
+                }
+                return BurnBarResolvedProviderConfiguration.ResolvedOllamaEndpoint(
+                    endpoint: endpoint,
+                    slot: resolvedSlot.slot,
+                    apiKey: resolvedSlot.apiKey
+                )
             }
 
             let selectedKey = selectPreferredAPIKey(
@@ -846,6 +889,7 @@ public actor BurnBarConfigStore {
                     settings: mutableSettings,
                     preferredModels: preferredModels,
                     credentialSlots: resolvedSlots,
+                    ollamaEndpoints: resolvedOllamaEndpoints,
                     apiKey: selectedKey
                 )
             )
@@ -1060,7 +1104,7 @@ public actor BurnBarConfigStore {
             configured: configuredPreferredModelIDs,
             defaults: fallbackModels
         )
-        let normalizedSlots = settings.credentialSlots.map { slot in
+        var normalizedSlots = settings.credentialSlots.map { slot in
             BurnBarProviderCredentialSlot(
                 slotID: slot.slotID.trimmingCharacters(in: .whitespacesAndNewlines),
                 label: slot.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Plan" : slot.label.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1080,6 +1124,23 @@ public actor BurnBarConfigStore {
             )
         }.filter { !$0.slotID.isEmpty }
 
+        let normalizedBaseURL = normalizedBaseURL(
+            providerID: settings.providerID,
+            rawBaseURL: settings.baseURL
+        )
+        var endpointSettings = settings
+        endpointSettings.baseURL = normalizedBaseURL
+        let normalizedOllamaEndpoints = try normalizedOllamaEndpoints(
+            settings: endpointSettings,
+            defaults: defaultSnapshot.providerSettings(id: settings.providerID)
+        )
+        if isOllamaLocalProvider(settings.providerID) {
+            normalizedSlots = Self.mergingOllamaEndpointSlots(
+                existingSlots: normalizedSlots,
+                endpoints: normalizedOllamaEndpoints
+            )
+        }
+
         let preferredSlotID: String? = {
             guard let preferred = settings.preferredCredentialSlotID?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !preferred.isEmpty,
@@ -1088,11 +1149,6 @@ public actor BurnBarConfigStore {
             }
             return preferred
         }()
-
-        let normalizedBaseURL = normalizedBaseURL(
-            providerID: settings.providerID,
-            rawBaseURL: settings.baseURL
-        )
 
         if catalogSupport.supportsRouting(providerID: settings.providerID) {
             let trimmedBase = normalizedBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1150,11 +1206,86 @@ public actor BurnBarConfigStore {
             disabledAdvertisedModelIDs: settings.disabledAdvertisedModelIDs,
             preferredCredentialSlotID: preferredSlotID,
             credentialSlots: normalizedSlots,
+            ollamaEndpoints: normalizedOllamaEndpoints,
             modelVariants: modelVariants,
             modelAliases: supportedAliases,
             modelDisplayOverrides: settings.modelDisplayOverrides,
             customModels: supportedCustomModels
         )
+    }
+
+    private func normalizedOllamaEndpoints(
+        settings: BurnBarProviderSettings,
+        defaults: BurnBarProviderSettings?
+    ) throws -> [BurnBarOllamaEndpointConfig] {
+        guard isOllamaLocalProvider(settings.providerID) else {
+            return []
+        }
+
+        let endpoints = settings.ollamaEndpoints.isEmpty
+            ? (defaults?.ollamaEndpoints.isEmpty == false
+                ? defaults?.ollamaEndpoints ?? []
+                : [OpenBurnBarDaemonOllamaEndpointDefaults.synthesizedLegacyDefault(providerBaseURL: settings.baseURL)])
+            : settings.ollamaEndpoints
+
+        do {
+            return try BurnBarOllamaEndpointConfig.normalizedList(endpoints)
+        } catch BurnBarOllamaEndpointConfig.ValidationError.invalidBaseURL(_) {
+            throw BurnBarConfigStoreError.invalidBaseURL(settings.providerID)
+        } catch {
+            throw error
+        }
+    }
+
+    private static func mergingOllamaEndpointSlots(
+        existingSlots: [BurnBarProviderCredentialSlot],
+        endpoints: [BurnBarOllamaEndpointConfig]
+    ) -> [BurnBarProviderCredentialSlot] {
+        var existingByID: [String: BurnBarProviderCredentialSlot] = [:]
+        for slot in existingSlots {
+            existingByID[slot.slotID] = slot
+        }
+
+        return endpoints.map { endpoint in
+            var slot = existingByID[endpoint.id] ?? BurnBarProviderCredentialSlot(
+                slotID: endpoint.id,
+                label: endpoint.label,
+                isEnabled: endpoint.enabled,
+                status: endpoint.enabled ? .ready : .disabled
+            )
+            slot.label = endpoint.label
+            slot.isEnabled = endpoint.enabled
+            slot.endpointProfileID = nil
+            slot.authMethodID = nil
+            if endpoint.enabled {
+                if slot.status == .disabled || slot.status == .missingSecret {
+                    slot.status = .ready
+                    slot.cooldownUntil = nil
+                    slot.lastStatusMessage = nil
+                }
+            } else {
+                slot.status = .disabled
+                slot.cooldownUntil = nil
+                slot.lastStatusMessage = nil
+            }
+            return slot
+        }
+    }
+
+    private static func ollamaEndpoint(
+        slotID: String,
+        settings: BurnBarProviderSettings
+    ) -> BurnBarOllamaEndpointConfig? {
+        guard isOllamaLocalProvider(settings.providerID) else { return nil }
+        return settings.ollamaEndpoints.first { $0.id == slotID }
+    }
+
+    private static func isOllamaLocalProvider(_ providerID: String) -> Bool {
+        providerID.caseInsensitiveCompare("ollama-local") == .orderedSame
+    }
+
+    private func isOllamaLocalProvider(_ providerID: String) -> Bool {
+        Self.isOllamaLocalProvider(providerID)
     }
 
     private static let defaultModelVariantSeeds: [(providerID: String, baseModelID: String, levels: [BurnBarThinkingLevel])] = [
@@ -1263,6 +1394,9 @@ public actor BurnBarConfigStore {
     private func makeDefaultSnapshot() throws -> BurnBarProviderConfigurationSnapshot {
         let providers = try catalogSupport.supportedProviderIDs.map { providerID in
             let provider = try catalogSupport.requiredProvider(id: providerID)
+            let ollamaEndpoints = Self.isOllamaLocalProvider(provider.id)
+                ? [OpenBurnBarDaemonOllamaEndpointDefaults.synthesizedLegacyDefault(providerBaseURL: provider.baseURL)]
+                : []
             return BurnBarProviderSettings(
                 providerID: provider.id,
                 // Local, credential-less providers (e.g. a local Ollama daemon)
@@ -1270,7 +1404,11 @@ public actor BurnBarConfigStore {
                 // cloud providers stay disabled until the user adds a credential.
                 isEnabled: provider.local,
                 baseURL: provider.baseURL,
-                preferredModelIDs: catalogSupport.defaultModelIDs(forProviderID: provider.id)
+                preferredModelIDs: catalogSupport.defaultModelIDs(forProviderID: provider.id),
+                credentialSlots: Self.isOllamaLocalProvider(provider.id)
+                    ? Self.mergingOllamaEndpointSlots(existingSlots: [], endpoints: ollamaEndpoints)
+                    : [],
+                ollamaEndpoints: ollamaEndpoints
             )
         }
 

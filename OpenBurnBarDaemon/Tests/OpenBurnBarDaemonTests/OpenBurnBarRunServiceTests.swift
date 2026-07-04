@@ -413,6 +413,64 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(usageRecords.first?.runID, createResponse.runID)
     }
 
+    func testLocalOllamaEndpointBServesWhenEndpointAConnectionFails() async throws {
+        let recorder = BurnBarEndpointFailoverRecorder(
+            failingSlotID: "edge-a",
+            failure: URLError(.cannotConnectToHost)
+        )
+        let harness = try makeHarness(
+            name: "ollama-endpoint-failover",
+            providerExecutor: recorder
+        )
+        let clientID = BurnBarClientID(rawValue: "client-ollama")
+        let sessionID = BurnBarSessionID(rawValue: "session-ollama")
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Ollama Endpoint Failover Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama-local",
+                isEnabled: true,
+                baseURL: "http://localhost:11434/v1",
+                preferredModelIDs: [],
+                ollamaEndpoints: [
+                    BurnBarOllamaEndpointConfig(id: "edge-a", baseURL: "http://127.0.0.1:21434", label: "Edge A", priority: 0),
+                    BurnBarOllamaEndpointConfig(id: "edge-b", baseURL: "http://127.0.0.1:21435", label: "Edge B", priority: 10)
+                ],
+                customModels: [
+                    BurnBarCustomModel(modelID: "qwen2.5:3b", displayName: "Qwen local")
+                ]
+            )
+        )
+
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Use local Ollama failover",
+                modelID: "qwen2.5:3b"
+            )
+        )
+
+        XCTAssertEqual(createResponse.phase, .completed)
+        let attemptedRoutes = await recorder.attemptedRoutes()
+        XCTAssertEqual(attemptedRoutes.map(\.credentialSlotID), ["edge-a", "edge-b"])
+        XCTAssertEqual(attemptedRoutes.map(\.baseURL), ["http://127.0.0.1:21434", "http://127.0.0.1:21435"])
+
+        let snapshot = try await harness.configStore.snapshot()
+        let localOllama = try XCTUnwrap(snapshot.providerSettings(id: "ollama-local"))
+        let edgeA = try XCTUnwrap(localOllama.credentialSlots.first { $0.slotID == "edge-a" })
+        let edgeB = try XCTUnwrap(localOllama.credentialSlots.first { $0.slotID == "edge-b" })
+        XCTAssertEqual(edgeA.status, .coolingDown)
+        XCTAssertEqual(edgeB.status, .ready)
+    }
+
     func testObserverCannotControlUntilControllerDetachesAndPromotionOccurs() async throws {
         let harness = try makeHarness(name: "arbitration")
         let controllerID = BurnBarClientID(rawValue: "controller")
@@ -2470,6 +2528,42 @@ private actor BurnBarRecordingFailoverSimulatorProviderExecutor: BurnBarProvider
     /// Each entry includes slotID and providerID for deterministic order verification.
     func attemptedRoutes() -> [BurnBarProviderRoute] {
         return attemptedRoutesList
+    }
+}
+
+private actor BurnBarEndpointFailoverRecorder: BurnBarProviderExecuting {
+    private let failingSlotID: String
+    private let failure: URLError
+    private var attemptedRoutesList: [BurnBarProviderRoute] = []
+
+    init(failingSlotID: String, failure: URLError) {
+        self.failingSlotID = failingSlotID
+        self.failure = failure
+    }
+
+    func completeStructured(
+        _ request: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderExecutionResult {
+        attemptedRoutesList.append(route)
+        if route.credentialSlotID == failingSlotID {
+            throw failure
+        }
+
+        let prompt = [request.systemPrompt, request.userPrompt]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        return BurnBarProviderExecutionResult(
+            outputText: #"{"action":"complete","rationale":"Endpoint failover succeeded.","message":"Completed via local Ollama endpoint."}"#,
+            inputTokens: max(1, prompt.count / 4),
+            outputTokens: 32,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0
+        )
+    }
+
+    func attemptedRoutes() -> [BurnBarProviderRoute] {
+        attemptedRoutesList
     }
 }
 

@@ -30,6 +30,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   LEGACY_LAST_REFRESH_AT_BACKFILL_SENTINEL,
   LAST_REFRESH_AT_BACKFILL_MARKER_PATH,
+  isQuotaSweepAccountDue,
   mapWithConcurrency,
   resetQuotaRefreshSweepCachesForTests,
   runQuotaRefreshSweep,
@@ -457,6 +458,30 @@ describe("runQuotaRefreshSweep refresh pass", () => {
       accountPath("u2", "a2"),
       accountPath("u3", "a3"),
     ]);
+  });
+
+  it("skips provider accounts whose adaptive quota refresh window is still fresh", async () => {
+    const db = new FakeSweepDb();
+    const freshPath = seedAccount(db, "u1", "fresh", {
+      lastRefreshAt: "2026-07-04T10:00:00.000Z",
+      quotaNextRefreshAt: "2026-07-04T10:30:00.000Z",
+    });
+    const duePath = seedAccount(db, "u2", "due", {
+      lastRefreshAt: "2026-07-04T10:01:00.000Z",
+      quotaNextRefreshAt: "2026-07-04T10:02:00.000Z",
+    });
+    const unknownPath = seedAccount(db, "u3", "unknown", {
+      lastRefreshAt: "2026-07-04T10:02:00.000Z",
+    });
+
+    const calls: SweepCalls = { refreshedAccounts: [], refreshedLegacy: [] };
+    await runQuotaRefreshSweep(asSweepDb(db), {
+      ...sweepOptions(db, calls, 3),
+      now: new Date("2026-07-04T10:05:00.000Z"),
+    });
+
+    expect(isQuotaSweepAccountDue(db.makeDoc(freshPath), new Date("2026-07-04T10:05:00.000Z"))).toBe(false);
+    expect(calls.refreshedAccounts).toEqual([duePath, unknownPath]);
   });
 
   it("runs refreshes through the concurrency pool, not serially", async () => {

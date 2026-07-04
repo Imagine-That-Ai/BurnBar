@@ -60,6 +60,28 @@ extension BurnBarHTTPGatewayServer {
         await proxyRouteLogStore.append(entry)
     }
 
+    func recordQuotaSignalIfAvailable(
+        headers: [String: String],
+        route: BurnBarProviderRoute,
+        requestPath: String?,
+        endpoint: String?,
+        httpStatus: Int?,
+        streamed: Bool
+    ) async {
+        guard let quotaSignalStore,
+              let signal = BurnBarQuotaSignalStore.signal(
+                  from: headers,
+                  route: route,
+                  requestPath: requestPath,
+                  endpoint: endpoint,
+                  httpStatus: httpStatus,
+                  streamed: streamed
+              ) else {
+            return
+        }
+        await quotaSignalStore.append(signal)
+    }
+
     func proxyRouteUsage(
         from usage: BurnBarProviderProxyUsage?,
         route: BurnBarProviderRoute

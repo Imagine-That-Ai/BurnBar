@@ -441,10 +441,31 @@ extension BurnBarRunService {
             }
         }
 
+        if Self.isRetryableProviderTransportError(error) {
+            return true
+        }
+
         let description = error.localizedDescription.lowercased()
         return description.contains("quota")
             || description.contains("rate limit")
             || description.contains("429")
+    }
+
+    private static func isRetryableProviderTransportError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .cannotConnectToHost,
+             .cannotFindHost,
+             .dnsLookupFailed,
+             .networkConnectionLost,
+             .notConnectedToInternet,
+             .timedOut,
+             .secureConnectionFailed,
+             .badServerResponse:
+            return true
+        default:
+            return false
+        }
     }
 
     func completeRunAndRecordUsage(for run: inout BurnBarManagedRun) async throws {

@@ -37,6 +37,7 @@ public actor BurnBarDaemonServer {
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
+    let quotaSignalStore: BurnBarQuotaSignalStore
     let clientRegistry: BurnBarClientRegistry
     let runService: BurnBarRunService
     let toolingProxy: BurnBarToolingProxyService
@@ -59,6 +60,7 @@ public actor BurnBarDaemonServer {
         configStore: BurnBarConfigStore? = nil,
         usageRecorder: BurnBarUsageRecorder? = nil,
         proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
+        quotaSignalStore: BurnBarQuotaSignalStore? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
@@ -85,6 +87,9 @@ public actor BurnBarDaemonServer {
         let resolvedProxyRouteLogStore = proxyRouteLogStore ?? BurnBarProxyRouteLogStore(
             logger: BurnBarDaemonLogger(category: "proxy-route-log")
         )
+        let resolvedQuotaSignalStore = quotaSignalStore ?? BurnBarQuotaSignalStore(
+            logger: BurnBarDaemonLogger(category: "quota-signals")
+        )
         let resolvedClientRegistry = clientRegistry ?? BurnBarClientRegistry(
             logger: BurnBarDaemonLogger(category: "client-registry")
         )
@@ -102,6 +107,7 @@ public actor BurnBarDaemonServer {
         self.configStore = resolvedConfigStore
         self.usageRecorder = resolvedUsageRecorder
         self.proxyRouteLogStore = resolvedProxyRouteLogStore
+        self.quotaSignalStore = resolvedQuotaSignalStore
         self.clientRegistry = resolvedClientRegistry
         self.runService = resolvedRunService
         self.toolingProxy = BurnBarToolingProxyService(
@@ -242,6 +248,7 @@ public actor BurnBarDaemonServer {
                 configStore: resolvedConfigStore,
                 usageRecorder: resolvedUsageRecorder,
                 proxyRouteLogStore: resolvedProxyRouteLogStore,
+                quotaSignalStore: resolvedQuotaSignalStore,
                 // remediation(B1): production daemon opts into the short-TTL
                 // live model-catalog cache so `/v1/models` and the routing path
                 // stop fanning out live provider HTTP (and spawning Factory's
@@ -569,7 +576,8 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .proxyRouteLogRecent, .proxyRouteLogClear:
+            case .proxyRouteLogRecent, .proxyRouteLogClear,
+                 .quotaSignalsRecent, .quotaSignalsClear:
                 return try await handleObservabilityRPC(
                     method: method,
                     decoder: decoder,

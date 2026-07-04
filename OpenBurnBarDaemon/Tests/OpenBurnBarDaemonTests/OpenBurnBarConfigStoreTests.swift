@@ -114,6 +114,147 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.routerMode, .providerFamilyFailover)
         XCTAssertEqual(snapshot.providerSettings(id: "zai")?.preferredModelIDs, ["glm-5-turbo", "glm-5"])
         XCTAssertEqual(snapshot.providerSettings(id: "minimax")?.preferredModelIDs, ["minimax-m2.7-highspeed"])
+        let localOllama = try XCTUnwrap(snapshot.providerSettings(id: "ollama-local"))
+        XCTAssertEqual(localOllama.ollamaEndpoints.map(\.id), ["default"])
+        XCTAssertEqual(localOllama.credentialSlots.map(\.slotID), ["default"])
+        XCTAssertEqual(localOllama.ollamaEndpoints.first?.baseURL, "http://localhost:11434")
+    }
+
+    func testOllamaEndpointDecodeSynthesizesLegacyDefaultFromProviderBaseURL() throws {
+        let previous = setEnvironment("OLLAMA_HOST", to: nil)
+        defer { restoreEnvironment("OLLAMA_HOST", previous) }
+        let data = Data("""
+        {
+          "providerID": "ollama-local",
+          "isEnabled": true,
+          "baseURL": "http://ollama-lab.local:11434/v1",
+          "preferredModelIDs": [],
+          "credentialSlots": []
+        }
+        """.utf8)
+
+        let settings = try JSONDecoder().decode(BurnBarProviderSettings.self, from: data)
+
+        XCTAssertEqual(settings.ollamaEndpoints.count, 1)
+        XCTAssertEqual(settings.ollamaEndpoints[0].id, "default")
+        XCTAssertEqual(settings.ollamaEndpoints[0].baseURL, "http://ollama-lab.local:11434")
+        XCTAssertEqual(settings.ollamaEndpoints[0].priority, 0)
+        XCTAssertTrue(settings.ollamaEndpoints[0].enabled)
+    }
+
+    func testOllamaEndpointDecodeUsesOllamaHostForSynthesizedDefault() throws {
+        let previous = setEnvironment("OLLAMA_HOST", to: "http://edge-ollama.local:11435")
+        defer { restoreEnvironment("OLLAMA_HOST", previous) }
+        let data = Data("""
+        {
+          "providerID": "ollama-local",
+          "isEnabled": true,
+          "baseURL": "http://localhost:11434/v1",
+          "preferredModelIDs": [],
+          "credentialSlots": []
+        }
+        """.utf8)
+
+        let settings = try JSONDecoder().decode(BurnBarProviderSettings.self, from: data)
+
+        XCTAssertEqual(settings.ollamaEndpoints.map(\.baseURL), ["http://edge-ollama.local:11435"])
+    }
+
+    func testOllamaEndpointDecodeAcceptsPopulatedArray() throws {
+        let data = Data("""
+        {
+          "providerID": "ollama-local",
+          "isEnabled": true,
+          "baseURL": "http://localhost:11434/v1",
+          "preferredModelIDs": [],
+          "credentialSlots": [],
+          "ollamaEndpoints": [
+            {"id": "edge-b", "label": "Edge B", "baseURL": "http://127.0.0.1:21435", "priority": 10, "enabled": true},
+            {"id": "edge-a", "label": "Edge A", "baseURL": "http://127.0.0.1:21434/", "priority": 0, "enabled": true}
+          ]
+        }
+        """.utf8)
+
+        let settings = try JSONDecoder().decode(BurnBarProviderSettings.self, from: data)
+
+        XCTAssertEqual(settings.ollamaEndpoints.map(\.id), ["edge-a", "edge-b"])
+        XCTAssertEqual(settings.ollamaEndpoints.map(\.baseURL), ["http://127.0.0.1:21434", "http://127.0.0.1:21435"])
+        XCTAssertEqual(settings.ollamaEndpoints.map(\.label), ["Edge A", "Edge B"])
+    }
+
+    func testOllamaEndpointDecodeRejectsDuplicateIDsAndNonHTTPURLs() throws {
+        let duplicateIDs = Data("""
+        {
+          "providerID": "ollama-local",
+          "isEnabled": true,
+          "baseURL": "http://localhost:11434/v1",
+          "preferredModelIDs": [],
+          "credentialSlots": [],
+          "ollamaEndpoints": [
+            {"id": "edge", "baseURL": "http://127.0.0.1:21434"},
+            {"id": " edge ", "baseURL": "http://127.0.0.1:21435"}
+          ]
+        }
+        """.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(BurnBarProviderSettings.self, from: duplicateIDs))
+
+        let invalidURL = Data("""
+        {
+          "providerID": "ollama-local",
+          "isEnabled": true,
+          "baseURL": "http://localhost:11434/v1",
+          "preferredModelIDs": [],
+          "credentialSlots": [],
+          "ollamaEndpoints": [
+            {"id": "edge", "baseURL": "file:///tmp/ollama.sock"}
+          ]
+        }
+        """.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(BurnBarProviderSettings.self, from: invalidURL))
+    }
+
+    func testConfigStorePersistsOllamaEndpointSlotsAndRejectsInvalidEndpointURL() async throws {
+        let harness = try makeHarness(name: "ollama-endpoints")
+
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama-local",
+                isEnabled: true,
+                baseURL: "http://localhost:11434/v1",
+                preferredModelIDs: [],
+                ollamaEndpoints: [
+                    BurnBarOllamaEndpointConfig(id: "edge-b", baseURL: "http://127.0.0.1:21435", label: "Edge B", priority: 10),
+                    BurnBarOllamaEndpointConfig(id: "edge-a", baseURL: "http://127.0.0.1:21434", label: "Edge A", priority: 0)
+                ]
+            )
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        let localOllama = try XCTUnwrap(snapshot.providerSettings(id: "ollama-local"))
+        XCTAssertEqual(localOllama.ollamaEndpoints.map(\.id), ["edge-a", "edge-b"])
+        XCTAssertEqual(localOllama.credentialSlots.map(\.slotID), ["edge-a", "edge-b"])
+        XCTAssertEqual(localOllama.credentialSlots.map(\.label), ["Edge A", "Edge B"])
+
+        do {
+            _ = try await harness.configStore.upsertProvider(
+                BurnBarProviderSettings(
+                    providerID: "ollama-local",
+                    isEnabled: true,
+                    baseURL: "http://localhost:11434/v1",
+                    preferredModelIDs: [],
+                    ollamaEndpoints: [
+                        BurnBarOllamaEndpointConfig(id: "bad", baseURL: "ftp://127.0.0.1:11434")
+                    ]
+                )
+            )
+            XCTFail("Expected invalid Ollama endpoint URL to be rejected.")
+        } catch let error as BurnBarConfigStoreError {
+            guard case .invalidBaseURL(let providerID) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(providerID, "ollama-local")
+        }
     }
 
     func testResolvedConfigurationReflectsStoredCredentialAndBaseURLOverride() async throws {
@@ -1326,6 +1467,24 @@ final class BurnBarConfigStoreTests: XCTestCase {
             logger: BurnBarDaemonLogger(category: "config-store-tests")
         )
         return BurnBarConfigStoreHarness(rootURL: rootURL, configStore: configStore)
+    }
+
+    private func setEnvironment(_ key: String, to value: String?) -> String? {
+        let previous = getenv(key).map { String(cString: $0) }
+        if let value {
+            setenv(key, value, 1)
+        } else {
+            unsetenv(key)
+        }
+        return previous
+    }
+
+    private func restoreEnvironment(_ key: String, _ previous: String?) {
+        if let previous {
+            setenv(key, previous, 1)
+        } else {
+            unsetenv(key)
+        }
     }
 }
 

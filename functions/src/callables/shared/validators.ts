@@ -172,6 +172,7 @@ function requireSearchHashes(raw: unknown, fieldName: string, required: boolean)
 }
 
 const CLOUD_VAULT_AAD_CONTEXT_PREFIX = "OpenBurnBar-CloudVault-aad-v2";
+export const ROAMING_PROFILE_AAD_DOMAIN = "OpenBurnBar-RoamingProfile-v1";
 
 function validateCloudVaultAADPart(value: unknown, fieldName: string): string {
   const part = boundedTrimmedString(value, fieldName, 512, true);
@@ -201,6 +202,17 @@ export function cloudVaultAADContext(
     String(schemaVersion),
     validateCloudVaultAADPart(purpose, "purpose"),
   ].join("|");
+}
+
+export function roamingProfileAADContext(uid: unknown): string {
+  return cloudVaultAADContext(
+    uid,
+    "roaming_profile",
+    "current",
+    "sealedPayload",
+    2,
+    ROAMING_PROFILE_AAD_DOMAIN,
+  );
 }
 
 function requireCloudVaultAAD(raw: unknown, fieldName: string, expectedAAD?: string): string {
@@ -256,6 +268,49 @@ export function requireSealedText(raw: unknown, fieldName: string, expectedAAD?:
     throw new HttpsError("invalid-argument", `${fieldName}.aad is only valid on schemaVersion >= 2.`);
   }
   return stripUndefinedObject(values);
+}
+
+export function requireCloudVaultSealedPayload(
+  raw: unknown,
+  fieldName: string,
+  expectedAAD?: string,
+): Record<string, unknown> {
+  if (!isRecord(raw)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an encrypted payload envelope.`);
+  }
+  const envelope = raw;
+  const algorithm = boundedTrimmedString(envelope.algorithm, `${fieldName}.algorithm`, 64, true);
+  if (algorithm !== "AES-256-GCM") {
+    throw new HttpsError("invalid-argument", `${fieldName}.algorithm must be AES-256-GCM.`);
+  }
+  const schemaVersion = requireBoundedNumber(envelope.schemaVersion, `${fieldName}.schemaVersion`, 2, 10);
+  const keyVersion = requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
+  const vaultKeyID = boundedTrimmedString(envelope.vaultKeyID, `${fieldName}.vaultKeyID`, 64, true);
+  if (!/^v1_[a-f0-9]{32}$/u.test(vaultKeyID)) {
+    throw new HttpsError("invalid-argument", `${fieldName}.vaultKeyID must be a CloudVault vault key id.`);
+  }
+  const sealedBoxBase64 = boundedTrimmedString(
+    envelope.sealedBoxBase64,
+    `${fieldName}.sealedBoxBase64`,
+    900_000,
+    true,
+  );
+  if (!/^[A-Za-z0-9+/=]+$/u.test(sealedBoxBase64)) {
+    throw new HttpsError("invalid-argument", `${fieldName}.sealedBoxBase64 must be base64.`);
+  }
+  const aad = requireCloudVaultAAD(envelope.aad, `${fieldName}.aad`, expectedAAD);
+  return {
+    schemaVersion,
+    algorithm,
+    keyVersion,
+    vaultKeyID,
+    sealedBoxBase64,
+    aad,
+  };
+}
+
+export function requireRoamingProfileEnvelope(raw: unknown, uid: unknown): Record<string, unknown> {
+  return requireCloudVaultSealedPayload(raw, "sealedPayload", roamingProfileAADContext(uid));
 }
 
 function requireISODateString(raw: unknown, fieldName: string): string {

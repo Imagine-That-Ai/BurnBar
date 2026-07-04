@@ -964,7 +964,7 @@ struct OpenBurnBarApp: App {
     /// Wires consent-gated Amplitude analytics and resumes prior opt-ins.
     @MainActor
     private static func configureAnalytics() {
-        TelemetryService.shared.setForwarder { feature, outcome, durationMs in
+        TelemetryService.shared.setForwarder { feature, outcome, durationMs, attributes in
             Task { @MainActor in
                 var properties: [String: AnalyticsValue] = [
                     "feature": .string(feature.rawValue),
@@ -972,6 +972,9 @@ struct OpenBurnBarApp: App {
                 ]
                 if let durationMs {
                     properties["duration_ms_bucket"] = .string(AnalyticsBuckets.durationMs(durationMs))
+                }
+                for (key, value) in attributes {
+                    properties[key] = .string(value)
                 }
                 Analytics.shared.track(.featureUsed, properties)
             }

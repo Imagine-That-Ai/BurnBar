@@ -108,6 +108,7 @@ extension BurnBarHTTPGatewayServer {
         return GatewayStreamRelayResult(
             outcome: .streamed,
             usage: usage,
+            headers: stream.headers,
             interrupted: interrupted,
             httpStatus: stream.statusCode
         )

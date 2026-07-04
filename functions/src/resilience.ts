@@ -7,7 +7,7 @@
  * Built on `cockatiel` — a battle-tested Node.js resilience library.
  *
  * Usage:
- *   import { externalApiPolicy, stripePolicy, apnsPolicy } from "./resilience.js";
+ *   import { externalApiPolicy, stripePolicy, pushPolicy } from "./resilience.js";
  *
  *   // Wrap any external call:
  *   const result = await externalApiPolicy.execute(() => callExternalApi());
@@ -105,24 +105,62 @@ export const pushPolicy: IPolicy = wrap(pushTimeout, pushRetry, pushBreaker);
  * Generic external API policy: retry 3 times, circuit breaks after 8 failures.
  * Use for OpenTimestamps, external webhooks, and other third-party HTTP calls.
  */
-const externalBreaker = circuitBreaker(handleAll, {
-  halfOpenAfter: 45_000,
-  breaker: new ConsecutiveBreaker(8),
-});
+export const EXTERNAL_API_HALF_OPEN_AFTER_MS = 45_000;
+export const EXTERNAL_API_BREAKER_FAILURE_THRESHOLD = 8;
+export const EXTERNAL_API_RETRY_MAX_ATTEMPTS = 3;
+export const EXTERNAL_API_TIMEOUT_MS = 20_000;
 
-externalBreaker.onBreak(() => {
-  logError({ event: "circuit_breaker_tripped", service: "external_api", state: "open" });
-});
+function makeExternalApiBreaker(service: string) {
+  const breaker = circuitBreaker(handleAll, {
+    halfOpenAfter: EXTERNAL_API_HALF_OPEN_AFTER_MS,
+    breaker: new ConsecutiveBreaker(EXTERNAL_API_BREAKER_FAILURE_THRESHOLD),
+  });
 
-const externalRetry = retry(handleAll, {
-  maxAttempts: 3,
-  backoff: makeBackoff(),
-});
+  breaker.onBreak(() => {
+    logError({ event: "circuit_breaker_tripped", service, state: "open" });
+  });
 
-const externalTimeout = timeout(20_000, TimeoutStrategy.Aggressive);
+  return breaker;
+}
+
+function makeExternalApiRetry() {
+  return retry(handleAll, {
+    maxAttempts: EXTERNAL_API_RETRY_MAX_ATTEMPTS,
+    backoff: makeBackoff(),
+  });
+}
+
+const externalBreaker = makeExternalApiBreaker("external_api");
+const externalRetry = makeExternalApiRetry();
+export const externalTimeout = timeout(EXTERNAL_API_TIMEOUT_MS, TimeoutStrategy.Aggressive);
 
 /** Generic external API resilience policy. */
 export const externalApiPolicy: IPolicy = wrap(externalTimeout, externalRetry, externalBreaker);
+
+const providerPolicies = new Map<string, IPolicy>();
+
+function normalizeProviderPolicyKey(providerKey: string): string {
+  return providerKey.trim().toLowerCase() || "unknown";
+}
+
+/**
+ * Provider quota HTTP policy. Each provider gets the same timeout/retry/breaker
+ * shape as `externalApiPolicy`, but with isolated breaker state so a dead
+ * provider cannot short-circuit unrelated providers in the same sweep.
+ */
+export function providerApiPolicy(providerKey: string): IPolicy {
+  const normalized = normalizeProviderPolicyKey(providerKey);
+  const existing = providerPolicies.get(normalized);
+  if (existing) return existing;
+
+  const policy = wrap(externalTimeout, makeExternalApiRetry(), makeExternalApiBreaker(`provider_api:${normalized}`));
+  providerPolicies.set(normalized, policy);
+  return policy;
+}
+
+export function resetProviderApiPoliciesForTests(): void {
+  providerPolicies.clear();
+}
 
 // ── Firestore circuit breaker ─────────────────────────────────────────────────
 

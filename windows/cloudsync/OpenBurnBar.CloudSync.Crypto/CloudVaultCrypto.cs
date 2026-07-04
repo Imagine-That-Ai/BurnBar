@@ -31,6 +31,7 @@ namespace OpenBurnBar.CloudSync.Crypto
         public const int BlobIntegrityHashVersion = 1;
         public const string BlobEnvelopeAadContext = "OpenBurnBar-CloudVaultBlob-v2";
         public const string SealedPayloadAadContext = "OpenBurnBar-CloudVaultSealedPayload-v2";
+        public const string RoamingProfileAadDomain = "OpenBurnBar-RoamingProfile-v1";
 
         private const string EscrowHkdfInfo = "OpenBurnBar-Escrow-v1";
         private const string HmacSalt = "OpenBurnBar-CloudVault-HMAC-Salt-v1";
@@ -48,6 +49,15 @@ namespace OpenBurnBar.CloudSync.Crypto
             RequireVaultKey(keyData);
             return "v1_" + Sha256Hex(keyData).Substring(0, 32);
         }
+
+        public static CloudVaultAadContext RoamingProfileAadContext(string uid) =>
+            new(
+                uid: uid,
+                collection: "roaming_profile",
+                docId: "current",
+                field: "sealedPayload",
+                schemaVersion: CurrentSealedPayloadSchemaVersion,
+                purpose: RoamingProfileAadDomain);
 
         // ── sealText / openText (AES-256-GCM detached) ──────────────────────
         public static CloudVaultSealedText SealText(
@@ -217,6 +227,13 @@ namespace OpenBurnBar.CloudSync.Crypto
                     throw CloudVaultCryptoException.InvalidEnvelope();
             }
         }
+
+        public static CloudVaultSealedPayload SealRoamingProfile(
+            byte[] payloadJson, byte[] keyData, string uid, int keyVersion = CurrentKeyVersion) =>
+            SealPayload(payloadJson, keyData, VaultKeyId(keyData), keyVersion, RoamingProfileAadContext(uid));
+
+        public static byte[] OpenRoamingProfile(CloudVaultSealedPayload envelope, byte[] keyData, string uid) =>
+            OpenPayload(envelope, keyData, RoamingProfileAadContext(uid));
 
         private static byte[] SealedPayloadAad(string algorithm, int keyVersion, string vaultKeyId, CloudVaultAadContext? aadContext)
         {

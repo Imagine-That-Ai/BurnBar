@@ -521,17 +521,18 @@ public struct BurnBarProviderRouter: Sendable {
                 )
             }
 
-            let slotsWithSecret = enabledSlots.filter { resolvedSlot in
-                OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
-                    providerID: configuration.provider.id,
-                    rawSecret: resolvedSlot.apiKey
-                ) != nil
+            let routeCredentialSlots = enabledSlots.filter { resolvedSlot in
+                localOllamaEndpoint(for: resolvedSlot.slot.slotID, in: configuration) != nil
+                    || OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                        providerID: configuration.provider.id,
+                        rawSecret: resolvedSlot.apiKey
+                    ) != nil
             }
-            if slotsWithSecret.isEmpty {
+            if routeCredentialSlots.isEmpty {
                 return .missingCredential(configuration.provider.id)
             }
 
-            let routeEligibleSlots = slotsWithSecret.filter {
+            let routeEligibleSlots = routeCredentialSlots.filter {
                 BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(providerID: configuration.provider.id, authMethodID: $0.slot.authMethodID)
             }
             if routeEligibleSlots.isEmpty {
@@ -628,7 +629,11 @@ public struct BurnBarProviderRouter: Sendable {
                 return
             }
             let lowercasedDescription = error.localizedDescription.lowercased()
-            if lowercasedDescription.contains("quota")
+            if isLocalOllamaEndpointRoute(route),
+               Self.isRetryableLocalEndpointTransportError(error) {
+                status = .coolingDown
+                cooldownUntil = Calendar.current.date(byAdding: .minute, value: 1, to: now)
+            } else if lowercasedDescription.contains("quota")
                 || lowercasedDescription.contains("insufficient") || lowercasedDescription.contains("exhaust") {
                 status = .exhausted
                 cooldownUntil = nil
@@ -662,6 +667,36 @@ public struct BurnBarProviderRouter: Sendable {
         } catch {
             logger.silentFailure("update_credential_slot_status_failure", error: error)
         }
+    }
+
+    private func isLocalOllamaEndpointRoute(_ route: BurnBarProviderRoute) -> Bool {
+        route.providerID.caseInsensitiveCompare("ollama-local") == .orderedSame
+            && route.credentialSlotID != nil
+    }
+
+    private static func isRetryableLocalEndpointTransportError(_ error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .cannotConnectToHost,
+                 .cannotFindHost,
+                 .dnsLookupFailed,
+                 .networkConnectionLost,
+                 .notConnectedToInternet,
+                 .timedOut,
+                 .secureConnectionFailed,
+                 .badServerResponse:
+                return true
+            default:
+                return false
+            }
+        }
+
+        let text = error.localizedDescription.lowercased()
+        return text.contains("connection refused")
+            || text.contains("could not connect")
+            || text.contains("cannot connect")
+            || text.contains("timed out")
+            || text.contains("network connection")
     }
 
     private static func shouldPreserveSlotAvailabilityForRateLimit(_ route: BurnBarProviderRoute) -> Bool {
@@ -706,7 +741,10 @@ public struct BurnBarProviderRouter: Sendable {
 
             let now = Date()
             let activeSlots = configuration.credentialSlots.filter { resolvedSlot in
-                guard let key = resolvedSlot.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
+                let isLocalOllamaEndpoint = localOllamaEndpoint(for: resolvedSlot.slot.slotID, in: configuration) != nil
+                let hasRouteCredential = isLocalOllamaEndpoint
+                    || (resolvedSlot.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                guard hasRouteCredential else {
                     return false
                 }
                 return BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
@@ -737,10 +775,36 @@ public struct BurnBarProviderRouter: Sendable {
                     if lhsPreferred != rhsPreferred {
                         return lhsPreferred < rhsPreferred
                     }
+                    let lhsPriority = localOllamaEndpoint(for: lhs.slot.slotID, in: configuration)?.priority ?? Int.max
+                    let rhsPriority = localOllamaEndpoint(for: rhs.slot.slotID, in: configuration)?.priority ?? Int.max
+                    if lhsPriority != rhsPriority {
+                        return lhsPriority < rhsPriority
+                    }
                     return (lhs.slot.lastSelectedAt ?? .distantPast) < (rhs.slot.lastSelectedAt ?? .distantPast)
                 }
 
                 for slot in sortedSlots {
+                    if let endpoint = localOllamaEndpoint(for: slot.slot.slotID, in: configuration) {
+                        routes.append(
+                            BurnBarProviderRoute(
+                                providerID: configuration.provider.id,
+                                providerDisplayName: configuration.provider.displayName,
+                                credentialSlotID: slot.slot.slotID,
+                                credentialSlotLabel: endpoint.label,
+                                baseURL: endpoint.baseURL,
+                                requestedModel: modelName,
+                                resolvedModelID: resolvedModel.id,
+                                canonicalModelID: resolvedModel.canonicalModelID,
+                                apiKey: slot.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                                pricing: resolvedModel.pricing,
+                                modelCapabilityClassID: resolvedModel.capabilityClassID,
+                                formatFamily: formatFamily,
+                                endpointProfileID: nil
+                            )
+                        )
+                        continue
+                    }
+
                     guard let key = OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
                         providerID: configuration.provider.id,
                         rawSecret: slot.apiKey
@@ -829,6 +893,16 @@ public struct BurnBarProviderRouter: Sendable {
         }
 
         return routes
+    }
+
+    private func localOllamaEndpoint(
+        for slotID: String,
+        in configuration: BurnBarResolvedProviderConfiguration
+    ) -> BurnBarOllamaEndpointConfig? {
+        guard configuration.provider.id.caseInsensitiveCompare("ollama-local") == .orderedSame else {
+            return nil
+        }
+        return configuration.settings.ollamaEndpoints.first { $0.id == slotID }
     }
 
     private func resolvedEndpointProfileID(
@@ -1127,16 +1201,14 @@ public struct BurnBarProviderRouter: Sendable {
             return nil
         }
         let catalog = configStore.catalogSupport.catalog
-        if let capability = catalog.capabilityClassID(forModelName: modelName) {
+        let equivalenceRegistry = BurnBarModelEquivalenceRegistry(catalog: catalog)
+        if let capability = equivalenceRegistry.curatedCapabilityClassID(
+            for: modelName,
+            requestedFormatFamily: requestedFormatFamily
+        ) {
             return capability
         }
-        guard requestedFormatFamily != nil else { return nil }
-        let matchingCapabilities = catalog.providers.compactMap { provider -> String? in
-            guard provider.formatFamily == requestedFormatFamily else { return nil }
-            return catalog.capabilityClassID(forModelName: modelName, providerID: provider.id)
-        }
-        let uniqueCapabilities = Set(matchingCapabilities)
-        return uniqueCapabilities.count == 1 ? uniqueCapabilities.first : nil
+        return nil
     }
 
     private func resolvedRouterMode(_ requested: ProviderRouterMode?) async throws -> ProviderRouterMode {

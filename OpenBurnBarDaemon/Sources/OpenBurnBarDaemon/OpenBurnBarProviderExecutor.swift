@@ -53,17 +53,20 @@ public struct BurnBarProviderProxyUsage: Sendable {
 public struct BurnBarProviderProxyResponse: Sendable {
     public let statusCode: Int
     public let contentType: String
+    public let headers: [String: String]
     public let body: Data
     public let usage: BurnBarProviderProxyUsage?
 
     public init(
         statusCode: Int,
         contentType: String,
+        headers: [String: String] = [:],
         body: Data,
         usage: BurnBarProviderProxyUsage?
     ) {
         self.statusCode = statusCode
         self.contentType = contentType
+        self.headers = headers
         self.body = body
         self.usage = usage
     }
@@ -76,15 +79,18 @@ public struct BurnBarProviderProxyResponse: Sendable {
 public struct BurnBarProviderProxyStream: Sendable {
     public let statusCode: Int
     public let contentType: String
+    public let headers: [String: String]
     public let chunks: AsyncThrowingStream<Data, Error>
 
     public init(
         statusCode: Int,
         contentType: String,
+        headers: [String: String] = [:],
         chunks: AsyncThrowingStream<Data, Error>
     ) {
         self.statusCode = statusCode
         self.contentType = contentType
+        self.headers = headers
         self.chunks = chunks
     }
 }
@@ -184,8 +190,22 @@ public enum BurnBarProxyStreaming {
         return BurnBarProviderProxyStream(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: normalizedHeaders(from: httpResponse),
             chunks: stream
         )
+    }
+
+    static func normalizedHeaders(from response: HTTPURLResponse) -> [String: String] {
+        response.allHeaderFields.reduce(into: [String: String]()) { result, element in
+            guard let key = element.key as? String else { return }
+            let value: String
+            if let stringValue = element.value as? String {
+                value = stringValue
+            } else {
+                value = "\(element.value)"
+            }
+            result[key] = value
+        }
     }
 
     static func appendBytePreservingStreamFraming(_ byte: UInt8, to buffer: inout Data) -> Data? {
@@ -396,6 +416,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return BurnBarProviderProxyResponse(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse),
             body: data,
             usage: Self.extractProxyUsage(requestBody: outboundBody, responseBody: data)
         )
@@ -488,6 +509,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return BurnBarProviderProxyResponse(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse),
             body: data,
             usage: Self.extractResponsesUsage(responseBody: data)
         )
@@ -518,6 +540,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "application/json",
+            headers: chatResponse.headers,
             body: body,
             usage: chatResponse.usage
         )
@@ -566,7 +589,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             requestBody: outboundBody,
             responseBody: data,
             modelID: route.resolvedModelID,
-            streamRequested: streamRequested
+            streamRequested: streamRequested,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
         )
     }
 

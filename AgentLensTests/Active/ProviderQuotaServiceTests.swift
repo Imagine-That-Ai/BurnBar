@@ -6,6 +6,7 @@ import OpenBurnBarCore
 
 private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
 private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
+private typealias ProviderQuotaSourceKind = OpenBurnBar.ProviderQuotaSourceKind
 private typealias ProviderQuotaWindowKind = OpenBurnBar.ProviderQuotaWindowKind
 
 @MainActor
@@ -20,6 +21,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         StubURLProtocol.requestHandler = nil
         CLILaunchAdapter.executableResolver = nil
         OpenBurnBarDaemonManager.shared.providerConfigurations = []
+        TelemetryService.shared.setForwarder(nil)
     }
 
     func test_supportedProviders_onlyIncludesRealQuotaSignalProviders() {
@@ -160,6 +162,43 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(publishedProviders, [.codex])
         XCTAssertEqual(publishedBucketCounts, [2])
+    }
+
+    func test_refreshProviderEmitsSnapshotFreshnessTelemetryAttributes() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let eventDate = recentUTCDate(daysAgo: 1, hour: 10)
+        let rolloutDirectory = codexRolloutDirectory(home: home, date: eventDate)
+        try FileManager.default.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+
+        let rolloutURL = codexRolloutFileURL(directory: rolloutDirectory, date: eventDate)
+        let payload = """
+        {"timestamp":"\(iso8601String(eventDate))","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":22.0,"window_minutes":300,"resets_at":1774359600},"secondary":{"used_percent":20.0,"window_minutes":10080,"resets_at":1774801258}}}}
+        """
+        try Data(payload.utf8).write(to: rolloutURL)
+
+        let capture = TelemetryCapture()
+        TelemetryService.shared.setForwarder { feature, outcome, durationMs, attributes in
+            capture.record(feature: feature, outcome: outcome, durationMs: durationMs, attributes: attributes)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.codex]
+        )
+
+        await service.refresh(provider: .codex, dataStore: dataStore)
+
+        let snapshotEvents = capture.events.filter {
+            $0.attributes["quota_event"] == "snapshot_written"
+        }
+        XCTAssertEqual(snapshotEvents.count, 1)
+        let attributes = try XCTUnwrap(snapshotEvents.first?.attributes)
+        XCTAssertEqual(attributes["provider"], AgentProvider.codex.providerID.rawValue)
+        XCTAssertEqual(attributes["source"], ProviderQuotaSourceKind.localSession.rawValue)
+        XCTAssertEqual(attributes["snapshot_age_bucket"], ">=4h")
     }
 
     func test_snapshotsForCloudSync_excludesUsageOnlyAndActivitySnapshots() throws {
@@ -5375,6 +5414,40 @@ final class ProviderQuotaServiceTests: XCTestCase {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.string(from: date)
+    }
+}
+
+private struct CapturedTelemetryEvent {
+    let feature: TelemetryFeature
+    let outcome: TelemetryOutcome
+    let durationMs: Int?
+    let attributes: TelemetryAttributes
+}
+
+private final class TelemetryCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [CapturedTelemetryEvent] = []
+
+    var events: [CapturedTelemetryEvent] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func record(
+        feature: TelemetryFeature,
+        outcome: TelemetryOutcome,
+        durationMs: Int?,
+        attributes: TelemetryAttributes
+    ) {
+        lock.lock()
+        storage.append(CapturedTelemetryEvent(
+            feature: feature,
+            outcome: outcome,
+            durationMs: durationMs,
+            attributes: attributes
+        ))
+        lock.unlock()
     }
 }
 
