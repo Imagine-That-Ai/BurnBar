@@ -1,0 +1,44 @@
+{
+  "provider": "claudeCode",
+  "source": "LocalCli",
+  "confidence": "Exact",
+  "statusMessage": "Quota captured from Claude Code's local status line JSON bridge.",
+  "buckets": [
+    {
+      "key": "claude-five_hour",
+      "label": "5-hour window",
+      "windowKind": "RollingHours",
+      "usedValue": 42.5,
+      "limitValue": 100,
+      "remainingValue": 57.5,
+      "usedPercent": 42.5,
+      "resetsAtUnix": 1783054800,
+      "unit": "Percent",
+      "isEstimated": false
+    },
+    {
+      "key": "claude-seven_day",
+      "label": "7-day window",
+      "windowKind": "RollingDays",
+      "usedValue": 18,
+      "limitValue": 100,
+      "remainingValue": 82,
+      "usedPercent": 18,
+      "resetsAtUnix": 1720000000,
+      "unit": "Percent",
+      "isEstimated": false
+    },
+    {
+      "key": "claude-seven_day_opus",
+      "label": "7-day Opus window",
+      "windowKind": "RollingDays",
+      "usedValue": 91.2,
+      "limitValue": 100,
+      "remainingValue": 8.8,
+      "usedPercent": 91.2,
+      "resetsAtUnix": 1783641600,
+      "unit": "Percent",
+      "isEstimated": false
+    }
+  ]
+}

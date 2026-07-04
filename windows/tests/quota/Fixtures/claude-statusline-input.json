@@ -1,0 +1,25 @@
+{
+  "session_id": "b3f1c0d2-recorded",
+  "model": { "id": "claude-opus-4-8" },
+  "rate_limits": {
+    "five_hour": {
+      "used_percentage": 42.5,
+      "resets_at": "2026-07-03T05:00:00Z"
+    },
+    "seven_day": {
+      "used_percentage": 18,
+      "remaining_percentage": 82,
+      "resets_at": 1720000000
+    },
+    "seven_day_opus": {
+      "used_percentage": 91.2,
+      "resets_at": "2026-07-10T00:00:00Z"
+    },
+    "seven_day_oauth_apps": {
+      "resets_at": "2026-07-10T00:00:00Z"
+    },
+    "marketing_window": {
+      "used_percentage": 5
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "provider": "cursor",
+  "source": "OfficialApi",
+  "confidence": "Exact",
+  "statusMessage": "Pro — Capped plan.",
+  "buckets": [
+    {
+      "key": "cursor-plan",
+      "label": "Included usage",
+      "windowKind": "Monthly",
+      "usedValue": 12.34,
+      "limitValue": 20.0,
+      "remainingValue": 7.66,
+      "usedPercent": 61.7,
+      "resetsAtUnix": 1785542400,
+      "unit": "Currency",
+      "isEstimated": false
+    },
+    {
+      "key": "cursor-auto",
+      "label": "Auto + Composer",
+      "windowKind": "Monthly",
+      "usedValue": 61.7,
+      "limitValue": 100,
+      "remainingValue": 38.3,
+      "usedPercent": 61.7,
+      "resetsAtUnix": 1785542400,
+      "unit": "Percent",
+      "isEstimated": false
+    },
+    {
+      "key": "cursor-api",
+      "label": "API usage",
+      "windowKind": "Monthly",
+      "usedValue": 12.5,
+      "limitValue": 100,
+      "remainingValue": 87.5,
+      "usedPercent": 12.5,
+      "resetsAtUnix": 1785542400,
+      "unit": "Percent",
+      "isEstimated": false
+    },
+    {
+      "key": "cursor-ondemand",
+      "label": "On-demand",
+      "windowKind": "Monthly",
+      "usedValue": 5.0,
+      "limitValue": 10.0,
+      "remainingValue": 5.0,
+      "usedPercent": 50.0,
+      "resetsAtUnix": 1785542400,
+      "unit": "Currency",
+      "isEstimated": false
+    }
+  ]
+}
