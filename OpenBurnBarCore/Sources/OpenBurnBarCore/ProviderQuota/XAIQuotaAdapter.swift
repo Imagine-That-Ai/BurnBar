@@ -42,13 +42,11 @@ import FoundationNetworking
 public struct XAIQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
 
-    // MARK: - Dependencies
+    // MARK: - Constants
 
     /// Keychain used to read the Cursor-connector management key fallback.
     /// Injected so tests can drive a faulting backend through this seam; the
     /// default reads the live keychain exactly as before.
-    // MARK: - Constants
-
     static let consoleURL = "https://console.x.ai"
     static let plansURL = "https://grok.com/plans"
     static let managementBaseURL = URL(string: "https://api.x.ai")!

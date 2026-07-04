@@ -404,7 +404,8 @@ fn decode_decision_wire(bytes: &[u8]) -> Result<RemoteQualityDecision, BurnBarRe
         });
     }
     // Widths are validated by the length check above; these slices are exact.
-    let u32_at = |i: usize| u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
+    let u32_at =
+        |i: usize| u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
     let flags = bytes[21];
     Ok(RemoteQualityDecision {
         target_bitrate_bps: u32_at(1),
@@ -563,7 +564,10 @@ mod tests {
 
     #[test]
     fn decode_of_golden_is_the_original_decision() -> Result<(), BurnBarRemoteFfiError> {
-        assert_eq!(decode_quality_decision(GOLDEN_WIRE_V1.to_vec())?, golden_decision());
+        assert_eq!(
+            decode_quality_decision(GOLDEN_WIRE_V1.to_vec())?,
+            golden_decision()
+        );
         Ok(())
     }
 
@@ -575,10 +579,17 @@ mod tests {
             decision.clone(),
             listener.clone() as Arc<dyn WireProgressListener>,
         ))?;
-        assert_eq!(encoded, GOLDEN_WIRE_V1, "async encoder must produce the golden bytes");
+        assert_eq!(
+            encoded, GOLDEN_WIRE_V1,
+            "async encoder must produce the golden bytes"
+        );
         assert_eq!(
             listener.recorded(),
-            vec!["validate".to_string(), "encode".to_string(), "done".to_string()],
+            vec![
+                "validate".to_string(),
+                "encode".to_string(),
+                "done".to_string()
+            ],
             "callback must fire once per stage, in order"
         );
         assert_eq!(decode_quality_decision(encoded)?, decision);
@@ -593,7 +604,10 @@ mod tests {
         );
         assert!(matches!(
             err,
-            BurnBarRemoteFfiError::WireTruncated { expected: 22, found: 4 }
+            BurnBarRemoteFfiError::WireTruncated {
+                expected: 22,
+                found: 4
+            }
         ));
     }
 
@@ -604,7 +618,10 @@ mod tests {
         let err = must_err(decode_quality_decision(bytes), "bad version");
         assert!(matches!(
             err,
-            BurnBarRemoteFfiError::WireVersionMismatch { expected: 1, found: 99 }
+            BurnBarRemoteFfiError::WireVersionMismatch {
+                expected: 1,
+                found: 99
+            }
         ));
     }
 }

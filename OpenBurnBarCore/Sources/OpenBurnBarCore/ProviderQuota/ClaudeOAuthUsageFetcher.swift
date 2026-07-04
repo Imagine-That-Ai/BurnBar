@@ -515,7 +515,7 @@ enum ClaudeOAuthConstants {
 /// Anthropic's `/api/oauth/usage` payload, modeled as Sendable value
 /// types so we can pass it across actor boundaries safely. Replaces
 /// the old `[String: Any]` shape that violated Swift 6 concurrency.
-struct ClaudeRateLimits: Sendable, Equatable {
+public struct ClaudeRateLimits: Sendable, Equatable {
     let windows: [String: Window]
     /// Preserved JSON shape used purely for round-tripping into the
     /// disk cache. Read-only — callers must use `windows` for any

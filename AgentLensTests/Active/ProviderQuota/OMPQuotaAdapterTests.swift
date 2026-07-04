@@ -167,7 +167,7 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let environment = [
             "PATH": pathValue,
             "HOME": tempDirectoryURL.path,
-            "SHELL": "/bin/sh",
+            "SHELL": "/bin/sh"
         ]
 
         return ProviderQuotaAdapterContext(
