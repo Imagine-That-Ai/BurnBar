@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Brushes;
 using Microsoft.Graphics.Canvas.Effects;
@@ -126,6 +127,107 @@ public sealed class Win2DSubstrateDrawingSession : ISubstrateDrawingSession
         layer.CommandList.Dispose();
         // Restore the painter-visible blend onto the now-current target.
         target.Blend = _blend == SubstrateBlend.Add ? CanvasBlend.Add : CanvasBlend.SourceOver;
+    }
+
+    public void FillPolygon(ReadOnlySpan<Vec2> points, in Rgba color)
+    {
+        if (points.Length < 3) return;
+        Vector2[] verts = ToVectors(points);
+        using CanvasGeometry geometry = CanvasGeometry.CreatePolygon(_device, verts);
+        Current.FillGeometry(geometry, ToColor(color));
+    }
+
+    public void FillPolygonGradient(ReadOnlySpan<Vec2> points, ReadOnlySpan<GradientStop> stops,
+        double x0, double y0, double x1, double y1)
+    {
+        if (points.Length < 3) return;
+        Vector2[] verts = ToVectors(points);
+        using CanvasGeometry geometry = CanvasGeometry.CreatePolygon(_device, verts);
+        using CanvasLinearGradientBrush brush = LinearBrush(stops, x0, y0, x1, y1);
+        Current.FillGeometry(geometry, brush);
+    }
+
+    public void StrokePolyline(ReadOnlySpan<Vec2> points, in Rgba color, double strokeWidth,
+        bool closed = false, DashPattern? dash = null, ReadOnlySpan<bool> breakBefore = default)
+    {
+        if (points.Length < 2) return;
+        using CanvasGeometry geometry = BuildPath(points, closed, breakBefore);
+        CanvasStrokeStyle style = StrokeFor(dash, strokeWidth);
+        Current.DrawGeometry(geometry, ToColor(color), (float)strokeWidth, style);
+    }
+
+    public void StrokePolylineGradient(ReadOnlySpan<Vec2> points, ReadOnlySpan<GradientStop> stops,
+        double x0, double y0, double x1, double y1, double strokeWidth,
+        bool closed = false, DashPattern? dash = null, ReadOnlySpan<bool> breakBefore = default)
+    {
+        if (points.Length < 2) return;
+        using CanvasGeometry geometry = BuildPath(points, closed, breakBefore);
+        using CanvasLinearGradientBrush brush = LinearBrush(stops, x0, y0, x1, y1);
+        CanvasStrokeStyle style = StrokeFor(dash, strokeWidth);
+        Current.DrawGeometry(geometry, brush, (float)strokeWidth, style);
+    }
+
+    private static Vector2[] ToVectors(ReadOnlySpan<Vec2> points)
+    {
+        var v = new Vector2[points.Length];
+        for (int i = 0; i < points.Length; i++) v[i] = new Vector2((float)points[i].X, (float)points[i].Y);
+        return v;
+    }
+
+    private CanvasLinearGradientBrush LinearBrush(ReadOnlySpan<GradientStop> stops,
+        double x0, double y0, double x1, double y1)
+    {
+        var cstops = new CanvasGradientStop[stops.Length];
+        for (int i = 0; i < stops.Length; i++)
+            cstops[i] = new CanvasGradientStop { Position = (float)stops[i].Location, Color = ToColor(stops[i].Color) };
+        return new CanvasLinearGradientBrush(_device, cstops)
+        {
+            StartPoint = new Vector2((float)x0, (float)y0),
+            EndPoint = new Vector2((float)x1, (float)y1),
+        };
+    }
+
+    // Build one geometry from a (possibly broken) polyline. breakBefore[i]==true starts
+    // a new figure at points[i] (a Path move-to); points[0] always starts the first.
+    private CanvasGeometry BuildPath(ReadOnlySpan<Vec2> points, bool closed, ReadOnlySpan<bool> breakBefore)
+    {
+        CanvasFigureLoop loop = closed ? CanvasFigureLoop.Closed : CanvasFigureLoop.Open;
+        using var pb = new CanvasPathBuilder(_device);
+        bool figureOpen = false;
+        for (int i = 0; i < points.Length; i++)
+        {
+            bool brk = i < breakBefore.Length && breakBefore[i];
+            if (i == 0 || brk)
+            {
+                if (figureOpen) pb.EndFigure(loop);
+                pb.BeginFigure((float)points[i].X, (float)points[i].Y);
+                figureOpen = true;
+            }
+            else
+            {
+                pb.AddLine((float)points[i].X, (float)points[i].Y);
+            }
+        }
+        if (figureOpen) pb.EndFigure(loop);
+        return CanvasGeometry.CreatePath(pb);
+    }
+
+    // Round stroke, with an optional crawling dash (units are multiples of stroke width
+    // in Win2D, so px values are divided by the width; the filament "charge" phase too).
+    private CanvasStrokeStyle StrokeFor(DashPattern? dash, double strokeWidth)
+    {
+        if (dash is not DashPattern d) return RoundStroke;
+        double w = strokeWidth > 1e-3 ? strokeWidth : 1.0;
+        return new CanvasStrokeStyle
+        {
+            StartCap = CanvasCapStyle.Round,
+            EndCap = CanvasCapStyle.Round,
+            LineJoin = CanvasLineJoin.Round,
+            DashStyle = CanvasDashStyle.Custom,
+            CustomDashStyle = new[] { (float)(d.On / w), (float)(System.Math.Max(1e-3, d.Off) / w) },
+            DashOffset = (float)(d.Phase / w),
+            DashCap = CanvasCapStyle.Round,
+        };
     }
 
     private static readonly CanvasStrokeStyle RoundStroke = new()
