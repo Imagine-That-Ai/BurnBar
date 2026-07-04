@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DashboardLayoutSwitcher — the Windows peer of
+  AgentLens/Views/Dashboard/Layouts/Components/DashboardLayoutSwitcher.swift.
+
+  A glass segmented control over DashboardLayout.All that collapses to a compact
+  ComboBox when horizontal space is tight (the ViewThatFits analog), driven by the
+  portable DashboardLayoutState (OpenBurnBar.App.Dashboard) — the SAME state machine
+  unit-tested on macOS (windows/tests/dashboard). The segment buttons are built in
+  code-behind from DashboardLayoutMeta so the concept set stays single-sourced.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.DashboardLayoutSwitcher"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    SizeChanged="OnSizeChanged">
+
+    <Grid>
+        <!-- Wide: a capsule of segment toggles. -->
+        <Border x:Name="SegmentedHost"
+                Padding="4"
+                HorizontalAlignment="Left"
+                CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                Background="{StaticResource OBBSurfaceBrush}"
+                BorderThickness="0.75"
+                BorderBrush="{StaticResource OBBStrokeBrush}">
+            <StackPanel x:Name="SegmentPanel"
+                        Orientation="Horizontal"
+                        Spacing="3" />
+        </Border>
+
+        <!-- Narrow: a compact menu button. -->
+        <ComboBox x:Name="MenuBox"
+                  Visibility="Collapsed"
+                  MinWidth="150"
+                  HorizontalAlignment="Left"
+                  SelectionChanged="OnMenuSelectionChanged" />
+    </Grid>
+</UserControl>

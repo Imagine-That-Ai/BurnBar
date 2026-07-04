@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Dashboard;
 using OpenBurnBar.App.Theme;
 
 namespace OpenBurnBar.App.Shell;
@@ -143,7 +144,17 @@ public sealed partial class AppShell : UserControl
 
         _currentKey = destination.Key;
         HeaderTitle.Text = destination.Title;
-        ContentFrame.Navigate(typeof(SurfaceStubPage), destination);
+
+        // Real surfaces replace the stub per-key as the Phase-3 buckets land. The
+        // Dashboard (Bucket C) is the first live concept surface; the rest still stub.
+        if (destination.Key == "dashboard")
+        {
+            ContentFrame.Navigate(typeof(DashboardPage));
+        }
+        else
+        {
+            ContentFrame.Navigate(typeof(SurfaceStubPage), destination);
+        }
     }
 
     private void Palette_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

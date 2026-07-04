@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CockpitLayoutView — a mission-control grid: a spend-share provider rail, four KPI
+  tiles (incl. cache hit), a routing swarm stage with TPS (transparent — backdrop reads
+  through), and a cost curve + The Wand row. Windows peer of CockpitLayoutView.swift.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.Layouts.CockpitLayoutView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:OpenBurnBar.App.Components"
+    xmlns:layouts="using:OpenBurnBar.App.Dashboard.Layouts"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24" ColumnSpacing="16" RowSpacing="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="240" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Spend-share provider rail. -->
+        <components:UnifiedGlassCard Grid.Row="0" Grid.RowSpan="2" Grid.Column="0">
+            <StackPanel Spacing="10">
+                <TextBlock Text="Spend share" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
+                <TextBlock Text="Anthropic  48%" FontSize="14" />
+                <TextBlock Text="OpenAI     34%" FontSize="14" />
+                <TextBlock Text="Google     11%" FontSize="14" />
+                <TextBlock Text="xAI         7%" FontSize="14" />
+            </StackPanel>
+        </components:UnifiedGlassCard>
+
+        <!-- Four KPI tiles. -->
+        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="16">
+            <layouts:ConceptStatTile Value="$42.8" Caption="Burn / day"
+                                     AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
+            <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+                                     AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
+            <layouts:ConceptStatTile Value="342" Caption="Sessions"
+                                     AccentBrush="{StaticResource OBBAccentBrush}" />
+            <layouts:ConceptStatTile Value="63%" Caption="Cache hit"
+                                     AccentBrush="{StaticResource PensieveColorTierEndToEndBrush}" />
+        </StackPanel>
+
+        <!-- Routing swarm stage (transparent). -->
+        <Border Grid.Row="1" Grid.Column="1"
+                CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                BorderThickness="1"
+                BorderBrush="{StaticResource OBBStrokeBrush}">
+            <TextBlock Text="Routing · 128 TPS"
+                       Margin="14"
+                       VerticalAlignment="Top"
+                       Opacity="0.6"
+                       FontSize="12" />
+        </Border>
+
+        <!-- Cost curve + The Wand row. -->
+        <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <components:UnifiedGlassCard Grid.Column="0">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Cost curve" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
+                    <TextBlock Text="30-day trend — steady" FontSize="13" Opacity="0.7" />
+                </StackPanel>
+            </components:UnifiedGlassCard>
+            <Button Grid.Column="1"
+                    Content="The Wand"
+                    VerticalAlignment="Stretch"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}" />
+        </Grid>
+    </Grid>
+</UserControl>

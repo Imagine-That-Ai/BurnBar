@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ConstellationLayoutView — a centered command column: a search / Hermes bar over a
+  full swarm stage (transparent — the backdrop is the stage), three stat pills, and a
+  wrap of provider chips. Kernel-forward. Windows peer of ConstellationLayoutView.swift.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.Layouts.ConstellationLayoutView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:layouts="using:OpenBurnBar.App.Dashboard.Layouts"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="32">
+        <StackPanel VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    MaxWidth="720"
+                    Spacing="20">
+
+            <!-- Search / Hermes command bar. -->
+            <AutoSuggestBox PlaceholderText="Ask Hermes or search everything…"
+                            QueryIcon="Find"
+                            HorizontalAlignment="Stretch" />
+
+            <!-- Three stat pills. -->
+            <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
+                <layouts:ConceptStatTile Value="$1,284" Caption="Spend"
+                                         AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
+                <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+                                         AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
+                <layouts:ConceptStatTile Value="7" Caption="Providers"
+                                         AccentBrush="{StaticResource OBBAccentBrush}" />
+            </StackPanel>
+
+            <!-- Provider chips wrap. -->
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                <Border Padding="12,6" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                        Background="{StaticResource OBBSurfaceBrush}"
+                        BorderThickness="0.75" BorderBrush="{StaticResource OBBStrokeBrush}">
+                    <TextBlock Text="Anthropic" FontSize="12" />
+                </Border>
+                <Border Padding="12,6" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                        Background="{StaticResource OBBSurfaceBrush}"
+                        BorderThickness="0.75" BorderBrush="{StaticResource OBBStrokeBrush}">
+                    <TextBlock Text="OpenAI" FontSize="12" />
+                </Border>
+                <Border Padding="12,6" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                        Background="{StaticResource OBBSurfaceBrush}"
+                        BorderThickness="0.75" BorderBrush="{StaticResource OBBStrokeBrush}">
+                    <TextBlock Text="Google" FontSize="12" />
+                </Border>
+                <Border Padding="12,6" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                        Background="{StaticResource OBBSurfaceBrush}"
+                        BorderThickness="0.75" BorderBrush="{StaticResource OBBStrokeBrush}">
+                    <TextBlock Text="xAI" FontSize="12" />
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>
