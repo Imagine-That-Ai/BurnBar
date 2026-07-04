@@ -416,3 +416,14 @@ paths = [
   '''extensions/openburnbar/test/analytics/consentContract\.test\.ts''',
   '''extensions/openburnbar/test/analytics/wiring\.test\.ts''',
 ]
+
+[[allowlists]]
+description = "Windows settings page reads VaultKeyB64 from AppConfiguration (UI binding, not a committed secret)"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''VaultKeyBox\.Text = snap\.VaultKeyB64 \?\? string\.Empty''',
+]
+paths = [
+  '''windows/app/OpenBurnBar\.App/Settings/DataSourceSettingsPage\.xaml\.cs''',
+]

@@ -257,7 +257,7 @@ jobs:
           # version + platform; glob it).
           mkdir -p artifacts
           for plat in x64 ARM64; do
-            msix="$(ls msix/$plat/*.msix 2>/dev/null | head -1 || true)"
+            msix="$(find msix/$plat -name "*.msix" 2>/dev/null | head -1 || true)"
             if [[ -z "$msix" ]]; then
               echo "::warning::No .msix produced for $plat (WAP build may need the Windows-only DesktopBridge targets)."
               continue
