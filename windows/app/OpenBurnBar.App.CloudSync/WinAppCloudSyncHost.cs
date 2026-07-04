@@ -13,6 +13,7 @@ public static class WinAppCloudSyncHost
     private static readonly object Gate = new();
     private static CloudSyncCompositionRoot? _root;
     private static CloudSyncMemoryStore? _memory;
+    private static CloudSyncQuotaSnapshotStore? _quotaSnapshots;
     private static byte[]? _vaultKey;
     private static Func<bool> _isSignedIn = () => false;
 
@@ -26,6 +27,15 @@ public static class WinAppCloudSyncHost
         lock (Gate)
         {
             store = _memory;
+            return store is not null;
+        }
+    }
+
+    public static bool TryGetQuotaSnapshotStore(out CloudSyncQuotaSnapshotStore? store)
+    {
+        lock (Gate)
+        {
+            store = _quotaSnapshots;
             return store is not null;
         }
     }
@@ -49,6 +59,7 @@ public static class WinAppCloudSyncHost
                 appCheckToken,
                 requireAppCheckOnFirestore: string.IsNullOrEmpty(appCheckToken));
             _memory = new CloudSyncMemoryStore(_root.Gateway, firebaseUid, vaultKey);
+            _quotaSnapshots = new CloudSyncQuotaSnapshotStore(_root.Gateway, firebaseUid);
         }
     }
 
