@@ -129,4 +129,24 @@
     <ProjectReference Include="../../pal/overlay/OpenBurnBar.Pal.Overlay.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      DLL-load hardening core (Phase 5 · R19 library-validation equivalent). net8.0, no WinUI.
+      Provides OpenBurnBar.Dist.Hardening.DllSearchHardening.Apply(), which the app entry point
+      calls at the very start of Main (SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)
+      + SetDllDirectory("")) to strip the CWD/legacy unsafe DLL search order. See
+      windows/dist/DLL_HARDENING.md for the exact wiring. The P/Invoke declarations restore on
+      macOS; they only execute on Windows.
+    -->
+    <ProjectReference Include="../../dist/OpenBurnBar.Dist.Hardening/OpenBurnBar.Dist.Hardening.csproj" />
+  </ItemGroup>
+
+  <!--
+    Managed PE-hardening props (Phase 5 · R19): HighEntropyVA + Deterministic so the shipped
+    OpenBurnBar.App.exe gets full ASLR entropy + a reproducible image. The exact required
+    flags are asserted against this file by windows/tests/dist (HardeningPolicy). Imported last
+    so it wins over the SDK defaults. See windows/dist/DLL_HARDENING.md.
+  -->
+  <Import Project="../../dist/props/OpenBurnBar.Windows.Hardening.props" />
+
 </Project>

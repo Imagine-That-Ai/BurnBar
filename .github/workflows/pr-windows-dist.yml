@@ -1,0 +1,185 @@
+name: PR Windows Dist Gate
+
+# PR gate for the PORTABLE Windows distribution core (windows/dist) — Phase 5 · signed
+# distribution. Unlike pr-windows-fast.yml (a windows-latest skeleton), this gate runs REAL
+# checks on ubuntu today, because the distribution core is pure net8.0 (no Windows deps):
+#
+#   • `dotnet test` over windows/tests/dist — the update-feed security kernel (pinned Ed25519
+#     sign/verify, tamper + wrong-key + malformed fail-closed, strict feed parse, fail-closed
+#     decision) and the DLL-hardening policy↔props cross-check;
+#   • an END-TO-END signer round-trip through the OpenBurnBar.Dist.UpdateFeed.Tool CLI
+#     (gen-key → sign-entry → build-feed → verify-feed) asserting a good pin verifies and a
+#     WRONG pin is rejected (exit 2);
+#   • xmllint over the packaging props (DLL-hardening flags must be well-formed XML);
+#   • scripts/verify-version-consistency.sh (the Windows version surface must stay consistent).
+#
+# It mirrors pr-windows-fast.yml's detector + aggregate shape so a non-dist PR reports one
+# passing required status via a correct skip.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-windows-dist-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ── Cheap detector: did this PR touch the Windows dist core or its wiring? ──
+  detect-dist-changes:
+    name: Detect Windows dist changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      dist: ${{ steps.filter.outputs.dist }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 2
+
+      - name: Determine whether Windows dist paths changed
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            echo "dist=true" >> "$GITHUB_OUTPUT"
+            echo "Event ${EVENT_NAME}: running the dist gate unconditionally."
+            exit 0
+          fi
+
+          if git cat-file -e "HEAD^1^{commit}" 2>/dev/null && \
+             git cat-file -e "HEAD^2^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only HEAD^1 HEAD^2)"
+          elif git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null && \
+               git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")"
+          else
+            echo "dist=true" >> "$GITHUB_OUTPUT"
+            echo "Could not resolve merge parents or base/head commits; running the dist gate to stay fail-safe."
+            exit 0
+          fi
+          echo "Changed files:"
+          echo "${changed}"
+
+          if echo "${changed}" | grep -Eq \
+            '^(windows/dist/|windows/tests/dist/|\.github/workflows/pr-windows-dist\.yml|\.github/workflows/openburnbar-release-windows\.yml|scripts/verify-version-consistency\.sh)'; then
+            echo "dist=true" >> "$GITHUB_OUTPUT"
+            echo "Windows dist surface changed: running the real dist verification lane."
+          else
+            echo "dist=false" >> "$GITHUB_OUTPUT"
+            echo "No Windows dist surface changed: skipping (aggregate still passes)."
+          fi
+
+  # ── PR-GATED: real net8.0 verification of the distribution core ─────────────
+  dist-verify:
+    name: Windows dist verify (test + sign/verify + xmllint)
+    needs: detect-dist-changes
+    if: needs.detect-dist-changes.outputs.dist == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Run distribution-core unit tests
+        run: dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj -c Release --nologo
+
+      - name: End-to-end signer round-trip (good pin verifies, wrong pin fails closed)
+        run: |
+          set -euo pipefail
+          tool="windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool/OpenBurnBar.Dist.UpdateFeed.Tool.csproj"
+          work="$(mktemp -d)"
+
+          dotnet run --project "$tool" -c Release -- gen-key > "$work/keys.json"
+          pub="$(python3 -c "import json,sys;print(json.load(open('$work/keys.json'))['publicKeyBase64'])")"
+          priv="$(python3 -c "import json,sys;print(json.load(open('$work/keys.json'))['privateKeyBase64'])")"
+          export OBB_UPDATE_SEED="$priv"
+
+          sha="$(python3 -c "import hashlib;print(hashlib.sha256(b'ci-artifact').hexdigest())")"
+          dotnet run --project "$tool" -c Release -- sign-entry \
+            --version 1.0.28 --platform win-x64 --channel stable \
+            --url "https://dl.openburnbar.dev/OpenBurnBar-1.0.28-win-x64.zip" \
+            --size 100 --sha256 "$sha" --min-os-build 17763 \
+            --published-at "2026-07-04T00:00:00Z" \
+            --private-key-env OBB_UPDATE_SEED --out "$work/entry.json"
+
+          dotnet run --project "$tool" -c Release -- build-feed --entry "$work/entry.json" --out "$work/feed.json"
+
+          echo "== verify under the correct pinned key (must pass) =="
+          dotnet run --project "$tool" -c Release -- verify-feed --feed "$work/feed.json" --pinned-public-base64 "$pub"
+
+          echo "== verify under a WRONG pinned key (must fail closed, exit 2) =="
+          wrong="$(dotnet run --project "$tool" -c Release -- gen-key | python3 -c "import json,sys;print(json.load(sys.stdin)['publicKeyBase64'])")"
+          set +e
+          dotnet run --project "$tool" -c Release -- verify-feed --feed "$work/feed.json" --pinned-public-base64 "$wrong"
+          rc=$?
+          set -e
+          if [[ "$rc" -eq 0 ]]; then
+            echo "::error::Feed verification under a wrong pinned key unexpectedly SUCCEEDED — the pin is not enforced."
+            exit 1
+          fi
+          echo "Wrong-pin verification correctly failed closed (exit $rc)."
+
+      - name: Lint packaging props (well-formed XML)
+        run: |
+          set -euo pipefail
+          for f in windows/dist/props/OpenBurnBar.Windows.Hardening.props \
+                   windows/dist/props/OpenBurnBar.Windows.NativeHardening.props; do
+            xmllint --noout "$f"
+            echo "xmllint OK: $f"
+          done
+
+      - name: Verify version consistency (Windows surface included)
+        run: bash scripts/verify-version-consistency.sh
+
+  # ── Aggregate gate ─────────────────────────────────────────────────────────
+  pr-windows-dist-gate:
+    name: PR Windows Dist Gate
+    needs:
+      - detect-dist-changes
+      - dist-verify
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check dist jobs passed (or were correctly skipped)
+        env:
+          DETECT_RESULT: ${{ needs.detect-dist-changes.result }}
+          VERIFY_RESULT: ${{ needs.dist-verify.result }}
+        run: |
+          set -euo pipefail
+          echo "detect-dist-changes: ${DETECT_RESULT}"
+          echo "dist-verify: ${VERIFY_RESULT}"
+
+          if [[ "${DETECT_RESULT}" != "success" ]]; then
+            echo "::error::detect-dist-changes did not succeed (${DETECT_RESULT})."
+            exit 1
+          fi
+
+          if [[ "${VERIFY_RESULT}" != "success" && "${VERIFY_RESULT}" != "skipped" ]]; then
+            echo "::error::The Windows dist verify lane failed (result=${VERIFY_RESULT})."
+            exit 1
+          fi
+
+          echo "### PR Windows Dist Gate: distribution-core checks passed" >> "$GITHUB_STEP_SUMMARY"

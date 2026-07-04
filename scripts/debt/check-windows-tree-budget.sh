@@ -38,7 +38,7 @@ baseline_path = Path(sys.argv[2])
 mode = sys.argv[3] if len(sys.argv) > 3 else ""
 
 WIN_ROOT = repo_root / "windows"
-AREAS = ("app", "pal", "native", "storage", "cloudsync", "particles", "pretext", "computeruse", "integrations", "tests")
+AREAS = ("app", "pal", "native", "storage", "cloudsync", "particles", "pretext", "computeruse", "integrations", "dist", "tests")
 SOURCE_SUFFIXES = {".cs", ".xaml", ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".rs"}
 DEFAULT_TARGET = 800
 
@@ -154,7 +154,7 @@ if stray:
         print(f"    {path}", file=sys.stderr)
     print(
         "Place Windows source under "
-        "windows/{app,pal,native,storage,cloudsync,particles,pretext,computeruse,integrations,tests}/ "
+        "windows/{app,pal,native,storage,cloudsync,particles,pretext,computeruse,integrations,dist,tests}/ "
         "(see windows/README.md).",
         file=sys.stderr,
     )

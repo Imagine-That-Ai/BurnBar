@@ -1,0 +1,371 @@
+name: OpenBurnBar Windows Release
+
+# Windows direct-download release pipeline (Phase 5 · signed distribution). Mirrors the SHAPE of
+# the macOS release (.github/workflows/release.yml) — build → sign → package → sign the update
+# feed → SBOM + OpenVEX + Sigstore provenance — adapted to Windows:
+#
+#   • CODE SIGNING is Authenticode via Azure Trusted Signing (the mac notarize/staple analog).
+#     IMPORTANT: Authenticode has NO staple analog. macOS staples a notarization ticket onto the
+#     artifact after the fact; Authenticode instead embeds an RFC-3161 countersignature at SIGN
+#     time (so the signature stays valid after the cert expires) — there is nothing to staple
+#     later. This workflow therefore signs+timestamps in one step and never "staples".
+#   • The UPDATE FEED is authenticated by a PINNED Ed25519 key (WINDOWS_UPDATE_SIGNING_KEY),
+#     INDEPENDENT of the Authenticode cert — the exact mac model where the Sparkle EdDSA key is
+#     independent of the Developer-ID cert. A compromised Authenticode cert alone cannot ship an
+#     update; the feed entry must also verify under the pinned key.
+#   • SUPPLY CHAIN mirrors mac: an SPDX SBOM + an OpenVEX sidecar + keyless Sigstore
+#     (cosign attest-blob) provenance over every Windows artifact.
+#
+# CEILING (honest): the real MSIX/EXE build + Authenticode signing + Store/winget submission need
+# a Windows runner AND the W0 Trusted-Signing tenant + code-signing cert (procurement — Alberto).
+# Those steps are gated on the WINDOWS_CODESIGN_* / WINDOWS_UPDATE_SIGNING_KEY secrets and emit a
+# clear "deferred" warning when unset, so the pipeline is a faithful, actionlint-clean production
+# workflow that no-ops the cert-dependent steps until W0 lands. The portable security kernel is
+# proven on every run by the `portable-verify` job (real `dotnet test` + a signer round-trip).
+#
+# TRIGGER: a `windows-v*` tag (the manifest version must be bumped first — the portable-verify job
+# enforces version consistency at tag time) or a manual dispatch.
+
+on:
+  push:
+    tags:
+      - "windows-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.0.28) — required for manual dispatch."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openburnbar-windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  # ── Resolve the release version from the tag or the dispatch input ──────────
+  resolve-release:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Resolve version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${REF_TYPE}" == "tag" && "${REF_NAME}" == windows-v* ]]; then
+            version="${REF_NAME#windows-v}"
+          elif [[ -n "${INPUT_VERSION}" ]]; then
+            version="${INPUT_VERSION}"
+          else
+            echo "::error::No version: push a windows-v* tag or pass the version dispatch input."
+            exit 1
+          fi
+          if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '${version}' is not X.Y.Z."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: ${version}"
+
+  # ── Always-run: prove the portable security kernel (test + signer round-trip) ─
+  portable-verify:
+    name: Verify distribution core
+    needs: resolve-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Run distribution-core unit tests
+        run: dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj -c Release --nologo
+
+      - name: Signer round-trip (good pin verifies, wrong pin fails closed)
+        run: |
+          set -euo pipefail
+          tool="windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool/OpenBurnBar.Dist.UpdateFeed.Tool.csproj"
+          work="$(mktemp -d)"
+          dotnet run --project "$tool" -c Release -- gen-key > "$work/keys.json"
+          pub="$(python3 -c "import json;print(json.load(open('$work/keys.json'))['publicKeyBase64'])")"
+          priv="$(python3 -c "import json;print(json.load(open('$work/keys.json'))['privateKeyBase64'])")"
+          export OBB_SEED="$priv"
+          sha="$(python3 -c "import hashlib;print(hashlib.sha256(b'ci-artifact').hexdigest())")"
+          dotnet run --project "$tool" -c Release -- sign-entry \
+            --version "${{ needs.resolve-release.outputs.version }}" --platform win-x64 --channel stable \
+            --url "https://dl.openburnbar.dev/x.zip" --size 100 --sha256 "$sha" \
+            --min-os-build 17763 --published-at "2026-01-01T00:00:00Z" \
+            --private-key-env OBB_SEED --out "$work/entry.json"
+          dotnet run --project "$tool" -c Release -- build-feed --entry "$work/entry.json" --out "$work/feed.json"
+          dotnet run --project "$tool" -c Release -- verify-feed --feed "$work/feed.json" --pinned-public-base64 "$pub"
+          wrong="$(dotnet run --project "$tool" -c Release -- gen-key | python3 -c "import json,sys;print(json.load(sys.stdin)['publicKeyBase64'])")"
+          set +e
+          dotnet run --project "$tool" -c Release -- verify-feed --feed "$work/feed.json" --pinned-public-base64 "$wrong"
+          rc=$?
+          set -e
+          if [[ "$rc" -eq 0 ]]; then
+            echo "::error::Feed verification under a wrong pinned key unexpectedly SUCCEEDED."
+            exit 1
+          fi
+          echo "Wrong-pin verification correctly failed closed (exit $rc)."
+
+      - name: Lint packaging props (well-formed XML)
+        run: |
+          set -euo pipefail
+          for f in windows/dist/props/OpenBurnBar.Windows.Hardening.props \
+                   windows/dist/props/OpenBurnBar.Windows.NativeHardening.props; do
+            xmllint --noout "$f"
+          done
+
+      - name: Enforce version consistency at release time
+        env:
+          OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "1"
+        run: bash scripts/verify-version-consistency.sh
+
+  # ── Windows runner: build + Authenticode sign + sign the update feed ────────
+  build-sign:
+    name: Build + Authenticode sign
+    needs:
+      - resolve-release
+      - portable-verify
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.resolve-release.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Resolve signing configuration
+        id: config
+        env:
+          CODESIGN_ENDPOINT: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
+          CODESIGN_ACCOUNT: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          CODESIGN_PROFILE: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          UPDATE_KEY: ${{ secrets.WINDOWS_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${CODESIGN_ENDPOINT}" && -n "${CODESIGN_ACCOUNT}" && -n "${CODESIGN_PROFILE}" ]]; then
+            echo "codesign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "codesign=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::WINDOWS_CODESIGN_* not configured — Authenticode signing deferred (needs the W0 Trusted-Signing tenant + cert)."
+          fi
+          if [[ -n "${UPDATE_KEY}" ]]; then
+            echo "updatekey=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "updatekey=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::WINDOWS_UPDATE_SIGNING_KEY not configured — update-feed signing deferred."
+          fi
+
+      - name: Publish WinUI app (win-x64 + win-arm64)
+        # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
+        # runs on a windows-v* tag, which is not cut until the app builds green.
+        run: |
+          set -euo pipefail
+          app="windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj"
+          for rid in win-x64 win-arm64; do
+            plat="x64"
+            [[ "$rid" == "win-arm64" ]] && plat="ARM64"
+            dotnet publish "$app" -c Release -r "$rid" --self-contained true \
+              -p:Platform="$plat" -p:WindowsPackageType=None \
+              -o "publish/$rid"
+          done
+
+      - name: Authenticode sign (Azure Trusted Signing — no staple analog)
+        if: steps.config.outputs.codesign == 'true'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}/publish
+          files-folder-filter: exe,dll
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+        env:
+          AZURE_TENANT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
+
+      - name: Package zips + checksums
+        id: package
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          : > "artifacts/checksums-windows-v${VERSION}.txt"
+          for rid in win-x64 win-arm64; do
+            zip="artifacts/OpenBurnBar-${VERSION}-${rid}.zip"
+            ( cd "publish/$rid" && 7z a -tzip -bd "../../$zip" . >/dev/null )
+            ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${rid}.zip" >> "checksums-windows-v${VERSION}.txt" )
+          done
+          echo "Checksums:"
+          cat "artifacts/checksums-windows-v${VERSION}.txt"
+
+      - name: Sign the update feed (pinned Ed25519, independent of Authenticode)
+        if: steps.config.outputs.updatekey == 'true'
+        env:
+          WINDOWS_UPDATE_SIGNING_KEY: ${{ secrets.WINDOWS_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          tool="windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool/OpenBurnBar.Dist.UpdateFeed.Tool.csproj"
+          # Recover the pinned public key from the private seed (for the self-verify + to confirm
+          # it equals the value pinned into the app).
+          pub="$(dotnet run --project "$tool" -c Release -- derive-pubkey --private-key-env WINDOWS_UPDATE_SIGNING_KEY)"
+          entries=""
+          for rid in win-x64 win-arm64; do
+            zip="artifacts/OpenBurnBar-${VERSION}-${rid}.zip"
+            sha="$(sha256sum "$zip" | awk '{print $1}')"
+            size="$(wc -c < "$zip" | tr -d ' ')"
+            out="artifacts/entry-${rid}.json"
+            dotnet run --project "$tool" -c Release -- sign-entry \
+              --version "${VERSION}" --platform "${rid}" --channel stable \
+              --url "https://dl.openburnbar.dev/OpenBurnBar-${VERSION}-${rid}.zip" \
+              --size "${size}" --sha256 "${sha}" --min-os-build 17763 \
+              --private-key-env WINDOWS_UPDATE_SIGNING_KEY --out "${out}"
+            entries="${entries:+${entries},}${out}"
+          done
+          dotnet run --project "$tool" -c Release -- build-feed --entry "${entries}" --out "artifacts/windows-update-feed-v${VERSION}.json"
+          # Self-verify the feed under the pinned key — the SAME code path the shipped app runs.
+          dotnet run --project "$tool" -c Release -- verify-feed \
+            --feed "artifacts/windows-update-feed-v${VERSION}.json" --pinned-public-base64 "$pub"
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: windows-release-v${{ needs.resolve-release.outputs.version }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── Supply chain: SBOM (SPDX) + OpenVEX + keyless Sigstore over the artifacts ─
+  supply-chain:
+    name: SBOM + OpenVEX + Sigstore
+    needs:
+      - resolve-release
+      - build-sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # keyless Sigstore (cosign attest-blob)
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.resolve-release.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Download Windows release artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: windows-release-v${{ needs.resolve-release.outputs.version }}
+          path: artifacts
+
+      - name: Generate SBOM (SPDX) over the Windows artifacts
+        id: sbom
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: artifacts
+          format: spdx-json
+          output-file: "sbom-windows-v${{ needs.resolve-release.outputs.version }}.spdx.json"
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate OpenVEX sidecar
+        id: vex
+        run: |
+          set -euo pipefail
+          sbom="sbom-windows-v${VERSION}.spdx.json"
+          vex="openburnbar-windows-v${VERSION}.vex.json"
+          python3 scripts/supply-chain/generate-vex.py \
+            --sbom "$sbom" \
+            --output "$vex" \
+            --product-version "$VERSION"
+          echo "vex=$vex" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
+
+      - name: Sigstore blob attestations over every artifact
+        env:
+          PREDICATE_TYPE: "https://openburnbar.dev/attestations/windows-release-artifact/v1"
+        run: |
+          set -euo pipefail
+          sbom="sbom-windows-v${VERSION}.spdx.json"
+          vex="openburnbar-windows-v${VERSION}.vex.json"
+          prov="provenance-windows-v${VERSION}"
+          mkdir -p "$prov"
+
+          attest() {
+            local path="$1"
+            if [[ ! -f "$path" ]]; then
+              echo "::error::Provenance artifact missing: $path"
+              exit 1
+            fi
+            local safe
+            safe="$(basename "$path" | tr -c 'A-Za-z0-9._-' '_')"
+            cosign attest-blob --yes \
+              --type "$PREDICATE_TYPE" \
+              --bundle "$prov/${safe}.sigstore.json" \
+              "$path"
+            if [[ ! -s "$prov/${safe}.sigstore.json" ]]; then
+              echo "::error::cosign did not write a Sigstore bundle for $path"
+              exit 1
+            fi
+          }
+
+          attest "$sbom"
+          attest "$vex"
+          for f in artifacts/*; do
+            [[ -f "$f" ]] && attest "$f"
+          done
+
+      - name: Upload provenance bundle
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: windows-provenance-v${{ needs.resolve-release.outputs.version }}
+          path: |
+            sbom-windows-v${{ needs.resolve-release.outputs.version }}.spdx.json
+            openburnbar-windows-v${{ needs.resolve-release.outputs.version }}.vex.json
+            provenance-windows-v${{ needs.resolve-release.outputs.version }}/
+          if-no-files-found: error
+          retention-days: 7
