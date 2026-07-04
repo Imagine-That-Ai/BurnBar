@@ -15,6 +15,39 @@ public sealed partial class InsightsPage : Page
     {
         InitializeComponent();
         GalleryView.TemplateSelected += OnTemplateSelected;
+
+        // Wire real KPI data from the SQLCipher DB when configured.
+        // Complex widgets (narratives, recommendations, forecasts) still use
+        // InsightSampleData — they need the Engine's LLM analysis (C-ABI follow-up).
+        InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
+        {
+            if (kind != InsightWidgetKind.KpiTile)
+                return null; // Only KPI tiles have real data from the DB.
+
+            var summary = OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary();
+            if (!summary.HasData)
+                return null; // No DB configured — use sample data.
+
+            return seed switch
+            {
+                1 => InsightWidgetData.Kpi(
+                    value: summary.TotalSpend.ToString("F2"),
+                    label: "Cost (this month)",
+                    subtext: $"${summary.TotalSpend:F2} spent",
+                    trend: null),
+                2 => InsightWidgetData.Kpi(
+                    value: summary.SessionCount.ToString(),
+                    label: "Sessions",
+                    subtext: $"{summary.SessionCount} sessions",
+                    trend: null),
+                4 => InsightWidgetData.Kpi(
+                    value: summary.TotalTokens.ToString("N0"),
+                    label: "Tokens",
+                    subtext: $"{summary.TotalTokens:N0} tokens",
+                    trend: null),
+                _ => null,
+            };
+        };
     }
 
     private void OnTemplateSelected(object? sender, InsightCanvasTemplate template)

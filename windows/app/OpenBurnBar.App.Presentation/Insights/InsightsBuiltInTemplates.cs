@@ -16,6 +16,14 @@ namespace OpenBurnBar.App.Presentation.Insights;
 /// </summary>
 public static class InsightsBuiltInTemplates
 {
+    /// <summary>
+    /// Optional override for real data resolution. When set, KPI tiles use this
+    /// instead of <see cref="InsightSampleData"/>. The app-level page sets this
+    /// to read from the SQLCipher DB (via WindowsStorageDevHost).
+    /// </summary>
+    public static Func<InsightWidgetKind, int, InsightWidgetData?>? RealDataResolver { get; set; }
+
+
     /// <summary>All templates, in gallery order (matches the macOS ordering).</summary>
     public static IReadOnlyList<InsightCanvasTemplate> All { get; } = new List<InsightCanvasTemplate>
     {
@@ -34,7 +42,10 @@ public static class InsightsBuiltInTemplates
         => id is null ? null : All.FirstOrDefault(t => t.Id == id);
 
     private static InsightWidget W(InsightWidgetKind kind, string title, int seed)
-        => InsightWidget.Create(kind, title, InsightSampleData.ForKind(kind, seed));
+    {
+        InsightWidgetData? realData = RealDataResolver?.Invoke(kind, seed);
+        return InsightWidget.Create(kind, title, realData ?? InsightSampleData.ForKind(kind, seed));
+    }
 
     private static InsightCanvasTemplate Today() => new(
         Id: "today",
