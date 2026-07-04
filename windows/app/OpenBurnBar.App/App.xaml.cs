@@ -2,6 +2,7 @@ using System;
 using Microsoft.UI.Xaml;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Tray;
 
 namespace OpenBurnBar.App;
@@ -39,6 +40,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        WinAppCloudSyncHost.ConfigureFromEnvironment();
         _theme = new ThemeService(_state);
 
         // Windows are created eagerly but stay hidden — the tray owns visibility, exactly like

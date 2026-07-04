@@ -23,6 +23,7 @@ public static class SurfacePageResolver
         "switcher" => typeof(OpenBurnBar.App.Switcher.SwitcherHostPage),
         // Elder Wand is an Auxiliary (Command-Palette) destination, not a sidebar row — see
         // NavCatalog.Auxiliary + ElderWandPage.xaml for the macOS reachability-parity rationale.
+        "memory" => typeof(OpenBurnBar.App.Memory.MemoryPage),
         "elderWand" => typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
         _ => typeof(SurfaceStubPage),
     };
