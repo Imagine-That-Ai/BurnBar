@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Presentation.ElderWand;
+using OpenBurnBar.App.Storage;
 
 namespace OpenBurnBar.App.ElderWand;
 
@@ -25,7 +26,7 @@ public sealed partial class ElderWandPage : Page
         Loaded -= OnLoaded;
 
         ConfiguratorView.Configure(
-            ElderWandSampleData.CreateDevHostSettings(),
+            new ElderWandSettingsModel(WindowsStorageDevHost.CreateElderWandPersistence()),
             ElderWandSampleData.DevHostGroups());
     }
 }
