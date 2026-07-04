@@ -14,8 +14,9 @@ import Foundation
 /// 1. `.pb` file attributes (session ID from filename, timestamps from filesystem)
 /// 2. `state.vscdb` JSON values for model/workspace info
 /// 3. Heuristic token estimation based on `.pb` file size
-final class WindsurfParser: LogParser, Sendable {
-    let provider: AgentProvider = .windsurf
+public final class WindsurfParser: LogParser, Sendable {
+    public init() {}
+    public let provider: AgentProvider = .windsurf
 
     // MARK: - Paths
 
@@ -34,7 +35,7 @@ final class WindsurfParser: LogParser, Sendable {
 
     // MARK: - Parse
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fm = FileManager.default
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []

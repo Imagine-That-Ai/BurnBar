@@ -6,6 +6,7 @@ import Foundation
 /// and session usage belongs in usage analytics, never quota.
 
 public struct HermesQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     private static let stateDBPath = ("~/.hermes/state.db" as NSString).expandingTildeInPath
 

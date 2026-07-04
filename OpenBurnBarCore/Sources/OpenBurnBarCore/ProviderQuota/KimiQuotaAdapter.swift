@@ -32,6 +32,7 @@ import Foundation
 /// (github.com/steipete/CodexBar, verified 2026-05-03)
 
 public struct KimiQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     // MARK: - Constants
 

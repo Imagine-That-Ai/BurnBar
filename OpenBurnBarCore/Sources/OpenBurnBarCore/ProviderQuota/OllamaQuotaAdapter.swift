@@ -26,6 +26,7 @@ import Foundation
 /// Reference: CodexBar `OllamaUsageFetcher.swift` + `OllamaUsageParser.swift`
 
 public struct OllamaQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let apiKey = resolveAPIKey(context: context)

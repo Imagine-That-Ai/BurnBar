@@ -13,6 +13,7 @@ import Foundation
 /// Reference: `AiderParser.swift` in UsageAggregatorParsers (same data source).
 
 public struct AiderQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     // MARK: - Public API
 

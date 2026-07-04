@@ -36,37 +36,41 @@ import Foundation
 /// mis-parse if you're not careful.
 
 public struct ClaudeOAuthCredentials: Sendable, Equatable {
-    let accessToken: String
-    let refreshToken: String?
-    let expiresAt: Date?
+    public let accessToken: String
+    public let refreshToken: String?
+    public let expiresAt: Date?
     /// Self-reported Claude plan: `"pro"`, `"max"`, `"team"`, etc.
-    /// Empty string when Claude Code hasn't tagged the credentials.
-    let subscriptionType: String
-    /// e.g. `"default_claude_max_20x"`, `"default_claude_pro_5x"`. The
-    /// multiplier in the suffix tells us the plan tier even when
-    /// `subscriptionType` is blank or unrecognized.
-    let rateLimitTier: String
-    let organizationUuid: String?
+    public let subscriptionType: String
+    public let rateLimitTier: String
+    public let organizationUuid: String?
+
+    public init(
+        accessToken: String,
+        refreshToken: String? = nil,
+        expiresAt: Date? = nil,
+        subscriptionType: String = "",
+        rateLimitTier: String = "",
+        organizationUuid: String? = nil
+    ) {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+        self.expiresAt = expiresAt
+        self.subscriptionType = subscriptionType
+        self.rateLimitTier = rateLimitTier
+        self.organizationUuid = organizationUuid
+    }
 
     /// Returns true when the access token expires within the next 60
     /// seconds. Callers should refresh before that window closes so a
     /// request mid-refresh doesn't see a 401. Returns `false` when
     /// `expiresAt` is `nil` (e.g. injected synthetic credentials) — those
     /// are treated as never-expiring because we have no signal.
-    func isExpired(now: Date = Date()) -> Bool {
+    public func isExpired(now: Date = Date()) -> Bool {
         guard let expiresAt else { return false }
         return expiresAt <= now.addingTimeInterval(60)
     }
 
-    /// Returns true when the credentials are usable against the
-    /// usage endpoint, either directly or after a refresh. Failure
-    /// cases:
-    ///   - Both access token AND refresh token expired (impossible to
-    ///     recover without re-login).
-    /// We deliberately allow the call even when `isExpired()` is true
-    /// as long as a refresh token is present — the fetcher knows how
-    /// to refresh transparently.
-    func canCallUsageEndpoint(now: Date = Date()) -> Bool {
+    public func canCallUsageEndpoint(now: Date = Date()) -> Bool {
         if !isExpired(now: now) { return true }
         return refreshToken != nil
     }
@@ -74,7 +78,7 @@ public struct ClaudeOAuthCredentials: Sendable, Equatable {
     /// Human-readable plan label: `"Max"`, `"Pro"`, `"Team"`, etc.
     /// Used in the popover status line so users see their plan tier
     /// even when the usage endpoint is rate-limited.
-    var planDisplayName: String {
+    public var planDisplayName: String {
         let s = subscriptionType.lowercased()
         if s.contains("max") { return "Max" }
         if s.contains("pro") { return "Pro" }
@@ -95,7 +99,7 @@ public struct ClaudeOAuthCredentials: Sendable, Equatable {
     /// The UI still displays/probes `accessToken`, but saving the full OAuth
     /// payload lets the daemon refresh the bearer later instead of making the
     /// user re-import Claude Code whenever the access token expires.
-    func routeCredentialStoragePayload() -> String {
+    public func routeCredentialStoragePayload() -> String {
         var oauth: [String: Any] = ["accessToken": accessToken]
         if let refreshToken { oauth["refreshToken"] = refreshToken }
         if let expiresAt { oauth["expiresAt"] = expiresAt.timeIntervalSince1970 * 1000 }
@@ -131,7 +135,7 @@ public enum ClaudeCredentialsReader {
     /// JSON without touching user credential stores. Returns `nil` on
     /// any schema deviation — better unavailable than a half-formed
     /// credential that 401s on every request.
-    static func decode(_ data: Data) -> ClaudeOAuthCredentials? {
+    public static func decode(_ data: Data) -> ClaudeOAuthCredentials? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional decode guard)
             return nil
         }
@@ -167,7 +171,8 @@ public enum ClaudeCredentialsReader {
 /// dependency. Used by `ProviderQuotaServiceTests`
 /// to drive the OAuth-fetch path deterministically.
 public struct StaticClaudeCredentialsReader: ClaudeCredentialsReading {
-    let credentials: ClaudeOAuthCredentials?
+    public let credentials: ClaudeOAuthCredentials?
+    public init(credentials: ClaudeOAuthCredentials?) { self.credentials = credentials }
     public func load() -> ClaudeOAuthCredentials? { credentials }
 }
 

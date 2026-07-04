@@ -25,19 +25,19 @@ public enum WarpAPIFetcher {
 
     // MARK: - Types
 
-    struct WarpCredits: Sendable, Equatable {
+    public struct WarpCredits: Sendable, Equatable {
         /// Total request limit for the billing period.
-        let requestLimit: Int
+        public let requestLimit: Int
         /// Requests used since last refresh.
-        let requestsUsed: Int
+        public let requestsUsed: Int
         /// Whether the plan is unlimited.
-        let isUnlimited: Bool
+        public let isUnlimited: Bool
         /// ISO 8601 date for when the period resets (optional).
-        let nextRefreshTime: Date?
+        public let nextRefreshTime: Date?
         /// Combined bonus credits remaining (user-level + workspace-level).
-        let bonusCreditsRemaining: Int
+        public let bonusCreditsRemaining: Int
         /// Combined bonus credits total (user-level + workspace-level).
-        let bonusCreditsTotal: Int
+        public let bonusCreditsTotal: Int
     }
 
     // MARK: - Configuration
@@ -91,7 +91,7 @@ public enum WarpAPIFetcher {
     ///   - session: URLSession to use for the request.
     /// - Returns: Parsed credit data.
     /// - Throws: `QuotaServiceError` on HTTP or parsing failures.
-    static func fetchCredits(
+    public static func fetchCredits(
         apiKey: String,
         session: URLSession = .shared
     ) async throws -> WarpCredits {
@@ -158,7 +158,7 @@ public enum WarpAPIFetcher {
     /// Checks env vars in order: `WARP_API_KEY`, `WARP_TOKEN` — matching Warp's
     /// documented configuration (https://docs.warp.dev/reference/cli/api-keys).
     /// Falls back to resolved API keys in the keychain.
-    static func resolveAPIKey(environment: [String: String], resolvedAPIKeys: [String: String?]) -> String? {
+    public static func resolveAPIKey(environment: [String: String], resolvedAPIKeys: [String: String?]) -> String? {
         // Warp-documented env vars
         for key in ["WARP_API_KEY", "WARP_TOKEN"] {
             if let envKey = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),

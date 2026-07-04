@@ -23,6 +23,7 @@ import Foundation
 /// Reference: CodexBar (github.com/steipete/CodexBar) — `CopilotUsageModels.swift`, `CopilotUsageFetcher.swift`
 
 public struct CopilotQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     // MARK: - Response Models
 

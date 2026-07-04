@@ -14,6 +14,7 @@ import Foundation
 // MARK: - Cline
 
 public struct ClineQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let installed = detectVSCodeExtension("cline")
         return ProviderQuotaSnapshot(

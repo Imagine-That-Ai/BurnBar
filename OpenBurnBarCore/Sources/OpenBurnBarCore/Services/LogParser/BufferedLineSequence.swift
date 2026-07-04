@@ -8,16 +8,16 @@ import Foundation
 /// This is a drop-in replacement for `FileHandle.readAllUTF8Lines()` for
 /// large log files. It preserves the `for line in …` syntax while keeping
 /// peak memory bounded to ~chunk size + longest line.
-struct BufferedLineSequence: Sequence {
+public struct BufferedLineSequence: Sequence {
     private let fileHandle: FileHandle
     private let chunkSize: Int
 
-    init(fileHandle: FileHandle, chunkSize: Int = 64 * 1024) {
+    public init(fileHandle: FileHandle, chunkSize: Int = 64 * 1024) {
         self.fileHandle = fileHandle
         self.chunkSize = chunkSize
     }
 
-    func makeIterator() -> Iterator {
+    public func makeIterator() -> Iterator {
         Iterator(fileHandle: fileHandle, chunkSize: chunkSize)
     }
 }
@@ -25,7 +25,7 @@ struct BufferedLineSequence: Sequence {
 // MARK: - Iterator
 
 extension BufferedLineSequence {
-    struct Iterator: IteratorProtocol {
+    public struct Iterator: IteratorProtocol {
         private let fileHandle: FileHandle
         private let chunkSize: Int
         private var buffer: Data
@@ -38,7 +38,7 @@ extension BufferedLineSequence {
             self.reachedEOF = false
         }
 
-        mutating func next() -> String? {
+        public mutating func next() -> String? {
             while true {
                 // UTF-8 guarantees that ASCII line separators never appear
                 // inside a multi-byte character, so byte splitting is safe and

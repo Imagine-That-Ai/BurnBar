@@ -11,14 +11,15 @@ import Foundation
 /// Prefers `transcript_full.jsonl` (untruncated) over `transcript.jsonl` when available.
 /// Extracts per-session model name from `USER_SETTINGS_CHANGE` metadata and workspace
 /// project name from `user_information` blocks embedded in the transcript.
-final class AntigravityParser: LogParser, Sendable {
-    let provider: AgentProvider = .antigravity
+public final class AntigravityParser: LogParser, Sendable {
+    public init() {}
+    public let provider: AgentProvider = .antigravity
 
     struct SettingsFile: Decodable {
         let model: String?
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fm = FileManager.default
         let basePath = ("~/.gemini/antigravity-cli" as NSString).expandingTildeInPath
         let brainPath = (basePath as NSString).appendingPathComponent("brain")

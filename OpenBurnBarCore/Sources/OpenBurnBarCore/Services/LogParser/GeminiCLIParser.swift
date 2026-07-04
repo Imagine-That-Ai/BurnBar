@@ -4,15 +4,15 @@ import Foundation
 
 /// Parses Gemini CLI sessions from ~/.gemini/tmp/<project_hash>/chats/session-*.json (and .jsonl).
 /// Gemini CLI stores sessions with message_update records containing input_tokens, output_tokens, cached_tokens.
-final class GeminiCLIParser: LogParser, Sendable {
-    let provider: AgentProvider = .geminiCLI
+public final class GeminiCLIParser: LogParser, Sendable {
+    public let provider: AgentProvider = .geminiCLI
     private let logDirectoryOverride: String?
 
-    init(logDirectoryOverride: String? = nil) {
+    public init(logDirectoryOverride: String? = nil) {
         self.logDirectoryOverride = logDirectoryOverride
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fm = FileManager.default
         let basePath = logDirectoryOverride ?? ("~/.gemini/tmp" as NSString).expandingTildeInPath
 

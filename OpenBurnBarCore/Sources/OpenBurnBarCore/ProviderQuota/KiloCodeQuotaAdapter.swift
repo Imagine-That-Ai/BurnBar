@@ -24,6 +24,7 @@ import Foundation
 /// Verified: 1 task on this machine via Cursor globalStorage.
 
 public struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     private static let extensionID = "kilocode.kilo-code"
 

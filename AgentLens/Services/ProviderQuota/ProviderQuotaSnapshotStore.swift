@@ -341,3 +341,5 @@ struct ProviderQuotaSnapshotStore {
         return values?.contentModificationDate
     }
 }
+
+extension ProviderQuotaSnapshotStore: @unchecked Sendable, ProviderQuotaSnapshotPersisting {}

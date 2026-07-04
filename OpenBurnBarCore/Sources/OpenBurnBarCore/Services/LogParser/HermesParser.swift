@@ -13,12 +13,12 @@ import Foundation
 // Windows-buildable. The token/cost/model/session projection logic is unchanged.
 
 /// Parses Hermes sessions from SQLite first, then gateway/CLI fallback files.
-final class HermesParser: LogParser, Sendable {
-    let provider: AgentProvider = .hermes
+public final class HermesParser: LogParser, Sendable {
+    public let provider: AgentProvider = .hermes
     private let fileManager: FileManager
     private let hermesRootURL: URL?
 
-    init(fileManager: FileManager = .default, hermesRootURL: URL? = nil) {
+    public init(fileManager: FileManager = .default, hermesRootURL: URL? = nil) {
         self.fileManager = fileManager
         self.hermesRootURL = hermesRootURL
     }
@@ -38,7 +38,7 @@ final class HermesParser: LogParser, Sendable {
         }
     }()
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenSessionIds: Set<String> = []

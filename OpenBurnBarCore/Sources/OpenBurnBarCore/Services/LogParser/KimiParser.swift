@@ -5,15 +5,15 @@ import Foundation
 /// KimiParser extracts token usage from Kimi (Moonshot) CLI sessions.
 /// Prefers exact token counts from wire.jsonl (available since v0.66, Dec 2025).
 /// Falls back to character-based estimation from context.jsonl for older sessions.
-final class KimiParser: LogParser, Sendable {
-    let provider: AgentProvider = .kimi
+public final class KimiParser: LogParser, Sendable {
+    public let provider: AgentProvider = .kimi
     let logDirectoryOverride: String?
 
-    init(logDirectoryOverride: String? = nil) {
+    public init(logDirectoryOverride: String? = nil) {
         self.logDirectoryOverride = logDirectoryOverride
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fileManager = FileManager.default
         let sessionsPath = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         let sessionsURL = URL(fileURLWithPath: sessionsPath)

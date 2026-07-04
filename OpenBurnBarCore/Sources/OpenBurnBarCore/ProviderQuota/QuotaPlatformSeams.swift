@@ -27,7 +27,14 @@ public struct NoOpQuotaLogger: QuotaLogger {
 }
 
 /// Persisted quota snapshots and scratch keys (AgentLens `ProviderQuotaSnapshotStore`).
-public protocol ProviderQuotaSnapshotPersisting: Sendable {}
+public protocol ProviderQuotaSnapshotPersisting: Sendable {
+    func loadScratchString(forKey key: String) -> String?
+    func saveScratchString(_ value: String, forKey key: String)
+    func readJSONObject(from url: URL) throws -> [String: Any]?
+}
 
 /// Claude statusline bridge install/status (AgentLens `ClaudeQuotaBridgeManager`).
-public protocol ClaudeQuotaBridgeManaging: Sendable {}
+public protocol ClaudeQuotaBridgeManaging: Sendable {
+    func installClaudeQuotaBridge() throws
+    func refreshClaudeBridgeStatus() -> ClaudeQuotaBridgeStatus
+}

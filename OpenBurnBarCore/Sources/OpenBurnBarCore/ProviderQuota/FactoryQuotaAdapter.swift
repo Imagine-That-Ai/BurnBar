@@ -23,6 +23,7 @@ import Foundation
 /// No estimates. No heuristics. Every number comes from droid's own tracking.
 
 public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     // MARK: - Constants
 

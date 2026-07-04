@@ -748,7 +748,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// but it still denies reuse. The previous `try?` collapsed both into a
     /// silent `false`, hiding genuine faults.
     static func scopedClaudeProfileMatchesDefaultLogin(
-        snapshotStore: ProviderQuotaSnapshotStore,
+        snapshotStore: any ProviderQuotaSnapshotPersisting,
         profileStateURL: URL,
         defaultStateURL: URL
     ) -> Bool {

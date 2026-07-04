@@ -181,7 +181,7 @@ final class QuotaWorkspaceViewModel {
             let candidateSnapshots = allAccountSnapshots
                 .filter { snapshot in
                     if snapshot.hasDisplayableQuotaSignal { return true }
-                    return isConnected || snapshot.accountID != nil || snapshot.source != .unavailable
+                    return isConnected || snapshot.accountID != nil || snapshot.sourceKind != .unavailable
                 }
 
             if !candidateSnapshots.isEmpty {
@@ -208,7 +208,7 @@ final class QuotaWorkspaceViewModel {
             }
 
             if let rollup = quotaService.snapshot(for: provider),
-               rollup.hasDisplayableQuotaSignal || isConnected || rollup.source != .unavailable {
+               rollup.hasDisplayableQuotaSignal || isConnected || rollup.sourceKind != .unavailable {
                 let entry = Self.makeEntry(
                     provider: provider,
                     snapshot: rollup,
@@ -298,7 +298,7 @@ final class QuotaWorkspaceViewModel {
             ?? snapshot.sourceId
         let planTierBadge: String? = {
             if provider == .factory {
-                let tier = snapshot.statusMessage.lowercased()
+                let tier = (snapshot.statusMessage ?? "").lowercased()
                 if tier.contains("max") { return "Max" }
                 if tier.contains("plus") { return "Plus" }
                 if tier.contains("pro") { return "Pro" }
@@ -319,7 +319,7 @@ final class QuotaWorkspaceViewModel {
             primaryDisplayableBucket: primary,
             primaryBucket: primary ?? ProviderQuotaBucket(
                 key: "unavailable",
-                label: snapshot.statusMessage,
+                label: snapshot.statusMessage ?? "Unavailable",
                 windowKind: .custom,
                 usedValue: nil,
                 limitValue: nil,

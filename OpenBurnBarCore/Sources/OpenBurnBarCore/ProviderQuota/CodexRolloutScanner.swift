@@ -1,7 +1,7 @@
 import Foundation
 
 public enum CodexRolloutScanner {
-    static func scanCodexRateLimitEvents(
+    public static func scanCodexRateLimitEvents(
         in candidateDirectories: [URL],
         freshnessCutoff: Date,
         existingCache: CodexRolloutScanCache

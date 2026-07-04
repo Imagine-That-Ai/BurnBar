@@ -4,8 +4,9 @@ import Foundation
 // MARK: - Forge Dev Parser
 
 /// Parses Forge sessions from local SQLite databases, with JSONL as a last resort.
-final class ForgeDevParser: LogParser, Sendable {
-    let provider: AgentProvider = .forgeDev
+public final class ForgeDevParser: LogParser, Sendable {
+    public init() {}
+    public let provider: AgentProvider = .forgeDev
 
     private static let sqliteDateFormats: [DateFormatter] = {
         let formats = [
@@ -22,7 +23,7 @@ final class ForgeDevParser: LogParser, Sendable {
         }
     }()
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fm = FileManager.default
         let databasePaths = discoverDatabasePaths()
 

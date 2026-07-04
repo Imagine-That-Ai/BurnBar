@@ -1,6 +1,7 @@
 import Foundation
 
 public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
     // MARK: - Model Catalog
 

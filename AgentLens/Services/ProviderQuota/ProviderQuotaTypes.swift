@@ -19,28 +19,6 @@ typealias XAIQuotaPlanTier = OpenBurnBarCore.XAIQuotaPlanTier
 typealias CodexQuotaScanPolicy = OpenBurnBarCore.CodexQuotaScanPolicy
 typealias MiniMaxAPIKeyKind = OpenBurnBarCore.MiniMaxAPIKeyKind
 
-// MARK: - Claude statusline bridge (macOS glue; not lifted to Core)
+// MARK: - Claude statusline bridge (macOS glue; types in OpenBurnBarCore)
 
-struct ClaudeQuotaBridgeStatus: Equatable {
-    enum State: Equatable {
-        case notInstalled
-        case awaitingFirstPayload
-        case ready
-        case disabledByHooks
-        case invalidConfiguration
-    }
-
-    let state: State
-    let wrapperPath: String
-    let detailText: String
-    let lastPayloadAt: Date?
-
-    var isInstalled: Bool {
-        switch state {
-        case .awaitingFirstPayload, .ready, .disabledByHooks:
-            return true
-        case .notInstalled, .invalidConfiguration:
-            return false
-        }
-    }
-}
+typealias ClaudeQuotaBridgeStatus = OpenBurnBarCore.ClaudeQuotaBridgeStatus

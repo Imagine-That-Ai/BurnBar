@@ -40,6 +40,33 @@ public extension ProviderQuotaSnapshot {
             updatedAt: fetchedAt
         )
     }
+
+    func withAccountMetadata(
+        providerID: ProviderID,
+        accountID: String,
+        accountLabel: String?,
+        accountStorageScope: ProviderAccountStorageScope,
+        sourceId: String
+    ) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            id: id,
+            provider: provider,
+            providerID: providerID,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            accountStorageScope: accountStorageScope,
+            sourceKind: sourceKind,
+            sourceId: sourceId,
+            fetchedAt: fetchedAt,
+            source: source,
+            confidence: confidence,
+            managementURL: managementURL,
+            statusMessage: statusMessage,
+            buckets: buckets,
+            schemaVersion: schemaVersion,
+            updatedAt: updatedAt
+        )
+    }
 }
 
 public extension ProviderQuotaConfidence {

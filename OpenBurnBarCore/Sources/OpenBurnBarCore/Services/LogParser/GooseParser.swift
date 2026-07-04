@@ -5,8 +5,8 @@ import Foundation
 
 /// Parses Goose (Block) sessions from the active Goose data directory.
 /// Falls back to legacy JSONL files only when no SQLite database exists.
-final class GooseParser: LogParser, Sendable {
-    let provider: AgentProvider = .goose
+public final class GooseParser: LogParser, Sendable {
+    public let provider: AgentProvider = .goose
 
     /// When set, the parser reads only this sessions directory (which holds
     /// `sessions.db` and/or legacy `*.jsonl`). Keeps tests hermetic and lets
@@ -14,7 +14,7 @@ final class GooseParser: LogParser, Sendable {
     /// discovery order (env override + known install locations).
     private let sessionDirectoryOverride: String?
 
-    init(sessionDirectoryOverride: String? = nil) {
+    public init(sessionDirectoryOverride: String? = nil) {
         self.sessionDirectoryOverride = sessionDirectoryOverride
     }
 
@@ -34,7 +34,7 @@ final class GooseParser: LogParser, Sendable {
         }
     }()
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fm = FileManager.default
         let sessionDirectories = resolvedSessionDirectories()
 

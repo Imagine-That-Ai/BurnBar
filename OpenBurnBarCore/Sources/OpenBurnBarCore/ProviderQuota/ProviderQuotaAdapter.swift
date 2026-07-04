@@ -103,3 +103,80 @@ public extension ProviderQuotaAdapter {
         )
     }
 }
+
+public extension ProviderQuotaAdapterContext {
+    func withEnvironment(_ environment: [String: String]) -> ProviderQuotaAdapterContext {
+        ProviderQuotaAdapterContext(
+            appPaths: appPaths,
+            fileManager: fileManager,
+            session: session,
+            environment: environment,
+            homeDirectoryURL: homeDirectoryURL,
+            snapshotStore: snapshotStore,
+            bridgeManager: bridgeManager,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
+            codexRolloutScanCache: codexRolloutScanCache,
+            updateCodexRolloutScanCache: updateCodexRolloutScanCache,
+            claudeCredentialsReader: claudeCredentialsReader,
+            resolvedAPIKeys: resolvedAPIKeys,
+            secretStore: secretStore,
+            cliExecutor: cliExecutor,
+            quotaLogger: quotaLogger
+        )
+    }
+
+    func withResolvedAPIKeys(_ resolvedAPIKeys: [String: String?]) -> ProviderQuotaAdapterContext {
+        ProviderQuotaAdapterContext(
+            appPaths: appPaths,
+            fileManager: fileManager,
+            session: session,
+            environment: environment,
+            homeDirectoryURL: homeDirectoryURL,
+            snapshotStore: snapshotStore,
+            bridgeManager: bridgeManager,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
+            codexRolloutScanCache: codexRolloutScanCache,
+            updateCodexRolloutScanCache: updateCodexRolloutScanCache,
+            claudeCredentialsReader: claudeCredentialsReader,
+            resolvedAPIKeys: resolvedAPIKeys,
+            secretStore: secretStore,
+            cliExecutor: cliExecutor,
+            quotaLogger: quotaLogger
+        )
+    }
+
+    func withClaudeCredentialsReader(_ reader: any ClaudeCredentialsReading) -> ProviderQuotaAdapterContext {
+        ProviderQuotaAdapterContext(
+            appPaths: appPaths,
+            fileManager: fileManager,
+            session: session,
+            environment: environment,
+            homeDirectoryURL: homeDirectoryURL,
+            snapshotStore: snapshotStore,
+            bridgeManager: bridgeManager,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
+            codexRolloutScanCache: codexRolloutScanCache,
+            updateCodexRolloutScanCache: updateCodexRolloutScanCache,
+            claudeCredentialsReader: reader,
+            resolvedAPIKeys: resolvedAPIKeys,
+            secretStore: secretStore,
+            cliExecutor: cliExecutor,
+            quotaLogger: quotaLogger
+        )
+    }
+}

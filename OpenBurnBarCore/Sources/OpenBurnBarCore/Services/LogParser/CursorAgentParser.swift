@@ -12,11 +12,11 @@ import Foundation
 /// Computes accurate, fine-grained token counts:
 ///   - **Input tokens**: User prompts + system prompts + tool output returns (context size).
 ///   - **Output tokens**: Assistant text + thinking/reasoning blocks + tool call arguments.
-final class CursorAgentParser: LogParser, Sendable {
-    let provider: AgentProvider = .cursorAgent
+public final class CursorAgentParser: LogParser, Sendable {
+    public let provider: AgentProvider = .cursorAgent
     let logDirectoryOverride: String?
 
-    init(logDirectoryOverride: String? = nil) {
+    public init(logDirectoryOverride: String? = nil) {
         self.logDirectoryOverride = logDirectoryOverride
     }
 
@@ -24,7 +24,7 @@ final class CursorAgentParser: LogParser, Sendable {
         let model: String?
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fm = FileManager.default
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
 

@@ -361,3 +361,5 @@ struct ClaudeQuotaBridgeManager {
         return tokens.isEmpty ? nil : tokens
     }
 }
+
+extension ClaudeQuotaBridgeManager: ClaudeQuotaBridgeManaging {}

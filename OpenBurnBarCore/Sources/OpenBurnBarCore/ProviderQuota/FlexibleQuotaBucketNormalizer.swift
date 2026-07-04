@@ -13,7 +13,7 @@ public enum FlexibleQuotaBucketNormalizer {
 
     // MARK: - Flexible Bucket Extraction
 
-    static func extractFlexibleBuckets(from object: Any, provider: AgentProvider, endpointLabel: String) -> [ProviderQuotaBucket] {
+    public static func extractFlexibleBuckets(from object: Any, provider: AgentProvider, endpointLabel: String) -> [ProviderQuotaBucket] {
         let unwrapped = unwrapDataEnvelope(object)
         var buckets = recurseBuckets(in: unwrapped, provider: provider, path: [endpointLabel])
         buckets.sort(by: {
@@ -285,7 +285,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return now.addingTimeInterval(seconds)
     }
 
-    static func normalizedBucketLabel(
+    public static func normalizedBucketLabel(
         _ label: String,
         provider: AgentProvider,
         inferredWindowKind: ProviderQuotaWindowKind? = nil,
@@ -381,7 +381,7 @@ public enum FlexibleQuotaBucketNormalizer {
         }
     }
 
-    static func sanitizeKey(_ value: String) -> String {
+    public static func sanitizeKey(_ value: String) -> String {
         value.lowercased()
             .replacingOccurrences(of: " ", with: "-")
             .replacingOccurrences(of: "/", with: "-")
@@ -391,7 +391,7 @@ public enum FlexibleQuotaBucketNormalizer {
 
     // MARK: - JSON Parsing Helpers
 
-    static func number(in dictionary: [String: Any], keys: [String]) -> Double? {
+    public static func number(in dictionary: [String: Any], keys: [String]) -> Double? {
         for key in keys {
             if let value = value(in: dictionary, matching: key) {
                 if let number = value as? NSNumber {
@@ -405,7 +405,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return nil
     }
 
-    static func string(in dictionary: [String: Any], keys: [String]) -> String? {
+    public static func string(in dictionary: [String: Any], keys: [String]) -> String? {
         for key in keys {
             if let value = value(in: dictionary, matching: key) as? String, !value.isEmpty {
                 return value
@@ -526,7 +526,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return nil
     }
 
-    static func unwrapDataEnvelope(_ object: Any) -> Any {
+    public static func unwrapDataEnvelope(_ object: Any) -> Any {
         guard let dictionary = object as? [String: Any] else { return object }
         if let data = dictionary["data"] {
             return data

@@ -4,10 +4,11 @@ import Foundation
 
 /// Best-effort Augment parser. Discovers likely VS Code-family storage roots, but
 /// remains conservative until a real token-bearing sample is available.
-final class AugmentParser: LogParser, Sendable {
-    let provider: AgentProvider = .augment
+public final class AugmentParser: LogParser, Sendable {
+    public init() {}
+    public let provider: AgentProvider = .augment
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fm = FileManager.default
         let roots = candidateRoots().filter { fm.fileExists(atPath: $0.path) }
         guard !roots.isEmpty else {

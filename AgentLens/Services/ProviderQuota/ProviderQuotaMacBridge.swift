@@ -1,5 +1,4 @@
 import Foundation
 import OpenBurnBarCore
 
-extension ProviderQuotaSnapshotStore: ProviderQuotaSnapshotPersisting {}
-extension ClaudeQuotaBridgeManager: ClaudeQuotaBridgeManaging {}
+// Conformances live on ProviderQuotaSnapshotStore / ClaudeQuotaBridgeManager in their defining files (Swift 6 Sendable rule).

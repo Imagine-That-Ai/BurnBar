@@ -13,13 +13,13 @@ import Foundation
 /// Warp does not currently expose a documented local token ledger. This parser
 /// preserves exact usage objects when present and otherwise emits conservative,
 /// low-confidence estimates for agent prompt telemetry that includes text.
-final class WarpParser: LogParser, Sendable {
-    let provider: AgentProvider = .warp
+public final class WarpParser: LogParser, Sendable {
+    public let provider: AgentProvider = .warp
 
     private let logDirectory: URL
     private let fileManager: FileManager
 
-    init(
+    public init(
         logDirectory: URL? = nil,
         fileManager: FileManager = .default
     ) {
@@ -30,7 +30,7 @@ final class WarpParser: LogParser, Sendable {
         self.fileManager = fileManager
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         guard fileManager.fileExists(atPath: logDirectory.path) else {
             return ParseResult(usages: [], conversations: [])
         }
@@ -325,7 +325,7 @@ final class WarpParser: LogParser, Sendable {
 
     // MARK: - JSON Body Extraction
 
-    static func extractBodyJSONObjects(from content: String) -> [[String: Any]] {
+    public static func extractBodyJSONObjects(from content: String) -> [[String: Any]] {
         var objects: [[String: Any]] = []
         var searchStart = content.startIndex
 

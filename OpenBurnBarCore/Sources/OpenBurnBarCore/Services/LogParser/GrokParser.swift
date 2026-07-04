@@ -7,15 +7,15 @@ import Foundation
 /// Token accounting prefers `signals.json` (`contextTokensUsed`) with a
 /// user/assistant split derived from message counts. Conversation text is rebuilt
 /// from `chat_history.jsonl` when present.
-final class GrokParser: LogParser, Sendable {
-    let provider: AgentProvider = .xAI
+public final class GrokParser: LogParser, Sendable {
+    public let provider: AgentProvider = .xAI
     let logDirectoryOverride: String?
 
-    init(logDirectoryOverride: String? = nil) {
+    public init(logDirectoryOverride: String? = nil) {
         self.logDirectoryOverride = logDirectoryOverride
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         let fileManager = FileManager.default
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         guard fileManager.fileExists(atPath: sessionsRoot) else {

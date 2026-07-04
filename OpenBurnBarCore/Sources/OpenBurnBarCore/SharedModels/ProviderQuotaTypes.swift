@@ -10,6 +10,18 @@ public enum ProviderQuotaSourceKind: String, Codable, Sendable {
     case manualEstimate
     case unavailable
 
+    public var label: String {
+        switch self {
+        case .provider: return "Provider"
+        case .officialAPI: return "Official API"
+        case .localCLI: return "Local CLI"
+        case .localSession: return "Local session"
+        case .manualEstimate: return "Estimated"
+        case .unavailable: return "Unavailable"
+        }
+    }
+
+
     public init(from decoder: Decoder) throws {
         let value = try decoder.singleValueContainer().decode(String.self)
         self = Self(rawValue: value) ?? .provider
@@ -51,6 +63,8 @@ public enum ProviderQuotaUnit: String, Codable, Sendable {
     case credits
     case currency
     case count
+    case lines
+    case files
     case sessions
     case unknown
 }

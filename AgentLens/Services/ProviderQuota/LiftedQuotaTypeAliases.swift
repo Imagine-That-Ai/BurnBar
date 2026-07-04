@@ -50,18 +50,11 @@ typealias QuotaLogger = OpenBurnBarCore.QuotaLogger
 typealias ProviderQuotaSnapshotPersisting = OpenBurnBarCore.ProviderQuotaSnapshotPersisting
 typealias ClaudeQuotaBridgeManaging = OpenBurnBarCore.ClaudeQuotaBridgeManaging
 
-typealias MiniMaxQuotaMode = OpenBurnBarCore.MiniMaxQuotaMode
-typealias FactoryQuotaPlanTier = OpenBurnBarCore.FactoryQuotaPlanTier
-typealias XAIQuotaPlanTier = OpenBurnBarCore.XAIQuotaPlanTier
-typealias CodexQuotaScanPolicy = OpenBurnBarCore.CodexQuotaScanPolicy
-typealias MiniMaxAPIKeyKind = OpenBurnBarCore.MiniMaxAPIKeyKind
 
-typealias ProviderQuotaSourceKind = OpenBurnBarCore.ProviderQuotaSourceKind
-typealias ProviderQuotaConfidence = OpenBurnBarCore.ProviderQuotaConfidence
-typealias ProviderQuotaUnit = OpenBurnBarCore.ProviderQuotaUnit
-typealias ProviderQuotaWindowKind = OpenBurnBarCore.ProviderQuotaWindowKind
-typealias ProviderQuotaBucket = OpenBurnBarCore.ProviderQuotaBucket
-typealias ProviderQuotaSnapshot = OpenBurnBarCore.ProviderQuotaSnapshot
+
+typealias CursorUsageSummary = OpenBurnBarCore.CursorUsageSummary
+typealias CursorUserInfo = OpenBurnBarCore.CursorUserInfo
+
 
 func quotaNonEmpty(_ value: String?) -> String? {
     OpenBurnBarCore.quotaNonEmpty(value)

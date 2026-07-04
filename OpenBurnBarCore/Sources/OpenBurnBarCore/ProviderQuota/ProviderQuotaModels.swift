@@ -3,35 +3,35 @@ import Foundation
 // MARK: - Codex Models
 
 public struct CodexRateLimitEvent: Codable, Equatable, Sendable {
-    let timestamp: Date
-    let planType: String?
-    let primary: CodexRateLimitWindow?
-    let secondary: CodexRateLimitWindow?
+    public let timestamp: Date
+    public let planType: String?
+    public let primary: CodexRateLimitWindow?
+    public let secondary: CodexRateLimitWindow?
 }
 
 public struct CodexRateLimitWindow: Codable, Equatable, Sendable {
-    let usedPercent: Double?
-    let windowMinutes: Int?
-    let resetsAt: Date?
+    public let usedPercent: Double?
+    public let windowMinutes: Int?
+    public let resetsAt: Date?
 }
 
 public struct CodexRolloutFileSignature: Codable, Equatable, Sendable {
-    let modifiedAt: TimeInterval
-    let sizeBytes: Int64
+    public let modifiedAt: TimeInterval
+    public let sizeBytes: Int64
 }
 
 public struct CodexRolloutFileCacheEntry: Codable, Equatable, Sendable {
-    let signature: CodexRolloutFileSignature
-    let latestRateLimitEvent: CodexRateLimitEvent?
+    public let signature: CodexRolloutFileSignature
+    public let latestRateLimitEvent: CodexRateLimitEvent?
 }
 
 public struct CodexRolloutScanCache: Codable, Equatable, Sendable {
-    var schemaVersion: Int
-    var fileEntries: [String: CodexRolloutFileCacheEntry]
-    var latestRateLimitEvent: CodexRateLimitEvent?
-    var lastUpdatedAt: Date?
+    public var schemaVersion: Int
+    public var fileEntries: [String: CodexRolloutFileCacheEntry]
+    public var latestRateLimitEvent: CodexRateLimitEvent?
+    public var lastUpdatedAt: Date?
 
-    static let empty = CodexRolloutScanCache(
+    public static let empty = CodexRolloutScanCache(
         schemaVersion: 1,
         fileEntries: [:],
         latestRateLimitEvent: nil,
@@ -40,9 +40,9 @@ public struct CodexRolloutScanCache: Codable, Equatable, Sendable {
 }
 
 public struct CodexRateLimitScanResult: Sendable {
-    let latestEvent: CodexRateLimitEvent?
-    let cache: CodexRolloutScanCache
-    let didChangeCache: Bool
+    public let latestEvent: CodexRateLimitEvent?
+    public let cache: CodexRolloutScanCache
+    public let didChangeCache: Bool
 }
 
 public struct CodexRolloutEnvelope: Decodable {
@@ -103,34 +103,34 @@ public struct CodexRolloutEnvelope: Decodable {
 // MARK: - Cursor Models
 
 public struct CursorUsageSummary: Decodable {
-    let billingCycleEnd: String?
-    let membershipType: String?
-    let isUnlimited: Bool?
-    let individualUsage: CursorIndividualUsage?
+    public let billingCycleEnd: String?
+    public let membershipType: String?
+    public let isUnlimited: Bool?
+    public let individualUsage: CursorIndividualUsage?
 }
 
 public struct CursorIndividualUsage: Decodable {
-    let plan: CursorPlanUsage?
-    let onDemand: CursorOnDemandUsage?
+    public let plan: CursorPlanUsage?
+    public let onDemand: CursorOnDemandUsage?
 }
 
 public struct CursorPlanUsage: Decodable {
-    let used: Int?
-    let limit: Int?
-    let autoPercentUsed: Double?
-    let apiPercentUsed: Double?
-    let totalPercentUsed: Double?
+    public let used: Int?
+    public let limit: Int?
+    public let autoPercentUsed: Double?
+    public let apiPercentUsed: Double?
+    public let totalPercentUsed: Double?
 }
 
 public struct CursorOnDemandUsage: Decodable {
-    let used: Int?
-    let limit: Int?
+    public let used: Int?
+    public let limit: Int?
 }
 
 public struct CursorUserInfo: Decodable {
-    let id: String?
-    let email: String?
-    let name: String?
+    public let id: String?
+    public let email: String?
+    public let name: String?
 }
 
 public struct CursorLegacyUsageResponse: Decodable {
