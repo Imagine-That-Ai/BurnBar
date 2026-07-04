@@ -143,8 +143,18 @@ public sealed partial class AppShell : UserControl
 
         _currentKey = destination.Key;
         HeaderTitle.Text = destination.Title;
-        ContentFrame.Navigate(typeof(SurfaceStubPage), destination);
+        ContentFrame.Navigate(ResolvePageType(destination.Key), destination);
     }
+
+    /// <summary>
+    /// Map a destination key to its real content page, falling back to <see cref="SurfaceStubPage"/>
+    /// for keys whose surface has not landed yet. Real surfaces (Phase 3) register their key here.
+    /// </summary>
+    private static Type ResolvePageType(string key) => key switch
+    {
+        "dataControlCenter" => typeof(OpenBurnBar.App.DataControlCenter.DataControlCenterPage),
+        _ => typeof(SurfaceStubPage),
+    };
 
     private void Palette_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
         => CommandPaletteRequested?.Invoke(this, EventArgs.Empty);

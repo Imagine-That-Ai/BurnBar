@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of the yours↔server flip (AgentLens/Views/Settings/DataControlCenter/
+  DataControlCenterFlip.swift) — the signature governance moment. A two-faced card that flips
+  between "What stays yours" (deviceOnly facets, sealed) and "What the server sees" (serverSees
+  facets). The Swift rotation3DEffect(y) becomes a PlaneProjection RotationY Storyboard here; the
+  sealed face reads as frosted glass. Faces are rebuilt in code-behind from the bound DataDomain.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.DataControlCenter.YoursVsServerFlip"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Storyboard x:Name="FlipOut">
+            <DoubleAnimation Storyboard.TargetName="FaceProjection"
+                             Storyboard.TargetProperty="RotationY"
+                             To="90" Duration="0:0:0.26">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseIn" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+        <Storyboard x:Name="FlipIn">
+            <DoubleAnimation Storyboard.TargetName="FaceProjection"
+                             Storyboard.TargetProperty="RotationY"
+                             From="-90" To="0" Duration="0:0:0.26">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+    </UserControl.Resources>
+
+    <StackPanel Spacing="12">
+        <!-- Face toggle (two pills). -->
+        <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                Background="{StaticResource OBBSurfaceBrush}"
+                BorderBrush="{StaticResource OBBStrokeBrush}"
+                BorderThickness="1"
+                Padding="3">
+            <Grid ColumnSpacing="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="YoursPill"
+                        Grid.Column="0"
+                        Click="OnYoursClick"
+                        HorizontalAlignment="Stretch"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                        Padding="12,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                        <FontIcon x:Name="YoursPillGlyph" Glyph="&#xE83D;" FontSize="11" />
+                        <TextBlock Text="What stays yours" FontSize="11" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ServerPill"
+                        Grid.Column="1"
+                        Click="OnServerClick"
+                        HorizontalAlignment="Stretch"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                        Padding="12,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                        <FontIcon x:Name="ServerPillGlyph" Glyph="&#xE7B3;" FontSize="11" />
+                        <TextBlock Text="What the server sees" FontSize="11" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- The flipping face card. -->
+        <Border x:Name="FaceCard"
+                CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                Background="{StaticResource PensieveColorGlassBgElevatedBrush}"
+                BorderThickness="1"
+                Padding="16">
+            <Border.Projection>
+                <PlaneProjection x:Name="FaceProjection" CenterOfRotationX="0.5" />
+            </Border.Projection>
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon x:Name="FaceGlyph" Glyph="&#xE83D;" FontSize="14" />
+                    <TextBlock x:Name="FaceTitle"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                </StackPanel>
+                <TextBlock x:Name="FaceSubtitle"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                <TextBlock x:Name="FaceEmpty"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <ItemsRepeater x:Name="FaceChips">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout MinItemWidth="96"
+                                           MinItemHeight="26"
+                                           MinRowSpacing="6"
+                                           MinColumnSpacing="6"
+                                           ItemsStretch="None" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                                    Background="#1FC7CFDD"
+                                    BorderBrush="#33C7CFDD"
+                                    BorderThickness="0.5"
+                                    Padding="9,4">
+                                <TextBlock Text="{x:Bind}"
+                                           FontSize="11"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                            </Border>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>
