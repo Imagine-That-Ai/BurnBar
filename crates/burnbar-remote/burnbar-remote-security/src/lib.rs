@@ -956,32 +956,35 @@ fn append_audit_event(path: &Path, event: AuditEvent) -> Result<(), Authorizatio
         .append(true)
         .open(path)
         .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
-    // On Windows, file locks can transiently fail with "another process has locked
-    // a portion of the file" (os error 33) under concurrent test execution. Retry
-    // with a small backoff before giving up.
-    // On Windows, fs2's LockFileEx can fail with os error 33 under
-    // concurrent access. Use a process-wide Mutex to serialize.
+    // On Windows, fs2's LockFileEx fails with os error 33 ("another process has
+    // locked a portion of the file") under concurrent test execution because
+    // LockFileEx is per-handle and the concurrent test opens the same file from
+    // multiple threads. A process-wide Mutex serializes appends without the file
+    // lock, so the guard must live across the append + unlock (not just the
+    // cfg block) — otherwise the Mutex protects nothing.
     #[cfg(target_os = "windows")]
-    {
-        use std::sync::Mutex;
-        use std::sync::OnceLock;
-        static AUDIT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let mutex = AUDIT_LOCK.get_or_init(|| Mutex::new(()));
-        let _guard = mutex
+    let _audit_guard = {
+        use std::sync::{LazyLock, Mutex};
+        static AUDIT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+        AUDIT_LOCK
             .lock()
-            .map_err(|_| AuthorizationError::AuditChain("audit log mutex poisoned".to_string()))?;
-        // Now safe to use the file lock (or skip it entirely since the Mutex serializes)
-        let _ = file.lock_exclusive(); // Best-effort; Mutex already serializes
-    }
+            .map_err(|_| AuthorizationError::AuditChain("audit log mutex poisoned".to_string()))?
+    };
     #[cfg(not(target_os = "windows"))]
-    {
-        file.lock_exclusive()
-            .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
-    }
+    file.lock_exclusive()
+        .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
     let result = append_audit_event_locked(path, &mut file, event);
-    let unlock_result = file
-        .unlock()
-        .map_err(|err| AuthorizationError::AuditChain(err.to_string()));
+    let unlock_result = {
+        #[cfg(target_os = "windows")]
+        {
+            Ok(())
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            file.unlock()
+                .map_err(|err| AuthorizationError::AuditChain(err.to_string()))
+        }
+    };
     result.and(unlock_result)
 }
 

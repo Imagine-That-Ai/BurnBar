@@ -14,7 +14,22 @@ import Foundation
 /// 2. `state.vscdb` JSON values for model/workspace info
 /// 3. Heuristic token estimation based on `.pb` file size
 public final class WindsurfParser: LogParser, Sendable {
-    public init() {}
+    public let cascadeDirectoryOverride: String?
+    public let globalStorageOverride: String?
+
+    /// - Parameters:
+    ///   - cascadeDirectoryOverride: Override for `~/.codeium/windsurf-next/cascade`.
+    ///     On Windows the G2 harness passes the synthetic home root; otherwise the
+    ///     parser resolves `~` against the real user home (POSIX `HOME` /
+    ///     Windows `USERPROFILE`).
+    ///   - globalStorageOverride: Override for
+    ///     `~/Library/Application Support/Windsurf - Next/User/globalStorage`.
+    ///     Same rationale; the macOS-only `Library/Application Support` path has no
+    ///     Windows analog so the harness injects the synthetic path explicitly.
+    public init(cascadeDirectoryOverride: String? = nil, globalStorageOverride: String? = nil) {
+        self.cascadeDirectoryOverride = cascadeDirectoryOverride
+        self.globalStorageOverride = globalStorageOverride
+    }
     public let provider: AgentProvider = .windsurf
 
     // MARK: - Paths
@@ -39,8 +54,7 @@ public final class WindsurfParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        // 1. Parse .pb files from cascade directory
-        let cascadeDir = (Self.cascadeDirectory as NSString).expandingTildeInPath
+        let cascadeDir = ((cascadeDirectoryOverride ?? Self.cascadeDirectory) as NSString).expandingTildeInPath
         if fm.fileExists(atPath: cascadeDir) {
             let allFiles = (try? fm.contentsOfDirectory(atPath: cascadeDir)) ?? [] // try?-ok(dir read, empty fallback)
             let pbFiles = allFiles
@@ -149,8 +163,7 @@ public final class WindsurfParser: LogParser, Sendable {
         var models: [String: String] = [:]
         var workspaces: [String: String] = [:]
         var titles: [String: String] = [:]
-
-        let globalPath = (Self.globalStoragePath as NSString).expandingTildeInPath
+        let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
         let dbPath = (globalPath as NSString).appendingPathComponent("state.vscdb")
 
         if FileManager.default.fileExists(atPath: dbPath) {
