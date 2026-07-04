@@ -4,7 +4,7 @@ import Foundation
 //
 // macOS AgentLens injects KeychainStore, Process, and AppLogger; Windows PAL
 // injects DPAPI/CNG secret store, ConPTY process runner, and its own logger.
-// SEAM adapters stay in AgentLens until these protocols are wired end-to-end.
+// SEAM quota adapters compile in OpenBurnBarCore; macOS AgentLens injects concrete stores via ProviderQuotaMacPlatform.
 
 /// Reads credentials and other quota-related secrets (replaces KeychainStore).
 public protocol SecretStore: Sendable {

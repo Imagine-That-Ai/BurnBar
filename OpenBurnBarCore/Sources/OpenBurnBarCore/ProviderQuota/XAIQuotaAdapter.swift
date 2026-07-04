@@ -1,5 +1,4 @@
 import Foundation
-import OpenBurnBarCore
 
 // MARK: - xAI / Grok Quota Adapter
 //
@@ -36,19 +35,14 @@ import OpenBurnBarCore
 // Reference: xAI Management API
 // (docs.x.ai/docs/management-api/billing, verified 2026-05-21).
 
-struct XAIQuotaAdapter: ProviderQuotaAdapter {
-
+public struct XAIQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
+    
     // MARK: - Dependencies
 
     /// Keychain used to read the Cursor-connector management key fallback.
     /// Injected so tests can drive a faulting backend through this seam; the
     /// default reads the live keychain exactly as before.
-    private let keychain: KeychainStore
-
-    init(keychain: KeychainStore = KeychainStore()) {
-        self.keychain = keychain
-    }
-
     // MARK: - Constants
 
     static let consoleURL = "https://console.x.ai"
@@ -112,7 +106,7 @@ struct XAIQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Fetch
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let plan = context.xaiPlan
         let mgmtKey = resolveManagementKey(context: context)
 
@@ -471,17 +465,12 @@ struct XAIQuotaAdapter: ProviderQuotaAdapter {
     private func resolveManagementKey(context: ProviderQuotaAdapterContext) -> String? {
         quotaNonEmpty(context.resolvedAPIKeys["xai_management_key"] ?? nil)
             ?? quotaNonEmpty(context.resolvedAPIKeys["xai-management-key"] ?? nil)
-            ?? cursorConnectorKey(for: "provider.xai.managementKey")
+            ?? cursorConnectorKey(for: "provider.xai.managementKey", context: context)
             ?? quotaNonEmpty(context.environment["XAI_MANAGEMENT_KEY"])
     }
 
-    private func cursorConnectorKey(for account: String) -> String? {
-        let raw = keychain.credentialIfPresent(
-            for: account,
-            allowUserInteraction: false,
-            event: "xai_quota_management_key_read_failed"
-        )
-        return quotaNonEmpty(raw)
+    private func cursorConnectorKey(for account: String, context: ProviderQuotaAdapterContext) -> String? {
+        context.cursorConnectorCredential(for: account)
     }
 
     private func iso8601(_ date: Date) -> String {

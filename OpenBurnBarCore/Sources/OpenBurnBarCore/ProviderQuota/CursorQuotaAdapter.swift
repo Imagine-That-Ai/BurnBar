@@ -27,9 +27,10 @@ import Foundation
 ///
 /// Reference: CodexBar `CursorStatusProbe.swift` — same endpoint, same cookie format.
 
-struct CursorQuotaAdapter: ProviderQuotaAdapter {
+public struct CursorQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         // 1. Try cookie header resolution (env -> keychain -> Cursor SQLite JWT)
         if let credential = await resolveCursorCookieHeader(context: context) {
             do {

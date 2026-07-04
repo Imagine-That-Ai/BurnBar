@@ -1,7 +1,7 @@
 import Foundation
 
-struct WarpQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct WarpQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         // Try the Warp GraphQL API first (real source of truth).
         if let apiKey = WarpAPIFetcher.resolveAPIKey(
             environment: context.environment,
@@ -90,18 +90,14 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
                     buckets: buckets
                 )
             } catch {
-                AppLogger.sync.silentFailure(
-                    "WarpQuotaAdapter.fetchCredits",
-                    error: error,
-                    context: ["fallback": "localTelemetry"]
-                )
+                context.quotaLogSilentFailure("WarpQuotaAdapter.fetchCredits: \(error)")
             }
         }
 
         // Fallback: local telemetry parsing (kept for users without API keys)
         let directory = context.homeDirectoryURL
             .appendingPathComponent("Library/Application Support/dev.warp.Warp-Stable", isDirectory: true)
-        let logFiles = candidateLogFiles(in: directory, fileManager: context.fileManager)
+        let logFiles = candidateLogFiles(in: directory, fileManager: context.fileManager, context: context)
 
         for file in logFiles.reversed() {
             guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable telemetry log)
@@ -135,20 +131,22 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
         )
     }
 
-    func candidateLogFiles(in directory: URL, fileManager: FileManager) -> [URL] {
+    func candidateLogFiles(in directory: URL, fileManager: FileManager, context: ProviderQuotaAdapterContext) -> [URL] {
         guard fileManager.fileExists(atPath: directory.path) else { return [] }
         // The directory exists but enumeration failed (sandbox/permission/IO fault).
         // Degrade gracefully to the empty-list fallback, but surface the loss so a
         // silently-broken local telemetry probe is observable instead of invisible.
-        let files = AppLogger.sync.silently(
-            "WarpQuotaAdapter.candidateLogFiles.contentsOfDirectory",
-            try fileManager.contentsOfDirectory(
+        let files: [URL]
+        do {
+            files = try fileManager.contentsOfDirectory(
                 at: directory,
                 includingPropertiesForKeys: [.contentModificationDateKey],
                 options: [.skipsHiddenFiles]
-            ),
-            fallback: []
-        )
+            )
+        } catch {
+            context.quotaLogSilentFailure("WarpQuotaAdapter.candidateLogFiles: \(error)")
+            files = []
+        }
 
         return files
             .filter { $0.lastPathComponent.hasPrefix("warp_network") && $0.pathExtension == "log" }

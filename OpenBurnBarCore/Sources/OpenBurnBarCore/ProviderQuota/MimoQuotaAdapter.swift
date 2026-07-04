@@ -1,20 +1,11 @@
 import Foundation
-import OpenBurnBarCore
 
-@MainActor
-struct MimoQuotaAdapter: ProviderQuotaAdapter {
-    /// Factory for the Keychain store used to resolve the Cursor connector key.
-    /// Defaults to the live store; tests inject a store backed by a fake
-    /// `KeychainStoreBackend` to exercise the credential-read fault path.
-    private let keychainStoreProvider: @Sendable () -> KeychainStore
+import Foundation
 
-    // nonisolated so the adapter registry can construct it from a nonisolated
-    // context (the keychain seam carries no main-actor state).
-    nonisolated init(keychainStoreProvider: @escaping @Sendable () -> KeychainStore = { KeychainStore() }) {
-        self.keychainStoreProvider = keychainStoreProvider
-    }
+public struct MimoQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard let apiKey = resolveMimoAPIKey(context: context) else {
             return unavailableSnapshot(
                 for: .mimo,
@@ -124,17 +115,11 @@ struct MimoQuotaAdapter: ProviderQuotaAdapter {
 
     private func resolveMimoAPIKey(context: ProviderQuotaAdapterContext) -> String? {
         quotaNonEmpty(context.resolvedAPIKeys["mimo"] ?? nil)
-            ?? cursorConnectorKey(for: "provider.mimo.apiKey")
+            ?? cursorConnectorKey(for: "provider.mimo.apiKey", context: context)
             ?? quotaNonEmpty(context.environment["MIMO_API_KEY"])
     }
 
-    private func cursorConnectorKey(for account: String) -> String? {
-        let keychain = keychainStoreProvider()
-        let raw = keychain.credentialIfPresent(
-            for: account,
-            allowUserInteraction: false,
-            event: "mimo_quota_connector_key_read_failed"
-        )
-        return quotaNonEmpty(raw)
+    private func cursorConnectorKey(for account: String, context: ProviderQuotaAdapterContext) -> String? {
+        context.cursorConnectorCredential(for: account)
     }
 }

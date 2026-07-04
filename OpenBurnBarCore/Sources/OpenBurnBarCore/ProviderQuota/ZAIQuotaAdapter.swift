@@ -1,8 +1,7 @@
 import Foundation
 
-@MainActor
-struct ZAIQuotaAdapter: ProviderQuotaAdapter {
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+public struct ZAIQuotaAdapter: ProviderQuotaAdapter {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard let apiKey = resolveZaiAPIKey(context: context) else {
             return unavailableSnapshot(
                 for: .zai,
@@ -60,7 +59,7 @@ struct ZAIQuotaAdapter: ProviderQuotaAdapter {
                 }
                 continue
                 } catch {
-                    AppLogger.sync.error("zai_quota_parse_failed", metadata: ["error": error.localizedDescription])
+                    context.quotaLogSilentFailure("zai_quota_parse_failed: \(error)")
                     continue
                 }
         }
@@ -84,7 +83,7 @@ struct ZAIQuotaAdapter: ProviderQuotaAdapter {
 
     private func resolveZaiAPIKey(context: ProviderQuotaAdapterContext) -> String? {
         quotaNonEmpty(context.resolvedAPIKeys["zai"] ?? nil)
-            ?? cursorConnectorKey(for: "provider.zai.apiKey")
+            ?? cursorConnectorKey(for: "provider.zai.apiKey", context: context)
             ?? quotaNonEmpty(context.environment["ZAI_API_KEY"])
             ?? quotaNonEmpty(context.environment["Z_AI_API_KEY"])
     }
@@ -221,14 +220,8 @@ struct ZAIQuotaAdapter: ProviderQuotaAdapter {
         return object
     }
 
-    private func cursorConnectorKey(for account: String) -> String? {
-        let keychain = KeychainStore()
-        let raw = keychain.credentialIfPresent(
-            for: account,
-            allowUserInteraction: false,
-            event: "zai_quota_key_read_failed"
-        )
-        return quotaNonEmpty(raw ?? nil)
+    private func cursorConnectorKey(for account: String, context: ProviderQuotaAdapterContext) -> String? {
+        context.cursorConnectorCredential(for: account)
     }
 
     private static func extractRecordCount(from object: Any) -> Int {
