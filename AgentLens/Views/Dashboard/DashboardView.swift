@@ -52,6 +52,8 @@ struct DashboardView: View {
     @State var pendingMemoryReviewCount: Int?
     @State var showCommandPalette = false
     @State var showHeroPopover = false
+    @State var toolbarSearchText = ""
+    @State var commandPaletteSeed = ""
 
     init(
         dataStore: DataStore,
@@ -306,7 +308,8 @@ struct DashboardView: View {
                     if mainRoute != .sessionLogs {
                         navigate(to: .sessionLogs)
                     }
-                }
+                },
+                initialQuery: commandPaletteSeed
             )
         }
         .sheet(isPresented: $showingSettings) {
@@ -460,6 +463,7 @@ struct DashboardView: View {
     /// Hidden ⌘K to open the Command Palette from anywhere in the window.
     private var commandPaletteShortcut: some View {
         Button {
+            commandPaletteSeed = ""
             showCommandPalette = true
         } label: {
             EmptyView()

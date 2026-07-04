@@ -11,6 +11,9 @@ struct CommandDeckPalette: View {
     var searchService: SearchService?
     var onNavigate: (DashboardMainRoute) -> Void
     var onSessionJump: (ConversationJumpTarget) -> Void
+    /// Optional seed so the toolbar live-search field can hand a partially
+    /// typed query straight into the palette without the user retyping it.
+    var initialQuery: String = ""
 
     @Environment(\.dismiss) private var dismiss
     @FocusState private var inputFocused: Bool
@@ -36,8 +39,14 @@ struct CommandDeckPalette: View {
         .frame(width: 520, height: 420)
         .background(DesignSystem.Colors.background)
         .onAppear {
+            if query.isEmpty, !initialQuery.isEmpty {
+                query = initialQuery
+            }
             inputFocused = true
             loadRecents()
+            if !trimmedQuery.isEmpty {
+                handleQueryChange()
+            }
         }
         .onDisappear {
             searchTask?.cancel()

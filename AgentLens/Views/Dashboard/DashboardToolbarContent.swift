@@ -6,16 +6,16 @@ import SwiftUI
 //
 // A single ~52pt bar replacing the old toolbar + tab-card strip.
 //
-//   [navigation]    back · 🔥 OpenBurnBar · section switcher · ⌘K hint
-//   [principal]     (empty — the section menu already names the route)
-//   [primaryAction] BURN hero (range + unit in popover) · ⋯ overflow
+//   [navigation]    back · 🔥 OpenBurnBar · section switcher
+//   [principal]     live search field (⌘K hands off to the palette)
+//   [primaryAction] BURN hero (range + unit in popover) · ⋯ overflow · avatar
 
 extension DashboardView {
 
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
 
-        // MARK: Navigation — back · brand · section switcher · ⌘K hint
+        // MARK: Navigation — back · brand · section switcher
 
         ToolbarItemGroup(placement: .navigation) {
             if canGoBack {
@@ -39,23 +39,41 @@ extension DashboardView {
                     }
                 }
             )
-
-            Button {
-                showCommandPalette = true
-            } label: {
-                ShortcutChip(keys: ["\u{2318}", "K"])
-            }
-            .buttonStyle(.plain)
-            .help("Command Palette (\u{2318}K)")
         }
 
-        // MARK: Primary — BURN hero (with range/unit popover) · overflow
+        // MARK: Principal — live search field (hands off to the ⌘K palette)
+
+        ToolbarItem(placement: .principal) {
+            BurnRailLiveSearchField(text: $toolbarSearchText) { query in
+                commandPaletteSeed = query
+                showCommandPalette = true
+            }
+        }
+
+        // MARK: Primary — BURN hero (range/unit popover) · overflow · profile
 
         ToolbarItemGroup(placement: .primaryAction) {
             commandDeckHero
 
             commandDeckOverflow
+
+            commandDeckProfile
         }
+    }
+
+    // MARK: - Profile avatar (opens Settings → Account)
+
+    private var commandDeckProfile: some View {
+        BurnRailProfileAvatar(
+            avatarURL: accountManager.avatarURL,
+            displayName: accountManager.userDisplayName,
+            email: accountManager.userEmail,
+            isSignedIn: accountManager.isSignedIn,
+            onOpen: {
+                UserDefaults.standard.set(SettingsTab.account.rawValue, forKey: "settings.pendingTab")
+                showingSettings = true
+            }
+        )
     }
 
     // MARK: - BURN hero with range + unit popover
