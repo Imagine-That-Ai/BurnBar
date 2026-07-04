@@ -10,6 +10,8 @@
                 <ResourceDictionary Source="ms-appx:///Theme/Tokens.xaml" />
                 <!-- Liquid-Glass vocabulary styles (W6-DS-GLASS chokepoint). -->
                 <ResourceDictionary Source="ms-appx:///Theme/LiquidGlass.xaml" />
+                <!-- Data Control Center shared card + inventory-header chrome (W7). -->
+                <ResourceDictionary Source="ms-appx:///DataControlCenter/DataControlStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

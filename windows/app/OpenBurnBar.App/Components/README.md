@@ -47,6 +47,16 @@ This mirrors the established `Theme/LiquidGlassTransparency.cs` (pure math) ↔ 
   fallback glyph (keyed by the shared `Theme.AgentProviderBrand`).
 - `QuotaModels` — `QuotaBucket` (`DisplayRemainingFraction`, window kind/label, unit + formatted
   text), `QuotaFill.Band`, `QuotaSignalStatus.Resolve`, `QuotaSourceKind`/`QuotaConfidence`.
+- `QuotaPacing` — `PacingMath` (`WindowDuration`, `Pace`, `HumanLabel`) + `IdealPace` / `PaceSeverity`
+  (port of `OpenBurnBarCore.PacingMath`; the ideal-pace marker the `Quota/QuotaArcDial` rings draw).
+- `QuotaArcDialModel` — `QuotaDialBucket` (`RemainingPercent`/`ProgressFraction`/`RemainingFraction`
+  port of the AgentLens typed `ProviderQuotaBucket`), `QuotaRingModel` (fill fraction + band + marker,
+  dashed when unavailable), `QuotaArcDialModel` (dominant window → center %), `QuotaArcGeometry`
+  (ring-arc points + large-arc flag). Consumed by `Quota/QuotaArcDial`.
+- `SubscriptionConstellationModel` — `SubscriptionEntry` + `SubscriptionOrbRing`, `AggregateSummary`,
+  and `SubscriptionConstellation` (worst-pressure-per-provider chips, selection toggle + downstream
+  `DisplayedEntries` filter, aggregate bands, hero eyebrow/headline copy). Consumed by
+  `Quota/SubscriptionConstellationHero` + `Quota/SubscriptionOrb`.
 - `ToolCallModels` — `ToolCallDisplay` (state classification, icon glyph, expandable detail),
   `ToolCallAccordionModel` (most-recent / additional-count / older-calls / expandable).
 - `SessionLedgerModels` — `SessionLedgerBucket` + boundary/title math, `SessionLedgerSupport`
@@ -68,9 +78,10 @@ This mirrors the established `Theme/LiquidGlassTransparency.cs` (pure math) ↔ 
 
 ## Verification (macOS ceiling — stated honestly)
 
-- **Portable logic:** `dotnet test windows/tests/components` → **133 tests pass on macOS.**
-- **XAML:** `xmllint --noout` well-formed on all 12 `.xaml`.
-- **C#:** Roslyn syntax-parse clean (0 errors) on all 19 `Components/*.cs`.
+- **Portable logic:** `dotnet test windows/tests/components` → **181 tests pass on macOS**
+  (+48 for the Quota lane: pacing math, dial fraction/marker, arc geometry, constellation filter).
+- **XAML:** `xmllint --noout` well-formed on all `.xaml` (incl. the four `Quota/*.xaml`).
+- **C#:** Roslyn syntax-parse clean (0 errors) on all `Components/*.cs` + the `Quota/*.cs` code-behind.
 - **MSBuild:** `dotnet build OpenBurnBar.App.csproj` reaches the **identical `XamlCompiler.exe`
   gate** as the spike baseline (0 warnings, 1 error = `MSB3073`, the Windows-only binary that
   cannot execute on macOS) — no new MSBuild/item errors from these controls.

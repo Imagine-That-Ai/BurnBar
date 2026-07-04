@@ -102,6 +102,14 @@
       render of that same logic.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <!--
+      Portable Dashboard layer (net8.0, no WinUI) for the Dashboard surface (Phase 3 ·
+      W7, Bucket C): the layout-switch state machine + the FULL frame-stepped easter-egg
+      particle SIMULATION (logo-storm / cloud-token-rain / boundary-pop) with its
+      deterministic RNG and glyph sampler. Dashboard/DashboardPage + EasterEggCanvasHost
+      STEP + draw this with Win2D; it is unit-tested on macOS (windows/tests/dashboard).
+    -->
+    <ProjectReference Include="../OpenBurnBar.App.Dashboard/OpenBurnBar.App.Dashboard.csproj" />
   </ItemGroup>
 
 </Project>
