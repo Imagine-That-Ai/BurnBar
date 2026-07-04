@@ -1,5 +1,8 @@
 using System;
 using System.ComponentModel;
+using System.Collections.Generic;
+using Microsoft.UI.Xaml.Navigation;
+using OpenBurnBar.App.Theme;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -21,6 +24,23 @@ public sealed partial class OnboardingPage : Page
     {
         InitializeComponent();
         SizeChanged += (_, _) => UpdateProgress();
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+
+        if (_context is not null)
+        {
+            return;
+        }
+
+        var model = new OnboardingWizardModel();
+        model.SetDetectedProviders(new[] { AgentProviderBrand.ClaudeCode, AgentProviderBrand.Codex });
+        model.PreselectDetectedProviders();
+        model.SeedChatBackends(ChatBackendMetadata.AllCases, ChatBackendId.Codex);
+
+        Start(new OnboardingContext(model));
     }
 
     private OnboardingWizardModel? Model => _context?.Model;

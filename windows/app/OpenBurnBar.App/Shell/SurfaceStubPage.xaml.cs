@@ -1,20 +1,16 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
-using OpenBurnBar.App.Cli;
-using OpenBurnBar.App.Views;
 
 namespace OpenBurnBar.App.Shell;
 
 /// <summary>
-/// The placeholder page every stubbed NavigationView destination navigates to. It renders the
-/// destination's glyph/title/subtitle and, for Session Logs, hosts the live CLI stream so the
-/// frame is proven to host real controls. Real surfaces replace this per-key over Phase 3.
+/// Fallback placeholder when <see cref="SurfacePageResolver"/> has no registered Page for a key.
+/// All <see cref="NavCatalog"/> sidebar destinations and <see cref="NavCatalog.Auxiliary"/> palette
+/// surfaces are registered; this page is not used for in-scope nav today.
 /// </summary>
 public sealed partial class SurfaceStubPage : Page
 {
-    private LiveCliStreamView? _liveView;
-
     public SurfaceStubPage()
     {
         InitializeComponent();
@@ -30,25 +26,7 @@ public sealed partial class SurfaceStubPage : Page
         TitleText.Text = destination.Title;
         SubtitleText.Text = destination.Subtitle;
 
-        // Session Logs previews the live stream (the spike's original demo content).
-        if (destination.Key == "sessionLogs")
-        {
-            PlaceholderCard.Visibility = Visibility.Collapsed;
-            LiveHost.Visibility = Visibility.Visible;
-
-            _liveView = new LiveCliStreamView();
-            LiveHost.Child = _liveView;
-            _liveView.Attach(new StubCliStream(), autoStart: true);
-        }
-    }
-
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
-    {
-        base.OnNavigatedFrom(e);
-
-        // Stop the stream and release the host when navigating away.
-        _liveView?.Detach();
-        _liveView = null;
-        LiveHost.Child = null;
+        PlaceholderCard.Visibility = Visibility.Visible;
+        LiveHost.Visibility = Visibility.Collapsed;
     }
 }
