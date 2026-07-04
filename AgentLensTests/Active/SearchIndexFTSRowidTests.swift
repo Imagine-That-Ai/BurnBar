@@ -147,6 +147,15 @@ final class SearchIndexFTSRowidTests: XCTestCase {
                 """,
                 arguments: ["chunk-1", "doc-1", "Title", "hello world", "Proj", "Codex"]
             )
+            // Stale duplicate FTS row: same chunkID, older text. The migration
+            // must preserve the row whose FTS text still matches the source chunk.
+            try db.execute(
+                sql: """
+                INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                arguments: ["chunk-1", "doc-1", "Title", "stale world", "Proj", "Codex"]
+            )
             // Orphan FTS row: no matching chunk. The migration sweeps it.
             try db.execute(
                 sql: """
@@ -166,10 +175,11 @@ final class SearchIndexFTSRowidTests: XCTestCase {
         XCTAssertNotNil(backfilledRowid, "v55 must backfill ftsRowid for pre-existing chunks")
 
         let ftsRows = try queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT rowid AS ftsRowid, chunkID FROM search_chunks_fts")
+            try Row.fetchAll(db, sql: "SELECT rowid AS ftsRowid, chunkID, chunkText FROM search_chunks_fts")
         }
-        XCTAssertEqual(ftsRows.count, 1, "the orphan FTS row must be swept by the migration")
+        XCTAssertEqual(ftsRows.count, 1, "the orphan and stale duplicate FTS rows must be swept by the migration")
         XCTAssertEqual(ftsRows.first?["chunkID"] as? String, "chunk-1")
+        XCTAssertEqual(ftsRows.first?["chunkText"] as? String, "hello world")
         XCTAssertEqual(ftsRows.first?["ftsRowid"] as? Int64, backfilledRowid)
     }
 

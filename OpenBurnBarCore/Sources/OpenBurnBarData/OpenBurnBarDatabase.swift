@@ -1832,7 +1832,7 @@ final class OpenBurnBarDatabase: Sendable {
                     try db.execute(
                         sql: """
                         CREATE TEMP TABLE search_chunks_fts_rowid_map AS
-                        SELECT id AS ftsRowid, c0 AS chunkID FROM search_chunks_fts_content
+                        SELECT id AS ftsRowid, c0 AS chunkID, c3 AS chunkText FROM search_chunks_fts_content
                         """
                     )
                     try db.execute(
@@ -1844,6 +1844,10 @@ final class OpenBurnBarDatabase: Sendable {
                         SET ftsRowid = (
                             SELECT m.ftsRowid FROM search_chunks_fts_rowid_map AS m
                             WHERE m.chunkID = search_chunks.id
+                            ORDER BY
+                                CASE WHEN m.chunkText = search_chunks.text THEN 0 ELSE 1 END,
+                                m.ftsRowid DESC
+                            LIMIT 1
                         )
                         """
                     )

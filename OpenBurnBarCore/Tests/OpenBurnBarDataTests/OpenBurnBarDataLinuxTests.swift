@@ -7,7 +7,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
     private let passphrase = "openburnbar-linux-data-tests-passphrase-2026"
     private let wrongPassphrase = "openburnbar-linux-data-tests-wrong-passphrase"
 
-    public override func setUpWithError() throws {
+    override public func setUpWithError() throws {
         try super.setUpWithError()
         #if os(Linux)
         continueAfterFailure = false
@@ -121,7 +121,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let migrations = try database.migrationRows()
         XCTAssertEqual(migrations, OpenBurnBarLocalDatabase.migrationIdentifiers)
-        XCTAssertEqual(migrations.last, "v54_provider_quota_snapshots")
+        XCTAssertEqual(migrations.last, "v55_search_chunks_fts_rowid")
         XCTAssertTrue(migrations.contains("v35_provider_accounts"))
         XCTAssertTrue(migrations.contains("v50_project_code_memory_schema"))
 
@@ -166,7 +166,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let database = try openDatabase(path: dbPath, passphrase: passphrase)
         defer { try? database.close() }
-        XCTAssertEqual(try database.migrationRows().last, "v54_provider_quota_snapshots")
+        XCTAssertEqual(try database.migrationRows().last, "v55_search_chunks_fts_rowid")
         XCTAssertEqual(try database.count(sql: "SELECT COUNT(*) FROM provider_accounts WHERE id = 'legacy-provider-account'"), 1)
         XCTAssertEqual(try database.verifyPragmaString("integrity_check"), "ok")
 

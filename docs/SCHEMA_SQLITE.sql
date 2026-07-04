@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: 6f4094a9eeb75469377818fa393183081cd853c8b9b1418cd0b3d74413992a93
+-- Schema hash: 449bb66d28b726b19465611fd80a560afa9d738c0da1bfaa8324c44d1421f049
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -168,6 +168,7 @@ CREATE TABLE search_chunks (
   messageEndOffset   INTEGER,
   sectionPath        TEXT,
   text               TEXT NOT NULL,
+  ftsRowid           INTEGER,
   contentHash        TEXT,
   createdAt          TEXT NOT NULL,
   updatedAt          TEXT NOT NULL
