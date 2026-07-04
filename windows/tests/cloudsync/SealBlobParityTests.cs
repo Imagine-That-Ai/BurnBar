@@ -59,5 +59,28 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
                 Assert.Equal(expected, CloudVaultCrypto.BlobPlaintextHmac(data, key));
             }
         }
+
+        [Fact]
+        public void JsonSerialization_UsesCanonicalWireNames()
+        {
+            var vector = First("sealBlob");
+            var envelope = KatVectors.BlobEnvelope(vector.GetProperty("envelope"));
+
+            var serialized = JsonSerializer.Serialize(envelope);
+
+            Assert.Contains("\"plaintextHMAC\"", serialized);
+            Assert.Contains("\"plaintextSHA256\"", serialized);
+            Assert.DoesNotContain("\"plaintextHmac\"", serialized);
+            Assert.DoesNotContain("\"PlaintextHmac\"", serialized);
+        }
+
+        private static JsonElement First(string section)
+        {
+            foreach (var vector in KatVectors.Section(section).EnumerateArray())
+            {
+                return vector;
+            }
+            throw new System.InvalidOperationException($"no {section} vectors");
+        }
     }
 }

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace OpenBurnBar.CloudSync.Crypto
 {
     /// <summary>
@@ -7,12 +9,19 @@ namespace OpenBurnBar.CloudSync.Crypto
     /// seal. Nonce / ciphertext / tag are Base64. The plaintext is never present.
     /// </summary>
     public sealed record CloudVaultSealedText(
+        [property: JsonPropertyName("schemaVersion")]
         int? SchemaVersion,
+        [property: JsonPropertyName("algorithm")]
         string Algorithm,
+        [property: JsonPropertyName("keyVersion")]
         int KeyVersion,
+        [property: JsonPropertyName("nonce")]
         string Nonce,
+        [property: JsonPropertyName("ciphertext")]
         string Ciphertext,
+        [property: JsonPropertyName("tag")]
         string Tag,
+        [property: JsonPropertyName("aad")]
         string? Aad);
 
     /// <summary>
@@ -25,13 +34,21 @@ namespace OpenBurnBar.CloudSync.Crypto
     /// it is not part of the AEAD and does not affect byte parity.)
     /// </summary>
     public sealed record CloudVaultBlobEnvelope(
+        [property: JsonPropertyName("schemaVersion")]
         int SchemaVersion,
+        [property: JsonPropertyName("algorithm")]
         string Algorithm,
+        [property: JsonPropertyName("keyVersion")]
         int KeyVersion,
+        [property: JsonPropertyName("plaintextSHA256")]
         string? PlaintextSha256,
+        [property: JsonPropertyName("plaintextHMAC")]
         string? PlaintextHmac,
+        [property: JsonPropertyName("integrityHashVersion")]
         int? IntegrityHashVersion,
+        [property: JsonPropertyName("sealedBoxBase64")]
         string SealedBoxBase64,
+        [property: JsonPropertyName("aad")]
         string? Aad);
 
     /// <summary>
@@ -41,10 +58,16 @@ namespace OpenBurnBar.CloudSync.Crypto
     /// different vault key. <see cref="SealedBoxBase64"/> is the combined box.
     /// </summary>
     public sealed record CloudVaultSealedPayload(
+        [property: JsonPropertyName("schemaVersion")]
         int SchemaVersion,
+        [property: JsonPropertyName("algorithm")]
         string Algorithm,
+        [property: JsonPropertyName("keyVersion")]
         int KeyVersion,
+        [property: JsonPropertyName("vaultKeyID")]
         string VaultKeyId,
+        [property: JsonPropertyName("sealedBoxBase64")]
         string SealedBoxBase64,
+        [property: JsonPropertyName("aad")]
         string? Aad);
 }

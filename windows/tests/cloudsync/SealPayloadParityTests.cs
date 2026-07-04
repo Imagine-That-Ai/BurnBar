@@ -56,5 +56,27 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
                 Assert.Equal(vector.Str("vaultKeyID"), CloudVaultCrypto.VaultKeyId(key));
             }
         }
+
+        [Fact]
+        public void JsonSerialization_UsesCanonicalVaultKeyIDName()
+        {
+            var vector = First("sealPayload");
+            var envelope = KatVectors.PayloadEnvelope(vector.GetProperty("envelope"));
+
+            var serialized = JsonSerializer.Serialize(envelope);
+
+            Assert.Contains("\"vaultKeyID\"", serialized);
+            Assert.DoesNotContain("\"vaultKeyId\"", serialized);
+            Assert.DoesNotContain("\"VaultKeyId\"", serialized);
+        }
+
+        private static JsonElement First(string section)
+        {
+            foreach (var vector in KatVectors.Section(section).EnumerateArray())
+            {
+                return vector;
+            }
+            throw new System.InvalidOperationException($"no {section} vectors");
+        }
     }
 }

@@ -17,10 +17,12 @@ namespace OpenBurnBar.CloudSync.Crypto
     {
         internal const int NonceLength = 12;
         internal const int TagLength = 16;
+        private const int KeyLength = 32;
 
         internal static (byte[] Nonce, byte[] Ciphertext, byte[] Tag, byte[] Combined) SealDetached(
             byte[] plaintext, byte[] key, byte[] aad, byte[]? nonce)
         {
+            RequireKey(key);
             var n = nonce ?? RandomNumberGenerator.GetBytes(NonceLength);
             if (n.Length != NonceLength)
             {
@@ -44,6 +46,7 @@ namespace OpenBurnBar.CloudSync.Crypto
 
         internal static byte[] OpenDetached(byte[] nonce, byte[] ciphertext, byte[] tag, byte[] key, byte[] aad)
         {
+            RequireKey(key);
             if (nonce.Length != NonceLength || tag.Length != TagLength)
             {
                 throw CloudVaultCryptoException.InvalidEnvelope();
@@ -78,6 +81,14 @@ namespace OpenBurnBar.CloudSync.Crypto
             Buffer.BlockCopy(combined, NonceLength, ciphertext, 0, ciphertext.Length);
             Buffer.BlockCopy(combined, NonceLength + ciphertext.Length, tag, 0, TagLength);
             return OpenDetached(nonce, ciphertext, tag, key, aad);
+        }
+
+        private static void RequireKey(byte[] key)
+        {
+            if (key.Length != KeyLength)
+            {
+                throw CloudVaultCryptoException.InvalidKeyLength();
+            }
         }
     }
 }

@@ -96,6 +96,19 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         }
 
         [Fact]
+        public void OpenBlob_MalformedIntegrityHmac_ThrowsInvalidEnvelope()
+        {
+            var vector = First("sealBlob");
+            var key = vector.Hex("keyHex");
+            var env = KatVectors.BlobEnvelope(vector.GetProperty("envelope"));
+            var malformed = env with { PlaintextHmac = "not-a-64-byte-hmac" };
+            var aad = vector.Has("aadContext") ? vector.AadContext() : null;
+
+            var ex = Assert.Throws<CloudVaultCryptoException>(() => CloudVaultCrypto.OpenBlob(malformed, key, aad));
+            Assert.Equal(CloudVaultCryptoErrorCode.InvalidEnvelope, ex.Code);
+        }
+
+        [Fact]
         public void OpenPayload_WrongVaultKey_Throws()
         {
             var vector = First("sealPayload");
@@ -145,6 +158,35 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         {
             var ex = Assert.Throws<CloudVaultCryptoException>(() => CloudVaultCrypto.VaultKeyId(new byte[16]));
             Assert.Equal(CloudVaultCryptoErrorCode.InvalidKeyLength, ex.Code);
+        }
+
+        [Fact]
+        public void SealPayload_WithShortKey_Throws_InvalidKeyLengthCode()
+        {
+            var ex = Assert.Throws<CloudVaultCryptoException>(() =>
+                CloudVaultCrypto.SealPayload(new byte[] { 1, 2, 3 }, new byte[16], "v1_bad"));
+            Assert.Equal(CloudVaultCryptoErrorCode.InvalidKeyLength, ex.Code);
+        }
+
+        [Fact]
+        public void SealText_WithLongKey_Throws_InvalidKeyLengthCode()
+        {
+            var ex = Assert.Throws<CloudVaultCryptoException>(() =>
+                CloudVaultCrypto.SealText("hello", new byte[24]));
+            Assert.Equal(CloudVaultCryptoErrorCode.InvalidKeyLength, ex.Code);
+        }
+
+        [Fact]
+        public void WrapVaultKey_WithNonCanonicalPrivateScalar_ThrowsInvalidPublicKey()
+        {
+            var vector = First("escrowWrap");
+            var vaultKey = vector.Hex("vaultKeyHex");
+            var recipientPublic = vector.Hex("recipientPublicKeyX963Hex");
+            var trimmedScalar = vector.Hex("ephemeralPrivateKeyRawHex")[1..];
+
+            var ex = Assert.Throws<CloudVaultCryptoException>(() =>
+                CloudVaultCrypto.WrapVaultKey(vaultKey, recipientPublic, trimmedScalar, nonce: null));
+            Assert.Equal(CloudVaultCryptoErrorCode.InvalidPublicKey, ex.Code);
         }
 
         private static JsonElement First(string section)

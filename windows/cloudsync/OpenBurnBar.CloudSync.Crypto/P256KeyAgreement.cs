@@ -104,6 +104,10 @@ namespace OpenBurnBar.CloudSync.Crypto
 
         private static BigInteger ScalarFromBytes(byte[] scalar)
         {
+            if (scalar.Length != 32)
+            {
+                throw CloudVaultCryptoException.InvalidPublicKey();
+            }
             var d = new BigInteger(1, scalar);
             if (d.SignValue <= 0 || d.CompareTo(Curve.N) >= 0)
             {

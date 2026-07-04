@@ -399,8 +399,12 @@ namespace OpenBurnBar.CloudSync.Crypto
             }
         }
 
-        private static bool ConstantTimeEquals(string a, string b) =>
-            CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
+        private static bool ConstantTimeEquals(string a, string b)
+        {
+            var left = Encoding.UTF8.GetBytes(a);
+            var right = Encoding.UTF8.GetBytes(b);
+            return left.Length == right.Length && CryptographicOperations.FixedTimeEquals(left, right);
+        }
 
         private static string HexString(byte[] data)
         {
