@@ -52,6 +52,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (toolbar + tab-card strip) into one ~52pt bar with a ⌘K command palette for
   section fuzzy-filter + session search, and ⌘1–⌘7 section shortcuts.
 
+## [1.0.29] - 2026-07-04
+
+### Added
+
+- **Latest-main macOS release cut** - advances the direct-download release to
+  `1.0.29` from `origin/main` commit `8092d19ea1`, including the Windows
+  parity integration merge, Command Bridge settings IA, Model Proxy tab, and
+  Command Deck top-chrome redesign.
+- **Fresh TestFlight build line** - bumps the iOS, widget, and keyboard build
+  number to `82` while keeping the approved iOS marketing version at `1.0.2`,
+  giving App Store Connect a unique upload for the newest source cut.
+- **Android release metadata** - bumps the Android release bundle to
+  `versionCode` 39 / `versionName` `1.0.29` so Google Play metadata remains
+  aligned with the same release source.
+
+### Fixed
+
+- **iOS 27 mobile stability** - carries the Firebase source-built gRPC guard,
+  Firestore cloud-sync repair, edge-to-edge backdrop fixes, Face ID usage
+  description, and Mercury mirror consent/session stability fixes into the
+  mobile release line.
+- **Cloud sync resilience** - keeps one bad escrow entry from killing all usage
+  uploads and binds usage project-name seals to their document AAD context.
+
 ## [1.0.28] - 2026-07-03
 
 ### Fixed
