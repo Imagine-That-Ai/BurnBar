@@ -1,0 +1,9 @@
+<Page
+    x:Class="OpenBurnBar.App.Memory.MemoryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:memory="using:OpenBurnBar.App.Memory">
+    <Grid Padding="24">
+        <memory:MemoryReviewInboxView x:Name="InboxView" />
+    </Grid>
+</Page>
