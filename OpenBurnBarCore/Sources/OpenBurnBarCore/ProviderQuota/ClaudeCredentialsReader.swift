@@ -35,7 +35,7 @@ import Foundation
 /// `expiresAt` is **milliseconds** since epoch (not seconds) — easy to
 /// mis-parse if you're not careful.
 
-struct ClaudeOAuthCredentials: Sendable, Equatable {
+public struct ClaudeOAuthCredentials: Sendable, Equatable {
     let accessToken: String
     let refreshToken: String?
     let expiresAt: Date?
@@ -113,7 +113,7 @@ struct ClaudeOAuthCredentials: Sendable, Equatable {
     }
 }
 
-protocol ClaudeCredentialsReading: Sendable {
+public protocol ClaudeCredentialsReading: Sendable {
     /// Returns the most recent credentials, or `nil` if none are
     /// intentionally supplied to this OpenBurnBar process.
     func load() -> ClaudeOAuthCredentials?
@@ -122,11 +122,11 @@ protocol ClaudeCredentialsReading: Sendable {
 /// Production default: no third-party credential discovery. This keeps
 /// Claude quota refresh prompt-free and prevents OpenBurnBar from
 /// reading or mutating Claude Code's own credential stores.
-struct NoClaudeCredentialsReader: ClaudeCredentialsReading {
-    func load() -> ClaudeOAuthCredentials? { nil }
+public struct NoClaudeCredentialsReader: ClaudeCredentialsReading {
+    public func load() -> ClaudeOAuthCredentials? { nil }
 }
 
-enum ClaudeCredentialsReader {
+public enum ClaudeCredentialsReader {
     /// Internal so tests can exercise the parser against synthetic
     /// JSON without touching user credential stores. Returns `nil` on
     /// any schema deviation — better unavailable than a half-formed
@@ -166,9 +166,9 @@ enum ClaudeCredentialsReader {
 /// Test seam: exposes a fixed credentials value without any user-store
 /// dependency. Used by `ProviderQuotaServiceTests`
 /// to drive the OAuth-fetch path deterministically.
-struct StaticClaudeCredentialsReader: ClaudeCredentialsReading {
+public struct StaticClaudeCredentialsReader: ClaudeCredentialsReading {
     let credentials: ClaudeOAuthCredentials?
-    func load() -> ClaudeOAuthCredentials? { credentials }
+    public func load() -> ClaudeOAuthCredentials? { credentials }
 }
 
 private extension String {

@@ -17,7 +17,7 @@ import Foundation
 ///
 /// Reference: CodexBar `OllamaUsageFetcher.swift` (same HTML scraping pattern).
 
-enum FactoryDashboardScraper {
+public enum FactoryDashboardScraper {
 
     // MARK: - Types
 

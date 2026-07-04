@@ -44,10 +44,14 @@ public enum ProviderQuotaConfidence: String, Codable, Sendable {
 // MARK: - Provider Quota Unit
 
 public enum ProviderQuotaUnit: String, Codable, Sendable {
+    case percent
     case tokens
     case requests
     case fastCalls = "fast-calls"
     case credits
+    case currency
+    case count
+    case sessions
     case unknown
 }
 
@@ -64,16 +68,103 @@ public enum ProviderQuotaWindowKind: String, Codable, Sendable {
 }
 
 // MARK: - Provider Quota Bucket
+//
+// WS-C2 parity: stored mac/Windows-harness fields (`key`, `label`, `windowKind`,
+// `usedValue`, `limitValue`, `remainingValue`, `usedPercent`, `unit`, `isEstimated`)
+// are canonical for adapter output. `name`/`used`/`limit`/`remaining`/`window`/`meta`
+// are derived for legacy Core routing/UI. Codable prefers the mac JSON shape when
+// `key` is present; otherwise decodes the legacy `name`/`used`/`limit` shape.
 
-public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
+public struct ProviderQuotaBucket: Codable, Hashable, Sendable, Identifiable {
+    public let key: String
+    public let label: String
+    public let windowKind: ProviderQuotaWindowKind
+    public let usedValue: Double?
+    public let limitValue: Double?
+    public let remainingValue: Double?
+    public let usedPercent: Double?
+    public let resetsAt: Date?
+    public let unit: ProviderQuotaUnit
+    public let isEstimated: Bool
+
     public let name: String
     public let used: Double
     public let limit: Double
     public let remaining: Double
     public let window: String?
     public let meta: [String: String]?
-    public let resetsAt: Date?
 
+    public var id: String { key }
+
+
+    public var remainingPercent: Double? {
+        if let usedPercent {
+            return max(0, min(100 - usedPercent, 100))
+        }
+        if let remainingValue, unit == .percent {
+            return min(max(remainingValue, 0), 100)
+        }
+        if let remainingValue, let limitValue, limitValue > 0 {
+            return min(max((remainingValue / limitValue) * 100, 0), 100)
+        }
+        return nil
+    }
+
+    /// macOS adapter / Windows `ExpectedBucket` initializer.
+    public init(
+        key: String,
+        label: String,
+        windowKind: ProviderQuotaWindowKind,
+        usedValue: Double?,
+        limitValue: Double?,
+        remainingValue: Double?,
+        usedPercent: Double?,
+        resetsAt: Date?,
+        unit: ProviderQuotaUnit,
+        isEstimated: Bool
+    ) {
+        self.key = key
+        self.label = label
+        self.windowKind = windowKind
+        self.usedValue = usedValue
+        self.limitValue = limitValue
+        self.remainingValue = remainingValue
+        self.usedPercent = usedPercent
+        self.resetsAt = resetsAt
+        self.unit = unit
+        self.isEstimated = isEstimated
+
+        self.name = key
+        self.window = windowKind.rawValue
+
+        if let usedPercent {
+            self.used = usedPercent
+            self.limit = 100
+            self.remaining = max(0, 100 - usedPercent)
+        } else if unit == .percent, let remainingValue {
+            self.used = max(0, 100 - remainingValue)
+            self.limit = 100
+            self.remaining = remainingValue
+        } else {
+            self.used = usedValue ?? 0
+            let lim = limitValue ?? -1
+            self.limit = lim
+            if let remainingValue {
+                self.remaining = remainingValue
+            } else if let limVal = limitValue, limVal > 0, let usedVal = usedValue {
+                self.remaining = max(0, limVal - usedVal)
+            } else {
+                self.remaining = remainingValue ?? 0
+            }
+        }
+
+        var meta: [String: String] = ["label": label, "unit": unit.rawValue]
+        if isEstimated { meta["isEstimated"] = "true" }
+        if let usedPercent { meta["usedPercent"] = String(usedPercent) }
+        self.meta = meta.isEmpty ? nil : meta
+    }
+
+    /// Legacy Core initializer (routing / Firestore).
     public init(
         name: String,
         used: Double,
@@ -83,59 +174,131 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
         meta: [String: String]? = nil,
         resetsAt: Date? = nil
     ) {
+        let windowKind = window.flatMap { ProviderQuotaWindowKind(rawValue: $0) } ?? .custom
+        let unitRaw = meta?["unit"] ?? "unknown"
+        let unit = ProviderQuotaUnit(rawValue: unitRaw) ?? .unknown
+        let usedPercent = meta.flatMap { m in
+            ["usedPercent", "used_percent", "usage_percent"].compactMap { m[$0] }.first.flatMap(Double.init)
+        }
+        let isEstimated = meta?["isEstimated"] == "true"
+
+        self.key = name
+        self.label = meta?["label"] ?? name
+        self.windowKind = windowKind
+        self.usedValue = used
+        self.limitValue = limit > 0 ? limit : nil
+        self.remainingValue = remaining
+        self.usedPercent = usedPercent
+        self.resetsAt = resetsAt
+        self.unit = unit
+        self.isEstimated = isEstimated
         self.name = name
         self.used = used
         self.limit = limit
         self.remaining = remaining
         self.window = window
         self.meta = meta
-        self.resetsAt = resetsAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, used, limit, remaining, window, meta, resetsAt
+        case key, label, windowKind, usedValue, limitValue, remainingValue, usedPercent, resetsAt, unit, isEstimated
+        case name, used, limit, remaining, window, meta
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.name = try c.decode(String.self, forKey: .name)
-        self.used = try c.decode(Double.self, forKey: .used)
-        self.limit = try c.decode(Double.self, forKey: .limit)
-        self.remaining = try c.decode(Double.self, forKey: .remaining)
-        self.window = try c.decodeIfPresent(String.self, forKey: .window)
-        let decodedMeta = try c.decodeIfPresent([String: String].self, forKey: .meta)
-        self.meta = decodedMeta
-
-        // Three input shapes are valid for the top-level field:
-        //  1. `Date` (Codable's deferred-to-date Double or whatever strategy
-        //     the decoder is using) — emitted by iOS after `sanitizeForJSON`
-        //     turns Firestore `Timestamp` into `timeIntervalSinceReferenceDate`.
-        //  2. ISO8601 string — emitted by Cloud Functions HTTP responses and
-        //     by older Mac builds before the field was first-class.
-        //  3. Missing → fall back to `meta["resetsAt"]` for docs written
-        //     before the field was promoted.
-        if let direct = try? c.decodeIfPresent(Date.self, forKey: .resetsAt) {
-            self.resetsAt = direct
-        } else if let isoString = try? c.decodeIfPresent(String.self, forKey: .resetsAt),
-                  let parsed = Self.parseResetsAtString(isoString) {
-            self.resetsAt = parsed
-        } else if let legacy = decodedMeta?["resetsAt"],
-                  let parsed = Self.parseResetsAtString(legacy) {
-            self.resetsAt = parsed
+        if let key = try c.decodeIfPresent(String.self, forKey: .key) {
+            self.key = key
+            self.label = try c.decode(String.self, forKey: .label)
+            self.windowKind = try c.decode(ProviderQuotaWindowKind.self, forKey: .windowKind)
+            self.usedValue = try c.decodeIfPresent(Double.self, forKey: .usedValue)
+            self.limitValue = try c.decodeIfPresent(Double.self, forKey: .limitValue)
+            self.remainingValue = try c.decodeIfPresent(Double.self, forKey: .remainingValue)
+            self.usedPercent = try c.decodeIfPresent(Double.self, forKey: .usedPercent)
+            self.unit = try c.decode(ProviderQuotaUnit.self, forKey: .unit)
+            self.isEstimated = try c.decodeIfPresent(Bool.self, forKey: .isEstimated) ?? false
+            self.resetsAt = Self.decodeResetsAt(from: c)
+            self.name = key
+            self.window = windowKind.rawValue
+            if let usedPercent {
+                self.used = usedPercent
+                self.limit = 100
+                self.remaining = max(0, 100 - usedPercent)
+            } else if unit == .percent, let remainingValue {
+                self.used = max(0, 100 - remainingValue)
+                self.limit = 100
+                self.remaining = remainingValue
+            } else {
+                self.used = usedValue ?? 0
+                let lim = limitValue ?? -1
+                self.limit = lim
+                if let remainingValue {
+                    self.remaining = remainingValue
+                } else if let limVal = limitValue, limVal > 0, let usedVal = usedValue {
+                    self.remaining = max(0, limVal - usedVal)
+                } else {
+                    self.remaining = remainingValue ?? 0
+                }
+            }
+            var meta: [String: String] = ["label": label, "unit": unit.rawValue]
+            if isEstimated { meta["isEstimated"] = "true" }
+            if let usedPercent { meta["usedPercent"] = String(usedPercent) }
+            self.meta = meta
         } else {
-            self.resetsAt = nil
+            self.name = try c.decode(String.self, forKey: .name)
+            self.used = try c.decode(Double.self, forKey: .used)
+            self.limit = try c.decode(Double.self, forKey: .limit)
+            self.remaining = try c.decode(Double.self, forKey: .remaining)
+            self.window = try c.decodeIfPresent(String.self, forKey: .window)
+            self.meta = try c.decodeIfPresent([String: String].self, forKey: .meta)
+            self.resetsAt = Self.decodeResetsAt(from: c, meta: meta)
+            self.key = name
+            self.label = meta?["label"] ?? name
+            self.windowKind = window.flatMap { ProviderQuotaWindowKind(rawValue: $0) } ?? .custom
+            self.usedValue = used
+            self.limitValue = limit > 0 ? limit : nil
+            self.remainingValue = remaining
+            self.usedPercent = meta.flatMap { m in
+                ["usedPercent", "used_percent", "usage_percent"].compactMap { m[$0] }.first.flatMap(Double.init)
+            }
+            let unitRaw = meta?["unit"] ?? "unknown"
+            self.unit = ProviderQuotaUnit(rawValue: unitRaw) ?? .unknown
+            self.isEstimated = meta?["isEstimated"] == "true"
         }
     }
 
-    /// Accept ISO8601 with or without fractional seconds. The Mac writer
-    /// historically emits the fraction-less form (default `ISO8601DateFormatter`
-    /// options); Cloud Functions and some other writers include fractional
-    /// seconds. Try both before giving up.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(key, forKey: .key)
+        try c.encode(label, forKey: .label)
+        try c.encode(windowKind, forKey: .windowKind)
+        try c.encodeIfPresent(usedValue, forKey: .usedValue)
+        try c.encodeIfPresent(limitValue, forKey: .limitValue)
+        try c.encodeIfPresent(remainingValue, forKey: .remainingValue)
+        try c.encodeIfPresent(usedPercent, forKey: .usedPercent)
+        try c.encodeIfPresent(resetsAt, forKey: .resetsAt)
+        try c.encode(unit, forKey: .unit)
+        try c.encode(isEstimated, forKey: .isEstimated)
+    }
+
+    private static func decodeResetsAt(
+        from c: KeyedDecodingContainer<CodingKeys>,
+        meta: [String: String]? = nil
+    ) -> Date? {
+        if let direct = try? c.decodeIfPresent(Date.self, forKey: .resetsAt) {
+            return direct
+        }
+        if let isoString = try? c.decodeIfPresent(String.self, forKey: .resetsAt),
+           let parsed = parseResetsAtString(isoString) {
+            return parsed
+        }
+        if let legacy = meta?["resetsAt"], let parsed = parseResetsAtString(legacy) {
+            return parsed
+        }
+        return nil
+    }
+
     private static func parseResetsAtString(_ s: String) -> Date? {
-        // `ThreadSafeISO8601DateFormatter.parse` tries the fractional form
-        // (`[.withInternetDateTime, .withFractionalSeconds]`) first, then the
-        // fraction-less form (`[.withInternetDateTime]`) — the exact two-step
-        // acceptance this parser performed with its own pair of formatters.
         ThreadSafeISO8601DateFormatter.parse(s)
     }
 }
@@ -143,15 +306,6 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
 // MARK: - Reset Time Display
 
 public extension ProviderQuotaBucket {
-    var key: String {
-        let nameKey = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let windowKey = window?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        if windowKey.isEmpty {
-            return nameKey
-        }
-        return "\(nameKey)::\(windowKey)"
-    }
-
     /// Whether this bucket represents a prepaid credit balance (no hard
     /// limit or window) as opposed to a time-windowed quota bucket.
     /// Detectable by: no meaningful limit value, but a positive remaining
@@ -163,12 +317,6 @@ public extension ProviderQuotaBucket {
         return windowLower.contains("lifetime") || windowLower.isEmpty
     }
 
-    var label: String {
-        if let customLabel = meta?["label"] {
-            return customLabel
-        }
-        return name
-    }
     /// Pre-formatted reset-time strings used by every quota details surface
     /// (Mac, iOS, Android via the shared logic, Smart Hub cast). Returns
     /// `nil` when the bucket has no known reset moment so callers can omit

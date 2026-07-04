@@ -21,7 +21,7 @@ import Foundation
 /// Docs: https://docs.warp.dev/reference/cli/api-keys
 /// Reference: CodexBar (github.com/steipete/CodexBar) — `WarpUsageFetcher.swift`
 
-enum WarpAPIFetcher {
+public enum WarpAPIFetcher {
 
     // MARK: - Types
 

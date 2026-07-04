@@ -1,5 +1,4 @@
 import Foundation
-import OpenBurnBarCore
 
 // MARK: - SuperGrok Usage Log
 //
@@ -16,7 +15,7 @@ import OpenBurnBarCore
 // Writers append one line every time the routing layer dispatches a prompt
 // to xAI, regardless of which inference key actually services the call.
 
-enum XAISuperGrokUsageLog {
+public enum XAISuperGrokUsageLog {
 
     /// Append one event line to the SuperGrok usage log.
     static func recordPromptDispatched(

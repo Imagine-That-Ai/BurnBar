@@ -1,5 +1,4 @@
 import Foundation
-import OpenBurnBarCore
 
 // MARK: - Aider Quota Adapter
 
@@ -13,11 +12,11 @@ import OpenBurnBarCore
 ///
 /// Reference: `AiderParser.swift` in UsageAggregatorParsers (same data source).
 
-struct AiderQuotaAdapter: ProviderQuotaAdapter {
+public struct AiderQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Public API
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let analyticsFiles = findAnalyticsFiles(fileManager: context.fileManager)
 
         guard !analyticsFiles.isEmpty else {

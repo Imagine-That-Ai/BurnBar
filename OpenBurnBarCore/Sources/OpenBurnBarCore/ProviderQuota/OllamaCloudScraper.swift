@@ -19,7 +19,7 @@ import Foundation
 /// Reference: CodexBar `OllamaUsageFetcher.swift` + `OllamaUsageParser.swift`
 /// (github.com/steipete/CodexBar, verified 2026-05-02)
 
-enum OllamaCloudScraper {
+public enum OllamaCloudScraper {
 
     // MARK: - Public API
 

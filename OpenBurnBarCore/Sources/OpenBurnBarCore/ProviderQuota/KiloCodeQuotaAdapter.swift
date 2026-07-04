@@ -23,7 +23,7 @@ import Foundation
 ///
 /// Verified: 1 task on this machine via Cursor globalStorage.
 
-struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
+public struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
 
     private static let extensionID = "kilocode.kilo-code"
 
@@ -35,7 +35,7 @@ struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
         "Windsurf - Next"
     ]
 
-    func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let tasksDir = findTasksDirectory()
 
         guard let tasksDir, FileManager.default.fileExists(atPath: tasksDir) else {
