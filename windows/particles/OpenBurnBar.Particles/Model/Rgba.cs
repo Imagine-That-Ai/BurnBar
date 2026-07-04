@@ -49,6 +49,9 @@ public readonly struct Rgba
     /// <summary>Push toward white by <paramref name="amount"/>, keep alpha (the "hot core" move, mirrors <c>RGBA.toWhite</c>).</summary>
     public Rgba ToWhite(double amount) => Mix(new Rgba(1, 1, 1, A), amount);
 
+    /// <summary>Push toward black by <paramref name="amount"/>, keep alpha (mirrors <c>RGBA.darkened(by:)</c>).</summary>
+    public Rgba Darkened(double amount) => Mix(new Rgba(0, 0, 0, A), amount);
+
     /// <summary>
     /// Quantized 8-bit-per-channel bucket key — byte-identical to Swift
     /// <c>RGBA.bucketKey</c>. Used to batch fills by color so draw counts stay

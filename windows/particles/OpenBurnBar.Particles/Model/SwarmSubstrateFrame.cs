@@ -1,3 +1,5 @@
+using OpenBurnBar.Particles.Math;
+
 namespace OpenBurnBar.Particles.Model;
 
 /// <summary>App-wide visual persona — port of Swift Core <c>UIMode</c>.</summary>
@@ -161,11 +163,21 @@ public sealed class SwarmSubstrateFrame
     /// <summary>Suggested base point px (median dot radius).</summary>
     public double SizePx { get; }
 
+    /// <summary>
+    /// Lazily-built, cached NN order + k-NN neighbor lists for the Mesh
+    /// connected-node lattice idioms (the "Caustic Pool" refracted filament net).
+    /// Owned per-frame; the simulation may inject a persistent one so the topology
+    /// cache survives across frames (mirrors the Swift <c>frame.structure</c>).
+    /// Styles that ignore it pay nothing.
+    /// </summary>
+    public SubstrateStructureProvider Structure { get; }
+
     public SwarmSubstrateFrame(
         double width, double height, bool dark, bool reduced, bool batteryThrottled,
         UIMode uiMode, bool isShapeMode, bool formed, double settleProgress,
         double t, double dt, in SubstrateStage stage, Rgba? backdrop,
-        SwarmSubstrateDot[] dots, double cx, double cy, double cloudRadius, double sizePx)
+        SwarmSubstrateDot[] dots, double cx, double cy, double cloudRadius, double sizePx,
+        SubstrateStructureProvider? structure = null)
     {
         Width = width;
         Height = height;
@@ -185,5 +197,6 @@ public sealed class SwarmSubstrateFrame
         Cy = cy;
         CloudRadius = cloudRadius;
         SizePx = sizePx;
+        Structure = structure ?? new SubstrateStructureProvider();
     }
 }

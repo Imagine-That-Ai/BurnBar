@@ -100,10 +100,32 @@ centroid/cloudRadius/sizePx, and stage derivation.
 ## Status / next
 
 - ✅ Renderer core + math kit + drawing seam + FFI contract — built green on macOS.
-- ✅ PlainDots + Starfire (1 of the 24 bespoke) painters — faithful line-for-line ports.
-- ✅ Headless perf harness — real numbers above.
-- ✅ Win2D host + adapter authored (CanvasAnimatedControl, CanvasBlend.Add,
-  GaussianBlurEffect, CanvasRadialGradientBrush) — Windows/CI-deferred compile+render.
+- ✅ PlainDots + Starfire (Constellation) painters — faithful line-for-line ports (#1202).
+- ✅ **Mesh family** (Caustic Pool, Gradient Patch, Iso Contour, Living Grain) +
+  **Moiré family** (Fringe Bloom, Lattice Facet, Ruling Grating, Film Bubble) — 8 more
+  faithful line-for-line ports under `Substrates/Mesh/` + `Substrates/Moire/`, registered
+  in the C# `SubstrateCatalog`. Consumed the existing `ISwarmSubstrate` + `SwarmSubstrateFrame`
+  + `RecordingDrawingSession` pattern unchanged.
+- ✅ **Drawing seam extended** (the subset of `CanvasDrawingSession` these families use):
+  `FillPolygon` (triangular facet lattices), `FillRoundedRectGradient` + `StrokeRoundedRect`
+  (Gradient-Patch stained-glass panes via `CanvasLinearGradientBrush`), `StrokeCircle`
+  (Film-Bubble rims), `PushRadialMaskLayer` (Ruling-Grating full-field feather via
+  `AlphaMaskEffect`), a `GlowProfile` on `DrawGlowSprite` (glow / glass-sphere / spark),
+  and a `layerOpacity` on `PushBlurLayer` (Living-Grain haze). Implemented in all three
+  sinks: interface + `RecordingDrawingSession` (counts + FNV checksum) + the Windows
+  `Win2DSubstrateDrawingSession` / `GlowSpriteCache` forwards.
+- ✅ Ported `SubstrateStructureProvider` (the grid-based k-NN / NN-order graph) that the
+  Mesh "Caustic Pool" refracted filament net (connected-node lattice) is built from;
+  `SwarmSubstrateFrame` now carries a lazily-built `Structure` (injectable so the sim can
+  reuse the topology cache across frames).
+- ✅ Headless perf harness now benchmarks **all 9 painters × {free-swarm, shape}** and
+  `--verify` proves each renders **deterministically** (stable checksum + counts) and is
+  **FFI-transparent** in both regimes. Every substrate clears the 60fps CPU budget with
+  16×–225× headroom (see numbers above / the harness output); heaviest is Caustic-Pool
+  shape mode (median ~0.71 ms, k-NN rebuilt as the topology drifts).
+- ✅ Win2D host + adapter kept buildable (Windows-gated): the new seam methods forward to
+  `CanvasGeometry.CreatePolygon` / `CreateRoundedRectangle`, `CanvasLinearGradientBrush`,
+  `DrawCircle`, `AlphaMaskEffect`, and `OpacityEffect`.
 - ⏳ **Windows/CI-deferred:** live render + GPU 60fps @ ARM64 measurement; the Swift
-  `obb_swarm_vend_frame` emitter; the remaining 23 bespoke painters (fan out after
-  this spike, exactly as the plan sequences).
+  `obb_swarm_vend_frame` emitter; the remaining families (Flow / Aurora / Volumetric —
+  12 bespoke) fan out on this same pattern.
