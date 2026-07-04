@@ -5,9 +5,17 @@ import Foundation
 // Portable (Foundation-only, zero AppKit/UIKit) codec for the encoding Claude
 // Code uses to name the per-project session directories under
 // `~/.claude/projects/` (macOS/Linux) and `%USERPROFILE%\.claude\projects\`
-// (Windows). This is the shared ground truth that the W4 parser port (macOS and
-// Windows) both build on, so it deliberately lives in the parser layer with no
-// platform-specific dependencies and can be lifted verbatim to the Windows port.
+// (Windows). This is the shared ground truth that the Windows parser port
+// (macOS and Windows) both build on, so it lives in the Windows-buildable Engine
+// (`OpenBurnBarCore`) with no platform-specific dependencies.
+//
+// Windows-port history: authored under `VAL-P0-PATH-021` inside the macOS app
+// layer (`AgentLens/Services/LogParser/`), then lifted verbatim into the Engine
+// in Phase-2 (parser path-remap) so the exact decoder that macOS validates also
+// compiles on `x86_64-unknown-windows-msvc`/`aarch64-unknown-windows-msvc` and can
+// be exercised by the Windows parser-parity CI gate. The algorithm and the
+// committed capture corpus (`AgentLensTests/Fixtures/ClaudeCodePaths/`) are
+// unchanged; only its module home moved (app → Engine, `internal` → `public`).
 //
 // # The encoding (ground truth)
 //
@@ -59,10 +67,10 @@ import Foundation
 // `decode` returns *a* path that re-encodes identically (canonical round-trip)
 // but is not literally equal to the original — the inherent, documented loss.
 
-enum ClaudeCodeProjectPathCodec {
+public enum ClaudeCodeProjectPathCodec {
 
     /// The path convention a directory name should be decoded under.
-    enum PathStyle: String, Codable, Sendable, CaseIterable {
+    public enum PathStyle: String, Codable, Sendable, CaseIterable {
         /// POSIX absolute/relative paths: separator `/`, root `/`.
         case posix
         /// Windows paths: drive `X:\…`, UNC `\\host\share\…`, separator `\`.
@@ -72,7 +80,7 @@ enum ClaudeCodeProjectPathCodec {
     }
 
     /// The structural shape recovered from an encoded directory name.
-    enum Form: String, Codable, Sendable {
+    public enum Form: String, Codable, Sendable {
         /// A POSIX absolute path (`/Users/…`).
         case posixAbsolute
         /// A Windows drive-qualified path (`C:\…`).
@@ -84,27 +92,27 @@ enum ClaudeCodeProjectPathCodec {
     }
 
     /// The result of decoding an encoded `~/.claude/projects/` directory name.
-    struct DecodedProjectPath: Equatable, Sendable {
+    public struct DecodedProjectPath: Equatable, Sendable {
         /// The directory name that was decoded (the codec input), unchanged.
-        let encodedDirectoryName: String
+        public let encodedDirectoryName: String
         /// A reconstruction that satisfies `encode(reconstructedPath) == encodedDirectoryName`.
         /// This is the round-trip-exact form; separators may be duplicated where
         /// the original path had adjacent non-alphanumerics (e.g. `/.hidden`).
-        let reconstructedPath: String
+        public let reconstructedPath: String
         /// A human-facing normalization of `reconstructedPath` (runs of the
         /// separator collapsed). Convenience for UI only — NOT round-trip safe.
-        let displayPath: String
+        public let displayPath: String
         /// The concrete style used (`.auto` is always resolved to `.posix`/`.windows`).
-        let style: PathStyle
+        public let style: PathStyle
         /// The structural shape recovered.
-        let form: Form
+        public let form: Form
         /// The drive letter for `.windowsDrive`, otherwise `nil`.
-        let driveLetter: Character?
+        public let driveLetter: Character?
         /// `true` when the root interpretation itself is ambiguous — currently a
         /// `--`-prefixed name under `.auto`, which is a POSIX `/.hidden…` path on
         /// macOS/Linux but a UNC `\\host\…` path on Windows. Callers that know the
         /// source OS should pass an explicit `style` to disambiguate.
-        let isAmbiguous: Bool
+        public let isAmbiguous: Bool
     }
 
     // MARK: Encode (ground truth)
@@ -117,7 +125,7 @@ enum ClaudeCodeProjectPathCodec {
     /// as `é` yields one `-`, while an astral scalar such as `😀` (a surrogate
     /// pair) yields two. (The astral detail is modeled on JS string semantics and
     /// is confirmed against a real Windows capture in `VAL-P0-PATH-022`.)
-    static func encode(_ path: String) -> String {
+    public static func encode(_ path: String) -> String {
         var result = ""
         result.reserveCapacity(path.utf16.count)
         for unit in path.utf16 {
@@ -141,7 +149,7 @@ enum ClaudeCodeProjectPathCodec {
     /// leading-dash `-Users-…` form — plus UNC and relative shapes. The result
     /// always satisfies the canonical round-trip invariant
     /// `encode(result.reconstructedPath) == directoryName`.
-    static func decode(_ directoryName: String, style: PathStyle = .auto) -> DecodedProjectPath {
+    public static func decode(_ directoryName: String, style: PathStyle = .auto) -> DecodedProjectPath {
         let form = resolveForm(directoryName, style: style)
         let concreteStyle: PathStyle = (form == .windowsDrive || form == .windowsUNC) ? .windows : .posix
 
@@ -191,7 +199,7 @@ enum ClaudeCodeProjectPathCodec {
     }
 
     /// Classify the structural form of an encoded directory name under a style.
-    static func resolveForm(_ name: String, style: PathStyle) -> Form {
+    public static func resolveForm(_ name: String, style: PathStyle) -> Form {
         guard let first = name.first else { return .relative }
         let chars = Array(name)
         let startsWithDriveSingle = isASCIILetter(first) && chars.count >= 2 && chars[1] == "-"
@@ -223,14 +231,14 @@ enum ClaudeCodeProjectPathCodec {
 
     /// The always-true canonical round-trip: re-encoding a decoded path reproduces
     /// the exact directory name. Useful as a property assertion over any input.
-    static func canonicalRoundTrips(_ directoryName: String, style: PathStyle = .auto) -> Bool {
+    public static func canonicalRoundTrips(_ directoryName: String, style: PathStyle = .auto) -> Bool {
         encode(decode(directoryName, style: style).reconstructedPath) == directoryName
     }
 
     /// The stronger identity round-trip: `decode(encode(path)) == path`. Holds
     /// only for "clean" paths (ASCII-alphanumeric components separated by the
     /// style's canonical separator). Returns `false` for lossy paths — by design.
-    static func cleanlyRoundTrips(_ path: String, style: PathStyle = .auto) -> Bool {
+    public static func cleanlyRoundTrips(_ path: String, style: PathStyle = .auto) -> Bool {
         decode(encode(path), style: style).reconstructedPath == path
     }
 
