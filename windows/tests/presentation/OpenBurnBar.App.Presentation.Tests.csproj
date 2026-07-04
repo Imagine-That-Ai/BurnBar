@@ -16,6 +16,12 @@
       • StorageSessionLogReadSourceTests — wires the presentation read seam to the REAL
         SQLCipher DataStore adapter against the committed Mac fixture (VAL-P0-DB-010),
         proving SessionLogs reads flow from the shared encrypted DB end-to-end.
+      • MissionControl/* — the Mission Control console core: forecast band math, cost/token/
+        duration/relative formatting, kind/depth/approval metadata, the FAB-gauge state machine
+        (arc color + glyph + tick geometry), hero editorial copy, the snapshot builder (phase
+        mapping + health counts + burn-per-hour weighting + project ordering + ticker), the
+        runtime constellation + kind chooser rows, and the console view-model (reactive forecast,
+        canDispatch gating, dispatch clearing the draft, error surfacing). 121 tests.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
