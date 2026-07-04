@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows-native Computer-Use adapters (Phase 4 · W5). This is the platform
+    half of the subsystem: it implements the interfaces in
+    OpenBurnBar.ComputerUse.Core/Adapters against real Windows APIs —
+      * IInputSynthesizer      -> user32 SendInput          (SendInputInputSynthesizer)
+      * IUiInspector           -> IUIAutomation COM interop  (UiaInspector)
+      * IScreenCapturer        -> Windows.Graphics.Capture    (WindowsGraphicsCaptureScreenCapturer)
+      * IDaemonApprovalChannel -> named-pipe peer-auth harness (NamedPipeDaemonApprovalChannel)
+    and supplies IWatchdogPeerAuthenticator over the same harness.
+
+    Target framework: net10.0-windows10.0.19041.0 — chosen over plain
+    net8.0-windows so it can (a) project Windows.Graphics.Capture / DirectX WinRT
+    for the screenshot adapter, and (b) CONSUME the landed named-pipe peer-auth
+    harness (OpenBurnBar.Pal.Ipc, net10.0) for the daemon-approval + watchdog
+    channel rather than reimplementing the signed-nonce handshake.
+
+    macOS-authoring-host status: with EnableWindowsTargeting=true this project
+    RESTORES the Windows SDK ref packs and Roslyn-COMPILES CLEAN on macOS — the
+    SendInput P/Invoke, the hand-written IUIAutomation COM interfaces, and the
+    WGC WinRT projections are all metadata that bind cross-platform. Every method
+    that touches an OS surface is [SupportedOSPlatform("windows10.0.19041.0")];
+    it does not RUN off-Windows. The live input-injection / UIA-probe / WGC
+    frame-readback proof is a Windows dev-host task (VAL-W5-*).
+
+    R17 (documented in SendInputInputSynthesizer.cs): SendInput makes the
+    capability-token gate ADVISORY for same-integrity processes; non-bypassable
+    actions must route through a signed virtual-HID driver (ViGEm v1 / WHQL v1.1).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.ComputerUse.Windows</RootNamespace>
+    <AssemblyName>OpenBurnBar.ComputerUse.Windows</AssemblyName>
+    <!-- Restore + compile the Windows ref packs on the macOS/Linux authoring host. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
+    <ProjectReference Include="../../pal/ipc/OpenBurnBar.Pal.Ipc.csproj" />
+  </ItemGroup>
+
+</Project>
