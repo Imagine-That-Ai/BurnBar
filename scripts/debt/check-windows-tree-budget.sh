@@ -9,7 +9,7 @@
 #     Android-tree change (android/) is NEVER scanned — the scan root is windows/ —
 #     so it cannot move any Windows counter, and vice-versa.
 #   • Each area counter (app / pal / native / storage / cloudsync / particles /
-#     pretext / computeruse / integrations / tests) is computed ONLY from
+#     pretext / computeruse / integrations / packaging / tests) is computed ONLY from
 #     windows/<area>/, so growth in one area cannot move another area's counter.
 #
 # Fails CI if EITHER:
@@ -38,7 +38,7 @@ baseline_path = Path(sys.argv[2])
 mode = sys.argv[3] if len(sys.argv) > 3 else ""
 
 WIN_ROOT = repo_root / "windows"
-AREAS = ("app", "pal", "native", "storage", "cloudsync", "particles", "pretext", "computeruse", "integrations", "tests")
+AREAS = ("app", "pal", "native", "storage", "cloudsync", "particles", "pretext", "computeruse", "integrations", "packaging", "tests")
 SOURCE_SUFFIXES = {".cs", ".xaml", ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".rs"}
 DEFAULT_TARGET = 800
 
@@ -154,7 +154,7 @@ if stray:
         print(f"    {path}", file=sys.stderr)
     print(
         "Place Windows source under "
-        "windows/{app,pal,native,storage,cloudsync,particles,pretext,computeruse,integrations,tests}/ "
+        "windows/{app,pal,native,storage,cloudsync,particles,pretext,computeruse,integrations,packaging,tests}/ "
         "(see windows/README.md).",
         file=sys.stderr,
     )
