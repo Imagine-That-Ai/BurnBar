@@ -314,9 +314,15 @@ static int RunVerify(List<(string Id, string Label, SubstrateFamily Family, Func
             var s4 = new RecordingDrawingSession { HashGeometry = false };
             painter.Make().Paint(fr, s3);
             painter.Make().Paint(de, s4);
+            // FFI-transparency: painting the float32-decoded frame emits the SAME
+            // command shape. Cover every command type any family emits.
             if (s3.FillCircleCount != s4.FillCircleCount || s3.GlowSpriteCount != s4.GlowSpriteCount
+                || s3.StrokeCircleCount != s4.StrokeCircleCount
                 || s3.LineBatchCount != s4.LineBatchCount || s3.BlurLayerCount != s4.BlurLayerCount
+                || s3.MaskLayerCount != s4.MaskLayerCount
                 || s3.FillPolygonCount != s4.FillPolygonCount
+                || s3.GradientQuadCount != s4.GradientQuadCount
+                || s3.StrokeRectCount != s4.StrokeRectCount
                 || s3.FillPolygonGradientCount != s4.FillPolygonGradientCount
                 || s3.StrokePolylineCount != s4.StrokePolylineCount)
             {
@@ -334,16 +340,24 @@ static int RunVerify(List<(string Id, string Label, SubstrateFamily Family, Func
     bool plainDefers = new OpenBurnBar.Particles.Substrates.PlainDotsSubstrate().Paint(frame, new RecordingDrawingSession()) == false;
     Report("PlainDotsSubstrate defers to default dot render", plainDefers, ref failures);
 
-    // 5) Catalog integrity: 6 plain + 9 bespoke = 15 registered; each family's first
-    //    entry is its plain; Flow + Aurora each expose 4 bespoke.
-    bool catalogOk = SubstrateCatalog.SubstrateList.Length == 15
-        && SubstrateCatalog.Entries(SubstrateFamily.Flow)[0].Id == SubstrateCatalog.PlainId
-        && SubstrateCatalog.Entries(SubstrateFamily.Aurora)[0].Id == SubstrateCatalog.PlainId
-        && SubstrateCatalog.BespokeFor(SubstrateFamily.Flow).Length == 4
-        && SubstrateCatalog.BespokeFor(SubstrateFamily.Aurora).Length == 4
-        && SubstrateCatalog.ById.ContainsKey("flow.glass-ribbon")
-        && SubstrateCatalog.ById.ContainsKey("aurora.filament");
-    Report($"Catalog integrity ({SubstrateCatalog.SubstrateList.Length} registered: 6 plain + 9 bespoke)", catalogOk, ref failures);
+    // 5) Catalog integrity: the six per-family plain descriptors + every ported
+    //    bespoke; each family's first Entries slot is its shared plain; the id index
+    //    round-trips. Counts are DERIVED (not hard-coded) so this invariant holds as
+    //    each Wave-4 family lands (Flow/Aurora #1212, Mesh/Moiré #1214, Volumetric +
+    //    remaining Constellation #1213).
+    SubstrateFamily[] allFamilies = (SubstrateFamily[])Enum.GetValues(typeof(SubstrateFamily));
+    int bespokeTotal = 0;
+    bool plainFirst = true;
+    foreach (SubstrateFamily fam in allFamilies)
+    {
+        bespokeTotal += SubstrateCatalog.BespokeFor(fam).Length;
+        if (SubstrateCatalog.Entries(fam)[0].Id != SubstrateCatalog.PlainId) plainFirst = false;
+    }
+    int expectedTotal = allFamilies.Length + bespokeTotal;
+    bool catalogOk = plainFirst
+        && SubstrateCatalog.SubstrateList.Length == expectedTotal
+        && SubstrateCatalog.ById.ContainsKey(SubstrateCatalog.PlainId);
+    Report($"Catalog integrity ({SubstrateCatalog.SubstrateList.Length} registered: {allFamilies.Length} plain + {bespokeTotal} bespoke)", catalogOk, ref failures);
 
     Console.WriteLine(failures == 0 ? "ALL CHECKS PASSED" : $"{failures} CHECK(S) FAILED");
     return failures == 0 ? 0 : 1;
@@ -357,11 +371,17 @@ static int RunVerify(List<(string Id, string Label, SubstrateFamily Family, Func
 
 static SwarmSubstrateFrame MakeFrame(int n, SubstrateStage stage, bool dark, bool battery, double t)
 {
+    // Keep the test frame INTERNALLY CONSISTENT: the engine derives the stage's
+    // dark flag from the canvas appearance, so Stage.Dark must track `dark` (some
+    // substrates, e.g. Mesh "Gradient Patch", gate their catchlight pass on
+    // frame.Stage.Dark — an inconsistent stage would make the frame fail its own
+    // FFI round-trip, which resets Stage.Dark to frame.Dark).
+    var frameStage = new SubstrateStage(stage.Accent, stage.Accent2, stage.Ink, dark);
     return new SwarmSubstrateFrame(
         width: canvasWConst, height: canvasHConst, dark: dark, reduced: false,
         batteryThrottled: battery, uiMode: UIMode.Standard,
         isShapeMode: true, formed: true, settleProgress: 0.85,
-        t: t, dt: 1.0, stage: stage, backdrop: dark ? new Rgba(0.03, 0.04, 0.08, 1.0) : new Rgba(0.96, 0.97, 1.0, 1.0),
+        t: t, dt: 1.0, stage: frameStage, backdrop: dark ? new Rgba(0.03, 0.04, 0.08, 1.0) : new Rgba(0.96, 0.97, 1.0, 1.0),
         dots: BuildSyntheticSwarm(n), cx: canvasWConst / 2, cy: canvasHConst / 2,
         cloudRadius: 260, sizePx: 1.6);
 }

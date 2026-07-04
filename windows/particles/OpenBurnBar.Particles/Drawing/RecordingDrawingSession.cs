@@ -29,11 +29,16 @@ public sealed class RecordingDrawingSession : ISubstrateDrawingSession
 
     // Command tallies (the draw-call budget matters for the 60fps GPU pass).
     public long FillCircleCount { get; private set; }
+    public long StrokeCircleCount { get; private set; }
+    public long FillPolygonCount { get; private set; }
+    public long PolygonVertexCount { get; private set; }
+    public long GradientQuadCount { get; private set; }
+    public long StrokeRectCount { get; private set; }
     public long GlowSpriteCount { get; private set; }
     public long LineBatchCount { get; private set; }
     public long LineSegmentCount { get; private set; }
     public long BlurLayerCount { get; private set; }
-    public long FillPolygonCount { get; private set; }
+    public long MaskLayerCount { get; private set; }
     public long FillPolygonGradientCount { get; private set; }
     public long StrokePolylineCount { get; private set; }
     public long PolyVertexCount { get; private set; }
@@ -45,20 +50,26 @@ public sealed class RecordingDrawingSession : ISubstrateDrawingSession
     /// <summary>Order-sensitive FNV-1a checksum of all recorded geometry (valid when <see cref="HashGeometry"/> was on).</summary>
     public ulong Checksum => _checksum;
 
-    /// <summary>Total draw commands emitted (fills + glows + line batches + blur pushes + polys + strokes).</summary>
-    public long TotalCommands => FillCircleCount + GlowSpriteCount + LineBatchCount + BlurLayerCount
-        + FillPolygonCount + FillPolygonGradientCount + StrokePolylineCount;
+    /// <summary>Total draw commands emitted (all fills/strokes/glows/batches/layer pushes/polys).</summary>
+    public long TotalCommands => FillCircleCount + StrokeCircleCount + FillPolygonCount
+        + GradientQuadCount + StrokeRectCount + GlowSpriteCount + LineBatchCount
+        + BlurLayerCount + MaskLayerCount + FillPolygonGradientCount + StrokePolylineCount;
 
     /// <summary>Reset all tallies + checksum for a fresh frame.</summary>
     public void Reset()
     {
         Blend = SubstrateBlend.Normal;
         FillCircleCount = 0;
+        StrokeCircleCount = 0;
+        FillPolygonCount = 0;
+        PolygonVertexCount = 0;
+        GradientQuadCount = 0;
+        StrokeRectCount = 0;
         GlowSpriteCount = 0;
         LineBatchCount = 0;
         LineSegmentCount = 0;
         BlurLayerCount = 0;
-        FillPolygonCount = 0;
+        MaskLayerCount = 0;
         FillPolygonGradientCount = 0;
         StrokePolylineCount = 0;
         PolyVertexCount = 0;
@@ -80,7 +91,8 @@ public sealed class RecordingDrawingSession : ISubstrateDrawingSession
         }
     }
 
-    public void DrawGlowSprite(double cx, double cy, double radius, in Rgba tint, double opacity)
+    public void DrawGlowSprite(double cx, double cy, double radius, in Rgba tint, double opacity,
+        GlowProfile profile = GlowProfile.Glow)
     {
         GlowSpriteCount++;
         if (HashGeometry)
@@ -89,6 +101,81 @@ public sealed class RecordingDrawingSession : ISubstrateDrawingSession
             MixD(cy);
             MixD(radius);
             MixColor(tint);
+            MixD(opacity);
+            MixU((ulong)profile);
+            MixU((ulong)Blend);
+        }
+    }
+
+    public void StrokeCircle(double cx, double cy, double radius, in Rgba color, double strokeWidth)
+    {
+        StrokeCircleCount++;
+        if (HashGeometry)
+        {
+            MixD(cx);
+            MixD(cy);
+            MixD(radius);
+            MixColor(color);
+            MixD(strokeWidth);
+            MixU((ulong)Blend);
+        }
+    }
+
+    public void FillPolygon(ReadOnlySpan<PointD> points, in Rgba color)
+    {
+        FillPolygonCount++;
+        PolygonVertexCount += points.Length;
+        if (HashGeometry)
+        {
+            MixColor(color);
+            MixU((ulong)Blend);
+            foreach (PointD p in points)
+            {
+                MixD(p.X);
+                MixD(p.Y);
+            }
+        }
+    }
+
+    public void FillRoundedRectGradient(double cx, double cy, double halfW, double halfH,
+        double cornerRadius, double rotation, in Rgba c0, in Rgba c1, in Rgba c2,
+        in PointD gradStart, in PointD gradEnd, double opacity)
+    {
+        GradientQuadCount++;
+        if (HashGeometry)
+        {
+            MixD(cx);
+            MixD(cy);
+            MixD(halfW);
+            MixD(halfH);
+            MixD(cornerRadius);
+            MixD(rotation);
+            MixColor(c0);
+            MixColor(c1);
+            MixColor(c2);
+            MixD(gradStart.X);
+            MixD(gradStart.Y);
+            MixD(gradEnd.X);
+            MixD(gradEnd.Y);
+            MixD(opacity);
+            MixU((ulong)Blend);
+        }
+    }
+
+    public void StrokeRoundedRect(double cx, double cy, double halfW, double halfH,
+        double cornerRadius, double rotation, in Rgba color, double strokeWidth, double opacity)
+    {
+        StrokeRectCount++;
+        if (HashGeometry)
+        {
+            MixD(cx);
+            MixD(cy);
+            MixD(halfW);
+            MixD(halfH);
+            MixD(cornerRadius);
+            MixD(rotation);
+            MixColor(color);
+            MixD(strokeWidth);
             MixD(opacity);
             MixU((ulong)Blend);
         }
@@ -112,7 +199,7 @@ public sealed class RecordingDrawingSession : ISubstrateDrawingSession
         }
     }
 
-    public IDisposable PushBlurLayer(double blurRadius, SubstrateBlend blend)
+    public IDisposable PushBlurLayer(double blurRadius, SubstrateBlend blend, double layerOpacity = 1.0)
     {
         BlurLayerCount++;
         _blurNesting++;
@@ -121,6 +208,22 @@ public sealed class RecordingDrawingSession : ISubstrateDrawingSession
         {
             MixD(blurRadius);
             MixU((ulong)blend);
+            MixD(layerOpacity);
+        }
+        return new BlurScope(this);
+    }
+
+    public IDisposable PushRadialMaskLayer(double cx, double cy, double whiteRadius, double clearRadius)
+    {
+        MaskLayerCount++;
+        _blurNesting++;
+        if (_blurNesting > MaxBlurNesting) MaxBlurNesting = _blurNesting;
+        if (HashGeometry)
+        {
+            MixD(cx);
+            MixD(cy);
+            MixD(whiteRadius);
+            MixD(clearRadius);
         }
         return new BlurScope(this);
     }

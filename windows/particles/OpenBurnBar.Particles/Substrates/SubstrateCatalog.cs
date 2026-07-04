@@ -14,11 +14,12 @@ namespace OpenBurnBar.Particles.Substrates;
 /// </summary>
 /// <remarks>
 /// The bespoke authors never edit this file — each only edits their own
-/// <c>Families/&lt;Family&gt;Family.cs</c>. This lane completes the <b>Flow</b> and
-/// <b>Aurora</b> families (4 + 4 bespoke) and carries the already-landed Constellation
-/// <c>Starfire</c>. Mesh / Moire / Volumetric families ship their bespoke painters in
-/// follow-on lanes; until then their <see cref="Entries"/> are just the shared plain
-/// descriptor (never a dangling reference to an unported class).
+/// <c>Families/&lt;Family&gt;Family.cs</c>. The Wave-4 integration completes the
+/// <b>Flow</b>, <b>Aurora</b> (PR #1212), <b>Mesh</b>, <b>Moiré</b> (PR #1214),
+/// <b>Volumetric</b> and the remaining <b>Constellation</b> (PR #1213) families, and
+/// carries the already-landed Constellation <c>Starfire</c> (PR #1202). Any family
+/// without a ported painter falls back to just its shared plain descriptor (never a
+/// dangling reference to an unported class).
 /// </remarks>
 public static class SubstrateCatalog
 {
@@ -30,8 +31,8 @@ public static class SubstrateCatalog
         [SubstrateFamily.Constellation] = ConstellationFamily.Styles,
         [SubstrateFamily.Flow] = FlowFamily.Styles,
         [SubstrateFamily.Aurora] = AuroraFamily.Styles,
-        [SubstrateFamily.Mesh] = Array.Empty<SubstrateDescriptor>(),
-        [SubstrateFamily.Moire] = Array.Empty<SubstrateDescriptor>(),
+        [SubstrateFamily.Mesh] = MeshFamily.Styles,
+        [SubstrateFamily.Moire] = MoireFamily.Styles,
         [SubstrateFamily.Volumetric] = Array.Empty<SubstrateDescriptor>(),
     };
 

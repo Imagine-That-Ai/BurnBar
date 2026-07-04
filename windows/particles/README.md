@@ -131,17 +131,39 @@ centroid/cloudRadius/sizePx, and stage derivation.
 ## Status / next
 
 - ✅ Renderer core + math kit + drawing seam + FFI contract — built green on macOS.
-- ✅ PlainDots + Starfire painters — faithful line-for-line ports (PR #1202).
-- ✅ **Flow family (4)** — Plankton Wake · Glass Ribbon · Silk Streamline · Petal Drift.
-- ✅ **Aurora family (4)** — Wisp · Ice Prism · Aurora Filament · Drift Motes.
-- ✅ `SubstrateStructure` (NN-walk + kNN) ported for the streamline substrates.
-- ✅ Seam extended with polygon / gradient-polygon / polyline primitives (matched in
-  `RecordingDrawingSession` + the Win2D adapter); catalog + Flow/Aurora/Constellation
-  family registries mirror `SubstrateCatalog.swift`.
-- ✅ Headless perf harness — real numbers above; `--verify` green for all 9 painters.
+**Wave-4 integration (`windows/integration-w4`)** consolidates the three parallel
+substrate-family lanes into one catalog + one drawing seam + one headless harness:
+
+- ✅ PlainDots + Starfire (Constellation) painters — faithful line-for-line ports (#1202).
+- ✅ **Flow family (4)** — Plankton Wake · Glass Ribbon · Silk Streamline · Petal Drift (#1212).
+- ✅ **Aurora family (4)** — Wisp · Ice Prism · Aurora Filament · Drift Motes (#1212).
+- ✅ **Mesh family (4)** — Caustic Pool · Gradient Patch · Iso Contour · Living Grain (#1214).
+- ✅ **Moiré family (4)** — Fringe Bloom · Lattice Facet · Ruling Grating · Film Bubble (#1214).
+- ✅ **Volumetric family + remaining Constellation** — Sunshaft · Smoked Glass · Dust Motes
+  · Silk Filament · Star Sapphire · Stellarium · Rimefrost (#1213).
+- ✅ Every family's bespoke painters live under `Substrates/<Family>/`, and each family's
+  registry (`Substrates/Families/<Family>Family.cs`) is aggregated by the single
+  `SubstrateCatalog` (mirrors Swift `SubstrateCatalog.swift`). Each family adds only its own
+  registry array; the catalog file is the one documented merge point.
+- ✅ `SubstrateStructure` (grid-based NN-walk + k-NN neighbor graph) ported once, shared by
+  the streamline substrates (Glass Ribbon, Silk Streamline, Aurora Filament) and the Mesh
+  "Caustic Pool" refracted filament net (connected-node lattice). `SwarmSubstrateFrame`
+  carries a lazily-built, injectable `Structure` so the sim can reuse the topology cache.
+- ✅ **Drawing seam** — the union of every family's `CanvasDrawingSession` subset:
+  circles, glow sprites (with a `GlowProfile`: glow / glass-sphere / spark), stroked
+  circles (Film-Bubble rims), filled/gradient/rotated-rounded-rect polygons + polylines
+  (facet lattices, stained-glass panes, silk ribbons, aurora filaments), batched line
+  strokes, blur layers (with a `layerOpacity` haze multiply) and a radial alpha-mask layer
+  (Ruling-Grating full-field feather). Implemented in all three sinks: the interface,
+  `RecordingDrawingSession` (command tallies + order-sensitive FNV checksum), and the
+  Windows `Win2DSubstrateDrawingSession` / sprite caches.
+- ✅ Headless perf harness is **catalog-driven** — it benchmarks every registered bespoke
+  painter and `--verify` proves each renders **deterministically** (stable checksum +
+  command counts on a repeat render) and is **FFI-transparent** (the decoded frame yields
+  the same command shape), plus a derived catalog-integrity invariant. Real numbers above.
 - ✅ Win2D host + adapter authored (CanvasAnimatedControl, CanvasBlend.Add,
   GaussianBlurEffect, CanvasRadialGradientBrush, CanvasGeometry polygons +
-  CanvasLinearGradientBrush + CustomDashStyle) — Windows/CI-deferred compile+render.
-- ⏳ **Windows/CI-deferred:** live render + GPU 60fps @ ARM64 measurement; the Swift
-  `obb_swarm_vend_frame` emitter; the remaining 15 bespoke painters (Constellation·3,
-  Mesh·4, Moire·4, Volumetric·4 — fanning out in parallel lanes).
+  CanvasLinearGradientBrush + CustomDashStyle, AlphaMaskEffect, OpacityEffect).
+- ⏳ **Windows/CI-deferred:** live GPU render + 60fps @ ARM64 measurement on a real device
+  (the `CanvasAnimatedControl` host is Windows-gated, not compiled/rendered on macOS CI);
+  the Swift `obb_swarm_vend_frame` emitter.
