@@ -188,7 +188,7 @@ public struct BurnBarOllamaEndpointConfig: Codable, Hashable, Identifiable, Send
         }
         guard var components = URLComponents(string: rawValue),
               let scheme = components.scheme?.lowercased(),
-              (scheme == "http" || scheme == "https"),
+              scheme == "http" || scheme == "https",
               components.host?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             return nil
         }
@@ -215,7 +215,7 @@ public struct BurnBarOllamaEndpointConfig: Codable, Hashable, Identifiable, Send
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var components = URLComponents(string: trimmed),
               let scheme = components.scheme?.lowercased(),
-              (scheme == "http" || scheme == "https"),
+              scheme == "http" || scheme == "https",
               components.host?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             throw ValidationError.invalidBaseURL(rawValue)
         }

@@ -161,13 +161,13 @@ final class OMPQuotaAdapterTests: XCTestCase {
     }
 
     private func makeContext(path: String? = nil) throws -> ProviderQuotaAdapterContext {
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         let pathValue = path ?? pathBinURL.path
         let environment = [
             "PATH": pathValue,
             "HOME": tempDirectoryURL.path,
-            "SHELL": "/bin/sh",
+            "SHELL": "/bin/sh"
         ]
 
         return ProviderQuotaAdapterContext(

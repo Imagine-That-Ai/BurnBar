@@ -231,10 +231,10 @@ public struct RoamingProfilePayload: Codable, Hashable, Sendable {
         for endpoint in ollamaEndpoints {
             guard let components = URLComponents(string: endpoint.baseURL),
                   let scheme = components.scheme?.lowercased(),
-                  (scheme == "http" || scheme == "https"),
+                  scheme == "http" || scheme == "https",
                   components.host?.isEmpty == false,
-                  (components.user?.isEmpty ?? true),
-                  (components.password?.isEmpty ?? true) else {
+                  components.user?.isEmpty != false,
+                  components.password?.isEmpty != false else {
                 throw RoamingProfilePayloadError.invalidEndpointURL("ollamaEndpoints.\(endpoint.id).baseURL")
             }
         }

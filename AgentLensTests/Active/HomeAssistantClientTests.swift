@@ -224,10 +224,10 @@ final class HomeAssistantClientTests: XCTestCase {
     // MARK: - Upsert automation
 
     func testUpsertAutomation_postsPayloadToConfigEndpoint() async throws {
-        let configReceived = Locked<[String: Any]?>(nil)
-        let bodyReceived = Locked<Data?>(nil)
-        let methodReceived = Locked<String?>(nil)
-        let urlReceived = Locked<URL?>(nil)
+        let configReceived = OpenBurnBarCore.Locked<[String: Any]?>(nil)
+        let bodyReceived = OpenBurnBarCore.Locked<Data?>(nil)
+        let methodReceived = OpenBurnBarCore.Locked<String?>(nil)
+        let urlReceived = OpenBurnBarCore.Locked<URL?>(nil)
         HomeAssistantStubURLProtocol.handler = { request in
             urlReceived.write(request.url)
             methodReceived.write(request.httpMethod)
@@ -287,7 +287,7 @@ extension URLRequest {
 // MARK: - URLProtocol stub for HA tests
 
 final class HomeAssistantStubURLProtocol: URLProtocol, @unchecked Sendable {
-    static let handlerLock = Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
+    static let handlerLock = OpenBurnBarCore.Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
 
     static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
         get { handlerLock.read() }

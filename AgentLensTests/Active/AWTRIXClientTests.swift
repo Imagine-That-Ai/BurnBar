@@ -730,7 +730,7 @@ private extension PixelClockConfig {
 }
 
 private final class AWTRIXStubURLProtocol: URLProtocol, @unchecked Sendable {
-    static let handlerLock = Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
+    static let handlerLock = OpenBurnBarCore.Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
 
     static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
         get { handlerLock.read() }

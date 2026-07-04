@@ -204,7 +204,7 @@ final class CloudVaultCryptoTests: XCTestCase {
 
         XCTAssertEqual(sealed.schemaVersion, CloudVaultCrypto.currentSealedPayloadSchemaVersion)
         XCTAssertEqual(sealed.aad, try CloudVaultCrypto.roamingProfileAADContext(uid: "alice").stringValue)
-        XCTAssertTrue(sealed.aad?.contains(CloudVaultCrypto.roamingProfileAADDomain) == true)
+        XCTAssertEqual(sealed.aad?.contains(CloudVaultCrypto.roamingProfileAADDomain), true)
         XCTAssertEqual(try CloudVaultCrypto.openRoamingProfile(sealed, keyData: key, uid: "alice"), payload)
         XCTAssertThrowsError(try CloudVaultCrypto.openRoamingProfile(sealed, keyData: key, uid: "bob"))
     }

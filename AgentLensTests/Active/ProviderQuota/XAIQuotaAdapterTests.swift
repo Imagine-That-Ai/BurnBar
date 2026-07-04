@@ -240,7 +240,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
         // Use a temp-scoped app-support root so the resolved-team-id scratch
         // cache is isolated per test and never short-circuits the mocked
         // `/v1/teams` resolution with a value left over from a prior run.
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
 
         let configuration = URLSessionConfiguration.ephemeral

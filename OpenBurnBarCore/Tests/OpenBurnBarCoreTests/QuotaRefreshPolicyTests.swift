@@ -14,7 +14,7 @@ final class QuotaRefreshPolicyTests: XCTestCase {
             let tier = try XCTUnwrap(QuotaSignalTier(rawValue: testCase.tierValue), testCase.name)
             let windowKind = try XCTUnwrap(ProviderQuotaWindowKind(rawValue: testCase.windowKind), testCase.name)
 
-            XCTAssertEqual(String(describing: tier), testCase.tier, testCase.name)
+            XCTAssertEqual(tier.contractName, testCase.tier, testCase.name)
 
             let ttl = QuotaRefreshPolicy.adaptiveTTL(
                 remainingFraction: testCase.remainingFraction,

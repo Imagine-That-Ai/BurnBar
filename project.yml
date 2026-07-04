@@ -152,6 +152,18 @@ targets:
           # of being flattened into Resources/.
           - "Resources/KernelBackdrop"
           - "Resources/KernelBackdrop/**"
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/OpenBurnBarIdentity.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogPath/ClaudeCodeProjectPathCodec.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/BufferedLineSequence.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/FactoryDroidParser.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiagnostics.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/SessionLogMarkdownFormatter.swift
+      - path: OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift
       - path: AgentLens/Resources/KernelBackdrop
         type: folder
         buildPhase: resources

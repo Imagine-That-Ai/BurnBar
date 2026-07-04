@@ -12,7 +12,7 @@ final class ClaudeCodeProjectPathCodecEngineTests: XCTestCase {
 
     /// `<repo>` — four `deletingLastPathComponent` up from this file
     /// (`…/OpenBurnBarCore/Tests/OpenBurnBarCoreTests/<file>.swift`).
-    private static let repoRoot: URL = URL(fileURLWithPath: #file)
+    private static let repoRoot = URL(fileURLWithPath: #file)
         .deletingLastPathComponent()   // OpenBurnBarCoreTests
         .deletingLastPathComponent()   // Tests
         .deletingLastPathComponent()   // OpenBurnBarCore

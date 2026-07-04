@@ -164,47 +164,10 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(publishedBucketCounts, [2])
     }
 
-    func test_refreshProviderEmitsSnapshotFreshnessTelemetryAttributes() async throws {
-        let home = try makeTemporaryDirectory()
-        let appSupport = try makeTemporaryDirectory()
-        let dataStore = try makeDataStore()
-        let eventDate = recentUTCDate(daysAgo: 1, hour: 10)
-        let rolloutDirectory = codexRolloutDirectory(home: home, date: eventDate)
-        try FileManager.default.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
-
-        let rolloutURL = codexRolloutFileURL(directory: rolloutDirectory, date: eventDate)
-        let payload = """
-        {"timestamp":"\(iso8601String(eventDate))","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":22.0,"window_minutes":300,"resets_at":1774359600},"secondary":{"used_percent":20.0,"window_minutes":10080,"resets_at":1774801258}}}}
-        """
-        try Data(payload.utf8).write(to: rolloutURL)
-
-        let capture = TelemetryCapture()
-        TelemetryService.shared.setForwarder { feature, outcome, durationMs, attributes in
-            capture.record(feature: feature, outcome: outcome, durationMs: durationMs, attributes: attributes)
-        }
-
-        let service = makeService(
-            home: home,
-            appSupportRoot: appSupport,
-            refreshProviders: [.codex]
-        )
-
-        await service.refresh(provider: .codex, dataStore: dataStore)
-
-        let snapshotEvents = capture.events.filter {
-            $0.attributes["quota_event"] == "snapshot_written"
-        }
-        XCTAssertEqual(snapshotEvents.count, 1)
-        let attributes = try XCTUnwrap(snapshotEvents.first?.attributes)
-        XCTAssertEqual(attributes["provider"], AgentProvider.codex.providerID.rawValue)
-        XCTAssertEqual(attributes["source"], ProviderQuotaSourceKind.localSession.rawValue)
-        XCTAssertEqual(attributes["snapshot_age_bucket"], ">=4h")
-    }
-
     func test_snapshotsForCloudSync_excludesUsageOnlyAndActivitySnapshots() throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
 
         ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default).persistSnapshots([
             .codex: ProviderQuotaSnapshot(
@@ -367,7 +330,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshClaudeFromStatuslineHook_doesNotBumpLastFetch() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         try writeFreshClaudeStatuslineFixture(
             home: home,
             appPaths: appPaths,
@@ -392,7 +355,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_claudeStatuslineWatcher_refreshesOnFileChange() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let dataStore = try makeDataStore()
 
         try writeFreshClaudeStatuslineFixture(
@@ -436,7 +399,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
     private func writeFreshClaudeStatuslineFixture(
         home: URL,
-        appPaths: OpenBurnBarAppPaths,
+        appPaths: OpenBurnBar.OpenBurnBarAppPaths,
         fiveHourUsedPercent: Int
     ) throws {
         let snapshotURL = appPaths.claudeStatuslineSnapshotURL
@@ -713,7 +676,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         """
         try Data(payload.utf8).write(to: rolloutURL)
 
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let first = makeService(home: home, appSupportRoot: appSupport)
         await first.refresh(provider: .codex, dataStore: try makeDataStore())
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.codexRolloutScanCacheURL.path))
@@ -810,8 +773,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let installedSettings = try readJSON(from: settingsURL)
         let installedStatusLine = try XCTUnwrap(installedSettings["statusLine"] as? [String: Any])
         let installedCommand = try XCTUnwrap(installedStatusLine["command"] as? String)
-        XCTAssertEqual(installedCommand, OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeStatuslineBridgeScriptURL.path)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeStatuslineBridgeScriptURL.path))
+        XCTAssertEqual(installedCommand, OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeStatuslineBridgeScriptURL.path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeStatuslineBridgeScriptURL.path))
         XCTAssertEqual(service.claudeBridgeStatus.state, .awaitingFirstPayload)
 
         try service.removeClaudeQuotaBridge()
@@ -825,7 +788,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let home = try makeTemporaryDirectory()
         let appSupportRoot = try makeTemporaryDirectory()
             .appendingPathComponent("Application Support", isDirectory: true)
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
         let wrapperPath = appPaths.claudeStatuslineBridgeScriptURL.path
         let quotedWrapperPath = "'\(wrapperPath.replacingOccurrences(of: "'", with: "'\\''"))'"
 
@@ -891,7 +854,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_claudeRefresh_usesLocalBridgeSnapshotEvenWhenAPIBillingOverrideDetected() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let snapshotURL = OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeStatuslineSnapshotURL
+        let snapshotURL = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeStatuslineSnapshotURL
         try FileManager.default.createDirectory(
             at: snapshotURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -909,7 +872,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
         try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
         let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
-        let wrapperPath = OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeStatuslineBridgeScriptURL.path
+        let wrapperPath = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeStatuslineBridgeScriptURL.path
         let settings = """
         {
           "statusLine": {
@@ -940,7 +903,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_claudeRefresh_keepsStaleBridgeSnapshotVisibleWhenAPIBillingOverrideDetected() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let snapshotURL = appPaths.claudeStatuslineSnapshotURL
         try FileManager.default.createDirectory(
             at: snapshotURL.deletingLastPathComponent(),
@@ -994,7 +957,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_claudeRefresh_staleBridgeSnapshotFallsThroughToOAuthUsage() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let snapshotURL = appPaths.claudeStatuslineSnapshotURL
         try FileManager.default.createDirectory(
             at: snapshotURL.deletingLastPathComponent(),
@@ -1085,7 +1048,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             organizationUuid: nil
         )
         let cacheURL = ClaudeOAuthUsageFetcher.scopedCacheURL(
-            baseURL: OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeOAuthUsageCacheURL,
+            baseURL: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeOAuthUsageCacheURL,
             credentials: credentials
         )
         try FileManager.default.createDirectory(
@@ -1131,7 +1094,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_claudeRefresh_staleOAuthCacheDoesNotRenderExpiredOrContextWindowAsQuota() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         try writeContextWindowOnlyFixture(
             home: home,
             appPaths: appPaths,
@@ -1246,7 +1209,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         // Cache file persisted for next refresh.
         let cacheURL = ClaudeOAuthUsageFetcher.scopedCacheURL(
-            baseURL: OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeOAuthUsageCacheURL,
+            baseURL: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeOAuthUsageCacheURL,
             credentials: ClaudeOAuthCredentials(
                 accessToken: "sk-ant-oat-live",
                 refreshToken: nil,
@@ -1264,7 +1227,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let appSupport = try makeTemporaryDirectory()
         let formatter = ISO8601DateFormatter()
         let futureReset = formatter.string(from: Date().addingTimeInterval(4 * 60 * 60))
-        let observedUsageAuths = Locked<[String]>([])
+        let observedUsageAuths = OpenBurnBarCore.Locked<[String]>([])
 
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
@@ -1569,7 +1532,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let work = try createProfile(label: "Claude Work", token: "claude-work-token")
         let reserve = try createProfile(label: "Claude Reserve", token: "claude-reserve-token")
-        let observedAuthorizations = Locked<[String]>([])
+        let observedAuthorizations = OpenBurnBarCore.Locked<[String]>([])
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage")
@@ -1623,7 +1586,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_claudeRefresh_switcherProfileDoesNotReuseGlobalStaleStatuslineSnapshot() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let dataStore = try makeDataStore()
 
         let snapshotURL = appPaths.claudeStatuslineSnapshotURL
@@ -1740,7 +1703,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_claudeRefresh_switcherProfileCanUseFreshStatuslineWhenItMatchesDefaultLogin() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let dataStore = try makeDataStore()
 
         let snapshotURL = appPaths.claudeStatuslineSnapshotURL
@@ -1855,7 +1818,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let work = try createProfile(label: "Codex Work", token: "codex-work-token")
         let personal = try createProfile(label: "Codex Personal", token: "codex-personal-token")
-        let observedAuthorizations = Locked<[String]>([])
+        let observedAuthorizations = OpenBurnBarCore.Locked<[String]>([])
         let session = makeStubSession { request in
             XCTAssertEqual(request.url?.absoluteString, "https://chatgpt.com/backend-api/wham/usage")
             let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
@@ -1918,7 +1881,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_codexRefresh_prunesStaleManagedAccountSnapshotsForRemovedProfiles() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let dataStore = try makeDataStore()
 
@@ -2361,7 +2324,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let service = makeService(home: home, appSupportRoot: appSupport, session: session)
 
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
-        let markerURL = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let markerURL = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
             .claudeStatuslineSnapshotURL
             .deletingLastPathComponent()
             .appendingPathComponent("claude-bridge-auto-install-attempted.json")
@@ -3228,7 +3191,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshAll_persistsSnapshotsAndReloadsFromDisk() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
 
         let first = makeService(
             home: home,
@@ -3254,7 +3217,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_persistedSnapshots_preserveMultipleAccountsForSameProvider() throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let providerRollup = ProviderQuotaSnapshot(
             provider: .minimax,
@@ -3309,7 +3272,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_persistedAccountSnapshotDoesNotBecomeProviderFallbackAfterReload() throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let providerRollup = ProviderQuotaSnapshot(
             provider: .codex,
@@ -3376,7 +3339,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_routingStateUsesExactAccountQuotaSnapshots() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let fetchedAt = Date()
         let work = ProviderQuotaSnapshot(
@@ -3454,7 +3417,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshRoutingState_drainsSoonestQuotaResetBeforeSelectedAccountAndRemainingConflict() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let soonReset = Date().addingTimeInterval(12 * 60)
         let laterReset = Date().addingTimeInterval(2 * 60 * 60)
@@ -3490,7 +3453,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshRoutingState_drainsHigherRemainingWhenQuotaResetTimesMatch() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let reset = Date().addingTimeInterval(2 * 60 * 60)
         let work = routingQuotaSnapshot(accountID: "openai-work", label: "Work", remainingPercent: 30, resetsAt: reset)
@@ -3523,7 +3486,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshRoutingState_drainsHigherRemainingWhenQuotaResetTimesAreUnknown() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let work = routingQuotaSnapshot(accountID: "openai-work", label: "Work", remainingPercent: 30, resetsAt: nil)
         let personal = routingQuotaSnapshot(accountID: "openai-personal", label: "Personal", remainingPercent: 80, resetsAt: nil)
@@ -3548,7 +3511,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshRoutingState_exhaustedAccountStillLosesBeforeUtilizationOrdering() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let exhausted = routingQuotaSnapshot(
             accountID: "openai-work",
@@ -3826,7 +3789,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             )
         ]
 
-        let observedAuthorizations = Locked<[String]>([])
+        let observedAuthorizations = OpenBurnBarCore.Locked<[String]>([])
         let session = makeStubSession { request in
             let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
             observedAuthorizations.withLock { $0.append(authorization) }
@@ -3932,7 +3895,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             )
         ]
 
-        let observedAuthorizations = Locked<[String]>([])
+        let observedAuthorizations = OpenBurnBarCore.Locked<[String]>([])
         let session = makeStubSession { request in
             XCTAssertEqual(request.url?.absoluteString, "https://api.deepseek.com/user/balance")
             let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
@@ -4107,7 +4070,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let formatter = ISO8601DateFormatter()
         let reset = formatter.string(from: Date().addingTimeInterval(2 * 60 * 60))
-        let observedAuthorizations = Locked<[String]>([])
+        let observedAuthorizations = OpenBurnBarCore.Locked<[String]>([])
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             if url.absoluteString == "https://api.anthropic.com/api/oauth/usage" {
@@ -4163,7 +4126,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshAll_claudeOAuthAccountCachesAreCredentialScoped() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let runtimeSecrets = KeychainStore(
             service: "tests.runtime.\(UUID().uuidString)",
             legacyServices: [],
@@ -4249,7 +4212,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: globalEnvelope)
             .write(to: appPaths.claudeOAuthUsageCacheURL)
 
-        let observedAuthorizations = Locked<[String]>([])
+        let observedAuthorizations = OpenBurnBarCore.Locked<[String]>([])
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage")
@@ -4468,7 +4431,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshIfNeeded_populatesRoutingStateFromFreshPersistedSnapshotsWithoutNetworkRefresh() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let now = Date()
         ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default).persistSnapshots([
             .openAI: ProviderQuotaSnapshot(
@@ -4520,7 +4483,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_refreshRoutingState_persistsSanitizedRoutingEventTrail() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let dataStore = try makeDataStore()
 
         try await dataStore.upsertProviderAccount(
@@ -4571,7 +4534,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         // Seed persisted routing events with a cross-provider failover
         // (OpenAI → Codex) and an unrelated provider (Claude).
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let crossProviderEvent = ProviderRoutingDecisionEvent(
             occurredAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
@@ -4698,7 +4661,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
     func test_providerRoutingEventPersistencePreservesHistoryBeyondDisplayLimit() throws {
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let events = (0..<150).map { index in
             ProviderRoutingDecisionEvent(
@@ -4734,7 +4697,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
     func test_providerRoutingEventLimitedReadbackDecodesOnlyRecentTail() throws {
         let appSupport = try makeTemporaryDirectory()
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
         let events = (0..<20).map { index in
             ProviderRoutingDecisionEvent(
@@ -5233,7 +5196,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         ProviderQuotaService(
             keyStore: keyStore,
             providerRuntimeKeyStore: providerRuntimeKeyStore,
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot),
             fileManager: .default,
             session: session,
             environment: environment,
@@ -5417,6 +5380,45 @@ final class ProviderQuotaServiceTests: XCTestCase {
     }
 }
 
+extension ProviderQuotaServiceTests {
+    func test_refreshProviderEmitsSnapshotFreshnessTelemetryAttributes() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let eventDate = recentUTCDate(daysAgo: 1, hour: 10)
+        let rolloutDirectory = codexRolloutDirectory(home: home, date: eventDate)
+        try FileManager.default.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+
+        let rolloutURL = codexRolloutFileURL(directory: rolloutDirectory, date: eventDate)
+        let payload = """
+        {"timestamp":"\(iso8601String(eventDate))","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":22.0,"window_minutes":300,"resets_at":1774359600},"secondary":{"used_percent":20.0,"window_minutes":10080,"resets_at":1774801258}}}}
+        """
+        try Data(payload.utf8).write(to: rolloutURL)
+
+        let capture = TelemetryCapture()
+        TelemetryService.shared.setForwarder { feature, outcome, durationMs, attributes in
+            capture.record(feature: feature, outcome: outcome, durationMs: durationMs, attributes: attributes)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.codex]
+        )
+
+        await service.refresh(provider: .codex, dataStore: dataStore)
+
+        let snapshotEvents = capture.events.filter {
+            $0.attributes["quota_event"] == "snapshot_written"
+        }
+        XCTAssertEqual(snapshotEvents.count, 1)
+        let attributes = try XCTUnwrap(snapshotEvents.first?.attributes)
+        XCTAssertEqual(attributes["provider"], AgentProvider.codex.providerID.rawValue)
+        XCTAssertEqual(attributes["source"], ProviderQuotaSourceKind.localSession.rawValue)
+        XCTAssertEqual(attributes["snapshot_age_bucket"], ">=4h")
+    }
+}
+
 private struct CapturedTelemetryEvent {
     let feature: TelemetryFeature
     let outcome: TelemetryOutcome
@@ -5469,7 +5471,7 @@ private final class TestKeychainBackend: KeychainStoreBackend {
 
 private final class StubURLProtocol: URLProtocol {
     /// Test-only global seam intentionally mutable across test setup/teardown.
-    private static let _requestHandler = Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
+    private static let _requestHandler = OpenBurnBarCore.Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
 
     static var requestHandler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
         get { _requestHandler.read() }
@@ -5709,8 +5711,8 @@ extension ProviderQuotaServiceTests {
         )
         try keyStore.setAPIKey(cookieHeader, for: "ollama_cookie_header")
 
-        let observedCookieHeaders = Locked<[String]>([])
-        let observedSettingsURLs = Locked<[String]>([])
+        let observedCookieHeaders = OpenBurnBarCore.Locked<[String]>([])
+        let observedSettingsURLs = OpenBurnBarCore.Locked<[String]>([])
         let session = makeStubSession { request in
             guard let urlString = request.url?.absoluteString else {
                 throw URLError(.badURL)
@@ -5770,7 +5772,7 @@ extension ProviderQuotaServiceTests {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
 
-        let observedSettingsHits = Locked<Int>(0)
+        let observedSettingsHits = OpenBurnBarCore.Locked<Int>(0)
         let session = makeStubSession { request in
             guard let urlString = request.url?.absoluteString else {
                 throw URLError(.badURL)
@@ -5847,7 +5849,7 @@ extension ProviderQuotaServiceTests {
             )
         ]
 
-        let observedAuthorizations = Locked<[String]>([])
+        let observedAuthorizations = OpenBurnBarCore.Locked<[String]>([])
         let session = makeStubSession { request in
             let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
             observedAuthorizations.withLock { $0.append(authorization) }

@@ -316,7 +316,7 @@ extension ProviderQuotaServiceTests {
     /// the bridge to report `.ready`.
     func writeContextWindowOnlyFixture(
         home: URL,
-        appPaths: OpenBurnBarAppPaths,
+        appPaths: OpenBurnBar.OpenBurnBarAppPaths,
         fiveHourUsedPercent: Int? = nil,
         usedPercentage: Int = 26,
         windowSize: Int = 1_000_000,
@@ -383,7 +383,7 @@ extension ProviderQuotaServiceTests {
     func test_claudeRefresh_contextWindowOnlySnapshotDoesNotRenderAsQuota() async throws {
         let home = try makeSplitTemporaryDirectory()
         let appSupport = try makeSplitTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
 
         try writeContextWindowOnlyFixture(home: home, appPaths: appPaths)
 
@@ -400,7 +400,7 @@ extension ProviderQuotaServiceTests {
     func test_claudeRefresh_staleContextWindowOnlySnapshotDoesNotRenderAsQuota() async throws {
         let home = try makeSplitTemporaryDirectory()
         let appSupport = try makeSplitTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
 
         try writeContextWindowOnlyFixture(home: home, appPaths: appPaths, stale: true)
 
@@ -416,7 +416,7 @@ extension ProviderQuotaServiceTests {
     func test_claudeRefresh_statuslineRateLimitsWinEvenWhenContextWindowIsPresent() async throws {
         let home = try makeSplitTemporaryDirectory()
         let appSupport = try makeSplitTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
 
         // Write a fixture that has BOTH rate_limits and context_window
         try writeContextWindowOnlyFixture(
@@ -467,7 +467,7 @@ extension ProviderQuotaServiceTests {
                 legacyServices: [],
                 backend: ProviderQuotaSplitKeychainBackend()
             ),
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot),
             fileManager: .default,
             session: .shared,
             environment: [:],

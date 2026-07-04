@@ -2,7 +2,7 @@
   "cases": [
     {
       "name": "traffic headers high remaining uses 30 minute ttl",
-      "tier": "trafficHeaders",
+      "tier": "TrafficHeaders",
       "tierValue": 0,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -18,7 +18,7 @@
     },
     {
       "name": "local artifact exactly half remaining stays in high tier",
-      "tier": "localArtifact",
+      "tier": "LocalArtifact",
       "tierValue": 1,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T11:50:00.000Z",
@@ -34,7 +34,7 @@
     },
     {
       "name": "cached snapshot middle tier uses 10 minute ttl",
-      "tier": "cachedSnapshot",
+      "tier": "CachedSnapshot",
       "tierValue": 2,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -50,7 +50,7 @@
     },
     {
       "name": "status endpoint exactly twenty percent stays in middle tier",
-      "tier": "statusEndpoint",
+      "tier": "StatusEndpoint",
       "tierValue": 3,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -66,7 +66,7 @@
     },
     {
       "name": "server sweep low remaining uses three minute ttl",
-      "tier": "serverSweep",
+      "tier": "ServerSweep",
       "tierValue": 4,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -82,7 +82,7 @@
     },
     {
       "name": "spend probe unknown remaining uses fifteen minute ttl",
-      "tier": "spendProbe",
+      "tier": "SpendProbe",
       "tierValue": 5,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -98,7 +98,7 @@
     },
     {
       "name": "reset upper clamp refreshes before imminent reset",
-      "tier": "trafficHeaders",
+      "tier": "TrafficHeaders",
       "tierValue": 0,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -114,7 +114,7 @@
     },
     {
       "name": "lower clamp prevents sub minute refresh spin",
-      "tier": "localArtifact",
+      "tier": "LocalArtifact",
       "tierValue": 1,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -130,7 +130,7 @@
     },
     {
       "name": "missing reset does not clamp the high tier ttl",
-      "tier": "cachedSnapshot",
+      "tier": "CachedSnapshot",
       "tierValue": 2,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -146,7 +146,7 @@
     },
     {
       "name": "negative remaining clamps into low tier",
-      "tier": "statusEndpoint",
+      "tier": "StatusEndpoint",
       "tierValue": 3,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -162,7 +162,7 @@
     },
     {
       "name": "overfull remaining clamps into high tier",
-      "tier": "serverSweep",
+      "tier": "ServerSweep",
       "tierValue": 4,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",
@@ -178,7 +178,7 @@
     },
     {
       "name": "custom probe budget and reset clamp both apply",
-      "tier": "spendProbe",
+      "tier": "SpendProbe",
       "tierValue": 5,
       "now": "2026-07-04T12:00:00.000Z",
       "fetchedAt": "2026-07-04T12:00:00.000Z",

@@ -6,12 +6,12 @@ import Foundation
 
 var packagePlatforms: [SupportedPlatform]? = [.macOS(.v14)]
 var packageDependencies: [Package.Dependency] = [
-    .package(path: "../OpenBurnBarCore"),
+    .package(path: "../OpenBurnBarCore")
 ]
 let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD"] == "1"
 var daemonTargetDependencies: [Target.Dependency] = [
     .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
-    .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
+    .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
 ]
 var daemonLinkerSettings: [LinkerSetting] = []
 var daemonExecutableDependencies: [Target.Dependency] = ["OpenBurnBarDaemon"]
@@ -22,7 +22,7 @@ if !buildForLinuxBoundary {
     packageDependencies.append(contentsOf: [
         .package(path: "../Vendor/GRDB-SQLCipher"),
         .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
-        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.18.0"),
+        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.18.0")
     ])
     daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonTargetDependencies.append(.product(name: "SQLCipher", package: "SQLCipher.swift"))

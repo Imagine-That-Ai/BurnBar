@@ -1,10 +1,10 @@
 export enum QuotaSignalTier {
-  trafficHeaders = 0,
-  localArtifact = 1,
-  cachedSnapshot = 2,
-  statusEndpoint = 3,
-  serverSweep = 4,
-  spendProbe = 5,
+  TrafficHeaders = 0,
+  LocalArtifact = 1,
+  CachedSnapshot = 2,
+  StatusEndpoint = 3,
+  ServerSweep = 4,
+  SpendProbe = 5,
 }
 
 export type QuotaRefreshWindowKind =

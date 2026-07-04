@@ -7,6 +7,23 @@ public enum QuotaSignalTier: Int, Codable, CaseIterable, Hashable, Sendable {
     case statusEndpoint = 3
     case serverSweep = 4
     case spendProbe = 5
+
+    public var contractName: String {
+        switch self {
+        case .trafficHeaders:
+            return "TrafficHeaders"
+        case .localArtifact:
+            return "LocalArtifact"
+        case .cachedSnapshot:
+            return "CachedSnapshot"
+        case .statusEndpoint:
+            return "StatusEndpoint"
+        case .serverSweep:
+            return "ServerSweep"
+        case .spendProbe:
+            return "SpendProbe"
+        }
+    }
 }
 
 public struct QuotaRefreshPolicySnapshot: Sendable, Hashable {
