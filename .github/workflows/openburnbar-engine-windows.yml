@@ -16,6 +16,22 @@ name: OpenBurnBarCore Engine (Windows / MSVC)
 # PRODUCTION target. The toolchain download URL + install paths follow swift.org's
 # documented Windows layout and should be confirmed on the first real Windows run
 # (billing/runner enablement is the open toggle, mirroring build-iroh-windows.yml).
+#
+# ARCHITECTURES: two parallel legs.
+#   • `build` — x86_64-unknown-windows-msvc on `windows-latest`. This is the leg
+#     that is already GREEN under CI (run 28672100306, walking skeleton 23/23
+#     assertions). It is kept byte-for-byte to preserve that proof.
+#   • `build-arm64` — aarch64-unknown-windows-msvc on the free, GA `windows-11-arm`
+#     hosted runner (free for PUBLIC repos — see HANDOFF.md §8 "$0 UPDATE"). It
+#     installs the swift.org ARM64 Windows toolchain (`windows10-arm64` release
+#     dir; the ARM64 installer is per-user under %LOCALAPPDATA%\Programs\Swift —
+#     swiftlang/swift#74092 — which the SDKROOT discovery already searches first),
+#     activates the native ARM64 MSVC environment (vcvarsarm64), then BUILDS the
+#     production `OpenBurnBarCore` target AND RUNS the walking skeleton natively on
+#     ARM64. It gives ARM64 build+run parity with NO hardware (master-plan G-gates
+#     require ARM64). The ARM64 leg is authored + lint-clean; its FIRST green run
+#     must happen on a real `windows-11-arm` runner (it cannot be exercised on the
+#     macOS/x64 dev host).
 
 permissions:
   contents: read
@@ -226,4 +242,175 @@ jobs:
         # `swift run` takes the executable name positionally (there is no
         # `--target` option, unlike `swift build`). The executable exits 0 only
         # when all walking-skeleton assertions pass, so this step IS the G1 gate.
+        run: swift run --package-path OpenBurnBarCore OpenBurnBarWalkingSkeleton
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # ARM64 leg (aarch64-unknown-windows-msvc) on the free `windows-11-arm` runner.
+  # Mirrors the x64 `build` job step-for-step, diverging only where the arch
+  # forces it: the swift.org `windows10-arm64` installer, the native ARM64 MSVC
+  # environment (vcvarsarm64), and Python 3.11 (no CPython ships for win-arm64
+  # before 3.11). Everything else — SDKROOT discovery, module-map deploy, the
+  # `swift build`/`swift run` seam under test — is identical, so ARM64 proves the
+  # SAME Engine subset + walking skeleton the x64 leg proves, natively on aarch64.
+  #
+  # AUTHORED, not yet run green: `windows-11-arm` is GA + free for public repos,
+  # but this leg's first real run must happen on that hosted runner (it cannot be
+  # exercised on the macOS/x64 dev host). Until then it is lint-clean scaffolding.
+  build-arm64:
+    name: swift build --target OpenBurnBarCore (aarch64-unknown-windows-msvc)
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      # Python backs SwiftPM's plugin/lldb tooling on Windows. The x64 leg pins
+      # 3.10 per the recipe, but win-arm64 has no official CPython before 3.11, so
+      # the ARM64 leg pins the earliest arch-available version. `swift build` of
+      # the Foundation Engine subset does not itself require Python, so the minor
+      # divergence does not affect the compile under test.
+      - name: Install Python 3.11 (ARM64)
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      # `windows-11-arm` ships VS 2022 with the native ARM64 VC toolset + Windows
+      # SDK. Import the ARM64 developer environment (vcvarsarm64) into $GITHUB_ENV
+      # so the Swift driver's clang/link find the ARM64 MSVC toolset, the CRT, and
+      # the Windows SDK headers/libs. Fails loudly if the ARM64 VC tools are absent
+      # from a future runner image (add them with the Microsoft.VisualStudio.
+      # Component.VC.Tools.ARM64 winget component, mirroring the x64 note above).
+      - name: Activate MSVC ARM64 developer environment
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 `
+            -property installationPath
+          if (-not $vsPath) { throw "VS 2022 with VC Tools (ARM64) not found on the runner image." }
+          $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsarm64.bat"
+          if (-not (Test-Path $vcvars)) { throw "vcvarsarm64.bat not found at: $vcvars" }
+          Write-Host "Importing developer environment from: $vcvars"
+          cmd /c "`"$vcvars`" && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') {
+              "$($matches[1])=$($matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
+
+      # Install the swift.org ARM64 Windows toolchain. The ARM64 artifact lives in
+      # the `windows10-arm64` release directory with a `-windows10-arm64.exe`
+      # suffix (swift.org documented layout); pinned by $SWIFT_VERSION.
+      - name: Install Swift ${{ env.SWIFT_VERSION }} Windows ARM64 toolchain
+        run: |
+          $ver = "${env:SWIFT_VERSION}"
+          $url = "https://download.swift.org/swift-$ver-release/windows10-arm64/swift-$ver-RELEASE/swift-$ver-RELEASE-windows10-arm64.exe"
+          $installer = Join-Path $env:RUNNER_TEMP "swift-$ver-windows10-arm64.exe"
+          Write-Host "Downloading Swift ARM64 toolchain: $url"
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Installing (passive)…"
+          $p = Start-Process -FilePath $installer -ArgumentList "/passive","/norestart" -Wait -PassThru
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+            throw "Swift installer exited with code $($p.ExitCode)."
+          }
+
+      # Discover SDKROOT + toolchain/runtime PATH by recursive search rather than a
+      # hard-coded root. The ARM64 installer is PER-USER only (swiftlang/swift#74092
+      # — it silently installs under %LOCALAPPDATA%\Programs\Swift, never Program
+      # Files), which is exactly why the per-user roots are searched FIRST. Same
+      # logic as the x64 leg so a Windows.sdk relocation is handled identically.
+      - name: Export SDKROOT + toolchain PATH
+        run: |
+          $roots = @(
+            "$env:LOCALAPPDATA\Programs\Swift",
+            "$env:USERPROFILE\AppData\Local\Programs\Swift",
+            "$env:ProgramFiles\Swift",
+            "${env:ProgramFiles(x86)}\Swift",
+            "$env:SystemDrive\Library\Developer",
+            "${env:SWIFT_ROOT}"
+          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+          Write-Host "Swift install roots present:"; $roots | ForEach-Object { Write-Host "  $_" }
+          foreach ($r in $roots) {
+            Get-ChildItem -Path $r -Recurse -Depth 4 -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -in @('Windows.sdk','swiftc.exe','swift.exe') } |
+              ForEach-Object { Write-Host "  found: $($_.FullName)" }
+          }
+
+          $sdk = $null
+          foreach ($r in $roots) {
+            $sdk = Get-ChildItem -Path $r -Recurse -Directory -Filter 'Windows.sdk' -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+            if ($sdk) { break }
+          }
+          if (-not $sdk) { throw "Windows.sdk not found under: $($roots -join ', ')" }
+          "SDKROOT=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          $swiftc = $null
+          foreach ($r in $roots) {
+            $swiftc = Get-ChildItem -Path $r -Recurse -Filter 'swiftc.exe' -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName -First 1
+            if ($swiftc) { break }
+          }
+          if (-not $swiftc) { throw "swiftc.exe not found under: $($roots -join ', ')" }
+          $toolchainBin = Split-Path $swiftc -Parent
+          $toolchainBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+          $runtimeBin = $null
+          foreach ($r in $roots) {
+            $runtimeBin = Get-ChildItem -Path $r -Recurse -Directory -Filter 'bin' -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match 'Runtimes' } |
+              Select-Object -ExpandProperty FullName -First 1
+            if ($runtimeBin) { break }
+          }
+          if ($runtimeBin) { $runtimeBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8 }
+          Write-Host "SDKROOT=$sdk"
+          Write-Host "toolchainBin=$toolchainBin runtimeBin=$runtimeBin"
+
+      # Deploy the Windows SDK module maps into the UCRT + VC include trees (same
+      # idempotent, defensive copy as the x64 leg) so the Swift compiler can import
+      # the C runtime (`ucrt`, `visualc`, `WinSDK`) on ARM64.
+      - name: Deploy Windows SDK module maps into VS
+        run: |
+          $sdk = "${env:SDKROOT}"
+          $ucrt = "${env:UniversalCRTSdkDir}"
+          $ucrtVer = "${env:UCRTVersion}"
+          $vc = "${env:VCToolsInstallDir}"
+          Write-Host "SDKROOT=$sdk"
+          Write-Host "UniversalCRTSdkDir=$ucrt UCRTVersion=$ucrtVer VCToolsInstallDir=$vc"
+          function Deploy($src, $dst) {
+            if (Test-Path $src) {
+              New-Item -ItemType Directory -Force -Path (Split-Path $dst -Parent) | Out-Null
+              Copy-Item -Force $src $dst
+              Write-Host "deployed: $src -> $dst"
+            } else {
+              Write-Host "skip (missing source): $src"
+            }
+          }
+          if ($ucrt -and $ucrtVer) {
+            Deploy "$sdk\usr\share\ucrt.modulemap"   "$ucrt\Include\$ucrtVer\ucrt\module.modulemap"
+            Deploy "$sdk\usr\share\winsdk.modulemap" "$ucrt\Include\$ucrtVer\um\module.modulemap"
+          }
+          if ($vc) {
+            Deploy "$sdk\usr\share\visualc.modulemap" "$vc\include\module.modulemap"
+            Deploy "$sdk\usr\share\visualc.apinotes"  "$vc\include\visualc.apinotes"
+          }
+
+      - name: Print Swift version
+        run: swift --version
+
+      # Same seam under test as the x64 leg — build ONLY the production
+      # OpenBurnBarCore target, natively on aarch64. The manifest prunes to the
+      # Foundation(+swift-crypto) Engine subset identically (host-evaluated
+      # `os(Windows)` is true on this ARM64 host too).
+      - name: swift build --target OpenBurnBarCore
+        run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
+
+      # Walking skeleton, RUN natively on ARM64 — the G1 evidence for aarch64.
+      # `swift run` produces + executes an aarch64 binary on this host and exits 0
+      # only when all walking-skeleton assertions pass.
+      - name: Run Phase-1 walking skeleton (ARM64)
         run: swift run --package-path OpenBurnBarCore OpenBurnBarWalkingSkeleton

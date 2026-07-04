@@ -63,8 +63,10 @@ final class MercuryConsentStore: ObservableObject {
         if defaults.object(forKey: Self.legacyAlwaysAllowKey) != nil {
             let legacyAlwaysAllow = defaults.bool(forKey: Self.legacyAlwaysAllowKey)
             defaults.removeObject(forKey: Self.legacyAlwaysAllowKey)
-            defaults.set(legacyAlwaysAllow, forKey: Self.rememberAcceptedPeersKey)
-            self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
+            if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
+                defaults.set(legacyAlwaysAllow, forKey: Self.rememberAcceptedPeersKey)
+                self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
+            }
         }
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
@@ -111,7 +113,7 @@ final class MercuryConsentStore: ObservableObject {
             viewerDeviceId: viewerDeviceId,
             controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
         )
-        guard let index = grants.firstIndex(where: { $0.key == key && $0.expiresAt > now }) else {
+        guard grants.contains(where: { $0.key == key && $0.expiresAt > now }) else {
             return false
         }
         return true

@@ -187,7 +187,6 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
 
     func test_legacyAlwaysAllowMigratesToRememberOn() {
         defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
-        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
         let store = MercuryConsentStore(defaults: defaults)
         XCTAssertTrue(store.rememberAcceptedMirrorPeers,
                       "the legacy global consent was broader than device-bound grants; carry intent forward")
@@ -196,14 +195,25 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
     }
 
-    func test_legacyAlwaysAllowFalseMigratesToRememberOff() {
+    func test_legacyAlwaysAllowDoesNotOverrideExplicitRememberOptOut() {
+        defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
+                       "an explicit remember opt-out must beat the broader legacy allow bit")
+        XCTAssertFalse(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
+                       "legacy migration must not persist remember-on over an explicit opt-out")
+        XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_legacyAlwaysAllowFalseDoesNotOverrideExplicitRememberOptIn() {
         defaults.set(false, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
         defaults.set(true, forKey: "mercuryRememberAcceptedMirrorPeers")
         let store = MercuryConsentStore(defaults: defaults)
-        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
-                       "an explicit legacy opt-out must not become remember-on during migration")
-        XCTAssertFalse(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
-                       "legacy opt-out migration must persist remember-off")
+        XCTAssertTrue(store.rememberAcceptedMirrorPeers,
+                      "an explicit remember opt-in must beat the obsolete legacy opt-out")
+        XCTAssertTrue(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
+                      "legacy migration must preserve the explicit remember-on choice")
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
     }
 

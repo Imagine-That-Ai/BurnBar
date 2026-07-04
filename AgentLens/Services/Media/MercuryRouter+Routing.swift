@@ -1116,7 +1116,8 @@ extension MercuryRouter {
             replySender: replySender,
             controlStreamID: controlStreamID,
             remotePeerNodeID: remotePeerNodeID,
-            agentTerminalApproved: false
+            agentTerminalApproved: false,
+            autoAcceptedByMirrorGrant: false
         )
 
         let hasMirrorAutoAcceptGrant = consentStore.canAutoAccept(
@@ -1133,15 +1134,7 @@ extension MercuryRouter {
         if (hasMirrorAutoAcceptGrant || remoteUnlockSession != nil) && !pending.requestsAgentTerminal {
             Self.log.info("router_mirror_request_auto_accept requestID=\(req.requestId, privacy: .public)")
             Self.debugTrace("router_mirror_request_auto_accept requestID=\(req.requestId)")
-            if hasMirrorAutoAcceptGrant {
-                consentStore.renewAutoAcceptGrant(
-                    connectionId: frame.connectionId,
-                    viewerDeviceId: req.viewerDeviceId,
-                    controlAuthorityPeerNodeId: req.controlAuthorityPeerNodeId,
-                    remotePeerNodeId: remotePeerNodeID
-                )
-            }
-            await beginMirror(for: pending)
+            await beginMirror(for: hasMirrorAutoAcceptGrant ? pending.markingMirrorGrantAutoAccepted() : pending)
             return
         }
 
@@ -1310,7 +1303,8 @@ extension MercuryRouter {
             replySender: replySender,
             controlStreamID: controlStreamID,
             remotePeerNodeID: nil,
-            agentTerminalApproved: false
+            agentTerminalApproved: false,
+            autoAcceptedByMirrorGrant: false
         )
         pendingCall = pending
         phase = .callRinging(
@@ -1512,6 +1506,14 @@ extension MercuryRouter {
             }
             if !waitingForRemoteUnlock {
                 await Task.yield()
+            }
+            if request.autoAcceptedByMirrorGrant {
+                consentStore.renewAutoAcceptGrant(
+                    connectionId: request.frame.connectionId,
+                    viewerDeviceId: mirrorRequest.viewerDeviceId,
+                    controlAuthorityPeerNodeId: mirrorRequest.controlAuthorityPeerNodeId,
+                    remotePeerNodeId: request.remotePeerNodeID
+                )
             }
         } catch {
             lastError = error.localizedDescription
