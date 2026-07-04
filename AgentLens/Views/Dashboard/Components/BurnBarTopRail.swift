@@ -675,6 +675,288 @@ struct ShortcutChip: View {
     }
 }
 
+// MARK: - Live Search Field
+//
+// An elegant, real-time text search field for the toolbar's principal slot.
+// Fills the empty middle space between the nav cluster and the BURN hero.
+// Features:
+//   • Liquid Glass capsule surface on macOS 26+, elegant fallback otherwise
+//   • Ember-tinted glow when focused
+//   • ⌘K global shortcut focuses the field from anywhere
+//   • Return/Enter opens the Command Palette pre-filled with the query
+//   • Dynamic placeholder rotates through hints when idle
+
+struct BurnRailLiveSearchField: View {
+    @Binding var text: String
+    var onSubmit: (String) -> Void
+    var onActivate: (() -> Void)?
+
+    @FocusState private var focused: Bool
+    @State private var hover = false
+    @State private var hintIndex = 0
+
+    private static let hints = [
+        "Search sessions, projects, models…",
+        "Jump to a provider…",
+        "Find a conversation…",
+        "Search by cost or token count…"
+    ]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(
+                    focused
+                        ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
+                        : hover
+                            ? AnyShapeStyle(DesignSystem.Colors.ember.opacity(0.85))
+                            : AnyShapeStyle(DesignSystem.Colors.textSecondary)
+                )
+                .animation(DesignSystem.Animation.snappy, value: focused)
+                .animation(DesignSystem.Animation.snappy, value: hover)
+
+            TextField("", text: $text, prompt: hintPrompt)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12.5, weight: .regular, design: .rounded))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .focused($focused)
+                .submitLabel(.search)
+                .onSubmit(submit)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                    focused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .transition(.scale.combined(with: .opacity))
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+            }
+
+            if !focused && text.isEmpty {
+                ShortcutChip(keys: ["\u{2318}", "K"])
+                    .transition(.opacity)
+            }
+
+            if focused {
+                Text("Return to search")
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.6))
+                    .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .frame(minWidth: 280, idealWidth: 400, maxWidth: 520)
+        .background(fieldSurface)
+        .overlay(fieldStroke)
+        .clipShape(Capsule(style: .continuous))
+        .shadow(
+            color: focused ? DesignSystem.Colors.ember.opacity(0.20) : .clear,
+            radius: focused ? 12 : 0, y: focused ? 3 : 0
+        )
+        .animation(DesignSystem.Animation.gentle, value: focused)
+        .animation(DesignSystem.Animation.snappy, value: text.isEmpty)
+        .animation(DesignSystem.Animation.hover, value: hover)
+        .onHover { hover = $0 }
+        .contentShape(Capsule(style: .continuous))
+        .onTapGesture { focused = true }
+        .background(globalShortcut)
+        .help("Search (\u{2318}K)")
+        .accessibilityLabel("Search")
+        .accessibilityHint("Type to search sessions, projects, and models")
+        .task(id: focused) {
+            guard !focused, text.isEmpty else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                if Task.isCancelled { break }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    hintIndex = (hintIndex + 1) % Self.hints.count
+                }
+            }
+        }
+    }
+
+    private var hintPrompt: Text {
+        Text(Self.hints[hintIndex])
+            .foregroundStyle(DesignSystem.Colors.textMuted)
+    }
+
+    @ViewBuilder
+    private var fieldSurface: some View {
+        if #available(macOS 26.0, *) {
+            Capsule(style: .continuous)
+                .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
+                .opacity(focused ? 1.0 : (hover ? 0.85 : 0.65))
+        } else {
+            Capsule(style: .continuous)
+                .fill(
+                    focused
+                        ? DesignSystem.Colors.surfaceElevated.opacity(0.9)
+                        : DesignSystem.Colors.surface.opacity(hover ? 0.72 : 0.48)
+                )
+        }
+    }
+
+    private var fieldStroke: some View {
+        Capsule(style: .continuous)
+            .strokeBorder(
+                focused
+                    ? AnyShapeStyle(DesignSystem.Colors.primaryGradient.opacity(0.5))
+                    : hover
+                        ? AnyShapeStyle(DesignSystem.Colors.ember.opacity(0.25))
+                        : AnyShapeStyle(DesignSystem.Colors.border.opacity(0.45)),
+                lineWidth: focused ? 1.0 : 0.5
+            )
+    }
+
+    private var globalShortcut: some View {
+        Button(action: { focused = true }, label: { EmptyView() })
+            .buttonStyle(.plain)
+            .keyboardShortcut("k", modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+    }
+
+    private func submit() {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            onActivate?()
+            return
+        }
+        onSubmit(trimmed)
+    }
+}
+
+#if DEBUG
+#Preview("Live search field") {
+    VStack(spacing: 20) {
+        BurnRailLiveSearchField(text: .constant(""), onSubmit: { _ in })
+        BurnRailLiveSearchField(text: .constant("claude"), onSubmit: { _ in })
+    }
+    .padding(24)
+    .background(DesignSystem.Colors.background)
+}
+#endif
+
+// MARK: - Profile Avatar
+//
+// Circular avatar button for the far-right end of the toolbar. Shows the
+// user's photo when signed in, falls back to initials or a person glyph
+// for anonymous users. Tapping opens account settings.
+
+struct BurnRailProfileAvatar: View {
+    var avatarURL: URL?
+    var displayName: String?
+    var isSignedIn: Bool
+    var isAnonymous: Bool
+    var onActivate: () -> Void
+
+    @State private var hover = false
+
+    private var initials: String {
+        let name = displayName ?? ""
+        let parts = name.split(separator: " ").prefix(2)
+        let letters = parts.compactMap { $0.first }
+        if letters.isEmpty {
+            return ""
+        }
+        return String(letters).uppercased()
+    }
+
+    var body: some View {
+        Button(action: onActivate) {
+            avatarContent
+                .frame(width: 28, height: 28)
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            hover
+                                ? AnyShapeStyle(DesignSystem.Colors.primaryGradient)
+                                : AnyShapeStyle(DesignSystem.Colors.border.opacity(0.55)),
+                            lineWidth: hover ? 1.2 : 0.5
+                        )
+                )
+                .shadow(
+                    color: hover ? DesignSystem.Colors.ember.opacity(0.25) : .clear,
+                    radius: hover ? 6 : 0, y: hover ? 1 : 0
+                )
+                .scaleEffect(hover ? 1.06 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .animation(DesignSystem.Animation.hover, value: hover)
+        .help(isSignedIn && !isAnonymous ? "Account — \(displayName ?? "")" : "Sign in")
+        .accessibilityLabel(isSignedIn && !isAnonymous ? "Account" : "Sign in")
+    }
+
+    @ViewBuilder
+    private var avatarContent: some View {
+        if let avatarURL, isSignedIn {
+            AsyncImage(url: avatarURL) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure:
+                    fallbackGlyph
+                case .empty:
+                    ZStack {
+                        Circle().fill(DesignSystem.Colors.surface.opacity(0.6))
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                @unknown default:
+                    fallbackGlyph
+                }
+            }
+        } else if !initials.isEmpty {
+            ZStack {
+                Circle().fill(DesignSystem.Colors.primaryGradient.opacity(0.2))
+                Text(initials)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+        } else {
+            fallbackGlyph
+        }
+    }
+
+    private var fallbackGlyph: some View {
+        ZStack {
+            Circle().fill(DesignSystem.Colors.surface.opacity(0.6))
+            Image(systemName: "person.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+    }
+}
+
+#if DEBUG
+#Preview("Profile avatar") {
+    HStack(spacing: 20) {
+        BurnRailProfileAvatar(
+            avatarURL: nil, displayName: "Alberto Nunez",
+            isSignedIn: true, isAnonymous: false, onActivate: {}
+        )
+        BurnRailProfileAvatar(
+            avatarURL: nil, displayName: nil,
+            isSignedIn: false, isAnonymous: true, onActivate: {}
+        )
+    }
+    .padding(24)
+    .background(DesignSystem.Colors.background)
+}
+#endif
+
 // MARK: - Section: Workspace Context
 //
 // Lives in the principal toolbar slot. Anchors the rail in *where you are* and

@@ -51,6 +51,7 @@ struct DashboardView: View {
     @State private var showMacWandComposer = false
     @State var pendingMemoryReviewCount: Int?
     @State var showCommandPalette = false
+    @State var toolbarSearchText = ""
     @State var showHeroPopover = false
 
     init(

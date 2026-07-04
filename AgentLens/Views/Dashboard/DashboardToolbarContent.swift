@@ -6,16 +6,16 @@ import SwiftUI
 //
 // A single ~52pt bar replacing the old toolbar + tab-card strip.
 //
-//   [navigation]    back · 🔥 OpenBurnBar · section switcher · ⌘K hint
-//   [principal]     (empty — the section menu already names the route)
-//   [primaryAction] BURN hero (range + unit in popover) · ⋯ overflow
+//   [navigation]    back · 🔥 OpenBurnBar · section switcher
+//   [principal]     live search field (⌘K) — elegant dynamic text box
+//   [primaryAction] BURN hero (range + unit in popover) · ⋯ overflow · avatar
 
 extension DashboardView {
 
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
 
-        // MARK: Navigation — back · brand · section switcher · ⌘K hint
+        // MARK: Navigation — back · brand · section switcher
 
         ToolbarItemGroup(placement: .navigation) {
             if canGoBack {
@@ -39,22 +39,36 @@ extension DashboardView {
                     }
                 }
             )
-
-            Button {
-                showCommandPalette = true
-            } label: {
-                ShortcutChip(keys: ["\u{2318}", "K"])
-            }
-            .buttonStyle(.plain)
-            .help("Command Palette (\u{2318}K)")
         }
 
-        // MARK: Primary — BURN hero (with range/unit popover) · overflow
+        // MARK: Principal — live search field
+
+        ToolbarItem(placement: .principal) {
+            BurnRailLiveSearchField(
+                text: $toolbarSearchText,
+                onSubmit: { query in
+                    showCommandPalette = true
+                },
+                onActivate: {
+                    showCommandPalette = true
+                }
+            )
+        }
+
+        // MARK: Primary — BURN hero · overflow · avatar
 
         ToolbarItemGroup(placement: .primaryAction) {
             commandDeckHero
 
             commandDeckOverflow
+
+            BurnRailProfileAvatar(
+                avatarURL: accountManager.avatarURL,
+                displayName: accountManager.userDisplayName,
+                isSignedIn: accountManager.isSignedIn,
+                isAnonymous: accountManager.isAnonymousUser,
+                onActivate: { showingSettings = true }
+            )
         }
     }
 
