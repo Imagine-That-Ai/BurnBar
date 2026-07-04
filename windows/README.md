@@ -20,7 +20,8 @@ builds, lints, and ratchets. No product code lives here yet.
 | [`storage/`](storage/) | The **SQLCipher storage layer** — opens the *same* Mac-produced encrypted database with the pinned compatibility-4 cipher profile and exposes the read + write DataStore-shaped seam the Engine calls via the PAL. The R2 (DB byte-compat) un-prune. Includes `storage/OpenBurnBar.Storage.SessionLogs`, the net10.0 adapter mapping the read seam onto the presentation `ISessionLogReadSource` for the SessionLogs surface. | W2–W7 |
 | [`particles/`](particles/) | The **Win2D particle-engine renderer** — the platform-agnostic swarm/substrate engine library (`OpenBurnBar.Particles`: substrate math, frame model, FFI spec) + a headless perf harness. The WinUI-facing host lives in `app/OpenBurnBar.App/Particles/`. | W6 |
 | [`pretext/`](pretext/) | The **Pretext text-layout engine** — the managed `OpenBurnBar.Pretext` engine + JS bridge that drive an offscreen WebView2 host for text metrics, with a Mac-golden metric-parity harness. The WinUI host lives in `app/OpenBurnBar.App/Pretext/`. | W6 |
-| [`tests/`](tests/) | **Unit, integration, and parity test projects** for the app, PAL, and native shim. Includes `tests/presentation` (net10.0, xUnit) — the macOS-runnable proof of the SessionLogs + Memory + Switcher view-models: the inbox model, grouping/filter, transcript parser, an end-to-end SessionLogs read through the SQLCipher adapter against the committed byte-compat fixture, and the account-switcher destination routing / grouping / form-validation / add-switch-drain state machine. | W7, W11 |
+| [`integrations/`](integrations/) | **Portable feature-integration libraries + their Windows-native adapters** — each integration lands a dependency-free `net8.0` lib (protocol/wire codecs, state machines, consent/budget stores) proven by `dotnet test` on macOS, plus a `net8.0-windows` adapter project that implements the lib's platform seams over WinRT projections. First tenant: `integrations/mercury` (Mercury media pipeline — RFB/VNC wire codec, media-frame packet codec, media-session state machine, consent ledger, media-budget capability gate, file-transfer chunker; Windows.Graphics.Capture / WASAPI / MediaCapture / MediaFoundation / WNS adapters). | W-Mercury (Phase 4) |
+| [`tests/`](tests/) | **Unit, integration, and parity test projects** for the app, PAL, native shim, and integrations. Includes `tests/presentation` (net10.0, xUnit) — the macOS-runnable proof of the SessionLogs + Memory + Switcher view-models — and `tests/mercury` (net10.0, xUnit) — the macOS-runnable proof of the Mercury media pipeline: byte-exact packet + RFB/ARD wire codecs, the capability/consent/budget invariant, the session state machine, and file-transfer chunk/reassembly. | W7, W11 |
 
 ## The aggregating solution
 
@@ -34,7 +35,7 @@ those PRs only *add* to a known-good aggregator rather than inventing the top-le
 ## Where new Windows source goes
 
 Every Windows **source file** (`.cs`, `.xaml`, `.cpp`, `.cxx`, `.cc`, `.c`, `.h`, `.hpp`, `.rs`)
-must live under one of the seven documented sub-trees above. The per-tree budget
+must live under one of the eight documented sub-trees above. The per-tree budget
 ([`scripts/debt/check-windows-tree-budget.sh`](../scripts/debt/check-windows-tree-budget.sh))
 fails a PR that drops source directly under `windows/` outside those areas, so the layout stays
 self-enforcing.

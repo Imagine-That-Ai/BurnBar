@@ -2,15 +2,15 @@
 # Shrink-only per-tree size ratchet for the Windows source tree (windows/).
 #
 # Mirrors scripts/debt/check-swift-file-size-budget.sh, but is rooted at
-# `windows/` and PARTITIONED by the seven documented sub-trees so counters cannot
+# `windows/` and PARTITIONED by the eight documented sub-trees so counters cannot
 # collide across trees:
 #
 #   • A macOS-tree change (AgentLens/, OpenBurnBarCore/, OpenBurnBarDaemon/) or an
 #     Android-tree change (android/) is NEVER scanned — the scan root is windows/ —
 #     so it cannot move any Windows counter, and vice-versa.
 #   • Each area counter (app / pal / native / storage / particles / pretext /
-#     tests) is computed ONLY from windows/<area>/, so growth in one area cannot
-#     move another area's counter.
+#     integrations / tests) is computed ONLY from windows/<area>/, so growth in
+#     one area cannot move another area's counter.
 #
 # Fails CI if EITHER:
 #   - a NEW Windows source file crosses the size target (not in the baseline), or
@@ -38,7 +38,7 @@ baseline_path = Path(sys.argv[2])
 mode = sys.argv[3] if len(sys.argv) > 3 else ""
 
 WIN_ROOT = repo_root / "windows"
-AREAS = ("app", "pal", "native", "storage", "particles", "pretext", "tests")
+AREAS = ("app", "pal", "native", "storage", "particles", "pretext", "integrations", "tests")
 SOURCE_SUFFIXES = {".cs", ".xaml", ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".rs"}
 DEFAULT_TARGET = 800
 
