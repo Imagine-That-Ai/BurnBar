@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows adapters for the Google Cast integration (Phase 4 · Integrations).
+
+    This is the PLATFORM half of the Cast feature: the real TLS socket to the
+    device's :8009 Cast channel (System.Net.Security.SslStream with a permissive
+    trust evaluator, because _googlecast._tcp discovery proved the peer) and the
+    live mDNS browser (the Windows Dnssd device watcher). Both sit behind the
+    portable interfaces (ICastSocket / ICastServiceBrowser) defined in
+    OpenBurnBar.Integrations.Cast, so the protocol / discovery / wizard logic is
+    unit-tested off-Windows and only these thin I/O shims are Windows-bound.
+
+    Target framework note: this targets net8.0-windows10.0.19041.0 because the
+    live browser uses the WinRT Windows.Devices.Enumeration Dnssd watcher. On the
+    macOS authoring host this project reaches the byte-identical Windows-only
+    build gate (NETSDK1100). Pass -p:EnableWindowsTargeting=true to cross-compile
+    the C# on macOS for extra evidence that every adapter type Roslyn-resolves and
+    compiles clean; the CI Windows runner builds it natively. It does NOT run
+    off-Windows — the live Dnssd browse + TLS handshake proof is a Windows dev-host
+    step.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Integrations.Cast.Windows</RootNamespace>
+    <AssemblyName>OpenBurnBar.Integrations.Cast.Windows</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Integrations.Cast/OpenBurnBar.Integrations.Cast.csproj" />
+  </ItemGroup>
+
+</Project>

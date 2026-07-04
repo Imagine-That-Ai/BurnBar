@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows-native adapter for the ViGEm virtual-HID input path (W5 / R17).
+
+    This is the platform half of the input path: the two IVirtualHidInputSink
+    implementations the portable OpenBurnBar.Pal.Input dispatcher routes into —
+      • ViGEmVirtualHidInputSink   — the NON-BYPASSABLE route (ViGEmBus virtual HID), and
+      • SendInputAdvisoryInputSink — the ADVISORY route (Win32 SendInput).
+    Plus ViGEmInputRouting, which assembles the portable gate + these sinks into a ready
+    VirtualHidInputDispatcher. All gating / token verification / classification / kill-switch
+    logic lives in the portable lib and is unit-tested on macOS; only the P/Invoke edges live
+    here.
+
+    TARGET FRAMEWORK: net8.0-windows10.0.19041.0 — a genuine Windows-native TFM (this code
+    RUNS only on Windows: ViGEmBus + SendInput). Like the WinUI app target, EnableWindowsTargeting
+    lets the macOS authoring host RESTORE + Roslyn-COMPILE it (no WinRT/XAML here, so the compile
+    is complete on macOS: 0 C# errors) while real EXECUTION stays on a Windows dev host / Windows
+    CI. Build with `-p:EnableWindowsTargeting=false` on macOS to observe the byte-identical
+    Windows-only gate (NETSDK1100) with 0 earlier errors.
+
+    Secure-desktop / lock-screen input injection AND full mouse/keyboard cursor+keystroke
+    fidelity require the WHQL-signed virtual mouse/keyboard driver — v1.1 (master plan §15.1,
+    R6). It drops in behind IVirtualHidInputSink without changing the gate or dispatcher. v1
+    ships ViGEmBus for the non-bypassable route with the capability-token + audit + kill-switch
+    gates fully enforced. See README.md.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>OpenBurnBar.Pal.Input.Windows</RootNamespace>
+    <AssemblyName>OpenBurnBar.Pal.Input.Windows</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!--
+      Lets the project be RESTORED + Roslyn-COMPILED on a non-Windows host (macOS CI authoring)
+      without the Windows targeting-pack error NETSDK1100. It does NOT make the code RUN off
+      Windows — ViGEmClient.dll + ViGEmBus + user32 SendInput only exist on Windows. Real
+      execution is a Windows dev host / Windows CI. Mirrors windows/app/OpenBurnBar.App.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Portable input path core: gate, classifier, capability-token verifier, kill-switch,
+         audit, dispatcher, and the IVirtualHidInputSink seam these adapters implement. -->
+    <ProjectReference Include="../input/OpenBurnBar.Pal.Input.csproj" />
+  </ItemGroup>
+
+</Project>
