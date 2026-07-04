@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ClassicLayoutView — the information-dense vertical scroll overview (the safe
+  fallback). Windows peer of the legacy DashboardOverviewView composition: a column of
+  stat cards + lanes. Scrolling is provided by the DashboardPage's own ScrollViewer
+  (which also probes offset for the easter-egg scroll-reversal summon), so this view is
+  a plain column and never nests a second scroller.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.Layouts.ClassicLayoutView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:OpenBurnBar.App.Components"
+    xmlns:layouts="using:OpenBurnBar.App.Dashboard.Layouts"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <StackPanel Padding="24" Spacing="16" MaxWidth="900" HorizontalAlignment="Left">
+        <StackPanel Orientation="Horizontal" Spacing="16">
+            <layouts:ConceptStatTile Value="$1,284" Caption="Spend this month"
+                                     AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
+            <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+                                     AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
+            <layouts:ConceptStatTile Value="342" Caption="Sessions"
+                                     AccentBrush="{StaticResource OBBAccentBrush}" />
+        </StackPanel>
+
+        <components:UnifiedGlassCard>
+            <StackPanel Spacing="6">
+                <TextBlock Text="Live cost curve" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="Your 30-day spend, day by day." FontSize="13" Opacity="0.7" />
+            </StackPanel>
+        </components:UnifiedGlassCard>
+
+        <components:UnifiedGlassCard>
+            <StackPanel Spacing="6">
+                <TextBlock Text="Providers" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="Anthropic · OpenAI · Google · xAI" FontSize="13" Opacity="0.7" />
+            </StackPanel>
+        </components:UnifiedGlassCard>
+
+        <components:UnifiedGlassCard>
+            <StackPanel Spacing="6">
+                <TextBlock Text="Models" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="Top models by spend and tokens." FontSize="13" Opacity="0.7" />
+            </StackPanel>
+        </components:UnifiedGlassCard>
+
+        <components:UnifiedGlassCard>
+            <StackPanel Spacing="6">
+                <TextBlock Text="Activity" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="Recent sessions and runs." FontSize="13" Opacity="0.7" />
+            </StackPanel>
+        </components:UnifiedGlassCard>
+    </StackPanel>
+</UserControl>

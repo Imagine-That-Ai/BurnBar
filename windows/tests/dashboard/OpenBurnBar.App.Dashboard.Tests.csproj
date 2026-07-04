@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable Dashboard layer (Phase 3 · W7 —
+    Dashboard: 5 concept layouts + easter-egg physics). Runs today via `dotnet test`
+    on the authoring host, the SAME assembly that ships on Windows. Mirrors the
+    proven presentation/theme/particles test pattern (net10.0, xUnit).
+
+    Coverage:
+      • SeededGeneratorTests        — SplitMix64 determinism + range (the RNG the
+        whole easter-egg field's reproducibility rests on).
+      • GlyphSamplerTests           — the deterministic glyph→target sampler.
+      • DashboardLayoutTests         — the shared enum contract (raw values, symbol
+        parity, kernel-forward classification, parse fallback).
+      • DashboardLayoutStateTests    — the switcher state machine (select / cycle /
+        raw round-trip / ViewThatFits collapse / change notification).
+      • EasterEggSimulationTests     — the REQUIRED frame-stepped physics proof:
+        step N frames and assert deterministic positions, floor/wall collisions,
+        settle, storm envelope, converge targets, and boundary arc teardown.
+      • EasterEggControllerTests     — the scroll-reversal summon state machine
+        (reversal threshold, 9s cooldown, boundary throttle, reduce-motion abort).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Dashboard/OpenBurnBar.App.Dashboard.csproj" />
+  </ItemGroup>
+
+</Project>
