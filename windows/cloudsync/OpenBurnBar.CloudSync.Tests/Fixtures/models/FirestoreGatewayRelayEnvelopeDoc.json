@@ -1,0 +1,1 @@
+{"enc":"aes-256-gcm","payloadCiphertext":"Y2lwaGVy","relayEncryption":"hpke-v3","relayKeyVersion":4,"senderPublicKey":"c2VuZGVy","wrappedKey":"d3JhcA=="}
