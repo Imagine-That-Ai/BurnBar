@@ -4,14 +4,11 @@ namespace OpenBurnBar.Particles.Substrates.Families;
 
 /// <summary>
 /// Constellation family registry — C# port of Swift <c>Families/ConstellationFamily.swift</c>.
+/// The star-field / link family: Stellar Plasma (Starfire, landed in #1202) + Cut Star
+/// Sapphire + Drawn Constellation + Dendritic Frost (the remaining three landed with the
+/// Volumetric lane, #1213). Ids / labels / accents mirror the Swift descriptors
+/// byte-for-byte.
 /// </summary>
-/// <remarks>
-/// Only the flagship <see cref="StarfireSubstrate"/> ("Stellar Plasma") is ported so far
-/// (landed with the engine in PR #1202); the other three Constellation bespoke painters
-/// (Star Sapphire / Stellarium / Rimefrost) are future ports, so this list is a faithful
-/// but partial mirror of the 4-entry Swift registry. The Flow + Aurora families in this
-/// lane are complete.
-/// </remarks>
 public static class ConstellationFamily
 {
     public static readonly SubstrateDescriptor[] Styles =
@@ -22,5 +19,23 @@ public static class ConstellationFamily
             accent: new Rgba(131 / 255.0, 142 / 255.0, 1.0),
             accent2: new Rgba(150 / 255.0, 200 / 255.0, 1.0),
             make: () => new StarfireSubstrate()),
+        new SubstrateDescriptor(
+            id: "constellation.starsapphire", family: SubstrateFamily.Constellation,
+            label: "Cut Star Sapphire", hint: "facets",
+            accent: new Rgba(120 / 255.0, 170 / 255.0, 1.0),
+            accent2: new Rgba(180 / 255.0, 220 / 255.0, 1.0),
+            make: () => new StarSapphireSubstrate()),
+        new SubstrateDescriptor(
+            id: "constellation.stellarium", family: SubstrateFamily.Constellation,
+            label: "Drawn Constellation", hint: "lines",
+            accent: new Rgba(150 / 255.0, 170 / 255.0, 1.0),
+            accent2: new Rgba(200 / 255.0, 215 / 255.0, 1.0),
+            make: () => new StellariumSubstrate()),
+        new SubstrateDescriptor(
+            id: "constellation.rimefrost", family: SubstrateFamily.Constellation,
+            label: "Dendritic Frost", hint: "frost",
+            accent: new Rgba(190 / 255.0, 215 / 255.0, 1.0),
+            accent2: new Rgba(225 / 255.0, 240 / 255.0, 1.0),
+            make: () => new RimefrostSubstrate()),
     };
 }

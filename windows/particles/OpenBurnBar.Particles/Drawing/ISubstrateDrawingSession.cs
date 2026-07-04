@@ -188,12 +188,37 @@ public interface ISubstrateDrawingSession
     /// </summary>
     IDisposable PushRadialMaskLayer(double cx, double cy, double whiteRadius, double clearRadius);
 
+    // ── Geometry + gradient + oriented-sprite primitives (added for the Volumetric
+    //    family + the richer Constellation substrates: cut-gem facets, glass chips,
+    //    god-ray shafts, star-chart rings + dashed guide edges). Each maps 1:1 onto a
+    //    Win2D CanvasDrawingSession call — CanvasGeometry fill/stroke, FillRectangle,
+    //    a rotated rounded rect, a CanvasLinearGradientBrush, and a transformed
+    //    DrawImage of a cached anisotropic mask. The headless RecordingDrawingSession
+    //    tallies + hashes them exactly like the original ones so the CPU perf budget
+    //    and the parity golden still measure the full painter cost. ──
+
+    /// <summary>
+    /// Axis-aligned filled rectangle (SwiftUI <c>ctx.fill(Path(rect))</c> / Win2D
+    /// <c>FillRectangle</c>). Used for full-canvas presence washes (smoked-glass floor).
+    /// </summary>
+    void FillRect(double x, double y, double width, double height, in Rgba color);
+
+    /// <summary>
+    /// A rotated rounded square centered at (cx, cy) — a glass CHIP. <paramref name="halfExtent"/>
+    /// is half the side; <paramref name="cornerRadius"/> the corner round; the quad is
+    /// rotated by the pre-computed (<paramref name="rotCos"/>, <paramref name="rotSin"/>).
+    /// SwiftUI <c>Path(roundedRect:).applying(transform)</c> / Win2D
+    /// <c>FillRoundedRectangle</c> under a rotation <c>Transform</c>.
+    /// </summary>
+    void FillRoundedQuad(double cx, double cy, double halfExtent, double cornerRadius,
+        double rotCos, double rotSin, in Rgba color);
+
     /// <summary>
     /// Fill a simple (single-contour) polygon with a solid color — the C# analog of
     /// SwiftUI <c>ctx.fill(Path)</c> for a closed poly (glacier facets, glass quads,
-    /// tessellated petals, shadow/specular wedges). The contour is implicitly closed
-    /// from the last vertex back to the first. On Win2D: <c>CanvasGeometry.CreatePolygon</c>
-    /// + <c>FillGeometry</c> with the current blend.
+    /// tessellated petals, cut-gem lambert wedges, shadow/specular wedges). The contour
+    /// is implicitly closed from the last vertex back to the first. On Win2D:
+    /// <c>CanvasGeometry.CreatePolygon</c> + <c>FillGeometry</c> with the current blend.
     /// </summary>
     void FillPolygon(ReadOnlySpan<Vec2> points, in Rgba color);
 
@@ -210,12 +235,13 @@ public interface ISubstrateDrawingSession
     /// <summary>
     /// Stroke one polyline (open by default, or closed) with a solid color — the C#
     /// analog of SwiftUI <c>ctx.stroke(Path, with: .color, style:)</c> (frost rims,
-    /// silk creases, glass edges/rails, the aurora-filament hot core). Round caps +
-    /// joins. When <paramref name="dash"/> is set, the stroke crawls a dash pattern
-    /// (the filament "charge"). <paramref name="breakBefore"/>, when non-empty, marks
-    /// vertices that begin a NEW sub-path (a <c>path.move(to:)</c>) so one call can
-    /// carry a broken polyline. On Win2D: <c>CanvasPathBuilder</c> → <c>DrawGeometry</c>
-    /// with a round <c>CanvasStrokeStyle</c> (+ <c>CustomDashStyle</c> when dashed).
+    /// silk creases, glass edges/rails, crystal hex edges, the aurora-filament hot
+    /// core). Round caps + joins. When <paramref name="dash"/> is set, the stroke crawls
+    /// a dash pattern (the filament "charge"). <paramref name="breakBefore"/>, when
+    /// non-empty, marks vertices that begin a NEW sub-path (a <c>path.move(to:)</c>) so
+    /// one call can carry a broken polyline. On Win2D: <c>CanvasPathBuilder</c> →
+    /// <c>DrawGeometry</c> with a round <c>CanvasStrokeStyle</c> (+ <c>CustomDashStyle</c>
+    /// when dashed).
     /// </summary>
     void StrokePolyline(ReadOnlySpan<Vec2> points, in Rgba color, double strokeWidth,
         bool closed = false, DashPattern? dash = null, ReadOnlySpan<bool> breakBefore = default);
@@ -231,4 +257,36 @@ public interface ISubstrateDrawingSession
     void StrokePolylineGradient(ReadOnlySpan<Vec2> points, ReadOnlySpan<GradientStop> stops,
         double x0, double y0, double x1, double y1, double strokeWidth,
         bool closed = false, DashPattern? dash = null, ReadOnlySpan<bool> breakBefore = default);
+
+    /// <summary>
+    /// A rectangle filled with a linear gradient laid from (<paramref name="startX"/>,
+    /// <paramref name="startY"/>) to (<paramref name="endX"/>, <paramref name="endY"/>).
+    /// SwiftUI <c>ctx.fill(Path(rect), with: .linearGradient(...))</c> / Win2D
+    /// <c>FillRectangle</c> with a <c>CanvasLinearGradientBrush</c>. The volumetric
+    /// god-ray band. Stops are copied by the recorder / adapter (span not retained).
+    /// </summary>
+    void FillLinearGradientRect(double x, double y, double width, double height,
+        ReadOnlySpan<GradientStop> stops, double startX, double startY, double endX, double endY);
+
+    /// <summary>
+    /// A cached anisotropic (tall) tinted luminance mask — the crepuscular SHAFT —
+    /// anchored at its FOOT (<paramref name="footX"/>, <paramref name="footY"/>),
+    /// extending up by <paramref name="height"/> along a <paramref name="rotation"/>
+    /// (radians) light vector, <paramref name="width"/> wide, tinted by
+    /// <paramref name="tint"/> at global <paramref name="opacity"/>. SwiftUI
+    /// <c>g.translateBy; g.rotate; g.draw(shaftSprite, in: rect(-w/2,-h,w,h))</c> / Win2D
+    /// a transformed <c>DrawImage</c> of a cached shaft bitmap. The isotropic radial
+    /// glows still go through <see cref="DrawGlowSprite"/>.
+    /// </summary>
+    void DrawShaftSprite(double footX, double footY, double width, double height,
+        double rotation, in Rgba tint, double opacity);
+
+    /// <summary>
+    /// One batched dashed poly-line stroke (SwiftUI <c>ctx.stroke(Path, style:
+    /// StrokeStyle(dash:dashPhase:))</c> / Win2D <c>DrawGeometry</c> with a dashed
+    /// <c>CanvasStrokeStyle</c>). Used for the crawling engraved guide ticks in the
+    /// drawn-constellation chart; <paramref name="dashPhase"/> animates the crawl.
+    /// </summary>
+    void DrawDashedLineBatch(ReadOnlySpan<LineSegment> segments, in Rgba color,
+        double strokeWidth, double dashOn, double dashOff, double dashPhase);
 }

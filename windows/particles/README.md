@@ -22,14 +22,22 @@ Swift Core (already compiles on Windows, Phase 1)
         ▼
 C#  OpenBurnBar.Particles  (net8.0, PLATFORM-AGNOSTIC — builds + runs on macOS)
   Model/           SwarmSubstrateFrame + SwarmSubstrateDot + SubstrateStage  (1:1 Swift port)
-  Math/            SubstrateKit  (TAU/clamp/lerp/frac/smoothstep/shash/breathe/XorShift32/ramps)
+  Math/            SubstrateKit  (TAU/clamp/lerp/frac/smooth+smootherstep/shash/breathe/XorShift32/ramps)
+                   OklabColor          ── perceptual OKLab ramp mix (bake-time only)
                    SubstrateStructure  ── NN-walk + kNN provider (grid, O(n)); cached by topology
-  Drawing/         ISubstrateDrawingSession  ── the seam (circles, glow sprites, blur layers,
-                                                 + polygons, gradient polygons, polylines)
+  Model/           SubstrateDescriptor ── one style's metadata + painter factory
+  Drawing/         ISubstrateDrawingSession  ── the seam: circles/glow sprites/blur+radial-mask layers
+                                                 + polygons/gradient polygons/polylines (Vec2) + rects/
+                                                 rounded-quads/rings/linear-gradient rects/oriented god-ray
+                                                 shafts/dashed batches + PointD facets + GlowProfile
                    RecordingDrawingSession   ── headless: counts commands + FNV geometry checksum
-  Substrates/      PlainDots + Constellation/Starfire
+                   SubstrateGeometry         ── PointD + GlowProfile value types
+  Substrates/      PlainDots + Constellation{Starfire, StarSapphire, Stellarium, Rimefrost}
                    Flow/    PlanktonWake · GlassRibbon · SilkStreamline · PetalDrift
                    Aurora/  Wisp · IcePrism · AuroraFilament · DriftMotes
+                   Mesh/    Caustic · Patch · Isoline · Grain
+                   Moire/   FringeBloom · LatticeFacet · RulingGrating · FilmBubble
+                   + Volumetric{Sunshaft, SmokedGlass, SilkFilament, DustMotes}
                    Families/ + SubstrateCatalog  ── the registry (mirrors SubstrateCatalog.swift)
   Ffi/             SwarmSubstrateFrameFfi    ── blittable wire structs + Decode()
         │
@@ -37,8 +45,11 @@ C#  OpenBurnBar.Particles  (net8.0, PLATFORM-AGNOSTIC — builds + runs on macOS
 C#  windows/app/OpenBurnBar.App/Particles/  (Win2D — Windows-only, CI-deferred)
   Win2DSubstrateDrawingSession  ── forwards to CanvasDrawingSession
                                    (CanvasBlend.Add, CanvasRadialGradientBrush,
-                                    GaussianBlurEffect, CanvasGeometry strokes)
+                                    GaussianBlurEffect, CanvasGeometry fill/stroke,
+                                    FillRoundedRectangle, CanvasLinearGradientBrush,
+                                    transformed shaft DrawImage, dashed stroke style)
   GlowSpriteCache               ── bakes radial glow sprites once (Swift SpriteCache analog)
+  ShaftSpriteCache              ── bakes the anisotropic god-ray mask (Swift bakeShaft analog)
   SwarmCanvasHost               ── CanvasAnimatedControl draw loop (SwarmCanvasView analog)
 ```
 
@@ -62,9 +73,11 @@ Windows render of the **same decoded frame** be compared command-for-command
 `dotnet run -c Release --project OpenBurnBar.Particles.PerfHarness`
 (`--dots 520,1080,2000 --frames 600 --warmup 120`)
 
-Steps the Starfire painter over N particles for M frames against
+Steps **every registered bespoke painter** over N particles for M frames against
 `RecordingDrawingSession` and reports min/median/p95/p99/max frame time, effective
-FPS, draw-command tallies, and the 60fps CPU-budget verdict.
+FPS, draw-command tallies, and the 60fps CPU-budget verdict. `--verify` runs the
+parity self-check instead (FFI round-trip + per-substrate non-empty / cross-instance
+determinism / warm-cache stability / reduced-motion determinism goldens).
 
 **Measures:** the *CPU* cost of the renderer pass — particle iteration + draw-command
 emission (the parity-critical, ARM64-sensitive work that is now C#).
@@ -77,19 +90,26 @@ ARM64 risk and must be measured live on the dev host (see
 
 ### Measured on this box (Apple M-series, arm64, .NET 10 runtime, net8 target)
 
-Starfire / "Stellar Plasma", dark canvas, full bloom+cross path, 600 timed frames:
+All bespoke painters, dark canvas, full path, **2000 dots**, 600 timed frames
+(worst-case row per substrate; every dot-count × throttle scenario also PASSes):
 
-| dots | path | median ms | p95 ms | eff. FPS (median) | draw cmds | 60fps CPU |
-|---:|---|---:|---:|---:|---:|:--:|
-| 520 | full | 0.109 | 0.158 | ~9,200 | 2,082 | PASS (153x headroom) |
-| 1080 | full | 0.125 | 0.161 | ~8,000 | 4,322 | PASS (133x) |
-| 2000 | full | 0.110 | 0.146 | ~9,100 | 8,002 | PASS (152x) |
-| 1080 | throttled | 0.026 | 0.104 | ~38,000 | 2,160 | PASS |
+| substrate | median ms | p95 ms | eff. FPS (median) | 60fps CPU |
+|---|---:|---:|---:|:--:|
+| `constellation.starfire`     | 0.140 | 0.169 | ~7,160 | PASS (~119x) |
+| `constellation.starsapphire` | 0.377 | 0.470 | ~2,650 | PASS (~44x) |
+| `constellation.stellarium`   | 0.093 | 0.108 | ~10,800 | PASS (~180x) |
+| `constellation.rimefrost`    | 0.686 | 0.733 | ~1,460 | PASS (~24x) |
+| `volumetric.sunshaft`        | 0.064 | 0.119 | ~15,700 | PASS (~262x) |
+| `volumetric.smoked-glass`    | 0.118 | 0.151 | ~8,490 | PASS (~141x) |
+| `volumetric.silk-filament`   | 1.158 | 1.415 | ~865 | PASS (~14x) |
+| `volumetric.dust-motes`      | 0.192 | 0.276 | ~5,200 | PASS (~87x) |
 
-CPU command-emission is nowhere near the frame budget (~0.1 ms vs 16.67 ms). The
-takeaway for W6-DS-SWARM: the renderer's CPU side is a non-issue even at 2000
-particles; **budget the spike at the GPU compositor**, which this harness
-deliberately does not (and cannot, headless) measure.
+CPU command-emission is nowhere near the frame budget — the heaviest painter (Silk
+Filament, a single kNN-threaded strand with bucketed multi-pass strokes) sits at
+~1.2 ms vs the 16.67 ms budget (~14x headroom). The takeaway for W6-DS-SWARM: the
+renderer's CPU side is a non-issue even at 2000 particles; **budget the spike at the
+GPU compositor**, which this harness deliberately does not (and cannot, headless)
+measure.
 
 ### Flow + Aurora families — measured on this box (Apple M-series, arm64, .NET 10)
 
@@ -131,6 +151,7 @@ centroid/cloudRadius/sizePx, and stage derivation.
 ## Status / next
 
 - ✅ Renderer core + math kit + drawing seam + FFI contract — built green on macOS.
+
 **Wave-4 integration (`windows/integration-w4`)** consolidates the three parallel
 substrate-family lanes into one catalog + one drawing seam + one headless harness:
 

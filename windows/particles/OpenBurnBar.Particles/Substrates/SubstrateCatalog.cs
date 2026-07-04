@@ -33,7 +33,7 @@ public static class SubstrateCatalog
         [SubstrateFamily.Aurora] = AuroraFamily.Styles,
         [SubstrateFamily.Mesh] = MeshFamily.Styles,
         [SubstrateFamily.Moire] = MoireFamily.Styles,
-        [SubstrateFamily.Volumetric] = Array.Empty<SubstrateDescriptor>(),
+        [SubstrateFamily.Volumetric] = VolumetricFamily.Styles,
     };
 
     private static readonly SubstrateFamily[] Families =

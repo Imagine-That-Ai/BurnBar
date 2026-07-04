@@ -39,6 +39,7 @@ namespace OpenBurnBar.App.Particles;
 public sealed class SwarmCanvasHost : IDisposable
 {
     private readonly GlowSpriteCache _sprites = new();
+    private readonly ShaftSpriteCache _shafts = new();
     private ISwarmSubstrate _substrate = new PlainDotsSubstrate();
 
     public SwarmCanvasHost()
@@ -77,7 +78,7 @@ public sealed class SwarmCanvasHost : IDisposable
         SwarmSubstrateFrame? frame = FrameProvider?.Invoke(sender.Size, args.Timing.TotalTime);
         if (frame is null) return;
 
-        var session = new Win2DSubstrateDrawingSession(args.DrawingSession, _sprites);
+        var session = new Win2DSubstrateDrawingSession(args.DrawingSession, _sprites, _shafts);
         bool handled = _substrate.Paint(frame, session);
         if (!handled)
         {

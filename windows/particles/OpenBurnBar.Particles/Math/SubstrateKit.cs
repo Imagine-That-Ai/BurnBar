@@ -34,6 +34,19 @@ public static class SubstrateKit
     }
 
     /// <summary>
+    /// Ken-Perlin smootherstep (C¹ + C² continuous: <c>t³(t(6t−15)+10)</c>). The kit
+    /// ships only <see cref="Smoothstep"/>; the volumetric "inhale" width breath uses
+    /// this smoother flavor, matching the Swift substrates' local helper.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static double Smootherstep(double e0, double e1, double x)
+    {
+        double denom = (e1 - e0) == 0 ? 1 : (e1 - e0);
+        double t = ClampD((x - e0) / denom, 0, 1);
+        return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+
+    /// <summary>
     /// Cheap, well-distributed hash → 0…1. Matches the Swift <c>shash</c> flavor
     /// (<c>frac(sin(x*91.7+13.13)*43758.5453)</c>) exactly. Deterministic; good for
     /// per-point phase/jitter.
