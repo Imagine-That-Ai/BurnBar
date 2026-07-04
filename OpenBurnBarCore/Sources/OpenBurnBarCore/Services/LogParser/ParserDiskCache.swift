@@ -110,7 +110,7 @@ public struct ParserDiskCacheStore<Entry: Codable & Equatable & Sendable>: Senda
             let data = try encoder.encode(persisted)
             try data.write(to: cacheURL, options: .atomic)
         } catch {
-            AppLogger.parser.silentFailure("\(logLabel): Failed to persist parser cache", error: error)
+            ParserDiagnostics.silentFailure("\(logLabel): Failed to persist parser cache", error: error)
         }
     }
 }

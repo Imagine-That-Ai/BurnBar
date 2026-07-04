@@ -432,6 +432,27 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
         return relativePath == "LinuxEmptyTests.swift" ? nil : relativePath
     }.sorted()
 }
+// Windows-port Phase-2 (G2 parser lift): the off-Apple SQLite backend for the
+// read-only reader seam (`Sources/OpenBurnBarCore/Services/SQLite/`). The Swift
+// Windows SDK ships NO system SQLite, so the Foundation-only Engine subset compiles
+// the vendored public-domain SQLite amalgamation (`Sources/CSQLite/sqlite3.c`) as a
+// first-party C target. On Apple this target is ABSENT and the reader links the
+// system `SQLite3` module instead (`#if canImport(SQLite3)`), so the 8.8 MB
+// amalgamation never compiles on macOS/iOS. Host-evaluated, so it is included only
+// on the non-Apple Windows/Linux CI hosts — exactly where the Engine is exercised.
+let vendoredSQLiteTargets: [Target] = [
+    .target(
+        name: "CSQLite",
+        path: "Sources/CSQLite",
+        // No run-time extension loading (no dlopen/LoadLibrary) — the parsers only
+        // read a plain local file. Serialized threadsafe mode is the SQLite default.
+        cSettings: [
+            .define("SQLITE_OMIT_LOAD_EXTENSION"),
+            .define("SQLITE_THREADSAFE", to: "1")
+        ]
+    )
+]
+let coreSQLiteDependencies: [Target.Dependency] = ["CSQLite"]
 #else
 let openBurnBarCoreExcludes: [String] = []
 let computerUseCoreExcludes: [String] = []
@@ -439,6 +460,10 @@ let openBurnBarCoreTestExcludes: [String] = []
 let computerUseCoreTestExcludes: [String] = []
 let legacyLinuxTestSources: [String]? = nil
 func legacyLinuxTestExcludes(targetPath _: String) -> [String] { [] }
+// On Apple the reader links the system `SQLite3` module, so no vendored C target
+// and no Core dependency edge — the amalgamation is not compiled on Apple builds.
+let vendoredSQLiteTargets: [Target] = []
+let coreSQLiteDependencies: [Target.Dependency] = []
 #endif
 
 let firstPartyTargetsBase: [Target] = [
@@ -462,7 +487,7 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ],
+            ] + coreSQLiteDependencies,
             exclude: openBurnBarCoreExcludes,
             resources: [
                 // SwiftPM's `.process` rule flattens nested resource folders
@@ -758,7 +783,7 @@ let firstPartyTargets: [Target] = firstPartyTargetsBase + (buildForLinuxBoundary
     )
 ])
 
-let allTargets: [Target] = irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + firstPartyTargets
+let allTargets: [Target] = irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + firstPartyTargets + vendoredSQLiteTargets
 
 let package = Package(
     name: "OpenBurnBarCore",
