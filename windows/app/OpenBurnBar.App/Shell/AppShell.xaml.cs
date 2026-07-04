@@ -143,8 +143,19 @@ public sealed partial class AppShell : UserControl
 
         _currentKey = destination.Key;
         HeaderTitle.Text = destination.Title;
-        ContentFrame.Navigate(typeof(SurfaceStubPage), destination);
+        ContentFrame.Navigate(PageTypeFor(destination.Key), destination);
     }
+
+    /// <summary>
+    /// Resolve the real page for a destination key, falling back to <see cref="SurfaceStubPage"/> for
+    /// surfaces not yet ported. The Quota destination (Bucket C) renders the real
+    /// <see cref="Quota.QuotaWorkspacePage"/>; others land as the port progresses.
+    /// </summary>
+    private static Type PageTypeFor(string key) => key switch
+    {
+        "quota" => typeof(Quota.QuotaWorkspacePage),
+        _ => typeof(SurfaceStubPage),
+    };
 
     private void Palette_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
         => CommandPaletteRequested?.Invoke(this, EventArgs.Empty);

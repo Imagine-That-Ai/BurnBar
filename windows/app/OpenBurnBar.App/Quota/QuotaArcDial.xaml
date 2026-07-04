@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Quota.QuotaArcDial"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of AgentLens/Views/Dashboard/Quota/QuotaArcDial.swift — twin concentric rings.
+      The OUTER ring tracks the longer-horizon bucket (7d/30d/weekly); the INNER ring the shorter
+      one (5h/24h). Each ring is FILLED to its remaining fraction (a band-tinted ArcSegment path)
+      or DASHED-muted when its bucket is unavailable, so a missing bucket never misreads as "fully
+      exhausted". A small pace marker sits on each ring at the ideal fill-edge for the current pace.
+      All fractions/labels/marker angles come from the parity-tested QuotaArcDialModel /
+      QuotaArcGeometry / PacingMath; this control only maps them onto XAML shapes. The 0→actual
+      entrance sweep animates AnimatedProgress on load.
+    -->
+    <Grid x:Name="Root"
+          Width="140"
+          Height="140">
+        <!-- Rings + pace markers are drawn into this canvas by the code-behind. -->
+        <Canvas x:Name="RingCanvas" />
+
+        <!-- Center readout: dominant window's remaining percent + a small caption. -->
+        <StackPanel HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="2">
+            <TextBlock x:Name="CenterText"
+                       HorizontalAlignment="Center"
+                       FontFamily="{StaticResource PensieveFontMono}"
+                       FontSize="24"
+                       FontWeight="SemiBold" />
+            <TextBlock x:Name="CenterSubtitle"
+                       HorizontalAlignment="Center"
+                       FontFamily="{StaticResource PensieveFontMono}"
+                       FontSize="10"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+        </StackPanel>
+    </Grid>
+</UserControl>
