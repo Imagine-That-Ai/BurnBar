@@ -1,0 +1,8 @@
+{
+  "result": {
+    "ok": true,
+    "appCheckToken": "eyJhbGciOi.appcheck.tok",
+    "ttlMillis": 1800000,
+    "appId": "1:1234567890:web:abcdef0123456789"
+  }
+}
