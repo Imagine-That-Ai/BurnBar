@@ -52,7 +52,7 @@ import Foundation
 /// `sevenDayResetsAt` come from the response — the cache is fresh
 /// until the soonest of those two moments arrives.
 
-struct ClaudeOAuthUsageFetcher {
+public struct ClaudeOAuthUsageFetcher {
     let session: URLSession
     let cacheURL: URL
     let fileManager: FileManagerSendableBox
@@ -62,7 +62,7 @@ struct ClaudeOAuthUsageFetcher {
     let cliExecutor: any CLIExecutor
     let quotaLogger: any QuotaLogger
 
-    init(
+    public init(
         session: URLSession,
         cacheURL: URL,
         fileManager: FileManager = .default,
@@ -540,7 +540,7 @@ struct ClaudeRateLimits: Sendable, Equatable {
 
     static let empty = ClaudeRateLimits(windows: [:], rawJSON: Data("{}".utf8))
 
-    init(windows: [String: Window], rawJSON: Data) {
+    public init(windows: [String: Window], rawJSON: Data) {
         self.windows = windows
         self._rawJSON = rawJSON
     }
@@ -548,7 +548,7 @@ struct ClaudeRateLimits: Sendable, Equatable {
     /// Parses the response body directly. The endpoint returns either
     /// `{"rate_limits": {...}}` or the bare `{...}` map — we accept
     /// both for forward-compatibility.
-    init(from data: Data) {
+    public init(from data: Data) {
         guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional decode fallback)
             self = .empty
             return
@@ -557,7 +557,7 @@ struct ClaudeRateLimits: Sendable, Equatable {
         self.init(from: bucket)
     }
 
-    init(from dictionary: [String: Any]) {
+    public init(from dictionary: [String: Any]) {
         var parsed: [String: Window] = [:]
         for (key, value) in dictionary {
             guard let payload = value as? [String: Any] else { continue }
@@ -617,5 +617,5 @@ struct ClaudeRateLimits: Sendable, Equatable {
 /// holds one.
 struct FileManagerSendableBox: Sendable {
     let value: FileManager
-    init(_ value: FileManager) { self.value = value }
+    public init(_ value: FileManager) { self.value = value }
 }

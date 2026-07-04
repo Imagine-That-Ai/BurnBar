@@ -3,6 +3,7 @@ import Foundation
 // OpenAI, DeepSeek, and OpenCode quota adapters (lifted WS-C2 SEAM).
 
 public struct OpenAIQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard let apiKey = quotaNonEmpty(context.resolvedAPIKeys["openai"] ?? nil) else {
             return unavailableSnapshot(
@@ -97,6 +98,7 @@ public struct OpenAIQuotaAdapter: ProviderQuotaAdapter {
 }
 
 public struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard let apiKey = resolveAPIKey(context: context) else {
             return unavailableSnapshot(
@@ -250,6 +252,7 @@ public struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
 }
 
 public struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let authURL = context.homeDirectoryURL.appendingPathComponent(".local/share/opencode/auth.json")
         guard context.fileManager.fileExists(atPath: authURL.path) || Self.resolvedOpenCodeCredential(context) != nil else {

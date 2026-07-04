@@ -403,7 +403,7 @@ private struct CodexAuthPayload: Decodable {
         case date(Date)
         case seconds(Double)
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
             if let value = try? container.decode(Double.self) { // try?-ok(optional decode, falls through)
                 self = .seconds(value)
@@ -445,7 +445,7 @@ private struct CodexUsagePayload: Decodable {
         case additionalRateLimits = "additional_rate_limits"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         planType = try container.decodeIfPresent(String.self, forKey: .planType)
         rateLimit = try container.decodeIfPresent(RateLimit.self, forKey: .rateLimit)

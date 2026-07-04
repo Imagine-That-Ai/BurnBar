@@ -1,6 +1,7 @@
 import Foundation
 
 public struct ZAIQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard let apiKey = resolveZaiAPIKey(context: context) else {
             return unavailableSnapshot(

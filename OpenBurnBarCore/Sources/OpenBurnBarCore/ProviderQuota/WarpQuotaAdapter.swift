@@ -1,6 +1,7 @@
 import Foundation
 
 public struct WarpQuotaAdapter: ProviderQuotaAdapter {
+    public init() {}
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         // Try the Warp GraphQL API first (real source of truth).
         if let apiKey = WarpAPIFetcher.resolveAPIKey(
