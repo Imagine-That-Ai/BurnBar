@@ -19,6 +19,11 @@ public static class SurfacePageResolver
         "dashboard" => typeof(OpenBurnBar.App.Dashboard.DashboardPage),
         "missionControl" => typeof(OpenBurnBar.App.MissionControl.MissionControlPage),
         "dataControlCenter" => typeof(OpenBurnBar.App.DataControlCenter.DataControlCenterPage),
+        "chat" => typeof(OpenBurnBar.App.Chat.ChatHostPage),
+        "switcher" => typeof(OpenBurnBar.App.Switcher.SwitcherHostPage),
+        // Elder Wand is an Auxiliary (Command-Palette) destination, not a sidebar row — see
+        // NavCatalog.Auxiliary + ElderWandPage.xaml for the macOS reachability-parity rationale.
+        "elderWand" => typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
         _ => typeof(SurfaceStubPage),
     };
 }

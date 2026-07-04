@@ -60,6 +60,20 @@ public sealed partial class CommandPalette : ContentDialog
                 shortcut));
         }
 
+        // Auxiliary (non-sidebar) surfaces — e.g. Elder Wand / "Analysis Models". They carry no
+        // Ctrl 1..9 shortcut (those mirror the 12 sidebar rows) but stay reachable via search, the
+        // Windows interim for the macOS gated Settings-leaf / chat-header entry.
+        foreach (var destination in NavCatalog.Auxiliary)
+        {
+            items.Add(new CommandPaletteItem(
+                PaletteItemKind.Section,
+                destination.Glyph,
+                destination.Title,
+                destination.Subtitle,
+                destination.Key,
+                shortcut: null));
+        }
+
         return items;
     }
 
