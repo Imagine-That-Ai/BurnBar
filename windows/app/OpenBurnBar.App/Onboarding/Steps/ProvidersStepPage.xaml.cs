@@ -1,4 +1,3 @@
-using Windows.Storage;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -12,6 +11,7 @@ using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Theme;
 using Windows.Storage.Pickers;
+using Windows.Storage;
 
 namespace OpenBurnBar.App.Onboarding;
 
@@ -103,5 +103,77 @@ public sealed partial class ProvidersStepPage : Page
     private nint ResolveOwnerHwnd()
     {
         return System.IntPtr.Zero;
+    }
+
+    private void BuildPills()
+    {
+        if (_context is null || Model is null)
+        {
+            return;
+        }
+
+        ProviderCloud.Children.Clear();
+        _pills.Clear();
+
+        foreach (AgentProviderBrand provider in Model.SortedProviders(_context.DisplayName))
+        {
+            var pill = new OnboardingProviderPill();
+            pill.Configure(
+                provider,
+                _context.DisplayName(provider),
+                Model.IsProviderSelected(provider),
+                Model.IsProviderDetected(provider));
+            AgentProviderBrand captured = provider;
+            pill.Toggled += (_, _) =>
+            {
+                Model.ToggleProvider(captured);
+                pill.SetSelected(Model.IsProviderSelected(captured));
+            };
+            _pills[provider] = pill;
+            ProviderCloud.Children.Add(pill);
+        }
+    }
+
+    private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(OnboardingWizardModel.SelectedProviders))
+        {
+            SyncCounts();
+        }
+    }
+
+    private void SyncCounts()
+    {
+        if (Model is null)
+        {
+            return;
+        }
+
+        int detected = Model.DetectedProviders.Count;
+        SelectAllDetectedButton.Visibility = detected > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SelectAllDetectedButton.Content = $"Select all detected ({detected})";
+        SelectedCount.Text = $"{Model.SelectedProviders.Count} selected";
+    }
+
+    private void OnSelectAllDetected(object sender, RoutedEventArgs e)
+    {
+        if (Model is null)
+        {
+            return;
+        }
+
+        Model.SelectAllDetected();
+        foreach (KeyValuePair<AgentProviderBrand, OnboardingProviderPill> entry in _pills)
+        {
+            entry.Value.SetSelected(Model.IsProviderSelected(entry.Key));
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (Model is not null)
+        {
+            Model.PropertyChanged -= OnModelChanged;
+        }
     }
 }

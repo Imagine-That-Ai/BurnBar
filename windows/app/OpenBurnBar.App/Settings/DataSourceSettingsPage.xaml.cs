@@ -1,4 +1,3 @@
-using Windows.Storage;
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -9,6 +8,7 @@ using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Settings;
 using Windows.Storage.Pickers;
+using Windows.Storage;
 
 namespace OpenBurnBar.App.Settings.Winui;
 
@@ -76,4 +76,34 @@ public sealed partial class DataSourceSettingsPage : Page
     {
         return System.IntPtr.Zero;
     }
+
+    private void OnSave(object sender, RoutedEventArgs e)
+    {
+        string? path = string.IsNullOrWhiteSpace(DbPathBox.Text) ? null : DbPathBox.Text.Trim();
+        string? passphrase = string.IsNullOrWhiteSpace(PassphraseBox.Password) ? null : PassphraseBox.Password;
+
+        AppConfiguration.Current.UpdateAndSave(model =>
+        {
+            model.SqlCipherDbPath = path;
+            if (passphrase is not null)
+            {
+                model.SqlCipherPassphrase = passphrase;
+            }
+
+            model.FirebaseProjectId = NullIfEmpty(FirebaseProjectBox.Text);
+            model.FirebaseUid = NullIfEmpty(FirebaseUidBox.Text);
+            model.FirebaseIdToken = NullIfEmpty(FirebaseIdTokenBox.Text);
+            model.AppCheckToken = NullIfEmpty(AppCheckTokenBox.Text);
+            model.VaultKeyB64 = NullIfEmpty(VaultKeyBox.Text);
+        });
+
+        WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+
+        StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials
+            ? "Saved. SQLCipher active — reopen surfaces to reload stores."
+            : "Saved. Cloud settings applied where UID + token are set.";
+    }
+
+    private static string? NullIfEmpty(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? null : text.Trim();
 }
