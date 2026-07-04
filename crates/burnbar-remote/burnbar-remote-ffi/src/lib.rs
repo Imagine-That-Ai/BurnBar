@@ -32,6 +32,7 @@ pub const REMOTE_WIRE_VERSION: u8 = 1;
 /// Fixed on-wire size of an encoded `RemoteQualityDecision` (see
 /// `encode_decision_wire` for the exact big-endian field layout).
 pub const REMOTE_WIRE_DECISION_LEN: usize = 22;
+const REMOTE_WIRE_DECISION_LEN_U32: u32 = 22;
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct RemoteReadiness {
@@ -393,8 +394,8 @@ fn encode_decision_wire(decision: &RemoteQualityDecision) -> Vec<u8> {
 fn decode_decision_wire(bytes: &[u8]) -> Result<RemoteQualityDecision, BurnBarRemoteFfiError> {
     if bytes.len() != REMOTE_WIRE_DECISION_LEN {
         return Err(BurnBarRemoteFfiError::WireTruncated {
-            expected: REMOTE_WIRE_DECISION_LEN as u32,
-            found: bytes.len() as u32,
+            expected: REMOTE_WIRE_DECISION_LEN_U32,
+            found: u32::try_from(bytes.len()).unwrap_or(u32::MAX),
         });
     }
     if bytes[0] != REMOTE_WIRE_VERSION {

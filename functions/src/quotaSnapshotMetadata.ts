@@ -1,6 +1,15 @@
 import type { QuotaSnapshotDoc } from "./types.js";
 import { logInfo } from "./logging.js";
-import { QuotaRefreshPolicy, type QuotaRefreshWindowKind } from "./quotaRefreshPolicy.js";
+import { QuotaRefreshPolicy } from "./quotaRefreshPolicy.js";
+
+type QuotaSnapshotMetadataWindowKind =
+  | "rollingHours"
+  | "rollingDays"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "lifetime"
+  | "custom";
 
 export function quotaSnapshotAgeMsBucket(fetchedAt: string | undefined, now: Date = new Date()): string {
   if (!fetchedAt) return "unknown";
@@ -28,7 +37,7 @@ export function emitQuotaSnapshotWritten(snapshot: QuotaSnapshotDoc, now: Date):
 export function quotaAccountRefreshMetadata(snapshot: QuotaSnapshotDoc, now: Date): Record<string, unknown> {
   const buckets = Array.isArray(snapshot.buckets) ? snapshot.buckets : [];
   let remainingFraction: number | null = null;
-  let windowKind: QuotaRefreshWindowKind = "custom";
+  let windowKind: QuotaSnapshotMetadataWindowKind = "custom";
   let resetsAt: string | null = snapshot.resetAt ?? null;
 
   for (const bucket of buckets) {
@@ -74,7 +83,7 @@ export function quotaAccountRefreshMetadata(snapshot: QuotaSnapshotDoc, now: Dat
   };
 }
 
-function quotaWindowKindFromBucket(window: unknown): QuotaRefreshWindowKind {
+function quotaWindowKindFromBucket(window: unknown): QuotaSnapshotMetadataWindowKind {
   if (typeof window !== "string") return "custom";
   const normalized = window.toLowerCase();
   if (normalized.includes("hour") || normalized.endsWith("h")) return "rollingHours";

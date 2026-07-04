@@ -7,7 +7,7 @@ export enum QuotaSignalTier {
   SpendProbe = 5,
 }
 
-export type QuotaRefreshWindowKind =
+type QuotaRefreshWindowKind =
   | "rollingHours"
   | "rollingDays"
   | "daily"
@@ -16,7 +16,7 @@ export type QuotaRefreshWindowKind =
   | "lifetime"
   | "custom";
 
-export interface QuotaRefreshPolicySnapshot {
+interface QuotaRefreshPolicySnapshot {
   fetchedAt: Date | string | number;
   remainingFraction?: number | null;
   windowKind: QuotaRefreshWindowKind;

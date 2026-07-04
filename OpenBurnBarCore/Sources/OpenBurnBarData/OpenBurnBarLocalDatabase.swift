@@ -146,6 +146,9 @@ public struct OpenBurnBarDatabaseOwnershipDecision: Equatable, Sendable {
     )
 }
 
+// AUDIT(@unchecked Sendable): GRDB DatabasePool owns raw SQLite handles and
+// serializes writer access through the sole-writer ownership contract.
+// sendable-allowlist: sqlite-raw-pointer
 public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
     public static let ownershipDecision = OpenBurnBarDatabaseOwnershipDecision.linuxEngineSoleWriter
 

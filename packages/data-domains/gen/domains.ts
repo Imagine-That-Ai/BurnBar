@@ -534,7 +534,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "escrow_grants",
       "escrow_envelopes",
       "escrow_audit_events",
-      "account_recovery_methods"
+      "account_recovery_methods",
+      "roaming_profile"
     ],
     "storagePaths": [],
     "countSource": "escrow_devices",
