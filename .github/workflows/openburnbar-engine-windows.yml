@@ -46,6 +46,7 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Package.resolved"
       - ".github/workflows/openburnbar-engine-windows.yml"
@@ -54,6 +55,7 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Package.resolved"
       - ".github/workflows/openburnbar-engine-windows.yml"
@@ -266,6 +268,14 @@ jobs:
       - name: Run G2 parser-output parity
         run: swift run --package-path OpenBurnBarCore OpenBurnBarG2ParserParity
 
+      # Phase-2 C3 / G2 prompt-injection-wrap contract. Runs the committed
+      # `llm-safe-wrap-vectors.json` corpus through `LLMSafeWrapVectorTests` on this
+      # native Windows host and byte-diffs every vector against the macOS oracle.
+      # Exits 0 only when all five XCTest cases pass (full corpus + semantic guards).
+      - name: Run LLM-safe wrap vector contract (C3 / ARM64)
+        run: swift test --package-path OpenBurnBarCore --filter LLMSafeWrapVectorTests
+
+
   # ──────────────────────────────────────────────────────────────────────────
   # ARM64 leg (aarch64-unknown-windows-msvc) on the free `windows-11-arm` runner.
   # Mirrors the x64 `build` job step-for-step, diverging only where the arch
@@ -450,3 +460,11 @@ jobs:
       # Windows with no hardware.
       - name: Run G2 parser-output parity (ARM64)
         run: swift run --package-path OpenBurnBarCore OpenBurnBarG2ParserParity
+
+      # Phase-2 C3 / G2 prompt-injection-wrap contract. Runs the committed
+      # `llm-safe-wrap-vectors.json` corpus through `LLMSafeWrapVectorTests` on this
+      # native Windows host and byte-diffs every vector against the macOS oracle.
+      # Exits 0 only when all five XCTest cases pass (full corpus + semantic guards).
+      - name: Run LLM-safe wrap vector contract (C3)
+        run: swift test --package-path OpenBurnBarCore --filter LLMSafeWrapVectorTests
+

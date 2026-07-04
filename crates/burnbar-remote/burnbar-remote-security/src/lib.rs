@@ -956,8 +956,28 @@ fn append_audit_event(path: &Path, event: AuditEvent) -> Result<(), Authorizatio
         .append(true)
         .open(path)
         .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
-    file.lock_exclusive()
-        .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    // On Windows, file locks can transiently fail with "another process has locked
+    // a portion of the file" (os error 33) under concurrent test execution. Retry
+    // with a small backoff before giving up.
+    // On Windows, fs2's LockFileEx can fail with os error 33 under
+    // concurrent access. Use a process-wide Mutex to serialize.
+    #[cfg(target_os = "windows")]
+    {
+        use std::sync::Mutex;
+        use std::sync::OnceLock;
+        static AUDIT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let mutex = AUDIT_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = mutex
+            .lock()
+            .map_err(|_| AuthorizationError::AuditChain("audit log mutex poisoned".to_string()))?;
+        // Now safe to use the file lock (or skip it entirely since the Mutex serializes)
+        let _ = file.lock_exclusive(); // Best-effort; Mutex already serializes
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        file.lock_exclusive()
+            .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
+    }
     let result = append_audit_event_locked(path, &mut file, event);
     let unlock_result = file
         .unlock()

@@ -74,6 +74,25 @@ public sealed class CommittedSampleFeedTests
     }
 
     [Fact]
+    public void CommittedArtifactIsLfByteStable_SoThePinnedFeedVerifiesOnEveryPlatform()
+    {
+        // Regression guard for the Windows CRLF hazard. The feed's length / sha256 /
+        // Ed25519 signature are all computed over the EXACT bytes of sample-artifact.txt.
+        // If git autocrlf rewrote LF -> CRLF on checkout, the artifact would grow and the
+        // verifier would fail LengthMismatch-first, flipping every CommittedSampleFeed test
+        // red on Windows while it stayed green on macOS. .gitattributes now pins the fixture
+        // to LF on all platforms; assert the checked-out bytes are actually unconverted here,
+        // so a future autocrlf regression fails THIS test with a self-explaining message
+        // instead of a cryptic wrong-RejectionReason four tests over.
+        var artifact = Artifact();
+        Assert.DoesNotContain((byte)'\r', artifact);
+
+        var declaredLength = JsonFeedReader.TryParse(File.ReadAllText(FixturePath("latest-windows.json")))!.Length;
+        Assert.NotNull(declaredLength);
+        Assert.Equal(declaredLength!.Value, (long)artifact.Length);
+    }
+
+    [Fact]
     public void CommittedFeedIsRejectedUnderADifferentPin()
     {
         // Sanity: the committed signature is bound to the committed pin. A

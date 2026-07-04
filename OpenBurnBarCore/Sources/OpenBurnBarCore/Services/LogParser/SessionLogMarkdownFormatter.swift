@@ -15,11 +15,11 @@ import Foundation
 // the Engine keeps this type Foundation-only; declaring them here as well would
 // (a) fail to compile off-Apple (`ChatMessageRecord` is app-only) and (b) collide
 // with the app extension's declarations on Apple.
-enum SessionLogMarkdownFormatter {
+public enum SessionLogMarkdownFormatter {
 
     /// One message turn in stored provider `fullText` — matches `cliMarkdown` headings so
     /// `TranscriptBlockParser` can label You vs Assistant in Session Logs.
-    static func transcriptTurnMarkdown(isAssistant: Bool, body: String) -> String {
+    public static func transcriptTurnMarkdown(isAssistant: Bool, body: String) -> String {
         let header = isAssistant ? "## Assistant" : "## You"
         return "\(header)\n\n\(body)"
     }

@@ -27,6 +27,11 @@ allowed_reason_ids=(
   "firestore-any-test-fake"
   "foundation-sdk-shim"
   "apple-media-buffer"
+  "database-handle-wrapper"
+  "internal-lock-snapshot-store"
+  "locked-formatter-cache"
+  "nslock-blocking-outcome"
+  "nslock-protected-storage"
 )
 
 live_report="$(mktemp "${TMPDIR:-/tmp}/unchecked-sendable-live.XXXXXX")"

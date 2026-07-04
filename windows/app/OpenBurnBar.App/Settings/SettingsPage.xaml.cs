@@ -156,6 +156,7 @@ public sealed partial class SettingsPage : Page
     {
         SettingsTab.General => typeof(GeneralSettingsPage),
         SettingsTab.Updates => typeof(UpdatesSettingsPage),
+        SettingsTab.DataPrivacy => typeof(DataSourceSettingsPage),
         _ => typeof(SettingsPlaceholderPage),
     };
 

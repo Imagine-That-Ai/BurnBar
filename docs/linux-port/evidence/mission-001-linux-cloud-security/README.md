@@ -5,20 +5,22 @@ This directory holds the worker-owned evidence for the Linux lower-trust cloud/s
 ## Commands
 
 ```bash
-npm --prefix functions exec -- vitest run src/__tests__/appCheckAttestation.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/windowsAppCheckConfig.test.ts src/__tests__/linuxAppCheck.test.ts --reporter=verbose
-npm --prefix functions exec -- vitest run src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/bola/authOnly.bola.test.ts --reporter=verbose
+(cd functions && npm exec -- vitest run src/__tests__/appCheckAttestation.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/windowsAppCheckConfig.test.ts src/__tests__/linuxAppCheck.test.ts --reporter=verbose)
+(cd functions && npm exec -- vitest run src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/bola/authOnly.bola.test.ts --reporter=verbose)
 npm --prefix functions run build
 docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace openburnbar-linux-toolchain:mission-001-fts5 swift build --build-path /workspace/OpenBurnBarCore/.build-linux-security --target OpenBurnBarLinuxSecurity
-docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace openburnbar-linux-toolchain:mission-001-fts5 swift run --package-path docs/linux-port/evidence/mission-001-linux-cloud-security/harness --scratch-path /workspace/OpenBurnBarCore/.build-linux-security-harness LinuxSecurityEvidence
+docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace -e OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD=1 openburnbar-linux-toolchain:mission-001-fts5 swift test --build-path /workspace/OpenBurnBarCore/.build-linux-security-only-tests --package-path OpenBurnBarCore --filter OpenBurnBarLinuxSecurityTests
+docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace -e OPENBURNBAR_LINUX_SECURITY_EVIDENCE_DIR=/workspace/docs/linux-port/evidence/mission-001-linux-cloud-security openburnbar-linux-toolchain:mission-001-fts5 swift run --package-path docs/linux-port/evidence/mission-001-linux-cloud-security/harness --scratch-path /workspace/OpenBurnBarCore/.build-linux-security-harness LinuxSecurityEvidence
 ```
 
 ## Observed Results
 
-- Callable trust/step-up tests: 4 files passed, 31 tests passed.
+- Callable trust/step-up tests: 4 files passed, 32 tests passed, including high-risk owner audit write inspection and fail-closed audit-write failure.
 - Endpoint catalog/rate-limit/BOLA tests: 3 files passed, 12 tests passed.
 - Functions build: `tsc` and cert copy completed.
-- Linux Swift target build: `OpenBurnBarLinuxSecurity` target completed.
-- Linux evidence harness: exited 0 and emitted `linux-security-evidence.json`.
+- Linux Swift target build: `OpenBurnBarLinuxSecurity` target completed without the GRDB-SQLCipher `CSQLite` duplicate-target collision.
+- Isolated Linux security tests: `OpenBurnBarLinuxSecurityTests` ran 6 XCTest cases, 0 failures, under `OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD=1`.
+- Linux evidence harness: exited 0 and emitted `linux-security-evidence.json`, `auth-pkce-signout-transcript.json`, `membership-stripe-restore-transcript.json`, `telemetry-local-capture.json`, `cloud-sync-request-response-trace.json`, and `membership-*.svg`.
 
 ## Filesystem Inspection
 
@@ -29,3 +31,11 @@ rg -n "fixture-[a-z]+-(secret|token)|sk-ant-[a-z]+|[a-z]+@example\\.com|/home/[a
 ```
 
 The harness source builds sensitive fixture values at runtime and never prints them. The product SecretStore API returns secret metadata for token custody evidence; raw secret values stay in backend memory.
+
+The current generated-artifact scan also covers the transcript and SVG files:
+
+```bash
+rg -n "fixture-[a-z]+-(secret|token)|plaintext-(database_key|signal_identity_key|cloud_vault_key|refresh_token|capability_root|local_auth_pin|audit_signing_key)|sk-ant-[a-z]+|secret123|sessionid|key123|private operator request|alberto@example\\.com|/home/alberto" docs/linux-port/evidence/mission-001-linux-cloud-security/*.json docs/linux-port/evidence/mission-001-linux-cloud-security/*.svg docs/linux-port/evidence/mission-001-linux-cloud-security/blocked-production-evidence.md
+```
+
+It is expected to exit `1` because the generated evidence should not contain any raw seeded secret, token, cookie, prompt, email, or private path.

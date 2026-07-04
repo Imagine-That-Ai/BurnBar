@@ -31,6 +31,10 @@ public sealed partial class QuotaWorkspacePage : Page
         InitializeComponent();
     }
 
+    // Live quota: Mac-computed snapshots via B4 Firestore (users/{uid}/quota_snapshots).
+    // Local SQLCipher provider_quota_snapshots is not read — quota requires Swift ProviderQuotaService.
+    // Without OPENBURNBAR_FIREBASE_UID (and synced docs), QuotaSampleData is the dev-host fallback.
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -39,8 +43,18 @@ public sealed partial class QuotaWorkspacePage : Page
             return;
         }
 
-        _built = true;
-        _accounts = QuotaSampleData.Accounts();
+        _ = LoadAccountsAsync();
+    }
+
+    private async System.Threading.Tasks.Task LoadAccountsAsync()
+    {
+        IReadOnlyList<QuotaSampleAccount> accounts = await QuotaAccountsSource.LoadAsync().ConfigureAwait(true);
+        ApplyAccounts(accounts);
+    }
+
+    private void ApplyAccounts(IReadOnlyList<QuotaSampleAccount> accounts)
+    {
+        _accounts = accounts;
         _byId.Clear();
         var entries = new List<SubscriptionEntry>(_accounts.Count);
         foreach (QuotaSampleAccount account in _accounts)
@@ -50,9 +64,13 @@ public sealed partial class QuotaWorkspacePage : Page
         }
 
         Hero.Entries = entries;
-        Hero.SelectedProvider = null;
-        Hero.OrbTapped += OnOrbTapped;
-        Hero.ClearRequested += OnClearRequested;
+        if (!_built)
+        {
+            Hero.SelectedProvider = null;
+            Hero.OrbTapped += OnOrbTapped;
+            Hero.ClearRequested += OnClearRequested;
+            _built = true;
+        }
 
         RebuildDials();
     }

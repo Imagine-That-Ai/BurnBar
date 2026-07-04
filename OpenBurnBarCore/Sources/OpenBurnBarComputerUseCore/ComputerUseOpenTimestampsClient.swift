@@ -1,6 +1,10 @@
 import Foundation
 import CryptoKit
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 /// Pure-Swift OpenTimestamps client for Phase 13 chain notarization.
 ///
 /// The OpenTimestamps protocol bundles a target digest with a chain of

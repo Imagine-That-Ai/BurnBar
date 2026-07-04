@@ -238,6 +238,52 @@ jobs:
           echo "Checksums:"
           cat "artifacts/checksums-windows-v${VERSION}.txt"
 
+      - name: Build MSIX (WAP packaging project — Store + sideload channel)
+        # The MSIX is the Store + sideload channel; the portable zip above is the
+        # direct-download / winget / Chocolatey channel. Both ship from the SAME
+        # app binaries (the WAP project references the app as its entry point;
+        # the app keeps WindowsPackageType=None so the portable build is unchanged).
+        run: |
+          set -euo pipefail
+          wap="windows/packaging/msix/OpenBurnBar.Packaging.wapproj"
+          for plat in x64 ARM64; do
+            dotnet build "$wap" -c Release -p:Platform="$plat" \
+              -p:AppxPackageSigningEnabled=false \
+              -p:AppxBundle=Never -p:AppxBundlePlatforms="$plat" \
+              -p:Configuration=Release -p:AppxSymbolPackageEnabled=true \
+              -o "msix/$plat"
+          done
+          # Collect the .msix into artifacts (MakeAppx output naming includes the
+          # version + platform; glob it).
+          mkdir -p artifacts
+          for plat in x64 ARM64; do
+            msix="$(find msix/$plat -name "*.msix" 2>/dev/null | head -1 || true)"
+            if [[ -z "$msix" ]]; then
+              echo "::warning::No .msix produced for $plat (WAP build may need the Windows-only DesktopBridge targets)."
+              continue
+            fi
+            cp "$msix" "artifacts/OpenBurnBar-${VERSION}-${plat}.msix"
+            ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${plat}.msix" >> "checksums-windows-v${VERSION}.txt" )
+          done
+
+      - name: Authenticode sign the MSIX (Azure Trusted Signing)
+        if: steps.config.outputs.codesign == 'true'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}/artifacts
+          files-folder-filter: msix
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+        env:
+          AZURE_TENANT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
+
       - name: Sign the update feed (pinned Ed25519, independent of Authenticode)
         if: steps.config.outputs.updatekey == 'true'
         env:

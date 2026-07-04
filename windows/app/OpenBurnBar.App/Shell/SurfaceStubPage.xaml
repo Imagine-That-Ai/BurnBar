@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  SurfaceStubPage — the placeholder a NavigationView destination shows in Phase 3 W6-SHELL.
+  SurfaceStubPage — resolver fallback for unknown destination keys.
 
-  Every one of the 12 destinations navigates here with its NavDestination as the parameter.
-  The page names the surface (glyph + title + subtitle) and marks it a Windows-parity stub,
-  so the frame is demonstrably real while the actual surfaces (Buckets A/B/C) land later.
-  The Session Logs destination additionally hosts the live CLI stream, proving the frame
-  hosts real controls, not just static text.
+  The NavCatalog destinations and Auxiliary palette surfaces map to real Pages in
+  SurfacePageResolver; this stub remains for defensive routing only.
 -->
 <Page
     x:Class="OpenBurnBar.App.Shell.SurfaceStubPage"
@@ -53,9 +50,6 @@
                 </Border>
             </StackPanel>
         </Border>
-
-        <!-- Live host (used by the Session Logs destination). -->
-        <Border x:Name="LiveHost"
-                Visibility="Collapsed" />
     </Grid>
 </Page>
+

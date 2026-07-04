@@ -1,4 +1,6 @@
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
+using OpenBurnBar.App.CloudSync;
 
 namespace OpenBurnBar.App.DataControlCenter;
 
@@ -12,6 +14,12 @@ public sealed partial class DataControlCenterPage : Page
     public DataControlCenterPage()
     {
         InitializeComponent();
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        Workbench.SetViewModel(WinAppCloudSyncHost.CreateDataControlViewModel());
     }
 
     /// <summary>The hosted workbench, exposed so a host can inject a real hub-backed view-model.</summary>

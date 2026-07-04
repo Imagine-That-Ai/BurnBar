@@ -1,0 +1,4 @@
+{"messages":[
+  {"role":"user","content":"Refactor this module","createTime":"2025-07-01T00:00:00Z"},
+  {"role":"model","content":"Refactor complete.","createTime":"2025-07-01T00:00:05Z","usageMetadata":{"promptTokenCount":120,"candidatesTokenCount":45,"cachedContentTokenCount":10}}
+]}

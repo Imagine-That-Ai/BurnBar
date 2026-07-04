@@ -18,11 +18,11 @@
 
     <StackPanel Padding="24" Spacing="16" MaxWidth="900" HorizontalAlignment="Left">
         <StackPanel Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile Value="$1,284" Caption="Spend this month"
+            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend this month"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-            <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile Value="342" Caption="Sessions"
+            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
         </StackPanel>
 

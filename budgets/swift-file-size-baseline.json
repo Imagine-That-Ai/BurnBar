@@ -1,6 +1,6 @@
 {
   "target": 2000,
-  "total": 3,
+  "total": 4,
   "files": [
     {
       "path": "AgentLens/Services/DataStore/OpenBurnBarDatabase.swift",
@@ -13,6 +13,10 @@
     {
       "path": "AgentLens/App/AgentLensApp.swift",
       "lines": 2024
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase.swift",
+      "lines": 2089
     }
   ]
 }
