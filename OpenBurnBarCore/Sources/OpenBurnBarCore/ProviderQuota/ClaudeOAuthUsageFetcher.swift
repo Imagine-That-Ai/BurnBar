@@ -515,7 +515,7 @@ enum ClaudeOAuthConstants {
 /// Anthropic's `/api/oauth/usage` payload, modeled as Sendable value
 /// types so we can pass it across actor boundaries safely. Replaces
 /// the old `[String: Any]` shape that violated Swift 6 concurrency.
-public struct ClaudeRateLimits: Sendable, Equatable {
+struct ClaudeRateLimits: Sendable, Equatable {
     let windows: [String: Window]
     /// Preserved JSON shape used purely for round-tripping into the
     /// disk cache. Read-only — callers must use `windows` for any
@@ -544,7 +544,7 @@ public struct ClaudeRateLimits: Sendable, Equatable {
 
     static let empty = ClaudeRateLimits(windows: [:], rawJSON: Data("{}".utf8))
 
-    public init(windows: [String: Window], rawJSON: Data) {
+    init(windows: [String: Window], rawJSON: Data) {
         self.windows = windows
         self._rawJSON = rawJSON
     }
@@ -552,7 +552,7 @@ public struct ClaudeRateLimits: Sendable, Equatable {
     /// Parses the response body directly. The endpoint returns either
     /// `{"rate_limits": {...}}` or the bare `{...}` map — we accept
     /// both for forward-compatibility.
-    public init(from data: Data) {
+    init(from data: Data) {
         guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional decode fallback)
             self = .empty
             return
