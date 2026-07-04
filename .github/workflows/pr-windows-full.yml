@@ -89,7 +89,7 @@ jobs:
       # XamlCompiler completion (proven by #1248 on physical Windows). The
       # portable + test projects build as part of the same solution graph.
       - name: Build (dotnet build — full solution, Debug)
-        run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore
+        run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
 
       # Run the full C# test suite. The ~2,545 fixtures cover: storage (14 DB
       # open/read/FTS5/byte-compat), cloudsync (Firestore gateway, CloudVault,
@@ -152,7 +152,7 @@ jobs:
         run: dotnet restore windows/OpenBurnBar.sln
 
       - name: Build (dotnet build — full solution, Debug)
-        run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore
+        run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=ARM64
 
       - name: Test (dotnet test — full suite)
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-arm64.trx" --results-directory TestResults-arm64
