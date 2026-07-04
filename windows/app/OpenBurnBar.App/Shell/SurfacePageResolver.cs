@@ -4,9 +4,9 @@ namespace OpenBurnBar.App.Shell;
 
 /// <summary>
 /// Maps a <see cref="NavDestination.Key"/> to the real <c>Page</c> type that renders it,
-/// defaulting to the placeholder <see cref="SurfaceStubPage"/> for surfaces not yet ported.
-/// This is the seam the Phase-3 surface lanes plug their pages into as they replace the stubs
-/// one destination at a time; <see cref="AppShell"/> routes the content Frame through it.
+/// defaulting to <see cref="SurfaceStubPage"/> only for unknown keys. All
+/// <see cref="NavCatalog"/> and <see cref="NavCatalog.Auxiliary"/> destinations are registered.
+/// <see cref="AppShell"/> routes the content Frame through this resolver.
 /// </summary>
 public static class SurfacePageResolver
 {
@@ -24,6 +24,10 @@ public static class SurfacePageResolver
         // Elder Wand is an Auxiliary (Command-Palette) destination, not a sidebar row — see
         // NavCatalog.Auxiliary + ElderWandPage.xaml for the macOS reachability-parity rationale.
         "elderWand" => typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
+        "sessionLogs" => typeof(OpenBurnBar.App.SessionLogs.SessionLogsPage),
+        "memory" => typeof(OpenBurnBar.App.Memory.MemoryPage),
+        "onboarding" => typeof(OpenBurnBar.App.Onboarding.OnboardingPage),
+        "settings" => typeof(OpenBurnBar.App.Settings.Winui.SettingsPage),
         _ => typeof(SurfaceStubPage),
     };
 }
