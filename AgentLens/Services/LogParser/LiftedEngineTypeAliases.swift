@@ -29,6 +29,11 @@ typealias LogParser = OpenBurnBarCore.LogParser
 typealias ClaudeCodeParser = OpenBurnBarCore.ClaudeCodeParser
 typealias FactoryDroidParser = OpenBurnBarCore.FactoryDroidParser
 typealias ParserConversationCacheScrubber = OpenBurnBarCore.ParserConversationCacheScrubber
+typealias ForgeDevParser = OpenBurnBarCore.ForgeDevParser
+typealias GooseParser = OpenBurnBarCore.GooseParser
+typealias WindsurfParser = OpenBurnBarCore.WindsurfParser
+typealias WarpParser = OpenBurnBarCore.WarpParser
+typealias HermesParser = OpenBurnBarCore.HermesParser
 
 typealias ModelPricing = OpenBurnBarCore.ModelPricing
 typealias TokenExtractionUtility = OpenBurnBarCore.TokenExtractionUtility

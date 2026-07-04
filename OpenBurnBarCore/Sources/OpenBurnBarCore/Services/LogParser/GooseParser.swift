@@ -1,6 +1,5 @@
 import Foundation
-import OpenBurnBarCore
-import GRDB
+
 
 // MARK: - Goose Parser
 
@@ -95,143 +94,141 @@ final class GooseParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        var config = Configuration()
-        config.readonly = true
-        let db = try DatabaseQueue(path: dbPath, configuration: config)
+        let reader = try SQLiteConnection.openReadOnly(path: dbPath)
+        defer { reader.close() }
 
-        try db.read { db in
-            let tables = Set(try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'"))
-            guard tables.contains("sessions") else { return }
+        let tables = try reader.tableNames()
+        guard tables.contains("sessions") else {
+            return ParseResult(usages: usages, conversations: conversations)
+        }
 
-            // Pull transcript turns from whichever message table this Goose build
-            // ships (schema has shifted across versions), keyed by session id.
-            let transcripts = try Self.loadTranscripts(db: db, tables: tables)
+        // Pull transcript turns from whichever message table this Goose build
+        // ships (schema has shifted across versions), keyed by session id.
+        let transcripts = try Self.loadTranscripts(reader: reader, tables: tables)
 
-            let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(sessions)")
-            let columnNames = Set(columns.compactMap { $0["name"] as? String })
+        let columnNames = Set(try reader.columnNames(ofTable: "sessions"))
 
-            var selectFields = ["id"]
-            let preferredFields = [
-                "model",
-                "provider",
-                "provider_name",
-                "model_config_json",
-                "description",
-                "title",
-                "name",
-                "working_dir",
-                "working_directory",
-                "cwd",
-                "input_tokens",
-                "accumulated_input_tokens",
-                "output_tokens",
-                "accumulated_output_tokens",
-                "accumulated_total_tokens",
-                "cache_read_tokens",
-                "cache_write_tokens",
-                "reasoning_tokens",
-                "total_tokens",
-                "tokens_used",
-                "created_at",
-                "updated_at"
-            ]
+        var selectFields = ["id"]
+        let preferredFields = [
+            "model",
+            "provider",
+            "provider_name",
+            "model_config_json",
+            "description",
+            "title",
+            "name",
+            "working_dir",
+            "working_directory",
+            "cwd",
+            "input_tokens",
+            "accumulated_input_tokens",
+            "output_tokens",
+            "accumulated_output_tokens",
+            "accumulated_total_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "reasoning_tokens",
+            "total_tokens",
+            "tokens_used",
+            "created_at",
+            "updated_at"
+        ]
 
-            for field in preferredFields where columnNames.contains(field) {
-                selectFields.append(field)
+        for field in preferredFields where columnNames.contains(field) {
+            selectFields.append(field)
+        }
+
+        let orderColumn = columnNames.contains("created_at") ? "created_at"
+            : (columnNames.contains("updated_at") ? "updated_at" : "id")
+        let sql = """
+            SELECT \(selectFields.joined(separator: ", "))
+            FROM sessions
+            ORDER BY \(orderColumn) DESC
+        """
+        let rows = try reader.query(sql)
+
+        for row in rows {
+            guard let sessionId = stringValue(row, column: "id") else { continue }
+
+            var inputTokens = integerValue(row, column: "accumulated_input_tokens")
+            if inputTokens == 0 {
+                inputTokens = integerValue(row, column: "input_tokens")
             }
 
-            let orderColumn = columnNames.contains("created_at") ? "created_at"
-                : (columnNames.contains("updated_at") ? "updated_at" : "id")
-            let sql = """
-                SELECT \(selectFields.joined(separator: ", "))
-                FROM sessions
-                ORDER BY \(orderColumn) DESC
-            """
-            let rows = try Row.fetchAll(db, sql: sql)
+            var outputTokens = integerValue(row, column: "accumulated_output_tokens")
+            if outputTokens == 0 {
+                outputTokens = integerValue(row, column: "output_tokens")
+            }
 
-            for row in rows {
-                guard let sessionId: String = row["id"] else { continue }
+            let cacheReadTokens = integerValue(row, column: "cache_read_tokens")
+            let cacheWriteTokens = integerValue(row, column: "cache_write_tokens")
 
-                var inputTokens = integerValue(row, column: "accumulated_input_tokens")
-                if inputTokens == 0 {
-                    inputTokens = integerValue(row, column: "input_tokens")
+            if inputTokens == 0 && outputTokens == 0 && cacheReadTokens == 0 && cacheWriteTokens == 0 {
+                let total = firstNonZero(
+                    integerValue(row, column: "accumulated_total_tokens"),
+                    integerValue(row, column: "total_tokens"),
+                    integerValue(row, column: "tokens_used")
+                )
+                if total > 0 {
+                    inputTokens = Int(Double(total) * 0.85)
+                    outputTokens = max(total - inputTokens, 0)
                 }
+            }
 
-                var outputTokens = integerValue(row, column: "accumulated_output_tokens")
-                if outputTokens == 0 {
-                    outputTokens = integerValue(row, column: "output_tokens")
-                }
+            guard inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0 else {
+                continue
+            }
 
-                let cacheReadTokens = integerValue(row, column: "cache_read_tokens")
-                let cacheWriteTokens = integerValue(row, column: "cache_write_tokens")
+            let model = resolvedModel(from: row)
+            let cwd = stringValue(row, column: "working_dir")
+                ?? stringValue(row, column: "working_directory")
+                ?? stringValue(row, column: "cwd")
+                ?? "~"
+            let projectName = (cwd as NSString).lastPathComponent.isEmpty ? cwd : (cwd as NSString).lastPathComponent
 
-                if inputTokens == 0 && outputTokens == 0 && cacheReadTokens == 0 && cacheWriteTokens == 0 {
-                    let total = firstNonZero(
-                        integerValue(row, column: "accumulated_total_tokens"),
-                        integerValue(row, column: "total_tokens"),
-                        integerValue(row, column: "tokens_used")
-                    )
-                    if total > 0 {
-                        inputTokens = Int(Double(total) * 0.85)
-                        outputTokens = max(total - inputTokens, 0)
-                    }
-                }
+            let startTime = timestamp(from: row, column: "created_at") ?? Date()
+            let endTime = timestamp(from: row, column: "updated_at") ?? startTime
 
-                guard inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0 else {
-                    continue
-                }
+            let pricing = ModelPricing.lookup(model: model)
+            let cost = pricing.cost(
+                inputTokens: inputTokens,
+                outputTokens: outputTokens,
+                cacheCreationTokens: cacheWriteTokens,
+                cacheReadTokens: cacheReadTokens
+            )
 
-                let model = resolvedModel(from: row)
-                let cwd = stringValue(row, column: "working_dir")
-                    ?? stringValue(row, column: "working_directory")
-                    ?? stringValue(row, column: "cwd")
-                    ?? "~"
-                let projectName = (cwd as NSString).lastPathComponent.isEmpty ? cwd : (cwd as NSString).lastPathComponent
-
-                let startTime = timestamp(from: row, column: "created_at") ?? Date()
-                let endTime = timestamp(from: row, column: "updated_at") ?? startTime
-
-                let pricing = ModelPricing.lookup(model: model)
-                let cost = pricing.cost(
+            usages.append(
+                TokenUsage(
+                    provider: .goose,
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    model: model,
                     inputTokens: inputTokens,
                     outputTokens: outputTokens,
                     cacheCreationTokens: cacheWriteTokens,
-                    cacheReadTokens: cacheReadTokens
-                )
-
-                usages.append(
-                    TokenUsage(
-                        provider: .goose,
-                        sessionId: sessionId,
-                        projectName: projectName,
-                        model: model,
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
-                        cacheCreationTokens: cacheWriteTokens,
-                        cacheReadTokens: cacheReadTokens,
-                        costUSD: cost,
-                        startTime: startTime,
-                        endTime: endTime,
-                        provenanceMethod: .providerLog,
-                        provenanceConfidence: .exact
-                    )
-                )
-
-                let description = stringValue(row, column: "description")
-                    ?? stringValue(row, column: "title")
-                    ?? stringValue(row, column: "name")
-                let turns = transcripts[sessionId] ?? []
-                if let conversation = Self.buildConversation(
-                    sessionId: sessionId,
-                    projectName: projectName,
-                    description: description,
-                    workingDirectory: cwd == "~" ? nil : cwd,
+                    cacheReadTokens: cacheReadTokens,
+                    costUSD: cost,
                     startTime: startTime,
                     endTime: endTime,
-                    turns: turns
-                ) {
-                    conversations.append(conversation)
-                }
+                    provenanceMethod: .providerLog,
+                    provenanceConfidence: .exact
+                )
+            )
+
+            let description = stringValue(row, column: "description")
+                ?? stringValue(row, column: "title")
+                ?? stringValue(row, column: "name")
+            let turns = transcripts[sessionId] ?? []
+            if let conversation = Self.buildConversation(
+                sessionId: sessionId,
+                projectName: projectName,
+                description: description,
+                workingDirectory: cwd == "~" ? nil : cwd,
+                startTime: startTime,
+                endTime: endTime,
+                turns: turns
+            ) {
+                conversations.append(conversation)
             }
         }
 
@@ -248,12 +245,11 @@ final class GooseParser: LogParser, Sendable {
 
     /// Loads message turns from whichever message table the Goose SQLite build exposes.
     /// Returns `[sessionId: [GooseTurn]]` so the session loop can attach transcripts.
-    private static func loadTranscripts(db: Database, tables: Set<String>) throws -> [String: [GooseTurn]] {
+    private static func loadTranscripts(reader: SQLiteReading, tables: Set<String>) throws -> [String: [GooseTurn]] {
         let candidateTables = ["messages", "conversation_messages", "session_messages", "message"]
         guard let table = candidateTables.first(where: { tables.contains($0) }) else { return [:] }
 
-        let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(\(table))")
-        let columnNames = Set(columns.compactMap { $0["name"] as? String })
+        let columnNames = Set(try reader.columnNames(ofTable: table))
 
         guard let sessionColumn = ["session_id", "sessionId", "session"].first(where: { columnNames.contains($0) }),
               let roleColumn = ["role", "type", "sender"].first(where: { columnNames.contains($0) }),
@@ -262,22 +258,21 @@ final class GooseParser: LogParser, Sendable {
         }
         let orderColumn = ["created_at", "created_timestamp", "timestamp", "id", "rowid"].first(where: { columnNames.contains($0) }) ?? "rowid"
 
-        let rows = try Row.fetchAll(db, sql: "SELECT \(sessionColumn), \(roleColumn), \(contentColumn), \(orderColumn) FROM \(table)")
+        let rows = try reader.query("SELECT \(sessionColumn), \(roleColumn), \(contentColumn), \(orderColumn) FROM \(table)")
 
         var transcripts: [String: [GooseTurn]] = [:]
         for row in rows {
-            guard let sessionId: String = row[sessionColumn] else { continue }
-            let roleRaw: String? = row[roleColumn]
+            guard let sessionId = row.string(sessionColumn) else { continue }
+            let roleRaw = row.string(roleColumn)
             let role = (roleRaw ?? "").lowercased()
-            let contentRaw: String? = row[contentColumn]
+            let contentRaw = row.string(contentColumn)
             guard let text = flattenContent(contentRaw)?.nonEmpty else { continue }
             let fallbackOrder = Double(transcripts[sessionId]?.count ?? 0)
-            let orderValue: DatabaseValue? = row[orderColumn]
             let order: Double
-            switch orderValue?.storage {
-            case .int64(let value): order = Double(value)
-            case .double(let value): order = value
-            case .string(let value): order = Double(value) ?? fallbackOrder
+            switch row.value(orderColumn) {
+            case .integer(let value)?: order = Double(value)
+            case .real(let value)?: order = value
+            case .text(let value)?: order = Double(value) ?? fallbackOrder
             default: order = fallbackOrder
             }
             transcripts[sessionId, default: []].append(GooseTurn(role: role, text: text, order: order))
@@ -366,27 +361,29 @@ final class GooseParser: LogParser, Sendable {
         )
     }
 
-    // Reads through `DatabaseValue` so a column whose stored type differs from
-    // the expected one (e.g. a TEXT `created_at`) never trips GRDB's force-decode
-    // `fatalError`. Missing columns and NULLs resolve to the zero/`nil` default.
-    private func integerValue(_ row: Row, column: String) -> Int {
-        guard let dbValue: DatabaseValue = row[column] else { return 0 }
-        switch dbValue.storage {
-        case .int64(let value): return Int(value)
-        case .double(let value): return Int(value.rounded())
-        case .string(let value): return Int(value) ?? Int(Double(value) ?? 0)
-        case .null, .blob: return 0
-        }
+    private func integerValue(_ row: SQLiteRow, column: String) -> Int {
+        if let value = row.int(column) { return value }
+        if let value = row.int64(column) { return Int(value) }
+        if let value = row.double(column) { return Int(value.rounded()) }
+        if let value = row.string(column), let parsed = Int(value) { return parsed }
+        if let value = row.string(column), let parsed = Double(value) { return Int(parsed.rounded()) }
+        return 0
     }
 
-    private func stringValue(_ row: Row, column: String) -> String? {
-        guard let dbValue: DatabaseValue = row[column], case .string(let value) = dbValue.storage, !value.isEmpty else {
-            return nil
+    private func stringValue(_ row: SQLiteRow, column: String) -> String? {
+        if let value = row.string(column), !value.isEmpty {
+            return value
         }
-        return value
+        if let value = row.int64(column) {
+            return String(value)
+        }
+        if let value = row.int(column) {
+            return String(value)
+        }
+        return nil
     }
 
-    private func resolvedModel(from row: Row) -> String {
+    private func resolvedModel(from row: SQLiteRow) -> String {
         if let model = stringValue(row, column: "model") {
             return TokenExtractionUtility.normalizeModelName(model)
         }
@@ -419,14 +416,13 @@ final class GooseParser: LogParser, Sendable {
         return "goose"
     }
 
-    private func timestamp(from row: Row, column: String) -> Date? {
-        guard let dbValue: DatabaseValue = row[column] else { return nil }
-        switch dbValue.storage {
-        case .int64(let value):
+    private func timestamp(from row: SQLiteRow, column: String) -> Date? {
+        switch row.value(column) {
+        case .integer(let value)?:
             return TimestampNormalizationUtility.date(fromEpoch: Double(value))
-        case .double(let value):
+        case .real(let value)?:
             return TimestampNormalizationUtility.date(fromEpoch: value)
-        case .string(let value):
+        case .text(let value)?:
             if let parsed = ThreadSafeISO8601DateFormatter.parse(value) { return parsed }
             for formatter in Self.sqliteDateFormats {
                 if let parsed = formatter.date(from: value) {
@@ -434,7 +430,7 @@ final class GooseParser: LogParser, Sendable {
                 }
             }
             return nil
-        case .null, .blob:
+        default:
             return nil
         }
     }
