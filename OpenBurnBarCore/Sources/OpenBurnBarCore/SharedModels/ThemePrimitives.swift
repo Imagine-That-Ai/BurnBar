@@ -22,13 +22,56 @@ public enum AppSkin: String, CaseIterable, Codable, Sendable {
     /// `UserDefaults` / `@AppStorage` key. Shared verbatim across all platforms.
     public static let storageKey = "appSkin"
 
-    /// The currently-selected skin, read live from `UserDefaults.standard`.
-    /// Mirrors the lightweight pattern `MobileTheme.surface` already uses for
-    /// the swarm flag so dynamic color providers can branch without a view.
+    /// The currently-selected skin, read from `UserDefaults.standard` through a
+    /// small invalidating cache. Dynamic `NSColor`/`Color` providers call this
+    /// during *every* adaptive-token resolution — at animated-canvas frame
+    /// rates that was thousands of CFPrefs lookups per second, all returning
+    /// the same value. The cache is dropped on any defaults write and re-read
+    /// lazily, so skin switches still apply immediately.
     public static var current: AppSkin {
-        guard let raw = UserDefaults.standard.string(forKey: storageKey),
-              let skin = AppSkin(rawValue: raw) else { return .aurora }
-        return skin
+        cache.value
+    }
+
+    private static let cache = AppSkinCache()
+
+    private final class AppSkinCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cached: AppSkin?
+        private var observer: NSObjectProtocol?
+
+        init() {
+            observer = NotificationCenter.default.addObserver(
+                forName: UserDefaults.didChangeNotification,
+                object: nil,
+                queue: nil
+            ) { [weak self] _ in
+                self?.invalidate()
+            }
+        }
+
+        deinit {
+            if let observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+
+        var value: AppSkin {
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached {
+                return cached
+            }
+            let skin = UserDefaults.standard.string(forKey: AppSkin.storageKey)
+                .flatMap(AppSkin.init(rawValue:)) ?? .aurora
+            cached = skin
+            return skin
+        }
+
+        private func invalidate() {
+            lock.lock()
+            cached = nil
+            lock.unlock()
+        }
     }
 
     public var displayName: String {

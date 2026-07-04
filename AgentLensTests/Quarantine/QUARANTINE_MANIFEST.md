@@ -79,6 +79,18 @@ it with `./scripts/test-openburnbar-app.sh`.
 - **Legacy reference:** 17 Wave 2 tests + 2 parser/performance suites documented above; not in `OpenBurnBarTests` until revived per ADR.
 - **Fixed to passing (env-gate, not quarantined):** `testParseEmptyDirectory`, `testWrongDeviceDecryptionFails`.
 
+## 2026-07-03 — Orphaned suite (implementation never landed)
+
+**`UsageSyncPresenceDecouplingTests.swift`** moved from `Active/` to `Archive/`.
+Commit `fd69db193a` landed this suite referencing `UsageSyncService.syncBlockedCode(for:)`
+and a `sync_status.lastErrorCode` write path that were never committed to the app target
+(no `-S syncBlockedCode` hit outside the test), so the whole `OpenBurnBarTests` target
+failed to compile from that commit onward.
+
+| Test Name | Status | Reason | Owner | Source Subsystem | Revival Criteria | Target Date |
+|-----------|--------|--------|-------|------------------|------------------|-------------|
+| `test_syncBlockedCode_boundedVocabulary` (+ suite) | Archived | Tests reference `UsageSyncService.syncBlockedCode` / `sync_status.lastErrorCode` presence-decoupling APIs that were never committed | CloudSync | Usage sync status | Land the presence-decoupling implementation (blocked-reason vocabulary + sync_status writer), then move the suite back to Active | 2026-09-30 |
+
 ## Maintenance Notes
 
 - Do not add `project.yml` glob exclusions for quarantined files; they live outside the `OpenBurnBarTests` target source paths by directory convention.

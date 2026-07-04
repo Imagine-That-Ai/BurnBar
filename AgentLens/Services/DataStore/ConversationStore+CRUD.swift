@@ -446,14 +446,37 @@ extension ConversationStore {
                     )
                     """
                 )
+                // Rowid-targeted FTS delete (chunkID is an UNINDEXED FTS5
+                // column; matching on it scans the whole FTS table). Legacy
+                // rows with NULL ftsRowid predate v55 and take one scan pass.
                 try db.execute(
                     sql: """
                     DELETE FROM search_chunks_fts
-                    WHERE chunkID IN (
-                        SELECT id FROM search_chunks WHERE sourceKind = 'conversation'
+                    WHERE rowid IN (
+                        SELECT ftsRowid FROM search_chunks
+                        WHERE sourceKind = 'conversation' AND ftsRowid IS NOT NULL
                     )
                     """
                 )
+                let hasLegacyConversationChunks = try Bool.fetchOne(
+                    db,
+                    sql: """
+                    SELECT EXISTS (
+                        SELECT 1 FROM search_chunks
+                        WHERE sourceKind = 'conversation' AND ftsRowid IS NULL
+                    )
+                    """
+                ) ?? false
+                if hasLegacyConversationChunks {
+                    try db.execute(
+                        sql: """
+                        DELETE FROM search_chunks_fts
+                        WHERE chunkID IN (
+                            SELECT id FROM search_chunks WHERE sourceKind = 'conversation'
+                        )
+                        """
+                    )
+                }
                 try db.execute(sql: "DELETE FROM search_chunks WHERE sourceKind = 'conversation'")
                 try db.execute(sql: "DELETE FROM search_documents WHERE sourceKind = 'conversation'")
             }
