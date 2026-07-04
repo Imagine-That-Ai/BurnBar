@@ -38,6 +38,9 @@
     <!-- The portable component-logic cores (no WinUI dependency). -->
     <Compile Include="../../app/OpenBurnBar.App/Components/Models/ProviderMetadata.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Components/Models/QuotaModels.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/QuotaPacing.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/QuotaArcDialModel.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/SubscriptionConstellationModel.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Components/Models/ToolCallModels.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Components/Models/SessionLedgerModels.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Components/Models/UpdateBannerModels.cs" />
@@ -46,6 +49,9 @@
     <!-- The tests. -->
     <Compile Include="ProviderMetadataTests.cs" />
     <Compile Include="QuotaModelTests.cs" />
+    <Compile Include="QuotaPacingTests.cs" />
+    <Compile Include="QuotaArcDialModelTests.cs" />
+    <Compile Include="SubscriptionConstellationModelTests.cs" />
     <Compile Include="ToolCallModelTests.cs" />
     <Compile Include="SessionLedgerModelTests.cs" />
     <Compile Include="UpdateBannerModelTests.cs" />

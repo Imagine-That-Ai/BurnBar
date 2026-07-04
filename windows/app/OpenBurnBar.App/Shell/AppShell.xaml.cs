@@ -143,8 +143,9 @@ public sealed partial class AppShell : UserControl
 
         _currentKey = destination.Key;
         HeaderTitle.Text = destination.Title;
-        // Route through the resolver so ported surfaces (e.g. Budget) render their real page
-        // while not-yet-ported destinations fall back to the stub.
+        // Route through the resolver so ported surfaces render their real page while
+        // not-yet-ported destinations fall back to the stub. Each Phase-3 surface lane
+        // registers its key -> Page mapping in SurfacePageResolver.Resolve.
         ContentFrame.Navigate(SurfacePageResolver.Resolve(destination.Key), destination);
     }
 

@@ -14,6 +14,7 @@ public static class SurfacePageResolver
     public static Type Resolve(string key) => key switch
     {
         "budget" => typeof(OpenBurnBar.App.Budget.BudgetPage),
+        "quota" => typeof(OpenBurnBar.App.Quota.QuotaWorkspacePage),
         _ => typeof(SurfaceStubPage),
     };
 }
