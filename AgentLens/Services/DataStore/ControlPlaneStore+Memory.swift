@@ -709,34 +709,65 @@ extension ControlPlaneStore {
         guard request.tokenBudget > 0, request.limit > 0 else { return [] }
         let records = try await fetchActiveChatMemoryAuthorityRecords(scope: request.scope)
             .filter { $0.reviewStatus == .approved && $0.validTo == nil }
-        var ranked: [(memory: Memory, text: String, tokenEstimate: Int, score: Double)] = []
-        ranked.reserveCapacity(records.count)
+
+        var candidates: [(memory: Memory, body: String, tokenEstimate: Int, lexicalScore: Double)] = []
+        candidates.reserveCapacity(records.count)
         for memory in records {
             guard try await memoryHasTombstonedSource(id: memory.id) == false else { continue }
             guard let body = try await openChatMemoryBody(id: memory.id), body.isEmpty == false else {
                 continue
             }
-            let tokenEstimate = Self.memoryTokenEstimate(body)
-            let score = Self.memoryTextScore(query: request.query, text: body) + memory.confidence
-            ranked.append((memory, body, tokenEstimate, score))
+            let lexicalScore = Self.memoryTextScore(query: request.query, text: body) + memory.confidence
+            candidates.append((memory, body, Self.memoryTokenEstimate(body), lexicalScore))
+        }
+        candidates.sort { lhs, rhs in
+            if lhs.lexicalScore == rhs.lexicalScore { return lhs.memory.id < rhs.memory.id }
+            return lhs.lexicalScore > rhs.lexicalScore
+        }
+        var lexicalRankByID: [MemoryID: Int] = [:]
+        var bodiesByID: [MemoryID: (memory: Memory, text: String, tokenEstimate: Int)] = [:]
+        for (index, item) in candidates.enumerated() {
+            lexicalRankByID[item.memory.id] = index + 1
+            bodiesByID[item.memory.id] = (item.memory, item.body, item.tokenEstimate)
+        }
+
+        var semanticRankByID: [MemoryID: Int] = [:]
+        if let provider = MemoryEmbeddingProviderSelector.selectedLocalProvider() {
+            let descriptor = provider.descriptor
+            let registration = try await registerMemoryEmbeddingVersion(descriptor: descriptor, isActive: true)
+            if let queryVector = try? await provider.embedding(for: request.query) {
+                let matches = try await memoryEmbeddingMatches(
+                    queryVector: queryVector,
+                    embeddingVersionID: registration.versionID,
+                    dimension: registration.dimension,
+                    limit: max(request.limit * 4, 20)
+                )
+                for (semanticRank, match) in matches.enumerated() {
+                    semanticRankByID[match.memoryID] = semanticRank + 1
+                }
+            }
+        }
+
+        var fused: [(memory: Memory, text: String, tokenEstimate: Int, score: Double)] = []
+        fused.reserveCapacity(bodiesByID.count)
+        for (id, payload) in bodiesByID {
+            let rrf = BurnBarHybridRankFusion.reciprocalRankFusion(
+                lexicalRank: lexicalRankByID[id],
+                semanticRank: semanticRankByID[id]
+            )
+            let lexicalBoost = Double(lexicalRankByID[id].map { bodiesByID.count - $0 + 1 } ?? 0) * 0.001
+            let score = rrf + lexicalBoost
+            fused.append((payload.memory, payload.text, payload.tokenEstimate, score))
         }
 
         var spent = 0
         var snippets: [MemorySnippet] = []
-        // Each snippet is wrapped in the LLMSafeContent.wrapUntrusted envelope (open tag +
-        // provenance + close tag + the multi-sentence CRITICAL RULE) before it reaches the
-        // prompt. Charge that fixed per-snippet overhead here so the budget reflects the
-        // WRAPPED size that the arbiter actually sees — otherwise the assembled `.memory`
-        // section overflows the arbiter's memory cap and gets truncated (M2 audit finding).
         let wrapperOverhead = MemoryRecallBudget.wrapperTokenOverhead
-        for item in ranked.sorted(by: { lhs, rhs in
+        for item in fused.sorted(by: { lhs, rhs in
             if lhs.score == rhs.score { return lhs.memory.id < rhs.memory.id }
             return lhs.score > rhs.score
         }) {
             guard snippets.count < request.limit else { break }
-            // Cost the WRAPPED snippet in the arbiter's prose token units (chars/3.5),
-            // matching how PromptTokenArbiter measures the .memory section, so a set that
-            // fits this budget also fits the arbiter cap (request.tokenBudget IS that cap).
             let wrappedCost = PromptTokenArbiter.estimateProseTokens(item.text) + wrapperOverhead
             guard wrappedCost <= request.tokenBudget - spent else { continue }
             spent += wrappedCost
@@ -753,6 +784,95 @@ extension ControlPlaneStore {
             )
         }
         return snippets
+    }
+
+    /// Idempotent backfill: recompute `v2-hmac:` tags for legacy `v1-local:` provenance rows.
+    func backfillLegacyCitationHMACs(
+        vaultKey: Data?,
+        limit: Int = 50,
+        now: Date = Date()
+    ) async throws -> Int {
+        guard let vaultKey else { return 0 }
+        return try await dbQueue.write { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, thread_logical_id, message_id, occurrence, content_hash
+                FROM memory_provenance
+                WHERE xdevice_hmac LIKE 'v1-local:%'
+                LIMIT ?
+                """,
+                arguments: [max(1, limit)]
+            )
+            var updated = 0
+            for row in rows {
+                guard let id: String = row["id"],
+                      let threadLogicalID: String = row["thread_logical_id"],
+                      let messageID: String = row["message_id"],
+                      let occurrence: Int = row["occurrence"],
+                      let contentHash: String = row["content_hash"] else {
+                    continue
+                }
+                let tagged = Self.provenanceCrossDeviceTag(
+                    threadLogicalID: threadLogicalID,
+                    messageID: messageID,
+                    occurrence: occurrence,
+                    contentHash: contentHash,
+                    vaultKey: vaultKey
+                )
+                guard tagged.hasPrefix("v2-hmac:") else { continue }
+                try db.execute(
+                    sql: "UPDATE memory_provenance SET xdevice_hmac = ? WHERE id = ?",
+                    arguments: [tagged, id]
+                )
+                updated += 1
+            }
+            return updated
+        }
+    }
+
+    /// SHA-256 hex of the cited source message body.
+    static func provenanceContentHash(_ sourceBody: String) -> String {
+        let bytes = SHA256.hash(data: Data(sourceBody.utf8))
+        return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// v1 non-crypto provenance tag (legacy local-only).
+    static func provenanceLocalTag(
+        threadLogicalID: String,
+        messageID: String,
+        occurrence: Int,
+        contentHash: String
+    ) -> String {
+        let material = "\(threadLogicalID)|\(messageID)|\(occurrence)|\(contentHash)"
+        let digest = SHA256.hash(data: Data(material.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "v1-local:\(digest)"
+    }
+
+    /// Cross-device citation tag: vault-keyed HMAC when a key is available.
+    static func provenanceCrossDeviceTag(
+        threadLogicalID: String,
+        messageID: String,
+        occurrence: Int,
+        contentHash: String,
+        vaultKey: Data?
+    ) -> String {
+        guard let vaultKey,
+              let tagged = try? CloudVaultCrypto.memoryCitationHMAC(
+                  threadLogicalID: threadLogicalID,
+                  messageID: messageID,
+                  occurrence: occurrence,
+                  contentHash: contentHash,
+                  keyData: vaultKey
+              ) else {
+            return provenanceLocalTag(
+                threadLogicalID: threadLogicalID,
+                messageID: messageID,
+                occurrence: occurrence,
+                contentHash: contentHash
+            )
+        }
+        return tagged
     }
 
     func updateChatMemoryAuthorityRecord(id: MemoryID, patch: MemoryPatch, now: Date = Date()) async throws -> Bool {
@@ -1697,6 +1817,7 @@ actor MemoryExtractionWorker {
     private let admission: MemoryExtractionAdmissionController
     private let extractor: Extractor
     private let authorityWritesEnabled: @Sendable () -> Bool
+    private let vaultKeyBox: MemoryVaultKeyBox
     private let nowProvider: @Sendable () -> Date
 
     /// Number of candidates dropped by the G7 gate during the most recent `drainNext()` call.
@@ -1707,6 +1828,7 @@ actor MemoryExtractionWorker {
     init(
         store: ControlPlaneStore,
         admission: MemoryExtractionAdmissionController = MemoryExtractionAdmissionController(),
+        vaultKeyBox: MemoryVaultKeyBox = MemoryVaultKeyBox(),
         nowProvider: @escaping @Sendable () -> Date = Date.init,
         authorityWritesEnabled: @escaping @Sendable () -> Bool = {
             ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
@@ -1715,6 +1837,7 @@ actor MemoryExtractionWorker {
     ) {
         self.store = store
         self.admission = admission
+        self.vaultKeyBox = vaultKeyBox
         self.nowProvider = nowProvider
         self.authorityWritesEnabled = authorityWritesEnabled
         self.extractor = extractor
@@ -1733,6 +1856,11 @@ actor MemoryExtractionWorker {
         guard await admission.tryEnter() else { return .idle }
         do {
             let outcome = try await drainClaimedJob()
+            _ = try? await store.backfillLegacyCitationHMACs(
+                vaultKey: vaultKeyBox.current(),
+                limit: 50,
+                now: nowProvider()
+            )
             await admission.leave()
             return outcome
         } catch {
@@ -1865,12 +1993,13 @@ actor MemoryExtractionWorker {
                 continue
             }
 
-            let contentHash = Self.provenanceContentHash(source.body)
-            let crossDeviceHMAC = Self.provenanceLocalTag(
+            let contentHash = ControlPlaneStore.provenanceContentHash(source.body)
+            let crossDeviceHMAC = ControlPlaneStore.provenanceCrossDeviceTag(
                 threadLogicalID: job.threadLogicalID,
                 messageID: source.id,
                 occurrence: occurrence,
-                contentHash: contentHash
+                contentHash: contentHash,
+                vaultKey: vaultKeyBox.current()
             )
             citations.append(
                 MemoryCitation(
@@ -1898,30 +2027,6 @@ actor MemoryExtractionWorker {
 
     private static func memoryID(for job: ControlPlaneStore.MemoryExtractionJob, index: Int) -> MemoryID {
         "memory-\(job.id)-\(index)"
-    }
-
-    /// SHA-256 hex of the cited source message body. The citation binds to the source
-    /// text, so a later edit/deletion of that message is detectable.
-    static func provenanceContentHash(_ sourceBody: String) -> String {
-        let bytes = SHA256.hash(data: Data(sourceBody.utf8))
-        return bytes.map { String(format: "%02x", $0) }.joined()
-    }
-
-    /// v1 non-crypto provenance tag. Content-derived (stable for identical source
-    /// content) but explicitly NOT an authenticated HMAC: it is NOT derived from the
-    /// idempotency key (that key is promptVersion-salted and is the wrong envelope) nor
-    /// from any secret key. The `v1-local:` prefix marks it as the placeholder that
-    /// gates cloud-sync — memory stays local-only until a real key lifecycle replaces
-    /// this (integrated build plan §5.2).
-    static func provenanceLocalTag(
-        threadLogicalID: String,
-        messageID: String,
-        occurrence: Int,
-        contentHash: String
-    ) -> String {
-        let material = "\(threadLogicalID)|\(messageID)|\(occurrence)|\(contentHash)"
-        let digest = SHA256.hash(data: Data(material.utf8)).map { String(format: "%02x", $0) }.joined()
-        return "v1-local:\(digest)"
     }
 }
 

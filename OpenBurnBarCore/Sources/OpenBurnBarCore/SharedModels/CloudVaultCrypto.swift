@@ -878,6 +878,29 @@ public enum CloudVaultCrypto {
         )
     }
 
+    /// Vault-keyed HMAC for a chat-memory citation envelope.
+    ///
+    /// Cross-device-stable when two devices share the same vault key: the envelope
+    /// material is `threadLogicalID|messageID|occurrence|contentHash`. Returns
+    /// `v2-hmac:` + full HMAC-SHA256 hex. Derivation parity:
+    /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "openburnbar-memory-citation-v1")
+    /// → HMAC<SHA256>(envelope)`.
+    public static func memoryCitationHMAC(
+        threadLogicalID: String,
+        messageID: String,
+        occurrence: Int,
+        contentHash: String,
+        keyData: Data
+    ) throws -> String {
+        let material = "\(threadLogicalID)|\(messageID)|\(occurrence)|\(contentHash)"
+        let key = try memoryCitationKey(from: keyData)
+        let hex = try PlatformCrypto.hmacSHA256Hex(
+            Data(material.utf8),
+            keyData: PlatformCrypto.symmetricKeyData(key)
+        )
+        return "v2-hmac:\(hex)"
+    }
+
     /// Deterministic, opaque Firestore document id for a subscription topic.
     ///
     /// Cloaks the subscription graph: the legacy doc id was the human-readable
@@ -1208,6 +1231,16 @@ public enum CloudVaultCrypto {
             inputKeyMaterial: data,
             salt: Data(),
             info: Data("pensieve-dedup:\(label)".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    private static func memoryCitationKey(from data: Data) throws -> PlatformSymmetricKey {
+        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: data,
+            salt: Data(),
+            info: Data("openburnbar-memory-citation-v1".utf8),
             outputByteCount: 32
         )
     }

@@ -125,6 +125,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 "isOnline": true,
                 "lastSyncAt": Timestamp(date: now),
                 "collectionsInSync": collectionsInSync,
+                "lastErrorCode": FieldValue.delete(),
                 "updatedAt": Timestamp(date: now)
             ], merge: true)
     }
@@ -145,6 +146,29 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
     private func recordSyncError(_ error: Error) async {
         state.withLock { $0.lastSyncError = error.localizedDescription }
+
+        let gate = await context.syncGate()
+        if gate.account.isFirebaseAvailable,
+           gate.account.isSignedIn,
+           let uid = gate.account.uid {
+            let deviceId = gate.account.deviceId
+            let now = Date()
+            let blockedCode = Self.syncBlockedCode(for: error)
+            do {
+                try await context.firestoreGateway.collection("users").document(uid)
+                    .collection("sync_status").document(deviceId).setData([
+                        "deviceId": deviceId,
+                        "lastErrorCode": blockedCode,
+                        "lastAttemptAt": Timestamp(date: now),
+                        "updatedAt": Timestamp(date: now)
+                    ], merge: true)
+            } catch {
+                AppLogger.sync.error(
+                    "usage_sync_status_write_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
+        }
 
         let nsError = error as NSError
         let errorType = String(describing: type(of: error))
@@ -235,6 +259,37 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         // both-present doc and be denied. Mirrors the Android writer.
         data["projectName"] = FieldValue.delete()
         return data
+    }
+
+    /// Bounded vocabulary for sync failures surfaced to iOS via `sync_status.lastErrorCode`.
+    static func syncBlockedCode(for error: Error) -> String {
+        if let vaultError = error as? CloudVaultAccessError {
+            switch vaultError {
+            case .vaultKeyUnavailable:
+                return "vault_key_unavailable"
+            case .vaultKeyMismatch:
+                return "vault_key_mismatch"
+            case .invalidWrappedKey:
+                return "vault_key_invalid"
+            }
+        }
+        let nsError = error as NSError
+        if nsError.domain == FirestoreErrorDomain,
+           let code = FirestoreErrorCode.Code(rawValue: nsError.code) {
+            switch code {
+            case .permissionDenied:
+                return "permission_denied"
+            case .unauthenticated:
+                return "unauthenticated"
+            default:
+                break
+            }
+        }
+        if nsError.domain == NSURLErrorDomain,
+           nsError.code == NSURLErrorNotConnectedToInternet {
+            return "network_unavailable"
+        }
+        return "other"
     }
 }
 

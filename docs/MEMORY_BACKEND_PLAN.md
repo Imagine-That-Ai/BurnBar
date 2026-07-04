@@ -1,5 +1,7 @@
 # Memory Subsystem — BACKEND Implementation Plan
 
+> **Status (2026-07-04):** **Implemented on `main`** (v51–v54 schema, extraction worker, `MemoryServing`, version-floored embeddings, forget outbox). This file is the historical build spec. **Open work and activation** live in [`MEMORY_MCP_SOTA_PLAN.md`](MEMORY_MCP_SOTA_PLAN.md) and [`architecture/013-unified-memory-authority-and-mcp-convergence.md`](architecture/013-unified-memory-authority-and-mcp-convergence.md).
+
 > **Implementer:** GPT‑5.5 / Codex (backend session). **Companion:** `docs/MEMORY_FRONTEND_PLAN.md` (chat/UI session). **Why (full rationale + 75‑agent audit + Codex adversarial review):** `docs/MEMORY_STRATEGY_AUDIT.md`. **Governing plan:** `docs/PROJECT_CODE_MEMORY_MASTER_PLAN.md` — this work is its **Phase‑1 Agent Memory, extended to the Hermes/CLI chat domain**. Not a new store.
 
 This document is the executable build spec for the **data, persistence, extraction, embedding, vector, recall, and cloud** layers of a mem0‑class semantic memory feature. Build it exactly. Where a decision is genuinely open it is marked **`DECIDE`** with a recommended default.

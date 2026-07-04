@@ -343,3 +343,70 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
         )
     }
 }
+
+// MARK: - Hermes prompt injection (F1)
+
+/// Sealed Pensieve recall for Hermes prompt injection on iOS mobile.
+/// Uses the same `searchKnowledge` callable as the Control Center search UI.
+enum MobilePensieveRecallService {
+    static let defaultTokenBudget = 900
+
+    struct RecallHit: Sendable {
+        let id: String
+        let text: String
+        let score: Double
+    }
+
+    /// Returns wrapped, token-capped memory snippets for prompt injection, or empty when unavailable.
+    static func recallSection(query: String, tokenBudget: Int = defaultTokenBudget) async -> String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return "" }
+        guard await AuthRepository.shared.currentUserUID != nil else { return "" }
+
+        do {
+            let hits = try await search(query: trimmed, limit: 8)
+            guard hits.isEmpty == false else { return "" }
+            var spent = 0
+            var blocks: [String] = []
+            let overhead = 120
+            for hit in hits {
+                let wrapped = LLMSafeContent.wrapUntrusted(
+                    hit.text,
+                    provenance: "pensieve:\(hit.id)"
+                )
+                let cost = max(1, hit.text.count / 3) + overhead
+                guard cost <= tokenBudget - spent else { continue }
+                spent += cost
+                blocks.append(wrapped)
+            }
+            return blocks.joined(separator: "\n\n")
+        } catch {
+            return ""
+        }
+    }
+
+    private static func search(query: String, limit: Int) async throws -> [RecallHit] {
+        guard let uid = await AuthRepository.shared.currentUserUID else { return [] }
+        let vaultKey = try CloudVaultKeyStore().getOrCreateKey(uid: uid)
+        let cloaked = try PensieveVectorCloak.embedAndCloak(query, vaultKey: vaultKey, isQuery: true)
+        let callable = Functions.functions(region: "us-central1").httpsCallable("searchKnowledge")
+        let result = try await callable.call([
+            "queryVector": cloaked.vector,
+            "embeddingModelVersion": cloaked.modelVersion,
+            "limit": max(1, min(limit, 20))
+        ])
+        guard let dict = result.data as? [String: Any],
+              let rawHits = dict["hits"] as? [[String: Any]] else {
+            return []
+        }
+        return rawHits.compactMap { raw in
+            guard let hit = FunctionsPensieveMemorySearcher.decodeHit(
+                raw,
+                uid: uid,
+                vaultKey: vaultKey,
+                signalIdentity: nil
+            ) else { return nil }
+            return RecallHit(id: hit.id, text: hit.text, score: hit.score)
+        }
+    }
+}

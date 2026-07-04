@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Memory services wiring (PR-D3 app wiring)
 //
@@ -64,27 +65,27 @@ extension OpenBurnBarApp {
         // ONE store over the live queue, shared by the service and the engine (must-fix #1).
         let store = ControlPlaneStore(dbQueue: dataStore.actor.dbQueue)
 
-        // The actor service wired through the TRANSACTIONAL slot (must-fix #2): because it
-        // conforms to `TransactionalMemoryExtractionServing`, `saveChatMessage` enqueues the
-        // outbox row inside the chat-message transaction. The service also binds caller
-        // scopes to the current OpenBurnBar app/account boundary before touching memory rows.
-        // Behavior stays gated by the G4 kill switch in the controller and the shared
-        // authority-write default.
-        let service = OpenBurnBarMemoryService(
-            store: store,
-            scopeAuthorizationProvider: {
-                OpenBurnBarMemoryService.ScopeAuthorization(
-                    userID: accountManager.currentUID
-                )
-            }
-        )
-
         // The drain-loop scheduler over the SAME store (must-fix #1). Local-first provider
         // order + the separate memory daily cap are enforced inside the engine (must-fix #5).
         let engine = MemoryExtractionEngine(
             chatMemoryStore: store,
             dataStore: dataStore,
-            settingsManager: settingsManager
+            settingsManager: settingsManager,
+            loadVaultKey: {
+                guard let uid = accountManager.currentUID else { return nil }
+                return try? CloudVaultKeyStore(service: "com.openburnbar.cloud-vault").loadKey(uid: uid)
+            }
+        )
+
+        // Re-wire service with the engine's live authority switch (G2 RC + ceiling).
+        let service = OpenBurnBarMemoryService(
+            store: store,
+            authorityWritesEnabled: { engine.authorityWritesSwitch.isAllowed() },
+            scopeAuthorizationProvider: {
+                OpenBurnBarMemoryService.ScopeAuthorization(
+                    userID: accountManager.currentUID
+                )
+            }
         )
 
         // PR-E2: the cloud-replication scheduler over the SAME store. DORMANT by default —
@@ -111,6 +112,7 @@ extension OpenBurnBarApp {
         // Mirror the latest gate + settings into the worker-visible boxes, then kick a
         // foreground drain. If the gate is off this returns without scheduling any work and
         // without any LLM egress or spend.
+        engine.refreshKillSwitch()
         engine.launchDrain()
     }
 }

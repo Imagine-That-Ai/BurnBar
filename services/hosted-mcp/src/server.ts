@@ -127,12 +127,22 @@ async function route(req: IncomingMessage, res: ServerResponse, overrides: Serve
   // token + MCP paths touch it.
   const resolveDb = (): HostedMcpFirestore => overrides.db ?? firestore();
   const url = new URL(req.url ?? "/", "http://localhost");
-  if (url.pathname === "/healthz") {
+  if (url.pathname === "/healthz" || url.pathname === "/livez") {
     sendJson(res, 200, { ok: true, service: "openburnbar-hosted-mcp", ...sourceMetadata() });
     return;
   }
   if (url.pathname === "/readyz") {
-    sendJson(res, 200, { ok: true, service: "openburnbar-hosted-mcp", ...sourceMetadata() });
+    try {
+      await resolveDb().collection("users").limit(1).get();
+      sendJson(res, 200, { ok: true, service: "openburnbar-hosted-mcp", ...sourceMetadata() });
+    } catch (err) {
+      sendJson(res, 503, {
+        ok: false,
+        service: "openburnbar-hosted-mcp",
+        reason: "firestore_unavailable",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     return;
   }
   if (url.pathname === "/.well-known/oauth-protected-resource") {

@@ -126,6 +126,7 @@ extension ControlPlaneStore {
         var eligible: [Memory] = []
         for memory in try await cloudSyncCandidateChatMemories(userID: userID) {
             guard try await memoryHasTombstonedSource(id: memory.id) == false else { continue }
+            guard memory.citations.allSatisfy({ !$0.crossDeviceHMAC.hasPrefix("v1-local:") }) else { continue }
             eligible.append(memory)
         }
         return eligible

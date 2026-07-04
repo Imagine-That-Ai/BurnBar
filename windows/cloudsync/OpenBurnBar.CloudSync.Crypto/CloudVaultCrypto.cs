@@ -327,6 +327,24 @@ namespace OpenBurnBar.CloudSync.Crypto
         public static string ProjectMemoryContentHash(byte[] data, byte[] keyData) =>
             KeyedHmacHex(data, keyData, "project-memory-content");
 
+        /// <summary>Cross-device chat-memory citation tag (v2-hmac:).</summary>
+        public static string MemoryCitationHmac(
+            string threadLogicalId,
+            string messageId,
+            int occurrence,
+            string contentHash,
+            byte[] keyData)
+        {
+            RequireVaultKey(keyData);
+            var material = $"{threadLogicalId}|{messageId}|{occurrence}|{contentHash}";
+            var subKey = HkdfDerive(
+                keyData,
+                Array.Empty<byte>(),
+                Encoding.UTF8.GetBytes("openburnbar-memory-citation-v1"));
+            var mac = HMACSHA256.HashData(subKey, Encoding.UTF8.GetBytes(material));
+            return "v2-hmac:" + HexString(mac);
+        }
+
         private static string KeyedHmacHex(byte[] data, byte[] keyData, string purpose)
         {
             RequireVaultKey(keyData);

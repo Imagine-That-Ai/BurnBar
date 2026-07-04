@@ -820,6 +820,20 @@ def disabled_tool_ids() -> list[str]:
     override = os.environ.get("OPENBURNBAR_MINISTRY_DISABLED_TOOL_IDS", "").strip()
     if override:
         return [part.strip() for part in re.split(r"[,\s]+", override) if part.strip()]
+    config_path = Path.home() / ".openburnbar" / "disabled-tools.json"
+    if config_path.is_file():
+        try:
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and isinstance(payload.get("disabled"), list):
+                merged = list(DEFAULT_DISABLED_TOOL_IDS)
+                for item in payload["disabled"]:
+                    if isinstance(item, str) and item.strip():
+                        tool_id = item.strip()
+                        if tool_id not in merged:
+                            merged.append(tool_id)
+                return merged
+        except (OSError, json.JSONDecodeError):
+            pass
     return list(DEFAULT_DISABLED_TOOL_IDS)
 
 

@@ -41,6 +41,22 @@ struct DaemonSettingsView: View {
 
             Section {
                 NavigationLink {
+                    MCPServersSettingsView()
+                } label: {
+                    SettingsDrillRow(
+                        icon: "puzzlepiece.extension.fill",
+                        iconTint: DesignSystem.Colors.ember,
+                        title: "MCP Servers",
+                        subtitle: "Local, daemon, and hosted MCP connections",
+                        value: "Manage"
+                    )
+                }
+            } header: {
+                Text("MCP")
+            }
+
+            Section {
+                NavigationLink {
                     HTTPGatewayDetailView(settingsManager: settingsManager)
                 } label: {
                     SettingsDrillRow(
@@ -451,5 +467,218 @@ private func detailRow(label: String, value: String) -> some View {
             .textSelection(.enabled)
 
         Spacer(minLength: 0)
+    }
+}
+
+// MARK: - MCP server registry + settings (E1/E3)
+
+enum MCPServerKind: String, Codable, CaseIterable, Sendable {
+    case localStdio, daemonSocket, hostedRemote, customStdio
+}
+
+struct MCPServerRecord: Codable, Identifiable, Equatable, Sendable {
+    var id: String
+    var name: String
+    var kind: MCPServerKind
+    var enabled: Bool
+    var command: String?
+    var args: [String]
+    var envKeys: [String]
+    var url: String?
+
+    init(
+        id: String = UUID().uuidString,
+        name: String,
+        kind: MCPServerKind,
+        enabled: Bool = true,
+        command: String? = nil,
+        args: [String] = [],
+        envKeys: [String] = [],
+        url: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.enabled = enabled
+        self.command = command
+        self.args = args
+        self.envKeys = envKeys
+        self.url = url
+    }
+}
+
+struct MCPServerRegistryFile: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 1
+    var schemaVersion: Int
+    var servers: [MCPServerRecord]
+
+    init(schemaVersion: Int = Self.currentSchemaVersion, servers: [MCPServerRecord] = Self.defaultServers) {
+        self.schemaVersion = schemaVersion
+        self.servers = servers
+    }
+
+    static let defaultServers: [MCPServerRecord] = [
+        MCPServerRecord(name: "OpenBurnBar Local", kind: .localStdio, command: "openburnbar-mcp"),
+        MCPServerRecord(name: "OpenBurnBar Daemon", kind: .daemonSocket),
+        MCPServerRecord(name: "OpenBurnBar Hosted", kind: .hostedRemote, url: "https://mcp.burnbar.ai/mcp")
+    ]
+}
+
+struct MCPServerRegistry: Sendable {
+    let fileURL: URL
+
+    init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
+        let dir = homeDirectory.appendingPathComponent(".openburnbar", isDirectory: true)
+        self.fileURL = dir.appendingPathComponent("mcp-servers.json")
+    }
+
+    func load() -> MCPServerRegistryFile {
+        guard let data = try? Data(contentsOf: fileURL),
+              let decoded = try? JSONDecoder().decode(MCPServerRegistryFile.self, from: data),
+              decoded.schemaVersion == MCPServerRegistryFile.currentSchemaVersion else {
+            return MCPServerRegistryFile()
+        }
+        return decoded
+    }
+
+    func save(_ file: MCPServerRegistryFile) throws {
+        let dir = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var payload = file
+        payload.schemaVersion = MCPServerRegistryFile.currentSchemaVersion
+        try JSONEncoder().encode(payload).write(to: fileURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
+}
+
+enum MCPServerHealthState: String, Sendable {
+    case healthy, degraded, unreachable, unknown
+}
+
+struct MCPServerHealth: Equatable, Sendable {
+    let serverID: String
+    let state: MCPServerHealthState
+    let detail: String
+    let checkedAt: Date
+}
+
+struct MCPServerStatusService: Sendable {
+    func status(for server: MCPServerRecord, now: Date = Date()) -> MCPServerHealth {
+        guard server.enabled else {
+            return MCPServerHealth(serverID: server.id, state: .degraded, detail: "Disabled", checkedAt: now)
+        }
+        switch server.kind {
+        case .daemonSocket:
+            return MCPServerHealth(serverID: server.id, state: .unknown, detail: "Daemon socket probe pending", checkedAt: now)
+        case .hostedRemote:
+            let vaultPresent = FileManager.default.fileExists(
+                atPath: FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".openburnbar/vault-key").path
+            )
+            return MCPServerHealth(
+                serverID: server.id,
+                state: vaultPresent ? .healthy : .degraded,
+                detail: vaultPresent ? "Vault key present" : "Vault key missing",
+                checkedAt: now
+            )
+        case .localStdio, .customStdio:
+            return MCPServerHealth(serverID: server.id, state: .unknown, detail: "Stdio probe not run", checkedAt: now)
+        }
+    }
+}
+
+@Observable @MainActor
+final class MCPServersSettingsModel {
+    private(set) var servers: [MCPServerRecord] = []
+    private(set) var healthByID: [String: MCPServerHealth] = [:]
+    private(set) var errorMessage: String?
+
+    private let registry: MCPServerRegistry
+    private let statusService: MCPServerStatusService
+
+    init(registry: MCPServerRegistry = MCPServerRegistry(), statusService: MCPServerStatusService = MCPServerStatusService()) {
+        self.registry = registry
+        self.statusService = statusService
+    }
+
+    func load() {
+        servers = registry.load().servers
+        refreshHealth()
+    }
+
+    func refreshHealth() {
+        let now = Date()
+        healthByID = Dictionary(uniqueKeysWithValues: servers.map { server in
+            (server.id, statusService.status(for: server, now: now))
+        })
+    }
+
+    func setEnabled(serverID: String, enabled: Bool) {
+        guard let index = servers.firstIndex(where: { $0.id == serverID }) else { return }
+        servers[index].enabled = enabled
+        persist()
+    }
+
+    func remove(serverID: String) {
+        servers.removeAll { $0.id == serverID }
+        persist()
+    }
+
+    private func persist() {
+        do {
+            try registry.save(MCPServerRegistryFile(servers: servers))
+            errorMessage = nil
+            refreshHealth()
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Could not save MCP servers."
+        }
+    }
+}
+
+struct MCPServersSettingsView: View {
+    @State private var model = MCPServersSettingsModel()
+
+    var body: some View {
+        List {
+            if let errorMessage = model.errorMessage {
+                Text(errorMessage).foregroundStyle(.red)
+            }
+            ForEach(model.servers, id: \.id) { server in
+                HStack {
+                    Circle()
+                        .fill(statusColor(model.healthByID[server.id]?.state ?? .unknown))
+                        .frame(width: 8, height: 8)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(server.name).font(.headline)
+                        Text(server.kind.rawValue).font(.caption).foregroundStyle(.secondary)
+                        if let detail = model.healthByID[server.id]?.detail {
+                            Text(detail).font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Toggle("Enabled", isOn: Binding(
+                        get: { server.enabled },
+                        set: { model.setEnabled(serverID: server.id, enabled: $0) }
+                    ))
+                    .labelsHidden()
+                }
+            }
+            .onDelete { offsets in
+                for index in offsets {
+                    model.remove(serverID: model.servers[index].id)
+                }
+            }
+        }
+        .navigationTitle("MCP Servers")
+        .task { model.load() }
+    }
+
+    private func statusColor(_ state: MCPServerHealthState) -> Color {
+        switch state {
+        case .healthy: return .green
+        case .degraded: return .orange
+        case .unreachable: return .red
+        case .unknown: return .gray
+        }
     }
 }

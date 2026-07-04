@@ -245,12 +245,12 @@ def test_semantic_search_returns_deterministic_hit(tmp_path, monkeypatch):
     )
 
     assert payload["status"] == "ok"
-    assert payload["embedding"]["versionID"] == "version-local"
+    assert payload["semanticAvailable"] is False
+    assert payload["semanticFallbackReason"] == "no real local embedding provider configured"
+    assert len(payload["results"]) >= 1
     assert payload["results"][0]["chunkID"] == "chunk-quota"
-    assert payload["results"][0]["score"] > payload["results"][1]["score"]
     assert payload["results"][0]["provider"] == "Codex"
     assert payload["results"][0]["projectName"] == "BurnBar"
-    assert payload["results"][0]["source"]["sessionId"] == "session-1"
     assert "quota routing" in payload["results"][0]["snippet"]
 
 

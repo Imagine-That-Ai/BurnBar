@@ -54,6 +54,7 @@ from resume_core import (  # noqa: E402
     spawn_resume,
 )
 import project_code_memory as pcm  # noqa: E402
+import chat_memory_authority as chat_mem  # noqa: E402
 import ministry as ministry_core  # noqa: E402
 import castle as castle_core  # noqa: E402
 
@@ -120,14 +121,23 @@ def _reset_local_mcp_rate_limiter_for_tests() -> None:
     LOCAL_MCP_RATE_LIMIT_BUCKETS.clear()
 
 
-DETERMINISTIC_EMBEDDING_PROVIDER = "openburnbar"
-DETERMINISTIC_EMBEDDING_MODEL = "deterministic-fake-embedding"
-DETERMINISTIC_EMBEDDING_DIMENSIONS = 96
-DETERMINISTIC_EMBEDDING_VERSION_TAG = "ci-v1"
-DETERMINISTIC_CHUNKER_VERSION = "openburnbar-chunker-v1"
-DETERMINISTIC_NORMALIZATION_VERSION = "unit-l2-v1"
-DETERMINISTIC_PROMPT_VERSION = "plain-text-v1"
-DETERMINISTIC_EMBEDDING_SEED = "openburnbar-deterministic-embedding-seed-v1"
+DETERMINISTIC_FINGERPRINT_PROVIDER = "openburnbar"
+DETERMINISTIC_FINGERPRINT_MODEL = "deterministic-fake-embedding"
+DETERMINISTIC_FINGERPRINT_DIMENSIONS = 96
+DETERMINISTIC_FINGERPRINT_VERSION_TAG = "ci-v1"
+DETERMINISTIC_FINGERPRINT_CHUNKER_VERSION = "openburnbar-chunker-v1"
+DETERMINISTIC_FINGERPRINT_NORMALIZATION_VERSION = "unit-l2-v1"
+DETERMINISTIC_FINGERPRINT_PROMPT_VERSION = "plain-text-v1"
+DETERMINISTIC_FINGERPRINT_SEED = "openburnbar-deterministic-embedding-seed-v1"
+# Legacy aliases kept for test fixtures that seed the fingerprint model name.
+DETERMINISTIC_EMBEDDING_PROVIDER = DETERMINISTIC_FINGERPRINT_PROVIDER
+DETERMINISTIC_EMBEDDING_MODEL = DETERMINISTIC_FINGERPRINT_MODEL
+DETERMINISTIC_EMBEDDING_DIMENSIONS = DETERMINISTIC_FINGERPRINT_DIMENSIONS
+DETERMINISTIC_EMBEDDING_VERSION_TAG = DETERMINISTIC_FINGERPRINT_VERSION_TAG
+DETERMINISTIC_CHUNKER_VERSION = DETERMINISTIC_FINGERPRINT_CHUNKER_VERSION
+DETERMINISTIC_NORMALIZATION_VERSION = DETERMINISTIC_FINGERPRINT_NORMALIZATION_VERSION
+DETERMINISTIC_PROMPT_VERSION = DETERMINISTIC_FINGERPRINT_PROMPT_VERSION
+DETERMINISTIC_EMBEDDING_SEED = DETERMINISTIC_FINGERPRINT_SEED
 SEMANTIC_REQUIRED_TABLES = {
     "search_documents",
     "search_chunks",
@@ -1025,6 +1035,138 @@ def _wrap_untrusted_snippet(
     return pcm.wrap_untrusted_snippet(content, source_tool=source_tool, record_id=record_id)
 
 
+def _is_fingerprint_embedding(selection: dict[str, Any]) -> bool:
+    return (
+        str(selection.get("provider", "")).lower() == DETERMINISTIC_FINGERPRINT_PROVIDER
+        and str(selection.get("modelName", "")).lower() == DETERMINISTIC_FINGERPRINT_MODEL
+    )
+
+
+def _active_real_local_embedding(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT
+            v.id AS versionID,
+            v.versionTag,
+            v.chunkerVersion,
+            v.normalizationVersion,
+            v.promptVersion,
+            v.updatedAt AS versionUpdatedAt,
+            m.id AS modelID,
+            m.provider,
+            m.modelName,
+            m.dimensions,
+            m.distanceMetric
+        FROM embedding_versions AS v
+        JOIN embedding_models AS m ON m.id = v.modelID
+        WHERE v.isActive = 1
+        ORDER BY v.updatedAt DESC
+        """
+    ).fetchall()
+    for row in rows:
+        record = _row_to_dict(row)
+        if not _is_fingerprint_embedding(record):
+            return record
+    return None
+
+
+def _lexical_chunk_search_payload(
+    conn: sqlite3.Connection,
+    query: str,
+    provider: str | None = None,
+    project_name: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    trimmed_query = query.strip()
+    lim = max(1, min(int(limit), 200))
+    tokens = [part.lower() for part in re.split(r"\W+", trimmed_query) if len(part) >= 3]
+    tables = _table_names(conn)
+    if "search_chunks" not in tables:
+        return {
+            "status": "unavailable",
+            "code": "SEMANTIC_TABLES_MISSING",
+            "reason": "local semantic search tables are not present in this SQLite database",
+            "missingTables": sorted(SEMANTIC_REQUIRED_TABLES - tables),
+        }
+
+    chunk_cols = _table_columns(conn, "search_chunks")
+    doc_cols = _table_columns(conn, "search_documents") if "search_documents" in tables else set()
+    chunk_text_expr = "c.text" if "text" in chunk_cols else "NULL"
+    doc_provider_expr = "d.provider" if "provider" in doc_cols else "NULL"
+    doc_project_expr = "d.projectName" if "projectName" in doc_cols else "NULL"
+    title_expr = "d.title" if "title" in doc_cols else "NULL"
+
+    sql = f"""
+        SELECT
+            c.id AS chunkID,
+            c.documentID AS documentID,
+            {chunk_text_expr} AS chunkText,
+            {title_expr} AS title,
+            {doc_provider_expr} AS documentProvider,
+            {doc_project_expr} AS documentProjectName
+        FROM search_chunks AS c
+        LEFT JOIN search_documents AS d ON d.id = c.documentID
+    """
+    args: list[Any] = []
+    where: list[str] = []
+    if provider:
+        where.append(f"COALESCE({doc_provider_expr}, '') = ?")
+        args.append(provider)
+    if project_name:
+        where.append(f"COALESCE({doc_project_expr}, '') = ?")
+        args.append(project_name)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for row in conn.execute(sql, args):
+        record = _row_to_dict(row)
+        text = str(record.get("chunkText") or "")
+        haystack = text.lower()
+        if tokens:
+            hits = sum(1 for token in tokens if token in haystack)
+            score = float(hits) / float(len(tokens))
+        else:
+            score = 1.0 if trimmed_query.lower() in haystack else 0.0
+        if score <= 0:
+            continue
+        record_id = str(record.get("chunkID") or record.get("documentID") or "unknown")
+        result = {
+            "chunkID": record.get("chunkID"),
+            "documentID": record.get("documentID"),
+            "score": score,
+            "snippet": _wrap_untrusted_snippet(
+                _snippet(text),
+                source_tool="burnbar_semantic_search_conversations",
+                record_id=record_id,
+            ),
+            "title": _wrap_untrusted_snippet(
+                record.get("title"),
+                source_tool="burnbar_semantic_search_conversations",
+                record_id=record_id,
+            ),
+            "provider": record.get("documentProvider"),
+            "projectName": record.get("documentProjectName"),
+        }
+        scored.append((score, result))
+
+    scored.sort(key=lambda item: (-item[0], str(item[1].get("chunkID") or "")))
+    results = [item[1] for item in scored[:lim]]
+    return {
+        "status": "ok",
+        "query": trimmed_query,
+        "semanticAvailable": False,
+        "semanticFallbackReason": "no real local embedding provider configured",
+        "results": results,
+        "trustSignal": {
+            "untrustedContentWrapped": True,
+            "wrappedCount": len(results),
+            "sourceTool": "burnbar_semantic_search_conversations",
+        },
+    }
+
+
 def _active_deterministic_embedding(conn: sqlite3.Connection) -> dict[str, Any] | None:
     conn.row_factory = sqlite3.Row
     row = conn.execute(
@@ -1086,22 +1228,16 @@ def _semantic_search_payload(
             "missingTables": missing,
         }
 
-    selection = _active_deterministic_embedding(conn)
+    selection = _active_real_local_embedding(conn)
     if selection is None:
-        return {
-            "status": "unavailable",
-            "code": "NO_COMPATIBLE_DETERMINISTIC_EMBEDDING",
-            "reason": "no active openburnbar deterministic embedding version is available locally",
-            "expected": {
-                "provider": DETERMINISTIC_EMBEDDING_PROVIDER,
-                "modelName": DETERMINISTIC_EMBEDDING_MODEL,
-                "dimensions": DETERMINISTIC_EMBEDDING_DIMENSIONS,
-                "versionTag": DETERMINISTIC_EMBEDDING_VERSION_TAG,
-                "chunkerVersion": DETERMINISTIC_CHUNKER_VERSION,
-                "normalizationVersion": DETERMINISTIC_NORMALIZATION_VERSION,
-                "promptVersion": DETERMINISTIC_PROMPT_VERSION,
-            },
-        }
+        payload = _lexical_chunk_search_payload(
+            conn,
+            query=trimmed_query,
+            provider=provider,
+            project_name=project_name,
+            limit=limit,
+        )
+        return payload
 
     version_id = str(selection["versionID"])
     vector_count = int(
@@ -1231,6 +1367,7 @@ def _semantic_search_payload(
     return {
         "status": "ok",
         "query": trimmed_query,
+        "semanticAvailable": True,
         "embedding": {
             "versionID": version_id,
             "modelID": selection["modelID"],
@@ -1674,6 +1811,98 @@ def burnbar_memory_analytics(project_path: str | None = None) -> str:
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
         return json.dumps(pcm.memory_analytics(conn, project_path=project_path), indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_get_memory(memory_id: str) -> str:
+    """Fetch one chat-memory authority row from the main OpenBurnBar database (source_kind=chat)."""
+    if limited := _local_mcp_rate_limit("burnbar_get_memory", "memory"):
+        return limited
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(chat_mem.get_chat_memory(conn, memory_id.strip()), indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_list_memories(
+    user_id: str | None = None,
+    app_id: str | None = None,
+    review_status: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> str:
+    """Page chat-memory authority rows from the main OpenBurnBar database."""
+    if limited := _local_mcp_rate_limit("burnbar_list_memories", "memory"):
+        return limited
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(
+            chat_mem.list_chat_memories(
+                conn,
+                user_id=user_id,
+                app_id=app_id,
+                review_status=review_status,
+                page=page,
+                page_size=page_size,
+            ),
+            indent=2,
+            default=str,
+        )
+
+
+@mcp.tool()
+def burnbar_list_entities() -> str:
+    """List approved chat-memory entity keys (user_id / app_id buckets) from the main DB."""
+    if limited := _local_mcp_rate_limit("burnbar_list_entities", "memory"):
+        return limited
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(chat_mem.list_chat_memory_entities(conn), indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_update_memory(memory_id: str, review_status: str | None = None) -> str:
+    """
+    Chat-memory authority updates are Mac-app owned (quarantine lifecycle).
+
+    This tool fails closed; use the OpenBurnBar review inbox on macOS.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_update_memory", "memory"):
+        return limited
+    _ = memory_id
+    _ = review_status
+    return json.dumps(
+        {
+            "status": "denied",
+            "code": "CHAT_MEMORY_WRITE_REQUIRES_MAC",
+            "reason": "Chat-memory approve/reject is owned by the macOS app review inbox.",
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+def burnbar_forget_all(user_id: str | None = None, app_id: str | None = None) -> str:
+    """
+    Bulk chat-memory forget is Mac-app owned (v53 two-phase outbox).
+
+    This tool fails closed; use Settings → Privacy on macOS.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_forget_all", "memory"):
+        return limited
+    _ = user_id
+    _ = app_id
+    return json.dumps(
+        {
+            "status": "denied",
+            "code": "CHAT_MEMORY_WRITE_REQUIRES_MAC",
+            "reason": "Chat-memory forget-all is owned by the macOS app two-phase outbox.",
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()

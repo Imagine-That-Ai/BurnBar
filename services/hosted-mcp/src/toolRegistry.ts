@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Firestore } from "firebase-admin/firestore";
 import type { AccessTokenClaims } from "./auth.js";
 import { requireScope } from "./auth.js";
@@ -365,6 +366,10 @@ export async function callTool(
       ? tool.ultraRateLimitBucket
       : tool.rateLimitBucket;
   await enforceRateLimit(ctx.db, ctx.claims.sub, ctx.claims.client_id, bucket);
+  const trace_id = randomUUID();
   const result = await tool.handler(handlerContext, args);
-  return { content: [{ type: "text", text: JSON.stringify(result) }] };
+  const payload = typeof result === "object" && result !== null && !Array.isArray(result)
+    ? { trace_id, ...(result as Record<string, unknown>) }
+    : { trace_id, result };
+  return { trace_id, content: [{ type: "text", text: JSON.stringify(payload) }] };
 }

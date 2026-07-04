@@ -85,6 +85,16 @@ final class MemoryExtractionEngine {
     /// writes it (`refreshKillSwitch()` / construction); the worker reads it off-main.
     private let killSwitch: MemoryExtractionKillSwitch
 
+    /// G2 fleet go-live gate (compile-time ceiling AND RC `memory_authority_writes_enabled`).
+    let authorityWritesSwitch: MemoryAuthorityWritesSwitch
+
+    /// Vault key for cross-device citation HMAC tags (`v2-hmac:`). Refreshed on the
+    /// MainActor before each drain when the user is signed in.
+    private let vaultKeyBox: MemoryVaultKeyBox
+
+    /// Loads the vault key bytes for the signed-in user (nil when unavailable).
+    private let loadVaultKey: @MainActor () -> Data?
+
     /// The live settings snapshot the extractor reads off-main. The MainActor refreshes
     /// it before each drain; the extractor's `@Sendable` provider pulls from it. This is
     /// what lets per-drain settings stay fresh WITHOUT reading the `@MainActor`
@@ -123,10 +133,14 @@ final class MemoryExtractionEngine {
         settingsManager: SettingsManager,
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
         llmClient: MemoryExtractionLLMClient = MemoryExtractionLLMClient(),
-        authorityWritesGoLiveEnabled: Bool = ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
+        authorityWritesGoLiveEnabled: Bool = ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault,
+        vaultKeyBox: MemoryVaultKeyBox = MemoryVaultKeyBox(),
+        loadVaultKey: @escaping @MainActor () -> Data? = { nil }
     ) {
         self.chatMemoryStore = chatMemoryStore
         self.settingsManager = settingsManager
+        self.vaultKeyBox = vaultKeyBox
+        self.loadVaultKey = loadVaultKey
 
         // Seed the atomic from the live gate on the MainActor. Starts CLOSED and only
         // opens if the combined gate currently allows — fail-safe on construction.
@@ -138,6 +152,15 @@ final class MemoryExtractionEngine {
             initiallyAllowed: settingsManager.memoryExtractionEnabled
         )
         self.killSwitch = killSwitch
+
+        let authoritySwitch = MemoryAuthorityWritesSwitch(
+            initiallyAllowed: authorityWritesGoLiveEnabled && settingsManager.memoryAuthorityWritesEnabled
+        )
+        MemoryAuthorityWritesSwitchRegistry.register(
+            authoritySwitch,
+            initiallyAllowed: authorityWritesGoLiveEnabled && settingsManager.memoryAuthorityWritesEnabled
+        )
+        self.authorityWritesSwitch = authoritySwitch
 
         // Seed the settings box on the MainActor (legal here). The off-main extractor
         // provider reads THIS box, never the `@MainActor` SettingsManager directly.
@@ -159,6 +182,7 @@ final class MemoryExtractionEngine {
 
         self.worker = MemoryExtractionWorker(
             store: chatMemoryStore,
+            vaultKeyBox: vaultKeyBox,
             // Re-establish the kill switch at the WORKER boundary (PR-D2 must-fix #4): the
             // worker reads the LIVE atomic, never a cached or main-isolated value. AND it
             // with the authority-write lever (PR-D FIX #1) so durable writes require BOTH
@@ -167,7 +191,9 @@ final class MemoryExtractionEngine {
             // `authorityWritesGoLiveEnabled` is captured by value: it is a static runtime
             // default or test override, not a per-tick toggle, so it does not need the
             // live-atomic treatment the fleet kill needs.
-            authorityWritesEnabled: { killSwitch.isAllowed() && authorityWritesGoLiveEnabled },
+            authorityWritesEnabled: {
+                killSwitch.isAllowed() && authoritySwitch.isAllowed()
+            },
             extractor: extractor.makeExtractor()
         )
         // If consent, the user toggle, or Remote Config opens the combined gate after app
@@ -184,7 +210,9 @@ final class MemoryExtractionEngine {
     /// tick sees the new values (nothing is cached — must-fix #2).
     func refreshKillSwitch() {
         killSwitch.set(settingsManager.memoryExtractionEnabled)
+        authorityWritesSwitch.set(settingsManager.memoryAuthorityWritesEnabled)
         settingsBox.set(Self.makeSettingsSnapshot(settingsManager: settingsManager))
+        vaultKeyBox.set(loadVaultKey())
     }
 
     // MARK: - Launch

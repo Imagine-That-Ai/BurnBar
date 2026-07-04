@@ -253,6 +253,8 @@ struct SettingsView: View {
             SessionSummariesDetailView(settingsManager: settingsManager)
         case .daemonLifecycle:
             DaemonLifecycleDetailView(daemonManager: .shared)
+        case .mcpServers:
+            MCPServersSettingsView()
         case .httpGateway:
             HTTPGatewayDetailView(settingsManager: settingsManager)
         case .controllerRuntime:

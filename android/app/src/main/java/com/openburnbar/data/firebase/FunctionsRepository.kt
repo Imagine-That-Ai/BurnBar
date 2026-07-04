@@ -132,6 +132,22 @@ class FunctionsRepository {
         return hits.mapNotNull { it.toCloudConversationSearchHit() }
     }
 
+    suspend fun searchKnowledge(
+        queryVector: List<Double>,
+        embeddingModelVersion: String,
+        limit: Int = 20,
+    ): Map<String, Any?> {
+        val vectorPayload = queryVector.map { it }
+        return callMap(
+            "searchKnowledge",
+            mapOf(
+                "queryVector" to vectorPayload,
+                "embeddingModelVersion" to embeddingModelVersion,
+                "limit" to limit.coerceIn(1, MAX_SEARCH_RESULT_LIMIT),
+            ),
+        )
+    }
+
     /**
      * Faceted, paginated query over the signed-in paid user's encrypted session-log manifests.
      * Filtering and sorting run server-side only on operational facets. Project/path/title/body

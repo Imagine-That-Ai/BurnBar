@@ -220,7 +220,8 @@ public actor BurnBarDaemonServer {
             do {
                 self.projectCodeMemory = try BurnBarProjectCodeMemoryStore(
                     databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "project-code-memory")
+                    logger: BurnBarDaemonLogger(category: "project-code-memory"),
+                    embeddingProvider: BurnBarCodeEmbeddingProviderFactory.makeDefault()
                 )
             } catch {
                 logger.warning(

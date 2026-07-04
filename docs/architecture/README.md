@@ -15,6 +15,8 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 | [008-remote-control-engine.md](008-remote-control-engine.md) | Iroh-first remote desktop, media, and remote-control engine |
 | [010-project-code-static-parser.md](010-project-code-static-parser.md) | Stateless local Tree-sitter helper for Project Code Memory |
 | [011-stripe-redirect-url-validation.md](011-stripe-redirect-url-validation.md) | Exact-loopback + optional origin allowlist for Stripe redirects |
+| [012-project-code-memory-embedding-retrieval-policy.md](012-project-code-memory-embedding-retrieval-policy.md) | Ollama dense-tier gate; fingerprint excluded from ranking |
+| [013-unified-memory-authority-and-mcp-convergence.md](013-unified-memory-authority-and-mcp-convergence.md) | One `agent_memories` authority; daemon-first MCP; activation gates |
 
 Related operational docs:
 

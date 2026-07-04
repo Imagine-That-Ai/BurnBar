@@ -54,12 +54,12 @@
                 </Border>
             </Grid>
 
-            <TextBlock Text="Approve what to remember"
+            <TextBlock Text="{x:Bind ViewModel.TitleText, Mode=OneWay}"
                        FontSize="18"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource PensieveColorTextBrightBrush}" />
 
-            <TextBlock Text="Memories stay quarantined until you approve them — nothing is used in a chat before you say so."
+            <TextBlock Text="{x:Bind ViewModel.SubtitleText, Mode=OneWay}"
                        FontSize="12"
                        TextWrapping="Wrap"
                        Foreground="{StaticResource PensieveColorTextBaseBrush}" />
@@ -73,7 +73,8 @@
             <Button x:Name="PendingChip"
                     Content="Pending"
                     Click="OnPendingFilterClick"
-                    Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                    Style="{StaticResource LiquidGlassInteractiveStyle}"
+                    Visibility="{x:Bind ViewModel.AllowsReviewActions, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
             <Button x:Name="ApprovedChip"
                     Content="Approved"
                     Click="OnApprovedFilterClick"
@@ -116,11 +117,11 @@
                         Padding="40"
                         Visibility="{x:Bind ViewModel.ShowEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                 <FontIcon Glyph="&#xE7B8;" FontSize="48" Foreground="{StaticResource PensieveColorTextDimBrush}" />
-                <TextBlock Text="No memories to review"
+                <TextBlock Text="{x:Bind ViewModel.EmptyTitleText, Mode=OneWay}"
                            HorizontalAlignment="Center"
                            FontSize="16"
                            Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                <TextBlock Text="When a chat turns up a durable fact or preference worth remembering, it lands here for your approval."
+                <TextBlock Text="{x:Bind ViewModel.EmptyBodyText, Mode=OneWay}"
                            HorizontalAlignment="Center"
                            TextAlignment="Center"
                            MaxWidth="420"
@@ -175,7 +176,8 @@
 
                                 <StackPanel Orientation="Horizontal"
                                             Spacing="8"
-                                            HorizontalAlignment="Right">
+                                            HorizontalAlignment="Right"
+                                            Visibility="{x:Bind ShowReviewActions, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                                     <Button Content="Reject"
                                             Tag="{x:Bind Id}"
                                             Click="OnRejectClick"

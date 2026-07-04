@@ -106,6 +106,7 @@ struct SettingsSearchResultsView: View {
         case .indexing: return "Indexing & Search"
         case .sessionSummaries: return "Session Summaries"
         case .daemonLifecycle: return "Lifecycle"
+        case .mcpServers: return "MCP Servers"
         case .httpGateway: return "HTTP Gateway"
         case .controllerRuntime: return "Controller Runtime"
         case .hermesChatEngines: return "Chat Engines"

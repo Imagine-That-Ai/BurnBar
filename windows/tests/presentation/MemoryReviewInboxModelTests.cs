@@ -365,3 +365,68 @@ public sealed class MemoryReviewInboxModelTests
         }
     }
 }
+
+public sealed class MemoryStoreTests
+{
+    [Fact]
+    public async Task DefaultStore_IsEmpty_NeverInventDemoFacts()
+    {
+        var store = new MemoryStore();
+        var page = await store.LoadPageAsync(new MemoryPageRequest(
+            Scope: new MemoryScope(AppId: "openburnbar"),
+            Page: 1,
+            PageSize: 50,
+            IncludeQuarantined: true));
+
+        Assert.Empty(page.Items);
+        Assert.Equal(0, page.Total);
+    }
+
+    [Fact]
+    public async Task SetStatus_SurfacesMacOnlyFriendlyMessage()
+    {
+        var store = new MemoryStore();
+        var error = await Assert.ThrowsAsync<MemoryReviewMacOnlyException>(
+            () => store.SetStatusAsync("mem-1", MemoryReviewStatus.Approved));
+        Assert.Contains("Review on your Mac", error.FriendlyMessage);
+    }
+
+    [Fact]
+    public async Task ReadOnlyModel_DefaultsToApprovedFilter_AndBlocksApprove()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var facts = new[]
+        {
+            new SyncedMemoryFact(
+                Id: "a1",
+                Kind: MemoryKind.Preference,
+                Scope: new MemoryScope(AppId: "openburnbar"),
+                Confidence: 0.9,
+                BodyRedacted: "sealed::a1",
+                PlaintextBody: "prefers dark mode",
+                ReviewStatus: MemoryReviewStatus.Approved,
+                Citations: Array.Empty<MemoryCitation>(),
+                ValidFrom: now,
+                CreatedAt: now,
+                UpdatedAt: now),
+        };
+        var store = new MemoryStore(facts);
+        var model = new MemoryReviewInboxModel(
+            new MemoryScope(AppId: "openburnbar"),
+            store.LoadPageAsync,
+            store.OpenBodyAsync,
+            store.SetStatusAsync,
+            readOnly: true);
+
+        await model.LoadAsync();
+
+        Assert.True(model.IsReadOnly);
+        Assert.False(model.AllowsReviewActions);
+        Assert.Equal(MemoryReviewInboxModel.Filter.Approved, model.CurrentFilter);
+        Assert.Single(model.Items);
+        Assert.False(model.Items[0].ShowReviewActions);
+
+        await model.ApproveAsync("a1");
+        Assert.Contains("Review on your Mac", model.ErrorMessage);
+    }
+}

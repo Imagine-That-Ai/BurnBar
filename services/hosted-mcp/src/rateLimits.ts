@@ -22,7 +22,10 @@ export function registeredRateLimitBuckets(): string[] {
 }
 
 export async function enforceRateLimit(db: HostedMcpFirestore, uid: string, clientId: string, bucket: string): Promise<void> {
-  const spec = LIMITS[bucket] ?? LIMITS["metadata:standard"];
+  const spec = LIMITS[bucket];
+  if (!spec) {
+    throw new HttpError(500, `Hosted MCP rate limit bucket is not registered: ${bucket}`, "bucket_unregistered");
+  }
   const windowStart = Math.floor(Date.now() / spec.windowMs) * spec.windowMs;
   const id = `${clientId}_${bucket}_${windowStart}`.replace(/[^A-Za-z0-9_.:-]/g, "_");
   const ref = db.doc(`users/${uid}/remote_mcp_rate_limits/${id}`);

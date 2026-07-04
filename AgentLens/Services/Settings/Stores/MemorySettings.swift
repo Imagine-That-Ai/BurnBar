@@ -46,6 +46,15 @@ final class MemorySettings {
         }
     }
 
+    /// Firebase Remote Config `memory_authority_writes_enabled` (default true).
+    /// Separate from the extraction fleet kill so go-live can be staged
+    /// independently. Fail-closed when fetch errors leave an active cached false.
+    var remoteConfigAuthorityWritesEnabled: Bool = true {
+        didSet {
+            propagateAuthorityWritesGate()
+        }
+    }
+
     /// User consent (gate G0, default OFF): the user has affirmatively opted in to
     /// chat-memory extraction via the first-run consent prompt. Until this is true
     /// no transcript is read, no LLM extraction runs, and no `agent_memories` row is
@@ -85,6 +94,7 @@ final class MemorySettings {
             self.consentGranted = persistence.bool(forKey: "memoryConsentGranted")
         }
         propagateExtractionGate()
+        propagateAuthorityWritesGate()
     }
 
     private func propagateExtractionGate() {
@@ -93,6 +103,15 @@ final class MemorySettings {
                 consentGranted: consentGranted,
                 automaticExtraction: automaticExtraction,
                 remoteConfigEnabled: remoteConfigExtractionEnabled
+            )
+        )
+    }
+
+    private func propagateAuthorityWritesGate() {
+        MemoryAuthorityWritesSwitchRegistry.setAll(
+            MemoryAuthorityWritesGate.isEnabled(
+                staticDefault: ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault,
+                remoteConfigEnabled: remoteConfigAuthorityWritesEnabled
             )
         )
     }
@@ -112,6 +131,14 @@ enum MemoryExtractionGate {
         remoteConfigEnabled: Bool
     ) -> Bool {
         consentGranted && automaticExtraction && remoteConfigEnabled
+    }
+}
+
+/// Pure gate: durable authority writes require the compile-time ceiling AND the
+/// fleet Remote Config go-live switch (fail-closed when RC is false).
+enum MemoryAuthorityWritesGate {
+    static func isEnabled(staticDefault: Bool, remoteConfigEnabled: Bool) -> Bool {
+        staticDefault && remoteConfigEnabled
     }
 }
 

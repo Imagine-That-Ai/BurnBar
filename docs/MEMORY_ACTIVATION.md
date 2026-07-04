@@ -1,16 +1,8 @@
 # Memory Activation — end-to-end flow, kill levers, and the human GO-LIVE runbook
 
-**Status:** The semantic-memory subsystem is **fully wired and dormant.** Every
-component named below is built, tested, and committed on the `memory/activation`
-branch. **Nothing in this document is turned on.** The feature does not write a
-single durable memory row out of the box, and it does not ship a byte of derived
-memory off the device. Flipping it on is a deliberate, human-owned decision,
-gated on the residual list in [§7](#7-residual-go-live-decisions-a-human-must-make).
+**Status:** The semantic-memory subsystem is **fully wired on `main`.** It is **dormant for most users** because Gate 0 (consent) defaults OFF. After consent, extraction and durable writes are live subject to G1 and G2 (see below). Cloud replication remains **opt-in OFF** (§5).
 
-This is the closing doc for the memory-activation build (Waves A–E of
-[`2026-06-19-memory-activation-integrated-build-plan.md`](../../.gstack/projects/Ajnunezg-LaHormigaDormida/ceo-plans/2026-06-19-memory-activation-integrated-build-plan.md)).
-It records the flow, the three independent kill switches, where each moving part
-lives, and what a human still owns before activation.
+**Canonical activation runbook:** [`MEMORY_MCP_SOTA_PLAN.md`](MEMORY_MCP_SOTA_PLAN.md) §4 (staged rollout, committed §7 decisions). **Architecture:** [`architecture/013-unified-memory-authority-and-mcp-convergence.md`](architecture/013-unified-memory-authority-and-mcp-convergence.md).
 
 Related design docs (the "why" and the schema): [`MEMORY_BACKEND_PLAN.md`](MEMORY_BACKEND_PLAN.md),
 [`MEMORY_FRONTEND_PLAN.md`](MEMORY_FRONTEND_PLAN.md), [`MEMORY_STRATEGY_AUDIT.md`](MEMORY_STRATEGY_AUDIT.md).
@@ -71,36 +63,39 @@ and no memory row is written, even before the go-live flag matters.
   independent dormancy guarantee in isolation.** Dormancy for the full system is
   provided by G0 (outermost) combined with G2.
 
-### Gate 2 (G2) — `chatMemoryAuthorityWritesEnabledByDefault` (the go-live flag, DEFAULT **FALSE**)
+### Gate 2 (G2) — authority writes (compile-time ceiling AND Remote Config go-live)
 
-- **What it is:** a static Boolean — the **human-owned go-live switch**.
-- **Where it is defined:** `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault = false`
-  (`AgentLens/Services/DataStore/ControlPlaneStore.swift:10`).
+- **What it is:** the **human-owned fleet go-live switch** for durable writes and LLM
+  extraction, ANDed at the worker boundary with G1.
+- **Compile-time ceiling:** `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault = true`
+  (`AgentLens/Services/DataStore/ControlPlaneStore.swift:10`). Tests may inject `false`
+  to exercise the gate matrix.
+- **Fleet lever (preferred):** Firebase Remote Config `memory_authority_writes_enabled`
+  (default **true**, fail-closed on fetch error when the active cached value is false).
+  Surfaced as `SettingsManager.memoryAuthorityWritesRemoteConfigEnabled`. Owner:
+  **Alberto** via Firebase console percentage conditions (see
+  `MEMORY_MCP_SOTA_PLAN.md` §4.3).
+- **Combined gate:** `memoryAuthorityWritesEnabled` =
+  `chatMemoryAuthorityWritesEnabledByDefault && memoryAuthorityWritesRemoteConfigEnabled`.
 - **What it gates:** the **durable write AND the LLM call**. The worker gates
-  `authorityWritesEnabled()` — which is the kill-switch atomic AND the go-live
-  flag — **pre-claim, before the extractor/LLM call**:
+  `authorityWritesEnabled()` — kill-switch atomic AND authority gate — **pre-claim,
+  before the extractor/LLM call**:
   `guard authorityWritesEnabled() else { return .idle }` in
   `MemoryExtractionWorker.drainClaimedJob`
   (`AgentLens/Services/DataStore/ControlPlaneStore+Memory.swift:1635`).
-  This means **with go-live OFF (the default), the LLM is never called** —
-  there is no "extract-but-don't-persist" intermediate state. The gate is also
-  re-checked per-record at the persistence boundary
+  Re-checked at persistence:
   `ControlPlaneStore.addChatMemoryAuthorityRecord(_:id:now:enabled:)`
   (`+Memory.swift:97`): `guard enabled else { throw ChatMemoryAuthorityError.disabled }`.
-- **The full AND:** the engine constructs the worker with
-  `authorityWritesEnabled: { killSwitch.isAllowed() && authorityWritesGoLiveEnabled }`
-  (`AgentLens/Services/Memory/MemoryExtractionEngine.swift:161`). Both G1 (via
-  the kill-switch atomic) and G2 must be true before the LLM is called or any
-  write is attempted. G0 is upstream of G1 and blocks G1 from ever being true
-  without consent.
+- **Full worker AND:** `killSwitch.isAllowed() && authorityWritesSwitch.isAllowed()`
+  (`MemoryExtractionEngine.swift`). G0 is upstream of G1.
 
 ### Gate truth table
 
-| G0 `consentGranted` | G1 `memoryExtractionEnabled` | G2 `…AuthorityWritesEnabled` | Result |
+| G0 `consentGranted` | G1 `memoryExtractionEnabled` | G2 `memoryAuthorityWritesEnabled` | Result |
 |---|---|---|---|
 | **false (default)** | (any) | (any) | **Fully dormant** — no LLM egress, zero writes. |
 | true | **false** | (any) | No LLM egress, zero writes. |
-| true | true | **false (default)** | **LLM never called** — worker returns `.idle` at pre-claim guard; zero writes. |
+| true | true | **false** | **LLM never called** — worker returns `.idle` at pre-claim guard; zero writes. |
 | true | true | true | Extraction is **live**: LLM runs, clean facts persist as `quarantined`. |
 
 The default ship state is the top row: **fully dormant by G0**. The end-to-end
@@ -488,9 +483,9 @@ is the **last** lane to enable and is itself a residual product decision (§7.5)
    `"memoryConsentGranted"`). G0 — the outermost gate — is OFF by default until
    the user accepts `MemoryConsentSheet`. If this is somehow `true` without a
    user action, investigate before proceeding.
-2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault == false`
-   (`ControlPlaneStore.swift:10`). G2 — the go-live flag. If this is ever `true`,
-   the feature is live once G0 and G1 also allow.
+2. `SettingsManager.memoryAuthorityWritesEnabled == true` (compile-time ceiling AND
+   Remote Config `memory_authority_writes_enabled`, both default true). G2 — the go-live
+   gate. Fleet rollout stages flip RC to false to halt writes without a client release.
 3. `MemorySettings.approvedCloudBackupEnabled` default `false`
    (`MemorySettings.swift:32`). No cloud egress.
 4. The engine's worker closure is the **AND** of the live atomic and the go-live
@@ -503,74 +498,25 @@ ships dormant.
 
 ---
 
-## 7. Residual GO-LIVE decisions a human must make
+## 7. GO-LIVE decisions — committed (2026-07-04)
 
-These are genuine forks (integrated build plan §5). **None should be
-auto-decided.** Each carries the plan's recommended frontier-yet-shippable
-default. The kill switch should be flipped ON only after **#1 has an owner +
-mechanism, #3 / #4 / #6 / #7 are decided, and the end-to-end integration test is
-green.** Cloud-sync (#5) additionally requires #2.
+These were open forks in the integrated build plan. **Committed choices** (full
+rationale in `MEMORY_MCP_SOTA_PLAN.md` §4.1):
 
-1. **Who/what flips `chatMemoryAuthorityWritesEnabledByDefault` (the go-live
-   switch), and via what mechanism? — _owner: TBD. BLOCKS ON._**
-   This is the actual activation. **Recommendation:** a dedicated Remote Config
-   key (e.g. `memory_authority_writes_enabled`) **separate** from
-   `memory_extraction_enabled`, so extraction and go-live can be gated
-   independently. **Needs a named owner.**
+1. **Go-live mechanism:** Remote Config `memory_authority_writes_enabled`, separate
+   from `memory_extraction_enabled`. Owner: **Alberto** (Firebase console staged %).
+2. **crossDeviceHMAC:** build real HKDF key lifecycle (task A2); cloud sync blocked
+   until complete; `v1-local:` legacy-read only.
+3. **Secret policy:** **REJECT** (pinned for v1).
+4. **PII:** **REJECT all PII** for activation; profile allowance is fast-follow.
+5. **Cloud backup:** **OFF** default, explicit opt-in.
+6. **Approval UX:** **auto-approve nothing**; inbox required; visual QA gate (task A3).
+7. **G7 corpus review:** required before % fleet (task A4).
+8. **Cloud transcript egress:** **prohibited** in v1.
+9. **Input-side exfil:** accepted as N/A while extraction stays local-only.
 
-2. **`crossDeviceHMAC` for v1: real key lifecycle, or non-crypto placeholder +
-   local-only memory? — _owner: TBD. BLOCKS CLOUD-SYNC (#5), not local
-   activation._**
-   Today it is the `v1-local:` non-crypto tag (§2.6). **Recommendation:** ship
-   **local-only** with the placeholder; build the HMAC key subsystem (Keychain
-   storage, cross-device sync, rotation) as the gate for cloud-sync. Do not ship
-   a `*HMAC` field computed from an undefined key.
-
-3. **Default secret policy: REJECT vs REDACT? — _owner: TBD._**
-   Current code: `.reject` at both gate points. **Recommendation:** keep
-   **REJECT** (preserves fail-closed behavior; a secret-bearing fact is
-   low-value). Expose REDACT as opt-in once redaction tests are battle-hardened.
-
-4. **PII handling: reject / redact / allow emails & phones? — _owner: TBD._**
-   A memory system arguably *wants* "user's email is x@y.com" as a profile fact.
-   **Recommendation:** **REJECT all PII** for this activation phase (safest); flag
-   profile-scoped PII allowance as a fast-follow. (The Luhn/IPv4 hardening in §2.5
-   ensures reject does not eat phones/version strings.)
-
-5. **Cloud backup default: ON vs OFF? — _owner: TBD._**
-   Current code: `memoryApprovedCloudBackupEnabled` default OFF.
-   **Recommendation:** keep **OFF** (explicit opt-in for cloud egress of derived
-   memory, even sealed). Cross-device memory is the headline value, but consent +
-   the missing HMAC key (#2) argue for opt-in first.
-
-6. **Approval UX: auto-approve nothing, or auto-approve high-confidence
-   user-authored preferences? — _owner: TBD._**
-   Extracted memories are quarantined and **useless until approved** (recall gate,
-   §2.9). v1 ships extraction-only. **Recommendation:** auto-approve **nothing**;
-   the review inbox (`DashboardMainRoute.memoryReview`) is built and unit-tested
-   but has **not had visual/UX QA on a running macOS app.** Visual QA of the inbox
-   and the first-run `MemoryConsentSheet` is required before activation.
-   **Without the inbox being visible and functional, the feature feels dead even
-   when working — surface this product risk to Alberto before activation.**
-
-7. **G7 corpus security review before fleet enable. — _owner: TBD._**
-   The `secret-pattern-corpus.json` (in `OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/`)
-   gates what the G7 drop filter catches. A security review of the corpus — coverage
-   completeness, false-positive rate for legitimate memories, Luhn/IPv4/phone
-   edge cases — is required before enabling the feature at fleet scale. The
-   `memory.candidate_dropped` audit trail (carrying stable finding IDs, not secret
-   text) provides signal for post-activation corpus tuning.
-
-8. **Cloud transcript egress is a separate go-live decision. — _owner: TBD._**
-   Current code is local-only for memory extraction. **Recommendation:** keep it
-   that way until there is a separate cloud-transcript consent gate, cumulative
-   memory spend ledger, and product copy that names the provider behavior plainly.
-
-9. **Input-side exfil acceptance. — _owner: TBD._**
-   Full untrusted transcripts may contain secrets/PII before any output-side G7
-   scan. Current local-only extraction avoids cloud transcript exfiltration. If a
-   future build adds cloud fallback, gate it explicitly and document the accepted
-   residual risk before fleet enable.
+**Pre-GA blockers:** A3 inbox QA sign-off, A4 G7 review, A6 kill-switch drill, staged
+rollout per `MEMORY_MCP_SOTA_PLAN.md` §4.3.
 
 ---
 

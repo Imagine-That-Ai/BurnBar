@@ -89,6 +89,32 @@ final class MemorySettingsAndKillSwitchTests: XCTestCase {
         XCTAssertFalse(settings.memoryExtractionEnabled, "A fleet kill switch must halt extraction even with consent + the user toggle ON.")
     }
 
+    func testAuthorityWritesDefaultsAllowWhenCeilingOn() throws {
+        let settings = SettingsManager(defaults: try makeDefaults())
+        XCTAssertTrue(settings.memoryAuthorityWritesRemoteConfigEnabled)
+        XCTAssertTrue(settings.memoryAuthorityWritesEnabled)
+    }
+
+    func testRemoteConfigAuthorityKillDisablesAuthorityWrites() throws {
+        let settings = SettingsManager(defaults: try makeDefaults())
+        settings.memoryAuthorityWritesRemoteConfigEnabled = false
+        XCTAssertFalse(settings.memoryAuthorityWritesEnabled)
+    }
+
+    func testAuthorityGatePureFunction() {
+        XCTAssertTrue(MemoryAuthorityWritesGate.isEnabled(staticDefault: true, remoteConfigEnabled: true))
+        XCTAssertFalse(MemoryAuthorityWritesGate.isEnabled(staticDefault: true, remoteConfigEnabled: false))
+        XCTAssertFalse(MemoryAuthorityWritesGate.isEnabled(staticDefault: false, remoteConfigEnabled: true))
+    }
+
+    func testAuthoritySwitchPropagatesFromSettings() throws {
+        let authoritySwitch = MemoryAuthorityWritesSwitch(initiallyAllowed: true)
+        MemoryAuthorityWritesSwitchRegistry.register(authoritySwitch, initiallyAllowed: true)
+        let settings = SettingsManager(defaults: try makeDefaults())
+        settings.memoryAuthorityWritesRemoteConfigEnabled = false
+        XCTAssertFalse(authoritySwitch.isAllowed())
+    }
+
     func testChatControllerUsesCombinedGateForExtractionService() throws {
         let settings = SettingsManager(defaults: try makeDefaults())
         settings.memoryConsentGranted = true

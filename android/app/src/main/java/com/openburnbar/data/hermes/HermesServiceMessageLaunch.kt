@@ -1,6 +1,7 @@
 package com.openburnbar.data.hermes
 
 import android.util.Log
+import com.openburnbar.data.memory.MobilePensieveRecallService
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -11,6 +12,8 @@ internal class HermesServiceMessageLaunch(
     private val messageActions: HermesServiceMessageActions,
     private val scope: CoroutineScope,
 ) {
+    private val pensieveRecall = MobilePensieveRecallService()
+
     fun launchDesktopAgentRelaySend(content: String, resolvedModelName: String, attachments: List<HermesAttachment>, conversationId: String?) {
         if (attachments.isNotEmpty()) {
             messageActions.appendAssistantError(
@@ -63,12 +66,14 @@ internal class HermesServiceMessageLaunch(
         }
         service.isStreamingInternal.value = true
         launchStreamingSend(resolvedModelName) {
+            val memorySection = pensieveRecall.recallSection(content)
             messageActions.streamChatCompletionViaRelay(
                 descriptor = descriptor,
                 prompt = content,
                 modelName = resolvedModelName,
                 attachments = attachments,
                 conversationId = conversationId,
+                memorySection = memorySection,
             )
         }
     }
@@ -83,12 +88,14 @@ internal class HermesServiceMessageLaunch(
         }
         service.isStreamingInternal.value = true
         launchStreamingSend(resolvedModelName) {
+            val memorySection = pensieveRecall.recallSection(content)
             messageActions.streamHttpChatCompletion(
                 endpoint = endpoint,
                 content = content,
                 resolvedModelName = resolvedModelName,
                 attachments = attachments,
                 conversationId = conversationId,
+                memorySection = memorySection,
             )
         }
     }

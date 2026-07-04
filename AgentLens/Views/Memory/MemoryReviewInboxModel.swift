@@ -53,6 +53,23 @@ final class MemoryReviewInboxModel {
     var items: [Item] { filter == .pending ? pending : approved }
     var pendingCount: Int { pending.count }
 
+    /// Pending memories grouped by source thread (for bulk-approve affordance).
+    var pendingThreadGroups: [(threadLogicalID: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for item in pending where item.canApprove {
+            guard let threadID = item.memory.citations.first?.threadLogicalID, threadID.isEmpty == false else {
+                continue
+            }
+            counts[threadID, default: 0] += 1
+        }
+        return counts
+            .map { (threadLogicalID: $0.key, count: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.count == rhs.count { return lhs.threadLogicalID < rhs.threadLogicalID }
+                return lhs.count > rhs.count
+            }
+    }
+
     private let scope: MemoryScope
     private let loadPage: LoadPage
     private let openBody: OpenBody
@@ -115,6 +132,26 @@ final class MemoryReviewInboxModel {
     /// Rejects a memory, then reloads so it leaves the pending bucket.
     func reject(_ id: MemoryID) async {
         await transition(id, to: .rejected)
+    }
+
+    /// Approves every pending memory cited from the same thread.
+    func approveAllPending(threadLogicalID: String) async {
+        let ids = pending
+            .filter {
+                $0.canApprove &&
+                    $0.memory.citations.contains { $0.threadLogicalID == threadLogicalID }
+            }
+            .map(\.id)
+        guard ids.isEmpty == false else { return }
+        for id in ids {
+            do {
+                _ = try await setStatus(id, .approved)
+            } catch {
+                errorMessage = friendlyMessage(for: error)
+                break
+            }
+        }
+        await load()
     }
 
     // MARK: - Private

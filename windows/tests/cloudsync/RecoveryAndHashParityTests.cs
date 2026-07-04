@@ -75,5 +75,21 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
                 Assert.Equal(vector.Str("hex"), CloudVaultCrypto.Sha256Hex(vector.Str("dataUtf8")));
             }
         }
+
+        [Fact]
+        public void MemoryCitationHmac_MatchesCommittedHex()
+        {
+            foreach (var vector in KatVectors.Section("memoryCitationHmac").EnumerateArray())
+            {
+                var key = vector.Hex("keyHex");
+                var actual = CloudVaultCrypto.MemoryCitationHmac(
+                    vector.Str("threadLogicalId"),
+                    vector.Str("messageId"),
+                    vector.Int("occurrence"),
+                    vector.Str("contentHash"),
+                    key);
+                Assert.Equal(vector.Str("hex"), actual);
+            }
+        }
     }
 }

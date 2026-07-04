@@ -47,6 +47,51 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(try CloudVaultCrypto.openBlob(legacyBlob, keyData: key), body)
     }
 
+    func test_memoryCitationHMAC_isVaultKeyedAndCrossDeviceStable() throws {
+        let key = Data(repeating: 0x11, count: 32)
+        let otherKey = Data(repeating: 0x22, count: 32)
+        let tagged = try CloudVaultCrypto.memoryCitationHMAC(
+            threadLogicalID: "thread-a",
+            messageID: "msg-1",
+            occurrence: 0,
+            contentHash: "abc123",
+            keyData: key
+        )
+        XCTAssertTrue(tagged.hasPrefix("v2-hmac:"))
+        let again = try CloudVaultCrypto.memoryCitationHMAC(
+            threadLogicalID: "thread-a",
+            messageID: "msg-1",
+            occurrence: 0,
+            contentHash: "abc123",
+            keyData: key
+        )
+        XCTAssertEqual(tagged, again)
+        let differentKey = try CloudVaultCrypto.memoryCitationHMAC(
+            threadLogicalID: "thread-a",
+            messageID: "msg-1",
+            occurrence: 0,
+            contentHash: "abc123",
+            keyData: otherKey
+        )
+        XCTAssertNotEqual(tagged, differentKey)
+    }
+
+    /// Pins Swift ↔ Windows KAT vector (`cloudvault-kat-vectors.json` / `memoryCitationHmac`).
+    func test_memoryCitationHMAC_matchesWindowsKATVector() throws {
+        let key = Data(repeating: 0x11, count: 32)
+        let tagged = try CloudVaultCrypto.memoryCitationHMAC(
+            threadLogicalID: "thread-a",
+            messageID: "msg-1",
+            occurrence: 0,
+            contentHash: "abc123",
+            keyData: key
+        )
+        XCTAssertEqual(
+            tagged,
+            "v2-hmac:c11830eb6d8f37fcf26d38762ece2bdee784408568f3b19c214932729789d428"
+        )
+    }
+
     func test_cloudVaultBodyAndChunkHashesAreVaultKeyedHMACs() throws {
         let key = Data(repeating: 0x62, count: 32)
         let otherKey = Data(repeating: 0x63, count: 32)

@@ -27,6 +27,12 @@ struct MemoryReviewInboxView: View {
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 .padding(.bottom, DesignSystem.Spacing.md)
 
+            if model.filter == .pending, model.pendingThreadGroups.isEmpty == false {
+                bulkApproveBar
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.bottom, DesignSystem.Spacing.md)
+            }
+
             if let errorMessage = model.errorMessage {
                 errorBanner(errorMessage)
                     .padding(.horizontal, DesignSystem.Spacing.lg)
@@ -90,6 +96,29 @@ struct MemoryReviewInboxView: View {
     }
 
     // MARK: - Filter bar
+
+    private var bulkApproveBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(model.pendingThreadGroups, id: \.threadLogicalID) { group in
+                    Button {
+                        Task { await model.approveAllPending(threadLogicalID: group.threadLogicalID) }
+                    } label: {
+                        Text("Approve all from thread (\(group.count))")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .padding(.horizontal, DesignSystem.Spacing.md)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(DesignSystem.Colors.ember.opacity(0.14))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
 
     private var filterBar: some View {
         HStack(spacing: DesignSystem.Spacing.xs) {

@@ -143,7 +143,7 @@ final class SettingsRouter {
         // Daemon subpages.
         case .daemonRoot:
             return []
-        case .daemonLifecycle, .httpGateway, .controllerRuntime:
+        case .daemonLifecycle, .mcpServers, .httpGateway, .controllerRuntime:
             return [route]
 
         // Tabs whose root view *is* the destination.

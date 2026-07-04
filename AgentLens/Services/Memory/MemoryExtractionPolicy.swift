@@ -148,6 +148,45 @@ enum MemoryExtractionKillSwitchRegistry {
     }
 }
 
+// MARK: - Memory authority writes switch (G2 fleet go-live)
+
+/// Live atomic for `memoryAuthorityWritesEnabled` (compile-time ceiling AND RC).
+/// Same push/pull discipline as `MemoryExtractionKillSwitch`.
+typealias MemoryAuthorityWritesSwitch = MemoryExtractionKillSwitch
+
+@MainActor
+private final class WeakMemoryAuthorityWritesSwitch {
+    weak var value: MemoryAuthorityWritesSwitch?
+
+    init(_ value: MemoryAuthorityWritesSwitch) {
+        self.value = value
+    }
+}
+
+@MainActor
+enum MemoryAuthorityWritesSwitchRegistry {
+    private static var switches: [WeakMemoryAuthorityWritesSwitch] = []
+
+    static func register(_ authoritySwitch: MemoryAuthorityWritesSwitch, initiallyAllowed: Bool) {
+        switches.removeAll { $0.value == nil }
+        switches.append(WeakMemoryAuthorityWritesSwitch(authoritySwitch))
+        authoritySwitch.set(initiallyAllowed)
+    }
+
+    static func setAll(_ allowed: Bool) {
+        switches.removeAll { $0.value == nil }
+        for entry in switches {
+            entry.value?.set(allowed)
+        }
+    }
+
+    static func isAllowed() -> Bool {
+        switches.removeAll { $0.value == nil }
+        return switches.compactMap(\.value).first?.isAllowed()
+            ?? ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
+    }
+}
+
 // MARK: - Memory Extraction Settings Box (Sendable snapshot holder)
 
 /// A `Sendable`, lock-guarded holder for the latest `MemoryExtractionSettingsSnapshot`.
@@ -182,5 +221,31 @@ final class MemoryExtractionSettingsBox: Sendable {
         lock.lock()
         defer { lock.unlock() }
         return snapshot
+    }
+}
+
+// MARK: - Memory vault key box (cross-device citation HMAC)
+
+/// Lock-guarded holder for the latest 32-byte Cloud Vault key used to derive
+/// `v2-hmac:` citation tags at extraction write time. Empty when signed out or
+/// before the key is loaded on the MainActor.
+final class MemoryVaultKeyBox: Sendable {
+    private let lock = NSLock()
+    nonisolated(unsafe) private var keyData: Data?
+
+    init(_ keyData: Data? = nil) {
+        self.keyData = keyData
+    }
+
+    func set(_ newValue: Data?) {
+        lock.lock()
+        keyData = newValue
+        lock.unlock()
+    }
+
+    func current() -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return keyData
     }
 }

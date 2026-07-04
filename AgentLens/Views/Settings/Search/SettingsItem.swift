@@ -99,6 +99,7 @@ enum SettingsPageRoute: Hashable, Codable {
 
     // Daemon
     case daemonRoot
+    case mcpServers
     case daemonLifecycle
     case httpGateway
     case controllerRuntime

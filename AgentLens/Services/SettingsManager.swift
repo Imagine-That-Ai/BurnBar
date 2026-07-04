@@ -259,6 +259,9 @@ final class SettingsManager {
         // errors keep any active cached false authoritative while avoiding
         // stranding opted-in local extraction when no kill is cached.
         "memory_extraction_enabled": NSNumber(value: true),
+        // Memory authority-write fleet go-live switch. Default true; RC sets false to
+        // halt durable writes + LLM extraction independently of the extraction kill.
+        "memory_authority_writes_enabled": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
         "media_normal_file_gb_per_day": NSNumber(value: 5),
@@ -293,6 +296,7 @@ final class SettingsManager {
             }
         }
         let activeMemoryExtractionEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
+        let activeMemoryAuthorityWritesEnabled = remoteConfig.configValue(forKey: "memory_authority_writes_enabled").boolValue
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
             mediaKillSwitch = true
@@ -302,6 +306,9 @@ final class SettingsManager {
             if !activeMemoryExtractionEnabled {
                 memoryExtractionRemoteConfigEnabled = false
                 NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
+            }
+            if !activeMemoryAuthorityWritesEnabled {
+                memoryAuthorityWritesRemoteConfigEnabled = false
             }
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
             return
@@ -334,6 +341,8 @@ final class SettingsManager {
         if !memoryRCEnabled {
             NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
         }
+
+        memoryAuthorityWritesRemoteConfigEnabled = activeMemoryAuthorityWritesEnabled
     }
 
     // MARK: - Backward Compatibility (Computed Properties)
@@ -760,6 +769,20 @@ final class SettingsManager {
     var memoryExtractionRemoteConfigEnabled: Bool {
         get { memory.remoteConfigExtractionEnabled }
         set { memory.remoteConfigExtractionEnabled = newValue }
+    }
+
+    /// Remote Config `memory_authority_writes_enabled`. Not user-settable.
+    var memoryAuthorityWritesRemoteConfigEnabled: Bool {
+        get { memory.remoteConfigAuthorityWritesEnabled }
+        set { memory.remoteConfigAuthorityWritesEnabled = newValue }
+    }
+
+    /// Combined authority-write gate (G2): compile-time ceiling AND fleet go-live RC.
+    var memoryAuthorityWritesEnabled: Bool {
+        MemoryAuthorityWritesGate.isEnabled(
+            staticDefault: ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault,
+            remoteConfigEnabled: memory.remoteConfigAuthorityWritesEnabled
+        )
     }
 
     /// Combined extraction gate (G0 + G4): user CONSENT **and** the user toggle

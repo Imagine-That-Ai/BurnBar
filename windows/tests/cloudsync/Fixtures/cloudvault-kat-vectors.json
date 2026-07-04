@@ -218,5 +218,15 @@
       "keyHex" : "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
       "vaultKeyID" : "v1_ca2a4fe727faaecf16ecd130a86e0885"
     }
+  ],
+  "memoryCitationHmac" : [
+    {
+      "contentHash" : "abc123",
+      "hex" : "v2-hmac:c11830eb6d8f37fcf26d38762ece2bdee784408568f3b19c214932729789d428",
+      "keyHex" : "1111111111111111111111111111111111111111111111111111111111111111",
+      "messageId" : "msg-1",
+      "occurrence" : 0,
+      "threadLogicalId" : "thread-a"
+    }
   ]
 }

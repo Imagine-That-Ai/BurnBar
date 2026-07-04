@@ -1,5 +1,7 @@
 # Memory Subsystem — FRONTEND Implementation Plan
 
+> **Status (2026-07-04):** **Implemented on `main`** (terminal-commit trigger, `wrapUntrusted` injection, `PromptTokenArbiter`, review inbox routes, kill switches). This file is the historical build spec. **Open work** (inbox visual QA, bulk approve, mobile recall wiring) lives in [`MEMORY_MCP_SOTA_PLAN.md`](MEMORY_MCP_SOTA_PLAN.md).
+
 > **Implementer:** GPT‑5.5 / Codex (chat/UI session). **Companion:** `docs/MEMORY_BACKEND_PLAN.md` (data/store/extraction/embedding/cloud). **Why (audit + Codex review):** `docs/MEMORY_STRATEGY_AUDIT.md`. **Governing plan:** `docs/PROJECT_CODE_MEMORY_MASTER_PLAN.md`.
 
 This is the executable build spec for the **chat‑integration, prompt‑assembly, citation, settings, review, and mobile** layers. The backend owns persistence/extraction/embedding/recall and exposes exactly one protocol — **`MemoryServing`** (backend plan §3). You consume it. You do **not** read memory tables directly.

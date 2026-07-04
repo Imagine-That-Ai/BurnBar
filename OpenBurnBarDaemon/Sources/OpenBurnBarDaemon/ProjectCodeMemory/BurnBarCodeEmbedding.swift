@@ -48,6 +48,90 @@ struct NLSentenceEmbeddingProvider: BurnBarCodeEmbeddingProvider {
     }
 }
 
+// MARK: - Ollama dense-tier provider (ADR-012, loopback-only)
+
+/// Optional dense embedder backed by a local `ollama serve` instance.
+/// Selected when `OPENBURNBAR_OLLAMA_EMBED_URL` points at loopback (default http://127.0.0.1:11434).
+struct OllamaSentenceEmbeddingProvider: BurnBarCodeEmbeddingProvider, @unchecked Sendable {
+    let versionID: String
+    let dimension: Int
+    private let baseURL: URL
+    private let model: String
+    private let session: URLSession
+    private let timeout: TimeInterval
+
+    init?(environment: [String: String] = ProcessInfo.processInfo.environment) {
+        guard environment["OPENBURNBAR_OLLAMA_EMBED_URL"] != nil else { return nil }
+        let urlString = environment["OPENBURNBAR_OLLAMA_EMBED_URL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? "http://127.0.0.1:11434"
+        let model = environment["OPENBURNBAR_OLLAMA_EMBED_MODEL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? "nomic-embed-text"
+        guard let url = URL(string: urlString),
+              let client = try? BurnBarOllamaEmbeddingClient(baseURL: url, model: model) else { return nil }
+        baseURL = client.baseURL
+        self.model = client.model
+        session = client.session
+        timeout = client.timeout
+        guard let probe = Self.embedSync(text: "openburnbar pcm embedding probe", baseURL: baseURL, model: model, session: session, timeout: timeout) else {
+            return nil
+        }
+        dimension = probe.count
+        versionID = "ollama-\(model)-\(probe.count)"
+    }
+
+    func embed(_ text: String) -> [Float]? {
+        Self.embedSync(text: text, baseURL: baseURL, model: model, session: session, timeout: timeout)
+    }
+
+    private static func embedSync(
+        text: String,
+        baseURL: URL,
+        model: String,
+        session: URLSession,
+        timeout: TimeInterval
+    ) -> [Float]? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return nil }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/embed"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        guard let body = try? JSONSerialization.data(withJSONObject: ["model": model, "input": [trimmed]]) else { return nil }
+        request.httpBody = body
+        var payload: Data?
+        var http: HTTPURLResponse?
+        var requestError: Error?
+        let sem = DispatchSemaphore(value: 0)
+        session.dataTask(with: request) { data, response, error in
+            payload = data
+            http = response as? HTTPURLResponse
+            requestError = error
+            sem.signal()
+        }.resume()
+        sem.wait()
+        if requestError != nil { return nil }
+        guard let http, (200..<300).contains(http.statusCode), let payload,
+              let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return nil }
+        if let matrix = json["embeddings"] as? [[NSNumber]] {
+            return matrix.first?.map { Float(truncating: $0) }
+        }
+        if let single = json["embedding"] as? [NSNumber] {
+            return single.map { Float(truncating: $0) }
+        }
+        return nil
+    }
+}
+
+enum BurnBarCodeEmbeddingProviderFactory {
+    /// Prefer loopback Ollama when configured and reachable; otherwise OS NaturalLanguage.
+    static func makeDefault() -> BurnBarCodeEmbeddingProvider {
+        if let ollama = OllamaSentenceEmbeddingProvider() {
+            return ollama
+        }
+        return NLSentenceEmbeddingProvider()
+    }
+}
+
 /// Compact, alignment-safe float32 (little-endian) blob codec + cosine for stored vectors.
 enum BurnBarCodeVectorCodec {
     static func encode(_ vector: [Float]) -> Data {
@@ -99,5 +183,78 @@ enum BurnBarReciprocalRankFusion {
         return scores
             .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
             .map { $0.key }
+    }
+}
+
+// MARK: - Ollama dense-tier client (ADR-012, loopback-only)
+
+enum BurnBarOllamaEmbeddingError: Error, LocalizedError {
+    case nonLoopbackHost(String)
+    case invalidResponse
+    case httpStatus(Int)
+    case emptyInput
+
+    var errorDescription: String? {
+        switch self {
+        case .nonLoopbackHost(let host): return "Ollama host must be loopback-only; got \(host)."
+        case .invalidResponse: return "Ollama embedding response was not valid JSON."
+        case .httpStatus(let code): return "Ollama embedding request failed with HTTP \(code)."
+        case .emptyInput: return "Ollama embedding input was empty."
+        }
+    }
+}
+
+struct BurnBarOllamaEmbeddingClient: Sendable {
+    let baseURL: URL
+    let model: String
+    let session: URLSession
+    let timeout: TimeInterval
+
+    init(
+        baseURL: URL = URL(string: "http://127.0.0.1:11434")!,
+        model: String = "nomic-embed-text",
+        session: URLSession = .shared,
+        timeout: TimeInterval = 30
+    ) throws {
+        try Self.assertLoopbackOnly(baseURL)
+        self.baseURL = baseURL
+        self.model = model
+        self.session = session
+        self.timeout = timeout
+    }
+
+    func embed(_ texts: [String]) async throws -> [[Float]] {
+        let trimmed = texts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard trimmed.allSatisfy({ $0.isEmpty == false }) else { throw BurnBarOllamaEmbeddingError.emptyInput }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/embed"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "input": trimmed
+        ])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw BurnBarOllamaEmbeddingError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else { throw BurnBarOllamaEmbeddingError.httpStatus(http.statusCode) }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw BurnBarOllamaEmbeddingError.invalidResponse
+        }
+        if let matrix = json["embeddings"] as? [[NSNumber]] {
+            return matrix.map { $0.map { Float(truncating: $0) } }
+        }
+        if let single = json["embedding"] as? [NSNumber] {
+            return [single.map { Float(truncating: $0) }]
+        }
+        throw BurnBarOllamaEmbeddingError.invalidResponse
+    }
+
+    static func assertLoopbackOnly(_ url: URL) throws {
+        guard let host = url.host?.lowercased() else {
+            throw BurnBarOllamaEmbeddingError.nonLoopbackHost("missing-host")
+        }
+        guard ["127.0.0.1", "localhost", "::1"].contains(host) else {
+            throw BurnBarOllamaEmbeddingError.nonLoopbackHost(host)
+        }
     }
 }

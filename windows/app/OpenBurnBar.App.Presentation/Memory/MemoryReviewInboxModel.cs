@@ -56,6 +56,7 @@ public sealed class MemoryReviewInboxModel : INotifyPropertyChanged
     private readonly LoadPageDelegate _loadPage;
     private readonly OpenBodyDelegate _openBody;
     private readonly SetStatusDelegate _setStatus;
+    private readonly bool _readOnly;
 
     private IReadOnlyList<MemoryReviewItem> _pending = Array.Empty<MemoryReviewItem>();
     private IReadOnlyList<MemoryReviewItem> _approved = Array.Empty<MemoryReviewItem>();
@@ -67,13 +68,39 @@ public sealed class MemoryReviewInboxModel : INotifyPropertyChanged
         MemoryScope scope,
         LoadPageDelegate loadPage,
         OpenBodyDelegate openBody,
-        SetStatusDelegate setStatus)
+        SetStatusDelegate setStatus,
+        bool readOnly = false)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _loadPage = loadPage ?? throw new ArgumentNullException(nameof(loadPage));
         _openBody = openBody ?? throw new ArgumentNullException(nameof(openBody));
         _setStatus = setStatus ?? throw new ArgumentNullException(nameof(setStatus));
+        _readOnly = readOnly;
+        if (readOnly)
+        {
+            _filter = Filter.Approved;
+        }
     }
+
+    /// <summary>
+    /// Windows v1 is a read mirror of synced approved facts. Approve/reject stays Mac-owned (G4).
+    /// </summary>
+    public bool IsReadOnly => _readOnly;
+
+    /// <summary>Whether approve/reject actions should be shown.</summary>
+    public bool AllowsReviewActions => !_readOnly;
+
+    public string TitleText => _readOnly ? "Synced memories" : "Approve what to remember";
+
+    public string SubtitleText => _readOnly
+        ? "Approved facts synced from your Mac appear here. Review and approve still happens on Mac — quarantined facts never leave that device."
+        : "Memories stay quarantined until you approve them — nothing is used in a chat before you say so.";
+
+    public string EmptyTitleText => _readOnly ? "No synced memories yet" : "No memories to review";
+
+    public string EmptyBodyText => _readOnly
+        ? "Once memory cloud sync is enabled on your Mac and approved facts replicate, they show up here read-only."
+        : "When a chat turns up a durable fact or preference worth remembering, it lands here for your approval.";
 
     public IReadOnlyList<MemoryReviewItem> Pending
     {
@@ -164,6 +191,12 @@ public sealed class MemoryReviewInboxModel : INotifyPropertyChanged
     /// Guarded on <c>CanApprove</c> like the Swift original. Swift: <c>func approve(_:)</c>.</summary>
     public async Task ApproveAsync(string id)
     {
+        if (_readOnly)
+        {
+            ErrorMessage = new MemoryReviewMacOnlyException().FriendlyMessage;
+            return;
+        }
+
         var item = FindPending(id);
         if (item is null || !item.CanApprove)
         {
@@ -176,7 +209,16 @@ public sealed class MemoryReviewInboxModel : INotifyPropertyChanged
 
     /// <summary>Rejects a memory, then reloads so it leaves the pending bucket.
     /// Swift: <c>func reject(_:)</c>.</summary>
-    public Task RejectAsync(string id) => TransitionAsync(id, MemoryReviewStatus.Rejected);
+    public Task RejectAsync(string id)
+    {
+        if (_readOnly)
+        {
+            ErrorMessage = new MemoryReviewMacOnlyException().FriendlyMessage;
+            return Task.CompletedTask;
+        }
+
+        return TransitionAsync(id, MemoryReviewStatus.Rejected);
+    }
 
     // MARK: - Private
 
@@ -254,7 +296,7 @@ public sealed class MemoryReviewInboxModel : INotifyPropertyChanged
                     state = MemoryBodyLoadState.Unavailable;
                 }
 
-                items.Add(new MemoryReviewItem(memory, body, state));
+                items.Add(new MemoryReviewItem(memory, body, state, ShowReviewActions: !_readOnly));
                 if (items.Count >= PageSize)
                 {
                     break;
@@ -294,13 +336,18 @@ public enum MemoryBodyLoadState
 /// can name it in <c>x:DataType</c>). Body-derived display helpers live here so both
 /// the model logic and the XAML row bind the same rules.
 /// </summary>
-public sealed record MemoryReviewItem(Memory Memory, string Body, MemoryBodyLoadState BodyLoadState)
+public sealed record MemoryReviewItem(
+    Memory Memory,
+    string Body,
+    MemoryBodyLoadState BodyLoadState,
+    bool ShowReviewActions = true)
 {
     public string Id => Memory.Id;
 
     /// <summary>Approvable only when the sealed body actually opened to non-empty text —
     /// mirrors the Swift <c>canApprove</c> guard that blocks approving an unavailable body.</summary>
     public bool CanApprove =>
+        ShowReviewActions &&
         BodyLoadState == MemoryBodyLoadState.Loaded &&
         !string.IsNullOrWhiteSpace(Body);
 
