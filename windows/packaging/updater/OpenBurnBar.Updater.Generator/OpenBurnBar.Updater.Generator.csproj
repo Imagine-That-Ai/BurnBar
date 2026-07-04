@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Release-side Windows appcast generator (Phase 5 · W10 · R19). The direct
+    mirror of scripts/generate-macos-appcast.mjs: given a built installer
+    artifact + the release metadata + the PINNED Ed25519 PRIVATE seed, it
+    computes the artifact length + SHA-256, signs the artifact BYTES, and emits
+    the appcast XML + latest-windows.json feed pair through the Core writers.
+
+    It reuses the SAME BouncyCastle Ed25519 primitive the client pin-verify uses
+    (OpenBurnBar.Updater.Core), so there is exactly one crypto implementation on
+    both sides of the feed — sign here, verify there, no divergence.
+
+    Runs on the macOS authoring host today via `dotnet run` (used to produce the
+    committed sample feed under ../feed). At release time it runs on a Windows
+    runner with the real W0 pinned seed injected from a CI secret — that live run
+    is dev-host/CI-deferred; the SHAPE + the crypto are proven here and by the
+    round-trip tests.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Updater.Generator</RootNamespace>
+    <AssemblyName>OpenBurnBar.Updater.Generator</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Updater.Core/OpenBurnBar.Updater.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable auto-update CORE for the OpenBurnBar Windows port
+    (Phase 5 · W10 · R19). This is the PLATFORM-INDEPENDENT security crux of the
+    Windows auto-updater: the update-feed parser (Sparkle/WinSparkle appcast XML
+    + the latest-windows.json companion), the Ed25519 PIN-VERIFY over the
+    downloaded artifact bytes, the SHA-256 integrity check, the monotonic version
+    comparator (downgrade-blocking), and the fail-closed decision tree that
+    rejects on ANY mismatch.
+
+    It mirrors the SHIPPED macOS behavior (Sparkle Ed25519-signed appcast +
+    custom in-app updater): the feed key is PINNED (Ed25519, RFC 8032)
+    INDEPENDENT of the Authenticode signing certificate. An attacker who can
+    tamper the feed transport, swap the artifact, or even re-sign with the
+    Authenticode cert still cannot ship a payload the pinned feed key did not
+    sign (R19). Parity sources:
+      * scripts/generate-macos-appcast.mjs  (the appcast.xml + latest-macos.json feed format)
+      * Sparkle's `sparkle:edSignature` semantics (Ed25519 over the enclosure bytes)
+
+    It has NO Windows / WinUI / P/Invoke dependency on purpose — the SAME managed
+    assembly is:
+      * consumed by the net8.0-windows host adapter
+        (OpenBurnBar.Updater.Windows) whose WinSparkle / Squirrel integration
+        drives the OS-native update UX behind the IUpdaterHost seam, AND
+      * unit-tested on the macOS authoring host today via `dotnet test`
+        (windows/tests/updater) — exactly the pattern proven by the storage,
+        computeruse, and cloudsync cores.
+
+    Ed25519 (RFC 8032) is provided by the pure-managed, cross-platform
+    BouncyCastle.Cryptography package so the pin-verify is REAL crypto on both
+    the macOS authoring host and Windows CI (the .NET BCL has no built-in
+    Ed25519). SHA-256 uses the BCL. The verify lives behind the
+    IUpdateSignatureVerifier seam so a host can swap the primitive without
+    touching the feed / version / decision logic.
+
+    Targets net8.0 so the net8.0-windows adapter can reference it, while the
+    net10.0 test project consumes it too (a lower TFM is usable by a higher one).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Updater.Core</RootNamespace>
+    <AssemblyName>OpenBurnBar.Updater.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+  </ItemGroup>
+
+</Project>

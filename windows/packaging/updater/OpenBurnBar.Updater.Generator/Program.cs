@@ -1,0 +1,149 @@
+// Release-side Windows appcast generator — the mirror of
+// scripts/generate-macos-appcast.mjs. Signs the artifact BYTES with the pinned
+// Ed25519 PRIVATE seed and emits appcast XML + latest-windows.json.
+//
+// Usage:
+//   dotnet run --project OpenBurnBar.Updater.Generator -- \
+//     --version 1.4.2 --build 1420 --bundle-id com.openburnbar.app \
+//     --artifact path/to/OpenBurnBar-Setup-1.4.2.msix \
+//     --download-url https://dl.openburnbar.app/OpenBurnBar-Setup-1.4.2.msix \
+//     --appcast-url https://dl.openburnbar.app/appcast-windows.xml \
+//     --ed-seed-file path/to/dev-ed25519-seed.hex \
+//     --appcast-out appcast-windows.xml --json-out latest-windows.json \
+//     [--critical] [--min-system-version 10.0.19041] [--release-notes-url URL] \
+//     [--commit SHA] [--pub-date "Fri, 04 Jul 2026 00:00:00 GMT"] \
+//     [--created-at 2026-07-04T00:00:00Z] [--package OpenBurnBar-Setup-1.4.2.msix]
+//
+// The private seed is a 64-hex-char (32-byte) Ed25519 seed. At release time it
+// is the W0 pinned key from a CI secret; for the committed sample it is the
+// throwaway DEV seed documented in ../feed/README.md.
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using OpenBurnBar.Updater.Core.Crypto;
+using OpenBurnBar.Updater.Core.Feed;
+
+namespace OpenBurnBar.Updater.Generator;
+
+internal static class Program
+{
+    private static int Main(string[] args)
+    {
+        try
+        {
+            var options = ParseArgs(args);
+            var artifactPath = Require(options, "artifact");
+            var artifactBytes = File.ReadAllBytes(artifactPath);
+
+            var keyPair = LoadKeyPair(options);
+            var descriptor = new UpdateReleaseDescriptor
+            {
+                Version = Require(options, "version"),
+                Build = Require(options, "build"),
+                BundleId = Require(options, "bundle-id"),
+                DownloadUrl = Require(options, "download-url"),
+                PackageName = options.GetValueOrDefault("package") ?? Path.GetFileName(artifactPath),
+                Length = artifactBytes.LongLength,
+                Sha256 = Sha256Digest.HexOf(artifactBytes),
+                EdSignatureBase64 = keyPair.SignBase64(artifactBytes),
+                Critical = options.ContainsKey("critical"),
+                MinimumSystemVersion =
+                    options.GetValueOrDefault("min-system-version") ?? "10.0.19041",
+                ReleaseNotesUrl = options.GetValueOrDefault("release-notes-url"),
+                AppcastUrl = options.GetValueOrDefault("appcast-url"),
+                Commit = options.GetValueOrDefault("commit"),
+                Channel = options.GetValueOrDefault("channel") ?? "direct-download",
+                PubDate = options.GetValueOrDefault("pub-date"),
+                CreatedAt = options.GetValueOrDefault("created-at"),
+            };
+
+            var appcastOut = Require(options, "appcast-out");
+            var jsonOut = Require(options, "json-out");
+            File.WriteAllText(appcastOut, AppcastFeedWriter.Write(descriptor));
+            File.WriteAllText(jsonOut, JsonFeedWriter.Write(descriptor));
+
+            Console.Error.WriteLine(
+                $"generate-windows-appcast: wrote {appcastOut} + {jsonOut} " +
+                $"(version={descriptor.Version} length={descriptor.Length} " +
+                $"sha256={descriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64})");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"generate-windows-appcast: {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static Ed25519UpdateKeyPair LoadKeyPair(IReadOnlyDictionary<string, string> options)
+    {
+        var seedHex = options.GetValueOrDefault("ed-seed");
+        if (seedHex is null && options.TryGetValue("ed-seed-file", out var seedFile))
+        {
+            seedHex = File.ReadAllText(seedFile).Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(seedHex))
+        {
+            throw new ArgumentException("Missing --ed-seed or --ed-seed-file (64-hex-char Ed25519 seed).");
+        }
+
+        byte[] seed;
+        try
+        {
+            seed = Convert.FromHexString(seedHex.Trim());
+        }
+        catch (FormatException)
+        {
+            throw new ArgumentException("--ed-seed must be 64 hex chars (a 32-byte Ed25519 seed).");
+        }
+
+        if (seed.Length != Ed25519Sizes.KeySize)
+        {
+            throw new ArgumentException("--ed-seed must decode to exactly 32 bytes.");
+        }
+
+        return Ed25519UpdateKeyPair.FromSeed(seed);
+    }
+
+    private static Dictionary<string, string> ParseArgs(string[] args)
+    {
+        var flagsWithoutValue = new HashSet<string>(StringComparer.Ordinal) { "critical" };
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 0; i < args.Length; i++)
+        {
+            var name = args[i];
+            if (!name.StartsWith("--", StringComparison.Ordinal))
+            {
+                throw new ArgumentException($"Unexpected argument: {name}");
+            }
+
+            var key = name[2..];
+            if (flagsWithoutValue.Contains(key))
+            {
+                result[key] = "true";
+                continue;
+            }
+
+            if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                throw new ArgumentException($"Missing value for --{key}");
+            }
+
+            result[key] = args[++i];
+        }
+
+        return result;
+    }
+
+    private static string Require(IReadOnlyDictionary<string, string> options, string key)
+    {
+        if (!options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"Missing required argument --{key}");
+        }
+
+        return value;
+    }
+}
