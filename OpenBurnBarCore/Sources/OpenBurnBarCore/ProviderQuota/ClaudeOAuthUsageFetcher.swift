@@ -561,7 +561,7 @@ struct ClaudeRateLimits: Sendable, Equatable {
         self.init(from: bucket)
     }
 
-    public init(from dictionary: [String: Any]) {
+    init(from dictionary: [String: Any]) {
         var parsed: [String: Window] = [:]
         for (key, value) in dictionary {
             guard let payload = value as? [String: Any] else { continue }
