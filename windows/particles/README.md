@@ -23,9 +23,14 @@ Swift Core (already compiles on Windows, Phase 1)
 C#  OpenBurnBar.Particles  (net8.0, PLATFORM-AGNOSTIC — builds + runs on macOS)
   Model/           SwarmSubstrateFrame + SwarmSubstrateDot + SubstrateStage  (1:1 Swift port)
   Math/            SubstrateKit  (TAU/clamp/lerp/frac/smoothstep/shash/breathe/XorShift32/ramps)
-  Drawing/         ISubstrateDrawingSession  ── the seam
+                   SubstrateStructure  ── NN-walk + kNN provider (grid, O(n)); cached by topology
+  Drawing/         ISubstrateDrawingSession  ── the seam (circles, glow sprites, blur layers,
+                                                 + polygons, gradient polygons, polylines)
                    RecordingDrawingSession   ── headless: counts commands + FNV geometry checksum
-  Substrates/      PlainDotsSubstrate + StarfireSubstrate ("Stellar Plasma")
+  Substrates/      PlainDots + Constellation/Starfire
+                   Flow/    PlanktonWake · GlassRibbon · SilkStreamline · PetalDrift
+                   Aurora/  Wisp · IcePrism · AuroraFilament · DriftMotes
+                   Families/ + SubstrateCatalog  ── the registry (mirrors SubstrateCatalog.swift)
   Ffi/             SwarmSubstrateFrameFfi    ── blittable wire structs + Decode()
         │
         ▼  ISubstrateDrawingSession (the ONLY Windows-gated seam)
@@ -86,6 +91,32 @@ takeaway for W6-DS-SWARM: the renderer's CPU side is a non-issue even at 2000
 particles; **budget the spike at the GPU compositor**, which this harness
 deliberately does not (and cannot, headless) measure.
 
+### Flow + Aurora families — measured on this box (Apple M-series, arm64, .NET 10)
+
+All 9 bespoke painters (Constellation·Starfire + the full Flow + Aurora families),
+dark canvas, full path, formed hold, 400 timed frames. Every scenario clears the
+60fps **and** 120fps CPU budget with large headroom; worst cases below.
+
+| substrate | family | worst median ms (@2000) | 60fps CPU | draw cmds |
+|---|---|---:|:--:|---:|
+| Plankton Wake | Flow | 0.232 | PASS (72x) | 14,217 (glow+blur) |
+| Glass Ribbon | Flow | 0.560 | PASS (30x) | 10,840 (gradient quads + rail strokes) |
+| Silk Streamline | Flow | 0.075 | PASS (223x) | 970 (a handful of fat ribbons) |
+| Petal Drift | Flow | 0.612 | PASS (27x) | 6,001 (tessellated teardrops) |
+| Wisp Plasma | Aurora | 0.243 | PASS (69x) | 8,204 (glow+blur) |
+| Polar Ice Prism | Aurora | 0.170 | PASS (98x) | 11,504 (facet polys + wedges) |
+| Aurora Filament | Aurora | 0.095 | PASS (176x) | 7 (one broken wire, stacked strokes) |
+| Drift Motes | Aurora | 0.055 | PASS (301x) | 3,602 (motes capped at 900) |
+
+The three streamline substrates (Glass Ribbon / Silk Streamline / Aurora Filament)
+consume the cached NN-walk/kNN `SubstrateStructure`; its one-time cold build —
+paid on a **reform**, not per frame — is 0.27 ms @520, 0.58 ms @1080, 1.00 ms
+@2000 dots, so even a fresh topology stays comfortably within a single frame.
+
+`--verify` proves, for every painter, deterministic checksums + FFI-transparent
+command shape across both canvas polarities and the throttled path, plus catalog
+integrity (6 plain + 9 bespoke = 15 registered).
+
 ## FFI vend contract (Swift → C#)
 
 Precisely specified in `OpenBurnBar.Particles/Ffi/SwarmSubstrateFrameFfi.cs`:
@@ -100,10 +131,17 @@ centroid/cloudRadius/sizePx, and stage derivation.
 ## Status / next
 
 - ✅ Renderer core + math kit + drawing seam + FFI contract — built green on macOS.
-- ✅ PlainDots + Starfire (1 of the 24 bespoke) painters — faithful line-for-line ports.
-- ✅ Headless perf harness — real numbers above.
+- ✅ PlainDots + Starfire painters — faithful line-for-line ports (PR #1202).
+- ✅ **Flow family (4)** — Plankton Wake · Glass Ribbon · Silk Streamline · Petal Drift.
+- ✅ **Aurora family (4)** — Wisp · Ice Prism · Aurora Filament · Drift Motes.
+- ✅ `SubstrateStructure` (NN-walk + kNN) ported for the streamline substrates.
+- ✅ Seam extended with polygon / gradient-polygon / polyline primitives (matched in
+  `RecordingDrawingSession` + the Win2D adapter); catalog + Flow/Aurora/Constellation
+  family registries mirror `SubstrateCatalog.swift`.
+- ✅ Headless perf harness — real numbers above; `--verify` green for all 9 painters.
 - ✅ Win2D host + adapter authored (CanvasAnimatedControl, CanvasBlend.Add,
-  GaussianBlurEffect, CanvasRadialGradientBrush) — Windows/CI-deferred compile+render.
+  GaussianBlurEffect, CanvasRadialGradientBrush, CanvasGeometry polygons +
+  CanvasLinearGradientBrush + CustomDashStyle) — Windows/CI-deferred compile+render.
 - ⏳ **Windows/CI-deferred:** live render + GPU 60fps @ ARM64 measurement; the Swift
-  `obb_swarm_vend_frame` emitter; the remaining 23 bespoke painters (fan out after
-  this spike, exactly as the plan sequences).
+  `obb_swarm_vend_frame` emitter; the remaining 15 bespoke painters (Constellation·3,
+  Mesh·4, Moire·4, Volumetric·4 — fanning out in parallel lanes).

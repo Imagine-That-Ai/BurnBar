@@ -34,6 +34,57 @@ public readonly struct LineSegment
 }
 
 /// <summary>
+/// One canvas-space vertex for a filled polygon (facets, glass quads, silk
+/// ribbons, tessellated petals) or a stroked polyline (glowing wires, frost rims,
+/// dispersion rails). The C# analog of a SwiftUI <c>Path</c> point.
+/// </summary>
+public readonly struct Vec2
+{
+    public readonly double X, Y;
+
+    public Vec2(double x, double y)
+    {
+        X = x;
+        Y = y;
+    }
+}
+
+/// <summary>
+/// One stop of a linear gradient — the C# analog of a SwiftUI
+/// <c>Gradient.Stop</c> / Win2D <c>CanvasGradientStop</c>. <see cref="Location"/>
+/// is in <c>0…1</c> along the gradient axis.
+/// </summary>
+public readonly struct GradientStop
+{
+    public readonly double Location;
+    public readonly Rgba Color;
+
+    public GradientStop(double location, in Rgba color)
+    {
+        Location = location;
+        Color = color;
+    }
+}
+
+/// <summary>
+/// A dash pattern for a stroked polyline (the aurora-filament "charge" crawl):
+/// <c>On</c> px painted, <c>Off</c> px skipped, offset by <c>Phase</c> px —
+/// mirrors SwiftUI <c>StrokeStyle(dash:dashPhase:)</c> and Win2D
+/// <c>CanvasStrokeStyle.CustomDashStyle</c>.
+/// </summary>
+public readonly struct DashPattern
+{
+    public readonly double On, Off, Phase;
+
+    public DashPattern(double on, double off, double phase)
+    {
+        On = on;
+        Off = off;
+        Phase = phase;
+    }
+}
+
+/// <summary>
 /// Abstract per-frame drawing surface the substrate painters draw into. This is
 /// the seam that keeps the parity-critical painter logic platform-agnostic:
 /// <list type="bullet">
@@ -81,4 +132,48 @@ public interface ISubstrateDrawingSession
     /// <c>GaussianBlurEffect</c>, then <c>DrawImage</c> onto the parent. Dispose to flush.
     /// </summary>
     IDisposable PushBlurLayer(double blurRadius, SubstrateBlend blend);
+
+    /// <summary>
+    /// Fill a simple (single-contour) polygon with a solid color — the C# analog of
+    /// SwiftUI <c>ctx.fill(Path)</c> for a closed poly (glacier facets, glass quads,
+    /// tessellated petals, shadow/specular wedges). The contour is implicitly closed
+    /// from the last vertex back to the first. On Win2D: <c>CanvasGeometry.CreatePolygon</c>
+    /// + <c>FillGeometry</c> with the current blend.
+    /// </summary>
+    void FillPolygon(ReadOnlySpan<Vec2> points, in Rgba color);
+
+    /// <summary>
+    /// Fill a simple polygon with a linear gradient — the C# analog of
+    /// SwiftUI <c>ctx.fill(Path, with: .linearGradient(Gradient(stops:), startPoint:, endPoint:))</c>
+    /// (glass-ribbon cross-band gradient, silk-streamline arc-length ink/glow). The
+    /// gradient axis runs from <c>(x0,y0)</c> to <c>(x1,y1)</c>. On Win2D:
+    /// <c>CanvasLinearGradientBrush</c> + <c>FillGeometry</c> with the current blend.
+    /// </summary>
+    void FillPolygonGradient(ReadOnlySpan<Vec2> points, ReadOnlySpan<GradientStop> stops,
+        double x0, double y0, double x1, double y1);
+
+    /// <summary>
+    /// Stroke one polyline (open by default, or closed) with a solid color — the C#
+    /// analog of SwiftUI <c>ctx.stroke(Path, with: .color, style:)</c> (frost rims,
+    /// silk creases, glass edges/rails, the aurora-filament hot core). Round caps +
+    /// joins. When <paramref name="dash"/> is set, the stroke crawls a dash pattern
+    /// (the filament "charge"). <paramref name="breakBefore"/>, when non-empty, marks
+    /// vertices that begin a NEW sub-path (a <c>path.move(to:)</c>) so one call can
+    /// carry a broken polyline. On Win2D: <c>CanvasPathBuilder</c> → <c>DrawGeometry</c>
+    /// with a round <c>CanvasStrokeStyle</c> (+ <c>CustomDashStyle</c> when dashed).
+    /// </summary>
+    void StrokePolyline(ReadOnlySpan<Vec2> points, in Rgba color, double strokeWidth,
+        bool closed = false, DashPattern? dash = null, ReadOnlySpan<bool> breakBefore = default);
+
+    /// <summary>
+    /// Stroke one polyline with a linear gradient — the C# analog of
+    /// SwiftUI <c>ctx.stroke(Path, with: .linearGradient(...), style:)</c> (the
+    /// aurora-filament wire, whose hue shifts amber→teal→violet down a vertical
+    /// gradient axis). Supports the same broken-polyline + dash idioms as
+    /// <see cref="StrokePolyline"/>. On Win2D: <c>CanvasPathBuilder</c> →
+    /// <c>DrawGeometry</c> with a <c>CanvasLinearGradientBrush</c>.
+    /// </summary>
+    void StrokePolylineGradient(ReadOnlySpan<Vec2> points, ReadOnlySpan<GradientStop> stops,
+        double x0, double y0, double x1, double y1, double strokeWidth,
+        bool closed = false, DashPattern? dash = null, ReadOnlySpan<bool> breakBefore = default);
 }
