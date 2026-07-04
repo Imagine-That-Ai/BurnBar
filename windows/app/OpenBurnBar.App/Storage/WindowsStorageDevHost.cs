@@ -4,6 +4,8 @@ using OpenBurnBar.App.Presentation.Budget;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Switcher;
 using OpenBurnBar.Storage;
+using OpenBurnBar.App.Presentation.Dashboard;
+using OpenBurnBar.App.Presentation.SessionLogs;
 
 namespace OpenBurnBar.App.Storage;
 
@@ -60,5 +62,36 @@ internal static class WindowsStorageDevHost
         }
 
         return new InMemoryElderWandPersistence();
+    }
+
+    public static ISessionLogReadSource CreateSessionLogReadSource()
+    {
+        var (path, passphrase) = ResolveCredentials();
+        if (path is not null && passphrase is not null)
+        {
+            return new SqlCipherSessionLogReadSource(path, passphrase);
+        }
+
+        return SessionLogSampleData.CreateReadSource();
+    }
+
+    /// <summary>
+    /// Reads <c>token_usage</c> aggregates when SQLCipher is configured; otherwise returns an empty summary.
+    /// </summary>
+    public static DashboardUsageSummary LoadDashboardUsageSummary()
+    {
+        var (path, passphrase) = ResolveCredentials();
+        if (path is null || passphrase is null)
+        {
+            return new DashboardUsageSummary(0, 0, 0, HasData: false);
+        }
+
+        using var store = OpenBurnBarStorage.OpenReadOnly(path, passphrase);
+        var connection = store.Connection;
+        double spend = TokenUsageReadSeam.SumCostCurrentUtcMonth(connection);
+        long tokens = TokenUsageReadSeam.SumTotalTokens(connection);
+        long sessions = TokenUsageReadSeam.CountDistinctSessions(connection);
+        bool hasData = spend > 0 || tokens > 0 || sessions > 0;
+        return new DashboardUsageSummary(spend, tokens, sessions, hasData);
     }
 }
