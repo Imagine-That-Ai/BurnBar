@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<!--
+  OpenBurnBar PetCompanion — three.js glTF runtime shell (WebView2 host).
+
+  This is the Windows peer of the macOS SceneKit renderer
+  (AgentLens/PetCompanion/Render/SceneKitPetRenderer.swift). It renders ONE .glb
+  pet on a fully transparent canvas so the WS_EX_LAYERED overlay composites the pet
+  over the desktop, and it speaks the tiny JSON bridge that
+  OpenBurnBar.App.Pet.Gltf.PetGltfSceneController drives:
+
+    host -> page :  { id, cmd:"load"|"clip"|"dispose", url?, name?, loop?, draco?, crossfade? }
+    page -> host :  { id, ok:true } | { id, ok:false, error } | { id:0, event:"ready" }
+                    | { id:0, event:"clipEnded", name }
+
+  Transport:
+    * WebView2 (production):  window.chrome.webview.postMessage / 'message' event
+    * test / non-WebView2:    window.__petDispatch(jsonString) + window.__petReplySink
+
+  three.js + GLTFLoader + DRACOLoader load from ./vendor/ (see vendor/README.md for
+  the dev-host vendoring step; Draco is required because the shipped clips are
+  Draco-compressed — the same compression OpenBurnBarDracoDecompressor.mm decodes on
+  macOS). The live three.js render is a Windows dev-host / CI step; the bridge
+  protocol itself is unit-tested on macOS against a fake host.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenBurnBar Pet</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+    #stage { width: 100vw; height: 100vh; display: block; background: transparent; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three.module.js",
+      "three/addons/": "./vendor/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+    // ── Bridge transport ──────────────────────────────────────────────────────
+    const hasWebView2 = !!(window.chrome && window.chrome.webview);
+
+    function postReply(obj) {
+      const json = JSON.stringify(obj);
+      if (hasWebView2) {
+        window.chrome.webview.postMessage(json);
+      } else if (typeof window.__petReplySink === 'function') {
+        window.__petReplySink(json);
+      }
+    }
+
+    // ── Scene setup (transparent) ─────────────────────────────────────────────
+    const canvas = document.getElementById('stage');
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setClearColor(0x000000, 0); // fully transparent for the layered overlay
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.2, 3.2);
+    camera.lookAt(0, 1.0, 0);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.1));
+    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    key.position.set(2.5, 4, 3);
+    scene.add(key);
+
+    const clock = new THREE.Clock();
+    let mixer = null;
+    let currentAction = null;
+    let root = null;
+    const clips = new Map(); // name -> THREE.AnimationClip
+
+    // ── Loaders ───────────────────────────────────────────────────────────────
+    const gltfLoader = new GLTFLoader();
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('./vendor/draco/');
+    gltfLoader.setDRACOLoader(dracoLoader);
+
+    function disposeModel() {
+      if (root) {
+        scene.remove(root);
+        root.traverse((o) => {
+          if (o.geometry) o.geometry.dispose();
+          if (o.material) {
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            mats.forEach((m) => m.dispose());
+          }
+        });
+      }
+      root = null;
+      mixer = null;
+      currentAction = null;
+      clips.clear();
+    }
+
+    function loadModel(id, url, useDraco) {
+      disposeModel();
+      if (!useDraco) {
+        gltfLoader.setDRACOLoader(null);
+      } else {
+        gltfLoader.setDRACOLoader(dracoLoader);
+      }
+      gltfLoader.load(
+        url,
+        (gltf) => {
+          root = gltf.scene;
+          scene.add(root);
+          mixer = new THREE.AnimationMixer(root);
+          (gltf.animations || []).forEach((c) => clips.set(c.name, c));
+          postReply({ id, ok: true });
+        },
+        undefined,
+        (err) => postReply({ id, ok: false, error: String(err && err.message ? err.message : err) })
+      );
+    }
+
+    function playClip(id, name, loop, crossfade) {
+      if (!mixer) {
+        postReply({ id, ok: false, error: 'no model loaded' });
+        return;
+      }
+      const clip = clips.get(name);
+      if (!clip) {
+        postReply({ id, ok: false, error: `clip '${name}' not found` });
+        return;
+      }
+      const action = mixer.clipAction(clip);
+      action.reset();
+      action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+      action.clampWhenFinished = !loop;
+      if (currentAction && currentAction !== action) {
+        currentAction.crossFadeTo(action, Math.max(0, crossfade || 0), false);
+      }
+      action.play();
+      currentAction = action;
+      postReply({ id, ok: true });
+    }
+
+    // Emit clipEnded for one-shot clips so the behavior graph can settle react->idle.
+    // (mixer 'finished' fires for LoopOnce actions.)
+    function onMixerFinished(e) {
+      const finishedClip = e.action && e.action.getClip ? e.action.getClip() : null;
+      if (finishedClip) {
+        postReply({ id: 0, event: 'clipEnded', name: finishedClip.name });
+      }
+    }
+
+    // ── Command dispatch ───────────────────────────────────────────────────────
+    function dispatch(json) {
+      let msg;
+      try {
+        msg = JSON.parse(json);
+      } catch (e) {
+        return;
+      }
+      const id = typeof msg.id === 'number' ? msg.id : 0;
+      switch (msg.cmd) {
+        case 'load':
+          loadModel(id, msg.url, !!msg.draco);
+          break;
+        case 'clip':
+          playClip(id, msg.name, !!msg.loop, typeof msg.crossfade === 'number' ? msg.crossfade : 0);
+          break;
+        case 'dispose':
+          disposeModel();
+          postReply({ id, ok: true });
+          break;
+        default:
+          postReply({ id, ok: false, error: `unknown cmd '${msg.cmd}'` });
+      }
+    }
+
+    if (hasWebView2) {
+      window.chrome.webview.addEventListener('message', (ev) => dispatch(ev.data));
+    }
+    // Always expose the direct hook (used by tests + as a WebView2 fallback).
+    window.__petDispatch = dispatch;
+
+    // ── Render loop ───────────────────────────────────────────────────────────
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      if (mixer) mixer.update(dt);
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+    });
+
+    // Wire the mixer 'finished' once a model creates one; re-bind on each load via a
+    // scene-level listener guard.
+    const bindMixerEvents = () => {
+      if (mixer && !mixer.__bound) {
+        mixer.addEventListener('finished', onMixerFinished);
+        mixer.__bound = true;
+      }
+      requestAnimationFrame(bindMixerEvents);
+    };
+    bindMixerEvents();
+
+    animate();
+    postReply({ id: 0, event: 'ready' });
+  </script>
+</body>
+</html>

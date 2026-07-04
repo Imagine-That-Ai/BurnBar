@@ -110,6 +110,23 @@
       STEP + draw this with Win2D; it is unit-tested on macOS (windows/tests/dashboard).
     -->
     <ProjectReference Include="../OpenBurnBar.App.Dashboard/OpenBurnBar.App.Dashboard.csproj" />
+    <!--
+      Portable PetCompanion core (net8.0, no WinUI) for the desktop pet (Phase 4 · G4):
+      the behavior-graph interpreter, chat-event bridge (drives the graph from the
+      landed Chat state machine), reaction brain, petdef parser, and the
+      transport-agnostic glTF scene controller + embedded three.js shell. The WinUI
+      Pet/ shell (PetOverlayWindow + WebView2PetGltfHost + PetChatBubbleView) renders
+      it; it is unit-tested on macOS (windows/tests/pet).
+    -->
+    <ProjectReference Include="../OpenBurnBar.App.Pet/OpenBurnBar.App.Pet.csproj" />
+    <!--
+      Transparent click-through overlay PAL (net8.0). Provides the shared
+      OverlayWindowStyle flag math + PerPixelHitTest + ExistingWindowOverlay helper
+      the Pet overlay window styles its HWND with (WS_EX_LAYERED|TRANSPARENT|
+      TOOLWINDOW|NOACTIVATE). Windows behaviour is P/Invoke; the flag math + hit-test
+      are unit-tested on macOS (windows/tests/pet/Overlay).
+    -->
+    <ProjectReference Include="../../pal/overlay/OpenBurnBar.Pal.Overlay.csproj" />
   </ItemGroup>
 
 </Project>
