@@ -66,11 +66,8 @@ typealias QuotaLogger = OpenBurnBarCore.QuotaLogger
 typealias ProviderQuotaSnapshotPersisting = OpenBurnBarCore.ProviderQuotaSnapshotPersisting
 typealias ClaudeQuotaBridgeManaging = OpenBurnBarCore.ClaudeQuotaBridgeManaging
 
-
-
 typealias CursorUsageSummary = OpenBurnBarCore.CursorUsageSummary
 typealias CursorUserInfo = OpenBurnBarCore.CursorUserInfo
-
 
 func quotaNonEmpty(_ value: String?) -> String? {
     OpenBurnBarCore.quotaNonEmpty(value)
