@@ -54,12 +54,23 @@ public sealed partial class AppShell : UserControl
 
         // Reflect the selection in the sidebar; SelectionChanged performs the frame navigation.
         var item = FindItem(key);
-        if (item is not null && !ReferenceEquals(Nav.SelectedItem, item))
+        if (item is not null)
         {
-            Nav.SelectedItem = item;
+            if (ReferenceEquals(Nav.SelectedItem, item))
+            {
+                // Already selected (SelectionChanged won't re-fire): drive the frame directly.
+                NavigateFrame(destination);
+            }
+            else
+            {
+                Nav.SelectedItem = item;
+            }
         }
         else
         {
+            // Auxiliary (non-sidebar) destination — e.g. Elder Wand. Clear any stale sidebar
+            // highlight so the next sidebar click always re-navigates, then drive the frame.
+            Nav.SelectedItem = null;
             NavigateFrame(destination);
         }
     }
