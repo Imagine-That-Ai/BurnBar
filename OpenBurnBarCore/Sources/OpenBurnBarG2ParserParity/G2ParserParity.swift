@@ -13,11 +13,11 @@
 // CI):
 //   1. Loads the committed golden (bundled resource) — the exact bytes macOS
 //      produced.
-//   2. For every golden-covered fixture whose parser has been lifted into the
-//      Foundation-only Engine, it lays the committed fixture bytes out in the real
-//      provider directory shape inside a fresh temp root, runs the REAL lifted
-//      parser (`ClaudeCodeParser` / `FactoryDroidParser` from `OpenBurnBarCore`),
-//      and projects the `[TokenUsage]` result to the portable contract
+//   2. For every golden-covered fixture, it lays the committed fixture bytes out in
+//      the real provider directory shape inside a fresh temp root, runs the REAL
+//      lifted parser (`ClaudeCodeParser` / `FactoryDroidParser` / `CodexParser` /
+//      `HermesParser` from `OpenBurnBarCore`), and projects the `[TokenUsage]`
+//      result to the portable contract
 //      (`ParserOutputContractRecord`: nano-USD int cost, session, model, token
 //      buckets — every non-reproducible field excluded).
 //   3. Canonically re-encodes each generated per-fixture contract AND the committed
@@ -31,11 +31,14 @@
 // green run on Windows is a byte-for-byte proof that the Windows parser build
 // matches the macOS golden — the cross-platform half of G2.
 //
-// Scope (this file): the CLEAN, Foundation-only parsers — ClaudeCode (8 fixtures)
-// + FactoryDroid (2 fixtures) = 10 golden rows. The two SQLite-backed parsers
-// (Codex + Hermes) ride the SQLite reader seam (a separately-scoped follow-up —
-// see the `pendingSeamFixtures` note below); their fixtures are already bundled so
-// the corpus is complete.
+// Scope (this file): ALL FOUR golden parsers over all 15 committed fixtures.
+// ClaudeCode (8) + FactoryDroid (2) read JSON/JSONL directly. Codex (3) + Hermes (2)
+// read a plain (unencrypted) SQLite database through the Foundation-only SQLite
+// reader seam (`Services/SQLite/` — `SQLiteConnection` over the raw `sqlite3_*` C
+// API): the system `SQLite3` module on Apple, the vendored `CSQLite` amalgamation
+// off-Apple. The Codex `state_5.sqlite` `threads` fixture is BUILT here through the
+// same seam's write path, so the harness exercises the SQLite backend end-to-end.
+// All 15 golden rows are byte-diffed; none are deferred.
 //
 // Assertion-backed by design (mirrors the walking skeleton + path-remap gate):
 // `expect(…)` is a hard gate in debug AND release — a failed assertion writes to
@@ -48,7 +51,14 @@
 //              legs), after the Engine build.
 
 import Foundation
-import OpenBurnBarCore
+// The lifted log parsers (`ClaudeCodeParser` / `FactoryDroidParser` / `CodexParser`
+// / `HermesParser`) and their `ParseResult` / `OpenBurnBarAppPaths` inputs are
+// module-internal to `OpenBurnBarCore` (the whole lifted parser layer is internal,
+// mirroring the macOS app's own copies). This parity gate is a verification harness
+// — conceptually a test — so it exercises those internals through `@testable import`,
+// exactly as a test target would. Windows CI and the macOS run both build the debug
+// configuration (`-enable-testing` on), so the testable import resolves on both.
+@testable import OpenBurnBarCore
 
 // MARK: - Portable parser-output contract (ported from the macOS test oracle)
 //
@@ -156,20 +166,59 @@ private struct Artifact {
     let fileExtension: String
 }
 
+/// Extra layout the Codex parser needs: it reads a `state_5.sqlite` `threads` row
+/// that points at the rollout JSONL file. Mirrors `ParserContractCorpus.CodexLayout`.
+private struct CodexLayout {
+    let threadId: String
+    let model: String
+    let tokensUsed: Int
+    let createdAt: Int64
+    let updatedAt: Int64
+    let cwd: String
+    /// Path of the rollout file relative to `.codex/`.
+    let rolloutRelativePath: String
+}
+
 private struct CleanFixture {
-    enum Kind: String { case claudeCode = "Claude Code"; case factory = "Factory" }
+    enum Kind: String { case claudeCode = "Claude Code"; case factory = "Factory"; case codex = "Codex"; case hermes = "Hermes" }
     let id: String
     let kind: Kind
     let parserName: String
+    /// Claude/Factory: JSONL filename stem (== parsed sessionId).
+    /// Hermes: raw session id → file is `session_<sessionId>.json`. Codex: unused.
     let sessionId: String
+    /// Claude/Factory: encoded project directory. Hermes: profile name. Codex: unused.
     let projectDir: String
     let artifacts: [Artifact]
+    /// Codex only: the `threads`-row layout that points at the rollout file.
+    let codex: CodexLayout?
+
+    init(
+        id: String,
+        kind: Kind,
+        parserName: String,
+        sessionId: String,
+        projectDir: String,
+        artifacts: [Artifact],
+        codex: CodexLayout? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.parserName = parserName
+        self.sessionId = sessionId
+        self.projectDir = projectDir
+        self.artifacts = artifacts
+        self.codex = codex
+    }
 }
 
 private enum G2Corpus {
     /// Encoded project dirs, identical to the macOS corpus.
     static let claudeProjectDir = "-Users-test-Documents-ParserContract"
     static let factoryProjectDir = "ParserContract"
+    static let hermesProfile = "world-director"
+    static let codexCWD = "/tmp/OpenBurnBar"
+    static let codexModel = "openai/gpt-5.2-codex"
 
     static let cleanFixtures: [CleanFixture] = [
         // ---- Claude Code (8) ----
@@ -207,16 +256,33 @@ private enum G2Corpus {
                         Artifact(role: .primary, resourceName: "pc-factory-with-settings", fileExtension: "jsonl"),
                         Artifact(role: .settings, resourceName: "pc-factory-with-settings-settings", fileExtension: "json"),
                         Artifact(role: .metadata, resourceName: "pc-factory-with-settings-metadata", fileExtension: "json")
-                     ])
-    ]
-
-    /// Golden fixtures still awaiting the SQLite reader seam (Codex + Hermes). Their
-    /// bytes are bundled; the harness reports them as pending rather than skipping
-    /// silently, so the deferred coverage is visible in the CI log.
-    static let pendingSeamFixtures = [
-        "codexRolloutSession", "codexRolloutSessionWithLastUsageOnly",
-        "codexRolloutSessionWithPartialTokenCountAndDeltas",
-        "hermesSessionSnapshot", "hermesToolHeavySessionSnapshot"
+                     ]),
+        // ---- Codex (3) — via the SQLite reader seam (`state_5.sqlite` threads row) ----
+        CleanFixture(id: "codexRolloutSession", kind: .codex, parserName: "CodexParser",
+                     sessionId: "codex-contract-001", projectDir: codexCWD,
+                     artifacts: [Artifact(role: .primary, resourceName: "pc-codex-rollout-session", fileExtension: "jsonl")],
+                     codex: CodexLayout(threadId: "codex-contract-001", model: codexModel, tokensUsed: 176,
+                                        createdAt: 1_766_577_600, updatedAt: 1_766_577_660, cwd: codexCWD,
+                                        rolloutRelativePath: "sessions/2025/12/24/rollout-2025-12-24T12-00-00.jsonl")),
+        CleanFixture(id: "codexRolloutSessionWithLastUsageOnly", kind: .codex, parserName: "CodexParser",
+                     sessionId: "codex-contract-002", projectDir: codexCWD,
+                     artifacts: [Artifact(role: .primary, resourceName: "pc-codex-last-usage-only", fileExtension: "jsonl")],
+                     codex: CodexLayout(threadId: "codex-contract-002", model: codexModel, tokensUsed: 176,
+                                        createdAt: 1_766_664_000, updatedAt: 1_766_664_060, cwd: codexCWD,
+                                        rolloutRelativePath: "sessions/2025/12/25/rollout-2025-12-25T12-00-00.jsonl")),
+        CleanFixture(id: "codexRolloutSessionWithPartialTokenCountAndDeltas", kind: .codex, parserName: "CodexParser",
+                     sessionId: "codex-contract-003", projectDir: codexCWD,
+                     artifacts: [Artifact(role: .primary, resourceName: "pc-codex-partial-token-count", fileExtension: "jsonl")],
+                     codex: CodexLayout(threadId: "codex-contract-003", model: codexModel, tokensUsed: 176,
+                                        createdAt: 1_766_750_000, updatedAt: 1_766_750_060, cwd: codexCWD,
+                                        rolloutRelativePath: "sessions/2025/12/26/rollout-2025-12-26T12-00-00.jsonl")),
+        // ---- Hermes (2) — JSON snapshot path; the parser's SQLite path rides the seam ----
+        CleanFixture(id: "hermesSessionSnapshot", kind: .hermes, parserName: "HermesParser",
+                     sessionId: "cron_test_001", projectDir: hermesProfile,
+                     artifacts: [Artifact(role: .primary, resourceName: "pc-hermes-session-snapshot", fileExtension: "json")]),
+        CleanFixture(id: "hermesToolHeavySessionSnapshot", kind: .hermes, parserName: "HermesParser",
+                     sessionId: "cron_tool_heavy_001", projectDir: hermesProfile,
+                     artifacts: [Artifact(role: .primary, resourceName: "pc-hermes-tool-heavy-snapshot", fileExtension: "json")])
     ]
 
     static func bundledURL(resource: String, ext: String) -> URL? {
@@ -269,6 +335,36 @@ private enum G2Corpus {
             }
             let parser = FactoryDroidParser(fileManager: fm, appPaths: appPaths, sessionsDirectoryOverride: sessionsRoot)
             result = try await parser.parse()
+
+        case .codex:
+            guard let codex = fixture.codex else { throw G2Error.missingCodexLayout(fixture.id) }
+            let codexRoot = root.appendingPathComponent(".codex", isDirectory: true)
+            let rolloutURL = codexRoot.appendingPathComponent(codex.rolloutRelativePath)
+            try fm.createDirectory(at: rolloutURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try artifactContent(primary(fixture.artifacts)).write(to: rolloutURL, atomically: true, encoding: .utf8)
+            // Build `state_5.sqlite` through the SAME reader-seam backend the parser
+            // reads with (raw sqlite3), so the harness exercises the vendored/system
+            // SQLite end-to-end — write the fixture, then read it back byte-identically.
+            try writeCodexThreadsDatabase(codexRoot: codexRoot, codex: codex, rolloutPath: rolloutURL.path)
+            let parser = CodexParser(fileManager: fm, appPaths: appPaths, homeDirectoryURL: root)
+            result = try await parser.parse()
+
+        case .hermes:
+            let sessionsDir = root
+                .appendingPathComponent(".hermes", isDirectory: true)
+                .appendingPathComponent("profiles", isDirectory: true)
+                .appendingPathComponent(fixture.projectDir, isDirectory: true)
+                .appendingPathComponent("sessions", isDirectory: true)
+            try fm.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+            try artifactContent(primary(fixture.artifacts)).write(
+                to: sessionsDir.appendingPathComponent("session_\(fixture.sessionId).json"),
+                atomically: true, encoding: .utf8
+            )
+            let parser = HermesParser(
+                fileManager: fm,
+                hermesRootURL: root.appendingPathComponent(".hermes", isDirectory: true)
+            )
+            result = try await parser.parse()
         }
 
         let records = G2Contract.sortedUsages(result.usages.map(ParserOutputContractRecord.init))
@@ -285,13 +381,58 @@ private enum G2Corpus {
     private static func primary(_ artifacts: [Artifact]) -> Artifact {
         artifacts.first { $0.role == .primary } ?? artifacts[0]
     }
+
+    /// Create the Codex `state_5.sqlite` `threads` table + one row through the
+    /// reader seam's raw-sqlite3 write path (system SQLite3 on macOS, vendored
+    /// CSQLite off-Apple) — the exact schema `ParserContractCorpus` writes with GRDB.
+    private static func writeCodexThreadsDatabase(codexRoot: URL, codex: CodexLayout, rolloutPath: String) throws {
+        try FileManager.default.createDirectory(at: codexRoot, withIntermediateDirectories: true)
+        let dbURL = codexRoot.appendingPathComponent("state_5.sqlite", isDirectory: false)
+        let writer = try SQLiteConnection.openForWriting(creatingAt: dbURL.path)
+        defer { writer.close() }
+        try writer.execute("""
+            CREATE TABLE threads (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                model TEXT,
+                model_provider TEXT,
+                tokens_used INTEGER,
+                created_at INTEGER,
+                updated_at INTEGER,
+                cwd TEXT,
+                rollout_path TEXT,
+                archived INTEGER DEFAULT 0
+            )
+        """)
+        try writer.execute(
+            """
+            INSERT INTO threads (
+                id, title, model, model_provider, tokens_used,
+                created_at, updated_at, cwd, rollout_path, archived
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            arguments: [
+                .text(codex.threadId),
+                .text(codex.threadId),
+                .text(codex.model),
+                .text("openai"),
+                .int(Int64(codex.tokensUsed)),
+                .int(codex.createdAt),
+                .int(codex.updatedAt),
+                .text(codex.cwd),
+                .text(rolloutPath)
+            ]
+        )
+    }
 }
 
 enum G2Error: Error, CustomStringConvertible {
     case missingResource(String)
+    case missingCodexLayout(String)
     var description: String {
         switch self {
         case .missingResource(let name): return "bundled resource not found: \(name)"
+        case .missingCodexLayout(let id): return "Codex fixture \(id) is missing its CodexLayout"
         }
     }
 }
@@ -368,17 +509,22 @@ enum G2ParserParity {
             }
         }
 
-        // Report the SQLite-seam fixtures still to be lifted (visible, not silent).
-        print("\n[2] Deferred (SQLite reader seam — Codex + Hermes)")
-        for id in G2Corpus.pendingSeamFixtures {
-            let present = committedByID[id] != nil
-            expect(present, "golden entry present for deferred fixture \(id) (bundled; awaiting seam)")
+        // Completeness: EVERY committed golden fixture must be covered by a lifted
+        // parser above — no golden row may be silently unproven. With Codex + Hermes
+        // riding the SQLite reader seam, all 4 golden parsers are now covered.
+        print("\n[2] Golden coverage (every committed fixture is proven — none deferred)")
+        let coveredIDs = Set(G2Corpus.cleanFixtures.map(\.id))
+        for fixture in committed.fixtures {
+            expect(coveredIDs.contains(fixture.fixtureId),
+                   "golden fixture \(fixture.fixtureId) (\(fixture.parser)) is covered by a lifted parser")
         }
+        expect(coveredIDs.count == committed.fixtures.count,
+               "lifted-fixture count (\(coveredIDs.count)) == golden fixture count (\(committed.fixtures.count))")
 
         let covered = G2Corpus.cleanFixtures.count
         print("\n== G2 PARSER-OUTPUT PARITY GREEN ==")
         print("  \(passCount) assertions passed")
         print("  \(covered)/\(committed.fixtures.count) golden fixtures proven byte-identical "
-              + "(\(G2Corpus.pendingSeamFixtures.count) deferred to the SQLite reader seam)")
+              + "(0 deferred — all 4 golden parsers lifted, Codex + Hermes via the SQLite reader seam)")
     }
 }
