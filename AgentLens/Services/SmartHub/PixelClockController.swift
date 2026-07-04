@@ -88,55 +88,108 @@ private enum PixelClockExternalAgentActivityScanner {
     /// Scans the `ps` table to detect when external coding agents are
     /// running so the pixel clock can flash their lane indicators.
     ///
-    /// IMPORTANT: must NEVER be called from the main thread synchronously.
-    /// `processLines()` spawns `/bin/ps` and `waitUntilExit()`s, which
-    /// blocks for tens of milliseconds. When that block lands on the
-    /// MainActor (e.g. via a `PixelClockController` heartbeat tick), it
-    /// halts *every* other `@MainActor` Task — including the SmartHub
-    /// bridge listener's `.ready` callback and incoming HTTP connection
-    /// handlers — and the Nest Hub silently fails to render.
+    /// Fully async: `processLines()` awaits `ps` termination via
+    /// `terminationHandler` and drains stdout concurrently, so no actor —
+    /// MainActor included — and no cooperative-executor thread ever blocks
+    /// on the scan.
     static func runningStatuses() async -> [String: PixelClockAgentStatus] {
         await cache.runningStatuses()
     }
 
     fileprivate static func scanRunningStatuses() async -> [String: PixelClockAgentStatus] {
-        // `processLines()` (blocking `/bin/ps`) runs off the main actor here:
-        // `scanRunningStatuses` is `nonisolated` `async`, so awaiting it leaves
-        // the caller's actor onto the generic executor (SE-0338). See the
-        // off-main warning on `runningStatuses()` above.
-        let lines = processLines()
+        let lines = await processLines()
         return PixelClockAgentProcessDetector.statuses(fromProcessLines: lines)
     }
 
-    private static func processLines() -> [String] {
+    /// Runs `/bin/ps` without parking any thread on the scan:
+    ///
+    ///   * stdout is drained *while* `ps` runs — the full `args=` listing on a
+    ///     busy machine easily exceeds the 64 KB pipe buffer, so the previous
+    ///     read-after-exit shape made `ps` block on a full pipe until the
+    ///     deadline killed it (the scan silently returned `[]` exactly when
+    ///     agents were most likely to be running);
+    ///   * termination is awaited via `terminationHandler` instead of the old
+    ///     20 ms sleep-poll loop, which pinned a cooperative-executor thread
+    ///     for the entire scan.
+    private static func processLines() async -> [String] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
         process.arguments = ["-axo", "comm=,args="]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()
+
+        let latch = TerminationLatch()
+        process.terminationHandler = { _ in latch.signal() }
         do {
             try process.run()
-            let deadline = Date().addingTimeInterval(1.0)
-            while process.isRunning, Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.02)
-            }
-            if process.isRunning {
-                process.terminate()
-                process.waitUntilExit()
-                return []
-            }
-            process.waitUntilExit()
         } catch {
-            AppLogger.network.error("pixel_clock_mdns_browse_failed", metadata: ["error": error.localizedDescription])
+            AppLogger.network.error("pixel_clock_process_scan_launch_failed", metadata: ["error": error.localizedDescription])
             return []
         }
-        guard process.terminationStatus == 0 else { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+
+        // Drain stdout while `ps` runs — the full `args=` listing easily
+        // exceeds the 64 KB pipe buffer, and the old read-after-exit shape made
+        // `ps` block on a full pipe until the deadline killed it (the scan
+        // silently returned `[]` exactly when the process table was busiest).
+        nonisolated(unsafe) let drainHandle = pipe.fileHandleForReading
+        let drain = Task.detached(priority: .utility) {
+            drainHandle.readDataToEndOfFile()
+        }
+
+        var exited = await latch.wait(timeout: 2.0)
+        if !exited {
+            process.terminate()
+            exited = await latch.wait(timeout: 0.5)
+        }
+        guard exited, !process.isRunning, process.terminationStatus == 0 else { return [] }
+
+        let data = await drain.value
         guard let output = String(data: data, encoding: .utf8) else { return [] }
         return output
             .split(separator: "\n")
             .map(String.init)
+    }
+
+    /// One-shot termination signal bridging `Process.terminationHandler` to
+    /// async/await with a timeout — replaces the 20 ms sleep-poll loop that
+    /// used to park a cooperative-executor thread for the whole scan.
+    private final class TerminationLatch: @unchecked Sendable {
+        private let lock = NSLock()
+        private var signaled = false
+        private var continuation: CheckedContinuation<Bool, Never>?
+
+        func signal() {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            signaled = true
+            lock.unlock()
+            pending?.resume(returning: true)
+        }
+
+        /// Waits for `signal()`, resuming `false` on timeout. Single waiter at
+        /// a time (sequential awaits from `processLines`).
+        func wait(timeout: TimeInterval) async -> Bool {
+            await withCheckedContinuation { (pending: CheckedContinuation<Bool, Never>) in
+                lock.lock()
+                if signaled {
+                    lock.unlock()
+                    pending.resume(returning: true)
+                    return
+                }
+                continuation = pending
+                lock.unlock()
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { [weak self] in
+                    guard let self else { return }
+                    self.lock.lock()
+                    let timedOut = self.continuation
+                    self.continuation = nil
+                    self.lock.unlock()
+                    timedOut?.resume(returning: false)
+                }
+            }
+        }
     }
 }
 
@@ -144,7 +197,11 @@ private actor PixelClockExternalAgentActivityScanCache {
     private var lastScanAt: Date = .distantPast
     private var lastStatuses: [String: PixelClockAgentStatus] = [:]
     private var inFlight: Task<[String: PixelClockAgentStatus], Never>?
-    private let minimumScanInterval: TimeInterval = 3
+    /// Each scan spawns `/bin/ps` over the full process table. The pixel clock
+    /// itself only pushes every 15 s (`updateIntervalSeconds`), so 10 s keeps
+    /// lane indicators fresh while cutting subprocess churn by >3× versus the
+    /// old 3 s floor.
+    private let minimumScanInterval: TimeInterval = 10
 
     func runningStatuses(now: Date = Date()) async -> [String: PixelClockAgentStatus] {
         if now.timeIntervalSince(lastScanAt) < minimumScanInterval {
@@ -164,30 +221,6 @@ private actor PixelClockExternalAgentActivityScanCache {
 }
 
 enum PixelClockAgentProcessDetector {
-    /// Blocking `/bin/ps` work runs off the main actor (`nonisolated` `async`, SE-0338).
-    static func runningStatuses() async -> [String: PixelClockAgentStatus] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-axo", "comm,args"]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            AppLogger.network.error("pixel_clock_mdns_resolve_failed", metadata: ["error": error.localizedDescription])
-            return [:]
-        }
-
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return [:] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return [:] }
-        return statuses(fromPSOutput: output)
-    }
-
     static func statuses(fromPSOutput output: String) -> [String: PixelClockAgentStatus] {
         statuses(fromProcessLines: output.split(separator: "\n").dropFirst().map(String.init))
     }

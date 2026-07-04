@@ -9,7 +9,7 @@ pinned SQLCipher parameters and rationale, and
 
 | File | What it is |
 | ---- | ---------- |
-| `openburnbar-db-compat-v53.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v53_memory_forget_outbox` and seeded with the canonical FTS corpus. Genuinely encrypted (no plaintext SQLite header). |
+| `openburnbar-db-compat-v55.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v55_search_chunks_fts_rowid` and seeded with the canonical FTS corpus. Genuinely encrypted (no plaintext SQLite header). |
 | `openburnbar-db-compat-vector.json` | The **DB-compat vector**: expected schema hash (SHA-256 over normalized `sqlite_master` DDL) + the expected FTS5 `bm25()`/`snippet()` row set for a fixed set of `MATCH` probes. |
 | `openburnbar-db-compat-params-observed.json` | The SQLCipher parameters **read back from the live 4.16.0 binary** (evidence for the pinned values). |
 
@@ -41,7 +41,7 @@ TEST_RUNNER_OPENBURNBAR_DB_COMPAT_OUT=/tmp/obb-db-compat-out \
   -only-testing:AgentLensTests/DatabaseByteCompatVectorTests
 
 # 2. Copy the generated artifacts into this directory.
-cp /tmp/obb-db-compat-out/openburnbar-db-compat-v53.sqlcipher \
+cp /tmp/obb-db-compat-out/openburnbar-db-compat-v55.sqlcipher \
    /tmp/obb-db-compat-out/openburnbar-db-compat-vector.json \
    /tmp/obb-db-compat-out/openburnbar-db-compat-params-observed.json \
    AgentLensTests/Fixtures/DBByteCompat/
