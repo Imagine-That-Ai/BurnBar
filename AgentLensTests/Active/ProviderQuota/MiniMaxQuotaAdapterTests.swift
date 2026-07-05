@@ -1,4 +1,5 @@
 import XCTest
+import Security
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
@@ -25,9 +26,9 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Pay-as-you-go"))
+        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Pay-as-you-go") == true)
     }
 
     func testFetch_openPlatformKey_returnsGuidanceMessage() async throws {
@@ -36,9 +37,9 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Coding Plan key"))
+        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Coding Plan key") == true)
     }
 
     func testFetch_codingPlanKey_usesCodingPlanEndpointFirst() async throws {
@@ -62,8 +63,8 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
-        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
         XCTAssertTrue(requestedURLs.first?.contains("coding_plan/remains") ?? false)
     }
@@ -80,9 +81,9 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Add a MiniMax Token Plan API key"))
+        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Add a MiniMax Token Plan API key") == true)
     }
 
     /// A broken/locked keychain (real OSStatus fault) must NOT crash the fetch
@@ -98,9 +99,9 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertTrue(faultingBackend.didAttemptRead, "Expected the keychain fallback to be exercised")
-        XCTAssertEqual(snapshot.provider, .minimax)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Add a MiniMax Token Plan API key"))
+        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Add a MiniMax Token Plan API key") == true)
     }
 
     func testFetch_tokenPlanEndpointUsedWhenCodingPlanFails() async throws {
@@ -122,8 +123,8 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
-        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
     }
 
