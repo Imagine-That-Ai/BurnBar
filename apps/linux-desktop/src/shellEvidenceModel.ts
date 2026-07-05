@@ -218,9 +218,9 @@ export function failureStateCases(): FailureStateCase[] {
       id: 'daemon-offline',
       route: 'overview',
       condition: 'bridge=null or health.ok=false',
-      userMessage: 'Packaged shell required for live daemon health (browser preview mode).',
+      userMessage: 'Daemon offline.',
       remediation: 'Start openburnbar-cli service foreground; verify AF_UNIX socket.',
-      actionResult: 'Reconnect action retries daemon.health and keeps local routes usable.',
+      actionResult: 'Reconnect action retries daemon.health, keeps local routes usable, and keeps raw socket errors in diagnostics only.',
       restartPersistence: 'required'
     },
     {
@@ -393,7 +393,7 @@ export function onboardingFlowTranscript(): OnboardingTranscriptStep[] {
     {
       action: 'retry-check',
       persistedState: { completed: false, step: 0, skippedSteps: [] },
-      expected: 'Retry probes daemon health without advancing or losing the current step.'
+      expected: 'Retry probes daemon health, shows visible status feedback, and does not advance or lose the current step.'
     },
     {
       action: 'skip-step',
@@ -408,7 +408,7 @@ export function onboardingFlowTranscript(): OnboardingTranscriptStep[] {
     {
       action: 'complete',
       persistedState: { completed: true, step: 7, skippedSteps: [0] },
-      expected: 'Completion is persisted so later launches can open the dashboard.'
+      expected: 'Completion is persisted and the wizard renders a completed state before later launches open the dashboard.'
     }
   ];
 }

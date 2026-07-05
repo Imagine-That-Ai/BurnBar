@@ -5,6 +5,7 @@ import {
   routeFixture,
   setDaemonFixtureMode
 } from './daemonFixture.js';
+import { buildDaemonStatusCopy, type DaemonStatusCopy } from './daemonStatusCopy.js';
 import { readOnboarding, writeOnboarding } from './onboardingStore.js';
 import { buildPetBehaviorGraph } from './petBehaviorGraph.js';
 import { detectPetTierFromEnv } from './petCompanion.js';
@@ -28,6 +29,7 @@ type ShellState = {
   route: ShellRoute;
   health: DaemonHealth | null;
   healthError: string | null;
+  onboardingRetryMessage: string | null;
   trayDegraded: boolean;
   skin: 'editorial' | 'aurora';
   bridge: LinuxShellBridge | null;
@@ -39,6 +41,7 @@ const state: ShellState = {
   route: routeFromHash(location.hash),
   health: null,
   healthError: null,
+  onboardingRetryMessage: null,
   trayDegraded: false,
   skin: 'editorial',
   bridge: null,
@@ -173,11 +176,7 @@ async function measureRequiredPerfOperations(): Promise<void> {
 function appendDaemonDataTable(wrap: HTMLElement, route: ShellRoute, label: string): void {
   const useFixture = state.fixtureMode || (state.health?.daemonVersion?.startsWith('fixture') ?? false);
   if (!useFixture && !state.health?.ok) {
-    wrap.append(
-      el('p', { class: 'muted', role: 'status' }, [
-        'Daemon offline — honest empty state until the local peer is reachable.'
-      ])
-    );
+    wrap.append(daemonOfflineNotice(label, route));
     return;
   }
   if (!useFixture) {
@@ -340,6 +339,35 @@ async function refreshHealth(): Promise<void> {
   render();
 }
 
+function daemonStatusCopy(): DaemonStatusCopy {
+  return buildDaemonStatusCopy({
+    ok: state.health?.ok ?? false,
+    daemonVersion: state.health?.daemonVersion,
+    socketPath: state.health?.socketPath,
+    fixtureMode: state.fixtureMode,
+    bridgeAvailable: Boolean(state.bridge),
+    healthError: state.healthError,
+    daemonError: state.health?.error,
+    displaySocketPath: displayLinuxSocketPath()
+  });
+}
+
+function daemonOfflineNotice(label: string, route: ShellRoute): HTMLElement {
+  const status = daemonStatusCopy();
+  const summary = route === 'overview'
+    ? 'Start or reconnect the local daemon to populate health, activity, and provider data.'
+    : `${label} needs the local daemon before live rows can load.`;
+  const notice = el('div', { class: 'offline-notice', role: 'status' }, [
+    el('strong', {}, [status.label]),
+    el('p', {}, [summary]),
+    el('p', { class: 'muted' }, [status.detail])
+  ]);
+  if (state.fixtureMode) {
+    notice.append(el('p', { class: 'muted' }, ['Fixture mode is enabled for host smoke tests.']));
+  }
+  return notice;
+}
+
 function navButton(route: ShellRoute, label: string): HTMLButtonElement {
   const btn = el('button', {
     class: 'nav-link',
@@ -351,12 +379,8 @@ function navButton(route: ShellRoute, label: string): HTMLButtonElement {
 }
 
 function statusPill(): HTMLElement {
-  const ok = state.health?.ok;
-  const klass = ok ? 'status-pill ok' : state.healthError ? 'status-pill err' : 'status-pill warn';
-  const label = ok
-    ? `Daemon ${state.health?.daemonVersion ?? 'ready'}${state.fixtureMode ? ' (fixture)' : ''}`
-    : state.healthError ?? 'Daemon status unknown';
-  return el('div', { class: klass, role: 'status' }, [label]);
+  const status = daemonStatusCopy();
+  return el('div', { class: `status-pill ${status.tone}`, role: 'status', title: status.detail }, [status.label]);
 }
 
 function routePanel(): HTMLElement {
@@ -381,11 +405,15 @@ function routePanel(): HTMLElement {
   }
 
   if (state.route === 'settings' || state.route === 'account' || state.route === 'support') {
+    const status = daemonStatusCopy();
     const banner = el('div', { class: 'banner degraded', role: 'alert' }, [
-      state.healthError
-        ? `${state.healthError} Use openburnbar-cli health and check ${displayLinuxSocketPath()}.`
-        : 'Connected to local peer.'
+      state.health?.ok
+        ? 'Connected to local peer.'
+        : `${status.label}: ${status.detail}`
     ]);
+    if (status.rawDetail && state.route === 'support') {
+      banner.append(el('p', { class: 'diagnostic-detail' }, [`Raw diagnostic: ${status.rawDetail}`]));
+    }
     const cases = [
       ['secret-store', 'Secret Service locked or unavailable', 'Open Settings -> Privacy & Security, unlock GNOME Keyring/KWallet, or set the headless passphrase file.'],
       ['network-offline', 'Network offline', 'Provider catalog, sync, and update checks pause locally; reconnect then retry from Support.'],
@@ -433,25 +461,50 @@ function routePanel(): HTMLElement {
 
   if (state.route === 'onboarding') {
     const ob = readOnboarding();
-    const step = ONBOARDING_STEPS[ob.step] ?? ONBOARDING_STEPS[0];
-    wrap.append(el('h3', {}, [step.title]), el('p', {}, [step.body]));
+    if (ob.completed) {
+      wrap.append(
+        el('div', { class: 'setup-complete', role: 'status' }, [
+          el('h3', {}, ['Setup checklist complete']),
+          el('p', {}, ['Linux onboarding is acknowledged. Dashboard routes remain local-only until the daemon is reachable.'])
+        ])
+      );
+      return wrap;
+    }
+    const stepIndex = Math.min(ob.step, ONBOARDING_STEPS.length - 1);
+    const step = ONBOARDING_STEPS[stepIndex] ?? ONBOARDING_STEPS[0];
+    wrap.append(
+      el('p', { class: 'step-progress' }, [`Step ${stepIndex + 1} of ${ONBOARDING_STEPS.length}`]),
+      el('h3', {}, [step.title]),
+      el('p', {}, [step.body])
+    );
+    if (state.onboardingRetryMessage) {
+      wrap.append(el('div', { class: 'banner degraded retry-feedback', role: 'status' }, [state.onboardingRetryMessage]));
+    }
     const actions = el('div', { class: 'actions' });
-    const next = el('button', { class: 'primary', type: 'button' }, ['Continue']);
+    const isLastStep = stepIndex === ONBOARDING_STEPS.length - 1;
+    const next = el('button', { class: 'primary', type: 'button' }, [isLastStep ? 'Finish setup' : 'Continue']);
     next.addEventListener('click', () => {
-      const n = Math.min(ob.step + 1, ONBOARDING_STEPS.length - 1);
-      writeOnboarding({ step: n, completed: n === ONBOARDING_STEPS.length - 1 });
+      const n = Math.min(stepIndex + 1, ONBOARDING_STEPS.length - 1);
+      writeOnboarding({ step: n, completed: isLastStep });
+      state.onboardingRetryMessage = null;
       render();
     });
     const retry = el('button', { class: 'ghost', type: 'button' }, ['Retry check']);
-    retry.addEventListener('click', () => void refreshHealth());
+    retry.addEventListener('click', async () => {
+      await refreshHealth();
+      const status = daemonStatusCopy();
+      state.onboardingRetryMessage = state.health?.ok ? 'Daemon check passed.' : `${status.label}: ${status.detail}`;
+      render();
+    });
     const skip = el('button', { class: 'ghost', type: 'button' }, ['Skip step']);
     skip.addEventListener('click', () => {
-      const n = Math.min(ob.step + 1, ONBOARDING_STEPS.length - 1);
+      const n = Math.min(stepIndex + 1, ONBOARDING_STEPS.length - 1);
       writeOnboarding({
-        skippedSteps: [...new Set([...ob.skippedSteps, ob.step])],
+        skippedSteps: [...new Set([...ob.skippedSteps, stepIndex])],
         step: n,
-        completed: n === ONBOARDING_STEPS.length - 1
+        completed: isLastStep
       });
+      state.onboardingRetryMessage = null;
       render();
     });
     actions.append(next, retry, skip);
@@ -531,7 +584,7 @@ function routePanel(): HTMLElement {
       el('p', { class: 'muted' }, [
         state.health?.ok
           ? 'Route is wired; load live data from the daemon-backed lanes (W03/W04/W05).'
-          : 'Daemon offline — showing honest empty state until the local peer is reachable.'
+          : `${daemonStatusCopy().label}: ${daemonStatusCopy().detail}`
       ])
     );
   }
