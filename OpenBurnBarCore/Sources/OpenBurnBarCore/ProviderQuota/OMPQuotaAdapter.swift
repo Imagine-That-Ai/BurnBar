@@ -4,7 +4,7 @@ public struct OMPQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        #if !canImport(Darwin)
+        #if !os(macOS)
         return unavailable(message: "OMP quota requires macOS CLI resolution.")
         #else
         guard let executableURL = CLILaunchAdapter.resolveExecutable(for: .omp) else {
