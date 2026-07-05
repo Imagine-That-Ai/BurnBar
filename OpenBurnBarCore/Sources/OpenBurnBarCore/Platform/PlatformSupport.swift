@@ -15,12 +15,38 @@ import OSLog
 #endif
 
 public typealias PlatformSymmetricKey = SymmetricKey
+public typealias PlatformSharedSecret = SharedSecret
+public typealias PlatformEd25519SigningMaterial =
+    Curve25519.Signing.PrivateKey
+public typealias PlatformEd25519PublicKey = Curve25519.Signing.PublicKey
+public typealias PlatformP256SigningMaterial =
+    P256.Signing.PrivateKey
+public typealias PlatformP256SigningPublicKey = P256.Signing.PublicKey
+public typealias PlatformP256SigningSignature = P256.Signing.ECDSASignature
 public typealias PlatformP256KeyAgreementPrivateKey = P256.KeyAgreement.PrivateKey
 public typealias PlatformP256KeyAgreementPublicKey = P256.KeyAgreement.PublicKey
-public typealias PlatformSharedSecret = SharedSecret
+public typealias PlatformCurve25519AgreementMaterial =
+    Curve25519.KeyAgreement.PrivateKey
+public typealias PlatformCurve25519KeyAgreementPublicKey = Curve25519.KeyAgreement.PublicKey
+
+#if os(Linux) || os(Windows)
+extension SymmetricKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension SharedSecret: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension Curve25519.Signing.PrivateKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension Curve25519.Signing.PublicKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension Curve25519.KeyAgreement.PrivateKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension Curve25519.KeyAgreement.PublicKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension P256.Signing.PrivateKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension P256.Signing.PublicKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension P256.KeyAgreement.PrivateKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension P256.KeyAgreement.PublicKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+#endif
 
 internal enum PlatformCryptoError: Error {
     case randomGenerationFailed
+    case invalidSigningKey
+    case invalidVerifyingKey
+    case canonicalEncodingFailed(String)
 }
 
 internal typealias PlatformAESGCMSealedBox = (
@@ -35,28 +61,28 @@ internal struct PlatformHPKESealedBox: Sendable {
     let ciphertext: Data
 }
 
-internal enum PlatformCrypto {
-    static func sha256(_ data: Data) -> Data {
+public enum PlatformCrypto {
+    public static func sha256(_ data: Data) -> Data {
         Data(SHA256.hash(data: data))
     }
 
-    static func sha256Hex(_ data: Data) -> String {
+    public static func sha256Hex(_ data: Data) -> String {
         hexString(sha256(data))
     }
 
-    static func hexString(_ data: Data) -> String {
+    public static func hexString(_ data: Data) -> String {
         data.map { String(format: "%02x", $0) }.joined()
     }
 
-    static func symmetricKey(data: Data) throws -> SymmetricKey {
+    public static func symmetricKey(data: Data) throws -> SymmetricKey {
         SymmetricKey(data: data)
     }
 
-    static func symmetricKeyData(_ key: SymmetricKey) -> Data {
+    public static func symmetricKeyData(_ key: SymmetricKey) -> Data {
         key.withUnsafeBytes { Data($0) }
     }
 
-    static func secureRandomBytes(count: Int) throws -> Data {
+    public static func secureRandomBytes(count: Int) throws -> Data {
         precondition(count >= 0)
         guard count > 0 else { return Data() }
 
@@ -78,30 +104,30 @@ internal enum PlatformCrypto {
         #endif
     }
 
-    static func p256KeyAgreementPrivateKey() -> PlatformP256KeyAgreementPrivateKey {
+    public static func p256KeyAgreementPrivateKey() -> PlatformP256KeyAgreementPrivateKey {
         P256.KeyAgreement.PrivateKey()
     }
 
-    static func p256KeyAgreementPrivateKey(
+    public static func p256KeyAgreementPrivateKey(
         rawRepresentation: Data
     ) throws -> PlatformP256KeyAgreementPrivateKey {
         try P256.KeyAgreement.PrivateKey(rawRepresentation: rawRepresentation)
     }
 
-    static func p256KeyAgreementPublicKey(
+    public static func p256KeyAgreementPublicKey(
         x963Representation: Data
     ) throws -> PlatformP256KeyAgreementPublicKey {
         try P256.KeyAgreement.PublicKey(x963Representation: x963Representation)
     }
 
-    static func p256KeyAgreementSharedSecret(
+    public static func p256KeyAgreementSharedSecret(
         privateKey: PlatformP256KeyAgreementPrivateKey,
         publicKey: PlatformP256KeyAgreementPublicKey
     ) throws -> SharedSecret {
         try privateKey.sharedSecretFromKeyAgreement(with: publicKey)
     }
 
-    static func deriveHKDFSHA256Key(
+    public static func deriveHKDFSHA256Key(
         inputKeyMaterial: Data,
         salt: Data,
         info: Data,
@@ -115,7 +141,7 @@ internal enum PlatformCrypto {
         )
     }
 
-    static func deriveHKDFSHA256Key(
+    public static func deriveHKDFSHA256Key(
         sharedSecret: SharedSecret,
         salt: Data,
         info: Data,
@@ -129,7 +155,7 @@ internal enum PlatformCrypto {
         )
     }
 
-    static func deriveHKDFSHA256KeyData(
+    public static func deriveHKDFSHA256KeyData(
         inputKeyMaterial: Data,
         salt: Data,
         info: Data,
@@ -143,11 +169,11 @@ internal enum PlatformCrypto {
         ).withUnsafeBytes { Data($0) }
     }
 
-    static func hmacSHA256(_ data: Data, keyData: Data) throws -> Data {
+    public static func hmacSHA256(_ data: Data, keyData: Data) throws -> Data {
         Data(HMAC<SHA256>.authenticationCode(for: data, using: SymmetricKey(data: keyData)))
     }
 
-    static func hmacSHA256Hex(_ data: Data, keyData: Data) throws -> String {
+    public static func hmacSHA256Hex(_ data: Data, keyData: Data) throws -> String {
         hexString(try hmacSHA256(data, keyData: keyData))
     }
 
@@ -185,7 +211,7 @@ internal enum PlatformCrypto {
         )
     }
 
-    static func sealAESGCM(
+    public static func sealAESGCM(
         plaintext: Data,
         keyData: Data,
         authenticating: Data? = nil
@@ -197,7 +223,7 @@ internal enum PlatformCrypto {
         ).combined
     }
 
-    static func sealAESGCM(
+    public static func sealAESGCM(
         plaintext: Data,
         key: SymmetricKey,
         authenticating: Data? = nil
@@ -243,7 +269,7 @@ internal enum PlatformCrypto {
         return try AES.GCM.open(sealedBox, using: key)
     }
 
-    static func openAESGCM(
+    public static func openAESGCM(
         combined: Data,
         keyData: Data,
         authenticating: Data? = nil
@@ -255,7 +281,7 @@ internal enum PlatformCrypto {
         )
     }
 
-    static func openAESGCM(
+    public static func openAESGCM(
         combined: Data,
         key: SymmetricKey,
         authenticating: Data? = nil
@@ -265,6 +291,165 @@ internal enum PlatformCrypto {
             return try AES.GCM.open(sealedBox, using: key, authenticating: authenticating)
         }
         return try AES.GCM.open(sealedBox, using: key)
+    }
+
+    public static func ed25519PrivateKey(rawRepresentation: Data) throws -> PlatformEd25519SigningMaterial {
+        guard rawRepresentation.count == 32 else { throw PlatformCryptoError.invalidSigningKey }
+        do {
+            return try Curve25519.Signing.PrivateKey(rawRepresentation: rawRepresentation)
+        } catch {
+            throw PlatformCryptoError.invalidSigningKey
+        }
+    }
+
+    public static func ed25519PrivateKey() -> PlatformEd25519SigningMaterial {
+        Curve25519.Signing.PrivateKey()
+    }
+
+    public static func ed25519PublicKey(rawRepresentation: Data) throws -> PlatformEd25519PublicKey {
+        guard rawRepresentation.count == 32 else { throw PlatformCryptoError.invalidVerifyingKey }
+        do {
+            return try Curve25519.Signing.PublicKey(rawRepresentation: rawRepresentation)
+        } catch {
+            throw PlatformCryptoError.invalidVerifyingKey
+        }
+    }
+
+    public static func ed25519PublicKeyRaw(privateKeyRaw: Data) throws -> Data {
+        try ed25519PrivateKey(rawRepresentation: privateKeyRaw)
+            .publicKey
+            .rawRepresentation
+    }
+
+    public static func ed25519Signature(message: Data, privateKeyRaw: Data) throws -> Data {
+        try ed25519Signature(
+            message: message,
+            privateKey: try ed25519PrivateKey(rawRepresentation: privateKeyRaw)
+        )
+    }
+
+    public static func ed25519Signature(
+        message: Data,
+        privateKey: PlatformEd25519SigningMaterial
+    ) throws -> Data {
+        do {
+            return try privateKey.signature(for: message)
+        } catch {
+            throw PlatformCryptoError.invalidSigningKey
+        }
+    }
+
+    public static func verifyEd25519Signature(
+        _ signature: Data,
+        message: Data,
+        publicKeyRaw: Data
+    ) throws -> Bool {
+        guard publicKeyRaw.count == 32 else { throw PlatformCryptoError.invalidVerifyingKey }
+        return try verifyEd25519Signature(
+            signature,
+            message: message,
+            publicKey: try ed25519PublicKey(rawRepresentation: publicKeyRaw)
+        )
+    }
+
+    public static func verifyEd25519Signature(
+        _ signature: Data,
+        message: Data,
+        publicKey: PlatformEd25519PublicKey
+    ) throws -> Bool {
+        publicKey.isValidSignature(signature, for: message)
+    }
+
+    public static func p256SigningPublicKey(from representation: Data) throws -> PlatformP256SigningPublicKey {
+        switch representation.count {
+        case 65:
+            return try P256.Signing.PublicKey(x963Representation: representation)
+        case 64:
+            return try P256.Signing.PublicKey(rawRepresentation: representation)
+        default:
+            return try P256.Signing.PublicKey(derRepresentation: representation)
+        }
+    }
+
+    public static func p256SigningRawSignature(
+        message: Data,
+        privateKey: PlatformP256SigningMaterial
+    ) throws -> Data {
+        try privateKey.signature(for: message).rawRepresentation
+    }
+
+    public static func verifyP256SigningSignature(
+        _ signature: Data,
+        message: Data,
+        publicKey: PlatformP256SigningPublicKey
+    ) -> Bool {
+        if let raw = try? P256.Signing.ECDSASignature(rawRepresentation: signature),
+           publicKey.isValidSignature(raw, for: message) {
+            return true
+        }
+        if let der = try? P256.Signing.ECDSASignature(derRepresentation: signature),
+           publicKey.isValidSignature(der, for: message) {
+            return true
+        }
+        return false
+    }
+
+    public static func curve25519KeyAgreementPublicKey(rawRepresentation: Data) throws -> PlatformCurve25519KeyAgreementPublicKey {
+        try Curve25519.KeyAgreement.PublicKey(rawRepresentation: rawRepresentation)
+    }
+
+    public static func hpkeSealCurve25519SHA256ChaChaPoly(
+        plaintext: Data,
+        recipientPublicKey: PlatformCurve25519KeyAgreementPublicKey,
+        info: Data
+    ) throws -> (encapsulatedKey: Data, ciphertext: Data) {
+        var sender = try HPKE.Sender(
+            recipientKey: recipientPublicKey,
+            ciphersuite: .Curve25519_SHA256_ChachaPoly,
+            info: info
+        )
+        let ciphertext = try sender.seal(plaintext)
+        return (sender.encapsulatedKey, ciphertext)
+    }
+
+    public static func hpkeOpenCurve25519SHA256ChaPoly(
+        ciphertext: Data,
+        recipientPrivateKey: PlatformCurve25519AgreementMaterial,
+        info: Data,
+        encapsulatedKey: Data
+    ) throws -> Data {
+        var recipient = try HPKE.Recipient(
+            privateKey: recipientPrivateKey,
+            ciphersuite: .Curve25519_SHA256_ChachaPoly,
+            info: info,
+            encapsulatedKey: encapsulatedKey
+        )
+        return try recipient.open(ciphertext)
+    }
+
+    public static func hpkeOpenCurve25519SHA256ChaChaPoly(
+        ciphertext: Data,
+        recipientPrivateKey: PlatformCurve25519AgreementMaterial,
+        info: Data,
+        encapsulatedKey: Data
+    ) throws -> Data {
+        try hpkeOpenCurve25519SHA256ChaPoly(
+            ciphertext: ciphertext,
+            recipientPrivateKey: recipientPrivateKey,
+            info: info,
+            encapsulatedKey: encapsulatedKey
+        )
+    }
+
+    public static func canonicalJSONData<T: Encodable>(_ value: T) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .iso8601
+        do {
+            return try encoder.encode(value)
+        } catch {
+            throw PlatformCryptoError.canonicalEncodingFailed(String(describing: error))
+        }
     }
 
     static func hpkeSealP256SHA256AESGCM256(

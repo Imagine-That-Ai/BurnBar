@@ -131,12 +131,12 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .antigravity)
+        XCTAssertEqual(snapshot.provider, AgentProvider.antigravity.rawValue)
         XCTAssertEqual(snapshot.providerID, .antigravity)
         XCTAssertEqual(snapshot.sourceKind, .unavailable)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("not found"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("not found") ?? false)
     }
 
     func testFetch_whenHistoryExists_producesPerModelBuckets() async throws {
@@ -160,7 +160,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .antigravity)
+        XCTAssertEqual(snapshot.provider, AgentProvider.antigravity.rawValue)
         XCTAssertEqual(snapshot.providerID, .antigravity)
         XCTAssertEqual(snapshot.sourceKind, .localCLI)
         XCTAssertEqual(snapshot.confidence, .estimated)
@@ -208,7 +208,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         }
 
         // --- Status message mentions active model ---
-        XCTAssertTrue(snapshot.statusMessage.contains("Claude Opus 4.6 (Thinking)"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Claude Opus 4.6 (Thinking)") ?? false)
     }
 
     func testFetch_whenSettingsMissing_defaultsToClaudeOpus() async throws {
@@ -251,7 +251,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             XCTAssertNil(sonnet.resetsAt)
         }
 
-        XCTAssertTrue(snapshot.statusMessage.contains("Claude Opus 4.6 (Thinking)"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Claude Opus 4.6 (Thinking)") ?? false)
     }
 
     func testFetch_whenDifferentModelSelected_thatModelIsActive() async throws {
@@ -293,6 +293,6 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             XCTAssertNil(opus.resetsAt)
         }
 
-        XCTAssertTrue(snapshot.statusMessage.contains("Gemini 3.5 Flash (Medium)"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Gemini 3.5 Flash (Medium)") ?? false)
     }
 }
