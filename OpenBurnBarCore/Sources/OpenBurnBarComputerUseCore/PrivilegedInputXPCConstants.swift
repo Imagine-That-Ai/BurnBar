@@ -42,13 +42,19 @@ public enum PrivilegedInputXPCConstants: Sendable {
     /// Per-user 0700 directory holding that user's execution socket. Owned by
     /// the user (created via the installer's admin script), so the helper can
     /// safely unlink/bind inside it, and nobody else can traverse into it.
-    public static func userSessionSocketDirectory(
-        uid: PrivilegedInputUserID = currentPrivilegedInputUserID()
-    ) -> String {
+    public static func userSessionSocketDirectory() -> String {
+        userSessionSocketDirectory(uid: currentPrivilegedInputUserID())
+    }
+
+    public static func userSessionSocketDirectory(uid: PrivilegedInputUserID) -> String {
         "\(userSessionSocketDirectoryParent)/\(uid)"
     }
 
-    public static func userSessionSocketPath(uid: PrivilegedInputUserID = currentPrivilegedInputUserID()) -> String {
+    public static func userSessionSocketPath() -> String {
+        userSessionSocketPath(uid: currentPrivilegedInputUserID())
+    }
+
+    public static func userSessionSocketPath(uid: PrivilegedInputUserID) -> String {
         "\(userSessionSocketDirectory(uid: uid))/input.sock"
     }
 }
