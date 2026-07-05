@@ -4,7 +4,11 @@ import CryptoKit
 #else
 @preconcurrency import Crypto
 #endif
+#if canImport(Czlib)
+import Czlib
+#else
 import zlib
+#endif
 
 /// Phase 13 audit-export writer.
 ///
