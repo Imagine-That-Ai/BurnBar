@@ -387,9 +387,8 @@ let openBurnBarCoreExcludes = [
     "SharedModels/CloudVaultDeviceKeypair.swift",
     "SharedModels/EscrowDeviceSafetyCode.swift",
     "SharedModels/HermesRatchetCrypto.swift",
-    // Uses HermesRelayCrypto (excluded) for relay-envelope open/seal.
+    // Uses authenticated-request trust/runtime types outside the Engine subset.
     "SharedModels/HermesRelayAuthenticatedRequest.swift",
-    "SharedModels/HermesRelayCrypto.swift",
     "SharedModels/Insights",
     "SharedModels/InsightVerdictWidgetSnapshot.swift",
     "SharedModels/PensieveKnowledgeChunker.swift",
