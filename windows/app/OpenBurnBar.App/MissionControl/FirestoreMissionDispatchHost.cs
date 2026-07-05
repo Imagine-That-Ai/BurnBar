@@ -100,7 +100,7 @@ public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
             new KeyValuePair<string, CloudSyncValue>("updatedAt", CloudSyncValue.Of(updatedAt)),
         });
 
-        string documentPath = $"{_userRootPath}/{MissionRequestsCollection}/{ask.Id}";
+        string documentPath = $"{_userRootPath}/{MissionRequestsCollection}/{ask.MissionId}";
         await _writeQueue.SetAsync(documentPath, patch, merge: true).ConfigureAwait(false);
     }
 

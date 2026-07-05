@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.Budget;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Switcher;
@@ -10,8 +11,8 @@ using OpenBurnBar.App.Presentation.SessionLogs;
 namespace OpenBurnBar.App.Storage;
 
 /// <summary>
-/// Resolves SQLCipher database path + passphrase for dev-host surfaces, with documented
-/// <see cref="InMemoryBudgetRuleStore"/> / sample fallbacks when unset.
+/// Resolves SQLCipher database path + passphrase for Windows surfaces. Missing credentials produce
+/// honest empty stores unless <c>OPENBURNBAR_SAMPLE_MODE=1</c> explicitly enables demo data.
 /// </summary>
 internal static class WindowsStorageDevHost
 {
@@ -40,7 +41,7 @@ internal static class WindowsStorageDevHost
             return new SqlCipherBudgetRuleStore(path, passphrase);
         }
 
-        return new InMemoryBudgetRuleStore(seedWhenInMemory);
+        return new InMemoryBudgetRuleStore(RuntimeDataMode.SampleModeEnabled ? seedWhenInMemory : null);
     }
 
     public static ISwitcherProfileStore CreateSwitcherProfileStore()
@@ -51,7 +52,9 @@ internal static class WindowsStorageDevHost
             return new SqlCipherSwitcherProfileStore(path, passphrase);
         }
 
-        return SwitcherSampleData.CreateDevHostStore();
+        return RuntimeDataMode.SampleModeEnabled
+            ? SwitcherSampleData.CreateDevHostStore()
+            : new InMemorySwitcherProfileStore();
     }
 
     public static IElderWandPresetPersistence CreateElderWandPersistence()

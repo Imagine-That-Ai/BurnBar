@@ -10,8 +10,7 @@
     off-Windows. The WinUI-bound shell surfaces (AppShell, FlyoutWindow, ThemeService)
     are Windows-only and are type-checked separately; see the PR's Validation section.
 
-    Mirrors windows/tests/theme/OpenBurnBar.App.Theme.Tests.csproj (net10.0, xUnit) so
-    the toolchain is the one already proven on this host.
+    RouteSmokeOptions is linked the same way (no WinUI) for CLI argument parsing tests.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -31,9 +30,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Link the pure-System shell-state store directly (no WinUI dependency). -->
     <Compile Include="../../app/OpenBurnBar.App/Shell/AppStatePersistence.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/RouteSmokeOptions.cs" />
     <Compile Include="AppStatePersistenceTests.cs" />
+    <Compile Include="RouteSmokeOptionsTests.cs" />
   </ItemGroup>
 
 </Project>

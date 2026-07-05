@@ -26,9 +26,11 @@ third-party import. The P/Invoke declarations are pure metadata (they restore on
 **execute** on Windows (guarded by `OperatingSystem.IsWindows()`), and the call **never throws** —
 a failure is reported via `DllSearchHardeningResult.Applied`.
 
-**Wiring (WINUI-main step, Windows dev host):** call it *first thing* in the app entry point,
-before any non-System32 DLL could load. Because WinUI generates `Main`, opt out and provide your
-own:
+**Wiring (WINUI-main step, Windows dev host):** call the WinUI-compatible variant *first thing*
+in the app entry point, before WinUI resources initialize. The WinUI shell intentionally skips
+`SetDefaultDllDirectories` because that breaks Microsoft.UI.Xaml `ms-appx` theme resolution in
+unpackaged self-contained runs; it still calls `SetDllDirectory("")` to drop the CWD. Because
+WinUI generates `Main`, opt out and provide your own:
 
 ```xml
 <!-- OpenBurnBar.App.csproj -->
@@ -42,14 +44,15 @@ public static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        OpenBurnBar.Dist.Hardening.DllSearchHardening.Apply();   // R19 layer 1 — before anything else
+        OpenBurnBar.Dist.Hardening.DllSearchHardening.ApplyWinUICompatible();   // R19 WinUI-safe layer 1
         global::Microsoft.UI.Xaml.Application.Start(_ => _ = new App());
     }
 }
 ```
 
-The app already **references** `OpenBurnBar.Dist.Hardening` (see `OpenBurnBar.App.csproj`), so only
-the custom `Main` above remains; it is XamlCompiler-deferred like the rest of the WinUI shell.
+The app already **references** `OpenBurnBar.Dist.Hardening` and ships this custom `Program.cs`
+entry point. Non-XAML helper processes can still use `Apply()` for the stricter
+`SetDefaultDllDirectories + SetDllDirectory("")` mode.
 
 ## Layer 2 — link-time native hardening
 

@@ -86,7 +86,7 @@
         </DataTemplate>
     </Page.Resources>
 
-    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}">
+    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}" Background="{StaticResource PensieveColorInkBaseBrush}">
         <StackPanel Spacing="10" MaxWidth="760" HorizontalAlignment="Left">
 
             <TextBlock Style="{StaticResource TitleTextBlockStyle}"

@@ -17,6 +17,7 @@
     mc:Ignorable="d">
 
     <NavigationView x:Name="Nav"
+                    Background="{StaticResource PensieveColorInkBaseBrush}"
                     IsBackButtonVisible="Collapsed"
                     IsSettingsVisible="False"
                     PaneDisplayMode="Left"
@@ -60,6 +61,6 @@
             </Grid>
         </NavigationView.Header>
 
-        <Frame x:Name="ContentFrame" />
+        <Frame x:Name="ContentFrame" Background="{StaticResource PensieveColorInkBaseBrush}" />
     </NavigationView>
 </UserControl>

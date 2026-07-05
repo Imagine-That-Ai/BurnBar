@@ -6,7 +6,7 @@
     xmlns:shell="using:OpenBurnBar.App.Shell"
     Title="OpenBurnBar">
 
-    <Grid RowSpacing="0">
+    <Grid RowSpacing="0" Background="{StaticResource PensieveColorInkBaseBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />

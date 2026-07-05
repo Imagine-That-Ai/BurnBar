@@ -1,10 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Presentation.SessionLogs;
+using OpenBurnBar.App.Storage;
 
 namespace OpenBurnBar.App.SessionLogs;
 
@@ -24,18 +21,9 @@ public sealed partial class SessionLogsPage : Page
     {
         Loaded -= OnLoaded;
 
-        var viewModel = new SessionLogsViewModel(new EmptySessionLogReadSource());
+        var viewModel = new SessionLogsViewModel(WindowsStorageDevHost.CreateSessionLogReadSource());
         LogsView.SetModel(viewModel);
         await LogsView.LoadAsync();
     }
 
-    /// <summary>Dev-host read seam until <c>StorageSessionLogReadSource</c> is referenced from the app.</summary>
-    private sealed class EmptySessionLogReadSource : ISessionLogReadSource
-    {
-        public Task<IReadOnlyList<SessionLogRecord>> ListAsync(int limit = 200, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<SessionLogRecord>>(Array.Empty<SessionLogRecord>());
-
-        public Task<IReadOnlyList<string>> SearchMatchingIdsAsync(string query, int limit = 200, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
-    }
 }
