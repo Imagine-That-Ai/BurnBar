@@ -45,12 +45,16 @@ public struct ControlFrameSeal: Sendable {
     ) -> PlatformSymmetricKey {
         // Prior callers already pass the HPKE output; preserve the non-throwing
         // API while routing the primitive through the platform seam.
-        try! PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: hpkeSessionKey,
-            salt: salt,
-            info: Data(info.utf8),
-            outputByteCount: 32
-        )
+        do {
+            return try PlatformCrypto.deriveHKDFSHA256Key(
+                inputKeyMaterial: hpkeSessionKey,
+                salt: salt,
+                info: Data(info.utf8),
+                outputByteCount: 32
+            )
+        } catch {
+            preconditionFailure("Control frame HKDF derivation failed: \(error)")
+        }
     }
 
     /// Domain-separated AAD binding the frame to its controller and type.

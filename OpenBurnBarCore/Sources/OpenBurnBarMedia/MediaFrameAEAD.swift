@@ -49,12 +49,16 @@ public struct MediaFrameAEAD: Sendable {
     ) -> PlatformSymmetricKey {
         // Prior callers already pass a paired-session secret; preserve the
         // non-throwing API while routing the primitive through the platform seam.
-        try! PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: sharedSecret,
-            salt: salt,
-            info: Data(info.utf8),
-            outputByteCount: 32
-        )
+        do {
+            return try PlatformCrypto.deriveHKDFSHA256Key(
+                inputKeyMaterial: sharedSecret,
+                salt: salt,
+                info: Data(info.utf8),
+                outputByteCount: 32
+            )
+        } catch {
+            preconditionFailure("Media frame HKDF derivation failed: \(error)")
+        }
     }
 
     /// Domain-separated AAD binding the frame's identity so a sealed frame is
