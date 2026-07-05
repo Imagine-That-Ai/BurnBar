@@ -451,6 +451,7 @@ targets:
         SKIP_INSTALL: true
         GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
         OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/OpenBurnBarCore/Sources/Czlib/module.modulemap"
     preBuildScripts:
       - name: Dedupe GRDB Link File Entries (Xcode 16)
         script: |
@@ -482,6 +483,7 @@ targets:
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -576,9 +578,11 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBarRemoteAccessAgentCore
         SKIP_INSTALL: true
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/OpenBurnBarCore/Sources/Czlib/module.modulemap"
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
       - sdk: CoreGraphics.framework
       - sdk: IOKit.framework
       - sdk: Security.framework
