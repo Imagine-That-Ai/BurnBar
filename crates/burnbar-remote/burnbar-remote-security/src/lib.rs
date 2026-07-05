@@ -957,43 +957,70 @@ fn append_audit_event(path: &Path, event: AuditEvent) -> Result<(), Authorizatio
         .open(path)
         .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
     #[cfg(target_os = "windows")]
-    let _audit_guard = lock_windows_audit_file(&file)?;
+    let _audit_guard = lock_windows_audit_file(path)?;
     #[cfg(not(target_os = "windows"))]
     file.lock_exclusive()
         .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
     let result = append_audit_event_locked(path, &mut file, event);
-    let unlock_result = {
-        file.unlock()
-            .map_err(|err| AuthorizationError::AuditChain(err.to_string()))
-    };
-    result.and(unlock_result)
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let unlock_result = {
+            file.unlock()
+                .map_err(|err| AuthorizationError::AuditChain(err.to_string()))
+        };
+        result.and(unlock_result)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        result
+    }
 }
 
 #[cfg(target_os = "windows")]
-fn lock_windows_audit_file(
-    file: &File,
-) -> Result<std::sync::MutexGuard<'static, ()>, AuthorizationError> {
-    use std::io::ErrorKind;
-    use std::sync::{LazyLock, Mutex};
+struct WindowsAuditFileLock {
+    path: PathBuf,
+    _file: File,
+}
 
-    static AUDIT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    let guard = AUDIT_LOCK
-        .lock()
-        .map_err(|_| AuthorizationError::AuditChain("audit log mutex poisoned".to_string()))?;
+#[cfg(target_os = "windows")]
+impl Drop for WindowsAuditFileLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn lock_windows_audit_file(audit_path: &Path) -> Result<WindowsAuditFileLock, AuthorizationError> {
+    use std::io::ErrorKind;
+
+    let mut lock_path = audit_path.as_os_str().to_os_string();
+    lock_path.push(".lock");
+    let lock_path = PathBuf::from(lock_path);
 
     for _ in 0..100 {
-        match file.try_lock_exclusive() {
-            Ok(()) => return Ok(guard),
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(file) => {
+                return Ok(WindowsAuditFileLock {
+                    path: lock_path,
+                    _file: file,
+                });
+            }
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(error) => return Err(AuthorizationError::AuditChain(error.to_string())),
         }
     }
 
-    Err(AuthorizationError::AuditChain(
-        "timed out acquiring Windows audit log lock".to_string(),
-    ))
+    Err(AuthorizationError::AuditChain(format!(
+        "timed out acquiring Windows audit log lock at {}",
+        lock_path.display()
+    )))
 }
 
 fn append_audit_event_locked(
