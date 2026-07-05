@@ -4,10 +4,12 @@ import CryptoKit
 #else
 @preconcurrency import Crypto
 #endif
+#if !os(Windows)
 #if canImport(Czlib)
 import Czlib
 #else
 import zlib
+#endif
 #endif
 
 /// Phase 13 audit-export writer.
@@ -310,13 +312,22 @@ public struct ComputerUseAuditExportWriter {
     }
 
     private func gzipCompress(_ input: Data) throws -> Data {
+#if os(Windows)
+        throw WriterError.gzipFailed("gzip compression is unavailable in the Windows engine build")
+#else
         try zlibTransform(input: input, operation: .deflate)
+#endif
     }
 
     private func gzipDecompress(_ input: Data) throws -> Data {
+#if os(Windows)
+        throw WriterError.gzipFailed("gzip decompression is unavailable in the Windows engine build")
+#else
         try zlibTransform(input: input, operation: .inflate)
+#endif
     }
 
+#if !os(Windows)
     private enum ZlibOperation {
         case deflate
         case inflate
@@ -387,6 +398,7 @@ public struct ComputerUseAuditExportWriter {
             return output
         }
     }
+#endif
 
     private func write(_ data: Data, into header: inout [UInt8], at offset: Int, length: Int) {
         let bytes = Array(data.prefix(length))
