@@ -610,6 +610,8 @@ targets:
         buildPhase: resources
       - path: tools/openburnbar-mcp/eligible_providers.json
         buildPhase: resources
+      - path: tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json
+        buildPhase: resources
       - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/summary.json
         buildPhase: resources
       - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/signals.json

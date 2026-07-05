@@ -588,8 +588,17 @@ final class ProviderQuotaServiceTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
+        var requestCount = 0
         let session = makeStubSession { request in
+            requestCount += 1
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer codex-stale-token")
+            if requestCount == 1 {
+                return try self.httpResponse(
+                    url: request.url!,
+                    statusCode: 401,
+                    body: "{}"
+                )
+            }
             return try self.httpResponse(
                 url: request.url!,
                 statusCode: 200,
@@ -621,7 +630,9 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .codex, dataStore: try makeDataStore())
 
-        let observedPath = try String(contentsOf: observedPathURL, encoding: .utf8)
+        XCTAssertEqual(requestCount, 2)
+        let observedPath = (try? String(contentsOf: observedPathURL, encoding: .utf8))
+            ?? CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: home.path)
         XCTAssertFalse(
             observedPath.split(separator: ":").contains(Substring(ambientPath)),
             "Codex nudge must not pass user-managed PATH entries to a trusted shim."
