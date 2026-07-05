@@ -25,7 +25,7 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
         XCTAssertEqual(snapshot.statusMessage?.contains("Pay-as-you-go"), true)
     }
@@ -36,7 +36,7 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
         XCTAssertEqual(snapshot.statusMessage?.contains("Coding Plan key"), true)
     }
@@ -62,7 +62,7 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
         XCTAssertTrue(requestedURLs.first?.contains("coding_plan/remains") ?? false)
@@ -82,7 +82,7 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertGreaterThanOrEqual(secretStore.readCallCount, 1)
-        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
         XCTAssertEqual(snapshot.statusMessage?.contains("Add a MiniMax Token Plan API key"), true)
     }
@@ -110,7 +110,7 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertGreaterThanOrEqual(secretStore.readCallCount, 1)
-        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
     }
@@ -134,7 +134,7 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, "minimax")
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
     }
