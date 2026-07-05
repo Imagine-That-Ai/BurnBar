@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import OpenBurnBarCore
 
 /// F2 — the P-256 signing surface shared by the software key (unit tests and
@@ -7,13 +11,15 @@ import OpenBurnBarCore
 /// (`SecureEnclave.P256.Signing.PrivateKey` on device). Both produce the raw
 /// (`r‖s`) ECDSA-over-SHA256 signature `PhoneControlVerifyingKey` accepts, so
 /// the signer code is identical whether the key lives in the enclave or not.
-public protocol PhoneControlP256AuthoritySigning: Sendable {
+public protocol PhoneControlP256AuthoritySigning {
     var publicKey: P256.Signing.PublicKey { get }
     func signature(for data: Data) throws -> P256.Signing.ECDSASignature
 }
 
 extension P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
+#if canImport(CryptoKit)
 extension SecureEnclave.P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
+#endif
 
 /// F2 — Remote Config gate for minting biometry-gated Secure-Enclave /
 /// StrongBox phone-control signing keys. Default-off: no client mints an
@@ -28,7 +34,7 @@ public enum PhoneControlSecureEnclaveKeyPolicy {
 /// every envelope-producing path signs through it, so key custody (software
 /// Ed25519 vs. Secure-Enclave/StrongBox P-256) is a property of the stored
 /// identity rather than of each call site.
-public enum PhoneControlAuthoritySigningKey: Sendable {
+public enum PhoneControlAuthoritySigningKey {
     case ed25519(Curve25519.Signing.PrivateKey)
     /// A NIST P-256 key — `P256.Signing.PrivateKey` in tests / software
     /// fallback, `SecureEnclave.P256.Signing.PrivateKey` on device.
@@ -92,7 +98,11 @@ extension ComputerUsePhoneControlSigner {
         timestamp: Date,
         key: PhoneControlAuthoritySigningKey
     ) throws -> SignedAuthority {
-        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let payload = signablePayload(
+            intentHashHex: intentHashHex,
+            counter: counter,
+            timestamp: timestamp
+        )
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,

@@ -1,4 +1,8 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import Foundation
 
 /// Signal-style safety number for the phone-control trust binding (F1).

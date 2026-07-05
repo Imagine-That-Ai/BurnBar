@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 
 /// Signed, short-lived presenter context for Remote Unlock Virtual HID leaves.
 ///

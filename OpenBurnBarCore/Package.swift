@@ -359,7 +359,7 @@ let openBurnBarCoreExcludes = [
     "AppCheckDebugTokenEnvironment.swift",
     // Contracts referencing types defined in excluded files:
     //   BurnBarRunContracts   -> BurnBarAgentLoopState (OpenBurnBarAgentContracts)
-    //   MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views)
+    //   MissionGroupContracts -> MissionConsoleForecast (Views)
     "Contracts/BurnBarRunContracts.swift",
     // Consumes BurnBarRunStateSnapshot (defined in the excluded BurnBarRunContracts).
     "Contracts/BurnBarEventContracts.swift",
@@ -384,13 +384,11 @@ let openBurnBarCoreExcludes = [
     "SharedModels/CLIAgentResumePresentation.swift",
     // Uses PiAgentRelayCrypto (defined in the excluded HermesRelayCrypto).
     "SharedModels/PiConnectionTypes.swift",
-    "SharedModels/CloudVaultCrypto.swift",
     "SharedModels/CloudVaultDeviceKeypair.swift",
     "SharedModels/EscrowDeviceSafetyCode.swift",
     "SharedModels/HermesRatchetCrypto.swift",
-    // Uses HermesRelayCrypto (excluded) for relay-envelope open/seal.
+    // Uses authenticated-request trust/runtime types outside the Engine subset.
     "SharedModels/HermesRelayAuthenticatedRequest.swift",
-    "SharedModels/HermesRelayCrypto.swift",
     "SharedModels/Insights",
     "SharedModels/InsightVerdictWidgetSnapshot.swift",
     "SharedModels/PensieveKnowledgeChunker.swift",
@@ -562,7 +560,7 @@ let firstPartyTargetsBase: [Target] = [
             linkerSettings: [
                 .linkedFramework("Security", .when(platforms: [.macOS])),
                 .linkedFramework("LocalAuthentication", .when(platforms: [.macOS])),
-                .linkedLibrary("z")
+                .linkedLibrary("z", .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .linux]))
             ]
         ),
         .target(

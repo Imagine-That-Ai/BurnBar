@@ -24,18 +24,27 @@ import Foundation
 // `senderPublicKey` field), rooted at pairing time in the two-key safety code.
 
 public struct HermesRelayPrivateKey: Sendable, Equatable {
-    fileprivate let key: PlatformP256KeyAgreementPrivateKey
+    private let keyData: Data
 
     public init(rawRepresentation: Data) throws {
-        self.key = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
+        _ = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
+        self.keyData = rawRepresentation
     }
 
     fileprivate init(_ key: PlatformP256KeyAgreementPrivateKey) {
-        self.key = key
+        self.keyData = key.rawRepresentation
+    }
+
+    fileprivate var key: PlatformP256KeyAgreementPrivateKey {
+        do {
+            return try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: keyData)
+        } catch {
+            preconditionFailure("validated Hermes relay private key became invalid")
+        }
     }
 
     public var rawRepresentation: Data {
-        key.rawRepresentation
+        keyData
     }
 
     public var publicKeyBase64: String {
@@ -590,18 +599,27 @@ public enum HermesRelayCrypto {
 }
 
 public struct PiAgentRelayPrivateKey: Sendable, Equatable {
-    fileprivate let key: PlatformP256KeyAgreementPrivateKey
+    private let keyData: Data
 
     public init(rawRepresentation: Data) throws {
-        self.key = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
+        _ = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
+        self.keyData = rawRepresentation
     }
 
     fileprivate init(_ key: PlatformP256KeyAgreementPrivateKey) {
-        self.key = key
+        self.keyData = key.rawRepresentation
+    }
+
+    fileprivate var key: PlatformP256KeyAgreementPrivateKey {
+        do {
+            return try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: keyData)
+        } catch {
+            preconditionFailure("validated Pi agent relay private key became invalid")
+        }
     }
 
     public var rawRepresentation: Data {
-        key.rawRepresentation
+        keyData
     }
 
     public var publicKeyBase64: String {

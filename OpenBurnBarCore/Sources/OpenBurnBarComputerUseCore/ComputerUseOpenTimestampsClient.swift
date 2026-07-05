@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking

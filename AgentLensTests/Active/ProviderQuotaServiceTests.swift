@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 import XCTest
-import OpenBurnBarCore
+@testable import OpenBurnBarCore
 @testable import OpenBurnBar
 
 private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
@@ -149,7 +149,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appSupportRoot: appSupport,
             refreshProviders: [.codex]
         )
-        var publishedProviders: [AgentProvider] = []
+        var publishedProviders: [String] = []
         var publishedBucketCounts: [Int] = []
         service.onSnapshotsPersistedForCloudSync = { snapshots in
             publishedProviders = snapshots.map(\.provider)
@@ -158,7 +158,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .codex, dataStore: dataStore)
 
-        XCTAssertEqual(publishedProviders, [.codex])
+        XCTAssertEqual(publishedProviders, [AgentProvider.codex.rawValue])
         XCTAssertEqual(publishedBucketCounts, [2])
     }
 
@@ -241,7 +241,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             refreshProviders: [.codex, .hermes, .factory]
         )
 
-        XCTAssertEqual(service.snapshotsForCloudSync.map(\.provider), [.codex])
+        XCTAssertEqual(service.snapshotsForCloudSync.map(\.provider), [AgentProvider.codex.rawValue])
     }
 
     func test_warpRefresh_readsLocalCreditTelemetry() async throws {
@@ -292,7 +292,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .warp, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .warp))
 
-        XCTAssertEqual(snapshot.provider, .warp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.warp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
         XCTAssertTrue(snapshot.statusMessage.contains("Warp credit quota was not found"))
@@ -588,8 +588,17 @@ final class ProviderQuotaServiceTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
+        var requestCount = 0
         let session = makeStubSession { request in
+            requestCount += 1
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer codex-stale-token")
+            if requestCount == 1 {
+                return try self.httpResponse(
+                    url: request.url!,
+                    statusCode: 401,
+                    body: "{}"
+                )
+            }
             return try self.httpResponse(
                 url: request.url!,
                 statusCode: 200,
@@ -621,7 +630,9 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .codex, dataStore: try makeDataStore())
 
-        let observedPath = try String(contentsOf: observedPathURL, encoding: .utf8)
+        XCTAssertEqual(requestCount, 2)
+        let observedPath = (try? String(contentsOf: observedPathURL, encoding: .utf8))
+            ?? CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: home.path)
         XCTAssertFalse(
             observedPath.split(separator: ":").contains(Substring(ambientPath)),
             "Codex nudge must not pass user-managed PATH entries to a trusted shim."
@@ -1413,7 +1424,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: dataStore)
         let snapshot = try XCTUnwrap(service.snapshot(accountID: profile.id))
 
-        XCTAssertEqual(snapshot.provider, .claudeCode)
+        XCTAssertEqual(snapshot.provider, AgentProvider.claudeCode.rawValue)
         XCTAssertEqual(snapshot.providerID, .claudeCode)
         XCTAssertEqual(snapshot.accountID, profile.id)
         XCTAssertEqual(snapshot.accountLabel, "Claude Work")

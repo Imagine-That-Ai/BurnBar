@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 
 /// F7 — per-frame AEAD for media/screen frames (defense-in-depth beyond the iroh
 /// QUIC transport seal).

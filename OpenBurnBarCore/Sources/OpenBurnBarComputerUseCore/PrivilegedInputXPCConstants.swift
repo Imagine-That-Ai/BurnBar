@@ -1,5 +1,28 @@
-import Darwin
 import Foundation
+
+#if canImport(Darwin)
+import Darwin
+
+public typealias PrivilegedInputUserID = uid_t
+
+private func currentPrivilegedInputUserID() -> PrivilegedInputUserID {
+    getuid()
+}
+#elseif canImport(Glibc)
+import Glibc
+
+public typealias PrivilegedInputUserID = uid_t
+
+private func currentPrivilegedInputUserID() -> PrivilegedInputUserID {
+    getuid()
+}
+#else
+public typealias PrivilegedInputUserID = UInt32
+
+private func currentPrivilegedInputUserID() -> PrivilegedInputUserID {
+    0
+}
+#endif
 
 /// Mach service and install paths for the minimal privileged input-execution leaf (WS1).
 public enum PrivilegedInputXPCConstants: Sendable {
@@ -19,11 +42,19 @@ public enum PrivilegedInputXPCConstants: Sendable {
     /// Per-user 0700 directory holding that user's execution socket. Owned by
     /// the user (created via the installer's admin script), so the helper can
     /// safely unlink/bind inside it, and nobody else can traverse into it.
-    public static func userSessionSocketDirectory(uid: uid_t = getuid()) -> String {
+    public static func userSessionSocketDirectory() -> String {
+        userSessionSocketDirectory(uid: currentPrivilegedInputUserID())
+    }
+
+    public static func userSessionSocketDirectory(uid: PrivilegedInputUserID) -> String {
         "\(userSessionSocketDirectoryParent)/\(uid)"
     }
 
-    public static func userSessionSocketPath(uid: uid_t = getuid()) -> String {
+    public static func userSessionSocketPath() -> String {
+        userSessionSocketPath(uid: currentPrivilegedInputUserID())
+    }
+
+    public static func userSessionSocketPath(uid: PrivilegedInputUserID) -> String {
         "\(userSessionSocketDirectory(uid: uid))/input.sock"
     }
 }

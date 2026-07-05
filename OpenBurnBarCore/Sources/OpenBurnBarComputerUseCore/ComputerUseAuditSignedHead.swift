@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 
 /// Terminal audit chain head with an Ed25519 signature for offline verification (WS3).
 public struct ComputerUseAuditSignedHead: Codable, Hashable, Sendable {

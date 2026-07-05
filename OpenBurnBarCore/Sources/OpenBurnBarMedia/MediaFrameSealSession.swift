@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import OpenBurnBarCore
 
 /// F7 — media-seal session lifecycle, the F10 control-seal pattern applied to

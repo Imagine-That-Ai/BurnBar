@@ -1,9 +1,19 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import Foundation
 import OpenBurnBarCore
 #if os(macOS)
 import LocalAuthentication
 import Security
+#endif
+
+#if os(macOS)
+public typealias ComputerUseAuditExportSignerStoreStatus = OSStatus
+#else
+public typealias ComputerUseAuditExportSignerStoreStatus = Int32
 #endif
 
 public protocol ComputerUseAuditExportSignerProviding: Sendable {
@@ -85,13 +95,15 @@ public struct ComputerUseAuditExportSecurityKeyStore: ComputerUseAuditExportKeyS
 }
 
 public enum ComputerUseAuditExportSignerStoreError: Error, Equatable {
-    case keychainStatus(OSStatus)
+    case keychainStatus(ComputerUseAuditExportSignerStoreStatus)
     case invalidStoredKey
     case keychainUnavailable
 }
 
 /// Trusted-device signer for Phase 13 audit exports and WS3 signed chain heads.
-public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExportSignerProviding, Sendable {
+public struct ComputerUseKeychainAuditExportSignerProvider:
+    ComputerUseAuditExportSignerProviding,
+    Sendable {
     public static let defaultService = "ai.openburnbar.computer-use.audit-export"
     public static let defaultAccount = "trusted-device-ed25519-v1"
 

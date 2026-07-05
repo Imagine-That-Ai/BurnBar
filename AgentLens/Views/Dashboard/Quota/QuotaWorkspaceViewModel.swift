@@ -358,7 +358,10 @@ final class QuotaWorkspaceViewModel {
         }
 
         return order.compactMap { key in
-            snapshotsByIdentity[key]?.min(by: isPreferredSnapshot(_:over:))
+            snapshotsByIdentity[key]?.reduce(nil as ProviderQuotaSnapshot?) { preferred, snapshot in
+                guard let preferred else { return snapshot }
+                return isPreferredSnapshot(snapshot, over: preferred) ? snapshot : preferred
+            }
         }
     }
 
@@ -385,12 +388,6 @@ final class QuotaWorkspaceViewModel {
         _ candidate: ProviderQuotaSnapshot,
         over incumbent: ProviderQuotaSnapshot
     ) -> Bool {
-        let candidateHasSignal = !candidate.displayableQuotaBuckets.isEmpty
-        let incumbentHasSignal = !incumbent.displayableQuotaBuckets.isEmpty
-        if candidateHasSignal != incumbentHasSignal {
-            return candidateHasSignal
-        }
-
         let candidateIsExplicitProfile = isExplicitSwitcherProfileSnapshot(candidate)
         let incumbentIsExplicitProfile = isExplicitSwitcherProfileSnapshot(incumbent)
         if candidateIsExplicitProfile != incumbentIsExplicitProfile {
@@ -401,6 +398,12 @@ final class QuotaWorkspaceViewModel {
         let incumbentIsSyntheticCurrent = isSyntheticCurrentCLISnapshot(incumbent)
         if candidateIsSyntheticCurrent != incumbentIsSyntheticCurrent {
             return !candidateIsSyntheticCurrent
+        }
+
+        let candidateHasSignal = !candidate.displayableQuotaBuckets.isEmpty
+        let incumbentHasSignal = !incumbent.displayableQuotaBuckets.isEmpty
+        if candidateHasSignal != incumbentHasSignal {
+            return candidateHasSignal
         }
 
         return candidate.fetchedAt > incumbent.fetchedAt

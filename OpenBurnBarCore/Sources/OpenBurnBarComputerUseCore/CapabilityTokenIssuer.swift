@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 
 /// Mints short-lived, domain-tagged capability tokens for privileged input leaves.
 public struct CapabilityTokenIssuer: Sendable {

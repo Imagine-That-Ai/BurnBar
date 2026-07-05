@@ -1,6 +1,5 @@
 import Foundation
 import OpenBurnBarCore
-import os
 
 /// In-process iroh transport for tests + the spine demo. Pairs Mac-side and
 /// iOS-side endpoints through a shared rendezvous. Frames are encoded with
@@ -13,22 +12,20 @@ import os
 /// against real iroh in CI's `iroh-xcframework.yml` workflow and in the
 /// device test plan.
 public final class LoopbackIrohRelayRendezvous: Sendable {
-    /// `PendingConnect` carries a non-Sendable `CheckedContinuation`, so the
-    /// rendezvous tables live inside an `OSAllocatedUnfairLock` (itself Sendable)
-    /// that mediates every access. The lock is the sole stored property, so the
-    /// rendezvous is plainly `Sendable`.
-    private struct State {
+    /// `PendingConnect` carries a continuation, so the rendezvous tables live
+    /// inside a portable lock box that mediates every access.
+    private struct State: Sendable {
         var registeredHosts: [String: LoopbackIrohRelayTransport] = [:]
         var pendingByPeer: [String: [PendingConnect]] = [:]
     }
 
-    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
+    private let state = Locked(State())
 
     public init() {}
 
     /// Used by `LoopbackIrohRelayTransport.start()` to publish itself.
     func register(transport: LoopbackIrohRelayTransport, nodeId: String) {
-        let waiters: [PendingConnect] = state.withLockUnchecked { state in
+        let waiters: [PendingConnect] = state.withLock { state in
             state.registeredHosts[nodeId] = transport
             return state.pendingByPeer.removeValue(forKey: nodeId) ?? []
         }
@@ -42,7 +39,7 @@ public final class LoopbackIrohRelayRendezvous: Sendable {
     }
 
     func deregister(nodeId: String) {
-        state.withLockUnchecked { _ = $0.registeredHosts.removeValue(forKey: nodeId) }
+        state.withLock { _ = $0.registeredHosts.removeValue(forKey: nodeId) }
     }
 
     /// Used by `connect(to:)`. Resolves immediately if the peer is already
@@ -56,7 +53,7 @@ public final class LoopbackIrohRelayRendezvous: Sendable {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<any IrohRelayStream, Error>) in
-                let host: LoopbackIrohRelayTransport? = state.withLockUnchecked { state in
+                let host: LoopbackIrohRelayTransport? = state.withLock { state in
                     if let host = state.registeredHosts[peer] {
                         return host
                     }
@@ -80,7 +77,7 @@ public final class LoopbackIrohRelayRendezvous: Sendable {
     }
 
     private func cancelPending(connectId: UUID, peer: String, with error: IrohRelayTransportError) {
-        let entry: PendingConnect? = state.withLockUnchecked { state in
+        let entry: PendingConnect? = state.withLock { state in
             guard var queue = state.pendingByPeer[peer] else { return nil }
             guard let idx = queue.firstIndex(where: { $0.id == connectId }) else { return nil }
             let entry = queue.remove(at: idx)
