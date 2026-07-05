@@ -145,11 +145,28 @@ public enum MercuryRuntimeHealthProbe {
             cpuUsagePercent: cpuUsagePercent(),
             batteryLevelPercent: batteryLevelPercent(),
             isCharging: isCharging(),
-            isLowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
-            thermalState: thermalState(ProcessInfo.processInfo.thermalState)
+            isLowPowerModeEnabled: lowPowerModeEnabled(),
+            thermalState: currentThermalState()
         )
     }
 
+    private static func lowPowerModeEnabled() -> Bool? {
+        #if canImport(Darwin)
+        ProcessInfo.processInfo.isLowPowerModeEnabled
+        #else
+        nil
+        #endif
+    }
+
+    private static func currentThermalState() -> MercuryThermalState {
+        #if canImport(Darwin)
+        thermalState(ProcessInfo.processInfo.thermalState)
+        #else
+        .unknown
+        #endif
+    }
+
+    #if canImport(Darwin)
     private static func thermalState(_ state: ProcessInfo.ThermalState) -> MercuryThermalState {
         switch state {
         case .nominal:
@@ -164,6 +181,7 @@ public enum MercuryRuntimeHealthProbe {
             return .unknown
         }
     }
+    #endif
 
     private static func cpuUsagePercent() -> Double? {
         #if canImport(Darwin)
