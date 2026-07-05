@@ -307,11 +307,9 @@ public struct ComputerUseAuditExportWriter {
     }
 
     private func gzipCompress(_ input: Data) throws -> Data {
-        #if os(Windows)
+        // Emit stored-deflate gzip on every platform so Windows can verify
+        // archives produced by this writer without a native zlib binding.
         return Self.gzipStoredDeflate(input)
-        #else
-        return try zlibTransform(input: input, operation: .deflate)
-        #endif
     }
 
     private func gzipDecompress(_ input: Data) throws -> Data {
@@ -322,11 +320,10 @@ public struct ComputerUseAuditExportWriter {
         #endif
     }
 
-    #if os(Windows)
     /// Windows Swift SDKs do not currently ship a zlib development header in
     /// the default toolchain image. Gzip permits deflate streams made entirely
-    /// of stored (uncompressed) blocks, so Windows can still produce and verify
-    /// standards-compliant `.tar.gz` archives without a native zlib binding.
+    /// of stored (uncompressed) blocks, so every platform emits that portable
+    /// form for cross-platform audit export verification.
     private static func gzipStoredDeflate(_ input: Data) -> Data {
         var output = Data([0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff])
         if input.isEmpty {
@@ -350,6 +347,7 @@ public struct ComputerUseAuditExportWriter {
         return output
     }
 
+    #if os(Windows)
     private static func gunzipStoredDeflate(_ input: Data) throws -> Data {
         let bytes = [UInt8](input)
         guard bytes.count >= 18,
@@ -407,6 +405,7 @@ public struct ComputerUseAuditExportWriter {
         guard expectedSize == UInt32(truncatingIfNeeded: output.count) else { throw WriterError.gzipFailed("gzip size mismatch") }
         return output
     }
+    #endif
 
     private static func appendLittleEndianUInt16(_ value: UInt16, to data: inout Data) {
         data.append(UInt8(value & 0xff))
@@ -431,7 +430,6 @@ public struct ComputerUseAuditExportWriter {
         }
         return ~crc
     }
-    #endif
 
     private enum ZlibOperation {
         case deflate

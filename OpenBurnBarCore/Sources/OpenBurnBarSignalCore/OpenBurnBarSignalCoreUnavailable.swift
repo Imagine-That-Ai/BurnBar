@@ -268,6 +268,8 @@ public enum OpenBurnBarSignalAtRest {
     public static let atRestInfoPrefix = "OpenBurnBar-Signal-AtRest-v1|"
     public static let payloadCiphertextSchemaVersion = 1
     public static let maximumRecipientWraps = 32
+    private static let fallbackWrapMagic = Data("OBB-SignalAtRest-Fallback-ECDH-v1\0".utf8)
+    private static let fallbackWrapSalt = Data("OpenBurnBar-SignalAtRest-Fallback-Wrap-v1".utf8)
 
     public static func senderAuthSignedMessage(
         info: String,
@@ -306,11 +308,32 @@ public enum OpenBurnBarSignalAtRest {
         binding: SignalEnvelopeAAD.Binding
     ) throws -> Data {
         let canonical = try signalEnvelopeBindingToAAD(binding)
-        return try OpenBurnBarSignalCoreFallbackCrypto.sealAESGCM(
-            plaintext: plaintext,
-            keyData: OpenBurnBarSignalCoreFallbackCrypto.sha256(recipientIdentityPublicKey),
+        let recipientPublicKey = try P256.KeyAgreement.PublicKey(x963Representation: recipientIdentityPublicKey)
+        let ephemeralPrivateKey = P256.KeyAgreement.PrivateKey()
+        let wrapKey = try fallbackWrapKey(
+            privateKey: ephemeralPrivateKey,
+            peerPublicKey: recipientPublicKey,
+            canonicalAAD: canonical
+        )
+        let sealedBox = try AES.GCM.seal(
+            plaintext,
+            using: wrapKey,
             authenticating: Data(canonical.utf8)
         )
+        guard let combined = sealedBox.combined else {
+            throw OpenBurnBarSignalCoreError.invalidEnvelope
+        }
+
+        let ephemeralPublicKey = ephemeralPrivateKey.publicKey.x963Representation
+        guard ephemeralPublicKey.count <= Int(UInt16.max) else {
+            throw OpenBurnBarSignalCoreError.invalidEnvelope
+        }
+        var output = fallbackWrapMagic
+        var keyLength = UInt16(ephemeralPublicKey.count).bigEndian
+        withUnsafeBytes(of: &keyLength) { output.append(contentsOf: $0) }
+        output.append(ephemeralPublicKey)
+        output.append(combined)
+        return output
     }
 
     public static func atRestOpen(
@@ -320,9 +343,31 @@ public enum OpenBurnBarSignalAtRest {
     ) throws -> Data {
         let privateKey = try P256.KeyAgreement.PrivateKey(rawRepresentation: recipientIdentityPrivateKey)
         let canonical = try signalEnvelopeBindingToAAD(binding)
-        return try OpenBurnBarSignalCoreFallbackCrypto.openAESGCM(
-            combined: ciphertext,
-            keyData: OpenBurnBarSignalCoreFallbackCrypto.sha256(privateKey.publicKey.x963Representation),
+        guard ciphertext.starts(with: fallbackWrapMagic) else {
+            throw OpenBurnBarSignalCoreError.invalidEnvelope
+        }
+        var offset = fallbackWrapMagic.count
+        guard ciphertext.count >= offset + 2 else {
+            throw OpenBurnBarSignalCoreError.invalidEnvelope
+        }
+        let keyLength = Int(UInt16(ciphertext[offset]) << 8 | UInt16(ciphertext[offset + 1]))
+        offset += 2
+        guard keyLength > 0, ciphertext.count > offset + keyLength else {
+            throw OpenBurnBarSignalCoreError.invalidEnvelope
+        }
+        let ephemeralPublicKeyData = ciphertext.subdata(in: offset..<(offset + keyLength))
+        offset += keyLength
+        let combined = ciphertext.subdata(in: offset..<ciphertext.count)
+        let ephemeralPublicKey = try P256.KeyAgreement.PublicKey(x963Representation: ephemeralPublicKeyData)
+        let wrapKey = try fallbackWrapKey(
+            privateKey: privateKey,
+            peerPublicKey: ephemeralPublicKey,
+            canonicalAAD: canonical
+        )
+        let sealedBox = try AES.GCM.SealedBox(combined: combined)
+        return try AES.GCM.open(
+            sealedBox,
+            using: wrapKey,
             authenticating: Data(canonical.utf8)
         )
     }
@@ -468,6 +513,20 @@ public enum OpenBurnBarSignalAtRest {
         let digest = OpenBurnBarSignalCoreFallbackCrypto.sha256(Data(canonical.utf8))
         let prefix = digest.prefix(16).map { String(format: "%02x", $0) }.joined()
         return "bindingToAAD-sha256:\(prefix)"
+    }
+
+    private static func fallbackWrapKey(
+        privateKey: P256.KeyAgreement.PrivateKey,
+        peerPublicKey: P256.KeyAgreement.PublicKey,
+        canonicalAAD: String
+    ) throws -> SymmetricKey {
+        let sharedSecret = try privateKey.sharedSecretFromKeyAgreement(with: peerPublicKey)
+        return sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: fallbackWrapSalt,
+            sharedInfo: Data(canonicalAAD.utf8),
+            outputByteCount: CloudVaultSignalEnvelopeContract.signalAtRestContentKeyLength
+        )
     }
 
     private static func validate(recipients: [OpenBurnBarSignalAtRestRecipient]) throws {

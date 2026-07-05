@@ -1,5 +1,10 @@
 import Foundation
 import XCTest
+#if canImport(CryptoKit)
+import CryptoKit
+#else
+import Crypto
+#endif
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -54,6 +59,42 @@ final class LinuxCoreFoundationTests: XCTestCase {
                 recipientIdentityPrivateKey: identity.privateKeyData,
                 expectedBinding: binding,
                 trustedSenderPublicKeys: [identity.identityKeyId: identity.publicKeyData]
+            ),
+            plaintext
+        )
+    }
+
+    func testSignalFallbackWrapCannotBeOpenedWithPublicRecipientMaterial() throws {
+        let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "linux-device-public-wrap")
+        let binding = SignalEnvelopeAAD.Binding(
+            uid: "uid-linux",
+            scope: .cloudvault,
+            collection: "sessions",
+            docId: "doc-public-wrap",
+            field: "body",
+            mode: .atRest,
+            formatVersion: 1
+        )
+        let plaintext = Data("fallback content key".utf8)
+        let sealed = try OpenBurnBarSignalAtRest.atRestSeal(
+            plaintext,
+            recipientIdentityPublicKey: identity.publicKeyData,
+            binding: binding
+        )
+
+        let oldPublicOnlyKey = SymmetricKey(data: Data(SHA256.hash(data: identity.publicKeyData)))
+        XCTAssertThrowsError(
+            try AES.GCM.open(
+                AES.GCM.SealedBox(combined: sealed),
+                using: oldPublicOnlyKey,
+                authenticating: Data(try signalEnvelopeBindingToAAD(binding).utf8)
+            )
+        )
+        XCTAssertEqual(
+            try OpenBurnBarSignalAtRest.atRestOpen(
+                sealed,
+                recipientIdentityPrivateKey: identity.privateKeyData,
+                binding: binding
             ),
             plaintext
         )
@@ -144,7 +185,7 @@ final class LinuxCoreFoundationTests: XCTestCase {
             now: Date(timeIntervalSince1970: TimeInterval(publishedAt) / 1_000)
         )
 
-        #if !os(Windows)
+        #if os(Linux)
         let home = URL(fileURLWithPath: "/tmp/openburnbar-linux-home", isDirectory: true)
         let source = AgentProviderLogDiscovery.resolveLogSource(
             for: .codex,
