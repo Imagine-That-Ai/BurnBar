@@ -956,36 +956,44 @@ fn append_audit_event(path: &Path, event: AuditEvent) -> Result<(), Authorizatio
         .append(true)
         .open(path)
         .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
-    // On Windows, fs2's LockFileEx fails with os error 33 ("another process has
-    // locked a portion of the file") under concurrent test execution because
-    // LockFileEx is per-handle and the concurrent test opens the same file from
-    // multiple threads. A process-wide Mutex serializes appends without the file
-    // lock, so the guard must live across the append + unlock (not just the
-    // cfg block) — otherwise the Mutex protects nothing.
     #[cfg(target_os = "windows")]
-    let _audit_guard = {
-        use std::sync::{LazyLock, Mutex};
-        static AUDIT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-        AUDIT_LOCK
-            .lock()
-            .map_err(|_| AuthorizationError::AuditChain("audit log mutex poisoned".to_string()))?
-    };
+    let _audit_guard = lock_windows_audit_file(&file)?;
     #[cfg(not(target_os = "windows"))]
     file.lock_exclusive()
         .map_err(|err| AuthorizationError::AuditChain(err.to_string()))?;
     let result = append_audit_event_locked(path, &mut file, event);
     let unlock_result = {
-        #[cfg(target_os = "windows")]
-        {
-            Ok(())
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            file.unlock()
-                .map_err(|err| AuthorizationError::AuditChain(err.to_string()))
-        }
+        file.unlock()
+            .map_err(|err| AuthorizationError::AuditChain(err.to_string()))
     };
     result.and(unlock_result)
+}
+
+#[cfg(target_os = "windows")]
+fn lock_windows_audit_file(
+    file: &File,
+) -> Result<std::sync::MutexGuard<'static, ()>, AuthorizationError> {
+    use std::io::ErrorKind;
+    use std::sync::{LazyLock, Mutex};
+
+    static AUDIT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+    let guard = AUDIT_LOCK
+        .lock()
+        .map_err(|_| AuthorizationError::AuditChain("audit log mutex poisoned".to_string()))?;
+
+    for _ in 0..100 {
+        match file.try_lock_exclusive() {
+            Ok(()) => return Ok(guard),
+            Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => return Err(AuthorizationError::AuditChain(error.to_string())),
+        }
+    }
+
+    Err(AuthorizationError::AuditChain(
+        "timed out acquiring Windows audit log lock".to_string(),
+    ))
 }
 
 fn append_audit_event_locked(

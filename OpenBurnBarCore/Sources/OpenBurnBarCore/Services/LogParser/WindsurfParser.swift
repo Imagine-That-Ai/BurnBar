@@ -135,45 +135,53 @@ public final class WindsurfParser: LogParser, Sendable {
 
     /// Cached model/workspace lookups from state.vscdb.
     private struct StateDBCache {
-        var models: [String: String]?
-        var workspaces: [String: String]?
-        var titles: [String: String]?
+        var entriesByDBPath: [String: Entry] = [:]
+
+        struct Entry {
+            var models: [String: String]
+            var workspaces: [String: String]
+            var titles: [String: String]
+        }
     }
     private static let stateDBCache = Locked(StateDBCache())
 
     private func extractModelFromStateDB(sessionId: String) -> String? {
-        ensureStateDBCache()
-        return Self.stateDBCache.withLock { $0.models?[sessionId] }
+        let entry = ensureStateDBCache()
+        return entry.models[sessionId]
     }
 
     private func extractWorkspaceName(sessionId: String) -> String? {
-        ensureStateDBCache()
-        return Self.stateDBCache.withLock { $0.workspaces?[sessionId] }
+        let entry = ensureStateDBCache()
+        return entry.workspaces[sessionId]
     }
 
     private func extractSessionTitle(sessionId: String) -> String? {
-        ensureStateDBCache()
-        return Self.stateDBCache.withLock { $0.titles?[sessionId] }
+        let entry = ensureStateDBCache()
+        return entry.titles[sessionId]
     }
 
-    private func ensureStateDBCache() {
-        let alreadyCached = Self.stateDBCache.withLock { $0.models != nil }
-        if alreadyCached { return }
+    private func ensureStateDBCache() -> StateDBCache.Entry {
+        let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
+        let dbPath = (globalPath as NSString).appendingPathComponent("state.vscdb")
+        if let cached = Self.stateDBCache.withLock({ $0.entriesByDBPath[dbPath] }) {
+            return cached
+        }
 
         var models: [String: String] = [:]
         var workspaces: [String: String] = [:]
         var titles: [String: String] = [:]
-        let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
-        let dbPath = (globalPath as NSString).appendingPathComponent("state.vscdb")
 
         if FileManager.default.fileExists(atPath: dbPath) {
             _ = readStateDBKeys(atPath: dbPath, models: &models, workspaces: &workspaces, titles: &titles)
         }
 
-        Self.stateDBCache.withLock {
-            $0.models = models
-            $0.workspaces = workspaces
-            $0.titles = titles
+        let entry = StateDBCache.Entry(models: models, workspaces: workspaces, titles: titles)
+        return Self.stateDBCache.withLock {
+            if let cached = $0.entriesByDBPath[dbPath] {
+                return cached
+            }
+            $0.entriesByDBPath[dbPath] = entry
+            return entry
         }
     }
 
