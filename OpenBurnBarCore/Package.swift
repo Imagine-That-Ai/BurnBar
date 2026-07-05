@@ -359,7 +359,7 @@ let openBurnBarCoreExcludes = [
     "AppCheckDebugTokenEnvironment.swift",
     // Contracts referencing types defined in excluded files:
     //   BurnBarRunContracts   -> BurnBarAgentLoopState (OpenBurnBarAgentContracts)
-    //   MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views)
+    //   MissionGroupContracts -> MissionConsoleForecast (Views)
     "Contracts/BurnBarRunContracts.swift",
     // Consumes BurnBarRunStateSnapshot (defined in the excluded BurnBarRunContracts).
     "Contracts/BurnBarEventContracts.swift",
@@ -384,7 +384,6 @@ let openBurnBarCoreExcludes = [
     "SharedModels/CLIAgentResumePresentation.swift",
     // Uses PiAgentRelayCrypto (defined in the excluded HermesRelayCrypto).
     "SharedModels/PiConnectionTypes.swift",
-    "SharedModels/CloudVaultCrypto.swift",
     "SharedModels/CloudVaultDeviceKeypair.swift",
     "SharedModels/EscrowDeviceSafetyCode.swift",
     "SharedModels/HermesRatchetCrypto.swift",
