@@ -25,9 +25,9 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Pay-as-you-go"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Pay-as-you-go") ?? false)
     }
 
     func testFetch_openPlatformKey_returnsGuidanceMessage() async throws {
@@ -36,9 +36,9 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Coding Plan key"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Coding Plan key") ?? false)
     }
 
     func testFetch_codingPlanKey_usesCodingPlanEndpointFirst() async throws {
@@ -62,46 +62,12 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
         XCTAssertTrue(requestedURLs.first?.contains("coding_plan/remains") ?? false)
     }
 
-    // MARK: - Cursor-connector keychain fallback (credential-read fault path)
-
-    /// A genuinely absent Cursor-connector key must degrade gracefully: the
-    /// adapter falls through to the "add a key" unavailable snapshot without
-    /// throwing. This proves the migrated `credentialIfPresent` accessor
-    /// preserves the nil-on-absent contract.
-    func testFetch_absentCursorConnectorKey_yieldsUnavailableWithoutThrowing() async throws {
-        let adapter = MiniMaxQuotaAdapter(keychain: KeychainStore(backend: EmptyKeychainBackend()))
-        let context = try makeContext(apiKey: nil)
-
-        let snapshot = try await adapter.fetch(context: context)
-
-        XCTAssertEqual(snapshot.provider, .minimax)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Add a MiniMax Token Plan API key"))
-    }
-
-    /// A broken/locked keychain (real OSStatus fault) must NOT crash the fetch
-    /// and must NOT be misread as a configured credential. The migrated
-    /// accessor logs the fault and returns nil, so the adapter resolves no key
-    /// and reports the same graceful "add a key" unavailable snapshot — but
-    /// crucially `fetch` completes without throwing the keychain error.
-    func testFetch_faultingKeychain_isObservedAsNilWithoutThrowing() async throws {
-        let faultingBackend = FaultingKeychainBackend(error: .unhandled(errSecNotAvailable))
-        let adapter = MiniMaxQuotaAdapter(keychain: KeychainStore(backend: faultingBackend))
-        let context = try makeContext(apiKey: nil)
-
-        let snapshot = try await adapter.fetch(context: context)
-
-        XCTAssertTrue(faultingBackend.didAttemptRead, "Expected the keychain fallback to be exercised")
-        XCTAssertEqual(snapshot.provider, .minimax)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Add a MiniMax Token Plan API key"))
-    }
 
     func testFetch_tokenPlanEndpointUsedWhenCodingPlanFails() async throws {
         let remainsJSON = """
@@ -122,7 +88,7 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .minimax)
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
     }

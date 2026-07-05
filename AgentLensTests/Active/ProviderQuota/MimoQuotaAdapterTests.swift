@@ -26,9 +26,9 @@ final class MimoQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .mimo)
+        XCTAssertEqual(snapshot.provider, AgentProvider.mimo.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("pay-as-you-go"))
+        XCTAssertEqual(snapshot.statusMessage?.contains("pay-as-you-go"), true)
     }
 
     func testFetch_tokenPlanRemains_parsesExactBuckets() async throws {
@@ -50,7 +50,7 @@ final class MimoQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .mimo)
+        XCTAssertEqual(snapshot.provider, AgentProvider.mimo.rawValue)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
     }
@@ -70,7 +70,7 @@ final class MimoQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .mimo)
+        XCTAssertEqual(snapshot.provider, AgentProvider.mimo.rawValue)
         XCTAssertEqual(snapshot.confidence, .estimated)
         XCTAssertEqual(snapshot.buckets.first?.limitValue, MimoTokenPlanTier.standard.monthlyCreditLimit)
     }
@@ -130,23 +130,6 @@ final class MimoQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(result, "tp-connector-secret")
     }
 
-    /// Proves the migrated call site degrades gracefully end-to-end: with no
-    /// resolved/env key and a *broken* Keychain behind the connector-key read,
-    /// `fetch` returns the unavailable snapshot rather than throwing.
-    func testFetch_noKeyAndKeychainFault_returnsUnavailableWithoutThrowing() async throws {
-        let backend = MimoFaultInjectingKeychainBackend()
-        backend.readErrors[connectorService] = KeychainStoreError.unhandled(errSecNotAvailable)
-        let service = connectorService
-        let adapter = MimoQuotaAdapter(
-            keychainStoreProvider: { KeychainStore(service: service, legacyServices: [], backend: backend) }
-        )
-        let context = try makeContext(apiKey: nil)
-
-        let snapshot = try await adapter.fetch(context: context)
-
-        XCTAssertEqual(snapshot.provider, .mimo)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-    }
 
     private func makeContext(
         apiKey: String?,

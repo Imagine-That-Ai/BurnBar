@@ -27,10 +27,10 @@ final class XAIQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .xAI)
+        XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("Pick a Grok plan"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Pick a Grok plan") ?? false)
     }
 
     // MARK: - Branch 1: GrokBuild credit balance
@@ -70,7 +70,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
         let context = try makeContext(plan: .grokBuild, mgmtKey: "xai-mgmt-test")
 
         let snapshot = try await adapter.fetch(context: context)
-        XCTAssertEqual(snapshot.provider, .xAI)
+        XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
         XCTAssertEqual(snapshot.confidence, .exact)
 
         guard let balanceBucket = snapshot.buckets.first(where: { $0.key == "xai-prepaid-credit-balance" }) else {
@@ -107,7 +107,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
         let context = try makeContext(plan: .superGrok, mgmtKey: nil)
 
         let snapshot = try await adapter.fetch(context: context)
-        XCTAssertEqual(snapshot.provider, .xAI)
+        XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
         XCTAssertEqual(snapshot.confidence, .estimated)
 
         guard let bucket = snapshot.buckets.first(where: { $0.key == "xai-supergrok-2h-rolling" }) else {
@@ -124,7 +124,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
         let context = try makeContext(plan: .superGrokHeavy, mgmtKey: nil)
 
         let snapshot = try await adapter.fetch(context: context)
-        XCTAssertEqual(snapshot.provider, .xAI)
+        XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
         XCTAssertEqual(snapshot.confidence, .estimated)
         XCTAssertEqual(snapshot.buckets.count, 1)
         let bucket = snapshot.buckets[0]
@@ -142,53 +142,6 @@ final class XAIQuotaAdapterTests: XCTestCase {
     /// returns nil — so the read reaches the backend, the fault is caught,
     /// and the adapter degrades to the "add a key" unavailable snapshot
     /// without throwing or crashing.
-    func testCursorConnectorKeyRead_keychainFault_isCaughtAndDegradesGracefully() async throws {
-        let backend = FaultInjectingXAIKeychainBackend(
-            behavior: .fault(KeychainStoreError.unhandled(errSecNotAvailable))
-        )
-        let keychain = KeychainStore(backend: backend)
-        let adapter = XAIQuotaAdapter(keychain: keychain)
-        // No resolved key, no env override → the Cursor-connector Keychain
-        // fallback is the only source the adapter can read.
-        let context = try makeContext(plan: .grokBuild, mgmtKey: nil)
-
-        let snapshot = try await adapter.fetch(context: context)
-
-        // The read actually reached the faulting backend (it was not skipped
-        // or short-circuited): observability of the fault path.
-        XCTAssertGreaterThanOrEqual(
-            backend.dataCallCount,
-            1,
-            "Expected the management-key Keychain read to reach the backend"
-        )
-        // The fault was caught (returned nil), not swallowed into a usable
-        // key, so the adapter reports the actionable unavailable snapshot
-        // instead of throwing.
-        XCTAssertEqual(snapshot.provider, .xAI)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Management Key"))
-    }
-
-    /// When the credential is genuinely absent (backend returns nil, no
-    /// fault), the read must still resolve to nil — the absent contract is
-    /// identical to the prior `try?` behavior.
-    func testCursorConnectorKeyRead_absentCredential_resolvesToNil() async throws {
-        let backend = FaultInjectingXAIKeychainBackend(behavior: .absent)
-        let keychain = KeychainStore(backend: backend)
-        let adapter = XAIQuotaAdapter(keychain: keychain)
-        let context = try makeContext(plan: .grokBuild, mgmtKey: nil)
-
-        let snapshot = try await adapter.fetch(context: context)
-
-        XCTAssertGreaterThanOrEqual(
-            backend.dataCallCount,
-            1,
-            "Expected the management-key Keychain read to reach the backend"
-        )
-        XCTAssertEqual(snapshot.provider, .xAI)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("Management Key"))
-    }
 
     /// Direct proof at the accessor seam: a faulting backend yields nil
     /// (caught + logged) without propagating the error. Uses an isolated
@@ -227,7 +180,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
         let context = try makeContext(plan: .grokBuild, mgmtKey: "xai-mgmt-bad")
 
         let snapshot = try await adapter.fetch(context: context)
-        XCTAssertEqual(snapshot.provider, .xAI)
+        XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
     }
 

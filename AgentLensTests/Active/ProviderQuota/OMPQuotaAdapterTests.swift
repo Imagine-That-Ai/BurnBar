@@ -30,11 +30,11 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let context = try makeContext(path: isolatedPath)
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .omp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertEqual(snapshot.source, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("OMP CLI was not found"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("OMP CLI was not found") ?? false)
     }
 
     func testFetch_parsesUsageJSONFromFakeOmpExecutable() async throws {
@@ -68,7 +68,7 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .omp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertEqual(snapshot.source, .localCLI)
         XCTAssertEqual(snapshot.buckets.count, 1)
@@ -92,10 +92,10 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .omp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("omp usage"))
-        XCTAssertTrue(snapshot.statusMessage.contains("usage unavailable"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("omp usage") ?? false)
+        XCTAssertTrue(snapshot.statusMessage?.contains("usage unavailable") ?? false)
     }
 
     func testFetch_whenUsagePayloadHasNoBuckets_returnsUnavailableStatus() async throws {
@@ -105,9 +105,9 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .omp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("no displayable usage limits"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("no displayable usage limits") ?? false)
     }
 
     func testFetch_invokesOmpUsageWithJsonAndRedactFlags() async throws {
