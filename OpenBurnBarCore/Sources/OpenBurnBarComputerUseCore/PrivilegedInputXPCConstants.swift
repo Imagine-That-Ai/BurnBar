@@ -1,5 +1,16 @@
-import Darwin
 import Foundation
+
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif os(Windows)
+public typealias uid_t = UInt32
+
+private func getuid() -> uid_t {
+    0
+}
+#endif
 
 /// Mach service and install paths for the minimal privileged input-execution leaf (WS1).
 public enum PrivilegedInputXPCConstants: Sendable {
