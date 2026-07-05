@@ -1,4 +1,8 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import Foundation
 
 /// Canonical App Check attestation digest shared by Mac, iOS, and Cloud Functions (WS2/WS4).

@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import OpenBurnBarCore
 
 /// F10 — one shared implementation of the control-seal session lifecycle so

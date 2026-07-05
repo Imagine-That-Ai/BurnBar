@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import OpenBurnBarCore
 
 /// F2 — the P-256 signing surface shared by the software key (unit tests and
@@ -13,7 +17,9 @@ public protocol PhoneControlP256AuthoritySigning: Sendable {
 }
 
 extension P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
+#if canImport(CryptoKit)
 extension SecureEnclave.P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
+#endif
 
 /// F2 — Remote Config gate for minting biometry-gated Secure-Enclave /
 /// StrongBox phone-control signing keys. Default-off: no client mints an

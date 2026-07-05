@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import OpenBurnBarCore
 
 /// Pure Ed25519 signer / verifier for `PhoneControlAuthority`

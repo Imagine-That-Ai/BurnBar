@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 import zlib
 
 /// Phase 13 audit-export writer.
@@ -571,7 +575,7 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
         privateKey.publicKey.rawRepresentation.base64EncodedString()
     }
     public var publicKeySHA256Hex: String? {
-        CryptoKit.SHA256.hash(data: privateKey.publicKey.rawRepresentation)
+        SHA256.hash(data: privateKey.publicKey.rawRepresentation)
             .map { String(format: "%02x", $0) }
             .joined()
     }
@@ -599,6 +603,6 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
 
 internal extension ComputerUseAuditHasher {
     func sha256DigestBytes(of data: Data) -> [UInt8] {
-        Array(CryptoKit.SHA256.hash(data: data))
+        Array(SHA256.hash(data: data))
     }
 }

@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+@preconcurrency import Crypto
+#endif
 
 /// Published issuer trust for offline bridge verification (public key only).
 public struct CapabilityTokenIssuerTrustMaterial: Codable, Sendable, Equatable {
