@@ -560,7 +560,7 @@ let firstPartyTargetsBase: [Target] = [
             linkerSettings: [
                 .linkedFramework("Security", .when(platforms: [.macOS])),
                 .linkedFramework("LocalAuthentication", .when(platforms: [.macOS])),
-                .linkedLibrary("z")
+                .linkedLibrary("z", .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .linux]))
             ]
         ),
         .target(
