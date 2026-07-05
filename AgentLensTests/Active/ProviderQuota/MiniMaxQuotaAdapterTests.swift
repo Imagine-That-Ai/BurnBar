@@ -26,8 +26,8 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage?.contains("Pay-as-you-go") ?? false)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Pay-as-you-go"), true)
     }
 
     func testFetch_openPlatformKey_returnsGuidanceMessage() async throws {
@@ -37,8 +37,8 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage?.contains("Coding Plan key") ?? false)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Coding Plan key"), true)
     }
 
     func testFetch_codingPlanKey_usesCodingPlanEndpointFirst() async throws {
@@ -63,11 +63,57 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
-        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
         XCTAssertTrue(requestedURLs.first?.contains("coding_plan/remains") ?? false)
     }
 
+    // MARK: - Cursor-connector secret-store fallback
+
+    /// A genuinely absent Cursor-connector key must degrade gracefully: the
+    /// adapter falls through to the "add a key" unavailable snapshot without
+    /// throwing. This proves the lifted secret-store seam preserves the
+    /// nil-on-absent contract.
+    func testFetch_absentCursorConnectorKey_yieldsUnavailableWithoutThrowing() async throws {
+        let secretStore = CountingMiniMaxSecretStore(value: nil)
+        let adapter = MiniMaxQuotaAdapter()
+        let context = try makeContext(apiKey: nil, secretStore: secretStore)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        XCTAssertGreaterThanOrEqual(secretStore.readCallCount, 1)
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Add a MiniMax Token Plan API key"), true)
+    }
+
+    /// A present Cursor-connector key must satisfy the API-key fallback and let
+    /// the adapter hit the Token Plan endpoint.
+    func testFetch_presentCursorConnectorKey_usesTokenPlanEndpoint() async throws {
+        let secretStore = CountingMiniMaxSecretStore(value: "sk-cp-secret-store-key")
+        let remainsJSON = """
+        {"model_remains":[{"model_name":"MiniMax-M2.7","remains":700,"total":1000}]}
+        """
+        MiniMaxMockURLProtocol.responder = { request in
+            let url = request.url?.absoluteString ?? ""
+            if url.contains("coding_plan/remains") {
+                let data = remainsJSON.data(using: .utf8)!
+                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+            return (response, Data())
+        }
+
+        let adapter = MiniMaxQuotaAdapter()
+        let context = try makeContext(apiKey: nil, secretStore: secretStore)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        XCTAssertGreaterThanOrEqual(secretStore.readCallCount, 1)
+        XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
+        XCTAssertFalse(snapshot.buckets.isEmpty)
+    }
 
     func testFetch_tokenPlanEndpointUsedWhenCodingPlanFails() async throws {
         let remainsJSON = """
@@ -89,13 +135,14 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.provider, AgentProvider.minimax.rawValue)
-        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
     }
 
     private func makeContext(
         apiKey: String?,
-        mode: MiniMaxQuotaMode = .tokenPlan
+        mode: MiniMaxQuotaMode = .tokenPlan,
+        secretStore: any SecretStore = NoOpSecretStore()
     ) throws -> ProviderQuotaAdapterContext {
         let appPaths = OpenBurnBarAppPaths.live()
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -126,41 +173,32 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
-            resolvedAPIKeys: apiKey.map { ["minimax": $0] } ?? [:]
+            resolvedAPIKeys: apiKey.map { ["minimax": $0] } ?? [:],
+            secretStore: secretStore
         )
     }
 }
 
-/// Backend that holds no items: `data(for:)` always returns nil so every read
-/// resolves to "genuinely absent" rather than a fault.
-private final class EmptyKeychainBackend: KeychainStoreBackend {
-    func set(_ value: Data, service: String, account: String) throws {}
+private final class CountingMiniMaxSecretStore: SecretStore, @unchecked Sendable {
+    private let value: String?
+    private let lock = NSLock()
+    private var _readCallCount = 0
 
-    func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data? {
-        nil
+    var readCallCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _readCallCount
     }
 
-    func delete(service: String, account: String) throws {}
-}
-
-/// Backend that simulates a broken/locked keychain: `data(for:)` throws a real
-/// `KeychainStoreError`, exercising the fault path that `try?` used to swallow.
-private final class FaultingKeychainBackend: KeychainStoreBackend, @unchecked Sendable {
-    let error: KeychainStoreError
-    private(set) var didAttemptRead = false
-
-    init(error: KeychainStoreError) {
-        self.error = error
+    init(value: String?) {
+        self.value = value
     }
 
-    func set(_ value: Data, service: String, account: String) throws {}
-
-    func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data? {
-        didAttemptRead = true
-        throw error
+    func string(for account: String, service: String) -> String? {
+        lock.lock()
+        _readCallCount += 1
+        lock.unlock()
+        return value
     }
-
-    func delete(service: String, account: String) throws {}
 }
 
 private final class MiniMaxMockURLProtocol: URLProtocol {

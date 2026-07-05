@@ -3,7 +3,7 @@ import Foundation
 #if canImport(CryptoKit)
 import CryptoKit
 #else
-import Crypto
+@preconcurrency import Crypto
 #endif
 
 #if canImport(Security)

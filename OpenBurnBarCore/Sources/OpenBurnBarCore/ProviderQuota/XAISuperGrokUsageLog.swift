@@ -16,6 +16,14 @@ import Foundation
 // to xAI, regardless of which inference key actually services the call.
 
 public enum XAISuperGrokUsageLog {
+    private static func defaultHomeDirectoryURL(fileManager: FileManager = .default) -> URL {
+        #if os(macOS)
+        fileManager.homeDirectoryForCurrentUser
+        #else
+        fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        #endif
+    }
 
     /// Append one event line to the SuperGrok usage log.
     public static func recordPromptDispatched(
@@ -23,7 +31,7 @@ public enum XAISuperGrokUsageLog {
         model: String? = nil,
         source: String? = nil,
         at date: Date = Date(),
-        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        homeDirectoryURL: URL? = nil,
         fileManager: FileManager = .default
     ) {
         guard plan.isSuperGrokConsumer else { return }
@@ -31,7 +39,7 @@ public enum XAISuperGrokUsageLog {
             model: model,
             source: source,
             at: date,
-            homeDirectoryURL: homeDirectoryURL,
+            homeDirectoryURL: homeDirectoryURL ?? defaultHomeDirectoryURL(fileManager: fileManager),
             fileManager: fileManager,
             planTierRawValue: plan.rawValue
         )

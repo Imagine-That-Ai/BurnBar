@@ -30,6 +30,29 @@ require_absent() {
   fi
 }
 
+require_tree_absent() {
+  local pattern="$1"
+  local path="$2"
+  local message="$3"
+  if grep -REq "$pattern" "$path"; then
+    fail "$message ($path)"
+  fi
+}
+
+is_non_database_helper_binary() {
+  local candidate="$1"
+  case "$(basename "$candidate")" in
+    OpenBurnBarPrivilegedInputExecution | \
+      OpenBurnBarPrivilegedInputKillSwitchWatchdog | \
+      OpenBurnBarVirtualHIDBridge)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 find_sqlcipher_release_test_bundle() {
   local scratch_path="$1"
   local bundle_name
@@ -127,6 +150,16 @@ require_pattern 'testKeyedOpen_writesEncryptedDatabase' AgentLensTests/Active/Da
 require_pattern 'testReleaseGateRequiresActiveSQLCipherWhenEnabled' AgentLensTests/Active/DatabaseEncryptionServiceTests.swift "release SQLCipher regression test is missing"
 require_pattern 'testCoordinatorHandlesExistingPlaintextDatabaseWhenEncryptionEnabled' AgentLensTests/Active/DatabaseEncryptionServiceTests.swift "plaintext migration/rejection regression test is missing"
 
+require_tree_absent '(^|[^[:alnum:]_])(sqlite3|GRDB|DatabaseQueue|DatabasePool|OpenBurnBarDataStore|BurnBarDaemonDatabaseCipher)([^[:alnum:]_]|$)' \
+  OpenBurnBarDaemon/Sources/OpenBurnBarPrivilegedInputExecution \
+  "privileged input execution helper must remain outside the database boundary"
+require_tree_absent '(^|[^[:alnum:]_])(sqlite3|GRDB|DatabaseQueue|DatabasePool|OpenBurnBarDataStore|BurnBarDaemonDatabaseCipher)([^[:alnum:]_]|$)' \
+  OpenBurnBarDaemon/Sources/OpenBurnBarPrivilegedInputKillSwitchWatchdog \
+  "privileged input kill-switch watchdog must remain outside the database boundary"
+require_tree_absent '(^|[^[:alnum:]_])(sqlite3|GRDB|DatabaseQueue|DatabasePool|OpenBurnBarDataStore|BurnBarDaemonDatabaseCipher)([^[:alnum:]_]|$)' \
+  OpenBurnBarDaemon/Sources/OpenBurnBarVirtualHIDBridge \
+  "virtual HID bridge helper must remain outside the database boundary"
+
 if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
   if [[ "$(uname -s)" != "Darwin" ]]; then
     fail "OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 requires a macOS runner"
@@ -179,6 +212,9 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
       sqlcipher_loader_found=1
     fi
     if grep -q '/usr/lib/libsqlite3.dylib' <<<"$deps"; then
+      if is_non_database_helper_binary "$candidate"; then
+        continue
+      fi
       system_sqlite_loaders+=("$candidate")
     fi
   done < <(find "$app_bundle" -type f -print0)
