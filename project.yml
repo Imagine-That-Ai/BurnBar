@@ -580,7 +580,6 @@ targets:
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
-        link: false
       - sdk: CoreGraphics.framework
       - sdk: IOKit.framework
       - sdk: Security.framework
