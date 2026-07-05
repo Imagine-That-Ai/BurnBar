@@ -103,8 +103,7 @@ public enum ComputerUseAuditExportSignerStoreError: Error, Equatable {
 /// Trusted-device signer for Phase 13 audit exports and WS3 signed chain heads.
 public struct ComputerUseKeychainAuditExportSignerProvider:
     ComputerUseAuditExportSignerProviding,
-    Sendable
-{
+    Sendable {
     public static let defaultService = "ai.openburnbar.computer-use.audit-export"
     public static let defaultAccount = "trusted-device-ed25519-v1"
 
