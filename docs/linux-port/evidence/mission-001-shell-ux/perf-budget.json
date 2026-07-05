@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T11:31:49.230Z",
+  "generatedAt": "2026-07-05T16:20:16.314Z",
   "runner": "linux-desktop-packaged-runtime-perf-v3",
   "note": "Budget rows are derived from the same packaged Linux desktop smoke run: Xvfb/XFCE .deb session report plus runtime samples emitted by the installed Tauri app through OPENBURNBAR_EVIDENCE_OUT.",
   "host": {
@@ -11,9 +11,9 @@
   "measurements": {
     "desktopSessionReport": "docs/linux-port/evidence/mission-001-shell-ux/linux-desktop-session-report.json",
     "desktopSessionPresent": true,
-    "desktopSessionGeneratedAt": "2026-07-05T11:31:46.728Z",
+    "desktopSessionGeneratedAt": "2026-07-05T16:20:12.452Z",
     "runtimeSamples": "docs/linux-port/evidence/mission-001-shell-ux/runtime-perf-samples.jsonl",
-    "runtimeSampleCount": 23,
+    "runtimeSampleCount": 22,
     "packagedRouteTranscript": "docs/linux-port/evidence/mission-001-shell-ux/packaged-route-session-transcript.json",
     "packagedRouteCount": 16
   },
@@ -45,7 +45,7 @@
   "verdicts": [
     {
       "name": "app.start",
-      "ms": 329,
+      "ms": 321,
       "limit": 2500,
       "source": "packaged-tauri-deb-xvfb-window-visible",
       "sampleCount": 1,
@@ -54,10 +54,10 @@
     },
     {
       "name": "route.navigation",
-      "ms": 7,
+      "ms": 2.0000000000009095,
       "limit": 120,
       "source": "packaged-tauri-runtime-samples:packaged-ui-route:account,packaged-ui-route:activity,packaged-ui-route:chat,packaged-ui-route:database,packaged-ui-route:insights,packaged-ui-route:memory,packaged-ui-route:missions,packaged-ui-route:onboarding,packaged-ui-route:pet,packaged-ui-route:projects,packaged-ui-route:providers,packaged-ui-route:settings,packaged-ui-route:support,packaged-ui-route:text-expansion,packaged-ui-route:updates",
-      "sampleCount": 16,
+      "sampleCount": 15,
       "measured": true,
       "pass": true
     },
@@ -72,7 +72,7 @@
     },
     {
       "name": "tray.click.open",
-      "ms": 45,
+      "ms": 56,
       "limit": 400,
       "source": "appindicator-dbusmenu-open-to-visible-window",
       "sampleCount": 1,
@@ -81,7 +81,7 @@
     },
     {
       "name": "chat.firstToken.progress",
-      "ms": 6.964208999999999,
+      "ms": 8.914125,
       "limit": 2500,
       "source": "packaged-tauri-runtime-samples:packaged-startup-chat-hermes-daemon-measurement;packaged-af-unix-perf.measure:hermes-chat-stream-progress-operation",
       "sampleCount": 1,
@@ -90,7 +90,7 @@
     },
     {
       "name": "db.migration.open.query",
-      "ms": 1.534917,
+      "ms": 1.794333,
       "limit": 1200,
       "source": "packaged-tauri-runtime-samples:packaged-startup-db-daemon-measurement;packaged-af-unix-perf.measure:sqlite3-db-fts5-operation",
       "sampleCount": 1,
@@ -99,7 +99,7 @@
     },
     {
       "name": "parser.incremental.run",
-      "ms": 0.7298330000000001,
+      "ms": 0.8581669999999999,
       "limit": 900,
       "source": "packaged-tauri-runtime-samples:packaged-startup-parser-daemon-measurement;packaged-af-unix-perf.measure:provider-jsonl-incremental-parser-operation",
       "sampleCount": 1,
@@ -108,7 +108,7 @@
     },
     {
       "name": "memory.search",
-      "ms": 0.550542,
+      "ms": 0.6131249999999999,
       "limit": 650,
       "source": "packaged-tauri-runtime-samples:packaged-startup-memory-daemon-measurement;packaged-af-unix-perf.measure:memory-search-index-operation",
       "sampleCount": 1,
@@ -117,7 +117,7 @@
     },
     {
       "name": "media.control.stage",
-      "ms": 0.465375,
+      "ms": 0.965541,
       "limit": 500,
       "source": "packaged-tauri-runtime-samples:packaged-startup-media-control-daemon-measurement;packaged-af-unix-perf.measure:media-control-stage-loopback-operation",
       "sampleCount": 1,

@@ -1,34 +1,34 @@
 {
-  "generatedAt": "2026-07-05T11:31:49.053Z",
+  "generatedAt": "2026-07-05T16:20:15.712Z",
   "method": "localStorage-store-execution-plus-runtime-source-scan",
   "deniedBeforeConsent": true,
   "consent": {
     "inAppOnly": true,
     "declinedGlobalCapture": true,
-    "acknowledgedAt": "2026-07-05T11:31:49.052Z"
+    "acknowledgedAt": "2026-07-05T16:20:15.711Z"
   },
   "crud": {
     "created": {
-      "id": "b810017e-b3fa-4253-80d2-a87c3aae7074",
+      "id": "b386e18d-fc73-4bcd-b1a2-ec2bf08f37c0",
       "title": "Signature",
       "trigger": ";;sig",
       "body": "-- OpenBurnBar",
       "enabled": true,
       "scope": "in-app",
-      "updatedAt": "2026-07-05T11:31:49.052Z"
+      "updatedAt": "2026-07-05T16:20:15.711Z"
     },
     "expanded": {
       "output": "reply -- OpenBurnBar",
-      "applied": "b810017e-b3fa-4253-80d2-a87c3aae7074"
+      "applied": "b386e18d-fc73-4bcd-b1a2-ec2bf08f37c0"
     },
     "disabled": {
-      "id": "b810017e-b3fa-4253-80d2-a87c3aae7074",
+      "id": "b386e18d-fc73-4bcd-b1a2-ec2bf08f37c0",
       "title": "Signature",
       "trigger": ";;sig",
       "body": "-- OpenBurnBar",
       "enabled": false,
       "scope": "in-app",
-      "updatedAt": "2026-07-05T11:31:49.052Z"
+      "updatedAt": "2026-07-05T16:20:15.711Z"
     },
     "disabledProbe": {
       "output": "reply ;;sig"
@@ -60,7 +60,7 @@
     "globalCapture": false,
     "scan": [
       {
-        "file": "src/main.ts",
+        "file": "src/surfaces/TextExpansionSurface.tsx",
         "forbiddenMatches": [],
         "keydownListeners": 0
       },

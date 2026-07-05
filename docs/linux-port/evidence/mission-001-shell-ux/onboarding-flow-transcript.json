@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T11:31:49.045Z",
+  "generatedAt": "2026-07-05T16:20:15.701Z",
   "lane": "W06LinuxShellUx",
   "method": "first-run-localStorage-state-machine",
   "steps": [
@@ -19,7 +19,7 @@
         "step": 0,
         "skippedSteps": []
       },
-      "expected": "Retry probes daemon health without advancing or losing the current step."
+      "expected": "Retry probes daemon health, shows visible status feedback, and does not advance or lose the current step."
     },
     {
       "action": "skip-step",
@@ -52,7 +52,7 @@
           0
         ]
       },
-      "expected": "Completion is persisted so later launches can open the dashboard."
+      "expected": "Completion is persisted and the wizard renders a completed state before later launches open the dashboard."
     }
   ]
 }

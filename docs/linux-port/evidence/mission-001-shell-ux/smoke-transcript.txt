@@ -3,7 +3,7 @@ npm install --no-audit --no-fund
 exit_code=0
 timed_out=false
 
-up to date in 190ms
+up to date in 275ms
 
 
 
@@ -18,17 +18,19 @@ timed_out=false
 
  RUN  v3.2.6 /Users/albertonunez/Documents/Developer/BurnBar/apps/linux-desktop
 
+ ✓ src/daemonStatusCopy.test.ts (3 tests) 2ms
+ ✓ src/textExpansionConsent.test.ts (1 test) 2ms
  ✓ src/textExpansionStore.test.ts (4 tests) 3ms
- ✓ src/textExpansionConsent.test.ts (1 test) 1ms
+ ✓ src/petGltfRuntime.test.ts (1 test) 6ms
+ ✓ src/routes.test.ts (4 tests) 6ms
  ✓ src/petCompanion.test.ts (3 tests) 1ms
- ✓ src/routes.test.ts (4 tests) 4ms
- ✓ src/petGltfRuntime.test.ts (1 test) 4ms
- ✓ src/shellEvidence.harness.test.ts (15 tests) 12ms
+ ✓ src/shellEvidence.harness.test.ts (15 tests) 8ms
+ ✓ src/app/App.test.tsx (12 tests) 247ms
 
- Test Files  6 passed (6)
-      Tests  28 passed (28)
-   Start at  06:27:02
-   Duration  750ms (transform 140ms, setup 0ms, collect 278ms, tests 24ms, environment 2.07s, prepare 262ms)
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  11:12:46
+   Duration  1.38s (transform 317ms, setup 0ms, collect 732ms, tests 276ms, environment 4.08s, prepare 530ms)
 
 
 
@@ -43,13 +45,13 @@ timed_out=false
 
 vite v6.4.3 building for production...
 transforming...
-✓ 22 modules transformed.
+✓ 74 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/index.html                  0.44 kB │ gzip:  0.28 kB
-dist/assets/index-C81_LCvp.css   6.94 kB │ gzip:  1.98 kB
-dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.60 kB
-✓ built in 111ms
+dist/index.html                   0.44 kB │ gzip:  0.28 kB
+dist/assets/index-BoWhPm-I.css   13.47 kB │ gzip:  3.29 kB
+dist/assets/index-JF_In1Pa.js   223.74 kB │ gzip: 71.85 kB
+✓ built in 489ms
 
 [plugin vite:reporter]
 (!) /Users/albertonunez/Documents/Developer/BurnBar/apps/linux-desktop/node_modules/@tauri-apps/api/core.js is dynamically imported by /Users/albertonunez/Documents/Developer/BurnBar/apps/linux-desktop/src/perfMarks.ts but also statically imported by /Users/albertonunez/Documents/Developer/BurnBar/apps/linux-desktop/src/tauriBridge.ts, dynamic import will not move module into another chunk.
@@ -70,393 +72,7 @@ timed_out=false
   "purpose": "CI compositor profile for packaged Tauri .deb install/run/tray proof"
 }
 == provision desktop packages ==
-missing=xvfb openbox xfce4-panel xfce4-sntray-plugin ayatana-indicator-application xdotool x11-utils scrot at-spi2-core
-Get:1 http://ports.ubuntu.com/ubuntu-ports noble InRelease [256 kB]
-Get:2 http://ports.ubuntu.com/ubuntu-ports noble-updates InRelease [126 kB]
-Get:3 http://ports.ubuntu.com/ubuntu-ports noble-backports InRelease [126 kB]
-Get:4 http://ports.ubuntu.com/ubuntu-ports noble-security InRelease [126 kB]
-Get:5 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 Packages [1776 kB]
-Get:6 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 Packages [19.0 MB]
-Get:7 http://ports.ubuntu.com/ubuntu-ports noble/restricted arm64 Packages [113 kB]
-Get:8 http://ports.ubuntu.com/ubuntu-ports noble/multiverse arm64 Packages [274 kB]
-Get:9 http://ports.ubuntu.com/ubuntu-ports noble-updates/restricted arm64 Packages [2178 kB]
-Get:10 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 Packages [2112 kB]
-Get:11 http://ports.ubuntu.com/ubuntu-ports noble-updates/multiverse arm64 Packages [80.1 kB]
-Get:12 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 Packages [1371 kB]
-Get:13 http://ports.ubuntu.com/ubuntu-ports noble-backports/multiverse arm64 Packages [671 B]
-Get:14 http://ports.ubuntu.com/ubuntu-ports noble-backports/main arm64 Packages [48.9 kB]
-Get:15 http://ports.ubuntu.com/ubuntu-ports noble-backports/universe arm64 Packages [36.3 kB]
-Get:16 http://ports.ubuntu.com/ubuntu-ports noble-security/restricted arm64 Packages [2090 kB]
-Get:17 http://ports.ubuntu.com/ubuntu-ports noble-security/main arm64 Packages [1056 kB]
-Get:18 http://ports.ubuntu.com/ubuntu-ports noble-security/multiverse arm64 Packages [75.6 kB]
-Get:19 http://ports.ubuntu.com/ubuntu-ports noble-security/universe arm64 Packages [1533 kB]
-Fetched 32.4 MB in 4s (7210 kB/s)
-Reading package lists...
-Reading package lists...
-Building dependency tree...
-Reading state information...
-The following additional packages will be installed:
-  ayatana-indicator-common exo-utils fonts-urw-base35 libdbus-glib-1-2
-  libexo-2-0 libexo-common libfontenc1 libgarcon-1-0 libgarcon-common
-  libgarcon-gtk3-1-0 libgif7 libgs-common libgs10 libgs10-common libhwy1t64
-  libid3tag0 libidn12 libijs-0.35 libimlib2t64 libjbig2dec0 libjxl0.7
-  libobrender32v5 libobt2v5 libopenjp2-7 libpaper1 librsvg2-2 libspectre1
-  libstartup-notification0 libwnck-3-0 libwnck-3-common libxaw7 libxdo3
-  libxfce4panel-2.0-4 libxfce4ui-2-0 libxfce4ui-common libxfce4util-common
-  libxfce4util7 libxfconf-0-3 libxfont2 libxkbfile1 libxmu6 libxres1 libxt6t64
-  libxv1 libxxf86dga1 poppler-data ucf x11-xkb-utils
-  xfce4-sntray-plugin-common xfconf xfonts-encodings xfonts-utils
-  xserver-common
-Suggested packages:
-  fonts-freefont-otf | fonts-freefont-ttf fonts-texgyre librsvg2-bin devhelp
-  fonts-dejavu tint2 openbox-gnome-session openbox-kde-session poppler-utils
-  ghostscript fonts-japanese-mincho | fonts-ipafont-mincho
-  fonts-japanese-gothic | fonts-ipafont-gothic fonts-arphic-ukai
-  fonts-arphic-uming fonts-nanum mesa-utils
-Recommended packages:
-  liburi-perl fonts-droid-fallback libpaper-utils librsvg2-common
-  libxfce4util-bin obconf | obconf-qt luit xfonts-base
-The following NEW packages will be installed:
-  at-spi2-core ayatana-indicator-application ayatana-indicator-common
-  exo-utils fonts-urw-base35 libdbus-glib-1-2 libexo-2-0 libexo-common
-  libfontenc1 libgarcon-1-0 libgarcon-common libgarcon-gtk3-1-0 libgif7
-  libgs-common libgs10 libgs10-common libhwy1t64 libid3tag0 libidn12
-  libijs-0.35 libimlib2t64 libjbig2dec0 libjxl0.7 libobrender32v5 libobt2v5
-  libopenjp2-7 libpaper1 librsvg2-2 libspectre1 libstartup-notification0
-  libwnck-3-0 libwnck-3-common libxaw7 libxdo3 libxfce4panel-2.0-4
-  libxfce4ui-2-0 libxfce4ui-common libxfce4util-common libxfce4util7
-  libxfconf-0-3 libxfont2 libxkbfile1 libxmu6 libxres1 libxt6t64 libxv1
-  libxxf86dga1 openbox poppler-data scrot ucf x11-utils x11-xkb-utils xdotool
-  xfce4-panel xfce4-sntray-plugin xfce4-sntray-plugin-common xfconf
-  xfonts-encodings xfonts-utils xserver-common xvfb
-0 upgraded, 62 newly installed, 0 to remove and 7 not upgraded.
-Need to get 26.5 MB of archives.
-After this operation, 95.1 MB of additional disk space will be used.
-Get:1 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 poppler-data all 0.4.12-1 [2060 kB]
-Get:2 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 ucf all 3.0043+nmu1 [56.5 kB]
-Get:3 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 at-spi2-core arm64 2.52.0-1build1 [55.8 kB]
-Get:4 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libdbus-glib-1-2 arm64 0.112-3build2 [64.4 kB]
-Get:5 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 ayatana-indicator-common all 0.9.10-1build2 [15.7 kB]
-Get:6 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 ayatana-indicator-application arm64 22.2.0-1build2 [26.9 kB]
-Get:7 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libexo-common all 4.18.0-1build4 [4054 B]
-Get:8 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfce4util-common all 4.18.1-2build3 [60.5 kB]
-Get:9 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfce4util7 arm64 4.18.1-2build3 [29.9 kB]
-Get:10 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libexo-2-0 arm64 4.18.0-1build4 [246 kB]
-Get:11 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfce4ui-common all 4.18.4-1build4 [237 kB]
-Get:12 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libstartup-notification0 arm64 0.12-6build3 [18.9 kB]
-Get:13 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 xfconf arm64 4.18.1-1build3 [125 kB]
-Get:14 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfconf-0-3 arm64 4.18.1-1build3 [29.0 kB]
-Get:15 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfce4ui-2-0 arm64 4.18.4-1build4 [61.3 kB]
-Get:16 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 exo-utils arm64 4.18.0-1build4 [31.9 kB]
-Get:17 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libfontenc1 arm64 1:1.1.8-1build1 [13.9 kB]
-Get:18 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 xfonts-encodings all 1:1.0.5-0ubuntu2 [578 kB]
-Get:19 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 xfonts-utils arm64 1:7.7+6build3 [93.1 kB]
-Get:20 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 fonts-urw-base35 all 20200910-8 [11.0 MB]
-Get:21 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libgarcon-common all 4.18.1-1build3 [59.5 kB]
-Get:22 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libgarcon-1-0 arm64 4.18.1-1build3 [43.9 kB]
-Get:23 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libgarcon-gtk3-1-0 arm64 4.18.1-1build3 [12.6 kB]
-Get:24 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libgif7 arm64 5.2.2-1ubuntu1 [35.5 kB]
-Get:25 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libgs-common all 10.02.1~dfsg1-0ubuntu7.8 [176 kB]
-Get:26 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libgs10-common all 10.02.1~dfsg1-0ubuntu7.8 [488 kB]
-Get:27 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libidn12 arm64 1.42-1build1 [56.9 kB]
-Get:28 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libijs-0.35 arm64 0.35-15.1build1 [15.3 kB]
-Get:29 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libjbig2dec0 arm64 0.20-1build3 [63.2 kB]
-Get:30 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libopenjp2-7 arm64 2.5.0-2ubuntu0.5 [171 kB]
-Get:31 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libpaper1 arm64 1.1.29build1 [13.4 kB]
-Get:32 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxt6t64 arm64 1:1.2.1-1.2build1 [168 kB]
-Get:33 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 libgs10 arm64 10.02.1~dfsg1-0ubuntu7.8 [3779 kB]
-Get:34 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libhwy1t64 arm64 1.0.7-8.1build1 [437 kB]
-Get:35 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libid3tag0 arm64 0.15.1b-14build1 [32.9 kB]
-Get:36 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 libjxl0.7 arm64 0.7.0-10.2ubuntu6.1 [690 kB]
-Get:37 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 librsvg2-2 arm64 2.58.0+dfsg-1build1 [2027 kB]
-Get:38 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libspectre1 arm64 0.2.12-1build2 [29.6 kB]
-Get:39 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libimlib2t64 arm64 1.12.1-1.1build2 [201 kB]
-Get:40 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libobt2v5 arm64 3.6.1-12build5 [32.9 kB]
-Get:41 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libobrender32v5 arm64 3.6.1-12build5 [39.7 kB]
-Get:42 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxres1 arm64 2:1.2.1-1build1 [6724 B]
-Get:43 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libwnck-3-common all 43.0-3build4 [19.5 kB]
-Get:44 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libwnck-3-0 arm64 43.0-3build4 [111 kB]
-Get:45 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxmu6 arm64 2:1.1.3-3build2 [47.5 kB]
-Get:46 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxaw7 arm64 2:1.0.14-1build2 [183 kB]
-Get:47 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 libxfce4panel-2.0-4 arm64 4.18.4-1ubuntu0.1 [35.9 kB]
-Get:48 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxfont2 arm64 1:2.0.6-1build1 [88.7 kB]
-Get:49 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxkbfile1 arm64 1:1.1.0-1build4 [69.4 kB]
-Get:50 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxv1 arm64 2:1.0.11-1.1build1 [10.7 kB]
-Get:51 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libxxf86dga1 arm64 2:1.1.5-1build1 [11.3 kB]
-Get:52 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 openbox arm64 3.6.1-12build5 [301 kB]
-Get:53 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 scrot arm64 1.10-1build2 [71.3 kB]
-Get:54 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 x11-utils arm64 7.7+6build2 [188 kB]
-Get:55 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 x11-xkb-utils arm64 7.7+8build2 [165 kB]
-Get:56 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 xfce4-panel arm64 4.18.4-1ubuntu0.1 [813 kB]
-Get:57 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 xfce4-sntray-plugin-common all 0.4.13.1-2build3 [12.8 kB]
-Get:58 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 xfce4-sntray-plugin arm64 0.4.13.1-2build3 [79.0 kB]
-Get:59 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 xserver-common all 2:21.1.12-1ubuntu1.6 [34.7 kB]
-Get:60 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 xvfb arm64 2:21.1.12-1ubuntu1.6 [873 kB]
-Get:61 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxdo3 arm64 1:3.20160805.1-5build1 [21.7 kB]
-Get:62 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 xdotool arm64 1:3.20160805.1-5build1 [42.2 kB]
-debconf: delaying package configuration, since apt-utils is not installed
-Fetched 26.5 MB in 3s (10.1 MB/s)
-Selecting previously unselected package poppler-data.
-(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 77409 files and directories currently installed.)
-Preparing to unpack .../00-poppler-data_0.4.12-1_all.deb ...
-Unpacking poppler-data (0.4.12-1) ...
-Selecting previously unselected package ucf.
-Preparing to unpack .../01-ucf_3.0043+nmu1_all.deb ...
-Moving old data out of the way
-Unpacking ucf (3.0043+nmu1) ...
-Selecting previously unselected package at-spi2-core.
-Preparing to unpack .../02-at-spi2-core_2.52.0-1build1_arm64.deb ...
-Unpacking at-spi2-core (2.52.0-1build1) ...
-Selecting previously unselected package libdbus-glib-1-2:arm64.
-Preparing to unpack .../03-libdbus-glib-1-2_0.112-3build2_arm64.deb ...
-Unpacking libdbus-glib-1-2:arm64 (0.112-3build2) ...
-Selecting previously unselected package ayatana-indicator-common.
-Preparing to unpack .../04-ayatana-indicator-common_0.9.10-1build2_all.deb ...
-Unpacking ayatana-indicator-common (0.9.10-1build2) ...
-Selecting previously unselected package ayatana-indicator-application.
-Preparing to unpack .../05-ayatana-indicator-application_22.2.0-1build2_arm64.deb ...
-Unpacking ayatana-indicator-application (22.2.0-1build2) ...
-Selecting previously unselected package libexo-common.
-Preparing to unpack .../06-libexo-common_4.18.0-1build4_all.deb ...
-Unpacking libexo-common (4.18.0-1build4) ...
-Selecting previously unselected package libxfce4util-common.
-Preparing to unpack .../07-libxfce4util-common_4.18.1-2build3_all.deb ...
-Unpacking libxfce4util-common (4.18.1-2build3) ...
-Selecting previously unselected package libxfce4util7:arm64.
-Preparing to unpack .../08-libxfce4util7_4.18.1-2build3_arm64.deb ...
-Unpacking libxfce4util7:arm64 (4.18.1-2build3) ...
-Selecting previously unselected package libexo-2-0:arm64.
-Preparing to unpack .../09-libexo-2-0_4.18.0-1build4_arm64.deb ...
-Unpacking libexo-2-0:arm64 (4.18.0-1build4) ...
-Selecting previously unselected package libxfce4ui-common.
-Preparing to unpack .../10-libxfce4ui-common_4.18.4-1build4_all.deb ...
-Unpacking libxfce4ui-common (4.18.4-1build4) ...
-Selecting previously unselected package libstartup-notification0:arm64.
-Preparing to unpack .../11-libstartup-notification0_0.12-6build3_arm64.deb ...
-Unpacking libstartup-notification0:arm64 (0.12-6build3) ...
-Selecting previously unselected package xfconf.
-Preparing to unpack .../12-xfconf_4.18.1-1build3_arm64.deb ...
-Unpacking xfconf (4.18.1-1build3) ...
-Selecting previously unselected package libxfconf-0-3:arm64.
-Preparing to unpack .../13-libxfconf-0-3_4.18.1-1build3_arm64.deb ...
-Unpacking libxfconf-0-3:arm64 (4.18.1-1build3) ...
-Selecting previously unselected package libxfce4ui-2-0:arm64.
-Preparing to unpack .../14-libxfce4ui-2-0_4.18.4-1build4_arm64.deb ...
-Unpacking libxfce4ui-2-0:arm64 (4.18.4-1build4) ...
-Selecting previously unselected package exo-utils.
-Preparing to unpack .../15-exo-utils_4.18.0-1build4_arm64.deb ...
-Unpacking exo-utils (4.18.0-1build4) ...
-Selecting previously unselected package libfontenc1:arm64.
-Preparing to unpack .../16-libfontenc1_1%3a1.1.8-1build1_arm64.deb ...
-Unpacking libfontenc1:arm64 (1:1.1.8-1build1) ...
-Selecting previously unselected package xfonts-encodings.
-Preparing to unpack .../17-xfonts-encodings_1%3a1.0.5-0ubuntu2_all.deb ...
-Unpacking xfonts-encodings (1:1.0.5-0ubuntu2) ...
-Selecting previously unselected package xfonts-utils.
-Preparing to unpack .../18-xfonts-utils_1%3a7.7+6build3_arm64.deb ...
-Unpacking xfonts-utils (1:7.7+6build3) ...
-Selecting previously unselected package fonts-urw-base35.
-Preparing to unpack .../19-fonts-urw-base35_20200910-8_all.deb ...
-Unpacking fonts-urw-base35 (20200910-8) ...
-Selecting previously unselected package libgarcon-common.
-Preparing to unpack .../20-libgarcon-common_4.18.1-1build3_all.deb ...
-Unpacking libgarcon-common (4.18.1-1build3) ...
-Selecting previously unselected package libgarcon-1-0:arm64.
-Preparing to unpack .../21-libgarcon-1-0_4.18.1-1build3_arm64.deb ...
-Unpacking libgarcon-1-0:arm64 (4.18.1-1build3) ...
-Selecting previously unselected package libgarcon-gtk3-1-0:arm64.
-Preparing to unpack .../22-libgarcon-gtk3-1-0_4.18.1-1build3_arm64.deb ...
-Unpacking libgarcon-gtk3-1-0:arm64 (4.18.1-1build3) ...
-Selecting previously unselected package libgif7:arm64.
-Preparing to unpack .../23-libgif7_5.2.2-1ubuntu1_arm64.deb ...
-Unpacking libgif7:arm64 (5.2.2-1ubuntu1) ...
-Selecting previously unselected package libgs-common.
-Preparing to unpack .../24-libgs-common_10.02.1~dfsg1-0ubuntu7.8_all.deb ...
-Unpacking libgs-common (10.02.1~dfsg1-0ubuntu7.8) ...
-Selecting previously unselected package libgs10-common.
-Preparing to unpack .../25-libgs10-common_10.02.1~dfsg1-0ubuntu7.8_all.deb ...
-Unpacking libgs10-common (10.02.1~dfsg1-0ubuntu7.8) ...
-Selecting previously unselected package libidn12:arm64.
-Preparing to unpack .../26-libidn12_1.42-1build1_arm64.deb ...
-Unpacking libidn12:arm64 (1.42-1build1) ...
-Selecting previously unselected package libijs-0.35:arm64.
-Preparing to unpack .../27-libijs-0.35_0.35-15.1build1_arm64.deb ...
-Unpacking libijs-0.35:arm64 (0.35-15.1build1) ...
-Selecting previously unselected package libjbig2dec0:arm64.
-Preparing to unpack .../28-libjbig2dec0_0.20-1build3_arm64.deb ...
-Unpacking libjbig2dec0:arm64 (0.20-1build3) ...
-Selecting previously unselected package libopenjp2-7:arm64.
-Preparing to unpack .../29-libopenjp2-7_2.5.0-2ubuntu0.5_arm64.deb ...
-Unpacking libopenjp2-7:arm64 (2.5.0-2ubuntu0.5) ...
-Selecting previously unselected package libpaper1:arm64.
-Preparing to unpack .../30-libpaper1_1.1.29build1_arm64.deb ...
-Unpacking libpaper1:arm64 (1.1.29build1) ...
-Selecting previously unselected package libxt6t64:arm64.
-Preparing to unpack .../31-libxt6t64_1%3a1.2.1-1.2build1_arm64.deb ...
-Unpacking libxt6t64:arm64 (1:1.2.1-1.2build1) ...
-Selecting previously unselected package libgs10:arm64.
-Preparing to unpack .../32-libgs10_10.02.1~dfsg1-0ubuntu7.8_arm64.deb ...
-Unpacking libgs10:arm64 (10.02.1~dfsg1-0ubuntu7.8) ...
-Selecting previously unselected package libhwy1t64:arm64.
-Preparing to unpack .../33-libhwy1t64_1.0.7-8.1build1_arm64.deb ...
-Unpacking libhwy1t64:arm64 (1.0.7-8.1build1) ...
-Selecting previously unselected package libid3tag0:arm64.
-Preparing to unpack .../34-libid3tag0_0.15.1b-14build1_arm64.deb ...
-Unpacking libid3tag0:arm64 (0.15.1b-14build1) ...
-Selecting previously unselected package libjxl0.7:arm64.
-Preparing to unpack .../35-libjxl0.7_0.7.0-10.2ubuntu6.1_arm64.deb ...
-Unpacking libjxl0.7:arm64 (0.7.0-10.2ubuntu6.1) ...
-Selecting previously unselected package librsvg2-2:arm64.
-Preparing to unpack .../36-librsvg2-2_2.58.0+dfsg-1build1_arm64.deb ...
-Unpacking librsvg2-2:arm64 (2.58.0+dfsg-1build1) ...
-Selecting previously unselected package libspectre1:arm64.
-Preparing to unpack .../37-libspectre1_0.2.12-1build2_arm64.deb ...
-Unpacking libspectre1:arm64 (0.2.12-1build2) ...
-Selecting previously unselected package libimlib2t64:arm64.
-Preparing to unpack .../38-libimlib2t64_1.12.1-1.1build2_arm64.deb ...
-Unpacking libimlib2t64:arm64 (1.12.1-1.1build2) ...
-Selecting previously unselected package libobt2v5:arm64.
-Preparing to unpack .../39-libobt2v5_3.6.1-12build5_arm64.deb ...
-Unpacking libobt2v5:arm64 (3.6.1-12build5) ...
-Selecting previously unselected package libobrender32v5.
-Preparing to unpack .../40-libobrender32v5_3.6.1-12build5_arm64.deb ...
-Unpacking libobrender32v5 (3.6.1-12build5) ...
-Selecting previously unselected package libxres1:arm64.
-Preparing to unpack .../41-libxres1_2%3a1.2.1-1build1_arm64.deb ...
-Unpacking libxres1:arm64 (2:1.2.1-1build1) ...
-Selecting previously unselected package libwnck-3-common.
-Preparing to unpack .../42-libwnck-3-common_43.0-3build4_all.deb ...
-Unpacking libwnck-3-common (43.0-3build4) ...
-Selecting previously unselected package libwnck-3-0:arm64.
-Preparing to unpack .../43-libwnck-3-0_43.0-3build4_arm64.deb ...
-Unpacking libwnck-3-0:arm64 (43.0-3build4) ...
-Selecting previously unselected package libxmu6:arm64.
-Preparing to unpack .../44-libxmu6_2%3a1.1.3-3build2_arm64.deb ...
-Unpacking libxmu6:arm64 (2:1.1.3-3build2) ...
-Selecting previously unselected package libxaw7:arm64.
-Preparing to unpack .../45-libxaw7_2%3a1.0.14-1build2_arm64.deb ...
-Unpacking libxaw7:arm64 (2:1.0.14-1build2) ...
-Selecting previously unselected package libxfce4panel-2.0-4.
-Preparing to unpack .../46-libxfce4panel-2.0-4_4.18.4-1ubuntu0.1_arm64.deb ...
-Unpacking libxfce4panel-2.0-4 (4.18.4-1ubuntu0.1) ...
-Selecting previously unselected package libxfont2:arm64.
-Preparing to unpack .../47-libxfont2_1%3a2.0.6-1build1_arm64.deb ...
-Unpacking libxfont2:arm64 (1:2.0.6-1build1) ...
-Selecting previously unselected package libxkbfile1:arm64.
-Preparing to unpack .../48-libxkbfile1_1%3a1.1.0-1build4_arm64.deb ...
-Unpacking libxkbfile1:arm64 (1:1.1.0-1build4) ...
-Selecting previously unselected package libxv1:arm64.
-Preparing to unpack .../49-libxv1_2%3a1.0.11-1.1build1_arm64.deb ...
-Unpacking libxv1:arm64 (2:1.0.11-1.1build1) ...
-Selecting previously unselected package libxxf86dga1:arm64.
-Preparing to unpack .../50-libxxf86dga1_2%3a1.1.5-1build1_arm64.deb ...
-Unpacking libxxf86dga1:arm64 (2:1.1.5-1build1) ...
-Selecting previously unselected package openbox.
-Preparing to unpack .../51-openbox_3.6.1-12build5_arm64.deb ...
-Unpacking openbox (3.6.1-12build5) ...
-Selecting previously unselected package scrot.
-Preparing to unpack .../52-scrot_1.10-1build2_arm64.deb ...
-Unpacking scrot (1.10-1build2) ...
-Selecting previously unselected package x11-utils.
-Preparing to unpack .../53-x11-utils_7.7+6build2_arm64.deb ...
-Unpacking x11-utils (7.7+6build2) ...
-Selecting previously unselected package x11-xkb-utils.
-Preparing to unpack .../54-x11-xkb-utils_7.7+8build2_arm64.deb ...
-Unpacking x11-xkb-utils (7.7+8build2) ...
-Selecting previously unselected package xfce4-panel.
-Preparing to unpack .../55-xfce4-panel_4.18.4-1ubuntu0.1_arm64.deb ...
-Unpacking xfce4-panel (4.18.4-1ubuntu0.1) ...
-Selecting previously unselected package xfce4-sntray-plugin-common.
-Preparing to unpack .../56-xfce4-sntray-plugin-common_0.4.13.1-2build3_all.deb ...
-Unpacking xfce4-sntray-plugin-common (0.4.13.1-2build3) ...
-Selecting previously unselected package xfce4-sntray-plugin.
-Preparing to unpack .../57-xfce4-sntray-plugin_0.4.13.1-2build3_arm64.deb ...
-Unpacking xfce4-sntray-plugin (0.4.13.1-2build3) ...
-Selecting previously unselected package xserver-common.
-Preparing to unpack .../58-xserver-common_2%3a21.1.12-1ubuntu1.6_all.deb ...
-Unpacking xserver-common (2:21.1.12-1ubuntu1.6) ...
-Selecting previously unselected package xvfb.
-Preparing to unpack .../59-xvfb_2%3a21.1.12-1ubuntu1.6_arm64.deb ...
-Unpacking xvfb (2:21.1.12-1ubuntu1.6) ...
-Selecting previously unselected package libxdo3:arm64.
-Preparing to unpack .../60-libxdo3_1%3a3.20160805.1-5build1_arm64.deb ...
-Unpacking libxdo3:arm64 (1:3.20160805.1-5build1) ...
-Selecting previously unselected package xdotool.
-Preparing to unpack .../61-xdotool_1%3a3.20160805.1-5build1_arm64.deb ...
-Unpacking xdotool (1:3.20160805.1-5build1) ...
-Setting up libhwy1t64:arm64 (1.0.7-8.1build1) ...
-Setting up xfce4-sntray-plugin-common (0.4.13.1-2build3) ...
-Setting up libexo-common (4.18.0-1build4) ...
-Setting up libwnck-3-common (43.0-3build4) ...
-Setting up libijs-0.35:arm64 (0.35-15.1build1) ...
-Setting up libgs-common (10.02.1~dfsg1-0ubuntu7.8) ...
-Setting up libxfce4util-common (4.18.1-2build3) ...
-Setting up libxxf86dga1:arm64 (2:1.1.5-1build1) ...
-Setting up poppler-data (0.4.12-1) ...
-Setting up libgarcon-common (4.18.1-1build3) ...
-Setting up librsvg2-2:arm64 (2.58.0+dfsg-1build1) ...
-Setting up libxdo3:arm64 (1:3.20160805.1-5build1) ...
-Setting up libid3tag0:arm64 (0.15.1b-14build1) ...
-Setting up ayatana-indicator-common (0.9.10-1build2) ...
-Setting up libfontenc1:arm64 (1:1.1.8-1build1) ...
-Setting up libjbig2dec0:arm64 (0.20-1build3) ...
-Setting up libdbus-glib-1-2:arm64 (0.112-3build2) ...
-Setting up xfonts-encodings (1:1.0.5-0ubuntu2) ...
-Setting up libxt6t64:arm64 (1:1.2.1-1.2build1) ...
-Setting up libxv1:arm64 (2:1.0.11-1.1build1) ...
-Setting up libidn12:arm64 (1.42-1build1) ...
-Setting up libobt2v5:arm64 (3.6.1-12build5) ...
-Setting up ucf (3.0043+nmu1) ...
-Setting up libjxl0.7:arm64 (0.7.0-10.2ubuntu6.1) ...
-Setting up libgif7:arm64 (5.2.2-1ubuntu1) ...
-Setting up at-spi2-core (2.52.0-1build1) ...
-Setting up libopenjp2-7:arm64 (2.5.0-2ubuntu0.5) ...
-Setting up libxfce4util7:arm64 (4.18.1-2build3) ...
-Setting up libxkbfile1:arm64 (1:1.1.0-1build4) ...
-Setting up libxfce4ui-common (4.18.4-1build4) ...
-Setting up xfconf (4.18.1-1build3) ...
-Setting up libxfont2:arm64 (1:2.0.6-1build1) ...
-Setting up libxres1:arm64 (2:1.2.1-1build1) ...
-Setting up libstartup-notification0:arm64 (0.12-6build3) ...
-Setting up libpaper1:arm64 (1.1.29build1) ...
-
-Creating config file /etc/papersize with new version
-Setting up libxfconf-0-3:arm64 (4.18.1-1build3) ...
-Setting up libxmu6:arm64 (2:1.1.3-3build2) ...
-Setting up libxfce4panel-2.0-4 (4.18.4-1ubuntu0.1) ...
-Setting up libexo-2-0:arm64 (4.18.0-1build4) ...
-Setting up xdotool (1:3.20160805.1-5build1) ...
-Setting up libxfce4ui-2-0:arm64 (4.18.4-1build4) ...
-Setting up libxaw7:arm64 (2:1.0.14-1build2) ...
-Setting up xfonts-utils (1:7.7+6build3) ...
-Setting up libgarcon-1-0:arm64 (4.18.1-1build3) ...
-Setting up exo-utils (4.18.0-1build4) ...
-Setting up libwnck-3-0:arm64 (43.0-3build4) ...
-Setting up x11-utils (7.7+6build2) ...
-Setting up x11-xkb-utils (7.7+8build2) ...
-Setting up fonts-urw-base35 (20200910-8) ...
-Setting up libgarcon-gtk3-1-0:arm64 (4.18.1-1build3) ...
-Setting up xfce4-panel (4.18.4-1ubuntu0.1) ...
-Setting up xserver-common (2:21.1.12-1ubuntu1.6) ...
-Setting up libgs10-common (10.02.1~dfsg1-0ubuntu7.8) ...
-Setting up xvfb (2:21.1.12-1ubuntu1.6) ...
-Setting up libgs10:arm64 (10.02.1~dfsg1-0ubuntu7.8) ...
-Setting up libspectre1:arm64 (0.2.12-1build2) ...
-Setting up libimlib2t64:arm64 (1.12.1-1.1build2) ...
-Setting up libobrender32v5 (3.6.1-12build5) ...
-Setting up scrot (1.10-1build2) ...
-Setting up openbox (3.6.1-12build5) ...
-update-alternatives: using /usr/bin/openbox to provide /usr/bin/x-window-manager (x-window-manager) in auto mode
-update-alternatives: warning: skip creation of /usr/share/man/man1/x-window-manager.1.gz because associated file /usr/share/man/man1/openbox.1.gz (of link group x-window-manager) doesn't exist
-update-alternatives: using /usr/bin/openbox-session to provide /usr/bin/x-session-manager (x-session-manager) in auto mode
-update-alternatives: warning: skip creation of /usr/share/man/man1/x-session-manager.1.gz because associated file /usr/share/man/man1/openbox-session.1.gz (of link group x-session-manager) doesn't exist
-Processing triggers for fontconfig (2.15.0-1.1ubuntu2) ...
-Processing triggers for desktop-file-utils (0.27-2build1) ...
-Processing triggers for hicolor-icon-theme (0.17-2) ...
-Processing triggers for libc-bin (2.39-0ubuntu8.7) ...
-Processing triggers for libglib2.0-0t64:arm64 (2.80.0-6ubuntu3.8) ...
-Setting up ayatana-indicator-application (22.2.0-1build2) ...
-Setting up xfce4-sntray-plugin (0.4.13.1-2build3) ...
+all required desktop packages already installed
 == package versions ==
 at-spi2-core=2.52.0-1build1
 ayatana-indicator-application=22.2.0-1build2
@@ -477,23 +93,23 @@ npm WARN EBADENGINE   current: { node: 'v18.19.1', npm: '9.2.0' }
 npm WARN EBADENGINE }
 npm WARN deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
-added 117 packages in 3s
+added 187 packages in 5s
 
 > @openburnbar/linux-desktop@0.1.0 build
 > vite build
 
 vite v6.4.3 building for production...
 transforming...
-✓ 22 modules transformed.
+✓ 74 modules transformed.
 [plugin vite:reporter]
 (!) /tmp/openburnbar-linux-desktop-session/app/node_modules/@tauri-apps/api/core.js is dynamically imported by /tmp/openburnbar-linux-desktop-session/app/src/perfMarks.ts but also statically imported by /tmp/openburnbar-linux-desktop-session/app/src/tauriBridge.ts, dynamic import will not move module into another chunk.
 
 rendering chunks...
 computing gzip size...
-dist/index.html                  0.44 kB │ gzip:  0.28 kB
-dist/assets/index-C81_LCvp.css   6.94 kB │ gzip:  1.97 kB
-dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
-✓ built in 160ms
+dist/index.html                   0.44 kB │ gzip:  0.28 kB
+dist/assets/index-BoWhPm-I.css   13.47 kB │ gzip:  3.29 kB
+dist/assets/index-JF_In1Pa.js   223.74 kB │ gzip: 71.77 kB
+✓ built in 833ms
 
 > @openburnbar/linux-desktop@0.1.0 tauri:build
 > tauri build --bundles deb
@@ -506,16 +122,16 @@ dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
 
 vite v6.4.3 building for production...
 transforming...
-✓ 22 modules transformed.
+✓ 74 modules transformed.
 [plugin vite:reporter]
 (!) /tmp/openburnbar-linux-desktop-session/app/node_modules/@tauri-apps/api/core.js is dynamically imported by /tmp/openburnbar-linux-desktop-session/app/src/perfMarks.ts but also statically imported by /tmp/openburnbar-linux-desktop-session/app/src/tauriBridge.ts, dynamic import will not move module into another chunk.
 
 rendering chunks...
 computing gzip size...
-dist/index.html                  0.44 kB │ gzip:  0.28 kB
-dist/assets/index-C81_LCvp.css   6.94 kB │ gzip:  1.97 kB
-dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
-✓ built in 154ms
+dist/index.html                   0.44 kB │ gzip:  0.28 kB
+dist/assets/index-BoWhPm-I.css   13.47 kB │ gzip:  3.29 kB
+dist/assets/index-JF_In1Pa.js   223.74 kB │ gzip: 71.77 kB
+✓ built in 803ms
     Updating crates.io index
      Locking 440 packages to latest compatible versions
       Adding generic-array v0.14.7 (available: v0.14.9)
@@ -523,462 +139,461 @@ dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
       Adding toml_datetime v0.6.3 (available: v0.6.11)
       Adding toml_edit v0.20.2 (available: v0.20.7)
  Downloading crates ...
-  Downloaded cargo-platform v0.1.9
+  Downloaded adler2 v2.0.1
+  Downloaded equivalent v1.0.2
   Downloaded block-buffer v0.10.4
-  Downloaded heck v0.4.1
-  Downloaded hex v0.4.3
-  Downloaded cairo-sys-rs v0.18.2
+  Downloaded alloc-no-stdlib v2.0.4
+  Downloaded fnv v1.0.7
+  Downloaded dyn-clone v1.0.20
+  Downloaded dtor v0.3.0
+  Downloaded dlopen2_derive v0.4.3
+  Downloaded ctor v0.8.0
+  Downloaded cargo-platform v0.1.9
+  Downloaded dtor-proc-macro v0.0.6
+  Downloaded crypto-common v0.1.7
+  Downloaded alloc-stdlib v0.2.4
   Downloaded heck v0.5.0
-  Downloaded dirs v6.0.0
+  Downloaded generic-array v0.14.7
+  Downloaded itoa v1.0.18
+  Downloaded hex v0.4.3
+  Downloaded gdkx11 v0.18.2
+  Downloaded dunce v1.0.5
+  Downloaded dirs-sys v0.5.0
+  Downloaded darling_macro v0.23.0
+  Downloaded cssparser-macros v0.6.1
+  Downloaded cfg-if v1.0.4
+  Downloaded futures-io v0.3.32
+  Downloaded form_urlencoded v1.2.2
+  Downloaded errno v0.3.14
+  Downloaded dtoa-short v0.3.5
+  Downloaded cpufeatures v0.2.17
+  Downloaded gdkwayland-sys v0.18.2
+  Downloaded gdkx11-sys v0.18.2
+  Downloaded bs58 v0.5.1
+  Downloaded bit-vec v0.8.0
+  Downloaded autocfg v1.5.1
+  Downloaded gdk-pixbuf-sys v0.18.0
+  Downloaded futures-macro v0.3.32
+  Downloaded futures-task v0.3.32
+  Downloaded futures-sink v0.3.32
+  Downloaded futures-core v0.3.32
+  Downloaded dpi v0.1.2
+  Downloaded serde_spanned v0.6.9
+  Downloaded fastrand v2.4.1
+  Downloaded glob v0.3.3
+  Downloaded field-offset v0.3.6
+  Downloaded fdeflate v0.3.7
+  Downloaded embed-resource v3.0.11
+  Downloaded dtoa v1.0.11
+  Downloaded dlopen2 v0.8.2
+  Downloaded erased-serde v0.4.10
+  Downloaded displaydoc v0.2.6
+  Downloaded futures-executor v0.3.32
+  Downloaded digest v0.10.7
+  Downloaded cargo_metadata v0.19.2
+  Downloaded byteorder v1.5.0
+  Downloaded bitflags v1.3.2
+  Downloaded atk-sys v0.18.2
+  Downloaded serde_repr v0.1.20
+  Downloaded num-conv v0.2.2
   Downloaded libappindicator-sys v0.9.0
   Downloaded is-wsl v0.4.0
-  Downloaded alloc-no-stdlib v2.0.4
-  Downloaded num-conv v0.2.2
-  Downloaded phf_shared v0.13.1
-  Downloaded option-ext v0.2.0
+  Downloaded gtk3-macros v0.18.2
+  Downloaded ctor-proc-macro v0.0.7
+  Downloaded cairo-sys-rs v0.18.2
+  Downloaded bit-set v0.8.0
+  Downloaded heck v0.4.1
+  Downloaded phf_generator v0.13.1
   Downloaded memoffset v0.9.1
-  Downloaded markup5ever v0.38.0
-  Downloaded cpufeatures v0.2.17
-  Downloaded rustc_version v0.4.1
-  Downloaded ref-cast-impl v1.0.25
-  Downloaded same-file v1.0.6
-  Downloaded ref-cast v1.0.25
-  Downloaded potential_utf v0.1.5
-  Downloaded scopeguard v1.2.0
-  Downloaded is-docker v0.2.0
-  Downloaded precomputed-hash v0.1.1
-  Downloaded new_debug_unreachable v1.0.6
-  Downloaded proc-macro-error-attr v1.0.4
-  Downloaded phf_codegen v0.13.1
-  Downloaded percent-encoding v2.3.2
-  Downloaded javascriptcore-rs-sys v1.1.1
-  Downloaded crypto-common v0.1.7
-  Downloaded os_pipe v1.2.3
-  Downloaded idna_adapter v1.2.2
-  Downloaded adler2 v2.0.1
-  Downloaded itoa v1.0.18
-  Downloaded ident_case v1.0.1
-  Downloaded rustc-hash v2.1.3
-  Downloaded proc-macro-crate v1.3.1
+  Downloaded sigchld v0.2.4
+  Downloaded serde_spanned v1.1.1
   Downloaded serialize-to-javascript-impl v0.1.2
   Downloaded serialize-to-javascript v0.1.2
-  Downloaded serde_spanned v0.6.9
-  Downloaded mime v0.3.17
-  Downloaded dtor v0.3.0
-  Downloaded powerfmt v0.2.0
-  Downloaded phf_generator v0.13.1
-  Downloaded json-patch v3.0.1
-  Downloaded serde-untagged v0.1.9
-  Downloaded lock_api v0.4.14
-  Downloaded schemars_derive v0.8.22
-  Downloaded quote v1.0.46
-  Downloaded proc-macro-crate v2.0.2
-  Downloaded pin-project-lite v0.2.17
-  Downloaded phf_macros v0.13.1
-  Downloaded phf v0.13.1
-  Downloaded pango-sys v0.18.0
-  Downloaded javascriptcore-rs v1.1.2
-  Downloaded infer v0.19.0
-  Downloaded pkg-config v0.3.33
-  Downloaded open v5.3.6
+  Downloaded deranged v0.5.8
+  Downloaded cargo_toml v0.22.3
+  Downloaded cairo-rs v0.18.5
+  Downloaded idna_adapter v1.2.2
+  Downloaded ref-cast-impl v1.0.25
+  Downloaded same-file v1.0.6
+  Downloaded glib-macros v0.18.5
+  Downloaded shlex v2.0.1
   Downloaded shared_child v1.1.1
-  Downloaded iana-time-zone v0.1.65
+  Downloaded mime v0.3.17
+  Downloaded getrandom v0.4.3
+  Downloaded camino v1.2.4
+  Downloaded bytes v1.12.0
+  Downloaded cssparser v0.36.0
+  Downloaded cfb v0.7.3
+  Downloaded bitflags v2.13.0
+  Downloaded futures-channel v0.3.32
+  Downloaded foldhash v0.2.0
+  Downloaded find-msvc-tools v0.1.9
+  Downloaded sha2 v0.10.9
   Downloaded servo_arc v0.4.3
-  Downloaded serde_derive_internals v0.29.1
-  Downloaded raw-window-handle v0.6.2
-  Downloaded proc-macro-error v1.0.4
-  Downloaded ctor-proc-macro v0.0.7
-  Downloaded cssparser-macros v0.6.1
-  Downloaded siphasher v1.0.3
-  Downloaded darling_macro v0.23.0
-  Downloaded ctor v0.8.0
-  Downloaded pango v0.18.3
-  Downloaded libloading v0.7.4
-  Downloaded jsonptr v0.6.3
-  Downloaded semver v1.0.28
-  Downloaded parking_lot v0.12.5
-  Downloaded litemap v0.8.2
-  Downloaded once_cell v1.21.4
-  Downloaded futures-io v0.3.32
+  Downloaded dirs v6.0.0
+  Downloaded darling v0.23.0
+  Downloaded crossbeam-utils v0.8.21
+  Downloaded crc32fast v1.5.0
+  Downloaded cookie v0.18.1
+  Downloaded cfg-expr v0.15.8
+  Downloaded atk v0.18.2
+  Downloaded anyhow v1.0.103
+  Downloaded gobject-sys v0.18.0
+  Downloaded glib-sys v0.18.1
+  Downloaded gio-sys v0.18.1
+  Downloaded darling_core v0.23.0
+  Downloaded gdk-pixbuf v0.18.5
+  Downloaded strsim v0.11.1
+  Downloaded dom_query v0.27.0
+  Downloaded string_cache v0.9.0
   Downloaded soup3-sys v0.5.0
   Downloaded slab v0.4.12
   Downloaded signal-hook-registry v1.4.8
-  Downloaded sigchld v0.2.4
-  Downloaded shlex v2.0.1
-  Downloaded futures-macro v0.3.32
-  Downloaded plist v1.10.0
-  Downloaded keyboard-types v0.7.0
-  Downloaded icu_provider v2.2.0
-  Downloaded serde_derive v1.0.228
-  Downloaded log v0.4.33
-  Downloaded schemars v0.8.22
-  Downloaded parking_lot_core v0.9.12
-  Downloaded num-traits v0.2.19
-  Downloaded serde_core v1.0.228
-  Downloaded proc-macro2 v1.0.106
-  Downloaded libappindicator v0.9.0
-  Downloaded soup3 v0.5.0
-  Downloaded smallvec v1.15.2
-  Downloaded ico v0.5.0
-  Downloaded gdkwayland-sys v0.18.2
-  Downloaded selectors v0.36.1
-  Downloaded schemars v0.9.0
-  Downloaded string_cache_codegen v0.6.1
-  Downloaded indexmap v1.9.3
-  Downloaded icu_normalizer_data v2.2.0
-  Downloaded stable_deref_trait v1.2.1
-  Downloaded strsim v0.11.1
-  Downloaded socket2 v0.6.4
-  Downloaded signal-hook v0.3.18
-  Downloaded miniz_oxide v0.8.9
-  Downloaded html5ever v0.38.0
-  Downloaded icu_locale_core v2.2.0
-  Downloaded icu_collections v2.2.0
-  Downloaded serde v1.0.228
-  Downloaded system-deps v6.2.2
-  Downloaded tauri-winres v0.3.6
-  Downloaded tinyvec_macros v0.1.1
-  Downloaded mio v1.2.1
-  Downloaded toml_datetime v0.6.3
-  Downloaded tauri-codegen v2.6.3
-  Downloaded time-core v0.1.9
-  Downloaded typeid v1.0.3
-  Downloaded tauri-build v2.6.3
-  Downloaded memchr v2.8.2
-  Downloaded indexmap v2.14.0
-  Downloaded tendril v0.5.0
-  Downloaded http v1.4.2
-  Downloaded hashbrown v0.12.3
-  Downloaded generic-array v0.14.7
-  Downloaded gdk-pixbuf-sys v0.18.0
-  Downloaded tauri-plugin v2.6.3
-  Downloaded synstructure v0.13.2
-  Downloaded string_cache v0.9.0
-  Downloaded schemars v1.2.1
-  Downloaded icu_normalizer v2.2.0
-  Downloaded muda v0.19.3
-  Downloaded icu_properties v2.2.0
-  Downloaded thiserror v2.0.18
-  Downloaded unic-ucd-version v0.9.0
-  Downloaded unic-ucd-ident v0.9.0
-  Downloaded toml_writer v1.1.1+spec-1.1.0
-  Downloaded time-macros v0.2.31
-  Downloaded png v0.18.1
-  Downloaded version_check v0.9.5
-  Downloaded toml_parser v1.1.2+spec-1.1.0
-  Downloaded tauri-runtime-wry v2.11.4
-  Downloaded version-compare v0.2.1
-  Downloaded urlpattern v0.3.0
-  Downloaded png v0.17.16
-  Downloaded equivalent v1.0.2
-  Downloaded unic-common v0.9.0
-  Downloaded tinystr v0.8.3
-  Downloaded cfg-if v1.0.4
-  Downloaded thiserror-impl v2.0.18
-  Downloaded thiserror-impl v1.0.69
-  Downloaded thiserror v1.0.69
-  Downloaded tauri-macros v2.6.3
-  Downloaded tinyvec v1.11.0
-  Downloaded gtk-sys v0.18.2
-  Downloaded toml v0.8.2
-  Downloaded toml v1.1.2+spec-1.1.0
-  Downloaded toml v0.9.12+spec-1.1.0
-  Downloaded yoke-derive v0.8.2
-  Downloaded form_urlencoded v1.2.2
-  Downloaded zerofrom-derive v0.1.7
-  Downloaded serde_json v1.0.150
-  Downloaded unicode-ident v1.0.24
-  Downloaded webkit2gtk-sys v2.0.2
-  Downloaded walkdir v2.5.0
-  Downloaded writeable v0.6.3
-  Downloaded web_atoms v0.2.5
-  Downloaded tray-icon v0.24.1
-  Downloaded dtor-proc-macro v0.0.6
-  Downloaded gdkx11 v0.18.2
-  Downloaded field-offset v0.3.6
-  Downloaded futures-task v0.3.32
-  Downloaded futures-sink v0.3.32
-  Downloaded dtoa-short v0.3.5
-  Downloaded zerovec-derive v0.11.3
-  Downloaded zmij v1.0.21
-  Downloaded x11-dl v2.21.0
-  Downloaded zerotrie v0.2.4
-  Downloaded unicode-segmentation v1.13.3
-  Downloaded quick-xml v0.41.0
-  Downloaded typenum v1.20.1
-  Downloaded tauri-utils v2.9.3
-  Downloaded x11 v2.21.0
-  Downloaded webkit2gtk v2.0.2
-  Downloaded serde_with v3.21.0
-  Downloaded gdkx11-sys v0.18.2
-  Downloaded url v2.5.8
-  Downloaded tauri-plugin-shell v2.3.5
-  Downloaded zerovec v0.11.6
-  Downloaded idna v1.1.0
-  Downloaded uuid v1.23.4
-  Downloaded toml_edit v0.20.2
-  Downloaded toml_edit v0.19.15
-  Downloaded icu_properties_data v2.2.0
-  Downloaded hashbrown v0.17.1
-  Downloaded yoke v0.8.3
-  Downloaded regex v1.12.4
-  Downloaded winnow v0.5.40
-  Downloaded cargo_metadata v0.19.2
-  Downloaded winnow v1.0.3
-  Downloaded wry v0.55.1
-  Downloaded syn v1.0.109
-  Downloaded winnow v0.7.15
-  Downloaded atk-sys v0.18.2
-  Downloaded dlopen2_derive v0.4.3
-  Downloaded alloc-stdlib v0.2.4
-  Downloaded bit-set v0.8.0
-  Downloaded time v0.3.53
-  Downloaded tauri v2.11.5
-  Downloaded tao v0.35.3
-  Downloaded regex-syntax v0.8.11
-  Downloaded errno v0.3.14
-  Downloaded regex-automata v0.4.14
-  Downloaded dyn-clone v1.0.20
-  Downloaded libc v0.2.186
-  Downloaded tokio v1.52.3
-  Downloaded fnv v1.0.7
-  Downloaded libdbus-sys v0.2.7
-  Downloaded futures-core v0.3.32
-  Downloaded dpi v0.1.2
-  Downloaded serde_spanned v1.1.1
-  Downloaded serde_repr v0.1.20
-  Downloaded gtk3-macros v0.18.2
-  Downloaded unic-char-range v0.9.0
-  Downloaded unic-char-property v0.9.0
-  Downloaded utf-8 v0.7.6
-  Downloaded zerofrom v0.1.8
-  Downloaded utf8_iter v1.0.4
-  Downloaded digest v0.10.7
-  Downloaded bitflags v1.3.2
-  Downloaded autocfg v1.5.1
-  Downloaded dirs-sys v0.5.0
-  Downloaded dtoa v1.0.11
-  Downloaded futures-executor v0.3.32
-  Downloaded foldhash v0.2.0
-  Downloaded deranged v0.5.8
-  Downloaded find-msvc-tools v0.1.9
-  Downloaded gobject-sys v0.18.0
-  Downloaded fdeflate v0.3.7
-  Downloaded gdk-pixbuf v0.18.5
-  Downloaded byteorder v1.5.0
-  Downloaded displaydoc v0.2.6
-  Downloaded glob v0.3.3
-  Downloaded camino v1.2.4
-  Downloaded bit-vec v0.8.0
-  Downloaded embed-resource v3.0.11
-  Downloaded bs58 v0.5.1
-  Downloaded erased-serde v0.4.10
   Downloaded simd-adler32 v0.3.9
-  Downloaded sha2 v0.10.9
-  Downloaded toml_datetime v1.1.1+spec-1.1.0
-  Downloaded toml_datetime v0.7.5+spec-1.1.0
-  Downloaded target-lexicon v0.12.16
-  Downloaded cfg-expr v0.15.8
-  Downloaded anyhow v1.0.103
-  Downloaded atk v0.18.2
-  Downloaded darling v0.23.0
-  Downloaded crc32fast v1.5.0
-  Downloaded dunce v1.0.5
-  Downloaded dlopen2 v0.8.2
-  Downloaded futures-channel v0.3.32
-  Downloaded cookie v0.18.1
-  Downloaded fastrand v2.4.1
-  Downloaded tauri-runtime v2.11.3
-  Downloaded cargo_toml v0.22.3
-  Downloaded crossbeam-utils v0.8.21
-  Downloaded glib-macros v0.18.5
-  Downloaded glib-sys v0.18.1
-  Downloaded cairo-rs v0.18.5
-  Downloaded bitflags v2.13.0
-  Downloaded getrandom v0.4.3
-  Downloaded getrandom v0.3.4
-  Downloaded serde_with_macros v3.21.0
-  Downloaded darling_core v0.23.0
-  Downloaded gio-sys v0.18.1
-  Downloaded cssparser v0.36.0
-  Downloaded gdk-sys v0.18.2
-  Downloaded cfb v0.7.3
-  Downloaded bytes v1.12.0
+  Downloaded gdk v0.18.2
+  Downloaded derive_more-impl v2.1.1
+  Downloaded javascriptcore-rs-sys v1.1.1
   Downloaded flate2 v1.1.9
   Downloaded derive_more v2.1.1
-  Downloaded cc v1.2.65
-  Downloaded base64 v0.22.1
-  Downloaded crossbeam-channel v0.5.15
-  Downloaded gdk v0.18.2
-  Downloaded dom_query v0.27.0
+  Downloaded smallvec v1.15.2
+  Downloaded soup3 v0.5.0
+  Downloaded socket2 v0.6.4
+  Downloaded signal-hook v0.3.18
   Downloaded dbus v0.9.12
-  Downloaded derive_more-impl v2.1.1
-  Downloaded brotli-decompressor v5.0.3
+  Downloaded cc v1.2.66
+  Downloaded proc-macro-crate v1.3.1
+  Downloaded ident_case v1.0.1
+  Downloaded crossbeam-channel v0.5.15
+  Downloaded base64 v0.22.1
   Downloaded aho-corasick v1.1.4
-  Downloaded futures-util v0.3.32
+  Downloaded string_cache_codegen v0.6.1
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded serde_with_macros v3.21.0
+  Downloaded getrandom v0.3.4
+  Downloaded gdk-sys v0.18.2
+  Downloaded brotli-decompressor v5.0.3
   Downloaded gio v0.18.4
-  Downloaded chrono v0.4.45
+  Downloaded serde_with v3.21.0
+  Downloaded proc-macro-error-attr v1.0.4
   Downloaded glib v0.18.5
-  Downloaded syn v2.0.118
+  Downloaded chrono v0.4.45
+  Downloaded rustc_version v0.4.1
+  Downloaded futures-util v0.3.32
   Downloaded gtk v0.18.2
+  Downloaded toml_datetime v0.6.3
+  Downloaded tinyvec_macros v0.1.1
+  Downloaded time-core v0.1.9
+  Downloaded toml_datetime v1.1.1+spec-1.1.0
+  Downloaded toml_datetime v0.7.5+spec-1.1.0
+  Downloaded toml v1.1.2+spec-1.1.0
+  Downloaded tinyvec v1.11.0
+  Downloaded toml v0.9.12+spec-1.1.0
+  Downloaded toml v0.8.2
+  Downloaded zerofrom v0.1.8
+  Downloaded zerofrom-derive v0.1.7
+  Downloaded webkit2gtk-sys v2.0.2
+  Downloaded walkdir v2.5.0
+  Downloaded zmij v1.0.21
+  Downloaded writeable v0.6.3
+  Downloaded version_check v0.9.5
+  Downloaded percent-encoding v2.3.2
+  Downloaded utf-8 v0.7.6
+  Downloaded urlpattern v0.3.0
+  Downloaded unic-ucd-ident v0.9.0
+  Downloaded unic-char-range v0.9.0
+  Downloaded toml_writer v1.1.1+spec-1.1.0
+  Downloaded toml_edit v0.19.15
+  Downloaded yoke-derive v0.8.2
+  Downloaded version-compare v0.2.1
+  Downloaded unic-ucd-version v0.9.0
+  Downloaded unic-common v0.9.0
+  Downloaded unic-char-property v0.9.0
+  Downloaded tauri-runtime-wry v2.11.4
+  Downloaded tauri-runtime v2.11.3
+  Downloaded tauri-codegen v2.6.3
+  Downloaded tauri-macros v2.6.3
+  Downloaded tauri-build v2.6.3
+  Downloaded synstructure v0.13.2
+  Downloaded precomputed-hash v0.1.1
+  Downloaded tinystr v0.8.3
+  Downloaded powerfmt v0.2.0
+  Downloaded is-docker v0.2.0
+  Downloaded time-macros v0.2.31
+  Downloaded thiserror v1.0.69
+  Downloaded tendril v0.5.0
+  Downloaded tauri-plugin v2.6.3
+  Downloaded target-lexicon v0.12.16
+  Downloaded system-deps v6.2.2
+  Downloaded icu_locale_core v2.2.0
+  Downloaded thiserror v2.0.18
+  Downloaded toml_parser v1.1.2+spec-1.1.0
+  Downloaded unicode-ident v1.0.24
+  Downloaded tray-icon v0.24.1
+  Downloaded option-ext v0.2.0
+  Downloaded tauri-winres v0.3.6
+  Downloaded tauri-utils v2.9.3
+  Downloaded x11-dl v2.21.0
+  Downloaded zerotrie v0.2.4
+  Downloaded url v2.5.8
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded typenum v1.20.1
+  Downloaded zerovec v0.11.6
+  Downloaded winnow v0.7.15
+  Downloaded winnow v0.5.40
+  Downloaded wry v0.55.1
   Downloaded brotli v8.0.4
+  Downloaded tauri v2.11.5
+  Downloaded markup5ever v0.38.0
+  Downloaded tao v0.35.3
+  Downloaded toml_edit v0.20.2
+  Downloaded tauri-plugin-shell v2.3.5
+  Downloaded rustc-hash v2.1.3
+  Downloaded x11 v2.21.0
+  Downloaded webkit2gtk v2.0.2
+  Downloaded new_debug_unreachable v1.0.6
   Downloaded encoding_rs v0.8.35
+  Downloaded scopeguard v1.2.0
+  Downloaded tokio v1.52.3
+  Downloaded proc-macro-crate v2.0.2
+  Downloaded potential_utf v0.1.5
+  Downloaded phf_shared v0.13.1
+  Downloaded phf_macros v0.13.1
+  Downloaded phf_codegen v0.13.1
+  Downloaded infer v0.19.0
+  Downloaded os_pipe v1.2.3
+  Downloaded lock_api v0.4.14
+  Downloaded proc-macro-error v1.0.4
+  Downloaded siphasher v1.0.3
+  Downloaded pkg-config v0.3.33
+  Downloaded serde_derive_internals v0.29.1
+  Downloaded serde-untagged v0.1.9
+  Downloaded utf8_iter v1.0.4
+  Downloaded typeid v1.0.3
+  Downloaded schemars_derive v0.8.22
+  Downloaded pango-sys v0.18.0
+  Downloaded quote v1.0.46
+  Downloaded open v5.3.6
+  Downloaded json-patch v3.0.1
+  Downloaded javascriptcore-rs v1.1.2
+  Downloaded raw-window-handle v0.6.2
+  Downloaded phf v0.13.1
+  Downloaded parking_lot_core v0.9.12
+  Downloaded jsonptr v0.6.3
+  Downloaded web_atoms v0.2.5
+  Downloaded thiserror-impl v2.0.18
+  Downloaded thiserror-impl v1.0.69
+  Downloaded keyboard-types v0.7.0
+  Downloaded iana-time-zone v0.1.65
+  Downloaded semver v1.0.28
+  Downloaded ref-cast v1.0.25
+  Downloaded pin-project-lite v0.2.17
+  Downloaded parking_lot v0.12.5
+  Downloaded libloading v0.7.4
+  Downloaded litemap v0.8.2
+  Downloaded pango v0.18.3
+  Downloaded libappindicator v0.9.0
+  Downloaded serde_core v1.0.228
+  Downloaded once_cell v1.21.4
+  Downloaded log v0.4.33
+  Downloaded yoke v0.8.3
+  Downloaded zerovec-derive v0.11.3
+  Downloaded num-traits v0.2.19
+  Downloaded icu_provider v2.2.0
+  Downloaded schemars v0.8.22
+  Downloaded plist v1.10.0
+  Downloaded serde_derive v1.0.228
+  Downloaded icu_properties v2.2.0
+  Downloaded icu_normalizer v2.2.0
+  Downloaded uuid v1.23.4
+  Downloaded ico v0.5.0
+  Downloaded selectors v0.36.1
+  Downloaded icu_normalizer_data v2.2.0
+  Downloaded proc-macro2 v1.0.106
+  Downloaded miniz_oxide v0.8.9
+  Downloaded indexmap v1.9.3
+  Downloaded html5ever v0.38.0
+  Downloaded icu_collections v2.2.0
+  Downloaded schemars v0.9.0
+  Downloaded serde v1.0.228
+  Downloaded schemars v1.2.1
+  Downloaded mio v1.2.1
+  Downloaded memchr v2.8.2
+  Downloaded indexmap v2.14.0
+  Downloaded muda v0.19.3
+  Downloaded png v0.17.16
+  Downloaded hashbrown v0.12.3
+  Downloaded http v1.4.2
+  Downloaded png v0.18.1
+  Downloaded idna v1.1.0
+  Downloaded gtk-sys v0.18.2
+  Downloaded hashbrown v0.17.1
+  Downloaded regex v1.12.4
+  Downloaded serde_json v1.0.150
+  Downloaded icu_properties_data v2.2.0
+  Downloaded winnow v1.0.3
+  Downloaded quick-xml v0.41.0
+  Downloaded syn v1.0.109
+  Downloaded time v0.3.53
+  Downloaded syn v2.0.118
+  Downloaded regex-syntax v0.8.11
+  Downloaded regex-automata v0.4.14
+  Downloaded libc v0.2.186
+  Downloaded libdbus-sys v0.2.7
    Compiling proc-macro2 v1.0.106
    Compiling unicode-ident v1.0.24
    Compiling quote v1.0.46
    Compiling serde_core v1.0.228
    Compiling serde v1.0.228
    Compiling smallvec v1.15.2
-   Compiling equivalent v1.0.2
    Compiling hashbrown v0.17.1
+   Compiling equivalent v1.0.2
    Compiling libc v0.2.186
    Compiling pkg-config v0.3.33
-   Compiling heck v0.5.0
    Compiling winnow v0.5.40
+   Compiling heck v0.5.0
    Compiling target-lexicon v0.12.16
    Compiling version-compare v0.2.1
    Compiling version_check v0.9.5
    Compiling thiserror v1.0.69
    Compiling siphasher v1.0.3
-   Compiling fastrand v2.4.1
+   Compiling phf_shared v0.13.1
    Compiling icu_normalizer_data v2.2.0
    Compiling icu_properties_data v2.2.0
    Compiling memchr v2.8.2
+   Compiling fastrand v2.4.1
    Compiling stable_deref_trait v1.2.1
-   Compiling phf_shared v0.13.1
-   Compiling autocfg v1.5.1
+   Compiling indexmap v2.14.0
    Compiling cfg-if v1.0.4
+   Compiling autocfg v1.5.1
    Compiling zmij v1.0.21
+   Compiling phf_generator v0.13.1
    Compiling once_cell v1.21.4
+   Compiling proc-macro-error-attr v1.0.4
    Compiling parking_lot_core v0.9.12
    Compiling syn v1.0.109
-   Compiling proc-macro-error-attr v1.0.4
-   Compiling phf_generator v0.13.1
-   Compiling indexmap v2.14.0
    Compiling proc-macro-error v1.0.4
    Compiling futures-core v0.3.32
-   Compiling thiserror v2.0.18
    Compiling pin-project-lite v0.2.17
    Compiling typeid v1.0.3
+   Compiling thiserror v2.0.18
    Compiling time-core v0.1.9
+   Compiling num-conv v0.2.2
    Compiling futures-task v0.3.32
    Compiling slab v0.4.12
-   Compiling num-conv v0.2.2
    Compiling phf_codegen v0.13.1
-   Compiling cfg-expr v0.15.8
-   Compiling heck v0.4.1
-   Compiling itoa v1.0.18
+   Compiling writeable v0.6.3
    Compiling erased-serde v0.4.10
    Compiling ident_case v1.0.1
-   Compiling writeable v0.6.3
    Compiling litemap v0.8.2
+   Compiling cfg-expr v0.15.8
    Compiling strsim v0.11.1
+   Compiling heck v0.4.1
+   Compiling itoa v1.0.18
    Compiling futures-channel v0.3.32
    Compiling utf8_iter v1.0.4
    Compiling new_debug_unreachable v1.0.6
-   Compiling scopeguard v1.2.0
    Compiling anyhow v1.0.103
-   Compiling syn v2.0.118
+   Compiling scopeguard v1.2.0
    Compiling lock_api v0.4.14
-   Compiling string_cache_codegen v0.6.1
-   Compiling winnow v1.0.3
-   Compiling getrandom v0.4.3
    Compiling serde_json v1.0.150
+   Compiling getrandom v0.4.3
+   Compiling winnow v1.0.3
    Compiling precomputed-hash v0.1.1
    Compiling ctor-proc-macro v0.0.7
-   Compiling gio v0.18.4
    Compiling toml_writer v1.1.1+spec-1.1.0
+   Compiling gio v0.18.4
    Compiling dtoa v1.0.11
    Compiling futures-io v0.3.32
-   Compiling toml_parser v1.1.2+spec-1.1.0
-   Compiling parking_lot v0.12.5
-   Compiling percent-encoding v2.3.2
-   Compiling utf-8 v0.7.6
-   Compiling web_atoms v0.2.5
    Compiling log v0.4.33
+   Compiling utf-8 v0.7.6
+   Compiling percent-encoding v2.3.2
+   Compiling syn v2.0.118
+   Compiling string_cache_codegen v0.6.1
+   Compiling tendril v0.5.0
+   Compiling form_urlencoded v1.2.2
    Compiling dtoa-short v0.3.5
+   Compiling toml_parser v1.1.2+spec-1.1.0
    Compiling selectors v0.36.1
    Compiling aho-corasick v1.1.4
    Compiling indexmap v1.9.3
-   Compiling tendril v0.5.0
-   Compiling regex-syntax v0.8.11
    Compiling byteorder v1.5.0
-   Compiling unic-common v0.9.0
-   Compiling camino v1.2.4
-   Compiling form_urlencoded v1.2.2
-   Compiling string_cache v0.9.0
+   Compiling regex-syntax v0.8.11
    Compiling unic-char-range v0.9.0
    Compiling alloc-no-stdlib v2.0.4
-   Compiling alloc-stdlib v0.2.4
+   Compiling unic-common v0.9.0
+   Compiling camino v1.2.4
    Compiling unic-char-property v0.9.0
    Compiling unic-ucd-version v0.9.0
+   Compiling alloc-stdlib v0.2.4
+   Compiling parking_lot v0.12.5
    Compiling servo_arc v0.4.3
-   Compiling bitflags v2.13.0
+   Compiling web_atoms v0.2.5
    Compiling schemars v0.8.22
-   Compiling fnv v1.0.7
+   Compiling rustc-hash v2.1.3
    Compiling powerfmt v0.2.0
-   Compiling bit-vec v0.8.0
    Compiling hashbrown v0.12.3
    Compiling deranged v0.5.8
-   Compiling rustc-hash v2.1.3
-   Compiling unic-ucd-ident v0.9.0
+   Compiling bit-vec v0.8.0
+   Compiling bitflags v2.13.0
+   Compiling string_cache v0.9.0
+   Compiling fnv v1.0.7
    Compiling brotli-decompressor v5.0.3
+   Compiling unic-ucd-ident v0.9.0
    Compiling quick-xml v0.41.0
    Compiling memoffset v0.9.1
-   Compiling foldhash v0.2.0
-   Compiling crc32fast v1.5.0
-   Compiling bytes v1.12.0
-   Compiling dyn-clone v1.0.20
-   Compiling bit-set v0.8.0
+   Compiling same-file v1.0.6
    Compiling semver v1.0.28
    Compiling serde_spanned v1.1.1
-   Compiling toml_datetime v1.1.1+spec-1.1.0
    Compiling uuid v1.23.4
-   Compiling base64 v0.22.1
+   Compiling toml_datetime v1.1.1+spec-1.1.0
    Compiling rustc_version v0.4.1
+   Compiling bit-set v0.8.0
+   Compiling bytes v1.12.0
+   Compiling crc32fast v1.5.0
+   Compiling base64 v0.22.1
    Compiling toml v1.1.2+spec-1.1.0
    Compiling dunce v1.0.5
-   Compiling same-file v1.0.6
+   Compiling time v0.3.53
    Compiling cfb v0.7.3
-   Compiling http v1.4.2
+   Compiling foldhash v0.2.0
+   Compiling dyn-clone v1.0.20
    Compiling serde-untagged v0.1.9
-   Compiling walkdir v2.5.0
    Compiling brotli v8.0.4
+   Compiling field-offset v0.3.6
+   Compiling walkdir v2.5.0
+   Compiling http v1.4.2
    Compiling ctor v0.8.0
    Compiling glob v0.3.3
-   Compiling time v0.3.53
-   Compiling field-offset v0.3.6
    Compiling gtk v0.18.2
-   Compiling find-msvc-tools v0.1.9
-   Compiling shlex v2.0.1
-   Compiling toml_datetime v0.7.5+spec-1.1.0
-   Compiling infer v0.19.0
-   Compiling generic-array v0.14.7
    Compiling regex-automata v0.4.14
-   Compiling cc v1.2.65
-   Compiling winnow v0.7.15
+   Compiling infer v0.19.0
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling generic-array v0.14.7
    Compiling option-ext v0.2.0
-   Compiling time-macros v0.2.31
+   Compiling winnow v0.7.15
+   Compiling cc v1.2.66
    Compiling dirs-sys v0.5.0
-   Compiling x11 v2.21.0
-   Compiling crossbeam-utils v0.8.21
-   Compiling typenum v1.20.1
-   Compiling simd-adler32 v0.3.9
-   Compiling dirs v6.0.0
-   Compiling bitflags v1.3.2
-   Compiling embed-resource v3.0.11
-   Compiling adler2 v2.0.1
    Compiling synstructure v0.13.2
    Compiling darling_core v0.23.0
    Compiling serde_derive_internals v0.29.1
+   Compiling time-macros v0.2.31
+   Compiling x11 v2.21.0
+   Compiling simd-adler32 v0.3.9
+   Compiling typenum v1.20.1
+   Compiling crossbeam-utils v0.8.21
+   Compiling dirs v6.0.0
+   Compiling adler2 v2.0.1
+   Compiling embed-resource v3.0.11
+   Compiling bitflags v1.3.2
    Compiling tauri-winres v0.3.6
    Compiling miniz_oxide v0.8.9
-   Compiling toml v0.9.12+spec-1.1.0
-   Compiling libdbus-sys v0.2.7
-   Compiling x11-dl v2.21.0
-   Compiling cookie v0.18.1
    Compiling regex v1.12.4
-   Compiling crossbeam-channel v0.5.15
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling x11-dl v2.21.0
+   Compiling libdbus-sys v0.2.7
+   Compiling cookie v0.18.1
    Compiling serde_derive v1.0.228
    Compiling zerofrom-derive v0.1.7
    Compiling yoke-derive v0.8.2
@@ -988,60 +603,62 @@ dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
    Compiling phf_macros v0.13.1
    Compiling futures-macro v0.3.32
    Compiling thiserror-impl v2.0.18
-   Compiling derive_more-impl v2.1.1
    Compiling cssparser-macros v0.6.1
-   Compiling darling_macro v0.23.0
+   Compiling derive_more-impl v2.1.1
    Compiling schemars_derive v0.8.22
-   Compiling zerofrom v0.1.8
+   Compiling darling_macro v0.23.0
    Compiling futures-util v0.3.32
    Compiling phf v0.13.1
-   Compiling flate2 v1.1.9
-   Compiling yoke v0.8.3
+   Compiling cssparser v0.36.0
+   Compiling zerofrom v0.1.8
    Compiling darling v0.23.0
+   Compiling yoke v0.8.3
+   Compiling derive_more v2.1.1
+   Compiling serde_with_macros v3.21.0
+   Compiling markup5ever v0.38.0
    Compiling zerovec v0.11.6
    Compiling zerotrie v0.2.4
-   Compiling serde_with_macros v3.21.0
-   Compiling derive_more v2.1.1
-   Compiling cssparser v0.36.0
-   Compiling crypto-common v0.1.7
+   Compiling html5ever v0.38.0
+   Compiling flate2 v1.1.9
+   Compiling crossbeam-channel v0.5.15
    Compiling tinystr v0.8.3
    Compiling potential_utf v0.1.5
-   Compiling markup5ever v0.38.0
-   Compiling icu_locale_core v2.2.0
    Compiling icu_collections v2.2.0
-   Compiling html5ever v0.38.0
+   Compiling icu_locale_core v2.2.0
    Compiling block-buffer v0.10.4
-   Compiling fdeflate v0.3.7
-   Compiling raw-window-handle v0.6.2
-   Compiling icu_provider v2.2.0
    Compiling futures-executor v0.3.32
    Compiling dom_query v0.27.0
+   Compiling crypto-common v0.1.7
+   Compiling serde_with v3.21.0
+   Compiling fdeflate v0.3.7
+   Compiling icu_provider v2.2.0
    Compiling icu_properties v2.2.0
    Compiling icu_normalizer v2.2.0
-   Compiling serde_with v3.21.0
+   Compiling raw-window-handle v0.6.2
    Compiling toml_datetime v0.6.3
    Compiling serde_spanned v0.6.9
-   Compiling cargo-platform v0.1.9
-   Compiling toml_edit v0.20.2
    Compiling jsonptr v0.6.3
-   Compiling cargo_metadata v0.19.2
+   Compiling toml_edit v0.20.2
+   Compiling cargo-platform v0.1.9
    Compiling toml_edit v0.19.15
-   Compiling idna_adapter v1.2.2
-   Compiling json-patch v3.0.1
    Compiling plist v1.10.0
-   Compiling idna v1.1.0
+   Compiling json-patch v3.0.1
+   Compiling cargo_metadata v0.19.2
    Compiling dpi v0.1.2
    Compiling cargo_toml v0.22.3
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
    Compiling url v2.5.8
-   Compiling png v0.17.16
-   Compiling urlpattern v0.3.0
    Compiling toml v0.8.2
-   Compiling system-deps v6.2.2
    Compiling proc-macro-crate v2.0.2
+   Compiling urlpattern v0.3.0
+   Compiling system-deps v6.2.2
    Compiling proc-macro-crate v1.3.1
+   Compiling png v0.17.16
    Compiling tauri-utils v2.9.3
-   Compiling gtk3-macros v0.18.2
    Compiling digest v0.10.7
+   Compiling glib-macros v0.18.5
+   Compiling gtk3-macros v0.18.2
    Compiling glib-sys v0.18.1
    Compiling gobject-sys v0.18.0
    Compiling gio-sys v0.18.1
@@ -1049,7 +666,6 @@ dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
    Compiling cairo-sys-rs v0.18.2
    Compiling pango-sys v0.18.0
    Compiling gdk-pixbuf-sys v0.18.0
-   Compiling glib-macros v0.18.5
    Compiling atk-sys v0.18.2
    Compiling gtk-sys v0.18.2
    Compiling javascriptcore-rs-sys v1.1.1
@@ -1058,36 +674,36 @@ dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
    Compiling gdkx11-sys v0.18.2
    Compiling dlopen2_derive v0.4.3
    Compiling libloading v0.7.4
-   Compiling cpufeatures v0.2.17
    Compiling errno v0.3.14
-   Compiling signal-hook v0.3.18
+   Compiling cpufeatures v0.2.17
    Compiling tauri-runtime v2.11.3
    Compiling unicode-segmentation v1.13.3
    Compiling wry v0.55.1
+   Compiling signal-hook v0.3.18
+   Compiling dlopen2 v0.8.2
+   Compiling keyboard-types v0.7.0
+   Compiling gdkwayland-sys v0.18.2
    Compiling signal-hook-registry v1.4.8
    Compiling sha2 v0.10.9
    Compiling dbus v0.9.12
-   Compiling dlopen2 v0.8.2
-   Compiling keyboard-types v0.7.0
    Compiling ico v0.5.0
-   Compiling gdkwayland-sys v0.18.2
-   Compiling glib v0.18.5
    Compiling getrandom v0.3.4
    Compiling tauri-runtime-wry v2.11.4
+   Compiling libappindicator-sys v0.9.0
    Compiling png v0.18.1
+   Compiling glib v0.18.5
    Compiling serialize-to-javascript-impl v0.1.2
    Compiling os_pipe v1.2.3
    Compiling is-docker v0.2.0
    Compiling serde_repr v0.1.20
    Compiling tokio v1.52.3
    Compiling is-wsl v0.4.0
-   Compiling serialize-to-javascript v0.1.2
    Compiling sigchld v0.2.4
    Compiling mime v0.3.17
-   Compiling libappindicator-sys v0.9.0
-   Compiling shared_child v1.1.1
+   Compiling serialize-to-javascript v0.1.2
    Compiling open v5.3.6
    Compiling encoding_rs v0.8.35
+   Compiling shared_child v1.1.1
    Compiling tauri-build v2.6.3
    Compiling tauri-plugin v2.6.3
    Compiling tauri-codegen v2.6.3
@@ -1104,11 +720,11 @@ dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
    Compiling gdk v0.18.2
    Compiling gdkx11 v0.18.2
    Compiling webkit2gtk v2.0.2
-   Compiling libappindicator v0.9.0
-   Compiling muda v0.19.3
    Compiling tao v0.35.3
+   Compiling muda v0.19.3
+   Compiling libappindicator v0.9.0
    Compiling tray-icon v0.24.1
-    Finished `release` profile [optimized] target(s) in 1m 14s
+    Finished `release` profile [optimized] target(s) in 2m 35s
        Built application at: /tmp/openburnbar-linux-desktop-session/app/src-tauri/target/release/openburnbar-linux-desktop
         Info Patching /tmp/openburnbar-linux-desktop-session/app/src-tauri/target/release/openburnbar-linux-desktop with bundle type information: deb
     Bundling OpenBurnBar_0.1.0_arm64.deb (/tmp/openburnbar-linux-desktop-session/app/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.0_arm64.deb)
@@ -1118,7 +734,7 @@ dist/assets/index-CBA05xz7.js   30.90 kB │ gzip: 11.61 kB
 Package: open-burn-bar
 Version: 0.1.0
 Architecture: arm64
-Installed-Size: 14564
+Installed-Size: 14629
 Maintainer: OpenBurnBar
 Priority: optional
 Depends: libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0
@@ -1126,7 +742,7 @@ Description: OpenBurnBar Linux desktop shell
  (none)
 == install deb ==
 Selecting previously unselected package open-burn-bar.
-(Reading database ... 80297 files and directories currently installed.)
+(Reading database ... 76717 files and directories currently installed.)
 Preparing to unpack .../OpenBurnBar_0.1.0_arm64.deb ...
 Unpacking open-burn-bar (0.1.0) ...
 Setting up open-burn-bar (0.1.0) ...
@@ -1137,143 +753,146 @@ desktop_file=/usr/share/applications/OpenBurnBar.desktop
 installed_bin=/usr/bin/openburnbar-linux-desktop
 == daemon socket for packaged session ==
 == daemon socket for shell session ==
+== existing OpenBurnBarDaemon is stale for shell session ==
+daemon_bin=/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+newer_source=/workspace/OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportWriter.swift
 == build OpenBurnBarDaemon for shell session ==
 daemon_bin=/tmp/openburnbar-linux-desktop-session/daemon-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
-srw------- 1 root root 0 Jul  5 11:31 /tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
+srw------- 1 root root 0 Jul  5 16:19 /tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
 == desktop session ==
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=10308 comm="xfce4-panel --disable-wm-check")
-dbus-daemon[10293]: [session uid=0 pid=10293] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[10321]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=10308 comm="xfce4-panel --disable-wm-check")
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.xfce.Xfconf' requested by ':1.2' (uid=0 pid=10308 comm="xfce4-panel --disable-wm-check")
-dbus-daemon[10321]: Successfully activated service 'org.a11y.atspi.Registry'
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=9328 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[9313]: [session uid=0 pid=9313] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[9341]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=9328 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.xfce.Xfconf' requested by ':1.2' (uid=0 pid=9328 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[9341]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[10293]: [session uid=0 pid=10293] Successfully activated service 'org.xfce.Xfconf'
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.14' (uid=0 pid=10362 comm="/usr/bin/openburnbar-linux-desktop")
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.portal.Documents' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.16' (uid=0 pid=10379 comm="/usr/libexec/xdg-document-portal")
-dbus-daemon[10293]: [session uid=0 pid=10293] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
-dbus-daemon[10293]: [session uid=0 pid=10293] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[9313]: [session uid=0 pid=9313] Successfully activated service 'org.xfce.Xfconf'
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.14' (uid=0 pid=9382 comm="/usr/bin/openburnbar-linux-desktop")
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.portal.Documents' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.16' (uid=0 pid=9399 comm="/usr/libexec/xdg-document-portal")
+dbus-daemon[9313]: [session uid=0 pid=9313] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[9313]: [session uid=0 pid=9313] Successfully activated service 'org.freedesktop.portal.Documents'
 fusermount3: fuse device not found, try 'modprobe fuse' first
 error: fuse init failed: Can't mount path /root/.cache/doc
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.670: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.590: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.670: The preferred method to match portal implementations to desktop environments is to use the portals.conf(5) configuration file
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.590: The preferred method to match portal implementations to desktop environments is to use the portals.conf(5) configuration file
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10394): Gtk-WARNING **: 11:31:35.677: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9414): Gtk-WARNING **: 16:20:00.597: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.689: Failed to create RealtimeKit proxy: Could not connect: No such file or directory
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.610: Failed to create RealtimeKit proxy: Could not connect: No such file or directory
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.689: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.610: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.689: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.610: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10398): Gtk-WARNING **: 11:31:35.695: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9418): Gtk-WARNING **: 16:20:00.617: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.695: Failed to create file chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.618: Failed to create file chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.695: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.618: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.695: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.618: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10400): Gtk-WARNING **: 11:31:35.701: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9420): Gtk-WARNING **: 16:20:00.625: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.703: Failed to create app chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.626: Failed to create app chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.703: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.627: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.703: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.627: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10402): Gtk-WARNING **: 11:31:35.708: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9422): Gtk-WARNING **: 16:20:00.633: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.709: Failed to create print proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.634: Failed to create print proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.710: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.634: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.710: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.634: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10404): Gtk-WARNING **: 11:31:35.715: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9424): Gtk-WARNING **: 16:20:00.639: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.716: Failed to create notification proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.640: Failed to create notification proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.716: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.640: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.716: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.640: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10406): Gtk-WARNING **: 11:31:35.723: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9426): Gtk-WARNING **: 16:20:00.646: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.724: Failed to create inhibit proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.648: Failed to create inhibit proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.724: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.648: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.724: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.648: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10408): Gtk-WARNING **: 11:31:35.729: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9428): Gtk-WARNING **: 16:20:00.655: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.730: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.656: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.730: No skeleton to export
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.656: No skeleton to export
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10410): Gtk-WARNING **: 11:31:35.736: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(xdg-desktop-portal-gtk:9430): Gtk-WARNING **: 16:20:00.662: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10412): Gtk-WARNING **: 11:31:35.743: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9432): Gtk-WARNING **: 16:20:00.669: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.744: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.670: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.744: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.670: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.755: Failed connect to PipeWire: Couldn't connect to PipeWire
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.680: Failed connect to PipeWire: Couldn't connect to PipeWire
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.755: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.680: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10415): Gtk-WARNING **: 11:31:35.761: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9435): Gtk-WARNING **: 16:20:00.686: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.763: Failed to create account proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.688: Failed to create account proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.763: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.688: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.763: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.688: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10417): Gtk-WARNING **: 11:31:35.769: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9437): Gtk-WARNING **: 16:20:00.695: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.770: Failed to create email proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.696: Failed to create email proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.770: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.696: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.770: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
-dbus-daemon[10293]: [session uid=0 pid=10293] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=10373 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.696: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[9313]: [session uid=0 pid=9313] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9393 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:10419): Gtk-WARNING **: 11:31:35.777: cannot open display:
-dbus-daemon[10293]: [session uid=0 pid=10293] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9439): Gtk-WARNING **: 16:20:00.702: cannot open display:
+dbus-daemon[9313]: [session uid=0 pid=9313] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.778: Failed to create dynamic_launcher proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.703: Failed to create dynamic_launcher proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:10373): xdg-desktop-portal-WARNING **: 11:31:35.778: No skeleton to export
-dbus-daemon[10293]: [session uid=0 pid=10293] Successfully activated service 'org.freedesktop.portal.Desktop'
+(/usr/libexec/xdg-desktop-portal:9393): xdg-desktop-portal-WARNING **: 16:20:00.703: No skeleton to export
+dbus-daemon[9313]: [session uid=0 pid=9313] Successfully activated service 'org.freedesktop.portal.Desktop'
 {
-  "generatedAt": "2026-07-05T11:31:46.226Z",
+  "generatedAt": "2026-07-05T16:20:11.814Z",
   "mode": "packaged-desktop-route-navigation",
   "surface": "installed-tauri-deb-xvfb-xfce",
   "routeCount": 16,
@@ -1287,7 +906,7 @@ dbus-daemon[10293]: [session uid=0 pid=10293] Successfully activated service 'or
     "text-expansion"
   ],
   "daemonOracle": {
-    "generatedAt": "2026-07-05T11:31:33.348Z",
+    "generatedAt": "2026-07-05T16:19:58.184Z",
     "lane": "W06ShellEvidenceRepair",
     "mode": "openburnbar-daemon-af-unix",
     "status": "ready",
@@ -1317,7 +936,265 @@ dbus-daemon[10293]: [session uid=0 pid=10293] Successfully activated service 'or
       "screenshot": "screenshot-route-insights.png",
       "xwininfo": "window-route-insights-xwininfo.txt",
       "windowId": "10485763",
-      "action": "xdotool click visible nav at x=1
+      "action": "xdotool click visible nav at x=120 y=195",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": false,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 2,
+      "route": "database",
+      "screenshot": "screenshot-route-database.png",
+      "xwininfo": "window-route-database-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=232",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": false,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 3,
+      "route": "providers",
+      "screenshot": "screenshot-route-providers.png",
+      "xwininfo": "window-route-providers-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=269",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": false,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 4,
+      "route": "projects",
+      "screenshot": "screenshot-route-projects.png",
+      "xwininfo": "window-route-projects-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=306",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": false,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 5,
+      "route": "missions",
+      "screenshot": "screenshot-route-missions.png",
+      "xwininfo": "window-route-missions-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=343",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": false,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 6,
+      "route": "activity",
+      "screenshot": "screenshot-route-activity.png",
+      "xwininfo": "window-route-activity-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=380",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": false,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 7,
+      "route": "chat",
+      "screenshot": "screenshot-route-chat.png",
+      "xwininfo": "window-route-chat-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=417",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": false,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 8,
+      "route": "memory",
+      "screenshot": "screenshot-route-memory.png",
+      "xwininfo": "window-route-memory-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=454",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": false,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 9,
+      "route": "settings",
+      "screenshot": "screenshot-route-settings.png",
+      "xwininfo": "window-route-settings-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=520",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": true,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 10,
+      "route": "account",
+      "screenshot": "screenshot-route-account.png",
+      "xwininfo": "window-route-account-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=558",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": true,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 11,
+      "route": "updates",
+      "screenshot": "screenshot-route-updates.png",
+      "xwininfo": "window-route-updates-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=595",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": true,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 12,
+      "route": "support",
+      "screenshot": "screenshot-route-support.png",
+      "xwininfo": "window-route-support-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=632",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": true,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 13,
+      "route": "onboarding",
+      "screenshot": "screenshot-route-onboarding.png",
+      "xwininfo": "window-route-onboarding-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=669",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": true,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 14,
+      "route": "pet",
+      "screenshot": "screenshot-route-pet.png",
+      "xwininfo": "window-route-pet-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=706",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": true,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    },
+    {
+      "index": 15,
+      "route": "text-expansion",
+      "screenshot": "screenshot-route-text-expansion.png",
+      "xwininfo": "window-route-text-expansion-xwininfo.txt",
+      "windowId": "10485763",
+      "action": "xdotool click visible nav at x=120 y=743",
+      "surface": "installed-tauri-deb-xvfb-xfce",
+      "targetScenario": true,
+      "daemonOracleMode": "openburnbar-daemon-af-unix"
+    }
+  ]
+}
+{
+  "generatedAt": "2026-07-05T16:20:12.452Z",
+  "profile": "dbus-x11-xvfb-xfce-statusnotifier",
+  "package": {
+    "name": "open-burn-bar",
+    "executable": "/usr/bin/openburnbar-linux-desktop"
+  },
+  "session": {
+    "display": ":99",
+    "xdgSessionType": "x11",
+    "desktop": "XFCE",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_9382_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_9382_1/Menu",
+    "windowId": "10485763",
+    "reopenedWindowId": "10485763"
+  },
+  "performance": {
+    "appStartMs": 321,
+    "trayClickOpenMs": 56,
+    "ipcHealthRoundTripMs": 6,
+    "trayQuitMs": 111
+  },
+  "evidence": {
+    "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
+    "afterTrayOpenScreenshot": "screenshot-linux-desktop-after-tray-open.png",
+    "packagedRouteTranscript": "packaged-route-session-transcript.json",
+    "runtimePerfSamples": "runtime-perf-samples.jsonl",
+    "daemonSocketLog": "daemon-shell-session.log",
+    "trayMenuLayout": "tray-menu-layout.txt",
+    "accessibilitySnapshot": "accessibility-tree-linux-desktop.txt"
+  }
+}
+== daemon socket log ==
+
+(xfconfd:9349): xfconfd-WARNING **: 16:20:12.463: Name org.xfce.Xfconf lost on the message dbus, exiting.
+starting real OpenBurnBarDaemon
+binary=/tmp/openburnbar-linux-desktop-session/daemon-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+socket=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
+peer_codesig=disabled-debug-only
+2026-07-05 16:19:57 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:19:57 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731 vault_uid_present=false
+2026-07-05 16:19:57 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=shell-session-evidence protocol_version=1 socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:19:57 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_defaults_loaded file_path=/root/.config/OpenBurnBar/provider-config.json trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:19:57 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=default_model_variants_seeded marker_path=/root/.config/OpenBurnBar/model-variants-seed.v1 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:19:57 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:19:57 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=shell-session-evidence socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:19:57 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:01 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783268401157213376 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:01 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:01 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=163 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:01 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=151 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:01 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=168 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:01 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=154 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:01 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=163 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:12 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783268412272698340 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+2026-07-05 16:20:12 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=3E3F227A-3AD1-4A87-BF60-DF3FF5571731
+== uninstall deb ==
+(Reading database ... 76720 files and directories currently installed.)
+Removing open-burn-bar (0.1.0) ...
+Processing triggers for hicolor-icon-theme (0.17-2) ...
+Processing triggers for desktop-file-utils (0.27-2build1) ...
+uninstall_verified=true
+{
+  "generatedAt": "2026-07-05T16:20:12.452Z",
+  "profile": "dbus-x11-xvfb-xfce-statusnotifier",
+  "package": {
+    "name": "open-burn-bar",
+    "executable": "/usr/bin/openburnbar-linux-desktop",
+    "uninstallVerified": true,
+    "debArtifact": "OpenBurnBar_0.1.0_arm64.deb"
+  },
+  "session": {
+    "display": ":99",
+    "xdgSessionType": "x11",
+    "desktop": "XFCE",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_9382_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_9382_1/Menu",
+    "windowId": "10485763",
+    "reopenedWindowId": "10485763"
+  },
+  "performance": {
+    "appStartMs": 321,
+    "trayClickOpenMs": 56,
+    "ipcHealthRoundTripMs": 6,
+    "trayQuitMs": 111
+  },
+  "evidence": {
+    "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
+    "afterTrayOpenScreenshot": "screenshot-linux-desktop-after-tray-open.png",
+    "packagedRouteTranscript": "packaged-route-session-transcript.json",
+    "runtimePerfSamples": "runtime-perf-samples.jsonl",
+    "daemonSocketLog": "daemon-shell-session.log",
+    "trayMenuLayout": "tray-menu-layout.txt",
+    "accessibilitySnapshot": "accessibility-tree-linux-desktop.txt"
+  }
+}
+linux-desktop-session-ok
+
 
 
 ### step 5
@@ -1332,7 +1209,7 @@ node /Users/albertonunez/Documents/Developer/BurnBar/scripts/linux-port/run-perf
 exit_code=0
 timed_out=false
 {
-  "generatedAt": "2026-07-05T11:31:49.230Z",
+  "generatedAt": "2026-07-05T16:20:16.314Z",
   "runner": "linux-desktop-packaged-runtime-perf-v3",
   "note": "Budget rows are derived from the same packaged Linux desktop smoke run: Xvfb/XFCE .deb session report plus runtime samples emitted by the installed Tauri app through OPENBURNBAR_EVIDENCE_OUT.",
   "host": {
@@ -1344,9 +1221,9 @@ timed_out=false
   "measurements": {
     "desktopSessionReport": "docs/linux-port/evidence/mission-001-shell-ux/linux-desktop-session-report.json",
     "desktopSessionPresent": true,
-    "desktopSessionGeneratedAt": "2026-07-05T11:31:46.728Z",
+    "desktopSessionGeneratedAt": "2026-07-05T16:20:12.452Z",
     "runtimeSamples": "docs/linux-port/evidence/mission-001-shell-ux/runtime-perf-samples.jsonl",
-    "runtimeSampleCount": 23,
+    "runtimeSampleCount": 22,
     "packagedRouteTranscript": "docs/linux-port/evidence/mission-001-shell-ux/packaged-route-session-transcript.json",
     "packagedRouteCount": 16
   },
@@ -1378,7 +1255,7 @@ timed_out=false
   "verdicts": [
     {
       "name": "app.start",
-      "ms": 329,
+      "ms": 321,
       "limit": 2500,
       "source": "packaged-tauri-deb-xvfb-window-visible",
       "sampleCount": 1,
@@ -1387,10 +1264,10 @@ timed_out=false
     },
     {
       "name": "route.navigation",
-      "ms": 7,
+      "ms": 2.0000000000009095,
       "limit": 120,
       "source": "packaged-tauri-runtime-samples:packaged-ui-route:account,packaged-ui-route:activity,packaged-ui-route:chat,packaged-ui-route:database,packaged-ui-route:insights,packaged-ui-route:memory,packaged-ui-route:missions,packaged-ui-route:onboarding,packaged-ui-route:pet,packaged-ui-route:projects,packaged-ui-route:providers,packaged-ui-route:settings,packaged-ui-route:support,packaged-ui-route:text-expansion,packaged-ui-route:updates",
-      "sampleCount": 16,
+      "sampleCount": 15,
       "measured": true,
       "pass": true
     },
@@ -1405,7 +1282,7 @@ timed_out=false
     },
     {
       "name": "tray.click.open",
-      "ms": 45,
+      "ms": 56,
       "limit": 400,
       "source": "appindicator-dbusmenu-open-to-visible-window",
       "sampleCount": 1,
@@ -1414,7 +1291,7 @@ timed_out=false
     },
     {
       "name": "chat.firstToken.progress",
-      "ms": 6.964208999999999,
+      "ms": 8.914125,
       "limit": 2500,
       "source": "packaged-tauri-runtime-samples:packaged-startup-chat-hermes-daemon-measurement;packaged-af-unix-perf.measure:hermes-chat-stream-progress-operation",
       "sampleCount": 1,
@@ -1423,7 +1300,7 @@ timed_out=false
     },
     {
       "name": "db.migration.open.query",
-      "ms": 1.534917,
+      "ms": 1.794333,
       "limit": 1200,
       "source": "packaged-tauri-runtime-samples:packaged-startup-db-daemon-measurement;packaged-af-unix-perf.measure:sqlite3-db-fts5-operation",
       "sampleCount": 1,
@@ -1432,7 +1309,7 @@ timed_out=false
     },
     {
       "name": "parser.incremental.run",
-      "ms": 0.7298330000000001,
+      "ms": 0.8581669999999999,
       "limit": 900,
       "source": "packaged-tauri-runtime-samples:packaged-startup-parser-daemon-measurement;packaged-af-unix-perf.measure:provider-jsonl-incremental-parser-operation",
       "sampleCount": 1,
@@ -1441,7 +1318,7 @@ timed_out=false
     },
     {
       "name": "memory.search",
-      "ms": 0.550542,
+      "ms": 0.6131249999999999,
       "limit": 650,
       "source": "packaged-tauri-runtime-samples:packaged-startup-memory-daemon-measurement;packaged-af-unix-perf.measure:memory-search-index-operation",
       "sampleCount": 1,
@@ -1450,7 +1327,7 @@ timed_out=false
     },
     {
       "name": "media.control.stage",
-      "ms": 0.465375,
+      "ms": 0.965541,
       "limit": 500,
       "source": "packaged-tauri-runtime-samples:packaged-startup-media-control-daemon-measurement;packaged-af-unix-perf.measure:media-control-stage-loopback-operation",
       "sampleCount": 1,
@@ -1470,7 +1347,7 @@ node /Users/albertonunez/Documents/Developer/BurnBar/scripts/linux-port/verify-s
 exit_code=0
 timed_out=false
 {
-  "generatedAt": "2026-07-05T11:31:49.277Z",
+  "generatedAt": "2026-07-05T16:20:16.357Z",
   "mode": "full",
   "evidenceDir": "/Users/albertonunez/Documents/Developer/BurnBar/docs/linux-port/evidence/mission-001-shell-ux",
   "targetStatus": {

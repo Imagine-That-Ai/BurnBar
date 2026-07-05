@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-07-05T11:31:49.044Z",
+  "generatedAt": "2026-07-05T16:20:15.700Z",
   "lane": "W06LinuxShellUx",
   "cases": [
     {
       "id": "daemon-offline",
       "route": "overview",
       "condition": "bridge=null or health.ok=false",
-      "userMessage": "Packaged shell required for live daemon health (browser preview mode).",
+      "userMessage": "Daemon offline.",
       "remediation": "Start openburnbar-cli service foreground; verify AF_UNIX socket.",
-      "actionResult": "Reconnect action retries daemon.health and keeps local routes usable.",
+      "actionResult": "Reconnect action retries daemon.health, keeps local routes usable, and keeps raw socket errors in diagnostics only.",
       "restartPersistence": "required"
     },
     {

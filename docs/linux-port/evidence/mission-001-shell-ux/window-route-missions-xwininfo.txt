@@ -21,3 +21,4 @@ xwininfo: Window id: 0xa00003 "OpenBurnBar"
   Override Redirect State: no
   Corners:  +1+47  -1+47  -1-13  +1-13
   -geometry 1278x840+0-8
+

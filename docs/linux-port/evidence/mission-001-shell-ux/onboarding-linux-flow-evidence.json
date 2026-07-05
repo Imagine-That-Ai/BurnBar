@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T11:31:49.048Z",
+  "generatedAt": "2026-07-05T16:20:15.708Z",
   "method": "onboardingStore-state-machine-plus-copy-review",
   "linuxPermissionPathPrivacyCopy": {
     "daemonServiceSetup": "AF_UNIX daemon/socket path copy plus openburnbar-cli service foreground guidance.",
@@ -28,7 +28,7 @@
         "step": 0,
         "skippedSteps": []
       },
-      "expected": "Retry probes daemon health without advancing or losing the current step."
+      "expected": "Retry probes daemon health, shows visible status feedback, and does not advance or lose the current step."
     },
     {
       "action": "skip-step",
@@ -61,7 +61,7 @@
           0
         ]
       },
-      "expected": "Completion is persisted so later launches can open the dashboard."
+      "expected": "Completion is persisted and the wizard renders a completed state before later launches open the dashboard."
     }
   ],
   "stateProbe": {
@@ -162,5 +162,5 @@
     "screenshot-route-onboarding.png",
     "screenshot-linux-desktop-first-run.png"
   ],
-  "docsCopyReview": "Onboarding route copy is in main.ts ONBOARDING_STEPS and uses Linux-specific permission/path/privacy wording."
+  "docsCopyReview": "Onboarding route copy is in src/onboardingSteps.ts ONBOARDING_STEPS and uses Linux-specific permission/path/privacy wording."
 }

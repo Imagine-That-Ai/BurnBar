@@ -474,7 +474,7 @@ describe('shell evidence harness', () => {
         'screenshot-route-onboarding.png',
         'screenshot-linux-desktop-first-run.png'
       ],
-      docsCopyReview: 'Onboarding route copy is in main.ts ONBOARDING_STEPS and uses Linux-specific permission/path/privacy wording.'
+      docsCopyReview: 'Onboarding route copy is in src/onboardingSteps.ts ONBOARDING_STEPS and uses Linux-specific permission/path/privacy wording.'
     });
   });
 
@@ -545,7 +545,11 @@ describe('shell evidence harness', () => {
     const restartPersistence = listSnippets();
     deleteSnippet(created.id);
     const afterDelete = listSnippets();
-    const runtimeFiles = ['src/main.ts', 'src/textExpansionStore.ts', 'src/textExpansionConsent.ts'];
+    const runtimeFiles = [
+      'src/surfaces/TextExpansionSurface.tsx',
+      'src/textExpansionStore.ts',
+      'src/textExpansionConsent.ts'
+    ];
     const forbidden = ['evdev', 'uinput', 'global keyboard hook', 'CGEventTap', 'RegisterHotKey'];
     const scan = runtimeFiles.map((file) => {
       const text = fs.readFileSync(path.join(process.cwd(), file), 'utf8');

@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-07-05T11:31:49.047Z",
+  "generatedAt": "2026-07-05T16:20:15.707Z",
   "method": "failureStateCases-plus-localStorage-recovery-restart-probe",
   "scenarios": [
     {
       "route": "overview",
       "id": "daemon-offline",
       "injectedCondition": "bridge=null or health.ok=false",
-      "userVisibleFeedback": "Packaged shell required for live daemon health (browser preview mode).",
+      "userVisibleFeedback": "Daemon offline.",
       "recovery": "Start openburnbar-cli service foreground; verify AF_UNIX socket.",
-      "actionResult": "Reconnect action retries daemon.health and keeps local routes usable.",
+      "actionResult": "Reconnect action retries daemon.health, keeps local routes usable, and keeps raw socket errors in diagnostics only.",
       "restartPersistence": "required"
     },
     {

@@ -25,6 +25,8 @@ Primary files:
 - [`parity-ledger.md`](parity-ledger.md) - human-readable ledger notes.
 - [`factory-pr-handoff.md`](factory-pr-handoff.md) - review map and known
   blockers for the factory PR loop.
+- [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
+  foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.
 
 The release verifier refuses to publish `latest-linux.json` while the package

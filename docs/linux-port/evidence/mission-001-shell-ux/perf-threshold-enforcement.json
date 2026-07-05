@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T11:31:49.230Z",
+  "generatedAt": "2026-07-05T16:20:16.314Z",
   "runner": "linux-desktop-packaged-runtime-perf-v3",
   "baselinePolicy": {
     "name": "current-threshold-enforced-until-baseline",
@@ -9,7 +9,7 @@
   "rows": [
     {
       "name": "app.start",
-      "currentMs": 329,
+      "currentMs": 321,
       "thresholdMs": 2500,
       "sampleCount": 1,
       "source": "packaged-tauri-deb-xvfb-window-visible",
@@ -18,9 +18,9 @@
     },
     {
       "name": "route.navigation",
-      "currentMs": 7,
+      "currentMs": 2.0000000000009095,
       "thresholdMs": 120,
-      "sampleCount": 16,
+      "sampleCount": 15,
       "source": "packaged-tauri-runtime-samples:packaged-ui-route:account,packaged-ui-route:activity,packaged-ui-route:chat,packaged-ui-route:database,packaged-ui-route:insights,packaged-ui-route:memory,packaged-ui-route:missions,packaged-ui-route:onboarding,packaged-ui-route:pet,packaged-ui-route:projects,packaged-ui-route:providers,packaged-ui-route:settings,packaged-ui-route:support,packaged-ui-route:text-expansion,packaged-ui-route:updates",
       "thresholdPass": true,
       "trendPass": true
@@ -36,7 +36,7 @@
     },
     {
       "name": "tray.click.open",
-      "currentMs": 45,
+      "currentMs": 56,
       "thresholdMs": 400,
       "sampleCount": 1,
       "source": "appindicator-dbusmenu-open-to-visible-window",
@@ -45,7 +45,7 @@
     },
     {
       "name": "chat.firstToken.progress",
-      "currentMs": 6.964208999999999,
+      "currentMs": 8.914125,
       "thresholdMs": 2500,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-chat-hermes-daemon-measurement;packaged-af-unix-perf.measure:hermes-chat-stream-progress-operation",
@@ -54,7 +54,7 @@
     },
     {
       "name": "db.migration.open.query",
-      "currentMs": 1.534917,
+      "currentMs": 1.794333,
       "thresholdMs": 1200,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-db-daemon-measurement;packaged-af-unix-perf.measure:sqlite3-db-fts5-operation",
@@ -63,7 +63,7 @@
     },
     {
       "name": "parser.incremental.run",
-      "currentMs": 0.7298330000000001,
+      "currentMs": 0.8581669999999999,
       "thresholdMs": 900,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-parser-daemon-measurement;packaged-af-unix-perf.measure:provider-jsonl-incremental-parser-operation",
@@ -72,7 +72,7 @@
     },
     {
       "name": "memory.search",
-      "currentMs": 0.550542,
+      "currentMs": 0.6131249999999999,
       "thresholdMs": 650,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-memory-daemon-measurement;packaged-af-unix-perf.measure:memory-search-index-operation",
@@ -81,7 +81,7 @@
     },
     {
       "name": "media.control.stage",
-      "currentMs": 0.465375,
+      "currentMs": 0.965541,
       "thresholdMs": 500,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-media-control-daemon-measurement;packaged-af-unix-perf.measure:media-control-stage-loopback-operation",

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T11:31:46.728Z",
+  "generatedAt": "2026-07-05T16:20:12.452Z",
   "profile": "dbus-x11-xvfb-xfce-statusnotifier",
   "package": {
     "name": "open-burn-bar",
@@ -11,16 +11,16 @@
     "display": ":99",
     "xdgSessionType": "x11",
     "desktop": "XFCE",
-    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_10362_1",
-    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_10362_1/Menu",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_9382_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_9382_1/Menu",
     "windowId": "10485763",
     "reopenedWindowId": "10485763"
   },
   "performance": {
-    "appStartMs": 329,
-    "trayClickOpenMs": 45,
+    "appStartMs": 321,
+    "trayClickOpenMs": 56,
     "ipcHealthRoundTripMs": 6,
-    "trayQuitMs": 106
+    "trayQuitMs": 111
   },
   "evidence": {
     "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
