@@ -10,7 +10,7 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 .skip-link { position: absolute; left: -9999px; top: 0; }
 .skip-link:focus { left: var(--space-4); top: var(--space-4); z-index: 1000; background: var(--color-brass-core); color: #000; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
 .shell { display: grid; grid-template-columns: 280px 1fr; width: 100%; min-height: 100vh; }
-.shell-nav { border-right: 1px solid var(--color-glass-line); background: var(--color-glass-bg); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.shell-nav { border-right: 1px solid var(--color-glass-line); background: var(--color-glass-bg); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
 .shell-main { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
 .brand { font-family: var(--font-display); font-size: 1.1rem; letter-spacing: 0; }
 .brand span { background: var(--ds-accent-gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -19,7 +19,7 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 .status-pill.warn { border-color: color-mix(in srgb, var(--color-tier-server-readable) 50%, transparent); }
 .status-pill.err { border-color: color-mix(in srgb, var(--color-seal-crimson) 50%, transparent); }
 .nav-group-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0; color: var(--color-text-dim); margin-top: var(--space-2); }
-.nav-link { display: block; width: 100%; text-align: left; border: 1px solid transparent; background: transparent; color: var(--color-text-base); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; }
+.nav-link { display: block; width: 100%; text-align: left; border: 1px solid transparent; background: transparent; color: var(--color-text-base); padding: 6px var(--space-3); border-radius: var(--radius-sm); cursor: pointer; }
 .nav-link:hover, .nav-link:focus-visible { border-color: var(--color-glass-line-bright); outline: none; }
 .nav-link[aria-current="page"] { background: var(--color-mercury-wash); border-color: var(--color-frost-line); }
 .card { background: var(--color-glass-bg-elevated); border: 1px solid var(--color-glass-line); border-radius: var(--radius-sm); padding: var(--space-4); }

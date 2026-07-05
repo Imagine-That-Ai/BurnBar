@@ -20,6 +20,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   export LIBGL_ALWAYS_SOFTWARE=1
   export WEBKIT_DISABLE_COMPOSITING_MODE=1
   export OPENBURNBAR_SOCKET_PATH="$socket_path"
+  export OPENBURNBAR_EVIDENCE_OUT="$out_dir"
 
   mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME"
   chmod 700 "$XDG_RUNTIME_DIR"
@@ -86,6 +87,98 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     echo "== window properties =="
     cat "$out_dir/window-initial-xprop.txt"
   } >"$out_dir/accessibility-tree-linux-desktop.txt" 2>&1
+
+  route_tsv="$work_dir/packaged-route-session.tsv"
+  : >"$route_tsv"
+  route_names=(
+    overview
+    insights
+    database
+    providers
+    projects
+    missions
+    activity
+    chat
+    memory
+    settings
+    account
+    updates
+    support
+    onboarding
+    pet
+    text-expansion
+  )
+  route_click_y=(
+    158
+    195
+    232
+    269
+    306
+    343
+    380
+    417
+    454
+    520
+    558
+    595
+    632
+    669
+    706
+    743
+  )
+  xdotool windowactivate "$window_id"
+  for index in "${!route_names[@]}"; do
+    route="${route_names[$index]}"
+    y="${route_click_y[$index]}"
+    xdotool mousemove --window "$window_id" 120 "$y" click 1
+    sleep 0.45
+    screenshot="$out_dir/screenshot-route-${route}.png"
+    xwininfo_route="$out_dir/window-route-${route}-xwininfo.txt"
+    scrot "$screenshot"
+    current_window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
+    if [[ -z "$current_window_id" ]]; then
+      echo "OpenBurnBar window disappeared while capturing route $route" >&2
+      exit 1
+    fi
+    xwininfo -id "$current_window_id" >"$xwininfo_route"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$route" "$(basename "$screenshot")" "$(basename "$xwininfo_route")" "$current_window_id" "$y" >>"$route_tsv"
+  done
+
+  node - "$route_tsv" "$out_dir/packaged-route-session-transcript.json" "$out_dir/daemon-session-oracle.json" <<'NODE'
+const fs = require('fs');
+const [tsvPath, outPath, oraclePath] = process.argv.slice(2);
+const oracle = fs.existsSync(oraclePath) ? JSON.parse(fs.readFileSync(oraclePath, 'utf8')) : null;
+const targetRoutes = new Set(['settings', 'account', 'updates', 'support', 'onboarding', 'pet', 'text-expansion']);
+const routes = fs.readFileSync(tsvPath, 'utf8')
+  .trim()
+  .split(/\n+/)
+  .filter(Boolean)
+  .map((line, index) => {
+    const [route, screenshot, xwininfo, windowId, clickY] = line.split('\t');
+    return {
+      index,
+      route,
+      screenshot,
+      xwininfo,
+      windowId,
+      action: `xdotool click visible nav at x=120 y=${clickY}`,
+      surface: 'installed-tauri-deb-xvfb-xfce',
+      targetScenario: targetRoutes.has(route),
+      daemonOracleMode: oracle?.mode ?? 'missing'
+    };
+  });
+const payload = {
+  generatedAt: new Date().toISOString(),
+  mode: 'packaged-desktop-route-navigation',
+  surface: 'installed-tauri-deb-xvfb-xfce',
+  routeCount: routes.length,
+  targetScenarioRoutes: routes.filter((route) => route.targetScenario).map((route) => route.route),
+  daemonOracle: oracle,
+  routes
+};
+fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+NODE
 
   registered_file="$out_dir/tray-registered-items.txt"
   for _ in $(seq 1 80); do
@@ -197,11 +290,15 @@ NODE
   xwininfo -id "$reopened_window_id" >"$out_dir/window-after-tray-open-xwininfo.txt"
   scrot "$out_dir/screenshot-linux-desktop-after-tray-open.png"
 
-  before_reconnect_lines="$(wc -l <"$out_dir/daemon-socket-gui-session.log" 2>/dev/null || echo 0)"
+  daemon_log="$out_dir/daemon-socket-gui-session.log"
+  if [[ -f "$out_dir/daemon-shell-session.log" ]]; then
+    daemon_log="$out_dir/daemon-shell-session.log"
+  fi
+  before_reconnect_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
   reconnect_start_ms="$(date +%s%3N)"
   send_menu_event "$RECONNECT_ID" >"$out_dir/tray-reconnect-menu-event.txt" 2>&1
   for _ in $(seq 1 80); do
-    current_lines="$(wc -l <"$out_dir/daemon-socket-gui-session.log" 2>/dev/null || echo 0)"
+    current_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
     if [[ "$current_lines" -gt "$before_reconnect_lines" ]]; then
       break
     fi
@@ -228,8 +325,9 @@ NODE
     gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames
   } >"$out_dir/dbus-after-app.txt" 2>&1 || true
 
-  node - "$out_dir/linux-desktop-session-report.json" <<NODE
+  node - "$out_dir/linux-desktop-session-report.json" "$out_dir" <<NODE
 const fs = require('fs');
+const outDir = process.argv[3];
 const report = {
   generatedAt: new Date().toISOString(),
   profile: 'dbus-x11-xvfb-xfce-statusnotifier',
@@ -252,7 +350,9 @@ const report = {
   evidence: {
     firstRunScreenshot: 'screenshot-linux-desktop-first-run.png',
     afterTrayOpenScreenshot: 'screenshot-linux-desktop-after-tray-open.png',
-    daemonSocketLog: 'daemon-socket-gui-session.log',
+    packagedRouteTranscript: 'packaged-route-session-transcript.json',
+    runtimePerfSamples: 'runtime-perf-samples.jsonl',
+    daemonSocketLog: fs.existsSync(outDir + '/daemon-shell-session.log') ? 'daemon-shell-session.log' : 'daemon-socket-gui-session.log',
     trayMenuLayout: 'tray-menu-layout.txt',
     accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt'
   }
@@ -276,16 +376,22 @@ exec > >(tee "$transcript") 2>&1
 rm -f \
   "$out_dir"/accessibility-tree-linux-desktop.txt \
   "$out_dir"/daemon-socket-gui-session.log \
+  "$out_dir"/daemon-session-oracle.json \
   "$out_dir"/dbus-after-app.txt \
   "$out_dir"/dbus-before-app.txt \
+  "$out_dir"/desktop-package-provision.txt \
+  "$out_dir"/desktop-package-versions.txt \
   "$out_dir"/linux-desktop-session-report.json \
   "$out_dir"/openburnbar-linux-desktop.pid \
   "$out_dir"/openburnbar-linux-desktop.stderr.log \
   "$out_dir"/openburnbar-linux-desktop.stdout.log \
   "$out_dir"/openburnbar-window-id.txt \
+  "$out_dir"/packaged-route-session-transcript.json \
+  "$out_dir"/runtime-perf-samples.jsonl \
   "$out_dir"/openbox.log \
   "$out_dir"/screenshot-linux-desktop-after-tray-open*.png \
   "$out_dir"/screenshot-linux-desktop-first-run*.png \
+  "$out_dir"/screenshot-route-*.png \
   "$out_dir"/tray-menu-actions.json \
   "$out_dir"/tray-menu-layout.txt \
   "$out_dir"/tray-menu-property.txt \
@@ -298,6 +404,7 @@ rm -f \
   "$out_dir"/window-after-tray-open-xwininfo.txt \
   "$out_dir"/window-initial-xprop.txt \
   "$out_dir"/window-initial-xwininfo.txt \
+  "$out_dir"/window-route-*-xwininfo.txt \
   "$out_dir"/x11-display-info.txt \
   "$out_dir"/xfce4-panel.log \
   "$out_dir"/xvfb.log
@@ -315,19 +422,41 @@ cat >"$out_dir/ci-compositor-profile.json" <<JSON
 JSON
 cat "$out_dir/ci-compositor-profile.json"
 
-echo "== package versions =="
-dpkg-query -W -f='${binary:Package}=${Version}\n' \
-  xvfb \
-  openbox \
-  xfce4-panel \
-  xfce4-sntray-plugin \
-  ayatana-indicator-application \
-  libayatana-appindicator3-1 \
-  dbus-x11 \
-  xdotool \
-  x11-utils \
-  scrot \
+desktop_packages=(
+  xvfb
+  openbox
+  xfce4-panel
+  xfce4-sntray-plugin
+  ayatana-indicator-application
+  libayatana-appindicator3-1
+  dbus-x11
+  xdotool
+  x11-utils
+  scrot
   at-spi2-core
+)
+
+echo "== provision desktop packages =="
+missing_packages=()
+for package_name in "${desktop_packages[@]}"; do
+  if ! dpkg-query -W -f='${Status}' "$package_name" 2>/dev/null | grep -q 'install ok installed'; then
+    missing_packages+=("$package_name")
+  fi
+done
+if [[ "${#missing_packages[@]}" -gt 0 ]]; then
+  {
+    echo "missing=${missing_packages[*]}"
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing_packages[@]}"
+  } >"$out_dir/desktop-package-provision.txt" 2>&1
+else
+  echo "all required desktop packages already installed" >"$out_dir/desktop-package-provision.txt"
+fi
+cat "$out_dir/desktop-package-provision.txt"
+
+echo "== package versions =="
+dpkg-query -W -f='${binary:Package}=${Version}\n' "${desktop_packages[@]}" >"$out_dir/desktop-package-versions.txt"
+cat "$out_dir/desktop-package-versions.txt"
 
 echo "== build deb =="
 if [[ "${OB_REUSE_EXISTING_DEB:-0}" == "1" ]]; then
@@ -371,82 +500,15 @@ fi
 echo "desktop_file=${desktop_file:-missing}"
 echo "installed_bin=$installed_bin"
 
-echo "== fake daemon socket =="
+echo "== daemon socket for packaged session =="
 home_dir="$work_dir/home"
 runtime_dir="$work_dir/runtime"
 data_dir="$home_dir/.local/share/openburnbar"
 mkdir -p "$data_dir" "$runtime_dir"
 chmod 700 "$runtime_dir"
-socket_path="$data_dir/openburnbar-daemon.sock"
-cat >"$work_dir/fake-daemon.mjs" <<'NODE'
-import fs from 'node:fs';
-import net from 'node:net';
-
-const socketPath = process.env.OPENBURNBAR_SOCKET_PATH;
-const logPath = process.env.OPENBURNBAR_DAEMON_LOG;
-try { fs.unlinkSync(socketPath); } catch {}
-const server = net.createServer((connection) => {
-  let buffer = '';
-  connection.on('data', (chunk) => {
-    buffer += chunk.toString('utf8');
-    const index = buffer.indexOf('\n');
-    if (index < 0) return;
-    const started = process.hrtime.bigint();
-    const line = buffer.slice(0, index).trim();
-    let request = {};
-    try {
-      request = JSON.parse(line);
-    } catch (error) {
-      request = { parseError: String(error) };
-    }
-    const response = {
-      protocolVersion: 1,
-      id: request.id ?? 'missing-id',
-      result: {
-        ok: true,
-        protocolVersion: 1,
-        daemonVersion: 'gui-session-fake-daemon-0.1.0',
-        socketPath,
-        gatewayEnabled: true,
-        gatewayHost: '127.0.0.1',
-        gatewayPort: 47877
-      }
-    };
-    connection.write(JSON.stringify(response) + '\n', () => {
-      const ended = process.hrtime.bigint();
-      fs.appendFileSync(logPath, JSON.stringify({
-        at: new Date().toISOString(),
-        method: request.method ?? null,
-        id: request.id ?? null,
-        traceId: request.traceId ?? null,
-        handlingMs: Number(ended - started) / 1_000_000
-      }) + '\n');
-      connection.end();
-    });
-  });
-});
-server.listen(socketPath, () => {
-  fs.chmodSync(socketPath, 0o600);
-  fs.writeFileSync(`${socketPath}.ready`, 'ready\n');
-});
-process.on('SIGTERM', () => server.close(() => process.exit(0)));
-NODE
-OPENBURNBAR_SOCKET_PATH="$socket_path" \
-OPENBURNBAR_DAEMON_LOG="$out_dir/daemon-socket-gui-session.log" \
-node "$work_dir/fake-daemon.mjs" &
-daemon_pid="$!"
-for _ in $(seq 1 50); do
-  if [[ -S "$socket_path" && -f "$socket_path.ready" ]]; then
-    break
-  fi
-  sleep 0.1
-done
-if [[ ! -S "$socket_path" ]]; then
-  echo "Fake daemon socket did not start" >&2
-  exit 1
-fi
+socket_path="$("$root/scripts/linux-port/start-shell-session-daemon.sh" "$root" "$out_dir" "$work_dir")"
+daemon_pid="$(cat "$work_dir/daemon.pid")"
 ls -l "$socket_path"
-
 cleanup_outer() {
   kill "$daemon_pid" 2>/dev/null || true
 }
@@ -457,7 +519,11 @@ dbus-run-session -- bash "$root/scripts/linux-port/linux-desktop-session.sh" \
   desktop-inner "$pkg" "$installed_bin" "$out_dir" "$work_dir" "$socket_path"
 
 echo "== daemon socket log =="
-cat "$out_dir/daemon-socket-gui-session.log"
+if [[ -f "$out_dir/daemon-shell-session.log" ]]; then
+  cat "$out_dir/daemon-shell-session.log"
+else
+  cat "$out_dir/daemon-socket-gui-session.log"
+fi
 
 echo "== uninstall deb =="
 dpkg -r "$pkg"

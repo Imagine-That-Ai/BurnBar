@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "product": "OpenBurnBar",
+  "platform": "linux",
+  "version": "0.1.0",
+  "commit": "1af805eb1878cc5af8821ee35cac838c5ac473ee",
+  "generatedAt": "2026-07-05T12:51:04.921Z",
+  "promotionState": "blocked",
+  "primaryArtifact": null,
+  "artifacts": [],
+  "sidecars": {
+    "checksums": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux-checksums.txt",
+    "sbom": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
+    "vex": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
+    "provenancePredicate": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.provenance-predicate.json"
+  },
+  "blockers": [
+    {
+      "kind": "package-build",
+      "message": "Command failed: npm run tauri:build -- --bundles deb,rpm,appimage",
+      "log": "logs/package-build.log"
+    },
+    {
+      "kind": "missing-artifact",
+      "message": "Required Linux appimage artifact was not produced by Tauri bundle output."
+    },
+    {
+      "kind": "missing-artifact",
+      "message": "Required Linux deb artifact was not produced by Tauri bundle output."
+    },
+    {
+      "kind": "missing-artifact",
+      "message": "Required Linux rpm artifact was not produced by Tauri bundle output."
+    },
+    {
+      "kind": "dirty-worktree",
+      "message": "Release metadata cannot be promoted from a dirty worktree; source archive only represents HEAD."
+    },
+    {
+      "kind": "signing-credentials",
+      "message": "OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is not configured; detached package signatures were not produced."
+    },
+    {
+      "kind": "cosign-oidc",
+      "message": "SIGSTORE_ID_TOKEN is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC."
+    }
+  ]
+}

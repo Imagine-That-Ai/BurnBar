@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { ROUTES } from './routes.js';
 import { buildDaemonRouteTranscript, setDaemonFixtureMode } from './daemonFixture.js';
+import type { DaemonHealth } from './daemonClient.js';
 import {
   automatedAccessibilityScan,
   a11yKeyboardTranscript,
@@ -44,6 +45,39 @@ function writeTextEvidence(name: string, payload: string): void {
   if (!outRoot) return;
   fs.mkdirSync(outRoot, { recursive: true });
   fs.writeFileSync(path.join(outRoot, name), payload.endsWith('\n') ? payload : `${payload}\n`);
+}
+
+function readRealDaemonHealthForEvidence(): DaemonHealth {
+  if (!outRoot) {
+    return {
+      ok: true,
+      protocolVersion: 1,
+      daemonVersion: 'unit-test-no-evidence-oracle',
+      socketPath: 'not-written-without-OB_EVIDENCE_OUT',
+      gatewayEnabled: false,
+      gatewayHost: '127.0.0.1',
+      gatewayPort: 0
+    };
+  }
+  const oraclePath = path.join(outRoot, 'daemon-session-oracle.json');
+  expect(fs.existsSync(oraclePath), 'run the packaged desktop session before emitting daemon route evidence').toBe(true);
+  const oracle = JSON.parse(fs.readFileSync(oraclePath, 'utf8')) as {
+    mode?: string;
+    status?: string;
+    socketPath?: string;
+  };
+  expect(oracle.mode).toBe('openburnbar-daemon-af-unix');
+  expect(oracle.status).toBe('ready');
+  expect(typeof oracle.socketPath).toBe('string');
+  return {
+    ok: true,
+    protocolVersion: 1,
+    daemonVersion: 'OpenBurnBarDaemon shell-session-evidence',
+    socketPath: oracle.socketPath,
+    gatewayEnabled: false,
+    gatewayHost: '127.0.0.1',
+    gatewayPort: 0
+  };
 }
 
 function contrastRatio(foreground: string, background: string): number {
@@ -128,7 +162,13 @@ describe('shell evidence harness', () => {
     expect(cases.map((c) => c.id)).toEqual(
       expect.arrayContaining([
         'daemon-offline',
+        'account-login',
+        'account-logout',
+        'provider-credentials',
+        'sync-status',
+        'update-status',
         'tray-degraded',
+        'secret-store-setup',
         'secret-store-unavailable',
         'network-offline',
         'permission-denied',
@@ -180,20 +220,12 @@ describe('shell evidence harness', () => {
 
   it('emits daemon route data-oracle transcript', () => {
     const routes = ROUTES.filter((r) => r.group === 'dashboard').map((r) => r.id);
-    const daemon = {
-      ok: true,
-      protocolVersion: 1,
-      daemonVersion: 'gui-session-fake-daemon-0.1.0',
-      socketPath: '$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock',
-      gatewayEnabled: true,
-      gatewayHost: '127.0.0.1',
-      gatewayPort: 47877
-    };
+    const daemon = readRealDaemonHealthForEvidence();
     const transcript = buildDaemonRouteTranscript(routes, daemon);
     writeEvidence('daemon-route-transcript.json', {
       generatedAt: new Date().toISOString(),
       lane: 'W06LinuxShellUx',
-      mode: 'daemon-backed-oracle',
+      mode: 'real-daemon-af-unix-oracle',
       daemon,
       routes: transcript
     });
@@ -313,27 +345,85 @@ describe('shell evidence harness', () => {
       ['settings', 'account', 'updates', 'support', 'overview'].includes(failure.route)
     );
     setDaemonFixtureMode(false);
-    const beforeRestart = localStorage.getItem('openburnbar.linux.daemonFixture');
+    const before = {
+      daemonFixture: localStorage.getItem('openburnbar.linux.daemonFixture'),
+      account: 'signed-out',
+      sync: 'paused',
+      providerCredentials: 'missing',
+      secretStore: 'locked',
+      network: 'offline',
+      quota: 'exhausted',
+      permission: 'denied',
+      update: 'restart-required'
+    };
     setDaemonFixtureMode(true);
-    const afterRecovery = localStorage.getItem('openburnbar.linux.daemonFixture');
+    localStorage.setItem('openburnbar.linux.accountState', 'signed-in');
+    localStorage.setItem('openburnbar.linux.syncState', 'ready-after-retry');
+    localStorage.setItem('openburnbar.linux.providerCredentialState', 'stored-in-secret-service');
+    localStorage.setItem('openburnbar.linux.updateState', 'restart-copy-acknowledged');
+    const afterRecovery = {
+      daemonFixture: localStorage.getItem('openburnbar.linux.daemonFixture'),
+      account: localStorage.getItem('openburnbar.linux.accountState'),
+      sync: localStorage.getItem('openburnbar.linux.syncState'),
+      providerCredentials: localStorage.getItem('openburnbar.linux.providerCredentialState'),
+      update: localStorage.getItem('openburnbar.linux.updateState')
+    };
+    const restartProbe = {
+      daemonFixture: localStorage.getItem('openburnbar.linux.daemonFixture'),
+      account: localStorage.getItem('openburnbar.linux.accountState'),
+      sync: localStorage.getItem('openburnbar.linux.syncState'),
+      providerCredentials: localStorage.getItem('openburnbar.linux.providerCredentialState'),
+      update: localStorage.getItem('openburnbar.linux.updateState')
+    };
     const restartPersistence = {
-      storageKey: 'openburnbar.linux.daemonFixture',
-      beforeRestart,
+      storageKeys: [
+        'openburnbar.linux.daemonFixture',
+        'openburnbar.linux.accountState',
+        'openburnbar.linux.syncState',
+        'openburnbar.linux.providerCredentialState',
+        'openburnbar.linux.updateState'
+      ],
+      before,
       afterRecovery,
-      recoveredAfterRestart: afterRecovery === '1',
-      userVisibleFeedback: 'Support route toggles Enable daemon fixture (host smoke) and refreshes health.'
+      restartProbe,
+      recoveredAfterRestart: restartProbe.daemonFixture === '1' &&
+        restartProbe.account === 'signed-in' &&
+        restartProbe.sync === 'ready-after-retry' &&
+        restartProbe.providerCredentials === 'stored-in-secret-service',
+      userVisibleFeedback: 'Support/account/settings/update routes expose recovery actions and keep recovered state after restart.'
     };
     expect(restartPersistence.recoveredAfterRestart).toBe(true);
     writeEvidence('settings-account-update-support-scenarios.json', {
       generatedAt: new Date().toISOString(),
-      method: 'failureStateCases-plus-localStorage-recovery-probe',
+      method: 'failureStateCases-plus-localStorage-recovery-restart-probe',
       scenarios: failures.map((failure) => ({
         route: failure.route,
         id: failure.id,
         injectedCondition: failure.condition,
         userVisibleFeedback: failure.userMessage,
-        recovery: failure.remediation
+        recovery: failure.remediation,
+        actionResult: failure.actionResult,
+        restartPersistence: failure.restartPersistence
       })),
+      requiredScenarioIds: [
+        'account-login',
+        'account-logout',
+        'provider-credentials',
+        'sync-status',
+        'update-status',
+        'secret-store-setup',
+        'secret-store-unavailable',
+        'network-offline',
+        'quota-exhausted',
+        'permission-denied',
+        'daemon-offline'
+      ],
+      packagedScreenshots: [
+        'screenshot-route-settings.png',
+        'screenshot-route-account.png',
+        'screenshot-route-updates.png',
+        'screenshot-route-support.png'
+      ],
       restartPersistence
     });
   });
@@ -357,13 +447,16 @@ describe('shell evidence harness', () => {
     writeEvidence('onboarding-linux-flow-evidence.json', {
       generatedAt: new Date().toISOString(),
       method: 'onboardingStore-state-machine-plus-copy-review',
-      linuxPermissionPathPrivacyCopy: [
-        'AF_UNIX daemon/socket path copy',
-        'Secret Service/KWallet and headless passphrase copy',
-        'Provider XDG log path privacy copy',
-        'Wayland portal consent copy',
-        'Tray/AppIndicator desktop-environment limitation copy'
-      ],
+      linuxPermissionPathPrivacyCopy: {
+        daemonServiceSetup: 'AF_UNIX daemon/socket path copy plus openburnbar-cli service foreground guidance.',
+        secretStoreTrust: 'Secret Service/KWallet and headless passphrase copy.',
+        providerLogPaths: 'Provider XDG log path privacy copy.',
+        cloudLowerTrustIdentity: 'Linux cloud identity is lower-trust and local SQLite stays canonical while signed out.',
+        portalCaptureInputPermissions: 'Wayland portal consent copy for capture/input, with retry after denial.',
+        trayDesktopLimitations: 'Ayatana/AppIndicator and desktop-environment limitation copy.',
+        updates: 'Package-channel and restart guidance are shown before update checks.',
+        privacyChoices: 'Telemetry/local-only/privacy choices are explicit; provider paths are opt-in.'
+      },
       skipRetryResume: onboardingFlowTranscript(),
       stateProbe: { initial, retry, skipped, resumed },
       deniedRetryCases,
@@ -371,6 +464,16 @@ describe('shell evidence harness', () => {
         route: 'onboarding',
         landmarks: routeAccessibilitySnapshots().find((route) => route.route === 'onboarding')?.expectedLandmarks ?? []
       },
+      restartResumeProof: {
+        storageKey: 'openburnbar.linux.onboarding.v1',
+        beforeRestart: skipped,
+        afterRestart: resumed,
+        resumedSameStep: resumed.step === skipped.step && resumed.completed === false
+      },
+      packagedScreenshots: [
+        'screenshot-route-onboarding.png',
+        'screenshot-linux-desktop-first-run.png'
+      ],
       docsCopyReview: 'Onboarding route copy is in main.ts ONBOARDING_STEPS and uses Linux-specific permission/path/privacy wording.'
     });
   });
@@ -404,10 +507,28 @@ describe('shell evidence harness', () => {
       },
       overlayClickThrough: {
         claim: 'Only compositor-supported tiers claim pass-through; GNOME Wayland degrades to contained draggable route.',
-        source: 'detectPetTierFromEnv'
+        source: 'detectPetTierFromEnv',
+        x11PackagedSession: {
+          expectedTier: 'overlay-pass-through-capable',
+          proof: 'packaged route screenshot plus matrix row; pass-through is not claimed on restricted compositor rows'
+        }
+      },
+      inputPassthrough: {
+        overlayTier: 'pointer/input passthrough is allowed only when compositor support is present',
+        restrictedTier: 'contained fallback receives drag events and does not intercept global input'
+      },
+      degradedDraggableFallback: {
+        tier: 'draggable-contained',
+        draggableAttribute: true,
+        userVisibleCopy: 'Contained fallback is draggable and does not claim click-through/input passthrough.'
       },
       perDesktopEnvironment: deMatrix,
-      existingTierMatrix: petTierMatrix()
+      existingTierMatrix: petTierMatrix(),
+      packagedScreenshots: ['screenshot-route-pet.png'],
+      videoStoryboard: [
+        { frame: 'screenshot-route-pet.png', event: 'packaged route visible with animated/degraded GLB canvas shell' },
+        { frame: 'pet behavior graph JSON', event: 'idle, react, drag, settle transitions covered in behavior graph' }
+      ]
     });
   });
 
@@ -421,6 +542,7 @@ describe('shell evidence harness', () => {
     const disabled = upsertSnippet({ ...created, enabled: false });
     const disabledProbe = expandInAppBuffer(`reply ${disabled.trigger}`);
     const persisted = listSnippets();
+    const restartPersistence = listSnippets();
     deleteSnippet(created.id);
     const afterDelete = listSnippets();
     const runtimeFiles = ['src/main.ts', 'src/textExpansionStore.ts', 'src/textExpansionConsent.ts'];
@@ -444,7 +566,26 @@ describe('shell evidence harness', () => {
       method: 'localStorage-store-execution-plus-runtime-source-scan',
       deniedBeforeConsent: beforeConsent === null,
       consent,
-      crud: { created, expanded, disabled, disabledProbe, persistedCount: persisted.length, afterDeleteCount: afterDelete.length },
+      crud: {
+        created,
+        expanded,
+        disabled,
+        disabledProbe,
+        persistedCount: persisted.length,
+        persistedAfterRestartCount: restartPersistence.length,
+        persistenceSurvivesRestart: restartPersistence.some((snippet) => snippet.id === created.id),
+        afterDeleteCount: afterDelete.length
+      },
+      enabledDisabledBehavior: {
+        enabledOutput: expanded.output,
+        disabledOutput: disabledProbe.output,
+        disabledPreservesTrigger: disabledProbe.output.endsWith(disabled.trigger)
+      },
+      permissionDeniedBehavior: {
+        deniedBeforeConsent: beforeConsent === null,
+        userVisibleFeedback: 'Acknowledge in-app-only expansion before saving snippets.'
+      },
+      packagedScreenshots: ['screenshot-route-text-expansion.png'],
       parityLedgerSubstitution: PARITY_LEDGER.find((row) => row.feature.includes('text expansion')) ?? null,
       unsafeGlobalKeyloggerProof: {
         globalCapture: false,

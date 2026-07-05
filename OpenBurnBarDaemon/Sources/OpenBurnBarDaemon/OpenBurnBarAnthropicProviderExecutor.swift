@@ -1,5 +1,8 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
 
 /// Pass-through proxy for Anthropic Messages API requests.
 ///

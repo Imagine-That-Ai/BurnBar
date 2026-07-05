@@ -1,0 +1,5 @@
+evidence_dir=/workspace/docs/linux-port/evidence/mission-001-provider-hermes/ipc-cli-gateway
+daemon_pid=3609
+gateway_port=19411
+socket_path=/tmp/tmp.lVj7XHldVm/socket/openburnbar.sock
+result=complete

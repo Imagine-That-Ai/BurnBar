@@ -1,0 +1,3 @@
+{"label":"raw-health","event":"end","data":"{\"result\":{\"protocolVersion\":1,\"ok\":true,\"gatewayEnabled\":true,\"socketPath\":\"\\/tmp\\/tmp.6fBFLptqW1\\/socket\\/openburnbar.sock\",\"gatewayHost\":\"127.0.0.1\",\"daemonVersion\":\"evidence-daemon\",\"gatewayPort\":18900},\"id\":\"raw-health-1\",\"protocolVersion\":1}"}
+{"label":"raw-invalid-method","event":"end","data":"{\"error\":{\"code\":-32601,\"message\":\"Unsupported OpenBurnBar RPC method 'daemon.nope'.\"},\"protocolVersion\":1,\"id\":\"raw-invalid-1\"}"}
+{"label":"raw-oversize","event":"end","data":""}

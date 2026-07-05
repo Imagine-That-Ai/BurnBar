@@ -6,6 +6,7 @@ export interface LinuxShellBridge {
   openDashboard(): Promise<void>;
   quitApp(): Promise<void>;
   trayDegraded(): Promise<boolean>;
+  measurePerfOperation(name: string): Promise<{ name: string; ms: number; source: string; ok: boolean; detail?: string }>;
 }
 
 export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
@@ -16,6 +17,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     daemonHealth: () => invoke<DaemonHealth>('daemon_health'),
     openDashboard: () => invoke<void>('open_dashboard'),
     quitApp: () => invoke<void>('quit_app'),
-    trayDegraded: () => invoke<boolean>('tray_degraded')
+    trayDegraded: () => invoke<boolean>('tray_degraded'),
+    measurePerfOperation: (name) =>
+      invoke<{ name: string; ms: number; source: string; ok: boolean; detail?: string }>('measure_perf_operation', { name })
   };
 }

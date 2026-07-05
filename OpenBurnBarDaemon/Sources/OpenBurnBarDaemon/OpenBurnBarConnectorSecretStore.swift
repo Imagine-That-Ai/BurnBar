@@ -1,7 +1,11 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
+#if canImport(Security)
 import Security
+#endif
 
 public protocol BurnBarConnectorSecretStoring: Sendable {
     func secret(for connector: BurnBarConnectorKind) async throws -> String?
@@ -37,6 +41,7 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
     }
 
     public func secret(for connector: BurnBarConnectorKind) async throws -> String? {
+#if canImport(Security) && canImport(LocalAuthentication)
         let context = LAContext()
         context.interactionNotAllowed = true
         let account = "connector.\(connector.rawValue).credential"
@@ -64,9 +69,13 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
         }
         return String(data: data, encoding: .utf8)
+#else
+        return nil
+#endif
     }
 
     public func setSecret(_ secret: String?, for connector: BurnBarConnectorKind) async throws {
+#if canImport(Security) && canImport(LocalAuthentication)
         let account = "connector.\(connector.rawValue).credential"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -104,5 +113,12 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
         }
+#else
+        throw NSError(
+            domain: "BurnBarConnectorKeychainSecretStore",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Connector keychain secrets are unavailable on this platform."]
+        )
+#endif
     }
 }

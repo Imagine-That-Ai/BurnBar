@@ -1,0 +1,3 @@
+SQLite schema doc covers 26 migration/source tables and Project Code Memory columns/indexes.
+
+exit_code=0

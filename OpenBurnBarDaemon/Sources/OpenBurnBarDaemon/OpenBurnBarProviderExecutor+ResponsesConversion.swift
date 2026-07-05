@@ -1,7 +1,5 @@
 import OpenBurnBarCore
 import Foundation
-import LocalAuthentication
-import Security
 
 // OpenAI Responses API <-> Chat Completions request/response/stream conversion.
 // Extracted from OpenBurnBarProviderExecutor.swift (god-type decomposition) — same module, same isolation, verbatim.

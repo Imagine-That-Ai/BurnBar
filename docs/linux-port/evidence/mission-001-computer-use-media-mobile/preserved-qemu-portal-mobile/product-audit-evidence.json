@@ -1,0 +1,38 @@
+{
+  "generatedAt" : "2026-07-04T14:26:18.097Z",
+  "sessions" : [
+    {
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE.tar.gz",
+      "path" : "daemon-coordinator",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE",
+      "sessionId" : "linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE.tar.gz.sig.json",
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-tampered-archive\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-tampered"
+    },
+    {
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733.tar.gz",
+      "path" : "mobile-remote",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733",
+      "sessionId" : "linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733.tar.gz.sig.json",
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-tampered-archive\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-tampered"
+    },
+    {
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+      "path" : "input-adapter",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+      "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered-archive\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered"
+    }
+  ]
+}

@@ -1,1 +1,1 @@
-(<[':1.14/org/ayatana/NotificationItem/tray_icon_tray_app_6790_1']>,)
+(<[':1.14/org/ayatana/NotificationItem/tray_icon_tray_app_10362_1']>,)

@@ -1,0 +1,14 @@
+{
+  "checkpointCount": 4,
+  "checkpointDir": "/tmp/tmp.H30YQ8808i/support/run-checkpoints",
+  "journalLineCount": 15,
+  "journalPath": "/tmp/tmp.H30YQ8808i/support/run-journal.jsonl",
+  "scenarioRunIDs": {
+    "cancel-before-terminal": "EBB52D1E-F2D3-4A51-B732-CFD997B6AA54",
+    "persistence-list-readback": "B99D43DB-14C9-494A-BD88-7D6E4B004325",
+    "prompt-tool-approval-done": "1A03B00E-9A27-494E-82B7-AEE6B75F793E",
+    "retry-after-error": "CE7D8AE4-87C8-4C56-B12C-D313A1A975DE"
+  },
+  "schema": "openburnbar-hermes-product-output-manifest-v1",
+  "supportDir": "/tmp/tmp.H30YQ8808i/support"
+}

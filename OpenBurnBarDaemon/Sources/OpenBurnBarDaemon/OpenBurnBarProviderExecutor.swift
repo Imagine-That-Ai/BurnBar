@@ -1,7 +1,14 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
+#if canImport(Security)
 import Security
+#endif
 
 public struct BurnBarProviderExecutionResult: Sendable {
     public let outputText: String
@@ -113,7 +120,9 @@ public enum BurnBarProxyStreaming {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 300
         configuration.timeoutIntervalForResource = 86_400
+        #if !os(Linux)
         configuration.waitsForConnectivity = true
+        #endif
         configuration.httpShouldUsePipelining = false
         return URLSession(configuration: configuration)
     }()
@@ -126,6 +135,33 @@ public enum BurnBarProxyStreaming {
         request: URLRequest,
         defaultContentType: String
     ) async throws -> BurnBarProviderProxyStream {
+        #if os(Linux)
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw BurnBarProviderExecutorError.upstreamError(
+                httpResponse.statusCode,
+                String(data: data.prefix(64 * 1024), encoding: .utf8) ?? ""
+            )
+        }
+
+        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? defaultContentType
+        let stream = AsyncThrowingStream<Data, Error> { continuation in
+            if !data.isEmpty {
+                continuation.yield(data)
+            }
+            continuation.finish()
+        }
+
+        return BurnBarProviderProxyStream(
+            statusCode: httpResponse.statusCode,
+            contentType: contentType,
+            chunks: stream
+        )
+        #else
         let (bytes, response) = try await session.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw BurnBarProviderExecutorError.invalidResponse
@@ -186,6 +222,7 @@ public enum BurnBarProxyStreaming {
             contentType: contentType,
             chunks: stream
         )
+        #endif
     }
 
     static func appendBytePreservingStreamFraming(_ byte: UInt8, to buffer: inout Data) -> Data? {
@@ -1046,9 +1083,15 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             let newRefreshToken = (json["refresh_token"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .nilIfEmpty ?? refreshToken
-            let expiresIn = (json["expires_in"] as? Double)
-                ?? (json["expires_in"] as? Int).map(Double.init)
-                ?? 8 * 60 * 60
+            let expiresValue = json["expires_in"]
+            let expiresIn: Double
+            if let seconds = expiresValue as? Double {
+                expiresIn = seconds
+            } else if let seconds = expiresValue as? Int {
+                expiresIn = Double(seconds)
+            } else {
+                expiresIn = 8 * 60 * 60
+            }
             return credential.refreshed(
                 accessToken: newAccessToken,
                 refreshToken: newRefreshToken,
@@ -1060,6 +1103,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     }
 
     private func secret(forService service: String, account: String) throws -> String? {
+#if canImport(Security) && canImport(LocalAuthentication)
         let context = LAContext()
         context.interactionNotAllowed = true
         let query: [String: Any] = [
@@ -1090,6 +1134,9 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded?.isEmpty == false ? decoded : nil
+#else
+        return nil
+#endif
     }
 
     public func setSecret(_ secret: String?, for providerID: String) async throws {
@@ -1098,6 +1145,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             return
         }
 
+#if canImport(Security) && canImport(LocalAuthentication)
         let account = "provider.\(providerID).apiKey"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -1142,6 +1190,13 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
         }
+#else
+        throw NSError(
+            domain: "BurnBarProviderKeychainSecretStore",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Provider keychain secrets are unavailable on this platform."]
+        )
+#endif
     }
 
     private func hermesCredentialPoolSecret(for providerID: String) -> String? {

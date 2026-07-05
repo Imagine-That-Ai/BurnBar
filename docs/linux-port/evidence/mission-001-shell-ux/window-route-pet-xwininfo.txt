@@ -1,0 +1,23 @@
+
+xwininfo: Window id: 0xa00003 "OpenBurnBar"
+
+  Absolute upper-left X:  1
+  Absolute upper-left Y:  47
+  Relative upper-left X:  1
+  Relative upper-left Y:  20
+  Width: 1278
+  Height: 840
+  Depth: 24
+  Visual: 0x1cf
+  Visual Class: TrueColor
+  Border width: 0
+  Class: InputOutput
+  Colormap: 0xa00002 (installed)
+  Bit Gravity State: NorthWestGravity
+  Window Gravity State: NorthWestGravity
+  Backing Store State: NotUseful
+  Save Under State: no
+  Map State: IsViewable
+  Override Redirect State: no
+  Corners:  +1+47  -1+47  -1-13  +1-13
+  -geometry 1278x840+0-8

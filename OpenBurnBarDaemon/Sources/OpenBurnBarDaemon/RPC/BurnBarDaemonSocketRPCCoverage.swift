@@ -32,7 +32,8 @@ enum BurnBarDaemonSocketRPCCoverage {
 
     static let observability: Set<BurnBarRPCMethod> = [
         .proxyRouteLogRecent,
-        .proxyRouteLogClear
+        .proxyRouteLogClear,
+        .perfMeasure
     ]
 
     static let tooling: Set<BurnBarRPCMethod> = [
@@ -101,6 +102,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .runCancel,
         .runRetry,
         .runResume,
+        .subscriptionStart,
+        .subscriptionResume,
         .workspaceExecuteTool,
         .workspaceToolResult,
         .approvalRespond

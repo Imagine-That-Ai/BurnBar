@@ -105,6 +105,12 @@ functions/lib/
 website/public/downloads/*.dmg
 website/public/downloads/*.zip
 
+# Linux port mission evidence/build outputs. Keep compact JSON/text/PNG proof
+# artifacts tracked, but never commit generated build caches or source tarballs.
+docs/linux-port/evidence/**/harness/.build/
+docs/linux-port/evidence/**/sidecars/*.tar
+crates/openburnbar-iroh/target-linux-ffi-serial/
+
 # BurnBar local MCP (Python venv)
 tools/burnbar-mcp/.venv/
 
@@ -269,4 +275,3 @@ node_modules/
 # Dotnet build output directories (C# / WinUI)
 **/bin/
 **/obj/
-

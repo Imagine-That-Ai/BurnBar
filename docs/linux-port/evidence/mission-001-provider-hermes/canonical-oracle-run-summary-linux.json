@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-07-05T12:14:11.005Z",
+  "outDir": "/workspace/docs/linux-port/evidence/mission-001-provider-hermes",
+  "platform": "linux",
+  "schema": "openburnbar-provider-hermes-canonical-oracle-run-summary-v2",
+  "sections": {
+    "hermes": {
+      "artifacts": [
+        "hermes-event-order-source-oracle-linux.json",
+        "hermes-event-order-diff-linux.json",
+        "hermes-event-order-raw-events-linux.json",
+        "hermes-event-order-normalized-observed-linux.json"
+      ],
+      "errors": [],
+      "status": "pass"
+    }
+  },
+  "status": "pass"
+}

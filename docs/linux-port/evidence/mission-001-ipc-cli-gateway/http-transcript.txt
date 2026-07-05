@@ -1,0 +1,35 @@
+### GET /health without auth
+HTTP/1.1 401 Unauthorized
+Content-Length: 36
+Connection: close
+Content-Type: application/json
+
+{"error":{"message":"unauthorized"}}
+### GET /health wrong bearer
+HTTP/1.1 401 Unauthorized
+Content-Length: 36
+Connection: close
+Content-Type: application/json
+
+{"error":{"message":"unauthorized"}}
+### GET /health correct bearer
+HTTP/1.1 200 OK
+Content-Length: 54
+Connection: close
+Content-Type: application/json
+
+{"ok":true,"gateway":"openburnbar","platform":"linux"}
+### GET /v1/models correct bearer
+HTTP/1.1 200 OK
+Content-Length: 27
+Connection: close
+Content-Type: application/json
+
+{"object":"list","data":[]}
+### POST /v1/chat/completions correct bearer
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+Content-Length: 117
+Connection: close
+
+{"error":{"message":"No Linux gateway provider route is configured for this request.","type":"openburnbar_no_route"}}

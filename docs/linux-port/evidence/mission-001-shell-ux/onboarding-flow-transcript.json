@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-03T11:36:59.675Z",
+  "generatedAt": "2026-07-05T11:31:49.045Z",
   "lane": "W06LinuxShellUx",
   "method": "first-run-localStorage-state-machine",
   "steps": [
@@ -47,7 +47,7 @@
       "action": "complete",
       "persistedState": {
         "completed": true,
-        "step": 4,
+        "step": 7,
         "skippedSteps": [
           0
         ]

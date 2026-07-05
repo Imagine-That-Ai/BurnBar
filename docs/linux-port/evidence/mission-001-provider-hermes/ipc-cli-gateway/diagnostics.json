@@ -1,0 +1,16 @@
+{
+  "daemon" : {
+    "gatewayEnabled" : true,
+    "gatewayHost" : "127.0.0.1",
+    "gatewayPort" : 19411,
+    "ok" : true,
+    "protocolVersion" : 1,
+    "socketPath" : "\/tmp\/tmp.lVj7XHldVm\/socket\/openburnbar.sock",
+    "version" : "evidence-daemon"
+  },
+  "generatedAt" : "2026-07-05T12:13:39Z",
+  "redaction" : {
+    "socketAuthToken" : "redacted"
+  },
+  "schema" : "openburnbar.cli.diagnostics.v1"
+}

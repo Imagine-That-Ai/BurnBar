@@ -1,0 +1,118 @@
+### generator
+generator_source=tools/ipc/generate-burnbarrpc-canon.mjs
+Generated BurnBarRPC IPC canon for 95 methods.
+generator_exit_code=0
+generated_swift=OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCIPCCanon.generated.swift
+generated_typescript=extensions/openburnbar/src/generated/burnbar-rpc-ipc-canon.generated.ts
+generated_json=docs/linux-port/generated/burnbar-rpc-ipc-canon.linux.json
+
+### method coverage table
+approval.respond	case=approvalRespond	domain=run_workspace_approval	capability=run	params=BurnBarApprovalRespondRequest	result=BurnBarRunDetailResponse	error=BurnBarRPCError
+auth.bootstrap	case=authBootstrap	domain=lifecycle	capability=lifecycle	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for auth.bootstrap	error=BurnBarRPCError
+client.attach	case=clientAttach	domain=client	capability=client	params=BurnBarClientAttachRequest	result=BurnBarClientAttachResponse	error=BurnBarRPCError
+client.claimControl	case=clientClaimControl	domain=client	capability=client	params=BurnBarClientClaimControlRequest	result=BurnBarClientArbitrationSnapshot	error=BurnBarRPCError
+client.detach	case=clientDetach	domain=client	capability=client	params=BurnBarClientDetachRequest	result=BurnBarClientArbitrationSnapshot	error=BurnBarRPCError
+daemon.browser.action	case=browserAction	domain=tooling	capability=tooling	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.browser.action	error=BurnBarRPCError
+daemon.browser.tooling.get	case=browserToolingGet	domain=tooling	capability=tooling	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.browser.tooling	error=BurnBarRPCError
+daemon.browser.tooling.update	case=browserToolingUpdate	domain=tooling	capability=tooling	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.browser.tooling	error=BurnBarRPCError
+daemon.catalog	case=catalog	domain=lifecycle	capability=lifecycle	params=BurnBarRPCRequestEnvelope	result=BurnBarCatalogResponse	error=BurnBarRPCError
+daemon.code.call_graph	case=codeCallGraph	domain=code	capability=code_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.call_graph	error=BurnBarRPCError
+daemon.code.context_pack	case=codeContextPack	domain=code	capability=code_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.context_pack	error=BurnBarRPCError
+daemon.code.diagnostics	case=codeDiagnostics	domain=code	capability=code_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.diagnostics	error=BurnBarRPCError
+daemon.code.explore	case=codeExplore	domain=code	capability=code_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.explore	error=BurnBarRPCError
+daemon.code.find_references	case=codeFindReferences	domain=code	capability=code_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.find_references	error=BurnBarRPCError
+daemon.code.get_symbol	case=codeGetSymbol	domain=code	capability=code_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.get_symbol	error=BurnBarRPCError
+daemon.code.index_project	case=codeIndexProject	domain=code	capability=code_write	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.index_project	error=BurnBarRPCError
+daemon.code.index_status	case=codeIndexStatus	domain=code	capability=code_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.index_status	error=BurnBarRPCError
+daemon.code.ops_diagnostics	case=codeOpsDiagnostics	domain=code	capability=code_operator	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.ops_diagnostics	error=BurnBarRPCError
+daemon.code.search	case=codeSearch	domain=code	capability=code_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.search	error=BurnBarRPCError
+daemon.code.watch_project	case=codeWatchProject	domain=code	capability=code_write	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.code.watch_project	error=BurnBarRPCError
+daemon.computer_use.approval.pending	case=computerUseApprovalPending	domain=computer_use	capability=computer_use	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.computer_use.approval.pending	error=BurnBarRPCError
+daemon.computer_use.approval.respond	case=computerUseApprovalRespond	domain=computer_use	capability=computer_use	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.computer_use.approval	error=BurnBarRPCError
+daemon.computer_use.audit_export	case=computerUseAuditExport	domain=computer_use	capability=computer_use	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.computer_use.audit_export	error=BurnBarRPCError
+daemon.computer_use.invoke	case=computerUseInvoke	domain=computer_use	capability=computer_use	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.computer_use.invoke	error=BurnBarRPCError
+daemon.computer_use.panic_halt	case=computerUsePanicHalt	domain=computer_use	capability=computer_use	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.computer_use.panic_halt	error=BurnBarRPCError
+daemon.computer_use.session.start	case=computerUseSessionStart	domain=computer_use	capability=computer_use	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.computer_use.session.start	error=BurnBarRPCError
+daemon.config.get	case=configGet	domain=config	capability=config	params=BurnBarConfigGetRequest	result=BurnBarConfigResponse	error=BurnBarRPCError
+daemon.config.update	case=configUpdate	domain=config	capability=config	params=BurnBarConfigUpdateRequest	result=BurnBarConfigResponse	error=BurnBarRPCError
+daemon.connector.action	case=connectorAction	domain=tooling	capability=tooling	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.connector.action	error=BurnBarRPCError
+daemon.connector.config.update	case=connectorConfigUpdate	domain=tooling	capability=tooling	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.connector.config	error=BurnBarRPCError
+daemon.connector.plane.get	case=connectorPlaneGet	domain=tooling	capability=tooling	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.connector.plane	error=BurnBarRPCError
+daemon.controller.project.get	case=controllerProjectGet	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.controller.project	error=BurnBarRPCError
+daemon.controller.project.list	case=controllerProjectsList	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.controller.project	error=BurnBarRPCError
+daemon.controller.project.upsert	case=controllerProjectUpsert	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.controller.project.upsert	error=BurnBarRPCError
+daemon.controller.review.record	case=reviewRunRecord	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.controller.review	error=BurnBarRPCError
+daemon.controller.runtime_snapshot	case=controllerRuntimeSnapshot	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.controller.runtime_snapshot	error=BurnBarRPCError
+daemon.controller.summary	case=controllerSummary	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.controller.summary	error=BurnBarRPCError
+daemon.followup.calendar	case=followupCalendar	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.followup.calendar	error=BurnBarRPCError
+daemon.followup.create	case=followupCreate	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.followup	error=BurnBarRPCError
+daemon.followup.done	case=followupDone	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.followup.done	error=BurnBarRPCError
+daemon.followup.list	case=followupsList	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.followup	error=BurnBarRPCError
+daemon.followup.snooze	case=followupSnooze	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.followup.snooze	error=BurnBarRPCError
+daemon.health	case=health	domain=lifecycle	capability=lifecycle	params=BurnBarRPCRequestEnvelope	result=BurnBarHealthResponse	error=BurnBarRPCError
+daemon.memory.analytics	case=memoryAnalytics	domain=memory	capability=memory_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.memory.analytics	error=BurnBarRPCError
+daemon.memory.audit_trail	case=memoryAuditTrail	domain=memory	capability=memory_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.memory.audit_trail	error=BurnBarRPCError
+daemon.memory.forget	case=memoryForget	domain=memory	capability=memory_write	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.memory.forget	error=BurnBarRPCError
+daemon.memory.recall	case=memoryRecall	domain=memory	capability=memory_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.memory.recall	error=BurnBarRPCError
+daemon.memory.remember	case=memoryRemember	domain=memory	capability=memory_write	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.memory.remember	error=BurnBarRPCError
+daemon.mission.approve	case=missionApprove	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.mission.approve	error=BurnBarRPCError
+daemon.mission.cancel	case=missionCancel	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.mission.cancel	error=BurnBarRPCError
+daemon.mission.create	case=missionCreate	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.mission	error=BurnBarRPCError
+daemon.mission.get	case=missionGet	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.mission	error=BurnBarRPCError
+daemon.mission.list	case=missionsList	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.mission	error=BurnBarRPCError
+daemon.mission.packet.dispatch	case=missionDispatchPacket	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.mission.packet.dispatch	error=BurnBarRPCError
+daemon.mission.result.record	case=missionRecordResult	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.mission.result	error=BurnBarRPCError
+daemon.notification.command	case=notificationCommand	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.notification.command	error=BurnBarRPCError
+daemon.notification.config.get	case=notificationConfigGet	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.notification.config	error=BurnBarRPCError
+daemon.notification.config.update	case=notificationConfigUpdate	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.notification.config	error=BurnBarRPCError
+daemon.notification.health	case=notificationHealth	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.notification.health	error=BurnBarRPCError
+daemon.phone_control.pin.provision	case=phoneControlPinProvision	domain=computer_use	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.phone_control.pin.provision	error=BurnBarRPCError
+daemon.projection.rebuild	case=projectionRebuild	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.projection.rebuild	error=BurnBarRPCError
+daemon.provider.credential_slot.remove	case=providerCredentialSlotRemove	domain=config	capability=config	params=BurnBarProviderCredentialSlotRemoveRequest	result=BurnBarProviderCredentialSlotMutationResponse	error=BurnBarRPCError
+daemon.provider.credential_slot.upsert	case=providerCredentialSlotUpsert	domain=config	capability=config	params=BurnBarProviderCredentialSlotUpsertRequest	result=BurnBarProviderCredentialSlotMutationResponse	error=BurnBarRPCError
+daemon.provider.custom_model.remove	case=providerCustomModelRemove	domain=config	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.provider.custom_model	error=BurnBarRPCError
+daemon.provider.custom_model.upsert	case=providerCustomModelUpsert	domain=config	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.provider.custom_model.upsert	error=BurnBarRPCError
+daemon.provider.model_alias.remove	case=providerModelAliasRemove	domain=config	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.provider.model_alias	error=BurnBarRPCError
+daemon.provider.model_alias.upsert	case=providerModelAliasUpsert	domain=config	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.provider.model_alias.upsert	error=BurnBarRPCError
+daemon.provider.model_display_name.clear	case=providerModelDisplayNameClear	domain=config	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.provider.model_display_name.clear	error=BurnBarRPCError
+daemon.provider.model_display_name.set	case=providerModelDisplayNameSet	domain=config	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.provider.model_display_name.set	error=BurnBarRPCError
+daemon.provider.model_variant.remove	case=providerModelVariantRemove	domain=config	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.provider.model_variant	error=BurnBarRPCError
+daemon.provider.model_variant.upsert	case=providerModelVariantUpsert	domain=config	capability=config	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.provider.model_variant.upsert	error=BurnBarRPCError
+daemon.proxy.route_log.clear	case=proxyRouteLogClear	domain=observability	capability=observability	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.proxy.route_log.clear	error=BurnBarRPCError
+daemon.proxy.route_log.recent	case=proxyRouteLogRecent	domain=observability	capability=observability	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.proxy.route_log	error=BurnBarRPCError
+daemon.question.answer	case=questionAnswer	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.question.answer	error=BurnBarRPCError
+daemon.question.create	case=questionCreate	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.question	error=BurnBarRPCError
+daemon.question.get	case=questionGet	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.question	error=BurnBarRPCError
+daemon.question.list	case=questionsList	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.question	error=BurnBarRPCError
+daemon.search.query	case=searchQuery	domain=search	capability=search	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.search.query	error=BurnBarRPCError
+daemon.simulator.list	case=simulatorList	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.simulator	error=BurnBarRPCError
+daemon.simulator.replay	case=simulatorReplay	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.simulator.replay	error=BurnBarRPCError
+daemon.simulator.run	case=simulatorRun	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.simulator.run	error=BurnBarRPCError
+daemon.usage.recent	case=usageRecent	domain=usage	capability=observability	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.usage	error=BurnBarRPCError
+daemon.usage.record	case=usageRecord	domain=usage	capability=observability	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable mutation response for daemon.usage	error=BurnBarRPCError
+perf.measure	case=perfMeasure	domain=observability	capability=observability	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for perf.measure	error=BurnBarRPCError
+run.cancel	case=runCancel	domain=run_workspace_approval	capability=run	params=BurnBarRunCancelRequest	result=BurnBarRunDetailResponse	error=BurnBarRPCError
+run.create	case=runCreate	domain=run_workspace_approval	capability=run	params=BurnBarRunCreateRequest	result=BurnBarRunCreateResponse	error=BurnBarRPCError
+run.get	case=runGet	domain=run_workspace_approval	capability=run	params=BurnBarRunGetRequest	result=BurnBarRunDetailResponse	error=BurnBarRPCError
+run.list	case=runList	domain=run_workspace_approval	capability=run	params=BurnBarRunListRequest	result=BurnBarRunListResponse	error=BurnBarRPCError
+run.poll	case=runPoll	domain=run_workspace_approval	capability=run	params=BurnBarRunPollRequest	result=BurnBarRunEventBatch	error=BurnBarRPCError
+run.resume	case=runResume	domain=run_workspace_approval	capability=run	params=BurnBarRunResumeRequest	result=BurnBarRunResumeResponse	error=BurnBarRPCError
+run.retry	case=runRetry	domain=run_workspace_approval	capability=run	params=BurnBarRunRetryRequest	result=BurnBarRunDetailResponse	error=BurnBarRPCError
+subscription.resume	case=subscriptionResume	domain=run_workspace_approval	capability=run	params=BurnBarSubscriptionResumeRequest	result=BurnBarSubscriptionResponse	error=BurnBarRPCError
+subscription.start	case=subscriptionStart	domain=run_workspace_approval	capability=run	params=BurnBarSubscriptionStartRequest	result=BurnBarSubscriptionResponse	error=BurnBarRPCError
+workspace.executeTool	case=workspaceExecuteTool	domain=run_workspace_approval	capability=run	params=BurnBarToolExecutionRequest	result=BurnBarToolExecutionResponse	error=BurnBarRPCError
+workspace.toolResult	case=workspaceToolResult	domain=run_workspace_approval	capability=run	params=BurnBarToolResultSubmissionRequest	result=BurnBarRunDetailResponse	error=BurnBarRPCError
+
+### check
+check_exit_code=0
+
+### negative fixture
+fixture_path=docs/linux-port/fixtures/burnbarrpc-canon-missing-subscription.fixture.json
+{
+  "ok": false,
+  "missing": [
+    "subscription.resume"
+  ],
+  "extra": []
+}
+fixture_exit_code=1

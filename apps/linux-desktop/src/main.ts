@@ -11,7 +11,7 @@ import { detectPetTierFromEnv } from './petCompanion.js';
 import { mountPetGltfRuntime, stopPetGltfRuntime } from './petGltfRuntime.js';
 import { PARITY_LEDGER } from './parityLedger.js';
 import { PROVIDER_GLYPHS } from './providerGlyphs.js';
-import { markStart, listPerfSamples } from './perfMarks.js';
+import { markStart, listPerfSamples, recordPerfSample } from './perfMarks.js';
 import { ROUTES, routeFromHash, type ShellRoute } from './routes.js';
 import { displayLinuxConfigDir, displayLinuxSocketPath, displayLinuxSupportDir } from './shellPaths.js';
 import { readTextExpansionConsent, writeTextExpansionConsent } from './textExpansionConsent.js';
@@ -60,12 +60,24 @@ const ONBOARDING_STEPS = [
     body: 'Linux parsers read ~/.local/share/opencode, ~/.local/share/goose/sessions, ~/.codex, and other XDG paths. Confirm paths in Settings → Providers before expecting ingest.'
   },
   {
+    title: 'Cloud identity & sync trust',
+    body: 'Linux cloud identity starts lower-trust. Local SQLite remains canonical while signed out, and encrypted sync only resumes after explicit login and SecretStore recovery.'
+  },
+  {
     title: 'Portal capture & input',
     body: 'Wayland screen capture and remote control require xdg-desktop-portal consent. Computer Use adapters are separate; this shell surfaces permission copy and Support diagnostics only.'
   },
   {
     title: 'Tray & desktop environment',
     body: 'Ayatana AppIndicator is used when present. Some DEs hide legacy tray icons — use Support → Reopen dashboard and keep the app pinned if the tray is unavailable.'
+  },
+  {
+    title: 'Updates & restart',
+    body: 'Package updates are verified through the Linux package channel. If a package replacement requires restart, quit from the tray or Support after the package manager finishes.'
+  },
+  {
+    title: 'Privacy choices',
+    body: 'Provider paths, telemetry, and cloud sync are opt-in surfaces. Redacted diagnostics can be exported from Support without exposing provider payloads or local secrets.'
   }
 ];
 
@@ -82,6 +94,15 @@ const DASHBOARD_DATA_ROUTES = new Set<ShellRoute>([
   'chat',
   'memory'
 ]);
+
+const measuredRouteOperations = new Set<string>();
+const REQUIRED_PERF_OPERATIONS: { name: string; source: string }[] = [
+  { name: 'chat.firstToken.progress', source: 'packaged-startup-chat-hermes-daemon-measurement' },
+  { name: 'db.migration.open.query', source: 'packaged-startup-db-daemon-measurement' },
+  { name: 'parser.incremental.run', source: 'packaged-startup-parser-daemon-measurement' },
+  { name: 'memory.search', source: 'packaged-startup-memory-daemon-measurement' },
+  { name: 'media.control.stage', source: 'packaged-startup-media-control-daemon-measurement' }
+];
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -101,11 +122,52 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 function setRoute(route: ShellRoute): void {
-  const end = markStart('route.navigation');
+  const end = markStart('route.navigation', `packaged-ui-route:${route}`);
   state.route = route;
   location.hash = `#/${route}`;
   render();
   end();
+  void measureRouteOperation(route);
+}
+
+function routeSurfaceMetric(route: ShellRoute): { name: string; source: string } | null {
+  switch (route) {
+    case 'chat':
+      return { name: 'chat.firstToken.progress', source: 'packaged-chat-route-daemon-measurement' };
+    case 'database':
+      return { name: 'db.migration.open.query', source: 'packaged-database-route-daemon-measurement' };
+    case 'activity':
+      return { name: 'parser.incremental.run', source: 'packaged-parser-route-daemon-measurement' };
+    case 'memory':
+      return { name: 'memory.search', source: 'packaged-memory-route-daemon-measurement' };
+    case 'support':
+      return { name: 'media.control.stage', source: 'packaged-support-route-daemon-measurement' };
+    default:
+      return null;
+  }
+}
+
+async function measureRouteOperation(route: ShellRoute): Promise<void> {
+  const metric = routeSurfaceMetric(route);
+  if (!metric || !state.bridge) return;
+  await measurePerfOperation(metric.name, metric.source);
+}
+
+async function measurePerfOperation(name: string, source: string): Promise<void> {
+  if (!state.bridge || measuredRouteOperations.has(name)) return;
+  measuredRouteOperations.add(name);
+  const result = await state.bridge.measurePerfOperation(name);
+  if (!result.ok) {
+    recordPerfSample(name, result.ms, `${source};${result.source};blocked=${result.detail ?? 'unknown'}`);
+    return;
+  }
+  recordPerfSample(name, result.ms, `${source};${result.source}`);
+}
+
+async function measureRequiredPerfOperations(): Promise<void> {
+  for (const operation of REQUIRED_PERF_OPERATIONS) {
+    await measurePerfOperation(operation.name, operation.source);
+  }
 }
 
 function appendDaemonDataTable(wrap: HTMLElement, route: ShellRoute, label: string): void {
@@ -405,6 +467,14 @@ function routePanel(): HTMLElement {
     const stage = el('div', { class: 'pet-stage', role: 'img', 'aria-label': 'Pet companion GLB preview' }, [
       'Loading GLB pet runtime...'
     ]);
+    stage.dataset.overlayTier = tier.tier;
+    stage.dataset.inputPassthrough = tier.tier === 'overlay-pass-through' ? 'true' : 'false';
+    if (tier.tier === 'draggable-contained') {
+      stage.setAttribute('draggable', 'true');
+      stage.addEventListener('dragstart', (event) => {
+        event.dataTransfer?.setData('text/plain', 'openburnbar-pet-contained-fallback');
+      });
+    }
     void mountPetGltfRuntime(stage, PET_ASSET_URL).catch((error) => {
       stage.replaceChildren(
         el('p', { class: 'muted', role: 'alert' }, [
@@ -416,6 +486,11 @@ function routePanel(): HTMLElement {
       stage,
       el('p', {}, [`Tier: ${tier.tier}`]),
       el('p', { class: 'muted' }, [tier.message]),
+      el('p', { class: 'muted' }, [
+        tier.tier === 'draggable-contained'
+          ? 'Contained fallback is draggable and does not claim click-through/input passthrough.'
+          : 'Overlay tier may pass input through only on compositor-supported sessions.'
+      ]),
       el('p', {}, [`glTF: ${graph.gltfAsset}`]),
       el('pre', { class: 'pet-graph' }, [JSON.stringify(graph.nodes, null, 2)])
     );
@@ -519,10 +594,13 @@ async function boot(): Promise<void> {
   window.addEventListener('hashchange', () => {
     state.route = routeFromHash(location.hash);
     render();
+    void measureRouteOperation(state.route);
   });
   await refreshHealth();
+  await measureRequiredPerfOperations();
   end();
   render();
+  void measureRouteOperation(state.route);
 }
 
 void boot();

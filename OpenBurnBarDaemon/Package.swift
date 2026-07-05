@@ -35,9 +35,15 @@ if !buildForLinuxBoundary {
 #endif
 
 #if os(Linux)
+packageDependencies.append(.package(path: "../Vendor/GRDB-SQLCipher"))
+daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
+#endif
+
+#if os(Linux)
 packagePlatforms = nil
 daemonExcludes = [
-    "BurnBarDaemonDatabaseCipher.swift",
+    "ElderWandToolLoop.swift",
+    "ElderWandWebTools.swift",
     "OpenBurnBarHTTPGatewayElderWandIntegration.swift",
     "OpenBurnBarHTTPGatewayError.swift",
     "OpenBurnBarHTTPGatewayRequests.swift",

@@ -1,0 +1,200 @@
+{
+  "generatedAt": "2026-07-04T14:33:04.403Z",
+  "evidenceRun": {
+    "runId": "cu-evidence-20260704T142426164Z-34646",
+    "startedAt": "2026-07-04T14:24:26.164Z",
+    "generatedAt": "2026-07-04T14:33:04.403Z",
+    "outDir": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426",
+    "freshDirectoryRequired": true,
+    "reusedDirectoryExplicitlyAllowed": false,
+    "staleStatusRowsIgnored": true,
+    "sourcePaths": {
+      "portal": {
+        "summary": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-evidence-summary.json",
+          "exists": true,
+          "sizeBytes": 6757,
+          "modifiedAt": "2026-07-04T14:31:03.044Z"
+        },
+        "lifecycle": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-lifecycle.jsonl",
+          "exists": true,
+          "sizeBytes": 1949,
+          "modifiedAt": "2026-07-04T14:30:42.545Z"
+        },
+        "pipeWireFrame": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/approved-pipewire-frame.png",
+          "exists": true,
+          "sizeBytes": 808726,
+          "modifiedAt": "2026-07-04T14:30:57.234Z"
+        },
+        "captureLog": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-capture-log.txt",
+          "exists": true,
+          "sizeBytes": 1465,
+          "modifiedAt": "2026-07-04T14:24:29.964Z"
+        },
+        "portalFrontendLog": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal.log",
+          "exists": true,
+          "sizeBytes": 1911,
+          "modifiedAt": "2026-07-04T14:30:43.773Z"
+        },
+        "portalBackendLog": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal-wlr.log",
+          "exists": true,
+          "sizeBytes": 161,
+          "modifiedAt": "2026-07-04T14:30:44.378Z"
+        }
+      },
+      "atSpiSession": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/wayland-atspi-session-summary.json",
+        "exists": true,
+        "sizeBytes": 275,
+        "modifiedAt": "2026-07-04T14:33:04.230Z"
+      },
+      "productAudit": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/product-input-adapter-audit.json",
+        "exists": true,
+        "sizeBytes": 5800,
+        "modifiedAt": "2026-07-04T14:26:18.101Z"
+      }
+    }
+  },
+  "target": "VAL-CU-002",
+  "adapter": "at-spi2",
+  "surface": "Wayland/Sway AT-SPI2 visible GTK target",
+  "acceptedPortalBaseline": {
+    "directory": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426",
+    "source": "raw portal artifacts from this run",
+    "passed": true,
+    "chooserType": "dmenu",
+    "portalReachable": true,
+    "approvalObserved": true,
+    "denialOrCancellationObserved": true,
+    "revokeOrSessionEndObserved": true,
+    "pipeWireFrameObserved": true,
+    "pipeWireFrameArtifact": "approved-pipewire-frame.png",
+    "blockers": [],
+    "sourcePaths": {
+      "summary": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-evidence-summary.json",
+        "exists": true,
+        "sizeBytes": 6757,
+        "modifiedAt": "2026-07-04T14:31:03.044Z"
+      },
+      "lifecycle": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-lifecycle.jsonl",
+        "exists": true,
+        "sizeBytes": 1949,
+        "modifiedAt": "2026-07-04T14:30:42.545Z"
+      },
+      "pipeWireFrame": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/approved-pipewire-frame.png",
+        "exists": true,
+        "sizeBytes": 808726,
+        "modifiedAt": "2026-07-04T14:30:57.234Z"
+      },
+      "captureLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-capture-log.txt",
+        "exists": true,
+        "sizeBytes": 1465,
+        "modifiedAt": "2026-07-04T14:24:29.964Z"
+      },
+      "portalFrontendLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal.log",
+        "exists": true,
+        "sizeBytes": 1911,
+        "modifiedAt": "2026-07-04T14:30:43.773Z"
+      },
+      "portalBackendLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal-wlr.log",
+        "exists": true,
+        "sizeBytes": 161,
+        "modifiedAt": "2026-07-04T14:30:44.378Z"
+      }
+    }
+  },
+  "command": {
+    "exitCode": 0,
+    "durationMs": 45832,
+    "log": "wayland-atspi-input-adapter-command.log"
+  },
+  "productAuditBinding": {
+    "artifact": "product-input-adapter-audit.json",
+    "passed": true,
+    "sessionDirectory": "/evidence/product-audit/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+    "auditFullyVerified": true,
+    "requiredCases": [
+      "approved action",
+      "denied region",
+      "denied/no-permission",
+      "trust-mode downgrade",
+      "rate-limit/replay protection",
+      "per-action audit entries"
+    ]
+  },
+  "visibleTargetState": {
+    "adapterActionName": "click",
+    "adapterDidAction": true,
+    "adapterFoundTarget": true,
+    "adapterRole": "push button",
+    "afterScreenshot": true,
+    "beforeScreenshot": true,
+    "targetClicked": true,
+    "targetLabel": "OpenBurnBar AT-SPI2 Applied",
+    "targetReady": true
+  },
+  "negativeCases": [
+    {
+      "approvalId": "EBEA33AF-D44A-4B53-A579-042E14B93E53",
+      "auditEntryIndex": 1,
+      "auditHeadHashHex": "80e45c54ebd7240fad25a60fa0c7387b4fe891229128d92d0a2c9e72cb6f0533",
+      "denyReason": null,
+      "id": "approved-action",
+      "resultSucceeded": true,
+      "status": "executed"
+    },
+    {
+      "approvalId": null,
+      "auditEntryIndex": 2,
+      "auditHeadHashHex": "5b116fbe67897c1d6b98b9dc3abcaa4fee9a7f6c66a9330cacff3ec2d4949b86",
+      "denyReason": "deny_region",
+      "id": "denied-region",
+      "resultSucceeded": null,
+      "status": "denied"
+    },
+    {
+      "approvalId": null,
+      "auditEntryIndex": 3,
+      "auditHeadHashHex": "f2c5621c7bb1a42b13257ec1c0bf5cc67fc13f6bae2c76a76cffc15811386b28",
+      "denyReason": "accessibility_revoked",
+      "id": "denied-no-permission",
+      "resultSucceeded": null,
+      "status": "denied"
+    },
+    {
+      "approvalId": null,
+      "auditEntryIndex": 4,
+      "auditHeadHashHex": "70598377c2b748f5797e42a37c947f8c48828706cbe90afc3ba8441e35f9fbc2",
+      "denyReason": "session_limit",
+      "id": "rate-limit",
+      "resultSucceeded": null,
+      "status": "denied"
+    }
+  ],
+  "passed": true,
+  "blockers": [],
+  "artifacts": [
+    "wayland-atspi-env.txt",
+    "wayland-atspi-bus-address.txt",
+    "wayland-atspi-sway-version.json",
+    "wayland-atspi-sway-outputs.json",
+    "wayland-atspi-before.png",
+    "wayland-atspi-after.png",
+    "wayland-atspi-target-state.json",
+    "wayland-atspi-drive-result.json",
+    "wayland-atspi-session-summary.json",
+    "product-input-adapter-audit.json"
+  ]
+}

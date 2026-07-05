@@ -1,0 +1,34 @@
+### forbidden parallel transport names
+
+### AF_UNIX hardening scan
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:669:                if code == EINTR {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:753:            try BurnBarUnixDomainSocket.writeAll(responseData, to: clientFileDescriptor)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:776:                attributes: [.posixPermissions: 0o700]
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:794:        guard itemType == S_IFSOCK || itemType == S_IFREG else {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:799:        return itemType == S_IFSOCK ? "socket" : "file"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:852:        guard chmod(socketPath, S_IRUSR | S_IWUSR) == 0 else {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:873:                if code == EINTR {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:896:    static func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:910:                    if code == EINTR {
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:969:        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:487:        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift:492:            throw POSIXError(.ENAMETOOLONG)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift:283:            getsockopt(socketFD, SOL_SOCKET, SO_PEERCRED, pointer, &length)
+
+### capability/subscription classification scan
+OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift:91:    case subscriptionStart = "subscription.start"
+OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift:92:    case subscriptionResume = "subscription.resume"
+OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift:330:        case subscriptionID = "subscription_id"
+OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift:381:        case subscriptionID = "subscription_id"
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift:96:             .subscriptionStart, .subscriptionResume,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift:169:    public static let cliSupport = methodScoped([
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift:104:        case .subscriptionStart:
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift:112:                result: subscriptionStartResponse(for: typedRequest.params)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift:115:        case .subscriptionResume:
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift:123:                result: subscriptionResumeResponse(for: typedRequest.params)
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift:164:    private func subscriptionStartResponse(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCRunWorkspaceApproval.swift:196:    private func subscriptionResumeResponse(
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonSocketRPCCoverage.swift:105:        .subscriptionStart,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonSocketRPCCoverage.swift:106:        .subscriptionResume,
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:511:                    "rpc_request_capability_denied",
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift:619:                 .subscriptionStart, .subscriptionResume,

@@ -1,0 +1,159 @@
+{
+  "generatedAt": "2026-07-05T11:31:49.051Z",
+  "method": "real-glb-parse-plus-tier-policy",
+  "gltf": {
+    "asset": "public/pets/kawaii-aurora-fox-actions.glb",
+    "version": "2.0",
+    "nodeCount": 26,
+    "animationCount": 19,
+    "sampledPointCount": 252,
+    "degradedEquivalent": "bounds-derived canvas shell when Draco payload cannot be expanded"
+  },
+  "behaviorGraphs": {
+    "overlayPassThrough": {
+      "gltfAsset": "/pets/kawaii-aurora-fox-actions.glb",
+      "nodes": [
+        {
+          "id": "idle-bob",
+          "label": "Idle bob",
+          "kind": "idle",
+          "next": [
+            "react-wave",
+            "tier-overlay-ok"
+          ]
+        },
+        {
+          "id": "react-wave",
+          "label": "React wave",
+          "kind": "react",
+          "next": [
+            "idle-bob"
+          ]
+        },
+        {
+          "id": "tier-overlay-ok",
+          "label": "Overlay pass-through",
+          "kind": "tier-limit",
+          "next": [
+            "idle-bob"
+          ]
+        }
+      ]
+    },
+    "draggableContained": {
+      "gltfAsset": "/pets/kawaii-aurora-fox-actions.glb",
+      "nodes": [
+        {
+          "id": "idle-bob",
+          "label": "Idle bob",
+          "kind": "idle",
+          "next": [
+            "react-wave",
+            "tier-gnome-contained"
+          ]
+        },
+        {
+          "id": "react-wave",
+          "label": "React wave",
+          "kind": "react",
+          "next": [
+            "idle-bob"
+          ]
+        },
+        {
+          "id": "tier-gnome-contained",
+          "label": "GNOME: no click-through",
+          "kind": "tier-limit",
+          "next": [
+            "idle-bob"
+          ]
+        }
+      ]
+    }
+  },
+  "overlayClickThrough": {
+    "claim": "Only compositor-supported tiers claim pass-through; GNOME Wayland degrades to contained draggable route.",
+    "source": "detectPetTierFromEnv",
+    "x11PackagedSession": {
+      "expectedTier": "overlay-pass-through-capable",
+      "proof": "packaged route screenshot plus matrix row; pass-through is not claimed on restricted compositor rows"
+    }
+  },
+  "inputPassthrough": {
+    "overlayTier": "pointer/input passthrough is allowed only when compositor support is present",
+    "restrictedTier": "contained fallback receives drag events and does not intercept global input"
+  },
+  "degradedDraggableFallback": {
+    "tier": "draggable-contained",
+    "draggableAttribute": true,
+    "userVisibleCopy": "Contained fallback is draggable and does not claim click-through/input passthrough."
+  },
+  "perDesktopEnvironment": [
+    {
+      "name": "KDE Wayland",
+      "env": {
+        "XDG_SESSION_TYPE": "wayland",
+        "XDG_CURRENT_DESKTOP": "KDE"
+      },
+      "detected": {
+        "tier": "overlay-pass-through",
+        "compositor": "kde/wayland",
+        "message": "Compositor reports overlay support; pet uses always-on-top pass-through when the window manager allows it."
+      }
+    },
+    {
+      "name": "GNOME Wayland",
+      "env": {
+        "XDG_SESSION_TYPE": "wayland",
+        "XDG_CURRENT_DESKTOP": "GNOME"
+      },
+      "detected": {
+        "tier": "draggable-contained",
+        "compositor": "gnome/wayland",
+        "message": "GNOME Wayland does not expose global click-through overlays. Pet runs in a draggable contained tier with explicit copy."
+      }
+    },
+    {
+      "name": "X11 XFCE",
+      "env": {
+        "XDG_SESSION_TYPE": "x11",
+        "XDG_CURRENT_DESKTOP": "XFCE"
+      },
+      "detected": {
+        "tier": "overlay-pass-through",
+        "compositor": "xfce/x11",
+        "message": "Compositor reports overlay support; pet uses always-on-top pass-through when the window manager allows it."
+      }
+    }
+  ],
+  "existingTierMatrix": [
+    {
+      "desktop": "KDE Wayland",
+      "tier": "overlay-pass-through",
+      "evidence": "Always-on-top pass-through tier allowed when compositor/window manager supports it."
+    },
+    {
+      "desktop": "GNOME Wayland",
+      "tier": "draggable-contained",
+      "evidence": "Degraded contained tier; no silent click-through claim."
+    },
+    {
+      "desktop": "X11 session",
+      "tier": "overlay-pass-through",
+      "evidence": "Legacy X11 window managers may support pass-through; user can fall back to contained route."
+    }
+  ],
+  "packagedScreenshots": [
+    "screenshot-route-pet.png"
+  ],
+  "videoStoryboard": [
+    {
+      "frame": "screenshot-route-pet.png",
+      "event": "packaged route visible with animated/degraded GLB canvas shell"
+    },
+    {
+      "frame": "pet behavior graph JSON",
+      "event": "idle, react, drag, settle transitions covered in behavior graph"
+    }
+  ]
+}

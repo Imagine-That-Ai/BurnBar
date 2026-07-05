@@ -37,6 +37,25 @@ impl Default for DaemonHealth {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PerfSample {
+    name: String,
+    ms: f64,
+    at: String,
+    source: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PerfOperationResult {
+    name: String,
+    ms: f64,
+    source: String,
+    ok: bool,
+    detail: Option<String>,
+}
+
 fn linux_support_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         let trimmed = xdg.trim();
@@ -171,6 +190,54 @@ fn probe_daemon_health() -> DaemonHealth {
     }
 }
 
+fn call_daemon_perf_measure(name: &str) -> Result<(bool, String, Option<String>), String> {
+    let socket_path = linux_socket_path();
+    let mut stream = UnixStream::connect(&socket_path).map_err(|e| e.to_string())?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut envelope = serde_json::json!({
+        "protocolVersion": 1,
+        "id": format!("perf-{stamp}"),
+        "method": "perf.measure",
+        "traceId": format!("trace-perf-{stamp}"),
+        "params": { "name": name },
+    });
+    if let Some(token) = read_auth_token() {
+        envelope["authToken"] = serde_json::Value::String(token);
+    }
+    stream
+        .write_all(format!("{envelope}\n").as_bytes())
+        .map_err(|e| e.to_string())?;
+
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).map_err(|e| e.to_string())?;
+    let parsed: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| e.to_string())?;
+    if let Some(err) = parsed
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(|m| m.as_str())
+    {
+        return Err(err.to_string());
+    }
+    let result = parsed
+        .get("result")
+        .ok_or_else(|| "perf.measure response missing result".to_string())?;
+    let ok = result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    let source = result
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("daemon-perf-measure")
+        .to_string();
+    let detail = result.get("detail").map(|value| value.to_string());
+    Ok((ok, source, detail))
+}
+
 #[tauri::command]
 fn daemon_health() -> DaemonHealth {
     if let Ok(output) = Command::new("openburnbar-cli")
@@ -208,6 +275,44 @@ fn tray_degraded() -> bool {
     std::env::var("OPENBURNBAR_FORCE_TRAY_DEGRADED")
         .map(|v| v == "1")
         .unwrap_or(false)
+}
+
+#[tauri::command]
+fn record_perf_sample(sample: PerfSample) -> Result<(), String> {
+    let out_dir = match std::env::var("OPENBURNBAR_EVIDENCE_OUT") {
+        Ok(value) if !value.trim().is_empty() => PathBuf::from(value),
+        _ => return Ok(()),
+    };
+    fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let path = out_dir.join("runtime-perf-samples.jsonl");
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    let line = serde_json::to_string(&sample).map_err(|e| e.to_string())?;
+    writeln!(file, "{line}").map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn measure_perf_operation(name: String) -> Result<PerfOperationResult, String> {
+    let started = std::time::Instant::now();
+    match call_daemon_perf_measure(&name) {
+        Ok((ok, source, detail)) => Ok(PerfOperationResult {
+            name,
+            ms: started.elapsed().as_secs_f64() * 1000.0,
+            source: format!("packaged-af-unix-perf.measure:{source}"),
+            ok,
+            detail,
+        }),
+        Err(error) => Ok(PerfOperationResult {
+            name,
+            ms: started.elapsed().as_secs_f64() * 1000.0,
+            source: "packaged-af-unix-perf.measure:error".to_string(),
+            ok: false,
+            detail: Some(error),
+        }),
+    }
 }
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -255,7 +360,9 @@ pub fn run() {
             daemon_health,
             open_dashboard,
             quit_app,
-            tray_degraded
+            tray_degraded,
+            record_perf_sample,
+            measure_perf_operation
         ])
         .setup(|app| {
             if let Err(e) = build_tray(app.handle()) {

@@ -1,0 +1,18 @@
+{
+  "fixture": "docs/linux-port/fixtures/hermes-event-order-source-oracle.json",
+  "generatedAt": "2026-07-05T12:14:11.005Z",
+  "rawArtifactsRequired": [
+    "hermes-run-journal.jsonl",
+    "hermes-run-checkpoints/",
+    "cli-hermes-transcript.txt",
+    "packaged-browser-hermes-dom-transcript.json"
+  ],
+  "runner": "scripts/linux-port/run-provider-hermes-canonical-oracles.mjs",
+  "schema": "openburnbar-provider-hermes-canonical-oracle-discovery-v2",
+  "weakEvidenceRejected": [
+    "precomputed scenario payloads as observed rows",
+    "literal observed scenario arrays",
+    "expected fixture rows as observed",
+    "browser assertion booleans without raw product event extraction"
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "adapter" : "at-spi2",
+  "archiveTamper" : {
+    "firstInvalidReason" : "verificationFailed(\"signature archive hash mismatch\")",
+    "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
+    "tamperedRejected" : true
+  },
+  "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+  "audit" : {
+    "archiveEntryCount" : 4,
+    "chainValid" : true,
+    "denyReasons" : [
+      "accessibility_revoked",
+      "deny_region",
+      "session_limit"
+    ],
+    "entryCount" : 5,
+    "fullyVerified" : true,
+    "headMarkerValid" : true,
+    "headSignatureValid" : true,
+    "lastEntryIndex" : 4,
+    "requiredActionKindsPresent" : {
+      "mac.input.click" : true,
+      "mac.input.scroll" : true,
+      "mac.input.type" : true
+    },
+    "signedHeadHashHex" : "70598377c2b748f5797e42a37c947f8c48828706cbe90afc3ba8441e35f9fbc2"
+  },
+  "auditCliSessions" : [
+    {
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+      "path" : "input-adapter",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+      "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered-archive\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered"
+    }
+  ],
+  "dispatchRows" : [
+    {
+      "adapter" : "at-spi2",
+      "dispatchedAt" : "2026-07-04T14:26:18.056Z",
+      "displayX" : 220,
+      "displayY" : 160,
+      "kind" : "click",
+      "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+      "text" : null,
+      "visibleTarget" : "OpenBurnBar AT-SPI2 evidence target"
+    }
+  ],
+  "headTamper" : {
+    "firstInvalidReason" : "head_hash_mismatch",
+    "fullyVerifiedAfterTamper" : false,
+    "headMarkerValidAfterTamper" : false
+  },
+  "manifestTamper" : {
+    "chainValidAfterTamper" : false,
+    "firstInvalidReason" : "parent_hash_mismatch",
+    "fullyVerifiedAfterTamper" : false
+  },
+  "passed" : true,
+  "requiredCases" : [
+    "approved action",
+    "denied region",
+    "denied\/no-permission",
+    "trust-mode downgrade",
+    "rate-limit\/replay protection",
+    "per-action audit entries"
+  ],
+  "responses" : [
+    {
+      "approvalId" : "EBEA33AF-D44A-4B53-A579-042E14B93E53",
+      "auditEntryIndex" : 1,
+      "auditHeadHashHex" : "80e45c54ebd7240fad25a60fa0c7387b4fe891229128d92d0a2c9e72cb6f0533",
+      "denyReason" : null,
+      "id" : "approved-action",
+      "resultSucceeded" : true,
+      "status" : "executed"
+    },
+    {
+      "approvalId" : null,
+      "auditEntryIndex" : 2,
+      "auditHeadHashHex" : "5b116fbe67897c1d6b98b9dc3abcaa4fee9a7f6c66a9330cacff3ec2d4949b86",
+      "denyReason" : "deny_region",
+      "id" : "denied-region",
+      "resultSucceeded" : null,
+      "status" : "denied"
+    },
+    {
+      "approvalId" : null,
+      "auditEntryIndex" : 3,
+      "auditHeadHashHex" : "f2c5621c7bb1a42b13257ec1c0bf5cc67fc13f6bae2c76a76cffc15811386b28",
+      "denyReason" : "accessibility_revoked",
+      "id" : "denied-no-permission",
+      "resultSucceeded" : null,
+      "status" : "denied"
+    },
+    {
+      "approvalId" : null,
+      "auditEntryIndex" : 4,
+      "auditHeadHashHex" : "70598377c2b748f5797e42a37c947f8c48828706cbe90afc3ba8441e35f9fbc2",
+      "denyReason" : "session_limit",
+      "id" : "rate-limit",
+      "resultSucceeded" : null,
+      "status" : "denied"
+    }
+  ],
+  "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+  "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+  "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
+  "source" : "ComputerUseRunCoordinator product gate and audit chain",
+  "tamper" : {
+    "chainValidAfterTamper" : false,
+    "firstInvalidReason" : "parent_hash_mismatch",
+    "fullyVerifiedAfterTamper" : false
+  },
+  "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered-archive\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+  "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-head-tampered",
+  "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-manifest-tampered",
+  "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered",
+  "target" : "VAL-CU-002",
+  "trustMode" : {
+    "afterDowngrade" : "step",
+    "downgradeAudit" : [
+      "trustDowngraded"
+    ],
+    "downgradeOnly" : true,
+    "start" : "trusted",
+    "unapprovedEscalationAudit" : [
+      "trustEscalationRejected"
+    ]
+  }
+}

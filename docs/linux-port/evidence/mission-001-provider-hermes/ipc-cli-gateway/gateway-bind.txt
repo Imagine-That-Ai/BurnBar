@@ -1,0 +1,31 @@
+### listener bind trace
+expected_loopback=127.0.0.1:19411
+   0: 0100007F:4BD3 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 30704 1 00000000e6e84fe2 100 0 0 10 0
+
+### wildcard bind rejected
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E vault_uid_present=false
+2026-07-05 12:13:40 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=wildcard-bind-negative protocol_version=1 socket_path=/tmp/tmp.lVj7XHldVm/wildcard.sock trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/tmp.lVj7XHldVm/wildcard.sock trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=error subsystem=com.openburnbar.daemon category=http-gateway event=gateway_config_invalid error=Gateway wildcard bind addresses are not allowed. Use a specific interface address. trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=error subsystem=com.openburnbar.daemon category=process event=gateway_start_failed error=invalidConfiguration("Gateway wildcard bind addresses are not allowed. Use a specific interface address.") trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=wildcard-bind-negative socket_path=/tmp/tmp.lVj7XHldVm/wildcard.sock trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_signal_received signal=15 trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=info subsystem=com.openburnbar.daemon category=process event=shutdown_starting socket_path=/tmp/tmp.lVj7XHldVm/wildcard.sock trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=accept_loop_stopped trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_complete socket_path=/tmp/tmp.lVj7XHldVm/wildcard.sock trace_id=D6AA7DDA-8A92-4EE7-A9C6-55E844C2BE1E
+wildcard_rejected=true
+
+### loopback without auth rejected
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103 vault_uid_present=false
+2026-07-05 12:13:40 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=noauth-gateway-negative protocol_version=1 socket_path=/tmp/tmp.lVj7XHldVm/noauth.sock trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/tmp.lVj7XHldVm/noauth.sock trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=error subsystem=com.openburnbar.daemon category=http-gateway event=gateway_config_invalid error=The gateway requires an auth token. Enable "Allow unauthenticated loopback" to bind 127.0.0.1 without one. trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=error subsystem=com.openburnbar.daemon category=process event=gateway_start_failed error=invalidConfiguration("The gateway requires an auth token. Enable \"Allow unauthenticated loopback\" to bind 127.0.0.1... trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=noauth-gateway-negative socket_path=/tmp/tmp.lVj7XHldVm/noauth.sock trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_signal_received signal=15 trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=info subsystem=com.openburnbar.daemon category=process event=shutdown_starting socket_path=/tmp/tmp.lVj7XHldVm/noauth.sock trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=accept_loop_stopped trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+2026-07-05 12:13:40 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_complete socket_path=/tmp/tmp.lVj7XHldVm/noauth.sock trace_id=0C0BB01D-A65A-4055-A00A-7A85D9084103
+noauth_rejected=true

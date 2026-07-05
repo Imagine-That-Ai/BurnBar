@@ -1,0 +1,149 @@
+### health
+command=openburnbar-cli health
+Daemon evidence-daemon | protocol 1 | socket /tmp/tmp.lVj7XHldVm/socket/openburnbar.sock | ok=true
+exit_code=0
+
+### health json
+command=openburnbar-cli health --json
+Daemon evidence-daemon | protocol 1 | socket /tmp/tmp.lVj7XHldVm/socket/openburnbar.sock | ok=true
+exit_code=0
+
+### service status
+command=openburnbar-cli service status
+service=running
+daemon_version=evidence-daemon
+protocol=1
+socket=/tmp/tmp.lVj7XHldVm/socket/openburnbar.sock
+gateway=enabled
+exit_code=0
+
+### service foreground
+command=openburnbar-cli service foreground
+service=foreground
+daemon_version=evidence-daemon
+protocol=1
+socket=/tmp/tmp.lVj7XHldVm/socket/openburnbar.sock
+gateway=enabled
+exit_code=0
+
+### service restart unsupported foreground
+command=openburnbar-cli service restart
+service_restart=unsupported foreground_daemon=true
+exit_code=69
+
+### capabilities json
+command=openburnbar-cli capabilities --json
+{
+  "capabilities" : [
+    "daemon.health",
+    "client.attach",
+    "run.create",
+    "run.list",
+    "run.get",
+    "run.poll",
+    "run.cancel",
+    "run.retry",
+    "approval.respond",
+    "code.index",
+    "code.search",
+    "memory.recall"
+  ],
+  "schema" : "openburnbar.cli.capabilities.v1"
+}
+exit_code=0
+
+### diagnostics bundle
+command=openburnbar-cli diagnostics --output /tmp/tmp.lVj7XHldVm/diagnostics
+diagnostics=/tmp/tmp.lVj7XHldVm/diagnostics/diagnostics.json
+exit_code=0
+
+### subscribe health
+command=openburnbar-cli subscribe health
+subscription_id=cli-health-1AB1B785-D2C1-4E41-9F11-2C204A0E8B3D
+topic=health
+seq=1
+cursor=1
+first_snapshot=true
+degraded_fallback=true
+degradation_reason=long_poll_fallback_over_burnbarrpc_envelope
+backpressure=coalesce_latest_per_topic
+disconnect_detected=false
+recovered_after_restart=false
+terminal_state_delivered=true
+event_seq=1 event_kind=health.snapshot terminal=true
+exit_code=0
+
+### subscription resume health
+command=openburnbar-cli subscription-resume cli-health-1AB1B785-D2C1-4E41-9F11-2C204A0E8B3D --topic health --after-seq 1
+subscription_id=cli-health-1AB1B785-D2C1-4E41-9F11-2C204A0E8B3D
+topic=health
+seq=2
+cursor=2
+first_snapshot=false
+degraded_fallback=true
+degradation_reason=long_poll_fallback_over_burnbarrpc_envelope
+backpressure=coalesce_latest_per_topic
+disconnect_detected=true
+recovered_after_restart=true
+terminal_state_delivered=true
+event_seq=2 event_kind=health.resume_snapshot terminal=true
+exit_code=0
+
+### subscription resume health after daemon restart
+command=openburnbar-cli subscription-resume cli-health-1AB1B785-D2C1-4E41-9F11-2C204A0E8B3D --topic health --after-seq 1
+subscription_id=cli-health-1AB1B785-D2C1-4E41-9F11-2C204A0E8B3D
+topic=health
+seq=2
+cursor=2
+first_snapshot=false
+degraded_fallback=true
+degradation_reason=long_poll_fallback_over_burnbarrpc_envelope
+backpressure=coalesce_latest_per_topic
+disconnect_detected=true
+recovered_after_restart=true
+terminal_state_delivered=true
+event_seq=2 event_kind=health.resume_snapshot terminal=true
+exit_code=0
+
+### run create mock provider
+command=openburnbar-cli run create --prompt linux evidence run --model gpt-5.5 --mock-provider
+run_id=CB6A5D5C-DA76-4FEE-8F62-1CD0C1454579
+phase=completed
+client_id=openburnbar-cli
+session_id=openburnbar-cli-session
+exit_code=0
+
+### run list
+command=openburnbar-cli run list
+run_id=CB6A5D5C-DA76-4FEE-8F62-1CD0C1454579 phase=completed session_id=openburnbar-cli-session model=gpt-5.5
+exit_code=0
+
+### run get
+command=openburnbar-cli run get CB6A5D5C-DA76-4FEE-8F62-1CD0C1454579
+run_id=CB6A5D5C-DA76-4FEE-8F62-1CD0C1454579
+phase=completed
+client_id=openburnbar-cli
+session_id=openburnbar-cli-session
+model=gpt-5.5
+exit_code=0
+
+### run poll
+command=openburnbar-cli run poll CB6A5D5C-DA76-4FEE-8F62-1CD0C1454579
+run_id=CB6A5D5C-DA76-4FEE-8F62-1CD0C1454579 phase=completed session_id=openburnbar-cli-session
+exit_code=0
+
+### subscribe run
+command=openburnbar-cli subscribe run CB6A5D5C-DA76-4FEE-8F62-1CD0C1454579
+subscription_id=cli-run-33F54DB4-BAAB-40D1-8955-9F35D508F64B
+topic=run
+seq=1
+cursor=1
+first_snapshot=true
+degraded_fallback=true
+degradation_reason=long_poll_fallback_over_burnbarrpc_envelope
+backpressure=coalesce_latest_per_topic
+disconnect_detected=false
+recovered_after_restart=false
+terminal_state_delivered=true
+event_seq=1 event_kind=run.snapshot terminal=true
+exit_code=0

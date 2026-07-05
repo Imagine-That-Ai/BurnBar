@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2026-07-05T11:31:49.230Z",
+  "runner": "linux-desktop-packaged-runtime-perf-v3",
+  "baselinePolicy": {
+    "name": "current-threshold-enforced-until-baseline",
+    "baselineSource": "none",
+    "rule": "Every current sample must stay under threshold; add historical p50/p95 rows once mission-001 has two validated Linux runs."
+  },
+  "rows": [
+    {
+      "name": "app.start",
+      "currentMs": 329,
+      "thresholdMs": 2500,
+      "sampleCount": 1,
+      "source": "packaged-tauri-deb-xvfb-window-visible",
+      "thresholdPass": true,
+      "trendPass": true
+    },
+    {
+      "name": "route.navigation",
+      "currentMs": 7,
+      "thresholdMs": 120,
+      "sampleCount": 16,
+      "source": "packaged-tauri-runtime-samples:packaged-ui-route:account,packaged-ui-route:activity,packaged-ui-route:chat,packaged-ui-route:database,packaged-ui-route:insights,packaged-ui-route:memory,packaged-ui-route:missions,packaged-ui-route:onboarding,packaged-ui-route:pet,packaged-ui-route:projects,packaged-ui-route:providers,packaged-ui-route:settings,packaged-ui-route:support,packaged-ui-route:text-expansion,packaged-ui-route:updates",
+      "thresholdPass": true,
+      "trendPass": true
+    },
+    {
+      "name": "ipc.health.roundtrip",
+      "currentMs": 6,
+      "thresholdMs": 800,
+      "sampleCount": 1,
+      "source": "packaged-tray-reconnect-to-af-unix-daemon-log",
+      "thresholdPass": true,
+      "trendPass": true
+    },
+    {
+      "name": "tray.click.open",
+      "currentMs": 45,
+      "thresholdMs": 400,
+      "sampleCount": 1,
+      "source": "appindicator-dbusmenu-open-to-visible-window",
+      "thresholdPass": true,
+      "trendPass": true
+    },
+    {
+      "name": "chat.firstToken.progress",
+      "currentMs": 6.964208999999999,
+      "thresholdMs": 2500,
+      "sampleCount": 1,
+      "source": "packaged-tauri-runtime-samples:packaged-startup-chat-hermes-daemon-measurement;packaged-af-unix-perf.measure:hermes-chat-stream-progress-operation",
+      "thresholdPass": true,
+      "trendPass": true
+    },
+    {
+      "name": "db.migration.open.query",
+      "currentMs": 1.534917,
+      "thresholdMs": 1200,
+      "sampleCount": 1,
+      "source": "packaged-tauri-runtime-samples:packaged-startup-db-daemon-measurement;packaged-af-unix-perf.measure:sqlite3-db-fts5-operation",
+      "thresholdPass": true,
+      "trendPass": true
+    },
+    {
+      "name": "parser.incremental.run",
+      "currentMs": 0.7298330000000001,
+      "thresholdMs": 900,
+      "sampleCount": 1,
+      "source": "packaged-tauri-runtime-samples:packaged-startup-parser-daemon-measurement;packaged-af-unix-perf.measure:provider-jsonl-incremental-parser-operation",
+      "thresholdPass": true,
+      "trendPass": true
+    },
+    {
+      "name": "memory.search",
+      "currentMs": 0.550542,
+      "thresholdMs": 650,
+      "sampleCount": 1,
+      "source": "packaged-tauri-runtime-samples:packaged-startup-memory-daemon-measurement;packaged-af-unix-perf.measure:memory-search-index-operation",
+      "thresholdPass": true,
+      "trendPass": true
+    },
+    {
+      "name": "media.control.stage",
+      "currentMs": 0.465375,
+      "thresholdMs": 500,
+      "sampleCount": 1,
+      "source": "packaged-tauri-runtime-samples:packaged-startup-media-control-daemon-measurement;packaged-af-unix-perf.measure:media-control-stage-loopback-operation",
+      "thresholdPass": true,
+      "trendPass": true
+    }
+  ],
+  "pass": true,
+  "errors": [],
+  "note": "Mission-001 has no durable multi-run Linux history yet; trend enforcement is fail-closed to current threshold rows."
+}

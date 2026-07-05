@@ -66,7 +66,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .providerModelDisplayNameSet, .providerModelDisplayNameClear:
             return .config
         case .usageRecord, .usageRecent,
-             .proxyRouteLogRecent, .proxyRouteLogClear:
+             .proxyRouteLogRecent, .proxyRouteLogClear, .perfMeasure:
             return .observability
         case .connectorPlaneGet, .connectorConfigUpdate, .connectorAction,
              .browserToolingGet, .browserToolingUpdate, .browserAction:
@@ -93,6 +93,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .clientAttach, .clientClaimControl, .clientDetach:
             return .client
         case .runCreate, .runList, .runGet, .runPoll, .runCancel, .runRetry, .runResume,
+             .subscriptionStart, .subscriptionResume,
              .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
             return .run
         case .searchQuery:

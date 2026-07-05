@@ -1,0 +1,178 @@
+{
+  "generatedAt": "2026-07-05T11:31:49.047Z",
+  "method": "failureStateCases-plus-localStorage-recovery-restart-probe",
+  "scenarios": [
+    {
+      "route": "overview",
+      "id": "daemon-offline",
+      "injectedCondition": "bridge=null or health.ok=false",
+      "userVisibleFeedback": "Packaged shell required for live daemon health (browser preview mode).",
+      "recovery": "Start openburnbar-cli service foreground; verify AF_UNIX socket.",
+      "actionResult": "Reconnect action retries daemon.health and keeps local routes usable.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "support",
+      "id": "tray-degraded",
+      "injectedCondition": "trayDegraded=true",
+      "userVisibleFeedback": "Tray degraded: use window reopen from launcher.",
+      "recovery": "Install Ayatana AppIndicator; pin app when DE hides tray.",
+      "actionResult": "Support copy points to the launcher fallback and tray package remediation.",
+      "restartPersistence": "not-required"
+    },
+    {
+      "route": "settings",
+      "id": "secret-store-unavailable",
+      "injectedCondition": "libsecret/KWallet unavailable or locked",
+      "userVisibleFeedback": "Secret Service locked or unavailable.",
+      "recovery": "Unlock GNOME Keyring/KWallet or configure the headless passphrase file.",
+      "actionResult": "Settings keeps SQLCipher/local mode explicit and exposes setup recovery copy.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "settings",
+      "id": "secret-store-setup",
+      "injectedCondition": "first-run secret store setup incomplete",
+      "userVisibleFeedback": "Secret Service setup required before encrypted sync credentials can be saved.",
+      "recovery": "Open Settings, unlock GNOME Keyring/KWallet, or set the documented headless passphrase file.",
+      "actionResult": "Setup row stays visible after restart until the user completes or skips onboarding.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "settings",
+      "id": "network-offline",
+      "injectedCondition": "provider catalog/update request cannot reach network",
+      "userVisibleFeedback": "Network offline.",
+      "recovery": "Keep local SQLite usable, then retry provider/update checks after reconnect.",
+      "actionResult": "Retry defers cloud/provider/update calls without stranding local SQLite.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "settings",
+      "id": "permission-denied",
+      "injectedCondition": "provider log path cannot be read",
+      "userVisibleFeedback": "Provider path permission denied.",
+      "recovery": "Grant read access only to selected XDG/provider session directories.",
+      "actionResult": "Provider path remains opt-in and links the user to precise XDG/session directories.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "settings",
+      "id": "provider-credentials",
+      "injectedCondition": "provider credential missing or rejected by Secret Service",
+      "userVisibleFeedback": "Provider credentials need attention.",
+      "recovery": "Re-enter provider credentials after Secret Service is unlocked; no plaintext fallback is offered.",
+      "actionResult": "Credential recovery stays scoped to the selected provider and never writes global secrets.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "account",
+      "id": "quota-exhausted",
+      "injectedCondition": "provider quota bucket exhausted",
+      "userVisibleFeedback": "Quota exhausted.",
+      "recovery": "Switch provider/model tier or wait for the reset window.",
+      "actionResult": "Account route keeps sync/account controls visible and offers provider/model fallback copy.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "account",
+      "id": "account-login",
+      "injectedCondition": "signed out lower-trust Linux identity",
+      "userVisibleFeedback": "Signed out.",
+      "recovery": "Log in with the lower-trust Linux identity when cloud sync is required; local data stays usable.",
+      "actionResult": "Login action recovers sync state without hiding local-only mode.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "account",
+      "id": "account-logout",
+      "injectedCondition": "user signs out or token is revoked",
+      "userVisibleFeedback": "Signed out; encrypted sync is paused.",
+      "recovery": "Confirm logout, keep SQLite local, and sign back in when sync is desired.",
+      "actionResult": "Logout action clears sync credentials while preserving local routes.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "account",
+      "id": "sync-status",
+      "injectedCondition": "cloud sync paused, offline, or lower-trust identity pending",
+      "userVisibleFeedback": "Sync paused.",
+      "recovery": "Retry sync after network/auth recovery; encrypted private rows stay local until opt-in.",
+      "actionResult": "Sync status copy names the paused state and the recovery path.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "updates",
+      "id": "update-channel-unavailable",
+      "injectedCondition": "package channel unavailable",
+      "userVisibleFeedback": "Update channel unavailable.",
+      "recovery": "Use support diagnostics/package-manager transcript; release packaging is outside this shell lane.",
+      "actionResult": "Updates route provides package-manager transcript guidance and restart copy.",
+      "restartPersistence": "required"
+    },
+    {
+      "route": "updates",
+      "id": "update-status",
+      "injectedCondition": "update available, unavailable, or restart required",
+      "userVisibleFeedback": "Restart required after package update.",
+      "recovery": "Quit from tray or Support after package replacement completes.",
+      "actionResult": "Update status survives restart and never reports silent success without package evidence.",
+      "restartPersistence": "required"
+    }
+  ],
+  "requiredScenarioIds": [
+    "account-login",
+    "account-logout",
+    "provider-credentials",
+    "sync-status",
+    "update-status",
+    "secret-store-setup",
+    "secret-store-unavailable",
+    "network-offline",
+    "quota-exhausted",
+    "permission-denied",
+    "daemon-offline"
+  ],
+  "packagedScreenshots": [
+    "screenshot-route-settings.png",
+    "screenshot-route-account.png",
+    "screenshot-route-updates.png",
+    "screenshot-route-support.png"
+  ],
+  "restartPersistence": {
+    "storageKeys": [
+      "openburnbar.linux.daemonFixture",
+      "openburnbar.linux.accountState",
+      "openburnbar.linux.syncState",
+      "openburnbar.linux.providerCredentialState",
+      "openburnbar.linux.updateState"
+    ],
+    "before": {
+      "daemonFixture": "0",
+      "account": "signed-out",
+      "sync": "paused",
+      "providerCredentials": "missing",
+      "secretStore": "locked",
+      "network": "offline",
+      "quota": "exhausted",
+      "permission": "denied",
+      "update": "restart-required"
+    },
+    "afterRecovery": {
+      "daemonFixture": "1",
+      "account": "signed-in",
+      "sync": "ready-after-retry",
+      "providerCredentials": "stored-in-secret-service",
+      "update": "restart-copy-acknowledged"
+    },
+    "restartProbe": {
+      "daemonFixture": "1",
+      "account": "signed-in",
+      "sync": "ready-after-retry",
+      "providerCredentials": "stored-in-secret-service",
+      "update": "restart-copy-acknowledged"
+    },
+    "recoveredAfterRestart": true,
+    "userVisibleFeedback": "Support/account/settings/update routes expose recovery actions and keep recovered state after restart."
+  }
+}

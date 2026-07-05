@@ -1,0 +1,6 @@
+daemon_bin=/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+cli_bin=/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI
+/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, BuildID[sha1]=0d4d2530721857c55fcde073a349f432f86771dc, with debug_info, not stripped
+/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI:    ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, BuildID[sha1]=f201700b9bb4b430bf1662f2f5065b8e90929989, with debug_info, not stripped
+3e3e06336efb2755629cd5b2cd2b88b9f04987289ce298785fb31710513ddc3b  /tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+f16980f3c2729d696d1f3a5de5420b57fb3665bad695156012cab34edc6223f5  /tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI

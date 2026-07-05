@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-07-05T11:31:49.046Z",
+  "method": "providerGlyphs-module-plus-route-render-contract",
+  "glyphs": [
+    {
+      "id": "openai",
+      "label": "OpenAI",
+      "accent": "#10a37f",
+      "cssSelector": ".glyph-chip[data-provider=\"openai\"]",
+      "renderedCase": "OpenAI chip with accent #10a37f"
+    },
+    {
+      "id": "anthropic",
+      "label": "Anthropic",
+      "accent": "#cc785c",
+      "cssSelector": ".glyph-chip[data-provider=\"anthropic\"]",
+      "renderedCase": "Anthropic chip with accent #cc785c"
+    },
+    {
+      "id": "google",
+      "label": "Google",
+      "accent": "#4285f4",
+      "cssSelector": ".glyph-chip[data-provider=\"google\"]",
+      "renderedCase": "Google chip with accent #4285f4"
+    },
+    {
+      "id": "hermes",
+      "label": "Hermes",
+      "accent": "#c8bfb5",
+      "cssSelector": ".glyph-chip[data-provider=\"hermes\"]",
+      "renderedCase": "Hermes chip with accent #c8bfb5"
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "accent": "#fa6b06",
+      "cssSelector": ".glyph-chip[data-provider=\"codex\"]",
+      "renderedCase": "Codex chip with accent #fa6b06"
+    },
+    {
+      "id": "cursor",
+      "label": "Cursor",
+      "accent": "#00e5ff",
+      "cssSelector": ".glyph-chip[data-provider=\"cursor\"]",
+      "renderedCase": "Cursor chip with accent #00e5ff"
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "accent": "#8b5cf6",
+      "cssSelector": ".glyph-chip[data-provider=\"opencode\"]",
+      "renderedCase": "OpenCode chip with accent #8b5cf6"
+    },
+    {
+      "id": "ollama",
+      "label": "Ollama",
+      "accent": "#ffffff",
+      "cssSelector": ".glyph-chip[data-provider=\"ollama\"]",
+      "renderedCase": "Ollama chip with accent #ffffff"
+    }
+  ]
+}

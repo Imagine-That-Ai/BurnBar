@@ -1,0 +1,29 @@
+{
+  "diff": "hermes-event-order-diff-linux.json",
+  "diffStatus": "failed",
+  "differenceCount": 1,
+  "errorCount": 1,
+  "expectedFailureObserved": true,
+  "mutation": {
+    "afterKinds": [
+      "approval_requested",
+      "plan_generated"
+    ],
+    "beforeKinds": [
+      "plan_generated",
+      "approval_requested"
+    ],
+    "journal": "hermes-run-journal.jsonl",
+    "mutation": "swap adjacent plan_generated and approval_requested raw journal lines",
+    "runID": "1A03B00E-9A27-494E-82B7-AEE6B75F793E",
+    "schema": "openburnbar-hermes-event-order-strict-mutation-v1",
+    "swappedLineNumbers": [
+      4,
+      5
+    ]
+  },
+  "oracleExitCode": 1,
+  "schema": "openburnbar-hermes-event-order-strict-mutation-result-v1",
+  "stderr": "canonical-oracle-mutated.stderr",
+  "stdout": "canonical-oracle-mutated.stdout"
+}

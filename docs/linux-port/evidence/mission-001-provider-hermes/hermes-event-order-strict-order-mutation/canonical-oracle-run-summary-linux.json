@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-07-05T12:14:11.158Z",
+  "outDir": "/workspace/docs/linux-port/evidence/mission-001-provider-hermes/hermes-event-order-strict-order-mutation",
+  "platform": "linux",
+  "schema": "openburnbar-provider-hermes-canonical-oracle-run-summary-v2",
+  "sections": {
+    "hermes": {
+      "artifacts": [
+        "hermes-event-order-source-oracle-linux.json",
+        "hermes-event-order-diff-linux.json",
+        "hermes-event-order-raw-events-linux.json",
+        "hermes-event-order-normalized-observed-linux.json"
+      ],
+      "errors": [
+        "scenario prompt-tool-approval-done raw normalized kind order differs from source oracle: observed=prompt.accepted>tool.approval.required>plan.generated>tool.approval.recorded>assistant.done expected=prompt.accepted>plan.generated>tool.approval.required>tool.approval.recorded>assistant.done"
+      ],
+      "status": "failed"
+    }
+  },
+  "status": "failed"
+}

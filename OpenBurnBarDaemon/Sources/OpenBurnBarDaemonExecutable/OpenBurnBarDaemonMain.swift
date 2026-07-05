@@ -1,6 +1,10 @@
 import OpenBurnBarDaemon
 import OpenBurnBarCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Dispatch
 import Foundation
 
@@ -17,7 +21,9 @@ struct OpenBurnBarDaemonExecutable {
         // by launchd while the cache is still active.  A nil URLCache forces
         // all URLSession.shared requests to use an in-memory or no-cache policy,
         // preventing the disk I/O error loop that blocks the socket RPC thread.
+        #if canImport(Darwin)
         URLCache.shared = URLCache(memoryCapacity: 4 * 1024 * 1024, diskCapacity: 0)
+        #endif
 
         #if canImport(Sentry)
         try configureSentryIfAvailable(environment: ProcessInfo.processInfo.environment)
@@ -40,6 +46,7 @@ struct OpenBurnBarDaemonExecutable {
         // binary cannot bring up a foreign image that serves the full RPC/HID
         // surface. The install-location change (root-owned SMAppService) lives in
         // the app/installer and is tracked Deferred.
+        #if canImport(Darwin)
         let selfVerifier = DaemonSelfCodeSignatureVerifier(enforced: peerAuthenticator.isEnforced, logger: logger)
         do {
             try selfVerifier.verify()
@@ -50,6 +57,7 @@ struct OpenBurnBarDaemonExecutable {
             )
             throw error
         }
+        #endif
 
         // T-DMN-04: production daemons independently re-verify high-risk Computer
         // Use local-auth proofs against the daemon-owned pinned phone-key store.
@@ -140,7 +148,6 @@ private func makePensieveKnowledgeWatcher(
 
     let uid = environment["OPENBURNBAR_PENSIEVE_VAULT_UID"] ?? environment["OPENBURNBAR_USER_ID"]
     let trimmedUID = uid?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let keyStore = CloudVaultKeyStore(service: "com.openburnbar.cloud-vault")
     logger.notice(
         "pensieve_watcher_configured",
         metadata: [
@@ -148,10 +155,15 @@ private func makePensieveKnowledgeWatcher(
             "vault_uid_present": "\(trimmedUID?.isEmpty == false)"
         ]
     )
+    #if canImport(Darwin)
+    let keyStore = CloudVaultKeyStore(service: "com.openburnbar.cloud-vault")
     return PensieveKnowledgeWatcher(roots: roots) {
         guard let trimmedUID, trimmedUID.isEmpty == false else { return nil }
         return try? keyStore.loadKey(uid: trimmedUID)
     }
+    #else
+    return PensieveKnowledgeWatcher(roots: roots, vaultKeyProvider: { nil })
+    #endif
 }
 
 private enum BurnBarDaemonCommandLine {
@@ -254,7 +266,7 @@ private enum BurnBarDaemonCommandLine {
                 socketAuthToken = try readTokenFile(arguments[index], argument: argument)
             case "--help", "-h":
                 print(Self.helpText)
-                Darwin.exit(EXIT_SUCCESS)
+                exit(EXIT_SUCCESS)
             default:
                 throw BurnBarDaemonCommandLineError.unknownArgument(argument)
             }
@@ -476,7 +488,7 @@ private enum BurnBarObservabilityError: Error, LocalizedError {
 
 // All stored properties are let; DispatchSourceSignal sources are immutable after init.
 // Formally Sendable because no mutable state exists post-init.
-private final class BurnBarSignalMonitor: Sendable {
+private final class BurnBarSignalMonitor: @unchecked Sendable {
     private let queue: DispatchQueue
     private let continuation: AsyncStream<Int32>.Continuation
     private let stream: AsyncStream<Int32>
