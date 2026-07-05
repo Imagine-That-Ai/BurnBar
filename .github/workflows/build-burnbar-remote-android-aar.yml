@@ -118,6 +118,22 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
 
+      - name: Upload pre-parity AAR artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: burnbar-remote-pre-parity.aar
+          path: Vendor/burnbar-remote.aar
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload pre-parity Kotlin bindings
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: burnbar-remote-pre-parity-kotlin-bindings
+          path: android/burnbar-remote/src/main/java/uniffi/burnbar_remote
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Verify committed AAR and Kotlin binding parity
         run: |
           set -euo pipefail
