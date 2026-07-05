@@ -79,7 +79,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
     // MARK: - Session Parsing
 
-    func parseSession(
+    public func parseSession(
         transcriptFile: URL,
         sessionId: String,
         fallbackModel: String
@@ -486,7 +486,7 @@ public final class AntigravityParser: LogParser, Sendable {
     }
 
     /// Measures the string length of an arbitrary JSON value for tool call argument sizing.
-    static func stringLength(of value: Any) -> Int {
+    public static func stringLength(of value: Any) -> Int {
         switch value {
         case let str as String:
             return str.count

@@ -544,7 +544,13 @@ private enum G2Corpus {
                 return try await GooseParser(sessionDirectoryOverride: sessionsRoot.path).parse()
 
             case .windsurf:
-                return try await WindsurfParser().parse()
+                let cascadeRoot = homeRoot.appendingPathComponent(".codeium/windsurf-next/cascade", isDirectory: true)
+                let globalStorageRoot = homeRoot
+                    .appendingPathComponent("Library/Application Support/Windsurf - Next/User/globalStorage", isDirectory: true)
+                return try await WindsurfParser(
+                    cascadeDirectoryOverride: cascadeRoot.path,
+                    globalStorageOverride: globalStorageRoot.path
+                ).parse()
 
             case .warp:
                 let warpSupport = homeRoot
