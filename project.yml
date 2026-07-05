@@ -482,7 +482,6 @@ targets:
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
-        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
