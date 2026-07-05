@@ -59,7 +59,18 @@ foreach ($route in $Routes) {
         "--route-smoke-timeout-ms", $TimeoutMilliseconds.ToString()
     )
 
-    $process = Start-Process -FilePath $app -ArgumentList $args -PassThru -WindowStyle Normal
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $app
+    $startInfo.UseShellExecute = $false
+    $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Normal
+    foreach ($argument in $args) {
+        [void]$startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    if ($null -eq $process) {
+        throw "Failed to start OpenBurnBar.App.exe for route smoke: $route"
+    }
     $completed = $process.WaitForExit($TimeoutMilliseconds + 4000)
     if (!$completed) {
         try { $process.Kill($true) } catch { }

@@ -13,13 +13,13 @@ public sealed partial class InsightsPage : Page
 {
     public InsightsPage()
     {
-        InitializeComponent();
-        GalleryView.TemplateSelected += OnTemplateSelected;
-
-        // Wire real-or-empty KPI data from the SQLCipher DB path; non-KPI template samples remain
-        // visibly labeled by the SampleChip until the Engine analysis source is configured.
+        // Install before InitializeComponent(): the XAML tree constructs TemplateGalleryView,
+        // and its constructor materializes InsightsBuiltInTemplates.All immediately.
         InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
             kind == InsightWidgetKind.KpiTile ? CloudSyncInsightSource.ResolveKpi(kind, seed) : null;
+
+        InitializeComponent();
+        GalleryView.TemplateSelected += OnTemplateSelected;
     }
 
     private void OnTemplateSelected(object? sender, InsightCanvasTemplate template)

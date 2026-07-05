@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Presentation.Budget;
@@ -121,6 +122,63 @@ public sealed class WindowsStorageDevHostRuntimeTests
         {
             Environment.SetEnvironmentVariable(SqlPathEnv, null);
             Environment.SetEnvironmentVariable(SqlPassEnv, null);
+        }
+    }
+
+    [Fact]
+    public async Task CreateStores_with_unopenable_configured_database_fall_back_without_throwing()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "obb-invalid-" + Guid.NewGuid().ToString("N") + ".sqlcipher");
+        try
+        {
+            File.WriteAllText(path, "not a SQLCipher database");
+            Environment.SetEnvironmentVariable(SampleEnv, null);
+            Environment.SetEnvironmentVariable(SqlPathEnv, path);
+            Environment.SetEnvironmentVariable(SqlPassEnv, "ValidBase64Key-000=");
+
+            IBudgetRuleStore budget = WindowsStorageDevHost.CreateBudgetRuleStore();
+            ISwitcherProfileStore switcher = WindowsStorageDevHost.CreateSwitcherProfileStore();
+
+            Assert.Empty(await budget.FetchAllRulesAsync(includeDisabled: true));
+            Assert.Empty(switcher.FetchAllProfiles());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(SampleEnv, null);
+            Environment.SetEnvironmentVariable(SqlPathEnv, null);
+            Environment.SetEnvironmentVariable(SqlPassEnv, null);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void LoadDashboardUsageSummary_with_unopenable_configured_database_reports_no_data()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "obb-invalid-" + Guid.NewGuid().ToString("N") + ".sqlcipher");
+        try
+        {
+            File.WriteAllText(path, "not a SQLCipher database");
+            Environment.SetEnvironmentVariable(SqlPathEnv, path);
+            Environment.SetEnvironmentVariable(SqlPassEnv, "ValidBase64Key-000=");
+
+            var summary = WindowsStorageDevHost.LoadDashboardUsageSummary();
+
+            Assert.False(summary.HasData);
+            Assert.Equal(0, summary.SessionCount);
+            Assert.Equal(0, summary.TotalTokens);
+            Assert.Equal(0, summary.SpendThisMonthUsd);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(SqlPathEnv, null);
+            Environment.SetEnvironmentVariable(SqlPassEnv, null);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 }

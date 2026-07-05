@@ -36,47 +36,68 @@ internal static class WindowsStorageDevHost
     public static IBudgetRuleStore CreateBudgetRuleStore(System.Collections.Generic.IEnumerable<BudgetRule>? seedWhenInMemory = null)
     {
         var (path, passphrase) = ResolveCredentials();
+        Func<IBudgetRuleStore> fallback = () => new InMemoryBudgetRuleStore(
+            RuntimeDataMode.SampleModeEnabled ? seedWhenInMemory : null);
+
         if (path is not null && passphrase is not null)
         {
-            return new SqlCipherBudgetRuleStore(path, passphrase);
+            return CreateSqlCipherOrFallback(
+                "budget-rules",
+                () => new SqlCipherBudgetRuleStore(path, passphrase),
+                fallback);
         }
 
-        return new InMemoryBudgetRuleStore(RuntimeDataMode.SampleModeEnabled ? seedWhenInMemory : null);
+        return fallback();
     }
 
     public static ISwitcherProfileStore CreateSwitcherProfileStore()
     {
         var (path, passphrase) = ResolveCredentials();
-        if (path is not null && passphrase is not null)
-        {
-            return new SqlCipherSwitcherProfileStore(path, passphrase);
-        }
-
-        return RuntimeDataMode.SampleModeEnabled
+        Func<ISwitcherProfileStore> fallback = () => RuntimeDataMode.SampleModeEnabled
             ? SwitcherSampleData.CreateDevHostStore()
             : new InMemorySwitcherProfileStore();
+
+        if (path is not null && passphrase is not null)
+        {
+            return CreateSqlCipherOrFallback(
+                "switcher-profiles",
+                () => new SqlCipherSwitcherProfileStore(path, passphrase),
+                fallback);
+        }
+
+        return fallback();
     }
 
     public static IElderWandPresetPersistence CreateElderWandPersistence()
     {
         var (path, passphrase) = ResolveCredentials();
+        Func<IElderWandPresetPersistence> fallback = () => new InMemoryElderWandPersistence();
+
         if (path is not null && passphrase is not null)
         {
-            return new SqlCipherElderWandPersistence(path, passphrase);
+            return CreateSqlCipherOrFallback(
+                "elder-wand-presets",
+                () => new SqlCipherElderWandPersistence(path, passphrase),
+                fallback);
         }
 
-        return new InMemoryElderWandPersistence();
+        return fallback();
     }
 
     public static ISessionLogReadSource CreateSessionLogReadSource()
     {
         var (path, passphrase) = ResolveCredentials();
+        Func<ISessionLogReadSource> fallback = SessionLogSampleData.CreateReadSource;
+
         if (path is not null && passphrase is not null)
         {
-            return new SqlCipherSessionLogReadSource(path, passphrase);
+            return CreateSqlCipherOrFallback(
+                "session-logs",
+                () => new SqlCipherSessionLogReadSource(path, passphrase),
+                fallback);
         }
 
-        return SessionLogSampleData.CreateReadSource();
+        return fallback();
     }
 
     /// <summary>
@@ -87,15 +108,42 @@ internal static class WindowsStorageDevHost
         var (path, passphrase) = ResolveCredentials();
         if (path is null || passphrase is null)
         {
-            return new DashboardUsageSummary(0, 0, 0, HasData: false);
+            return EmptyDashboardUsageSummary();
         }
 
-        using var store = OpenBurnBarStorage.OpenReadOnly(path, passphrase);
-        var connection = store.Connection;
-        double spend = TokenUsageReadSeam.SumCostCurrentUtcMonth(connection);
-        long tokens = TokenUsageReadSeam.SumTotalTokens(connection);
-        long sessions = TokenUsageReadSeam.CountDistinctSessions(connection);
-        bool hasData = spend > 0 || tokens > 0 || sessions > 0;
-        return new DashboardUsageSummary(spend, tokens, sessions, hasData);
+        try
+        {
+            using var store = OpenBurnBarStorage.OpenReadOnly(path, passphrase);
+            var connection = store.Connection;
+            double spend = TokenUsageReadSeam.SumCostCurrentUtcMonth(connection);
+            long tokens = TokenUsageReadSeam.SumTotalTokens(connection);
+            long sessions = TokenUsageReadSeam.CountDistinctSessions(connection);
+            bool hasData = spend > 0 || tokens > 0 || sessions > 0;
+            return new DashboardUsageSummary(spend, tokens, sessions, hasData);
+        }
+        catch (Exception ex)
+        {
+            LogStorageFallback("dashboard-summary", ex);
+            return EmptyDashboardUsageSummary();
+        }
     }
+
+    private static T CreateSqlCipherOrFallback<T>(string surface, Func<T> createSqlCipher, Func<T> createFallback)
+    {
+        try
+        {
+            return createSqlCipher();
+        }
+        catch (Exception ex)
+        {
+            LogStorageFallback(surface, ex);
+            return createFallback();
+        }
+    }
+
+    private static void LogStorageFallback(string surface, Exception exception) =>
+        System.Diagnostics.Debug.WriteLine($"OpenBurnBar storage fallback [{surface}]: {exception}");
+
+    private static DashboardUsageSummary EmptyDashboardUsageSummary() =>
+        new(0, 0, 0, HasData: false);
 }
