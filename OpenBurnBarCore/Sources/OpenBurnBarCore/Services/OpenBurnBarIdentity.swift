@@ -59,6 +59,9 @@ public enum OpenBurnBarIdentity {
 
 public struct OpenBurnBarAppPaths: Sendable {
     public let applicationSupportRoot: URL
+    public init(applicationSupportRoot: URL) {
+        self.applicationSupportRoot = applicationSupportRoot
+    }
 
     public static func live(fileManager: FileManager = .default) -> OpenBurnBarAppPaths {
         let appSupportRoot = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
