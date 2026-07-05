@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+@testable import OpenBurnBarCore
 
 /// Focused coverage for the previously error-swallowing `try?` site in
 /// `WarpQuotaAdapter.candidateLogFiles(in:fileManager:)`.
@@ -34,7 +35,11 @@ final class WarpQuotaAdapterMattersTests: XCTestCase {
             existingPaths: [directory.path]
         )
 
-        let result = adapter.candidateLogFiles(in: directory, fileManager: throwingManager)
+        let result = adapter.candidateLogFiles(
+            in: directory,
+            fileManager: throwingManager,
+            context: makeContext(homeDirectoryURL: directory, fileManager: throwingManager)
+        )
 
         XCTAssertTrue(throwingManager.didAttemptEnumeration,
                       "The adapter must actually attempt enumeration before degrading.")
@@ -49,7 +54,11 @@ final class WarpQuotaAdapterMattersTests: XCTestCase {
         let adapter = WarpQuotaAdapter()
         let throwingManager = ThrowingEnumerationFileManager(existingPaths: [])
 
-        let result = adapter.candidateLogFiles(in: missing, fileManager: throwingManager)
+        let result = adapter.candidateLogFiles(
+            in: missing,
+            fileManager: throwingManager,
+            context: makeContext(homeDirectoryURL: directory, fileManager: throwingManager)
+        )
 
         XCTAssertFalse(throwingManager.didAttemptEnumeration,
                        "A non-existent directory must short-circuit before enumeration.")
@@ -72,7 +81,11 @@ final class WarpQuotaAdapterMattersTests: XCTestCase {
         try setModificationDate(Date(timeIntervalSince1970: 2_000), on: newer)
 
         let adapter = WarpQuotaAdapter()
-        let result = adapter.candidateLogFiles(in: directory, fileManager: .default)
+        let result = adapter.candidateLogFiles(
+            in: directory,
+            fileManager: .default,
+            context: makeContext(homeDirectoryURL: directory)
+        )
 
         XCTAssertEqual(result.map { $0.lastPathComponent },
                        ["warp_network_old.log", "warp_network_new.log"],
@@ -83,7 +96,11 @@ final class WarpQuotaAdapterMattersTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
 
         let adapter = WarpQuotaAdapter()
-        let result = adapter.candidateLogFiles(in: directory, fileManager: .default)
+        let result = adapter.candidateLogFiles(
+            in: directory,
+            fileManager: .default,
+            context: makeContext(homeDirectoryURL: directory)
+        )
 
         XCTAssertEqual(result, [])
     }
@@ -107,6 +124,38 @@ final class WarpQuotaAdapterMattersTests: XCTestCase {
 
     private func setModificationDate(_ date: Date, on url: URL) throws {
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+    }
+
+    private func makeContext(
+        homeDirectoryURL: URL,
+        fileManager: FileManager = .default
+    ) -> ProviderQuotaAdapterContext {
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: homeDirectoryURL)
+        let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
+        return ProviderQuotaAdapterContext(
+            appPaths: appPaths,
+            fileManager: fileManager,
+            session: URLSession(configuration: .ephemeral),
+            environment: [:],
+            homeDirectoryURL: homeDirectoryURL,
+            snapshotStore: snapshotStore,
+            bridgeManager: ClaudeQuotaBridgeManager(
+                appPaths: appPaths,
+                homeDirectoryURL: homeDirectoryURL,
+                fileManager: fileManager,
+                snapshotStore: snapshotStore
+            ),
+            miniMaxMode: .tokenPlan,
+            factoryPlan: .unknown,
+            xaiPlan: .unknown,
+            mimoTokenPlanRegion: .sgp,
+            mimoTokenPlanTier: nil,
+            mimoTokenPlanBillingCycle: .monthly,
+            codexRolloutScanCache: .empty,
+            updateCodexRolloutScanCache: { _, _ in },
+            claudeCredentialsReader: NoClaudeCredentialsReader(),
+            resolvedAPIKeys: [:]
+        )
     }
 }
 
