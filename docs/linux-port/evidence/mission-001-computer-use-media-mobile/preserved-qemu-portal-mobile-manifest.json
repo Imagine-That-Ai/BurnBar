@@ -251,7 +251,7 @@
       "modifiedAt": "2026-07-05T12:36:05.419Z"
     },
     {
-      "path": "product-audit-exports/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-tampered-archive/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE.tar.gz",
+      "path": "product-audit-exports/tampered/daemon-coordinator.tar.gz",
       "sizeBytes": 917,
       "sha256": "fe184809a543e316be071dd12df492532343c1a67b3dffbd2d05bb16d29ef809",
       "modifiedAt": "2026-07-05T12:36:05.428Z"
@@ -269,7 +269,7 @@
       "modifiedAt": "2026-07-05T12:36:05.427Z"
     },
     {
-      "path": "product-audit-exports/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered-archive/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+      "path": "product-audit-exports/tampered/input-adapter.tar.gz",
       "sizeBytes": 1441,
       "sha256": "2f5b7197cb4c0fab469fa1b43c3f2730ea6e7eb86873b6182f32ed2e3e14ed28",
       "modifiedAt": "2026-07-05T12:36:05.426Z"
@@ -287,7 +287,7 @@
       "modifiedAt": "2026-07-05T12:36:05.425Z"
     },
     {
-      "path": "product-audit-exports/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-tampered-archive/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733.tar.gz",
+      "path": "product-audit-exports/tampered/mobile-remote.tar.gz",
       "sizeBytes": 933,
       "sha256": "c250dad0818a16d8f53e47c1a7496ae30c0d0cbeec7b70a36851bcf2ff367f85",
       "modifiedAt": "2026-07-05T12:36:05.425Z"
