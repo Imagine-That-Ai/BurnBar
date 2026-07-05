@@ -687,7 +687,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 chunkIDs: changedChunkIDs,
                 embeddingVersionID: selection.version.id
             )
-            let existingKeys = Set(baseMapping.keys)
+            var existingKeys = Set(baseMapping.keys)
             for embedding in embeddings {
                 guard let vector = VectorBlobCodec.decode(embedding.vectorBlob),
                       vector.count == dimensions else { continue }
@@ -703,6 +703,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
                         for: embedding.chunkID,
                         avoiding: existingKeys
                     )
+                    existingKeys.insert(key)
                 }
                 delta.append(key: key, vector: vector, chunkID: embedding.chunkID)
             }

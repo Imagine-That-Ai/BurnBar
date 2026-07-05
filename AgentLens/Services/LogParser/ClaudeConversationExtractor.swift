@@ -221,6 +221,12 @@ final class ClaudeConversationAccumulator {
             if byte & 0xC0 != 0x80 { break } // Not a continuation byte
             cut -= 1
         }
+        if cut > 0 {
+            let previousByte = utf8[utf8.index(utf8.startIndex, offsetBy: cut - 1)]
+            if previousByte >= 0xC2 {
+                cut -= 1
+            }
+        }
         if cut == 0 { return "" }
         let endIndex = utf8.index(utf8.startIndex, offsetBy: cut)
         let stringIndex = String.Index(endIndex, within: string) ?? string.startIndex

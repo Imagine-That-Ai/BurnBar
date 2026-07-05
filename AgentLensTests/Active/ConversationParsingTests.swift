@@ -217,6 +217,19 @@ final class ConversationParsingTests: XCTestCase {
         XCTAssertNotNil(data, "fullText must be valid UTF-8 after truncation")
     }
 
+    func test_claudeAccumulator_truncateToUTF8Bytes_excludesIncompleteLeadingByte() {
+        let acc = ClaudeConversationAccumulator(maxFullTextBytes: 5)
+        let line: [String: Any] = [
+            "type": "assistant",
+            "timestamp": "2025-06-01T12:00:00Z",
+            "message": ["role": "assistant", "content": [["type": "text", "text": "ab🎉"]]]
+        ]
+        acc.ingest(jsonLine: line)
+        acc.finalizeArrays()
+
+        XCTAssertEqual(acc.fullText, "ab")
+    }
+
     func test_conversationIndexer_skips_same_mtime() async throws {
         let store = try makeInMemoryStore()
         let past = Date(timeIntervalSince1970: 1_700_000_000)

@@ -102,7 +102,7 @@ extension BufferedLineSequence {
                 // Round-4 perf sweep: guard against pathological single-line
                 // inputs. If the buffer exceeds maxLineBytes and no newline
                 // has been found, skip the oversized line.
-                if buffer.count > maxLineBytes && !skippingOversizedLine {
+                if buffer.count > maxLineBytes {
                     skippingOversizedLine = true
                     // Discard the buffer; we'll skip until the next newline.
                     buffer.removeAll()
