@@ -1,4 +1,4 @@
-#if !canImport(LibSignalClient)
+#if !canImport(LibSignalClient) || os(Linux) || os(Windows)
 #if canImport(CryptoKit)
 import CryptoKit
 #else
@@ -284,7 +284,7 @@ public enum OpenBurnBarSignalAtRest {
             out.append(contentsOf: bytes)
         }
         var message = Data()
-        frame(CloudVaultCrypto.signalAtRestSenderAuthDomain, into: &message)
+        frame(CloudVaultSignalEnvelopeContract.signalAtRestSenderAuthDomain, into: &message)
         frame(info, into: &message)
         frame(payloadCiphertextB64, into: &message)
         let sorted = wraps.sorted {
@@ -308,7 +308,7 @@ public enum OpenBurnBarSignalAtRest {
         let canonical = try signalEnvelopeBindingToAAD(binding)
         return try OpenBurnBarSignalCoreFallbackCrypto.sealAESGCM(
             plaintext: plaintext,
-            keyData: recipientIdentityPublicKey,
+            keyData: OpenBurnBarSignalCoreFallbackCrypto.sha256(recipientIdentityPublicKey),
             authenticating: Data(canonical.utf8)
         )
     }
@@ -322,7 +322,7 @@ public enum OpenBurnBarSignalAtRest {
         let canonical = try signalEnvelopeBindingToAAD(binding)
         return try OpenBurnBarSignalCoreFallbackCrypto.openAESGCM(
             combined: ciphertext,
-            keyData: privateKey.publicKey.x963Representation,
+            keyData: OpenBurnBarSignalCoreFallbackCrypto.sha256(privateKey.publicKey.x963Representation),
             authenticating: Data(canonical.utf8)
         )
     }
@@ -339,7 +339,7 @@ public enum OpenBurnBarSignalAtRest {
         let senderPrivateKey = try P256.KeyAgreement.PrivateKey(rawRepresentation: senderIdentityPrivateKey)
         let senderPublicKeyData = senderPrivateKey.publicKey.x963Representation
         let aad = try canonicalAAD(for: binding.aadBinding)
-        let contentKey = try OpenBurnBarSignalCoreFallbackCrypto.secureRandomBytes(count: CloudVaultCrypto.signalAtRestContentKeyLength)
+        let contentKey = try OpenBurnBarSignalCoreFallbackCrypto.secureRandomBytes(count: CloudVaultSignalEnvelopeContract.signalAtRestContentKeyLength)
         let sealedPayload = try OpenBurnBarSignalCoreFallbackCrypto.sealAESGCM(
             plaintext: plaintext,
             keyData: contentKey,
@@ -393,11 +393,11 @@ public enum OpenBurnBarSignalAtRest {
         expectedBinding: CloudVaultSignalBinding,
         trustedSenderPublicKeys: [String: Data]
     ) throws -> Data {
-        guard envelope.signalEnvelopeFormatVersion == CloudVaultCrypto.signalEnvelopeFormatVersion,
-              envelope.mode == CloudVaultCrypto.signalAtRestMode,
-              envelope.relayEncryption == CloudVaultCrypto.signalAtRestEncryption,
-              envelope.keyDelivery.scheme == CloudVaultCrypto.signalAtRestEncryption,
-              envelope.keyDelivery.contentKeyLength == CloudVaultCrypto.signalAtRestContentKeyLength,
+        guard envelope.signalEnvelopeFormatVersion == CloudVaultSignalEnvelopeContract.signalEnvelopeFormatVersion,
+              envelope.mode == CloudVaultSignalEnvelopeContract.signalAtRestMode,
+              envelope.relayEncryption == CloudVaultSignalEnvelopeContract.signalAtRestEncryption,
+              envelope.keyDelivery.scheme == CloudVaultSignalEnvelopeContract.signalAtRestEncryption,
+              envelope.keyDelivery.contentKeyLength == CloudVaultSignalEnvelopeContract.signalAtRestContentKeyLength,
               envelope.ciphertextLayer.schemaVersion == payloadCiphertextSchemaVersion else {
             throw OpenBurnBarSignalCoreError.invalidEnvelope
         }
@@ -441,7 +441,7 @@ public enum OpenBurnBarSignalAtRest {
             recipientIdentityPrivateKey: recipientIdentityPrivateKey,
             binding: expectedBinding.aadBinding
         )
-        guard contentKey.count == CloudVaultCrypto.signalAtRestContentKeyLength else {
+        guard contentKey.count == CloudVaultSignalEnvelopeContract.signalAtRestContentKeyLength else {
             throw OpenBurnBarSignalCoreError.invalidContentKey
         }
         return try OpenBurnBarSignalCoreFallbackCrypto.openAESGCM(

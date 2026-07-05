@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+import OpenBurnBarCore
 
 /// Published issuer trust for offline bridge verification (public key only).
 public struct CapabilityTokenIssuerTrustMaterial: Codable, Sendable, Equatable {
@@ -25,9 +25,9 @@ public struct CapabilityTokenIssuerTrustMaterial: Codable, Sendable, Equatable {
         self.publishedAt = publishedAt
     }
 
-    public func signingPublicKey() throws -> Curve25519.Signing.PublicKey {
+    public func signingPublicKey() throws -> PlatformEd25519PublicKey {
         guard let data = Data(base64Encoded: publicKeyEd25519Base64),
-              let key = try? Curve25519.Signing.PublicKey(rawRepresentation: data) else {
+              let key = try? PlatformCrypto.ed25519PublicKey(rawRepresentation: data) else {
             throw CapabilityTokenVerificationFailure.issuerKeyUnavailable
         }
         return key

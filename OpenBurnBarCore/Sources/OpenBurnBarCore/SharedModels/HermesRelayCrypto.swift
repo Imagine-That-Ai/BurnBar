@@ -23,7 +23,7 @@ import Foundation
 // because the caller passes the PINNED peer key to `unwrapSymmetricKey` (never a wire
 // `senderPublicKey` field), rooted at pairing time in the two-key safety code.
 
-public struct HermesRelayPrivateKey: Sendable, Equatable {
+public struct HermesRelayPrivateKey: @unchecked Sendable, Equatable {
     fileprivate let key: PlatformP256KeyAgreementPrivateKey
 
     public init(rawRepresentation: Data) throws {
@@ -589,7 +589,7 @@ public enum HermesRelayCrypto {
     }
 }
 
-public struct PiAgentRelayPrivateKey: Sendable, Equatable {
+public struct PiAgentRelayPrivateKey: @unchecked Sendable, Equatable {
     fileprivate let key: PlatformP256KeyAgreementPrivateKey
 
     public init(rawRepresentation: Data) throws {

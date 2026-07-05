@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import OpenBurnBarCore
 
 /// F10 — one shared implementation of the control-seal session lifecycle so
@@ -38,7 +37,7 @@ public enum ControlFrameSealSession {
         senderCounter: Int64,
         recipientPublicKeyBase64: String,
         senderPrivateKey: HermesRelayPrivateKey
-    ) throws -> (envelope: HermesRealtimeRelayControlSealKeyEnvelope, key: SymmetricKey) {
+    ) throws -> (envelope: HermesRealtimeRelayControlSealKeyEnvelope, key: PlatformSymmetricKey) {
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
         let wrap = try HermesRelayCrypto.sealKeyV3(
             keyData,
@@ -62,7 +61,7 @@ public enum ControlFrameSealSession {
             senderCounter: senderCounter,
             relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3
         )
-        return (envelope, deriveKey(sessionSecret: keyData, connectionID: connectionID))
+        return (envelope, try deriveKey(sessionSecret: keyData, connectionID: connectionID))
     }
 
     /// Mac side: open the wrapped session secret. `pinnedSenderPublicKeyBase64`
@@ -75,7 +74,7 @@ public enum ControlFrameSealSession {
         peerNodeId: String,
         recipientPrivateKey: HermesRelayPrivateKey,
         pinnedSenderPublicKeyBase64: String
-    ) throws -> SymmetricKey {
+    ) throws -> PlatformSymmetricKey {
         guard let enc = Data(base64Encoded: envelope.encBase64),
               let wrappedKey = Data(base64Encoded: envelope.wrappedKeyBase64) else {
             throw HermesRelayCryptoError.invalidCiphertext
@@ -94,14 +93,14 @@ public enum ControlFrameSealSession {
                 senderCounter: envelope.senderCounter
             )
         )
-        return deriveKey(sessionSecret: keyData, connectionID: connectionID)
+        return try deriveKey(sessionSecret: keyData, connectionID: connectionID)
     }
 
     /// Replace `payload` with its sealed shell: `streamClass` stays visible for
     /// routing, everything else rides inside the OBCFS1 envelope.
     public static func sealPayload(
         _ payload: HermesRealtimeRelayControlPayload,
-        key: SymmetricKey,
+        key: PlatformSymmetricKey,
         peerNodeId: String,
         frameType: String
     ) throws -> HermesRealtimeRelayControlPayload {
@@ -123,7 +122,7 @@ public enum ControlFrameSealSession {
     /// dispatched.
     public static func openPayload(
         _ payload: HermesRealtimeRelayControlPayload,
-        key: SymmetricKey,
+        key: PlatformSymmetricKey,
         peerNodeId: String,
         frameType: String
     ) throws -> HermesRealtimeRelayControlPayload {
@@ -144,8 +143,8 @@ public enum ControlFrameSealSession {
         }
     }
 
-    private static func deriveKey(sessionSecret: Data, connectionID: String) -> SymmetricKey {
-        ControlFrameSeal().deriveSessionKey(
+    private static func deriveKey(sessionSecret: Data, connectionID: String) throws -> PlatformSymmetricKey {
+        try ControlFrameSeal().deriveSessionKey(
             hpkeSessionKey: sessionSecret,
             salt: Data(connectionID.utf8)
         )

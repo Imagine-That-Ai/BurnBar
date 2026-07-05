@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import OpenBurnBarCore
 
 public enum CapabilityTokenVerificationFailure: String, Codable, Sendable, Equatable, Error {
@@ -114,11 +113,11 @@ public final class FileCapabilityTokenNonceStore: CapabilityTokenNonceStore, Sen
 }
 
 public struct CapabilityTokenIssuerTrust: Sendable {
-    public var publicKey: Curve25519.Signing.PublicKey
+    public var publicKey: PlatformEd25519PublicKey
     public var keyId: String
     public var revoked: Bool
 
-    public init(publicKey: Curve25519.Signing.PublicKey, keyId: String, revoked: Bool = false) {
+    public init(publicKey: PlatformEd25519PublicKey, keyId: String, revoked: Bool = false) {
         self.publicKey = publicKey
         self.keyId = keyId
         self.revoked = revoked

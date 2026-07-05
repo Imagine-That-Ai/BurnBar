@@ -107,7 +107,7 @@ final class ControlFrameSealVectorTests: XCTestCase {
             try open(vector, envelope: envelope, key: key, frameTypeOverride: "control.approval.response"),
             "a re-typed frame must not open"
         )
-        let wrongKey = seal.deriveSessionKey(
+        let wrongKey = try seal.deriveSessionKey(
             hpkeSessionKey: try dataFromHex(vector.hpkeSessionKeyHex),
             salt: Data("a-different-request".utf8)
         )
@@ -138,7 +138,7 @@ final class ControlFrameSealVectorTests: XCTestCase {
     // MARK: - Open helpers
 
     private func sessionKey(for vector: ControlSealCase) throws -> SymmetricKey {
-        seal.deriveSessionKey(
+        try seal.deriveSessionKey(
             hpkeSessionKey: try dataFromHex(vector.hpkeSessionKeyHex),
             salt: try dataFromHex(vector.saltHex)
         )
@@ -220,7 +220,7 @@ final class ControlFrameSealVectorTests: XCTestCase {
         let seal = ControlFrameSeal()
         var cases: [ControlSealCase] = []
         for input in frozenInputs {
-            let key = seal.deriveSessionKey(hpkeSessionKey: input.hpkeSessionKey, salt: input.salt)
+            let key = try seal.deriveSessionKey(hpkeSessionKey: input.hpkeSessionKey, salt: input.salt)
             let keyData = key.withUnsafeBytes { Data($0) }
             let aad = ControlFrameSeal.aad(peerNodeId: input.peerNodeId, frameType: input.frameType)
             let envelope = try seal.seal(

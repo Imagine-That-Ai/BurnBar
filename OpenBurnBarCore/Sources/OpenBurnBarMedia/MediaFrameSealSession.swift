@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import OpenBurnBarCore
 
 /// F7 — media-seal session lifecycle, the F10 control-seal pattern applied to
@@ -29,7 +28,7 @@ public enum MediaFrameSealSession {
         senderCounter: Int64,
         recipientPublicKeyBase64: String,
         senderPrivateKey: HermesRelayPrivateKey
-    ) throws -> (envelope: HermesRealtimeRelayControlSealKeyEnvelope, key: SymmetricKey) {
+    ) throws -> (envelope: HermesRealtimeRelayControlSealKeyEnvelope, key: PlatformSymmetricKey) {
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
         let wrap = try HermesRelayCrypto.sealKeyV3(
             keyData,
@@ -53,7 +52,7 @@ public enum MediaFrameSealSession {
             senderCounter: senderCounter,
             relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3
         )
-        return (envelope, deriveKey(sessionSecret: keyData, connectionID: connectionID))
+        return (envelope, try deriveKey(sessionSecret: keyData, connectionID: connectionID))
     }
 
     /// Mac side: open the wrapped session secret. `pinnedSenderPublicKeyBase64`
@@ -65,7 +64,7 @@ public enum MediaFrameSealSession {
         viewerId: String,
         recipientPrivateKey: HermesRelayPrivateKey,
         pinnedSenderPublicKeyBase64: String
-    ) throws -> SymmetricKey {
+    ) throws -> PlatformSymmetricKey {
         guard let enc = Data(base64Encoded: envelope.encBase64),
               let wrappedKey = Data(base64Encoded: envelope.wrappedKeyBase64) else {
             throw HermesRelayCryptoError.invalidCiphertext
@@ -84,11 +83,11 @@ public enum MediaFrameSealSession {
                 senderCounter: envelope.senderCounter
             )
         )
-        return deriveKey(sessionSecret: keyData, connectionID: connectionID)
+        return try deriveKey(sessionSecret: keyData, connectionID: connectionID)
     }
 
-    private static func deriveKey(sessionSecret: Data, connectionID: String) -> SymmetricKey {
-        MediaFrameAEAD().deriveSessionKey(
+    private static func deriveKey(sessionSecret: Data, connectionID: String) throws -> PlatformSymmetricKey {
+        try MediaFrameAEAD().deriveSessionKey(
             sharedSecret: sessionSecret,
             salt: Data(connectionID.utf8)
         )

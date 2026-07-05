@@ -6,12 +6,12 @@ import CryptoKit
 final class MediaFrameAEADTests: XCTestCase {
     private let aead = MediaFrameAEAD()
 
-    private func key() -> SymmetricKey {
-        aead.deriveSessionKey(sharedSecret: Data(repeating: 0xAB, count: 32), salt: Data("session-7".utf8))
+    private func key() throws -> SymmetricKey {
+        try aead.deriveSessionKey(sharedSecret: Data(repeating: 0xAB, count: 32), salt: Data("session-7".utf8))
     }
 
     func testRoundTripOpensToOriginalPlaintext() throws {
-        let k = key()
+        let k = try key()
         let plaintext = Data("an encoded H.264 NAL frame".utf8)
         let sealed = try aead.seal(plaintext: plaintext, key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)
         XCTAssertTrue(MediaFrameAEAD.isSealedEnvelope(sealed))
@@ -21,7 +21,7 @@ final class MediaFrameAEADTests: XCTestCase {
     }
 
     func testEmptyPlaintextRoundTripOpens() throws {
-        let k = key()
+        let k = try key()
         let sealed = try aead.seal(plaintext: Data(), key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)
         let expectedEmptyEnvelopeLength = MediaFrameAEAD.magic.count + 1 + 12 + 16 // version + AES-GCM nonce/tag
         XCTAssertEqual(sealed.count, expectedEmptyEnvelopeLength)
@@ -34,7 +34,7 @@ final class MediaFrameAEADTests: XCTestCase {
         // The open path deliberately avoids a defensive whole-envelope copy
         // (a per-frame cost at 30-60fps), so it must handle Data SLICES whose
         // startIndex is non-zero — the shape a framing/transport layer hands us.
-        let k = key()
+        let k = try key()
         let plaintext = Data("an encoded H.264 NAL frame".utf8)
         let sealed = try aead.seal(plaintext: plaintext, key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)
         var framed = Data("12-byte-pad!".utf8)
@@ -47,35 +47,35 @@ final class MediaFrameAEADTests: XCTestCase {
     }
 
     func testTamperedFrameIndexFailsToOpen() throws {
-        let k = key()
+        let k = try key()
         let sealed = try aead.seal(plaintext: Data("frame".utf8), key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)
         // A frame replayed in a different position must not open (AAD binds index).
         XCTAssertThrowsError(try aead.open(envelope: sealed, key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 10))
     }
 
     func testTamperedStreamClassFailsToOpen() throws {
-        let k = key()
+        let k = try key()
         let sealed = try aead.seal(plaintext: Data("frame".utf8), key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 0, frameIndex: 0)
         XCTAssertThrowsError(try aead.open(envelope: sealed, key: k, streamClass: "control.surface.frame", kind: 0x01, gopID: 0, frameIndex: 0))
     }
 
     func testWrongKeyFailsToOpen() throws {
-        let sealed = try aead.seal(plaintext: Data("frame".utf8), key: key(), streamClass: "media.screen.video", kind: 0x01, gopID: 0, frameIndex: 0)
-        let other = aead.deriveSessionKey(sharedSecret: Data(repeating: 0x01, count: 32), salt: Data("session-7".utf8))
+        let sealed = try aead.seal(plaintext: Data("frame".utf8), key: try key(), streamClass: "media.screen.video", kind: 0x01, gopID: 0, frameIndex: 0)
+        let other = try aead.deriveSessionKey(sharedSecret: Data(repeating: 0x01, count: 32), salt: Data("session-7".utf8))
         XCTAssertThrowsError(try aead.open(envelope: sealed, key: other, streamClass: "media.screen.video", kind: 0x01, gopID: 0, frameIndex: 0))
     }
 
     func testCiphertextTamperFailsToOpen() throws {
-        let k = key()
+        let k = try key()
         var sealed = try aead.seal(plaintext: Data("frame-payload".utf8), key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 0, frameIndex: 0)
         sealed[sealed.count - 1] ^= 0xFF
         XCTAssertThrowsError(try aead.open(envelope: sealed, key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 0, frameIndex: 0))
     }
 
-    func testDerivedKeyIsDeterministicAndSaltSeparated() {
-        let a = aead.deriveSessionKey(sharedSecret: Data(repeating: 7, count: 32), salt: Data("s1".utf8))
-        let b = aead.deriveSessionKey(sharedSecret: Data(repeating: 7, count: 32), salt: Data("s1".utf8))
-        let c = aead.deriveSessionKey(sharedSecret: Data(repeating: 7, count: 32), salt: Data("s2".utf8))
+    func testDerivedKeyIsDeterministicAndSaltSeparated() throws {
+        let a = try aead.deriveSessionKey(sharedSecret: Data(repeating: 7, count: 32), salt: Data("s1".utf8))
+        let b = try aead.deriveSessionKey(sharedSecret: Data(repeating: 7, count: 32), salt: Data("s1".utf8))
+        let c = try aead.deriveSessionKey(sharedSecret: Data(repeating: 7, count: 32), salt: Data("s2".utf8))
         XCTAssertEqual(a, b)
         XCTAssertNotEqual(a, c)
     }

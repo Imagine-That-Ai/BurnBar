@@ -114,7 +114,7 @@ final class MediaFrameAEADVectorTests: XCTestCase {
             try open(vector, envelope: envelope, key: key, streamClassOverride: "control.surface.frame"),
             "a frame replayed on another stream must not open"
         )
-        let wrongKey = aead.deriveSessionKey(
+        let wrongKey = try aead.deriveSessionKey(
             sharedSecret: try dataFromHex(vector.sharedSecretHex),
             salt: Data("a-different-session".utf8)
         )
@@ -145,7 +145,7 @@ final class MediaFrameAEADVectorTests: XCTestCase {
     // MARK: - Open helpers
 
     private func sessionKey(for vector: MediaAeadCase) throws -> SymmetricKey {
-        let key = aead.deriveSessionKey(
+        let key = try aead.deriveSessionKey(
             sharedSecret: try dataFromHex(vector.sharedSecretHex),
             salt: try dataFromHex(vector.saltHex)
         )
@@ -238,7 +238,7 @@ final class MediaFrameAEADVectorTests: XCTestCase {
         let aead = MediaFrameAEAD()
         var cases: [MediaAeadCase] = []
         for input in frozenInputs {
-            let key = aead.deriveSessionKey(sharedSecret: input.sharedSecret, salt: input.salt)
+            let key = try aead.deriveSessionKey(sharedSecret: input.sharedSecret, salt: input.salt)
             let keyData = key.withUnsafeBytes { Data($0) }
             let aad = MediaFrameAEAD.aad(
                 streamClass: input.streamClass,
