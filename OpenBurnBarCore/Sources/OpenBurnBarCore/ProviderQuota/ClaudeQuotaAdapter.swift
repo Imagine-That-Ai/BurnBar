@@ -54,13 +54,20 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         static let max20x = ClaudePlanCaps(fiveHourTokens: 3_520_000, sevenDayTokens: 30_800_000)
     }
 
-    /// Token totals across the rolling Claude windows. Internal (not private)
-    /// so `ClaudeQuotaJSONLScannerTests` can assert on the scan output.
-    struct JSONLTokenWindows {
-        let fiveHourTokens: Int
-        let sevenDayTokens: Int
-        let latestTimestamp: Date?
-        let filesScanned: Int
+    /// Token totals across the rolling Claude windows. Public so the macOS
+    /// app test target (`ClaudeQuotaJSONLScannerTests`) can assert on the
+    /// scan output via the ``LiftedQuotaTypeAliases`` re-export.
+    public struct JSONLTokenWindows {
+        public let fiveHourTokens: Int
+        public let sevenDayTokens: Int
+        public let latestTimestamp: Date?
+        public let filesScanned: Int
+        public init(fiveHourTokens: Int, sevenDayTokens: Int, latestTimestamp: Date?, filesScanned: Int) {
+            self.fiveHourTokens = fiveHourTokens
+            self.sevenDayTokens = sevenDayTokens
+            self.latestTimestamp = latestTimestamp
+            self.filesScanned = filesScanned
+        }
     }
 
     // MARK: - JSONL Scan Cache & Timestamp Parsing
@@ -597,9 +604,10 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     // MARK: - File Discovery
 
     /// Sum real assistant-turn token usage across the rolling 5-hour and
-    /// 7-day windows from local Claude transcripts. Internal (not private) so
-    /// `ClaudeQuotaJSONLScannerTests` can drive it against a temp directory.
-    static func scanJSONLTokenWindows(
+    /// 7-day windows from local Claude transcripts. Public so the macOS app
+    /// test target (`ClaudeQuotaJSONLScannerTests`) can drive it against a
+    /// temp directory via the ``LiftedQuotaTypeAliases`` re-export.
+    public static func scanJSONLTokenWindows(
         homeDirectoryURL: URL,
         fileManager: FileManager,
         environment: [String: String],
