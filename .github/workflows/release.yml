@@ -183,6 +183,7 @@ jobs:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' }}
       HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
       HAS_NOTARY_SECRETS: ${{ secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_API_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
+      FIREBASE_SOURCE_FIRESTORE: "1"
 
     steps:
       - name: Check out repository

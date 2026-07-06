@@ -178,18 +178,26 @@ if [[ ! -f "$installed_project_code_memory_corpus" ]]; then
   exit 1
 fi
 
-open -n "$app_path"
-for _ in {1..30}; do
-  pgrep -x OpenBurnBar \
-    | while IFS= read -r pid; do
-        if ! grep -qx "$pid" "$preexisting_app_pids_path"; then
-          echo "$pid"
-        fi
-      done > "$smoke_app_pids_path" || true
-  if [[ -s "$smoke_app_pids_path" ]]; then
-    break
+for launch_attempt in {1..5}; do
+  if open -n "$app_path"; then
+    echo "Issued OpenBurnBar launch attempt $launch_attempt from mounted DMG."
+  else
+    echo "OpenBurnBar launch attempt $launch_attempt failed; retrying after launchd settles." >&2
   fi
-  sleep 1
+
+  for _ in {1..12}; do
+    pgrep -x OpenBurnBar \
+      | while IFS= read -r pid; do
+          if ! grep -qx "$pid" "$preexisting_app_pids_path"; then
+            echo "$pid"
+          fi
+        done > "$smoke_app_pids_path" || true
+    if [[ -s "$smoke_app_pids_path" ]]; then
+      break 2
+    fi
+    sleep 1
+  done
+  sleep 3
 done
 
 if [[ ! -s "$smoke_app_pids_path" ]]; then
