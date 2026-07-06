@@ -9,7 +9,10 @@ import type {
   DbStatus,
   ProjectEntry,
   MemoryBoundary,
-  AccountStatus
+  AccountStatus,
+  MemoryReviewInbox,
+  DatabaseWorkspaceStatus,
+  DatabaseIndexActionResult
 } from './tauriBridge.js';
 
 export type DaemonRouteFixture = {
@@ -259,6 +262,113 @@ export function fixtureProviderCatalog(): ProviderCatalog {
       ]
     })
   ] as ProviderCatalog;
+}
+
+export function fixtureMemoryReviewInbox(): MemoryReviewInbox {
+  return {
+    items: [
+      {
+        id: 'mem-review-1',
+        body: 'Prefer Rust for daemon IPC handlers; keep Swift types as the contract source of truth.',
+        kind: 'preference',
+        confidence: 0.86,
+        sourceLabel: 'Chat / Hermes / 2h ago',
+        status: 'pending',
+        canApprove: true
+      },
+      {
+        id: 'mem-review-2',
+        body: 'BurnBar Linux shell uses AF_UNIX to the packaged daemon; never mock live quota data in routes.',
+        kind: 'fact',
+        confidence: 0.92,
+        sourceLabel: 'Chat / Codex / Yesterday',
+        status: 'pending',
+        canApprove: true
+      },
+      {
+        id: 'mem-review-3',
+        body: 'Design tokens live in tokens.css; lane CSS stays component-local on Linux.',
+        kind: 'fact',
+        confidence: 0.78,
+        sourceLabel: 'Chat / Hermes / 3d ago',
+        status: 'approved',
+        canApprove: true
+      }
+    ],
+    auditEvents: [
+      {
+        id: 'audit-fixture-1',
+        action: 'remember',
+        actor: 'fixture',
+        at: new Date(Date.now() - 3_600_000).toISOString(),
+        subjectId: 'mem-review-3'
+      }
+    ]
+  };
+}
+
+export function fixtureDatabaseWorkspaceStatus(): DatabaseWorkspaceStatus {
+  return {
+    sourceLabel: 'fixture transcript',
+    projectID: 'fixture-project',
+    projectRoot: '/home/alberto/BurnBar',
+    indexedAt: new Date(Date.now() - 600_000).toISOString(),
+    artifactCount: 42,
+    chunkCount: 128,
+    symbolCount: 314,
+    referenceCount: 271,
+    callEdgeCount: 89,
+    rejectedCount: 2,
+    storageByteCount: 4_200_000,
+    storageBudgetBytes: 250_000_000,
+    storageWithinBudget: true,
+    productionReady: true,
+    productionReadinessReasons: [],
+    parserAvailable: true,
+    databaseEncrypted: true,
+    hostedCodeToolsEnabled: false,
+    semanticAvailable: false,
+    files: [
+      { id: 'AgentLens/App.swift', filePath: 'AgentLens/App.swift', lang: 'swift', symbolCount: 12 },
+      { id: 'apps/linux-desktop/src/app/App.tsx', filePath: 'apps/linux-desktop/src/app/App.tsx', lang: 'tsx', symbolCount: 8 }
+    ],
+    languages: [
+      { id: 'swift', lang: 'swift', fileCount: 21, byteCount: 2_100_000 },
+      { id: 'tsx', lang: 'tsx', fileCount: 14, byteCount: 620_000 }
+    ],
+    diagnostics: [
+      {
+        id: 'diag-fixture-1',
+        filePath: 'apps/linux-desktop/src/app/App.tsx',
+        tool: 'tsc',
+        cachedAt: new Date(Date.now() - 300_000).toISOString()
+      }
+    ],
+    ops: {
+      schemaVersion: 54,
+      databaseFileBytes: 12_000_000,
+      totalArtifactCount: 42,
+      totalSymbolCount: 314,
+      totalStorageByteCount: 4_200_000,
+      agentMemoryCount: 3,
+      pendingCloudForgetCount: 0,
+      projectCount: 1
+    },
+    degradedReasons: []
+  };
+}
+
+export function fixtureDatabaseIndexAction(kind: 'index' | 'watch'): DatabaseIndexActionResult {
+  return {
+    projectID: 'fixture-project',
+    projectRoot: '/home/alberto/BurnBar',
+    indexedFiles: 42,
+    chunkCount: kind === 'index' ? 128 : undefined,
+    symbolCount: kind === 'index' ? 314 : undefined,
+    watching: kind === 'watch' ? true : undefined,
+    pollIntervalSeconds: kind === 'watch' ? 2 : undefined,
+    auditHash: `fixture-${kind}-audit`
+  };
 }
 
 // ─────────────────────────── P03: session list fixture ────────────────────────────

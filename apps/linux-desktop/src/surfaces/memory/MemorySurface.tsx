@@ -3,22 +3,11 @@ import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
+import { useMemoryStore } from '../../state/memoryStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
-import type { MemoryBoundary } from '../../tauriBridge.js';
+import type { MemoryBoundary, MemoryReviewItem, MemoryReviewStatus } from '../../tauriBridge.js';
 import '../system/system.css';
 import './memory.css';
-
-type MemoryReviewStatus = 'pending' | 'approved' | 'rejected';
-
-type MemoryReviewItem = {
-  id: string;
-  body: string;
-  kind: string;
-  confidence: number;
-  sourceLabel: string;
-  status: MemoryReviewStatus;
-  canApprove: boolean;
-};
 
 type InboxFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
@@ -28,62 +17,6 @@ const INBOX_FILTERS: { key: InboxFilter; label: string }[] = [
   { key: 'approved', label: 'Approved' },
   { key: 'rejected', label: 'Rejected' }
 ];
-
-const REVIEW_STATUS_STORAGE_KEY = 'openburnbar.linux.memoryReviewStatus.v1';
-
-const FIXTURE_REVIEW_SEED: MemoryReviewItem[] = [
-  {
-    id: 'mem-review-1',
-    body: 'Prefer Rust for daemon IPC handlers; keep Swift types as the contract source of truth.',
-    kind: 'preference',
-    confidence: 0.86,
-    sourceLabel: 'Chat · Hermes · 2h ago',
-    status: 'pending',
-    canApprove: true
-  },
-  {
-    id: 'mem-review-2',
-    body: 'BurnBar Linux shell uses AF_UNIX to the packaged daemon; never mock live quota data in routes.',
-    kind: 'fact',
-    confidence: 0.92,
-    sourceLabel: 'Chat · Codex · Yesterday',
-    status: 'pending',
-    canApprove: true
-  },
-  {
-    id: 'mem-review-3',
-    body: 'Design tokens live in tokens.css; lane CSS stays component-local on Linux.',
-    kind: 'fact',
-    confidence: 0.78,
-    sourceLabel: 'Chat · Hermes · 3d ago',
-    status: 'approved',
-    canApprove: true
-  }
-];
-
-function readStoredStatuses(): Record<string, MemoryReviewStatus> {
-  try {
-    const raw = localStorage.getItem(REVIEW_STATUS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, MemoryReviewStatus>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeStoredStatus(id: string, status: MemoryReviewStatus): void {
-  const next = { ...readStoredStatuses(), [id]: status };
-  localStorage.setItem(REVIEW_STATUS_STORAGE_KEY, JSON.stringify(next));
-}
-
-function applyStoredStatuses(items: MemoryReviewItem[]): MemoryReviewItem[] {
-  const stored = readStoredStatuses();
-  return items.map((item) => {
-    const override = stored[item.id];
-    return override ? { ...item, status: override } : item;
-  });
-}
 
 function countForFilter(items: MemoryReviewItem[], filter: InboxFilter): number {
   if (filter === 'all') return items.length;
@@ -115,7 +48,7 @@ function emptyInboxCopy(filter: InboxFilter): { title: string; body: string } {
     default:
       return {
         title: 'No memory items yet',
-        body: 'Extracted memories from chats will appear in this inbox once the daemon exposes review rows on Linux.'
+        body: 'Durable memories recalled from the daemon appear here. Review-row approval remains a macOS-only workflow until the daemon exposes that queue.'
       };
   }
 }
@@ -132,12 +65,16 @@ function MemoryReviewRow({
   item,
   onApprove,
   onReject,
-  onRevoke
+  onRevoke,
+  pendingDecision,
+  decisionError
 }: {
   item: MemoryReviewItem;
   onApprove: () => void;
   onReject: () => void;
   onRevoke: () => void;
+  pendingDecision?: boolean;
+  decisionError?: string | null;
 }) {
   const pending = item.status === 'pending';
   const approved = item.status === 'approved';
@@ -167,23 +104,45 @@ function MemoryReviewRow({
         {approved ? (
           <>
             <span className="memory-review-approved-mark">Approved</span>
-            <button type="button" className="ghost memory-review-reject" onClick={handleRevoke}>
-              Revoke
+            <button
+              type="button"
+              className="ghost memory-review-reject"
+              onClick={handleRevoke}
+              disabled={pendingDecision}
+              aria-busy={pendingDecision}
+            >
+              {pendingDecision ? 'Revoking...' : 'Revoke'}
             </button>
           </>
         ) : pending ? (
           <>
-            <button type="button" className="ghost memory-review-reject" onClick={handleReject}>
-              Reject
+            <button
+              type="button"
+              className="ghost memory-review-reject"
+              onClick={handleReject}
+              disabled={pendingDecision}
+              aria-busy={pendingDecision}
+            >
+              {pendingDecision ? 'Rejecting...' : 'Reject'}
             </button>
-            <button type="button" className="primary" disabled={!item.canApprove} onClick={onApprove}>
-              Approve
+            <button
+              type="button"
+              className="primary"
+              disabled={!item.canApprove || pendingDecision}
+              onClick={onApprove}
+            >
+              {pendingDecision ? 'Approving...' : 'Approve'}
             </button>
           </>
         ) : (
           <span className="muted">Rejected</span>
         )}
       </div>
+      {decisionError ? (
+        <p className="memory-inbox-banner" role="alert">
+          {decisionError}
+        </p>
+      ) : null}
     </article>
   );
 }
@@ -247,51 +206,19 @@ export function MemorySurface() {
   const loading = useSystemStore((s) => s.loading);
   const error = useSystemStore((s) => s.error);
   const loadMemory = useSystemStore((s) => s.loadMemory);
+  const inbox = useMemoryStore((s) => s.inbox);
+  const inboxLoading = useMemoryStore((s) => s.loading);
+  const inboxError = useMemoryStore((s) => s.error);
+  const decisionById = useMemoryStore((s) => s.decisionById);
+  const loadInbox = useMemoryStore((s) => s.loadInbox);
+  const decideMemory = useMemoryStore((s) => s.decide);
 
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>('pending');
-  const [reviewItems, setReviewItems] = useState<MemoryReviewItem[]>([]);
-  const [inboxError, setInboxError] = useState<string | null>(null);
-  const [inboxLoading, setInboxLoading] = useState(false);
 
   useLaneLoad(loadMemory);
+  useLaneLoad(loadInbox);
 
-  const loadInbox = useCallback(async () => {
-    if (fixtureMode) {
-      setInboxLoading(true);
-      setInboxError(null);
-      const boundariesEmpty = memory !== null && memory.length === 0;
-      setReviewItems(boundariesEmpty ? [] : applyStoredStatuses(FIXTURE_REVIEW_SEED));
-      setInboxLoading(false);
-      return;
-    }
-    if (!bridge) {
-      setReviewItems([]);
-      setInboxError(null);
-      return;
-    }
-    setInboxLoading(true);
-    setInboxError(null);
-    try {
-      // Boundaries load via systemStore; inbox rows await dedicated daemon review RPC on Linux.
-      setReviewItems([]);
-    } catch (e) {
-      setInboxError(e instanceof Error ? e.message : 'Failed to load memory review inbox');
-      setReviewItems([]);
-    } finally {
-      setInboxLoading(false);
-    }
-  }, [bridge, fixtureMode, memory]);
-  useEffect(() => {
-    void loadInbox();
-  }, [loadInbox]);
-
-  const setItemStatus = useCallback((id: string, status: MemoryReviewStatus) => {
-    if (fixtureMode) {
-      writeStoredStatus(id, status);
-    }
-    setReviewItems((prev) => prev.map((item) => (item.id === id ? { ...item, status } : item)));
-  }, [fixtureMode]);
-
+  const reviewItems = inbox?.items ?? [];
   const pendingCount = useMemo(
     () => reviewItems.filter((item) => item.status === 'pending').length,
     [reviewItems]
@@ -335,7 +262,15 @@ export function MemorySurface() {
     );
   }
 
-  if (!surfacePopulated && !inboxLoading && !fixtureMode && boundaries.length === 0 && reviewItems.length === 0) {
+  if (
+    !surfacePopulated &&
+    !inboxLoading &&
+    !fixtureMode &&
+    boundaries.length === 0 &&
+    reviewItems.length === 0 &&
+    !inboxError &&
+    !inbox?.degradedReason
+  ) {
     return (
       <div className="memory-surface">
         <header className="memory-inbox-header">
@@ -400,6 +335,11 @@ export function MemorySurface() {
           {inboxError}
         </div>
       ) : null}
+      {inbox?.degradedReason ? (
+        <div className="memory-inbox-banner" role="alert">
+          {inbox.degradedReason}
+        </div>
+      ) : null}
 
       {inboxLoading ? (
         <MemorySkeleton />
@@ -414,9 +354,11 @@ export function MemorySurface() {
             <MemoryReviewRow
               key={item.id}
               item={item}
-              onApprove={() => setItemStatus(item.id, 'approved')}
-              onReject={() => setItemStatus(item.id, 'rejected')}
-              onRevoke={() => setItemStatus(item.id, 'pending')}
+              pendingDecision={decisionById[item.id]?.pending}
+              decisionError={decisionById[item.id]?.error}
+              onApprove={() => void decideMemory(item.id, 'approved')}
+              onReject={() => void decideMemory(item.id, 'rejected')}
+              onRevoke={() => void decideMemory(item.id, 'rejected')}
             />
           ))}
         </div>

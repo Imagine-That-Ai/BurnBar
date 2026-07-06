@@ -367,6 +367,24 @@ fn call_daemon_method(
         .ok_or_else(|| "RPC response missing result".to_string())
 }
 
+fn call_daemon_method_report(
+    method: &str,
+    params: Option<serde_json::Value>,
+) -> serde_json::Value {
+    match call_daemon_method(method, params) {
+        Ok(result) => serde_json::json!({
+            "ok": true,
+            "method": method,
+            "result": result,
+        }),
+        Err(error) => serde_json::json!({
+            "ok": false,
+            "method": method,
+            "error": error,
+        }),
+    }
+}
+
 // ───────────────── P01: usage summary ─────────────────
 // Wire: daemon.usage.recent (BurnBarRPCMethod.usageRecent)
 #[tauri::command]
@@ -420,7 +438,50 @@ fn usage_insights() -> Result<serde_json::Value, String> {
 // Wire: daemon.mission.list (BurnBarRPCMethod.missionsList)
 #[tauri::command]
 fn mission_list() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.mission.list", None)
+    call_daemon_method(
+        "daemon.mission.list",
+        Some(serde_json::json!({
+            "projectSlug": null,
+            "statuses": [
+                "draft",
+                "awaiting_approval",
+                "approved",
+                "dispatching",
+                "in_progress",
+                "partially_completed",
+                "completed",
+                "failed",
+                "cancelled"
+            ],
+            "limit": 100
+        })),
+    )
+}
+
+// ───────────────── P06: mission create ─────────────────
+// Wire: daemon.mission.create (BurnBarRPCMethod.missionCreate)
+// BurnBarMissionCreateRequest requires projectSlug, title, summary,
+// createdBy, recommendation, and metadata.
+#[tauri::command]
+fn mission_create(
+    project_slug: String,
+    title: String,
+    summary: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.mission.create",
+        Some(serde_json::json!({
+            "projectSlug": project_slug,
+            "title": title,
+            "summary": summary,
+            "createdBy": "linux-shell",
+            "recommendation": "review",
+            "metadata": {
+                "source": "linux-shell",
+                "surface": "missions"
+            }
+        })),
+    )
 }
 
 // ───────────────── P06: mission approval decision ─────────────────
@@ -460,14 +521,131 @@ fn db_status() -> Result<serde_json::Value, String> {
 // Wire: daemon.controller.project.list (BurnBarRPCMethod.controllerProjectsList)
 #[tauri::command]
 fn project_list() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.controller.project.list", None)
+    call_daemon_method(
+        "daemon.controller.project.list",
+        Some(serde_json::json!({
+            "includePaused": true,
+            "limit": 100
+        })),
+    )
 }
 
 // ───────────────── P07: memory boundaries ─────────────────
 // Wire: daemon.memory.analytics (BurnBarRPCMethod.memoryAnalytics)
 #[tauri::command]
 fn memory_boundaries() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.memory.analytics", None)
+    call_daemon_method(
+        "daemon.memory.analytics",
+        Some(serde_json::json!({"projectPath": null})),
+    )
+}
+
+// ───────────────── P07: memory review inbox ─────────────────
+// Wire: daemon.memory.recall + daemon.memory.audit_trail.
+// There is no Linux/macOS-parity approve/reject review-row RPC yet; this
+// returns durable recalled memories plus audit facts so the UI can show an
+// honest approved-memory inbox and wire revoke to daemon.memory.forget.
+#[tauri::command]
+fn memory_review_inbox() -> serde_json::Value {
+    let recall = call_daemon_method_report(
+        "daemon.memory.recall",
+        Some(serde_json::json!({
+            "query": "project memory",
+            "projectPath": null,
+            "limit": 50,
+            "scope": "all",
+            "includeCrossProject": true
+        })),
+    );
+    let audit = call_daemon_method_report(
+        "daemon.memory.audit_trail",
+        Some(serde_json::json!({
+            "projectPath": null,
+            "limit": 50
+        })),
+    );
+    serde_json::json!({
+        "recall": recall,
+        "auditTrail": audit
+    })
+}
+
+// ───────────────── P07: memory forget / revoke ─────────────────
+// Wire: daemon.memory.forget (BurnBarRPCMethod.memoryForget)
+#[tauri::command]
+fn memory_forget(memory_id: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.memory.forget",
+        Some(serde_json::json!({
+            "memoryID": memory_id,
+            "projectPath": null,
+            "requireCloudDelete": false
+        })),
+    )
+}
+
+// ───────────────── P07: database workspace status ─────────────────
+// Wire: daemon.code.index_status / explore / diagnostics / ops_diagnostics.
+#[tauri::command]
+fn database_workspace_status(project_path: Option<String>) -> serde_json::Value {
+    let status = call_daemon_method_report(
+        "daemon.code.index_status",
+        Some(serde_json::json!({"projectPath": project_path.clone()})),
+    );
+    let explore = call_daemon_method_report(
+        "daemon.code.explore",
+        Some(serde_json::json!({
+            "projectPath": project_path.clone(),
+            "query": null,
+            "limit": 50,
+            "maxBytes": 24000
+        })),
+    );
+    let diagnostics = call_daemon_method_report(
+        "daemon.code.diagnostics",
+        Some(serde_json::json!({
+            "projectPath": project_path.clone(),
+            "filePath": null
+        })),
+    );
+    let ops = call_daemon_method_report("daemon.code.ops_diagnostics", Some(serde_json::json!({})));
+    serde_json::json!({
+        "indexStatus": status,
+        "explore": explore,
+        "diagnostics": diagnostics,
+        "opsDiagnostics": ops
+    })
+}
+
+// ───────────────── P07: database indexing controls ─────────────────
+// Wire: daemon.code.index_project (BurnBarRPCMethod.codeIndexProject)
+#[tauri::command]
+fn database_index_project(project_path: Option<String>) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.code.index_project",
+        Some(serde_json::json!({
+            "projectPath": project_path,
+            "maxFiles": 2500,
+            "maxFileBytes": 512000,
+            "storageBudgetBytes": null
+        })),
+    )
+}
+
+// Wire: daemon.code.watch_project (BurnBarRPCMethod.codeWatchProject).
+// Linux watcher is poll-only; Darwin FSEvents nudges are not available here.
+#[tauri::command]
+fn database_watch_project(project_path: Option<String>) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.code.watch_project",
+        Some(serde_json::json!({
+            "projectPath": project_path,
+            "maxFiles": 2500,
+            "maxFileBytes": 512000,
+            "storageBudgetBytes": null,
+            "pollIntervalSeconds": 2.0
+        })),
+    )
 }
 
 // ───────────────── P08: account status ─────────────────
@@ -599,11 +777,17 @@ pub fn run() {
             session_search,
             usage_insights,
             mission_list,
+            mission_create,
             mission_approval_decision,
             config_snapshot,
             db_status,
             project_list,
             memory_boundaries,
+            memory_review_inbox,
+            memory_forget,
+            database_workspace_status,
+            database_index_project,
+            database_watch_project,
             account_status,
             app_version_info,
             export_diagnostics,

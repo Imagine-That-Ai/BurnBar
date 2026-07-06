@@ -73,6 +73,11 @@ export type MissionListResult = {
   pendingApprovals: PendingApproval[];
 };
 export type ApprovalDecision = 'approve' | 'deny';
+export type MissionCreateInput = {
+  projectSlug: string;
+  title: string;
+  summary: string;
+};
 
 // ─────────────────────────── P07: system ──────────────────────────────────
 
@@ -95,6 +100,79 @@ export type DbStatus = {
 };
 export type ProjectEntry = { id: string; name: string; path: string; scope: string };
 export type MemoryBoundary = { id: string; scope: string; label: string; detail: string };
+export type MemoryReviewStatus = 'pending' | 'approved' | 'rejected';
+export type MemoryReviewItem = {
+  id: string;
+  body: string;
+  kind: string;
+  confidence: number;
+  sourceLabel: string;
+  status: MemoryReviewStatus;
+  canApprove: boolean;
+  auditHash?: string;
+};
+export type MemoryReviewInbox = {
+  items: MemoryReviewItem[];
+  auditEvents: { id: string; action: string; actor: string; at: string; subjectId?: string }[];
+  degradedReason?: string;
+};
+export type DatabaseWorkspaceFile = {
+  id: string;
+  filePath: string;
+  lang: string;
+  symbolCount: number;
+};
+export type DatabaseWorkspaceDiagnostic = {
+  id: string;
+  filePath: string;
+  tool: string;
+  cachedAt: string;
+};
+export type DatabaseWorkspaceStatus = {
+  sourceLabel: string;
+  projectID: string;
+  projectRoot?: string;
+  indexedAt?: string;
+  artifactCount: number;
+  chunkCount: number;
+  symbolCount: number;
+  referenceCount: number;
+  callEdgeCount: number;
+  rejectedCount: number;
+  storageByteCount: number;
+  storageBudgetBytes: number;
+  storageWithinBudget: boolean;
+  productionReady: boolean;
+  productionReadinessReasons: string[];
+  parserAvailable: boolean;
+  databaseEncrypted: boolean;
+  hostedCodeToolsEnabled: boolean;
+  semanticAvailable: boolean;
+  files: DatabaseWorkspaceFile[];
+  languages: { id: string; lang: string; fileCount: number; byteCount: number }[];
+  diagnostics: DatabaseWorkspaceDiagnostic[];
+  ops?: {
+    schemaVersion: number;
+    databaseFileBytes: number;
+    totalArtifactCount: number;
+    totalSymbolCount: number;
+    totalStorageByteCount: number;
+    agentMemoryCount: number;
+    pendingCloudForgetCount: number;
+    projectCount: number;
+  };
+  degradedReasons: string[];
+};
+export type DatabaseIndexActionResult = {
+  projectID: string;
+  projectRoot: string;
+  indexedFiles: number;
+  chunkCount?: number;
+  symbolCount?: number;
+  watching?: boolean;
+  pollIntervalSeconds?: number;
+  auditHash?: string;
+};
 
 // ─────────────────────────── P08: account ─────────────────────────────────
 
@@ -139,10 +217,16 @@ export interface LinuxShellBridge {
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
+  missionCreate(input: MissionCreateInput): Promise<MissionListResult['missions'][number] | null>;
   configSnapshot(): Promise<ConfigSnapshot>;
   dbStatus(): Promise<DbStatus>;
   projectList(): Promise<ProjectEntry[]>;
   memoryBoundaries(): Promise<MemoryBoundary[]>;
+  memoryReviewInbox(): Promise<MemoryReviewInbox>;
+  memoryReviewDecision(id: string, decision: Exclude<MemoryReviewStatus, 'pending'>): Promise<void>;
+  databaseWorkspaceStatus(projectPath?: string): Promise<DatabaseWorkspaceStatus>;
+  databaseIndexProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
+  databaseWatchProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   accountStatus(): Promise<AccountStatus>;
   appVersionInfo(): Promise<AppVersionInfo>;
   exportDiagnostics(): Promise<DiagnosticsExport>;
@@ -389,6 +473,19 @@ function mapMissionList(raw: RawJsonValue): MissionListResult {
   return { missions, pendingApprovals };
 }
 
+function mapMissionMutation(raw: RawJsonValue): MissionListResult['missions'][number] | null {
+  const mission = pick(raw, 'mission') ?? raw;
+  if (!mission || typeof mission !== 'object') return null;
+  return {
+    id: str(pick(mission, 'id', 'missionId'), ''),
+    title: str(pick(mission, 'title', 'name', 'summary'), 'Untitled mission'),
+    state: str(pick(mission, 'state', 'status'), 'active'),
+    updatedAt: str(pick(mission, 'updatedAt', 'updated_at', 'modifiedAt'), new Date().toISOString()),
+    laneCount: arr(pick(mission, 'packets')).length || num(pick(mission, 'laneCount', 'lane_count', 'packetCount')),
+    projectSlug: str(pick(mission, 'projectSlug', 'project_slug', 'projectName', 'project'), '') || undefined
+  };
+}
+
 function mapConfigSnapshot(raw: RawJsonValue): ConfigSnapshot {
   const snap = pick(raw, 'snapshot', 'config') ?? raw;
   return {
@@ -427,15 +524,155 @@ function mapProjectList(raw: RawJsonValue): ProjectEntry[] {
 }
 
 function mapMemoryBoundaries(raw: RawJsonValue): MemoryBoundary[] {
+  const byScope = pick(raw, 'byScope');
+  if (byScope && typeof byScope === 'object' && !Array.isArray(byScope)) {
+    return Object.entries(byScope as Record<string, RawJsonValue>).map(([scope, count], i) => ({
+      id: `scope-${scope || i}`,
+      scope: scope || 'workspace',
+      label: `${scope || 'workspace'} memory`,
+      detail: `${num(count)} durable memories in this recall boundary`
+    }));
+  }
   const items = arr(pick(raw, 'boundaries', 'scopes', 'analytics'));
-  return items.map(
-    (m, i): MemoryBoundary => ({
-      id: str(pick(m, 'id', 'scopeId'), `mem-${i}`),
-      scope: str(pick(m, 'scope', 'projectSlug'), 'workspace'),
-      label: str(pick(m, 'label', 'name'), `Memory scope ${i + 1}`),
-      detail: str(pick(m, 'detail', 'description', 'policy'), 'Recall boundary active')
-    })
+  return items.map((m, i): MemoryBoundary => ({
+    id: str(pick(m, 'id', 'scopeId'), `mem-${i}`),
+    scope: str(pick(m, 'scope', 'projectSlug'), 'workspace'),
+    label: str(pick(m, 'label', 'name'), `Memory scope ${i + 1}`),
+    detail: str(pick(m, 'detail', 'description', 'policy'), 'Recall boundary active')
+  }));
+}
+
+function rpcReportResult(raw: RawJsonValue): RawJsonValue {
+  return Boolean(pick(raw, 'ok')) ? pick(raw, 'result') : undefined;
+}
+
+function rpcReportError(raw: RawJsonValue): string | undefined {
+  return Boolean(pick(raw, 'ok')) ? undefined : str(pick(raw, 'error')) || 'RPC failed';
+}
+
+function mapMemoryReviewInbox(raw: RawJsonValue): MemoryReviewInbox {
+  const recallReport = pick(raw, 'recall');
+  const auditReport = pick(raw, 'auditTrail');
+  const recall = rpcReportResult(recallReport);
+  const audit = rpcReportResult(auditReport);
+  const degradedReasons = [rpcReportError(recallReport), rpcReportError(auditReport)].filter(
+    (value): value is string => Boolean(value)
   );
+  const auditEvents = arr(pick(audit, 'events')).map((event, i) => ({
+    id: str(pick(event, 'hash'), `audit-${i}`),
+    action: str(pick(event, 'action'), 'unknown'),
+    actor: str(pick(event, 'actor'), 'daemon'),
+    at: str(pick(event, 'ts', 'createdAt', 'at'), ''),
+    subjectId: str(pick(event, 'subjectID', 'subjectId')) || undefined
+  }));
+  const lastAuditBySubject = new Map<string, string>();
+  for (const event of auditEvents) {
+    if (event.subjectId) lastAuditBySubject.set(event.subjectId, event.id);
+  }
+  const items = arr(pick(recall, 'hits')).map((hit, i): MemoryReviewItem => {
+    const id = str(pick(hit, 'memoryID', 'memoryId', 'id'), `memory-${i}`);
+    const sourcePath = str(pick(hit, 'sourcePath', 'source_path'));
+    const projectID = str(pick(hit, 'projectID', 'projectId'));
+    return {
+      id,
+      body: str(pick(hit, 'bodyRedacted', 'snippet', 'text', 'body'), '(Memory contents unavailable)'),
+      kind: str(pick(hit, 'kind'), 'memory'),
+      confidence: Math.max(0, Math.min(1, num(pick(hit, 'confidence'), 1))),
+      sourceLabel: sourcePath || projectID || 'Daemon memory recall',
+      status: 'approved',
+      canApprove: false,
+      auditHash: lastAuditBySubject.get(id)
+    };
+  });
+  return {
+    items,
+    auditEvents,
+    degradedReason: degradedReasons.join(' · ') || undefined
+  };
+}
+
+function mapDatabaseWorkspaceStatus(raw: RawJsonValue): DatabaseWorkspaceStatus {
+  const indexReport = pick(raw, 'indexStatus');
+  const exploreReport = pick(raw, 'explore');
+  const diagnosticsReport = pick(raw, 'diagnostics');
+  const opsReport = pick(raw, 'opsDiagnostics');
+  const index = rpcReportResult(indexReport);
+  const explore = rpcReportResult(exploreReport);
+  const diagnostics = rpcReportResult(diagnosticsReport);
+  const ops = rpcReportResult(opsReport);
+  const degradedReasons = [
+    rpcReportError(indexReport),
+    rpcReportError(exploreReport),
+    rpcReportError(diagnosticsReport),
+    rpcReportError(opsReport)
+  ].filter((value): value is string => Boolean(value));
+  const repoMap = pick(explore, 'repoMap');
+  const filesRaw = arr(pick(explore, 'files')).length > 0 ? arr(pick(explore, 'files')) : arr(pick(repoMap, 'topFiles'));
+  return {
+    sourceLabel: 'live daemon code-memory RPCs',
+    projectID: str(pick(index, 'projectID', 'projectId'), str(pick(explore, 'projectID', 'projectId'), 'unknown')),
+    projectRoot: str(pick(index, 'projectRoot'), str(pick(explore, 'projectRoot'))) || undefined,
+    indexedAt: str(pick(index, 'indexedAt')) || undefined,
+    artifactCount: num(pick(index, 'artifactCount'), num(pick(repoMap, 'artifactCount'))),
+    chunkCount: num(pick(index, 'chunkCount')),
+    symbolCount: num(pick(index, 'symbolCount'), num(pick(repoMap, 'symbolCount'))),
+    referenceCount: num(pick(index, 'referenceCount')),
+    callEdgeCount: num(pick(index, 'callEdgeCount')),
+    rejectedCount: num(pick(index, 'rejectedCount')),
+    storageByteCount: num(pick(index, 'storageByteCount')),
+    storageBudgetBytes: num(pick(index, 'storageBudgetBytes')),
+    storageWithinBudget: Boolean(pick(index, 'storageWithinBudget')),
+    productionReady: Boolean(pick(index, 'productionReady')),
+    productionReadinessReasons: arr(pick(index, 'productionReadinessReasons')).map((v) => str(v)).filter(Boolean),
+    parserAvailable: Boolean(pick(index, 'parserAvailable')),
+    databaseEncrypted: Boolean(pick(index, 'databaseEncrypted')),
+    hostedCodeToolsEnabled: Boolean(pick(index, 'hostedCodeToolsEnabled')),
+    semanticAvailable: Boolean(pick(index, 'semanticAvailable')),
+    files: filesRaw.map((file, i): DatabaseWorkspaceFile => ({
+      id: str(pick(file, 'filePath'), `file-${i}`),
+      filePath: str(pick(file, 'filePath'), `file-${i}`),
+      lang: str(pick(file, 'lang'), 'unknown'),
+      symbolCount: num(pick(file, 'symbolCount'))
+    })),
+    languages: arr(pick(repoMap, 'languages')).map((lang, i) => ({
+      id: str(pick(lang, 'lang'), `lang-${i}`),
+      lang: str(pick(lang, 'lang'), 'unknown'),
+      fileCount: num(pick(lang, 'fileCount')),
+      byteCount: num(pick(lang, 'byteCount'))
+    })),
+    diagnostics: arr(pick(diagnostics, 'diagnostics')).map((diag, i): DatabaseWorkspaceDiagnostic => ({
+      id: `${str(pick(diag, 'filePath'), 'diagnostic')}-${i}`,
+      filePath: str(pick(diag, 'filePath'), 'unknown'),
+      tool: str(pick(diag, 'tool'), 'diagnostic'),
+      cachedAt: str(pick(diag, 'cachedAt'), '')
+    })),
+    ops: ops
+      ? {
+          schemaVersion: num(pick(ops, 'schemaVersion')),
+          databaseFileBytes: num(pick(ops, 'databaseFileBytes')),
+          totalArtifactCount: num(pick(ops, 'totalArtifactCount')),
+          totalSymbolCount: num(pick(ops, 'totalSymbolCount')),
+          totalStorageByteCount: num(pick(ops, 'totalStorageByteCount')),
+          agentMemoryCount: num(pick(ops, 'agentMemoryCount')),
+          pendingCloudForgetCount: num(pick(ops, 'pendingCloudForgetCount')),
+          projectCount: arr(pick(ops, 'projects')).length
+        }
+      : undefined,
+    degradedReasons
+  };
+}
+
+function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
+  return {
+    projectID: str(pick(raw, 'projectID', 'projectId'), 'unknown'),
+    projectRoot: str(pick(raw, 'projectRoot'), ''),
+    indexedFiles: num(pick(raw, 'indexedFiles')),
+    chunkCount: num(pick(raw, 'chunkCount')),
+    symbolCount: num(pick(raw, 'symbolCount')),
+    watching: typeof pick(raw, 'watching') === 'boolean' ? Boolean(pick(raw, 'watching')) : undefined,
+    pollIntervalSeconds: num(pick(raw, 'pollIntervalSeconds')),
+    auditHash: str(pick(raw, 'auditHash')) || undefined
+  };
 }
 
 function mapAccountStatus(raw: RawJsonValue): AccountStatus {
@@ -528,6 +765,11 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     missionApprovalDecision: async (id, decision) => {
       await invoke<void>('mission_approval_decision', { id, decision });
     },
+    // P06 — daemon.mission.create
+    missionCreate: async (input) => {
+      const raw = await invoke<RawJsonValue>('mission_create', input);
+      return mapMissionMutation(raw);
+    },
     // P07 — daemon.config.get → read-only settings snapshot
     configSnapshot: async () => {
       const raw = await invoke<RawJsonValue>('config_snapshot');
@@ -547,6 +789,32 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     memoryBoundaries: async () => {
       const raw = await invoke<RawJsonValue>('memory_boundaries');
       return mapMemoryBoundaries(raw);
+    },
+    // P07 — daemon.memory.recall + daemon.memory.audit_trail
+    memoryReviewInbox: async () => {
+      const raw = await invoke<RawJsonValue>('memory_review_inbox');
+      return mapMemoryReviewInbox(raw);
+    },
+    // P07 — daemon.memory.forget; daemon has no approve/reject review-row RPC on Linux.
+    memoryReviewDecision: async (id, decision) => {
+      if (decision === 'rejected') {
+        await invoke<RawJsonValue>('memory_forget', { memoryId: id });
+      }
+    },
+    // P07 — daemon.code.index_status + explore + diagnostics + ops_diagnostics
+    databaseWorkspaceStatus: async (projectPath) => {
+      const raw = await invoke<RawJsonValue>('database_workspace_status', { projectPath });
+      return mapDatabaseWorkspaceStatus(raw);
+    },
+    // P07 — daemon.code.index_project
+    databaseIndexProject: async (projectPath) => {
+      const raw = await invoke<RawJsonValue>('database_index_project', { projectPath });
+      return mapDatabaseIndexAction(raw);
+    },
+    // P07 — daemon.code.watch_project (poll-only on Linux)
+    databaseWatchProject: async (projectPath) => {
+      const raw = await invoke<RawJsonValue>('database_watch_project', { projectPath });
+      return mapDatabaseIndexAction(raw);
     },
     // P08 — derived from daemon.config.get (cloud/sync subtree)
     accountStatus: async () => {
