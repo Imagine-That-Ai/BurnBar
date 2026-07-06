@@ -159,7 +159,10 @@ fn probe_daemon_health() -> DaemonHealth {
             ..Default::default()
         };
     }
-    let result = parsed.get("result").cloned().unwrap_or(serde_json::json!({}));
+    let result = parsed
+        .get("result")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
     DaemonHealth {
         ok: result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
         protocol_version: result
@@ -352,8 +355,7 @@ fn call_daemon_method(
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     reader.read_line(&mut line).map_err(|e| e.to_string())?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(line.trim()).map_err(|e| e.to_string())?;
+    let parsed: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| e.to_string())?;
     if let Some(err) = parsed
         .get("error")
         .and_then(|e| e.get("message"))
@@ -447,6 +449,168 @@ fn mission_approval_decision(id: String, decision: String) -> Result<serde_json:
 #[tauri::command]
 fn config_snapshot() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.config.get", None)
+}
+
+#[tauri::command]
+fn config_update(snapshot: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.config.update",
+        Some(serde_json::json!({ "snapshot": snapshot })),
+    )
+}
+
+#[tauri::command]
+fn provider_credential_slot_upsert(params: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.provider.credential_slot.upsert", Some(params))
+}
+
+#[tauri::command]
+fn provider_credential_slot_remove(
+    provider_id: String,
+    slot_id: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.credential_slot.remove",
+        Some(serde_json::json!({ "providerID": provider_id, "slotID": slot_id })),
+    )
+}
+
+#[tauri::command]
+fn provider_model_variant_upsert(
+    provider_id: String,
+    variant: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.model_variant.upsert",
+        Some(serde_json::json!({ "providerID": provider_id, "variant": variant })),
+    )
+}
+
+#[tauri::command]
+fn provider_model_variant_remove(
+    provider_id: String,
+    variant_id: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.model_variant.remove",
+        Some(serde_json::json!({ "providerID": provider_id, "variantID": variant_id })),
+    )
+}
+
+#[tauri::command]
+fn provider_model_alias_upsert(
+    provider_id: String,
+    alias: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.model_alias.upsert",
+        Some(serde_json::json!({ "providerID": provider_id, "alias": alias })),
+    )
+}
+
+#[tauri::command]
+fn provider_model_alias_remove(
+    provider_id: String,
+    alias_id: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.model_alias.remove",
+        Some(serde_json::json!({ "providerID": provider_id, "aliasID": alias_id })),
+    )
+}
+
+#[tauri::command]
+fn provider_custom_model_upsert(
+    provider_id: String,
+    custom_model: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.custom_model.upsert",
+        Some(serde_json::json!({ "providerID": provider_id, "customModel": custom_model })),
+    )
+}
+
+#[tauri::command]
+fn provider_custom_model_remove(
+    provider_id: String,
+    model_id: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.custom_model.remove",
+        Some(serde_json::json!({ "providerID": provider_id, "modelID": model_id })),
+    )
+}
+
+#[tauri::command]
+fn provider_model_display_name_set(
+    provider_id: String,
+    model_id: String,
+    display_name: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.model_display_name.set",
+        Some(
+            serde_json::json!({ "providerID": provider_id, "modelID": model_id, "displayName": display_name }),
+        ),
+    )
+}
+
+#[tauri::command]
+fn provider_model_display_name_clear(
+    provider_id: String,
+    model_id: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.provider.model_display_name.clear",
+        Some(serde_json::json!({ "providerID": provider_id, "modelID": model_id })),
+    )
+}
+
+#[tauri::command]
+fn proxy_route_log_recent(limit: i32) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.proxy.route_log.recent",
+        Some(serde_json::json!({ "limit": limit })),
+    )
+}
+
+#[tauri::command]
+fn proxy_route_log_clear() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.proxy.route_log.clear", Some(serde_json::json!({})))
+}
+
+#[tauri::command]
+fn notification_config_get() -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.notification.config.get",
+        Some(serde_json::json!({})),
+    )
+}
+
+#[tauri::command]
+fn notification_config_update(config: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.notification.config.update",
+        Some(serde_json::json!({ "config": config })),
+    )
+}
+
+#[tauri::command]
+fn notification_health() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.notification.health", Some(serde_json::json!({})))
+}
+
+#[tauri::command]
+fn notification_command(
+    command: String,
+    arguments: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.notification.command",
+        Some(
+            serde_json::json!({ "command": command, "arguments": arguments, "actor": "linux-shell" }),
+        ),
+    )
 }
 
 // ───────────────── P07: db status ─────────────────
@@ -601,6 +765,23 @@ pub fn run() {
             mission_list,
             mission_approval_decision,
             config_snapshot,
+            config_update,
+            provider_credential_slot_upsert,
+            provider_credential_slot_remove,
+            provider_model_variant_upsert,
+            provider_model_variant_remove,
+            provider_model_alias_upsert,
+            provider_model_alias_remove,
+            provider_custom_model_upsert,
+            provider_custom_model_remove,
+            provider_model_display_name_set,
+            provider_model_display_name_clear,
+            proxy_route_log_recent,
+            proxy_route_log_clear,
+            notification_config_get,
+            notification_config_update,
+            notification_health,
+            notification_command,
             db_status,
             project_list,
             memory_boundaries,

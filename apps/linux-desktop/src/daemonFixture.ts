@@ -9,7 +9,10 @@ import type {
   DbStatus,
   ProjectEntry,
   MemoryBoundary,
-  AccountStatus
+  AccountStatus,
+  NotificationConfig,
+  NotificationHealth,
+  ProxyRouteLogEntry
 } from './tauriBridge.js';
 
 export type DaemonRouteFixture = {
@@ -340,7 +343,64 @@ export function fixtureConfigSnapshot(): ConfigSnapshot {
     },
     secretServiceStatus: 'locked',
     telemetryEnabled: false,
-    privacyOptIn: false
+    privacyOptIn: false,
+    routerMode: 'providerFamilyFailover',
+    providers: [
+      {
+        providerID: 'anthropic',
+        isEnabled: true,
+        baseURL: 'https://api.anthropic.com',
+        preferredModelIDs: ['claude-opus-4-8', 'claude-sonnet-4-6'],
+        disabledAdvertisedModelIDs: [],
+        preferredCredentialSlotID: 'anthropic-team',
+        credentialSlots: [
+          {
+            slotID: 'anthropic-team',
+            label: 'Team workspace',
+            isEnabled: true,
+            status: 'ready',
+            lastQuotaRemainingPercent: 72,
+            authMethodID: 'api_key',
+            updatedAt: new Date(Date.now() - 600_000).toISOString()
+          }
+        ],
+        modelVariants: [
+          {
+            variantID: 'claude-opus-4-8-xhigh',
+            label: 'XHigh',
+            baseModelID: 'claude-opus-4-8',
+            thinkingLevel: 'xhigh',
+            maxOutputTokens: 8192
+          }
+        ],
+        modelAliases: [
+          {
+            aliasID: 'openburnbar/primary',
+            baseModelID: 'claude-opus-4-8',
+            displayName: 'Primary reasoning',
+            hidesBaseModel: false
+          }
+        ],
+        modelDisplayOverrides: [
+          { modelID: 'claude-opus-4-8', displayName: 'Claude Opus routed' }
+        ],
+        customModels: [
+          { modelID: 'claude-latest-preview', displayName: 'Claude latest preview' }
+        ]
+      },
+      {
+        providerID: 'openai',
+        isEnabled: false,
+        baseURL: 'https://api.openai.com/v1',
+        preferredModelIDs: ['gpt-5'],
+        disabledAdvertisedModelIDs: ['gpt-4.1'],
+        credentialSlots: [],
+        modelVariants: [],
+        modelAliases: [],
+        modelDisplayOverrides: [],
+        customModels: []
+      }
+    ]
   };
 }
 
@@ -373,5 +433,54 @@ export function fixtureAccountStatus(): AccountStatus {
     trustClass: 'linux-lower-trust',
     syncState: 'active',
     lastSyncAt: new Date(Date.now() - 1_800_000).toISOString()
+  };
+}
+
+export function fixtureProxyRouteLog(): ProxyRouteLogEntry[] {
+  return [
+    {
+      id: 'fx-route-1',
+      occurredAt: new Date(Date.now() - 300_000).toISOString(),
+      endpoint: '/v1/messages',
+      clientModelSlug: 'openburnbar/primary',
+      routingModelSlug: 'claude-opus-4-8',
+      upstreamModelSlug: 'claude-opus-4-8',
+      providerName: 'Anthropic',
+      accountLabel: 'Team workspace',
+      finalStatus: 'exact',
+      rewriteKind: 'model_alias',
+      exactModelInvariant: 'passed',
+      streamed: true,
+      httpStatus: 200
+    }
+  ];
+}
+
+export function fixtureNotificationConfig(): NotificationConfig {
+  return {
+    defaultSnoozeMinutes: 30,
+    nudgeHoursLocal: [9, 13, 17],
+    local: { isEnabled: true, quietHoursStart: 22, quietHoursEnd: 7 },
+    telegram: {
+      isEnabled: true,
+      botTokenConfigured: true,
+      botToken: null,
+      botTokenHint: '••••7391',
+      chatID: '123456',
+      supportedCommands: ['help', 'pending', 'followups', 'latest', 'status']
+    },
+    calendar: { isEnabled: false, defaultDurationMinutes: 30, defaultCalendarName: 'OpenBurnBar' }
+  };
+}
+
+export function fixtureNotificationHealth(): NotificationHealth {
+  const checkedAt = new Date().toISOString();
+  return {
+    checkedAt,
+    channels: [
+      { channel: 'local', status: 'healthy', detail: null, checkedAt },
+      { channel: 'telegram', status: 'healthy', detail: 'Bot token configured', checkedAt },
+      { channel: 'calendar', status: 'disabled', detail: 'Calendar export is off', checkedAt }
+    ]
   };
 }
