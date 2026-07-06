@@ -1,1 +1,3 @@
-
+bdd000bef3e4b38074a7d1f81d16974ccba5b0386e54bec9ace968e3e7cec9ea  docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_arm64.deb
+9a48f234784a6abffdcdbf06267f4d68518dc129b8a61d23f38c9b38f4fe8d9b  docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm
+64b6344a73a79bf6a798dbf526ac8aa2edc44cba031adb237ce8be784d9c9c94  docs/linux-port/evidence/mission-001-release/artifacts/openburnbar-daemon-0.1.0-linux-aarch64

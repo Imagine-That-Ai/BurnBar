@@ -27,7 +27,14 @@ const appDir = path.join(repoRoot, 'apps/linux-desktop');
 const manifest = readJson(manifestPath);
 const requestedVersion = versionArgIndex >= 0 ? process.argv[versionArgIndex + 1] : null;
 const version = requestedVersion?.trim() || packageVersion();
-const git = gitInfo();
+const rawGit = gitInfo();
+const generatedEvidencePrefix = `${relative(outDir)}/`;
+const dirtyInputEntries = rawGit.dirtyEntries.filter((entry) => !entry.slice(3).startsWith(generatedEvidencePrefix));
+const git = {
+  ...rawGit,
+  dirty: dirtyInputEntries.length > 0,
+  dirtyEntries: dirtyInputEntries
+};
 if (git.dirty) {
   console.error(JSON.stringify({
     error: 'release checkout is dirty before artifact generation',
@@ -41,6 +48,13 @@ const sidecarDir = path.join(outDir, 'sidecars');
 fs.mkdirSync(logsDir, { recursive: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
 fs.mkdirSync(sidecarDir, { recursive: true });
+
+const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() || '4';
+const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
+const packageBuildEnv = {
+  ...process.env,
+  CARGO_BUILD_JOBS: cargoBuildJobs
+};
 
 function writeLog(name, steps) {
   const body = steps
@@ -61,7 +75,10 @@ const buildSteps = [];
 if (!args.has('--skip-tauri')) {
   buildSteps.push(runStep('npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir }));
   buildSteps.push(runStep('npm', ['run', 'build'], { cwd: appDir }));
-  buildSteps.push(runStep('npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], { cwd: appDir }));
+  buildSteps.push(runStep('npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], {
+    cwd: appDir,
+    env: packageBuildEnv
+  }));
 }
 writeLog('package-build.log', buildSteps);
 
@@ -80,6 +97,9 @@ const daemonSteps = [];
 if (!args.has('--skip-daemon')) {
   daemonSteps.push(runStep('swift', [
     'build',
+    '--disable-automatic-resolution',
+    '--jobs',
+    swiftBuildJobs,
     '--package-path',
     'OpenBurnBarDaemon',
     '-c',

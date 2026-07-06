@@ -51,6 +51,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         procps \
         rpm \
         scrot \
+        squashfs-tools \
         sqlite3 \
         tcl \
         x11-utils \
