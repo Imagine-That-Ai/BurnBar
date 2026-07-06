@@ -72,6 +72,52 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(ended.session.phase, .cooldown)
     }
 
+    func testSessionForwardsCapturedFramesAsOutboundRelayMedia() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let controller = MercuryLinuxMediaSessionController(channel: channel)
+        try await controller.start()
+        defer { channel.stop() }
+
+        let replies = RecordingMercuryReplies()
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node") { frame in
+            await replies.append(frame)
+        }
+        let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
+        XCTAssertTrue(accept.accepted)
+
+        let payload = Data([0xAB, 0xCD, 0xEF])
+        await controller.ingestCapturedFrame(MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            presentationTimestampMillis: 777,
+            payload: payload
+        ))
+
+        let sent = await replies.frames
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual(sent.first?.type, .mediaMirrorAck)
+
+        let streamFrame = try XCTUnwrap(sent.last)
+        XCTAssertEqual(streamFrame.type, .mediaStreamFrame)
+        XCTAssertEqual(streamFrame.uid, "uid-1")
+        XCTAssertEqual(streamFrame.connectionId, "conn-1")
+        XCTAssertEqual(streamFrame.media?.streamClass, "media.screen.video")
+        XCTAssertNil(streamFrame.media?.sealedFramePosition)
+
+        let encodedBase64 = try XCTUnwrap(streamFrame.media?.encodedFrameBase64)
+        let encoded = try XCTUnwrap(Data(base64Encoded: encodedBase64))
+        let decoded = try MediaPacketCodec().decode(encoded).frame
+        XCTAssertEqual(decoded.kind, .videoNAL)
+        XCTAssertEqual(decoded.flags, [.keyframe])
+        XCTAssertEqual(decoded.gopID, 1)
+        XCTAssertEqual(decoded.frameIndex, 0)
+        XCTAssertEqual(decoded.presentationTimestampMillis, 777)
+        XCTAssertEqual(decoded.payload, payload)
+    }
+
     func testRPCDecodeAndDispatchForMediaMethods() async throws {
         let server = BurnBarDaemonServer()
         let decoder = JSONDecoder()
@@ -209,11 +255,12 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(capability.mediaSocketPath, "/run/user/501/openburnbar-media.sock")
         XCTAssertTrue(capability.supportsDaemonToShellFrames)
         XCTAssertFalse(capability.supportsShellToDaemonControl)
-        XCTAssertFalse(capability.codecsKnown)
-        XCTAssertEqual(capability.codecs["vp9"], false)
-        XCTAssertEqual(capability.codecs["opus"], false)
+        XCTAssertTrue(capability.codecsKnown)
+        XCTAssertNotNil(capability.codecs["vp9"])
+        XCTAssertNotNil(capability.codecs["opus"])
         XCTAssertEqual(capability.codecs["h264"], false)
-        XCTAssertEqual(capability.codecs["av1"], false)
+        XCTAssertNotNil(capability.codecs["av1"])
+        XCTAssertEqual(capability.source, "COpenBurnBarMediaCapture.media_capability_probe")
     }
 
     func testFileOfferAcceptDownloadsToCollisionSafePathAndAcknowledges() async throws {

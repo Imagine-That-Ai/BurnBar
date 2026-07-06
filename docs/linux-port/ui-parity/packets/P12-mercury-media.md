@@ -19,6 +19,14 @@ Surface Mercury media on Linux: paired-device list, media session status (screen
 2. If the daemon lacks a method, the surface renders the **capability-absent** state ("Media engine not yet available on this Linux build") — a named honest state, not an error.
 3. Fixtures: 2 paired devices + one active screen-share session.
 
+## W5-F5 outbound Linux capture
+
+The Linux shell media socket is daemon-to-shell only: daemon-origin frames flow to the shell viewer as `[u32 length][kind][flags][ptsMs][payload]`. Outbound Linux screen capture is daemon-owned. During an accepted mirror session the daemon opens or receives the Wayland portal PipeWire remote, starts `media_capture_start(...)` through `COpenBurnBarMediaCapture`, wraps callback frames with `MediaPacketCodec`, and forwards them to the phone as `media.stream.frame`.
+
+VAL-CU-001 proves the Wayland portal path: `CreateSession -> SelectSources -> Start` returns a PipeWire `node_id`, and `OpenPipeWireRemote` returns an fd that produces frames on Sway/PipeWire. That fd is process-local. If a helper or shell process ever obtains it, it must pass the descriptor to the daemon with Unix `SCM_RIGHTS`; serializing the numeric fd through JSON or Tauri command params is invalid.
+
+The shell contract remains the five daemon RPC-backed Tauri commands: `media_session_state`, `media_accept_call`, `media_decline_call`, `media_end_call`, and `media_capability_get`, plus viewer events `media-incoming-call` and `media-call-state-changed`. Capability reporting uses the media C FFI probe and keeps H.264 false unless the user installs and enables it explicitly.
+
 ## Files
 
 `src/state/mediaStore.ts`; `src/surfaces/media/` (`MediaSection.tsx`, `DeviceRow.tsx`, `SessionStatusCard.tsx`) + tests; mount inside `SupportSurface` below diagnostics (coordinate with P09; Cross-agent receipt); `app.css` `/* ---- P12 media ---- */`.

@@ -111,7 +111,9 @@ fn linux_socket_path() -> PathBuf {
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
         let trimmed = runtime_dir.trim();
         if !trimmed.is_empty() {
-            return PathBuf::from(trimmed).join("openburnbar").join("daemon.sock");
+            return PathBuf::from(trimmed)
+                .join("openburnbar")
+                .join("daemon.sock");
         }
     }
     linux_support_dir().join("openburnbar-daemon.sock")
@@ -339,10 +341,16 @@ fn integration_label(kind: &str) -> &'static str {
 
 fn integration_dependency(kind: &str, discovery_method: &str) -> Option<String> {
     match kind {
-        "pixel_clock" => Some("AWTRIX HTTP endpoint, runtime agent, or _http._tcp mDNS".to_string()),
-        "google_cast" => Some("avahi-daemon + avahi-utils for _googlecast._tcp discovery".to_string()),
+        "pixel_clock" => {
+            Some("AWTRIX HTTP endpoint, runtime agent, or _http._tcp mDNS".to_string())
+        }
+        "google_cast" => {
+            Some("avahi-daemon + avahi-utils for _googlecast._tcp discovery".to_string())
+        }
         "awtrix_http" => Some("avahi-daemon + avahi-utils for _http._tcp discovery".to_string()),
-        "home_assistant" => Some("OPENBURNBAR_HOME_ASSISTANT_URL and daemon-held Home Assistant token".to_string()),
+        "home_assistant" => {
+            Some("OPENBURNBAR_HOME_ASSISTANT_URL and daemon-held Home Assistant token".to_string())
+        }
         "smart_hub_bridge" => Some("Linux SmartHub bridge on loopback HTTP".to_string()),
         _ if discovery_method.is_empty() => None,
         _ => Some(discovery_method.to_string()),
@@ -362,12 +370,21 @@ fn integration_config_location(kind: &str) -> &'static str {
 
 fn map_integration_state(kind: &str, status: &str, blocker: Option<&str>) -> &'static str {
     match status {
-        "control_ok" | "cast_reachable" | "home_assistant_control_ok" | "bridge_control_ok" => "connected",
-        "runtime_agent_detected" | "discoverable" | "api_reachable_control_blocked" | "bridge_reachable_control_blocked" => "configured",
+        "control_ok" | "cast_reachable" | "home_assistant_control_ok" | "bridge_control_ok" => {
+            "connected"
+        }
+        "runtime_agent_detected"
+        | "discoverable"
+        | "api_reachable_control_blocked"
+        | "bridge_reachable_control_blocked" => "configured",
         "disabled" => "disabled",
-        "blocked" | "blocked_no_runtime_agent_or_device" | "blocked_missing_home_assistant_url"
-        | "blocked_home_assistant_api_unreachable" | "blocked_bridge_not_reachable"
-        | "blocked_googlecast_control_unreachable" | "blocked_no_googlecast_instances"
+        "blocked"
+        | "blocked_no_runtime_agent_or_device"
+        | "blocked_missing_home_assistant_url"
+        | "blocked_home_assistant_api_unreachable"
+        | "blocked_bridge_not_reachable"
+        | "blocked_googlecast_control_unreachable"
+        | "blocked_no_googlecast_instances"
         | "blocked_until_bridge_health_reachable" => "unavailable",
         "configured" if kind == "home_assistant" => "configured",
         _ if blocker.map(|b| !b.trim().is_empty()).unwrap_or(false) => "unavailable",
@@ -381,7 +398,8 @@ fn map_parity_row(row: DeviceParityRow) -> Option<IntegrationStatusRow> {
         "pixel_clock" | "google_cast" | "awtrix_http" | "home_assistant" | "smart_hub_bridge" => {}
         _ => return None,
     }
-    let state = map_integration_state(kind, row.status.as_str(), row.blocker.as_deref()).to_string();
+    let state =
+        map_integration_state(kind, row.status.as_str(), row.blocker.as_deref()).to_string();
     let status_detail = row.status.replace('_', " ");
     let detail = row
         .blocker
@@ -547,10 +565,7 @@ fn call_daemon_method_with_timeout(
         .ok_or_else(|| "RPC response missing result".to_string())
 }
 
-fn call_daemon_method_report(
-    method: &str,
-    params: Option<serde_json::Value>,
-) -> serde_json::Value {
+fn call_daemon_method_report(method: &str, params: Option<serde_json::Value>) -> serde_json::Value {
     match call_daemon_method(method, params) {
         Ok(result) => serde_json::json!({
             "ok": true,
@@ -1186,22 +1201,46 @@ fn media_file_send(path: String, peer_id: Option<String>) -> Result<serde_json::
     )
 }
 
-fn media_phase(value: &serde_json::Value) -> Option<String> {
+fn media_session_source(value: &serde_json::Value) -> &serde_json::Value {
     value
+        .get("session")
+        .or_else(|| value.get("activeSession"))
+        .or_else(|| value.get("active_session"))
+        .unwrap_or(value)
+}
+
+fn media_phase(value: &serde_json::Value) -> Option<String> {
+    let session = media_session_source(value);
+    session
         .get("phase")
+        .or_else(|| session.get("state"))
+        .or_else(|| session.get("status"))
+        .or_else(|| value.get("phase"))
         .or_else(|| value.get("state"))
         .or_else(|| value.get("status"))
-        .or_else(|| value.get("activeSession").and_then(|session| session.get("state")))
         .and_then(|phase| phase.as_str())
         .map(|phase| phase.to_string())
 }
 
 fn media_request_id(value: &serde_json::Value) -> Option<String> {
-    value
+    let session = media_session_source(value);
+    session
         .get("requestId")
+        .or_else(|| session.get("requestID"))
+        .or_else(|| session.get("request_id"))
+        .or_else(|| value.get("requestId"))
+        .or_else(|| value.get("requestID"))
         .or_else(|| value.get("request_id"))
-        .or_else(|| value.get("incomingCall").and_then(|call| call.get("requestId")))
-        .or_else(|| value.get("incoming_call").and_then(|call| call.get("request_id")))
+        .or_else(|| {
+            value
+                .get("incomingCall")
+                .and_then(|call| call.get("requestId"))
+        })
+        .or_else(|| {
+            value
+                .get("incoming_call")
+                .and_then(|call| call.get("request_id"))
+        })
         .and_then(|request_id| request_id.as_str())
         .map(|request_id| request_id.to_string())
 }

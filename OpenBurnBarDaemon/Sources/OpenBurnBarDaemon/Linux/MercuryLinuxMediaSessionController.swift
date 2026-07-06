@@ -50,6 +50,7 @@ public actor MercuryLinuxMediaSessionController {
     private let channel: MercuryLinuxMediaChannel?
     private let fileTransferService: MediaFileTransferService?
     private let downloadDirectoryProvider: @Sendable () -> URL
+    private let captureEngine: MercuryLinuxCaptureEngine
     private let packetCodec = MediaPacketCodec()
     private let frameAEAD = MediaFrameAEAD()
     private var mediaFrameSealKey: PlatformSymmetricKey?
@@ -64,6 +65,8 @@ public actor MercuryLinuxMediaSessionController {
     private var lastControlRoute: MercuryControlRoute?
     private var fileTransfers: [String: FileTransferRecord] = [:]
     private var transferIDsByManifestID: [String: String] = [:]
+    private var outboundGOPID: UInt32 = 0
+    private var outboundFrameIndex: UInt32 = 0
 
     public init(
         channel: MercuryLinuxMediaChannel? = nil,
@@ -72,12 +75,14 @@ public actor MercuryLinuxMediaSessionController {
             URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
                 .appendingPathComponent("Downloads", isDirectory: true)
         },
+        captureEngine: MercuryLinuxCaptureEngine = MercuryLinuxCaptureEngine(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "linux-media")
     ) {
         self.logger = logger
         self.channel = channel ?? (try? MercuryLinuxMediaChannel())
         self.fileTransferService = fileTransferService
         self.downloadDirectoryProvider = downloadDirectoryProvider
+        self.captureEngine = captureEngine
     }
 
     public func start() throws {
@@ -88,6 +93,7 @@ public actor MercuryLinuxMediaSessionController {
     }
 
     public func stop() {
+        captureEngine.stop()
         channel?.stop()
         phase = .idle
         pending = nil
@@ -96,6 +102,8 @@ public actor MercuryLinuxMediaSessionController {
         startedAt = nil
         cooldownUntil = nil
         lastControlRoute = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = Date()
     }
 
@@ -195,9 +203,86 @@ public actor MercuryLinuxMediaSessionController {
         self.phase = .streaming
         self.startedAt = Date()
         self.cooldownUntil = nil
+        self.outboundGOPID = 0
+        self.outboundFrameIndex = 0
         self.updatedAt = Date()
         await sendDecision(for: pending, accepted: true, sessionID: resolvedSessionID, detail: nil)
         return DaemonMediaCallActionResponse(accepted: true, session: sessionSnapshot())
+    }
+
+    public func startOutboundCapture(_ request: MercuryLinuxCaptureRequest) throws {
+        guard phase == .streaming,
+              let active,
+              active.kind == .mirror else {
+            throw MercuryLinuxCaptureError.sessionNotStreaming
+        }
+        try captureEngine.start(request) { [weak self] frame in
+            Task { await self?.ingestCapturedFrame(frame) }
+        }
+        updatedAt = Date()
+    }
+
+    public func stopOutboundCapture() {
+        captureEngine.stop()
+    }
+
+    public func setOutboundCaptureBitrate(_ targetBitrateBps: UInt32) throws {
+        try captureEngine.setBitrate(targetBitrateBps)
+        updatedAt = Date()
+    }
+
+    public func ingestCapturedFrame(_ frame: MediaFrame) async {
+        guard phase == .streaming,
+              let active,
+              active.kind == .mirror,
+              let replySender = active.replySender else {
+            return
+        }
+
+        var outbound = frame
+        if outbound.flags.contains(.keyframe) {
+            outboundGOPID &+= 1
+            outboundFrameIndex = 0
+        }
+        outbound.gopID = outboundGOPID
+        outbound.frameIndex = outboundFrameIndex
+        outboundFrameIndex &+= 1
+
+        do {
+            var encoded = try packetCodec.encode(outbound)
+            var sealedPosition: HermesRealtimeRelaySealedMediaFramePosition?
+            if let mediaFrameSealKey {
+                encoded = try frameAEAD.seal(
+                    plaintext: encoded,
+                    key: mediaFrameSealKey,
+                    streamClass: active.streamClass,
+                    kind: outbound.kind.rawValue,
+                    gopID: outbound.gopID,
+                    frameIndex: outbound.frameIndex
+                )
+                sealedPosition = HermesRealtimeRelaySealedMediaFramePosition(
+                    kind: outbound.kind.rawValue,
+                    gopId: outbound.gopID,
+                    frameIndex: outbound.frameIndex
+                )
+            }
+            try await replySender(HermesRealtimeRelayFrame(
+                type: .mediaStreamFrame,
+                uid: active.uid,
+                connectionId: active.connectionID,
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: active.streamClass,
+                    encodedFrameBase64: encoded.base64EncodedString(),
+                    sealedFramePosition: sealedPosition
+                )
+            ))
+            updatedAt = Date()
+        } catch {
+            logger.warning(
+                "linux_media_capture_frame_forward_failed",
+                metadata: ["error": "\(error)"]
+            )
+        }
     }
 
     public func decline(_ request: DaemonMediaCallDeclineRequest) async -> DaemonMediaCallActionResponse {
@@ -716,6 +801,8 @@ public actor MercuryLinuxMediaSessionController {
         sessionID = nil
         startedAt = nil
         cooldownUntil = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = now
     }
 
@@ -752,6 +839,8 @@ public actor MercuryLinuxMediaSessionController {
         sessionID = nil
         startedAt = nil
         cooldownUntil = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = now
     }
 
@@ -808,12 +897,15 @@ public actor MercuryLinuxMediaSessionController {
 
     private func transitionToCooldown(reason: String) {
         _ = reason
+        captureEngine.stop()
         phase = .cooldown
         pending = nil
         active = nil
         sessionID = nil
         startedAt = nil
         cooldownUntil = Date().addingTimeInterval(2)
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = Date()
     }
 

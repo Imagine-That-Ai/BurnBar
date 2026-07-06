@@ -300,5 +300,6 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
         var be = value.bigEndian
         withUnsafeBytes(of: &be) { data.append(contentsOf: $0) }
     }
+
 }
 #endif
