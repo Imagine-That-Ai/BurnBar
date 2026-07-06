@@ -60,7 +60,7 @@ Baseline: macOS app = `AgentLens/` (~266K LOC) + `OpenBurnBarCore/` (~150K) + `O
 | 7 | Cloud sync (10+ domain services, Firestore listeners) | REST gateway + offline queue + fail-closed guard authored; **live transport deferred**; 8/9 callables `NotImplementedException` | Major |
 | 8 | E2EE / CloudVault / escrow / trusted devices | Crypto KAT byte-parity ✅; live round-trip deferred (C5); recovery/revoke callables unimplemented | Major |
 | 9 | App Check (device attestation) | Server half built; **Windows TPM/CNG client (R14) = last named kill-risk, unproven** | Kill-risk |
-| 10 | Daemon (54K LOC: HTTP gateway, provider router, Mission Control DAG, Pensieve, planner) | **No Windows counterpart decided/authored.** Mission Control UI runs `MissionDispatchDemoHost` ("Firestore later") | Unscoped — needs decision |
+| 10 | Daemon (54K LOC: HTTP gateway, provider router, Mission Control DAG, Pensieve, planner) | **DECIDED 2026-07-06 — WPD-0006** (`docs/windows-port/decisions/0006-windows-daemon-strategy.md`): no monolithic port; per-capability Tier-C substitution (34-row matrix: 9 substituted-already incl. `FirestoreMissionDispatchHost`/ConPTY/usage seams, 3 to-build in Waves 3–4, 18 named v1.1 deferrals, 4 N/A). Revive path = daemon Linux boundary build as a Windows Service | Decided — executing per WPD-0006 matrix |
 | 11 | Computer Use (full loop, Playwright, virtual HID, Agent Watch) | Core policy/token/audit code + 100 tests ✅; SendInput/UIA/capture/ViGEm adapters unproven; full loop = Phase 4 | Phase 4 |
 | 12 | Pet companion (100+ models, SceneKit/SpriteKit) | Behavior core + WinUI shell + WebView2 three.js host authored; glTF vendoring is a manual dev step; never run on Windows | Live proof |
 | 13 | Particles/backdrops (~30 substrates, KernelBackdrop) | 30 substrates ported (CPU); Win2D GPU render deferred; **60fps ARM64 spike (WINUI-017) mandatory, pending** | G3 blocker |
@@ -136,7 +136,13 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
 ### Wave 4 — G4: System integration
 1. Computer-use full loop on Windows: SendInput/UIA/Graphics.Capture/named-pipe + ViGEm, kill-switch + audit chain verified end-to-end.
 2. Integrations live: Cast device session, Home Assistant against a real instance, SmartHub bridge, Mercury live capture/transfer between Windows↔Mac.
-3. Decide and execute the **daemon strategy** (gap #10): either port `OpenBurnBarDaemon` capabilities (gateway, provider router, Mission Control scheduler, Pensieve) via Swift-on-Windows, or formally Tier-C-substitute per capability in the bundle. This is currently **unscoped** — it is the largest undecided parity item.
+3. ~~Decide~~ **DECIDED 2026-07-06 (WPD-0006)** and execute the **daemon strategy** (gap #10): **per-capability
+   Tier-C substitution — no monolithic `OpenBurnBarDaemon` port for v1.** The WinUI app process + portable C# cores
+   absorb daemon duties (9 capabilities already substituted; deferrals recorded as bundle drift D14). What remains
+   *executable* here is already Wave 4 item 1 scope (computer-use full loop: ViGEm + watchdog process) plus the two
+   Wave 3 item 1 rows (switcher shell, indexed/palette search). Revisit triggers (headless/multi-client Windows,
+   WS-D isolation, gateway demand) revive the shared Swift daemon via the Linux boundary build as a Windows Service.
+   See the 34-row matrix in `docs/windows-port/decisions/0006-windows-daemon-strategy.md`.
    **Exit:** G4; every live adapter demonstrated on real Windows hardware with evidence in the bundle.
 
 ### Wave 5 — G5: Ship
@@ -154,10 +160,10 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
 | Win11 Pro hardware validation pass | R14 TPM proof (Wave 2), all §5 evidence (Wave 5) |
 | Branch-protection flip for `pr-windows-full` (WS-A2) | Wave 0 §3 |
 | Store/winget publisher accounts | Wave 5 §2 |
-| Daemon strategy decision (port vs. substitute) | Wave 4 §3 scope |
+| ~~Daemon strategy decision (port vs. substitute)~~ **RESOLVED 2026-07-06** — Alberto deferred to the goal driver; WPD-0006 chose per-capability substitution | ~~Wave 4 §3 scope~~ closed |
 
 ### Rough sizing
-Wave 0: ~5–10 PRs. Wave 1: ~60–100. Wave 2: ~40–70. Wave 3: ~200–350 (dominated by the Phase-3 plan). Wave 4: ~80–150 (+ daemon decision, potentially +100–200 if ported). Wave 5: ~15–30. **Total remaining: roughly 400–700 PRs**, consistent with the master plan's 1,000–1,300 floor minus what's landed.
+Wave 0: ~5–10 PRs. Wave 1: ~60–100. Wave 2: ~40–70. Wave 3: ~200–350 (dominated by the Phase-3 plan). Wave 4: ~80–150 (daemon decision made — WPD-0006 substitution; the "+100–200 if ported" contingency is **retired**, daemon-attributed work folds into existing Wave 3/4 items). Wave 5: ~15–30. **Total remaining: roughly 400–700 PRs**, consistent with the master plan's 1,000–1,300 floor minus what's landed.
 
 ---
 
