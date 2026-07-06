@@ -27,6 +27,7 @@ struct BudgetBlockedError: Error, LocalizedError, Sendable {
 protocol BudgetRuleProviding: AnyObject {
     var rules: [BudgetRule] { get }
     var globalRules: [BudgetRule] { get }
+    var organizationRules: [BudgetRule] { get }
     func rules(forCredential providerID: String, accountID: String?) -> [BudgetRule]
     func rules(forProject projectName: String) -> [BudgetRule]
 }
@@ -148,11 +149,37 @@ final class BudgetGate {
     private func matchingRules(credential: BudgetCredentialIdentity, projectName: String?) -> [BudgetRule] {
         var rules: [BudgetRule] = []
         rules.append(contentsOf: settings.rules(forCredential: credential.providerID, accountID: credential.slotID))
+        rules.append(contentsOf: settings.organizationRules.filter { rule in
+            Self.matchesOrganizationRuleCandidate(rule, credential: credential)
+        })
         if let projectName, !projectName.isEmpty {
             rules.append(contentsOf: settings.rules(forProject: projectName))
         }
         rules.append(contentsOf: settings.globalRules)
         return rules.filter { $0.isEnabled && $0.amountUSD > 0 }
+    }
+
+    private static func matchesOrganizationRuleCandidate(
+        _ rule: BudgetRule,
+        credential: BudgetCredentialIdentity
+    ) -> Bool {
+        guard let identifier = nonEmpty(rule.identifier) else { return false }
+        let requestIdentifiers = [
+            nonEmpty(credential.slotID),
+            nonEmpty(credential.displayLabel),
+            nonEmpty(credential.providerAccountID),
+            nonEmpty(credential.providerAccountLabel)
+        ].compactMap { $0 }
+        if requestIdentifiers.contains(identifier) {
+            return true
+        }
+
+        // OpenAI-compatible gateway requests often only know the host label before the
+        // request is routed, while org spend is keyed by provider-account label in
+        // `token_usage`. Keep org rules in play so the ledger can match the recorded
+        // providerAccountLabel/providerAccountID instead of failing open at the prefilter.
+        return nonEmpty(credential.providerAccountID) == nil
+            && nonEmpty(credential.providerAccountLabel) == nil
     }
 
     /// The decision to return when the ledger read fails and current spend is unknown.
@@ -187,6 +214,12 @@ final class BudgetGate {
                 )
             )
         }
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func classify(
@@ -299,6 +332,8 @@ final class BudgetGate {
             providerID: providerID,
             slotID: slotID,
             displayLabel: candidate.displayLabel,
+            providerAccountID: slotID,
+            providerAccountLabel: candidate.displayLabel,
             billingMode: .unknown
         )
     }

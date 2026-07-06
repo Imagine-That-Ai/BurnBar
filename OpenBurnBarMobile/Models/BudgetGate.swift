@@ -84,11 +84,42 @@ final class BudgetGate {
     private func matchingRules(credential: BudgetCredentialIdentity, projectName: String?) -> [BudgetRule] {
         var rules: [BudgetRule] = []
         rules.append(contentsOf: settings.rules(forCredential: credential.providerID, accountID: credential.slotID))
+        rules.append(contentsOf: settings.organizationRules.filter { rule in
+            Self.matchesOrganizationRuleCandidate(rule, credential: credential)
+        })
         if let projectName, !projectName.isEmpty {
             rules.append(contentsOf: settings.rules(forProject: projectName))
         }
         rules.append(contentsOf: settings.globalRules)
         return rules.filter { $0.isEnabled && $0.amountUSD > 0 }
+    }
+
+    private static func matchesOrganizationRuleCandidate(
+        _ rule: BudgetRule,
+        credential: BudgetCredentialIdentity
+    ) -> Bool {
+        guard let identifier = nonEmpty(rule.identifier) else { return false }
+        let requestIdentifiers = [
+            nonEmpty(credential.slotID),
+            nonEmpty(credential.displayLabel),
+            nonEmpty(credential.providerAccountID),
+            nonEmpty(credential.providerAccountLabel)
+        ].compactMap { $0 }
+        if requestIdentifiers.contains(identifier) {
+            return true
+        }
+
+        // Older relay call sites only know the runtime/display label before dispatch; the
+        // durable provider-account label lives in the ledger rows. Do not drop org rules
+        // before the ledger can match `providerAccountLabel` / `providerAccountID`.
+        return nonEmpty(credential.providerAccountID) == nil
+            && nonEmpty(credential.providerAccountLabel) == nil
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func classify(
@@ -201,6 +232,8 @@ final class BudgetGate {
             providerID: providerID,
             slotID: slotID,
             displayLabel: candidate.displayLabel,
+            providerAccountID: slotID,
+            providerAccountLabel: candidate.displayLabel,
             billingMode: .unknown
         )
     }

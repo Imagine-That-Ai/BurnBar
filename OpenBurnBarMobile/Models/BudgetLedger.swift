@@ -23,14 +23,40 @@ protocol BudgetSpendDataSource: AnyObject, Sendable {
 /// `BudgetGate` calls into this actor on every request to ask: "if I let this request
 /// through at an estimated cost of $X, will rule R's running total cross its limit?"
 actor BudgetLedger {
+    private struct SessionSpendKey: Hashable, Sendable {
+        let providerID: String
+        let accountID: String?
+
+        init(providerID: String, accountID: String?) {
+            self.providerID = providerID
+            self.accountID = accountID.flatMap(Self.nonEmpty)
+        }
+
+        private static func nonEmpty(_ value: String) -> String? {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    private struct SessionSpendRecord: Sendable {
+        let key: SessionSpendKey
+        var accountLabel: String?
+        var cost: Double
+    }
+
+    private struct RollupSpend: Sendable {
+        var total: Double
+        var matchedAccountKeys: Set<SessionSpendKey> = []
+    }
+
     /// The data source providing rollup snapshots. Accessed on `@MainActor` when reading.
     private weak var dataSource: (any BudgetSpendDataSource)?
 
-    /// Per-session cost accumulator keyed by `"{providerID}_{accountID}"`. Captures spend
+    /// Per-session cost accumulator keyed by `(providerID, accountID)`. Captures spend
     /// that hasn't yet been reflected in the server-computed rollup (which only updates
     /// periodically via Cloud Functions). Added on top of rollup totals for real-time gate
     /// accuracy.
-    private var sessionSpend: [String: Double] = [:]
+    private var sessionSpend: [SessionSpendKey: SessionSpendRecord] = [:]
 
     /// Creates a ledger backed by the given rollup data source.
     init(dataSource: any BudgetSpendDataSource) {
@@ -43,8 +69,8 @@ actor BudgetLedger {
     /// current period. Used by `BudgetGate.evaluate`.
     func currentSpend(forRule rule: BudgetRule, reference: Date = Date()) async -> Double {
         let rollupSpend = await rollupSpend(forRule: rule)
-        let session = sessionSpendForRule(rule)
-        return rollupSpend + session
+        let session = sessionSpendForRule(rule, matchedAccountKeys: rollupSpend.matchedAccountKeys)
+        return rollupSpend.total + session
     }
 
     /// Batch version — runs `currentSpend` for each rule and returns a dictionary keyed by
@@ -65,10 +91,19 @@ actor BudgetLedger {
     /// - Parameters:
     ///   - providerID: The provider that served the request (e.g. "anthropic").
     ///   - accountID: The hashed account/slot ID, or nil for default accounts.
+    ///   - accountLabel: Human-facing account label when the caller has it. Organization
+    ///     rules use this to include first-session spend before the next rollup lands.
     ///   - cost: The cost of this single request in USD.
-    func recordSessionCost(providerID: String, accountID: String?, cost: Double) {
+    func recordSessionCost(providerID: String, accountID: String?, accountLabel: String? = nil, cost: Double) {
         let key = sessionKey(providerID: providerID, accountID: accountID)
-        sessionSpend[key, default: 0] += cost
+        let label = Self.nonEmpty(accountLabel)
+        if var record = sessionSpend[key] {
+            record.cost += cost
+            record.accountLabel = record.accountLabel ?? label
+            sessionSpend[key] = record
+        } else {
+            sessionSpend[key] = SessionSpendRecord(key: key, accountLabel: label, cost: cost)
+        }
     }
 
     /// Resets the session accumulator. Call on period boundaries (e.g. midnight for daily
@@ -81,22 +116,22 @@ actor BudgetLedger {
 
     /// Maps `BudgetPeriod` to the appropriate `RollupWindowKey` and extracts cost from the
     /// matching rollup document, filtered by the rule's scope.
-    private func rollupSpend(forRule rule: BudgetRule) async -> Double {
-        guard let source = self.dataSource else { return 0 }
+    private func rollupSpend(forRule rule: BudgetRule) async -> RollupSpend {
+        guard let source = self.dataSource else { return RollupSpend(total: 0) }
 
         let windowKey = rollupWindowKey(for: rule.period)
         let rollupsByWindow = await MainActor.run {
             source.rollupsByWindow
         }
-        guard let rollup = rollupsByWindow[windowKey] else { return 0 }
+        guard let rollup = rollupsByWindow[windowKey] else { return RollupSpend(total: 0) }
 
         switch rule.scope {
         case .global:
-            return rollup.totals.costUsd
+            return RollupSpend(total: rollup.totals.costUsd)
 
         case .credential:
             // Filter account summaries by providerID and optionally accountID
-            return rollup.accountSummaries
+            let total = rollup.accountSummaries
                 .filter { summary in
                     guard summary.providerID.rawValue == rule.providerID else { return false }
                     if let ruleAccountID = rule.accountID, !ruleAccountID.isEmpty {
@@ -106,48 +141,68 @@ actor BudgetLedger {
                 }
                 .compactMap(\.totalCost)
                 .reduce(0, +)
+            return RollupSpend(total: total)
 
         case .project:
             // Rollups don't currently have per-project breakdowns — future enhancement.
-            return 0
+            return RollupSpend(total: 0)
 
         case .organization:
-            // Filter account summaries by the organization identifier (matched against
-            // accountLabel or accountID, mirroring the macOS SQL join pattern).
-            guard let identifier = rule.identifier, !identifier.isEmpty else { return 0 }
-            return rollup.accountSummaries
-                .filter { $0.accountLabel == identifier || $0.accountID == identifier }
-                .compactMap(\.totalCost)
-                .reduce(0, +)
+            guard let identifier = Self.nonEmpty(rule.identifier) else { return RollupSpend(total: 0) }
+            let matches = rollup.accountSummaries.filter { Self.matchesOrganization($0, identifier: identifier) }
+            let total = matches.compactMap(\.totalCost).reduce(0, +)
+            let keys = Set(matches.map { sessionKey(providerID: $0.providerID.rawValue, accountID: $0.accountID) })
+            return RollupSpend(total: total, matchedAccountKeys: keys)
         }
     }
 
     /// Returns accumulated session spend relevant to the rule's scope.
-    private func sessionSpendForRule(_ rule: BudgetRule) -> Double {
+    private func sessionSpendForRule(_ rule: BudgetRule, matchedAccountKeys: Set<SessionSpendKey>) -> Double {
         switch rule.scope {
         case .global:
-            return sessionSpend.values.reduce(0, +)
+            return sessionSpend.values.map(\.cost).reduce(0, +)
 
         case .credential:
             guard let providerID = rule.providerID else { return 0 }
-            let key = sessionKey(providerID: providerID, accountID: rule.accountID)
-            return sessionSpend[key] ?? 0
+            if let accountID = Self.nonEmpty(rule.accountID) {
+                let key = sessionKey(providerID: providerID, accountID: accountID)
+                return sessionSpend[key]?.cost ?? 0
+            }
+            return sessionSpend.values
+                .filter { $0.key.providerID == providerID }
+                .map(\.cost)
+                .reduce(0, +)
 
         case .project:
             // Session accumulator doesn't track per-project (no project ID in relay responses).
             return 0
 
         case .organization:
-            // Organization scope would need to aggregate across all matching accounts;
-            // for now return the full session total as a conservative upper bound.
-            return sessionSpend.values.reduce(0, +)
+            guard let identifier = Self.nonEmpty(rule.identifier) else { return 0 }
+            return sessionSpend.values
+                .filter { record in
+                    matchedAccountKeys.contains(record.key)
+                        || record.key.accountID == identifier
+                        || record.accountLabel == identifier
+                }
+                .map(\.cost)
+                .reduce(0, +)
         }
     }
 
     /// Builds a stable dictionary key for session spend tracking.
-    private func sessionKey(providerID: String, accountID: String?) -> String {
-        let account = accountID ?? "_default"
-        return "\(providerID)_\(account)"
+    private nonisolated func sessionKey(providerID: String, accountID: String?) -> SessionSpendKey {
+        SessionSpendKey(providerID: providerID, accountID: accountID)
+    }
+
+    private nonisolated static func matchesOrganization(_ summary: RollupProviderAccountSummary, identifier: String) -> Bool {
+        summary.accountLabel == identifier || summary.accountID == identifier
+    }
+
+    private nonisolated static func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Maps a `BudgetPeriod` to the closest `RollupWindowKey`. The rollup windows don't

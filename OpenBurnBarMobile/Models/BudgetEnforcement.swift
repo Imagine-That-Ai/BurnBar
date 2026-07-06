@@ -132,7 +132,13 @@ final class BudgetEnforcement {
 /// raw secret never leaves the call frame; the resulting slot ID lines up with what the
 /// usage row would store under `providerAccountID`.
 enum MobileCredentialIdentity {
-    static func make(providerHint: String, bearerToken: String?, displayLabel: String) -> BudgetCredentialIdentity {
+    static func make(
+        providerHint: String,
+        bearerToken: String?,
+        displayLabel: String,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
+    ) -> BudgetCredentialIdentity {
         let secret = bearerToken ?? ""
         let mode = BudgetCredentialIdentity.billingMode(forSecretPrefix: secret)
         let slotID = secret.isEmpty ? "default" : hashedSlotID(secret)
@@ -140,6 +146,8 @@ enum MobileCredentialIdentity {
             providerID: providerHint,
             slotID: slotID,
             displayLabel: displayLabel,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel,
             billingMode: mode
         )
     }
