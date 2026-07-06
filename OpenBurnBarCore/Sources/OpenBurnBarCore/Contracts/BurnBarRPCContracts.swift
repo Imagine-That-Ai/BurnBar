@@ -48,6 +48,12 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     /// T-DMN-04: provision the daemon's pinned phone-control verifying key for a
     /// source device. First-party Mac app only; mutates daemon keychain trust state.
     case phoneControlPinProvision = "daemon.phone_control.pin.provision"
+    case daemonMediaSessionState = "daemon.media.session.state"
+    case daemonMediaCallAccept = "daemon.media.call.accept"
+    case daemonMediaCallDecline = "daemon.media.call.decline"
+    case daemonMediaCallEnd = "daemon.media.call.end"
+    case daemonMediaCapabilityGet = "daemon.media.capability.get"
+    case daemonMediaStatus = "daemon.media.status"
     case controllerSummary = "daemon.controller.summary"
     /// Aggregated controller runtime (summary + questions + followups +
     /// missions + notification health + simulator runs) in one round trip.
@@ -353,6 +359,184 @@ public struct BurnBarMembershipRestoreResponse: Codable, Hashable, Sendable {
         self.ok = ok
         self.membership = membership
         self.error = error
+    }
+}
+
+public enum DaemonMediaSessionPhase: String, Codable, Hashable, Sendable {
+    case idle
+    case ringing
+    case streaming
+    case cooldown
+}
+
+public enum DaemonMediaSessionKind: String, Codable, Hashable, Sendable {
+    case mirror
+    case call
+}
+
+public struct DaemonMediaPeerSnapshot: Codable, Hashable, Sendable {
+    public let connectionID: String
+    public let displayName: String
+    public let isOnline: Bool
+    public let lastSeenAt: Date
+    public let capabilities: [String]
+
+    public init(
+        connectionID: String,
+        displayName: String,
+        isOnline: Bool,
+        lastSeenAt: Date,
+        capabilities: [String]
+    ) {
+        self.connectionID = connectionID
+        self.displayName = displayName
+        self.isOnline = isOnline
+        self.lastSeenAt = lastSeenAt
+        self.capabilities = capabilities
+    }
+}
+
+public struct DaemonMediaSessionSnapshot: Codable, Hashable, Sendable {
+    public let phase: DaemonMediaSessionPhase
+    public let kind: DaemonMediaSessionKind?
+    public let sessionID: String?
+    public let requestID: String?
+    public let streamClass: String?
+    public let peer: DaemonMediaPeerSnapshot?
+    public let startedAt: Date?
+    public let updatedAt: Date
+    public let cooldownUntil: Date?
+    public let shellConnected: Bool
+    public let queuedFrameCount: Int
+    public let droppedFrameCount: Int
+
+    public init(
+        phase: DaemonMediaSessionPhase,
+        kind: DaemonMediaSessionKind? = nil,
+        sessionID: String? = nil,
+        requestID: String? = nil,
+        streamClass: String? = nil,
+        peer: DaemonMediaPeerSnapshot? = nil,
+        startedAt: Date? = nil,
+        updatedAt: Date,
+        cooldownUntil: Date? = nil,
+        shellConnected: Bool = false,
+        queuedFrameCount: Int = 0,
+        droppedFrameCount: Int = 0
+    ) {
+        self.phase = phase
+        self.kind = kind
+        self.sessionID = sessionID
+        self.requestID = requestID
+        self.streamClass = streamClass
+        self.peer = peer
+        self.startedAt = startedAt
+        self.updatedAt = updatedAt
+        self.cooldownUntil = cooldownUntil
+        self.shellConnected = shellConnected
+        self.queuedFrameCount = queuedFrameCount
+        self.droppedFrameCount = droppedFrameCount
+    }
+}
+
+public struct DaemonMediaCapabilityResponse: Codable, Hashable, Sendable {
+    public let platform: String
+    public let available: Bool
+    public let mediaSocketPath: String?
+    public let supportsDaemonToShellFrames: Bool
+    public let supportsShellToDaemonControl: Bool
+    public let codecsKnown: Bool
+    public let codecs: [String: Bool]
+    public let source: String
+    public let detail: String?
+
+    public init(
+        platform: String,
+        available: Bool,
+        mediaSocketPath: String?,
+        supportsDaemonToShellFrames: Bool,
+        supportsShellToDaemonControl: Bool,
+        codecsKnown: Bool,
+        codecs: [String: Bool],
+        source: String,
+        detail: String? = nil
+    ) {
+        self.platform = platform
+        self.available = available
+        self.mediaSocketPath = mediaSocketPath
+        self.supportsDaemonToShellFrames = supportsDaemonToShellFrames
+        self.supportsShellToDaemonControl = supportsShellToDaemonControl
+        self.codecsKnown = codecsKnown
+        self.codecs = codecs
+        self.source = source
+        self.detail = detail
+    }
+}
+
+public struct DaemonMediaStatusResponse: Codable, Hashable, Sendable {
+    public let capability: DaemonMediaCapabilityResponse
+    public let session: DaemonMediaSessionSnapshot
+
+    public init(
+        capability: DaemonMediaCapabilityResponse,
+        session: DaemonMediaSessionSnapshot
+    ) {
+        self.capability = capability
+        self.session = session
+    }
+}
+
+public struct DaemonMediaSessionStateResponse: Codable, Hashable, Sendable {
+    public let session: DaemonMediaSessionSnapshot
+
+    public init(session: DaemonMediaSessionSnapshot) {
+        self.session = session
+    }
+}
+
+public struct DaemonMediaCallAcceptRequest: Codable, Hashable, Sendable {
+    public let requestID: String?
+    public let sessionID: String?
+
+    public init(requestID: String? = nil, sessionID: String? = nil) {
+        self.requestID = requestID
+        self.sessionID = sessionID
+    }
+}
+
+public struct DaemonMediaCallDeclineRequest: Codable, Hashable, Sendable {
+    public let requestID: String?
+    public let reason: String?
+
+    public init(requestID: String? = nil, reason: String? = nil) {
+        self.requestID = requestID
+        self.reason = reason
+    }
+}
+
+public struct DaemonMediaCallEndRequest: Codable, Hashable, Sendable {
+    public let sessionID: String?
+    public let reason: String?
+
+    public init(sessionID: String? = nil, reason: String? = nil) {
+        self.sessionID = sessionID
+        self.reason = reason
+    }
+}
+
+public struct DaemonMediaCallActionResponse: Codable, Hashable, Sendable {
+    public let accepted: Bool
+    public let session: DaemonMediaSessionSnapshot
+    public let detail: String?
+
+    public init(
+        accepted: Bool,
+        session: DaemonMediaSessionSnapshot,
+        detail: String? = nil
+    ) {
+        self.accepted = accepted
+        self.session = session
+        self.detail = detail
     }
 }
 

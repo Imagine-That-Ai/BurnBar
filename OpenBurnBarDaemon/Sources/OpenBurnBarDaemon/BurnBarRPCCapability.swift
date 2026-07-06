@@ -31,6 +31,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     /// Computer-use / HID-adjacent agency (session start, invoke, approvals,
     /// panic-halt, audit export). The highest-risk group.
     case computerUse = "computer_use"
+    /// Mercury media session status and user call actions.
+    case media
     /// Mission-control + controller surface (missions, questions, followups,
     /// notifications, simulator).
     case missionControl = "mission_control"
@@ -84,6 +86,9 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             // config-credential writes so only a fully-trusted first-party peer
             // can pin a phone key.
             return .config
+        case .daemonMediaSessionState, .daemonMediaCapabilityGet, .daemonMediaStatus,
+             .daemonMediaCallAccept, .daemonMediaCallDecline, .daemonMediaCallEnd:
+            return .media
         case .controllerSummary, .controllerRuntimeSnapshot,
              .controllerProjectsList, .controllerProjectGet,
              .controllerProjectUpsert, .reviewRunRecord,
