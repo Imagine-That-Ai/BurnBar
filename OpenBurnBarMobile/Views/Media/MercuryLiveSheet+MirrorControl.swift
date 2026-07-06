@@ -616,12 +616,12 @@ extension MercuryLiveSheet {
     }
 
     func placeCall() async {
-        guard peer.canPlaceCall else {
-            lastError = "This Mac is not advertising call receive."
+        guard canPlaceCall else {
+            lastError = callStatusMessage ?? "This Mac is not advertising call receive."
             return
         }
-        guard controlStreamCoordinator.phase == .live else {
-            lastError = callStatusMessage ?? "Mercury is still connecting. Try again after the Mac shows as live."
+        guard let uid = uidProvider(), !uid.isEmpty else {
+            lastError = "Sign in to call your Mac."
             return
         }
         let requestID = "call_\(UUID().uuidString)"
@@ -631,6 +631,7 @@ extension MercuryLiveSheet {
         do {
             try await controlStreamCoordinator.sendCallInvite(
                 requestId: requestID,
+                uid: uid,
                 requesterDisplayName: deviceDisplayName(),
                 callKind: "video",
                 timeout: 4

@@ -390,11 +390,12 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
     func sendCallInvite(
         requestId: String,
+        uid: String,
         requesterDisplayName: String,
         callKind: String = "video",
         timeout: TimeInterval = 8
     ) async throws {
-        guard let uid = activeUID, let connectionID = activeConnectionID else {
+        guard activeUID == uid, let connectionID = activeConnectionID else {
             throw ControlStreamError.notLive
         }
         let invite = HermesRealtimeRelayCallInvite(

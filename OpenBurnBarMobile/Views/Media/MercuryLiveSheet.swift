@@ -357,8 +357,11 @@ struct MercuryLiveSheet: View {
             // Explicit close paths call `stopActiveMirror(reason:)`.
             mirrorTimeoutTask?.cancel()
             mirrorTimeoutTask = nil
-            callTimeoutTask?.cancel()
-            callTimeoutTask = nil
+            if pendingCallRequestID == nil {
+                callTimeoutTask?.cancel()
+                callTimeoutTask = nil
+                controlStreamCoordinator.callAckHandler = nil
+            }
             cooldownTickerTask?.cancel()
             cooldownTickerTask = nil
             errorDismissTask?.cancel()
@@ -366,7 +369,6 @@ struct MercuryLiveSheet: View {
             ackDismissTask?.cancel()
             ackDismissTask = nil
             awaitingRequestID = nil
-            pendingCallRequestID = nil
             pendingRemoteUnlockCredentialRequestID = nil
             remoteUnlockCredentialAckTimeoutTask?.cancel()
             remoteUnlockCredentialAckTimeoutTask = nil
@@ -375,7 +377,6 @@ struct MercuryLiveSheet: View {
             controlStreamCoordinator.mirrorFrameV2Handler = nil
             controlStreamCoordinator.focusContextHandler = nil
             controlStreamCoordinator.controlDeniedHandler = nil
-            controlStreamCoordinator.callAckHandler = nil
             controlStreamCoordinator.clipboardResponseHandler = nil
             controlStreamCoordinator.remoteUnlockStateHandler = nil
             controlStreamCoordinator.remoteUnlockResultHandler = nil
