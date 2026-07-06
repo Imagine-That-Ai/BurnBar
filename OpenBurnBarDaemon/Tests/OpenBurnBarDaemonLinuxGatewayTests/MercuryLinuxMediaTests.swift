@@ -33,6 +33,37 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(bytes.suffix(payload.count), payload)
     }
 
+    func testMediaChannelReadsLengthPrefixedShellFrames() async throws {
+        let socketPath = "/tmp/obb-media-\(UUID().uuidString).sock"
+        let recorder = RecordingShellFrames()
+        let channel = try MercuryLinuxMediaChannel(socketPath: socketPath, maxQueuedFrames: 4)
+        try channel.start { frame in
+            Task { await recorder.append(frame) }
+        }
+        defer { channel.stop() }
+
+        let client = try connectUnixSocket(path: socketPath)
+        defer { close(client) }
+
+        let payload = Data([0x10, 0x20, 0x30, 0x40])
+        let frame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            presentationTimestampMillis: 42,
+            payload: payload
+        )
+        try writeAll(MercuryLinuxMediaChannel.encodeShellFrame(frame), to: client)
+
+        let frames = await recorder.waitForCount(1)
+        XCTAssertEqual(frames.count, 1)
+        let captured = try XCTUnwrap(frames.first)
+        XCTAssertEqual(captured.kind, .videoNAL)
+        XCTAssertEqual(captured.flags, [.keyframe])
+        XCTAssertEqual(captured.presentationTimestampMillis, 42)
+        XCTAssertEqual(captured.payload, payload)
+        XCTAssertEqual(channel.snapshot().incomingFrameCount, 1)
+    }
+
     func testSessionPhaseTransitionsAndAckEmission() async throws {
         let channel = try MercuryLinuxMediaChannel(
             socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
@@ -69,6 +100,52 @@ final class MercuryLinuxMediaTests: XCTestCase {
         let ended = await controller.end(DaemonMediaCallEndRequest(sessionID: "session-1", reason: "test"))
         XCTAssertTrue(ended.accepted)
         XCTAssertEqual(ended.session.phase, .cooldown)
+    }
+
+    func testSessionForwardsShellFramesAsOutboundRelayMedia() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let controller = MercuryLinuxMediaSessionController(channel: channel)
+        try await controller.start()
+        defer { channel.stop() }
+
+        let replies = RecordingMercuryReplies()
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node") { frame in
+            await replies.append(frame)
+        }
+        let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
+        XCTAssertTrue(accept.accepted)
+
+        let payload = Data([0xAB, 0xCD, 0xEF])
+        await controller.ingestShellFrame(MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            presentationTimestampMillis: 777,
+            payload: payload
+        ))
+
+        let sent = await replies.frames
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual(sent.first?.type, .mediaMirrorAck)
+
+        let streamFrame = try XCTUnwrap(sent.last)
+        XCTAssertEqual(streamFrame.type, .mediaStreamFrame)
+        XCTAssertEqual(streamFrame.uid, "uid-1")
+        XCTAssertEqual(streamFrame.connectionId, "conn-1")
+        XCTAssertEqual(streamFrame.media?.streamClass, "media.screen.video")
+        XCTAssertNil(streamFrame.media?.sealedFramePosition)
+
+        let encodedBase64 = try XCTUnwrap(streamFrame.media?.encodedFrameBase64)
+        let encoded = try XCTUnwrap(Data(base64Encoded: encodedBase64))
+        let decoded = try MediaPacketCodec().decode(encoded).frame
+        XCTAssertEqual(decoded.kind, .videoNAL)
+        XCTAssertEqual(decoded.flags, [.keyframe])
+        XCTAssertEqual(decoded.gopID, 1)
+        XCTAssertEqual(decoded.frameIndex, 0)
+        XCTAssertEqual(decoded.presentationTimestampMillis, 777)
+        XCTAssertEqual(decoded.payload, payload)
     }
 
     func testRPCDecodeAndDispatchForMediaMethods() async throws {
@@ -155,7 +232,7 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertTrue(capability.available)
         XCTAssertEqual(capability.mediaSocketPath, "/run/user/501/openburnbar-media.sock")
         XCTAssertTrue(capability.supportsDaemonToShellFrames)
-        XCTAssertFalse(capability.supportsShellToDaemonControl)
+        XCTAssertTrue(capability.supportsShellToDaemonControl)
         XCTAssertFalse(capability.codecsKnown)
         XCTAssertEqual(capability.codecs["vp9"], false)
         XCTAssertEqual(capability.codecs["opus"], false)
@@ -241,6 +318,24 @@ final class MercuryLinuxMediaTests: XCTestCase {
         return data
     }
 
+    private func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
+        try data.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            var offset = 0
+            while offset < data.count {
+                let written = Glibc.write(fileDescriptor, baseAddress.advanced(by: offset), data.count - offset)
+                if written < 0 {
+                    if errno == EINTR { continue }
+                    throw POSIXError(.init(rawValue: errno) ?? .EIO)
+                }
+                if written == 0 {
+                    throw POSIXError(.EPIPE)
+                }
+                offset += written
+            }
+        }
+    }
+
     private func readUInt32BE(_ data: Data, at offset: Int) -> UInt32 {
         var raw: UInt32 = 0
         _ = withUnsafeMutableBytes(of: &raw) { dest in
@@ -255,6 +350,22 @@ final class MercuryLinuxMediaTests: XCTestCase {
             data.copyBytes(to: dest, from: offset..<(offset + 8))
         }
         return UInt64(bigEndian: raw)
+    }
+}
+
+private actor RecordingShellFrames {
+    private var stored: [MediaFrame] = []
+
+    func append(_ frame: MediaFrame) {
+        stored.append(frame)
+    }
+
+    func waitForCount(_ count: Int, timeoutSeconds: TimeInterval = 2) async -> [MediaFrame] {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while stored.count < count && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return stored
     }
 }
 
