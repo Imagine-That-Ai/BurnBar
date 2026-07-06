@@ -248,10 +248,20 @@ public actor MercuryLinuxMediaSessionController {
         outbound.frameIndex = outboundFrameIndex
         outboundFrameIndex &+= 1
 
+        // Fail closed: never egress a captured frame unsealed. If the media
+        // seal key was not established for this session, drop to cooldown
+        // rather than send plaintext over the relay (mirrors the inbound path).
+        guard let mediaFrameSealKey else {
+            logger.error("linux_media_outbound_seal_key_absent; ending capture session")
+            captureEngine.stop()
+            transitionToCooldown(reason: "seal_not_established")
+            return
+        }
+
         do {
             var encoded = try packetCodec.encode(outbound)
             var sealedPosition: HermesRealtimeRelaySealedMediaFramePosition?
-            if let mediaFrameSealKey {
+            do {
                 encoded = try frameAEAD.seal(
                     plaintext: encoded,
                     key: mediaFrameSealKey,
