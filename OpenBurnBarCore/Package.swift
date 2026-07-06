@@ -7,6 +7,11 @@ import Foundation
 let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD"] == "1"
 let buildLinuxSecurityOnly = ProcessInfo.processInfo.environment["OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD"] == "1"
+#if os(Windows)
+let buildOnWindows = true
+#else
+let buildOnWindows = false
+#endif
 // Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-3): this manifest is
 // host-evaluated, and this marker is an *Apple-vs-non-Apple* switch (Vendor
 // `.xcframework`s only exist for Apple). Windows joins Linux on the non-Apple
@@ -348,12 +353,7 @@ let openBurnBarCoreExcludes = [
     "Views",
     "CLITerminalSessionSupervisor.swift",
     "BrowserLaunchAdapter.swift",
-    "BurnBarPersistentVectorIndex.swift",
-    // HNSW index references BurnBarPersistentVectorIndexError (excluded above);
-    // the vector index is not part of the Foundation Engine subset.
-    "BurnBarHNSWVectorIndex.swift",
     "ChromeProfileDiscovery.swift",
-    "OpenBurnBarAgentContracts.swift",
     // Firebase App Check debug-token env writer uses POSIX setenv (Windows CRT
     // uses _putenv_s); App Check is not part of the Engine subset.
     "AppCheckDebugTokenEnvironment.swift",
@@ -384,13 +384,11 @@ let openBurnBarCoreExcludes = [
     "SharedModels/CLIAgentResumePresentation.swift",
     // Uses PiAgentRelayCrypto (defined in the excluded HermesRelayCrypto).
     "SharedModels/PiConnectionTypes.swift",
-    "SharedModels/CloudVaultCrypto.swift",
     "SharedModels/CloudVaultDeviceKeypair.swift",
     "SharedModels/EscrowDeviceSafetyCode.swift",
     "SharedModels/HermesRatchetCrypto.swift",
-    // Uses HermesRelayCrypto (excluded) for relay-envelope open/seal.
+    // Uses HermesRelayCrypto plus authenticated-request trust/runtime types outside the Engine subset.
     "SharedModels/HermesRelayAuthenticatedRequest.swift",
-    "SharedModels/HermesRelayCrypto.swift",
     "SharedModels/Insights",
     "SharedModels/InsightVerdictWidgetSnapshot.swift",
     "SharedModels/PensieveKnowledgeChunker.swift",
@@ -557,13 +555,13 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarComputerUseCore",
-            dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia", "Czlib", swiftCryptoDependency],
+            dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia", swiftCryptoDependency]
+                + (buildOnWindows ? [] : ["Czlib"]),
             exclude: computerUseCoreExcludes,
             linkerSettings: [
                 .linkedFramework("Security", .when(platforms: [.macOS])),
-                .linkedFramework("LocalAuthentication", .when(platforms: [.macOS])),
-                .linkedLibrary("z")
-            ]
+                .linkedFramework("LocalAuthentication", .when(platforms: [.macOS]))
+            ] + (buildOnWindows ? [] : [.linkedLibrary("z")])
         ),
         .target(
             name: "OpenBurnBarFirestoreModels",

@@ -1,9 +1,10 @@
 // Runtime DLL-search hardening for the Windows app (Phase 5 · R19 library-validation equivalent).
 //
-// Called ONCE at the very start of the app entry point (before any non-System32 DLL could be
-// loaded). It strips the current working directory and the legacy unsafe DLL search order so a
-// planted DLL in the app/download/CWD folder cannot hijack a LoadLibrary. This is the runtime
-// third of the R19 hardening trio (see HardeningPolicy for all three layers).
+// OpenBurnBar uses two runtime hardening modes:
+// 1. Apply() for non-XAML processes that can safely opt into SetDefaultDllDirectories.
+// 2. ApplyWinUICompatible() for the WinUI shell, where SetDefaultDllDirectories breaks WinUI 3
+//    ms-appx resource resolution for Microsoft.UI.Xaml themes. The compatible mode still strips
+//    the current working directory via SetDllDirectory("") and leaves link-time hardening intact.
 //
 // The Win32 P/Invoke declarations are pure metadata and compile on any host; they only EXECUTE on
 // Windows (guarded by OperatingSystem.IsWindows()), so this restores + is unit-tested on macOS.
@@ -64,7 +65,6 @@ public static class DllSearchHardening
             // Belt-and-suspenders: also drop the CWD from the LoadLibrary search path for callers
             // that do not use the flag-based search (SetDllDirectory("") removes the current dir).
             _ = SetDllDirectory(string.Empty);
-
             return ok
                 ? new DllSearchHardeningResult(
                     applied: true,
@@ -84,6 +84,49 @@ public static class DllSearchHardening
         catch (EntryPointNotFoundException ex)
         {
             return new DllSearchHardeningResult(false, true, 0, $"SetDefaultDllDirectories unavailable: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Harden the WinUI app without breaking Microsoft.UI.Xaml ms-appx resource resolution.
+    /// SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) prevents WinUI 3 from resolving
+    /// package theme resources in unpackaged self-contained runs, so the shell uses the compatible
+    /// layer: drop the current directory from legacy LoadLibrary search while retaining the app's
+    /// link-time hardening and dependency-load flags.
+    /// </summary>
+    public static DllSearchHardeningResult ApplyWinUICompatible()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return new DllSearchHardeningResult(
+                applied: false,
+                onWindows: false,
+                appliedFlags: 0,
+                detail: "Non-Windows host: WinUI-compatible DLL-search hardening is a no-op.");
+        }
+
+        try
+        {
+            var ok = SetDllDirectory(string.Empty);
+            return ok
+                ? new DllSearchHardeningResult(
+                    applied: true,
+                    onWindows: true,
+                    appliedFlags: 0,
+                    detail: "SetDllDirectory(\"\") applied; SetDefaultDllDirectories skipped for WinUI resource compatibility.")
+                : new DllSearchHardeningResult(
+                    applied: false,
+                    onWindows: true,
+                    appliedFlags: 0,
+                    detail: $"SetDllDirectory failed (Win32 error {Marshal.GetLastWin32Error()}).");
+        }
+        catch (DllNotFoundException ex)
+        {
+            return new DllSearchHardeningResult(false, true, 0, $"kernel32 entry point unavailable: {ex.Message}");
+        }
+        catch (EntryPointNotFoundException ex)
+        {
+            return new DllSearchHardeningResult(false, true, 0, $"SetDllDirectory unavailable: {ex.Message}");
         }
     }
 

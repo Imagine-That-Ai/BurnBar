@@ -16,8 +16,8 @@ namespace OpenBurnBar.App.Budget;
 /// destination in the AppShell NavigationView.
 ///
 /// Dev-host: <see cref="WindowsStorageDevHost.CreateBudgetRuleStore"/> uses SQLCipher when
-/// <c>OPENBURNBAR_SQLCIPHER_PATH</c> + passphrase are set; otherwise seeds
-/// <see cref="InMemoryBudgetRuleStore"/> with <see cref="SeedRules"/>.
+/// configured. Without credentials it creates an empty editable store; <see cref="SeedRules"/>
+/// is used only when <c>OPENBURNBAR_SAMPLE_MODE=1</c>.
 /// </summary>
 public sealed partial class BudgetPage : Page
 {

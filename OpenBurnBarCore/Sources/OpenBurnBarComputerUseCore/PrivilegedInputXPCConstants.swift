@@ -1,5 +1,9 @@
-import Darwin
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Mach service and install paths for the minimal privileged input-execution leaf (WS1).
 public enum PrivilegedInputXPCConstants: Sendable {
@@ -19,6 +23,15 @@ public enum PrivilegedInputXPCConstants: Sendable {
     /// Per-user 0700 directory holding that user's execution socket. Owned by
     /// the user (created via the installer's admin script), so the helper can
     /// safely unlink/bind inside it, and nobody else can traverse into it.
+    #if os(Windows)
+    public static func userSessionSocketDirectory(uid: UInt32 = 0) -> String {
+        "\(userSessionSocketDirectoryParent)/\(uid)"
+    }
+
+    public static func userSessionSocketPath(uid: UInt32 = 0) -> String {
+        "\(userSessionSocketDirectory(uid: uid))/input.sock"
+    }
+    #else
     public static func userSessionSocketDirectory(uid: uid_t = getuid()) -> String {
         "\(userSessionSocketDirectoryParent)/\(uid)"
     }
@@ -26,4 +39,5 @@ public enum PrivilegedInputXPCConstants: Sendable {
     public static func userSessionSocketPath(uid: uid_t = getuid()) -> String {
         "\(userSessionSocketDirectory(uid: uid))/input.sock"
     }
+    #endif
 }
