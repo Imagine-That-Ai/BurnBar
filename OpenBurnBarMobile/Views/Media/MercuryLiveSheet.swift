@@ -357,7 +357,7 @@ struct MercuryLiveSheet: View {
             // Explicit close paths call `stopActiveMirror(reason:)`.
             mirrorTimeoutTask?.cancel()
             mirrorTimeoutTask = nil
-            if pendingCallRequestID == nil {
+            if Self.shouldDetachCallAckHandlerOnDisappear(pendingCallRequestID: pendingCallRequestID) {
                 callTimeoutTask?.cancel()
                 callTimeoutTask = nil
                 controlStreamCoordinator.callAckHandler = nil

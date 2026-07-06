@@ -489,9 +489,25 @@ extension MercuryLiveSheet {
     }
 
     var canPlaceCall: Bool {
+        Self.canStartCall(
+            pendingCallRequestID: pendingCallRequestID,
+            peerCanPlaceCall: peer.canPlaceCall,
+            controlStreamPhase: controlStreamCoordinator.phase
+        )
+    }
+
+    static func canStartCall(
+        pendingCallRequestID: String?,
+        peerCanPlaceCall: Bool,
+        controlStreamPhase: MediaControlStreamCoordinator.Phase
+    ) -> Bool {
         pendingCallRequestID == nil
-            && peer.canPlaceCall
-            && controlStreamCoordinator.phase == .live
+            && peerCanPlaceCall
+            && controlStreamPhase == .live
+    }
+
+    static func shouldDetachCallAckHandlerOnDisappear(pendingCallRequestID: String?) -> Bool {
+        pendingCallRequestID == nil
     }
 
     var mirrorAutoAccept: Bool {
