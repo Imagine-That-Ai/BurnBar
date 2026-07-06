@@ -1,10 +1,12 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Presentation.Budget;
 using OpenBurnBar.App.Presentation.Switcher;
 using OpenBurnBar.App.Storage;
+using OpenBurnBar.Storage;
 using Xunit;
 
 namespace OpenBurnBar.App.Storage.Tests;
@@ -180,5 +182,93 @@ public sealed class WindowsStorageDevHostRuntimeTests
                 File.Delete(path);
             }
         }
+    }
+
+    [Fact]
+    public void CreateSwitcherProfileStore_with_real_credentials_prefers_the_real_store_over_sample()
+    {
+        // Copy the committed byte-compat fixture, WRITE a distinctive real profile into its
+        // switcher_profiles table, then point the dev-host at it WITH sample mode also enabled.
+        // The real encrypted store must win: SwitcherSampleData is only the empty-host fallback.
+        string working = Path.Combine(Path.GetTempPath(), "obb-prefer-real-" + Guid.NewGuid().ToString("N") + ".sqlcipher");
+        File.Copy(LocateFixture(), working, overwrite: true);
+        try
+        {
+            var now = new DateTimeOffset(2026, 7, 4, 12, 0, 0, TimeSpan.Zero);
+            using (var connection = SqlCipherConnection.Open(working, SqlCipherParameters.FixturePassphrase))
+            {
+                SwitcherProfileWriteSeam.UpsertProfile(connection, new SwitcherProfileRow(
+                    Id: "real-db-profile",
+                    TargetKind: "cli",
+                    BrowserType: null,
+                    BrowserMetadataJson: null,
+                    CliType: "claude",
+                    CliMetadataJson: "{\"displayLabel\":\"Real DB Profile\"}",
+                    SortKey: 0,
+                    CreatedAt: now,
+                    UpdatedAt: now));
+            }
+
+            Environment.SetEnvironmentVariable(SampleEnv, "1");
+            Environment.SetEnvironmentVariable(SqlPathEnv, working);
+            Environment.SetEnvironmentVariable(SqlPassEnv, SqlCipherParameters.FixturePassphrase);
+
+            ISwitcherProfileStore store = WindowsStorageDevHost.CreateSwitcherProfileStore();
+            try
+            {
+                Assert.IsType<SqlCipherSwitcherProfileStore>(store);
+
+                var ids = store.FetchAllProfiles().Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+                Assert.Contains("real-db-profile", ids);
+
+                // Sample data must NOT leak in even though OPENBURNBAR_SAMPLE_MODE=1.
+                foreach (var sample in SwitcherSampleData.DevHostProfiles())
+                {
+                    Assert.DoesNotContain(sample.Id, ids);
+                }
+            }
+            finally
+            {
+                (store as IDisposable)?.Dispose();
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(SampleEnv, null);
+            Environment.SetEnvironmentVariable(SqlPathEnv, null);
+            Environment.SetEnvironmentVariable(SqlPassEnv, null);
+            foreach (string suffix in new[] { "", "-wal", "-shm", "-journal" })
+            {
+                try { File.Delete(working + suffix); } catch { /* best-effort */ }
+            }
+        }
+    }
+
+    private static string LocateFixture()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            string candidate = Path.Combine(dir.FullName, "AgentLensTests", "Fixtures", "DBByteCompat");
+            if (File.Exists(Path.Combine(candidate, "openburnbar-db-compat-vector.json")))
+            {
+                string pinned = Path.Combine(candidate, "openburnbar-db-compat-v54.sqlcipher");
+                if (File.Exists(pinned))
+                {
+                    return pinned;
+                }
+
+                string[] any = Directory.GetFiles(candidate, "*.sqlcipher");
+                if (any.Length == 1)
+                {
+                    return any[0];
+                }
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "Could not locate AgentLensTests/Fixtures/DBByteCompat by walking up from " + AppContext.BaseDirectory);
     }
 }

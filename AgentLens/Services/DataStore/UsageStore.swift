@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import GRDB
 import OpenBurnBarCore
 
@@ -1169,16 +1168,7 @@ final class UsageStore: Sendable {
     }
 
     private static func usagePartitionToken(from rawValue: String?) -> String? {
-        guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else { return nil }
-        if trimmed.hasPrefix("acct_sha256_"),
-           trimmed.dropFirst("acct_sha256_".count).count == 24,
-           trimmed.dropFirst("acct_sha256_".count).allSatisfy({ $0.isHexDigit }) {
-            return trimmed
-        }
-        let digest = SHA256.hash(data: Data(trimmed.utf8))
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
-        return "acct_sha256_\(hex.prefix(24))"
+        TokenUsage.providerAccountIdentityPartition(from: rawValue)
     }
 
     private static func decodeUsage(row: Row) -> TokenUsage? {
