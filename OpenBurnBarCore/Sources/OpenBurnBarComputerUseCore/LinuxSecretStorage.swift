@@ -175,6 +175,15 @@ final class LinuxPersistentSecretStore: @unchecked Sendable {
     func save(_ data: Data, account: String) -> Int32 {
         do {
             try secretService.save(data, service: service, account: account)
+            // Write-through to the encrypted file store as a backup. Without
+            // this, a pin saved while Secret Service is available lives ONLY in
+            // Secret Service; a later headless daemon restart (no D-Bus session)
+            // makes load() return .absent, which the pin store treats as first
+            // contact and re-pins from the relay-advertised key — a remote
+            // key-swap takeover. The backup keeps load() authoritative.
+            if !fileStore.save(data, service: service, account: account) {
+                logFallback("Secret Service write succeeded but encrypted file backup failed for \(service)/\(account)")
+            }
             return errSecSuccessCompat
         } catch {
             logFallback("Secret Service write failed for \(service)/\(account): \(error)")
@@ -228,7 +237,10 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
     private static let schemaVersion = 1
     private static let masterKeyFileName = ".openburnbar-linux-secret-file-key-v1"
     private static let envelopeExtension = "obbsecret"
-    private static let masterKeyAAD = Data("OpenBurnBar-LinuxSecretFile-master-key-v1".utf8)
+    // The master key is stored as raw bytes protected by 0600 perms + O_NOFOLLOW
+    // (not AEAD-wrapped): there is no lower key-encryption-key to wrap it with
+    // on a headless daemon. A TPM/keyring-derived KEK wrap is a named hardening
+    // follow-up; not implementing it here avoids a false sense of authentication.
     private let rootDirectory: URL
     private let lock = NSLock()
 
@@ -351,7 +363,7 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
     }
 
     private func writeBytes(_ data: Data, to url: URL, mode: mode_t) throws {
-        let fd = Glibc.open(url.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode)
+        let fd = Glibc.open(url.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, mode)
         guard fd >= 0 else { throw LinuxSecretFileStoreError.posix(errno) }
         var closeError: Int32 = 0
         defer {
