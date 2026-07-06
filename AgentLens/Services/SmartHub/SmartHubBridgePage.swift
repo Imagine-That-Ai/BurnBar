@@ -830,6 +830,18 @@ enum SmartHubBridgePage {
           0%   { background-position: 200% 0; }
           100% { background-position: -200% 0; }
         }
+        .stage.voice-pulse .brand-logo {
+          animation: voicePulse 1.15s ease-out 1;
+        }
+        .stage.voice-pulse .live-dot {
+          background: var(--primary);
+          box-shadow: 0 0 0 8px color-mix(in oklab, var(--primary) 18%, transparent);
+        }
+        @keyframes voicePulse {
+          0%   { transform: scale(1); }
+          35%  { transform: scale(1.18); filter: drop-shadow(0 0 18px color-mix(in oklab, var(--primary) 70%, transparent)); }
+          100% { transform: scale(1); }
+        }
 
         /* Bridge-offline diagnostic banner */
         .stage.bridge-offline::after {
@@ -965,6 +977,7 @@ enum SmartHubBridgePage {
         let identifyOnRefresh = false;
         let audioContext = null;
         let displayMode = localStorage.getItem('obb_displayMode') || 'currency';
+        let lastVoiceEventId = Number(sessionStorage.getItem('obb_lastVoiceEventId') || '0');
         const bridgeToken = new URLSearchParams(window.location.search).get('bridgeToken') || '';
 
         function bridgePath(path) {
@@ -1079,6 +1092,7 @@ enum SmartHubBridgePage {
           renderRefreshState(state);
 
           subEl.textContent = state.subheadline || '';
+          handleVoiceEvent(state.voice);
 
           if (lastVersion >= 0 && state.version !== lastVersion) {
             if (state.display && state.display.audibleCue) playChime();
@@ -1729,6 +1743,38 @@ enum SmartHubBridgePage {
             gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
             osc.start(t); osc.stop(t + 0.45);
           } catch (e) { /* no audio permission yet */ }
+        }
+
+        function handleVoiceEvent(voice) {
+          if (!voice) return;
+          const eventId = Number(voice.eventId || 0);
+          const message = String(voice.message || '').trim();
+          if (!eventId || eventId <= lastVoiceEventId || !message) return;
+
+          lastVoiceEventId = eventId;
+          try { sessionStorage.setItem('obb_lastVoiceEventId', String(eventId)); } catch (_) {}
+          subEl.textContent = message;
+
+          stageEl.classList.remove('voice-pulse');
+          void stageEl.offsetWidth;
+          stageEl.classList.add('voice-pulse');
+          window.setTimeout(() => stageEl.classList.remove('voice-pulse'), 1300);
+
+          let spoke = false;
+          try {
+            if ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window) {
+              window.speechSynthesis.cancel();
+              const utterance = new SpeechSynthesisUtterance(message);
+              utterance.rate = 0.95;
+              utterance.pitch = 1.0;
+              utterance.volume = 1.0;
+              window.speechSynthesis.speak(utterance);
+              spoke = true;
+            }
+          } catch (_) {
+            spoke = false;
+          }
+          if (!spoke) playChime();
         }
 
         function renderPeriodPicker(state) {

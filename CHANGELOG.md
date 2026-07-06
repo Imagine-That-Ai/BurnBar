@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Command Deck top-chrome redesign** — collapses ~146pt of stacked chrome
   (toolbar + tab-card strip) into one ~52pt bar with a ⌘K command palette for
   section fuzzy-filter + session search, and ⌘1–⌘7 section shortcuts.
+- **Nest Hub Speak Now** — makes `/voice-refresh` queue a real bridge-page
+  announcement event instead of acknowledging a no-op, so the rendered smart
+  display can pulse and speak the current provider summary on its next poll.
 
 ## [1.0.28] - 2026-07-03
 
