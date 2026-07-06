@@ -88,13 +88,34 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
    **Exit:** `main` fully green; Windows CI blocking; docs match reality.
 
 ### Wave 1 — G2: Engine & data parity (the current gate)
-1. **G2 headline:** Windows-side byte-identical parser diff in CI across the golden corpus (currently FIX).
-2. Un-prune the Swift Engine lane: restore GRDB/SQLCipher storage target on Windows; **delete `STORAGE_PRUNE_WAIVER.md`** (self-declared obligation). Land the live DataStore **write** path (B2 branch).
+
+> **Ground-truth revision 2026-07-06** (git audit): items 1 and 6 are further along than first assessed;
+> item 2 is harder. The B1/B2/B6/C2 branches are **already integrated** on main (#1267 + #1272) — their
+> refs are stale drafts, do-not-merge (see bundle §6).
+
+1. **G2 headline — harness DONE, gate blocked on merge order:** `OpenBurnBarG2ParserParity` already
+   byte-diffs **15 providers / 26 fixtures** on x64 + ARM64 in `openburnbar-engine-windows.yml`
+   (commits `85b898255f` → `67de06b5c7`, "15/15 byte-identical"; Codex + Hermes ride the SQLite reader
+   seam). The lane is red on main only because of the pre-existing swift-crypto Sendable breakage that
+   **PR #1270 fixes** — land #1270, observe a green engine run, then flip the bundle's G2-headline row
+   from FIX to proven.
+2. **Storage un-prune = R2, not a flag flip.** The boundary flag prunes exactly `OpenBurnBarData`
+   (GRDB-SQLCipher), which **does not resolve/build off-Apple at all** (workflow comment + waiver
+   §Un-prune tracking). The C# seam (`Microsoft.Data.Sqlite` + `e_sqlcipher`, drift D6) is how Windows
+   actually opens the Mac DB today — byte-compat proven (`5c4fd006f8`, VAL-P0-DB-010). **Decision needed
+   (Alberto):** (a) port GRDB-SQLCipher to MSVC so the Swift engine owns storage on Windows (heavy,
+   retires R2 literally), or (b) author a WPD formalizing the C# storage seam as the permanent Windows
+   architecture — then the flag becomes documented architecture, the waiver is deleted, and the
+   `verify-windows-storage-prune-waiver.sh` gate is retired with it.
 3. Replace interim `swift run` engine binding with UniFFI bindgen (WPD-0001 / drift D7).
 4. Build the `windows/native/` FFI shim binding the already-built iroh + burnbar-remote crates.
-5. Complete quota acquisition: full 20 adapters / 30+ providers, statusline hook, `state.vscdb` reader, credential probes, file-watchers (C2 branch).
-6. ManagedAgentRuntime + CursorConnector ports; ConPTY chat live (B1 branch); land B6 mission dispatch.
-   **Exit:** G2 gate passes per master plan; waiver deleted; engine binding is production-shaped.
+5. Complete quota **acquisition** (the C2 adapter lift itself is on main): statusline hook (`.cmd`/PS
+   wrapper), `state.vscdb` SQLite reader, credential probes, file-watchers — the net8.0-windows adapter
+   halves flagged in `Presentation/Quota/*.cs`.
+6. ManagedAgentRuntime + CursorConnector ports. ~~ConPTY chat live (B1); land B6~~ — **on main already**;
+   what remains is proving ConPTY + mission dispatch live on a real Windows host (WS-D pass).
+   **Exit:** #1270 landed + green engine run recorded (G2 headline); storage decision made and executed;
+   waiver deleted (either path); engine binding is production-shaped.
 
 ### Wave 2 — Live cloud (unblocks most "Authored → Real")
 1. **R14 kill-risk:** Windows CNG `NCryptCreateClaim` TPM client → real-TPM App Check mint → enforced callable, on Win11 Pro hardware.
