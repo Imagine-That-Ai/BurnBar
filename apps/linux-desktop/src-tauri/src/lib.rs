@@ -10,6 +10,7 @@ use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
+use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
 mod media;
 
@@ -441,6 +442,8 @@ fn quit_app(app: AppHandle) {
 }
 
 static TRAY_INIT_FAILED: AtomicBool = AtomicBool::new(false);
+const COMPUTER_USE_PANIC_SHORTCUTS: [&str; 2] =
+    ["Ctrl+Alt+Super+Period", "Ctrl+Alt+Shift+Period"];
 
 #[tauri::command]
 fn tray_degraded() -> bool {
@@ -498,6 +501,53 @@ fn call_daemon_method(
     params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     call_daemon_method_with_timeout(method, params, Duration::from_secs(5))
+}
+
+fn request_computer_use_panic_halt(
+    session_id: String,
+    source: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.computer_use.panic_halt",
+        Some(serde_json::json!({ "sessionId": session_id, "source": source })),
+    )
+}
+
+fn trigger_computer_use_panic_hotkey() {
+    thread::spawn(|| {
+        if let Err(error) = request_computer_use_panic_halt("*".to_string(), "hotkey".to_string())
+        {
+            eprintln!("computer_use_global_panic_hotkey_failed: {error}");
+        }
+    });
+}
+
+fn register_computer_use_panic_shortcuts(app: &AppHandle) {
+    let builder = match tauri_plugin_global_shortcut::Builder::new()
+        .with_shortcuts(COMPUTER_USE_PANIC_SHORTCUTS)
+    {
+        Ok(builder) => builder,
+        Err(error) => {
+            eprintln!("computer_use_global_panic_hotkey_degraded: {error}");
+            return;
+        }
+    };
+    let plugin = builder
+        .with_handler(|_app, shortcut, event| {
+            if event.state != ShortcutState::Pressed {
+                return;
+            }
+            let base = Modifiers::CONTROL | Modifiers::ALT;
+            let meta_chord = base | Modifiers::SUPER;
+            let shift_chord = base | Modifiers::SHIFT;
+            if shortcut.matches(meta_chord, Code::Period) || shortcut.matches(shift_chord, Code::Period) {
+                trigger_computer_use_panic_hotkey();
+            }
+        })
+        .build();
+    if let Err(error) = app.plugin(plugin) {
+        eprintln!("computer_use_global_panic_hotkey_degraded: {error}");
+    }
 }
 
 fn call_daemon_method_with_timeout(
@@ -1140,6 +1190,16 @@ fn media_capability_get() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.media.capability.get", Some(serde_json::json!({})))
 }
 
+#[tauri::command]
+fn computer_use_panic_halt(
+    session_id: Option<String>,
+    source: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let session_id = session_id.unwrap_or_else(|| "*".to_string());
+    let source = source.unwrap_or_else(|| "hotkey".to_string());
+    request_computer_use_panic_halt(session_id, source)
+}
+
 fn media_phase(value: &serde_json::Value) -> Option<String> {
     value
         .get("phase")
@@ -1311,6 +1371,7 @@ pub fn run() {
             media_decline_call,
             media_end_call,
             media_capability_get,
+            computer_use_panic_halt,
             integrations_status
         ])
         .setup(|app| {
@@ -1318,6 +1379,7 @@ pub fn run() {
                 TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
                 eprintln!("tray init degraded: {e}");
             }
+            register_computer_use_panic_shortcuts(app.handle());
             start_media_session_poll_loop(app.handle().clone());
             media::start_media_socket_reader(app.handle().clone());
             Ok(())
@@ -1359,5 +1421,12 @@ mod tests {
         assert_eq!(method, "daemon.mission.cancel");
         assert_eq!(params["missionID"], "m-43");
         assert_eq!(params["actor"], "linux-shell");
+    }
+
+    #[test]
+    fn computer_use_panic_shortcuts_parse() {
+        assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
+            .with_shortcuts(COMPUTER_USE_PANIC_SHORTCUTS)
+            .is_ok());
     }
 }

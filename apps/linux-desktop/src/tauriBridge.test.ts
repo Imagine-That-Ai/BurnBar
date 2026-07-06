@@ -40,6 +40,7 @@ describe('computeCacheHitRatePct', () => {
 
 describe('bridgeStubDefaults media wiring', () => {
   it('keeps full-shape bridge mocks current for live media methods', async () => {
+    await expect(bridgeStubDefaults.computerUsePanicHalt()).resolves.toMatchObject({ sessionId: '*', source: 'hotkey' });
     await expect(bridgeStubDefaults.mediaSessionState()).resolves.toMatchObject({ phase: 'capability-absent' });
     await expect(bridgeStubDefaults.mediaAcceptCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
     await expect(bridgeStubDefaults.mediaDeclineCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
