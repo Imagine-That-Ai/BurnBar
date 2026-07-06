@@ -539,7 +539,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // DataStore for preferences
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
@@ -564,7 +564,7 @@ dependencies {
     testImplementation("net.i2p.crypto:eddsa:0.3.0")
     // DataStore Preferences test helpers — the partner-save preference
     // store materialises a Preferences DataStore on a temp dir.
-    testImplementation("androidx.datastore:datastore-preferences:1.1.1")
+    testImplementation("androidx.datastore:datastore-preferences:1.2.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.8")
