@@ -5,7 +5,11 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
-  server: { port: 1420, strictPort: true },
+  server: {
+    port: 1420,
+    strictPort: true,
+    fs: { allow: ['..', '../..'] }
+  },
   envPrefix: ['VITE_', 'TAURI_'],
   resolve: {
     alias: {

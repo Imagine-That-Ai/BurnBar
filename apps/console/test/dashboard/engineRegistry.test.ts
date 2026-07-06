@@ -9,14 +9,14 @@ import {
   getKernelDescriptor,
   isKernelId,
   resolveRenderableKernelId,
-} from "@/lib/gl/engine/registry";
+} from "@openburnbar/gl-engine/engine/registry";
 
 const NO_FLOAT = { colorBufferFloat: false, floatBlend: false };
 const FLOAT = { colorBufferFloat: true, floatBlend: true };
 
 describe("vendored kernel registry", () => {
   it("ships the curated set with unique ids and matching metadata", () => {
-    expect(KERNELS.length).toBe(31);
+    expect(KERNELS.length).toBe(32);
     expect(KERNEL_META.length).toBe(KERNELS.length);
     expect(new Set(KERNELS.map((k) => k.id)).size).toBe(KERNELS.length);
     // KERNEL_META is import-free metadata (no `create`).
@@ -88,7 +88,7 @@ describe("vendored kernel registry", () => {
 
   it("declares scroll controls for the storm kernel uScroll shader input", () => {
     const source = readFileSync(
-      new URL("../../lib/gl/engine/kernels/stormCellKernel.ts", import.meta.url),
+      new URL("../../../../packages/gl-engine/src/engine/kernels/stormCellKernel.ts", import.meta.url),
       "utf8",
     );
 

@@ -94,7 +94,7 @@ export function NavRail() {
       <button type="button" className="ghost skin-toggle" onClick={toggleSkin}>
         {`Skin: ${skin}`}
       </button>
-      <div className="sidebar-glass-card">
+      <div className="sidebar-glass-card glass-card">
         <span className="sidebar-card-label">Daemon</span>
         <span className="sidebar-card-value mono">{health?.daemonVersion ?? 'offline'}</span>
         <span className="sidebar-card-detail">
@@ -102,7 +102,7 @@ export function NavRail() {
         </span>
       </div>
 
-      <div className="sidebar-glass-card">
+      <div className="sidebar-glass-card glass-card">
         <span className="sidebar-card-label">Window</span>
         <span className="sidebar-card-value">{SIDEBAR_WINDOW_FIXTURE.timeRangeLabel}</span>
         <span className="sidebar-card-detail">
@@ -110,7 +110,7 @@ export function NavRail() {
         </span>
       </div>
 
-      <div className="sidebar-glass-card sidebar-glass-card--cursor">
+      <div className="sidebar-glass-card glass-card sidebar-glass-card--cursor">
         <span className="sidebar-card-label">Cursor</span>
         <button
           type="button"

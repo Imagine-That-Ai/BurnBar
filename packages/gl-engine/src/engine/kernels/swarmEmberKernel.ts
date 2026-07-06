@@ -901,6 +901,7 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
           }
         }
 
+        bucket.path.moveTo(p.x + r, p.y);
         bucket.path.arc(p.x, p.y, r, 0, Math.PI * 2);
       });
 

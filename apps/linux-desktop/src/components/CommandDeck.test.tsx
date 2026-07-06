@@ -34,13 +34,14 @@ describe('CommandDeck', () => {
 
   it('renders section switcher and overflow menu', () => {
     render(<CommandDeck {...deckProps()} />);
-    expect(screen.getByRole('button', { name: /Overview/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /OpenBurnBar/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Overview' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
   });
 
   it('navigates via section menu', () => {
     render(<CommandDeck {...deckProps()} />);
-    fireEvent.click(screen.getByRole('button', { name: /Overview/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
     fireEvent.click(screen.getByRole('option', { name: /Missions/ }));
     expect(useShellStore.getState().route).toBe('missions');
   });

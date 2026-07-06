@@ -456,32 +456,8 @@ body.reduced-motion .chat-skeleton-rail .chat-thread-row {
   font-size: 0.85rem;
 }
 
-.chat-warning-stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+.chat-warning-stack.glass-alert-stack {
   margin-bottom: var(--space-3);
-}
-
-.chat-warning-banner {
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-ember-bright) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-ember-bright) 28%, transparent);
-}
-
-.chat-warning-title {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.chat-warning-message {
-  margin: 0.15rem 0 0;
-  font-size: 0.76rem;
-  color: var(--color-text-secondary);
 }
 
 .chat-via-badge {

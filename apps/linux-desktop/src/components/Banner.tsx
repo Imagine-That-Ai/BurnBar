@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
+import { GlassAlert } from './GlassAlert.js';
 
 export type BannerTone = 'degraded' | 'ok';
 
 /**
- * Inline alert banner. `.banner.degraded[role="alert"]` is the failure-state
- * contract used by settings/account/support routes and the smoke evidence.
+ * Inline alert banner. Preserves `.banner.degraded[role="alert"]` for smoke evidence;
+ * renders Liquid Glass alert chrome underneath.
  */
 export function Banner({
   tone = 'degraded',
@@ -16,8 +17,12 @@ export function Banner({
   children: ReactNode;
 }) {
   return (
-    <div className={`banner ${tone}`} role={role}>
+    <GlassAlert
+      severity={tone === 'ok' ? 'info' : 'warning'}
+      role={role}
+      className={`banner glass-alert-legacy ${tone}`}
+    >
       {children}
-    </div>
+    </GlassAlert>
   );
 }

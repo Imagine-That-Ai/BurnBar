@@ -15,9 +15,9 @@
  * through `evaluateJavaScript`.
  */
 
-import { BackdropEngine } from "../../apps/console/lib/gl/engine/BackdropEngine";
-import { KERNELS, isKernelId } from "../../apps/console/lib/gl/engine/registry";
-import type { KernelId, KernelSubstrate } from "../../apps/console/lib/gl/engine/types";
+import { BackdropEngine } from "../../packages/gl-engine/src/engine/BackdropEngine";
+import { KERNELS, isKernelId } from "../../packages/gl-engine/src/engine/registry";
+import type { KernelId, KernelSubstrate } from "../../packages/gl-engine/src/engine/types";
 
 interface KernelBridgeMeta {
   id: KernelId;

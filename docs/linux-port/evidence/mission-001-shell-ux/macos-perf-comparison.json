@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T16:20:16.314Z",
+  "generatedAt": "2026-07-06T03:15:05.273Z",
   "status": "blocked",
   "reason": "The macOS app does not expose an equivalent Linux-shell Tauri runner or tray/AppIndicator path; the comparison is recorded as an explicit blocker instead of a silent pass.",
   "acceptedBlocker": "VAL-PERF-001-macos-source-comparison-unavailable",

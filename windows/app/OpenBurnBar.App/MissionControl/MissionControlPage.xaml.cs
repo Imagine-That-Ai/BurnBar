@@ -2,6 +2,7 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Particles;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Presentation.MissionControl;
@@ -10,9 +11,9 @@ namespace OpenBurnBar.App.MissionControl;
 
 /// <summary>
 /// The shell's Mission Control destination. Owns the <see cref="MissionConsoleViewModel"/> over
-/// an <see cref="IMissionDispatchHost"/> (a dev-host demo today; the Firestore-backed host lands
-/// later behind the same seam), fans it out to the hero + composer + situation room, and hosts
-/// the ambient particle backdrop on the landed Win2D <see cref="SwarmCanvasHost"/>.
+/// an <see cref="IMissionDispatchHost"/> (Firestore when configured; empty unless sample mode is
+/// explicit), fans it out to the hero + composer + situation room, and hosts
+/// the ambient particle backdrop when Win2D is available.
 /// </summary>
 public sealed partial class MissionControlPage : Page
 {
@@ -54,12 +55,26 @@ public sealed partial class MissionControlPage : Page
             return;
         }
 
-        _canvas = new SwarmCanvasHost
+        if (!NativeCapability.IsWin2DEnabled(out _))
         {
-            FrameProvider = (size, elapsed) =>
-                _backdrop.Build(size.Width, size.Height, elapsed.TotalSeconds),
-        };
-        BackdropHost.Child = _canvas.Control;
+            return;
+        }
+
+        try
+        {
+            _canvas = new SwarmCanvasHost
+            {
+                FrameProvider = (size, elapsed) =>
+                    _backdrop.Build(size.Width, size.Height, elapsed.TotalSeconds),
+            };
+            BackdropHost.Child = _canvas.Control;
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.LogException("mission.win2d", ex);
+            _canvas = null;
+            BackdropHost.Child = null;
+        }
     }
 
     private void StopBackdrop()

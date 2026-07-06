@@ -1,6 +1,6 @@
 "use client";
 
-import type { KernelId } from "@/lib/gl/engine/types";
+import type { KernelId } from "@openburnbar/gl-engine/engine/types";
 import { LiveKernelCanvas } from "./LiveKernelCanvas";
 
 /**

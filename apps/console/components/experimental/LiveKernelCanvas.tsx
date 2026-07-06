@@ -2,10 +2,10 @@
 
 import * as React from "react";
 
-import { detectGlCapabilities, NO_FLOAT_CAPS } from "@/lib/gl/engine/gl/glCapabilities";
-import { resolvePalette, toCss } from "@/lib/gl/engine/palette";
-import { getKernelDescriptor } from "@/lib/gl/engine/registry";
-import type { Kernel, KernelFrameContext, KernelId } from "@/lib/gl/engine/types";
+import { detectGlCapabilities, NO_FLOAT_CAPS } from "@openburnbar/gl-engine/engine/gl/glCapabilities";
+import { resolvePalette, toCss } from "@openburnbar/gl-engine/engine/palette";
+import { getKernelDescriptor } from "@openburnbar/gl-engine/engine/registry";
+import type { Kernel, KernelFrameContext, KernelId } from "@openburnbar/gl-engine/engine/types";
 
 /**
  * A self-contained live kernel canvas. Renders one kernel via the engine's

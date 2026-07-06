@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.MissionControl;
 using OpenBurnBar.CloudSync.Gateway;
 
@@ -8,14 +9,14 @@ namespace OpenBurnBar.App.MissionControl;
 
 /// <summary>
 /// Composition-root helper: real Firestore host when cloud credentials are configured,
-/// otherwise the dev <see cref="MissionDispatchDemoHost"/>.
+/// otherwise an honest empty host unless sample mode is explicitly enabled.
 /// </summary>
 public static class MissionDispatchHostFactory
 {
     /// <summary>
     /// Builds the mission dispatch host for the Mission Control page. Uses
     /// <see cref="FirestoreMissionDispatchHost"/> when <paramref name="credentials"/> returns a
-    /// non-empty Firebase ID token and <paramref name="firebaseUid"/> is set; otherwise the demo host.
+    /// non-empty Firebase ID token and <paramref name="firebaseUid"/> is set; otherwise an empty host.
     /// </summary>
     public static IMissionDispatchHost Create(
         ICloudSyncGateway? gateway,
@@ -24,7 +25,7 @@ public static class MissionDispatchHostFactory
     {
         if (gateway is null || credentials is null || string.IsNullOrWhiteSpace(firebaseUid))
         {
-            return new MissionDispatchDemoHost();
+            return Fallback();
         }
 
         try
@@ -32,12 +33,12 @@ public static class MissionDispatchHostFactory
             CloudSyncCredentials creds = credentials.GetCredentialsAsync().GetAwaiter().GetResult();
             if (string.IsNullOrWhiteSpace(creds.IdToken))
             {
-                return new MissionDispatchDemoHost();
+                return Fallback();
             }
         }
         catch
         {
-            return new MissionDispatchDemoHost();
+            return Fallback();
         }
 
         return new FirestoreMissionDispatchHost(gateway, firebaseUid);
@@ -52,7 +53,7 @@ public static class MissionDispatchHostFactory
     {
         if (gateway is null || credentials is null || string.IsNullOrWhiteSpace(firebaseUid))
         {
-            return new MissionDispatchDemoHost();
+            return Fallback();
         }
 
         try
@@ -60,14 +61,19 @@ public static class MissionDispatchHostFactory
             CloudSyncCredentials creds = await credentials.GetCredentialsAsync(cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(creds.IdToken))
             {
-                return new MissionDispatchDemoHost();
+                return Fallback();
             }
         }
         catch
         {
-            return new MissionDispatchDemoHost();
+            return Fallback();
         }
 
         return new FirestoreMissionDispatchHost(gateway, firebaseUid);
     }
+
+    private static IMissionDispatchHost Fallback() =>
+        RuntimeDataMode.SampleModeEnabled
+            ? new MissionDispatchDemoHost()
+            : new EmptyMissionDispatchHost();
 }

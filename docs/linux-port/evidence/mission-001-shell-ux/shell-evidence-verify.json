@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T16:20:16.357Z",
+  "generatedAt": "2026-07-06T03:15:05.324Z",
   "mode": "full",
   "evidenceDir": "/Users/albertonunez/Documents/Developer/BurnBar/docs/linux-port/evidence/mission-001-shell-ux",
   "targetStatus": {
@@ -20,10 +20,20 @@
       "errors": []
     },
     "VAL-PERF-001": {
-      "pass": true,
-      "errors": []
+      "pass": false,
+      "errors": [
+        "perf-budget.json allPass is not true",
+        "perf verdict route.navigation is not measured",
+        "perf verdict route.navigation did not pass threshold",
+        "trend/threshold enforcement did not pass"
+      ]
     }
   },
-  "status": "ok",
-  "errors": []
+  "status": "failed",
+  "errors": [
+    "perf-budget.json allPass is not true",
+    "perf verdict route.navigation is not measured",
+    "perf verdict route.navigation did not pass threshold",
+    "trend/threshold enforcement did not pass"
+  ]
 }

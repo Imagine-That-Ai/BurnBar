@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { KernelBackdrop } from "@/components/dashboard/KernelBackdrop";
 import { useBackdrop } from "@/lib/useBackdrop";
-import type { KernelId } from "@/lib/gl/engine/types";
+import type { KernelId } from "@openburnbar/gl-engine/engine/types";
 import { inkFor, INK_FG, INK_MUTE, INK_DIM, INK_HALO } from "@/lib/kernelInk";
 
 /**
