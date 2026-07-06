@@ -1155,59 +1155,6 @@ fn media_capability_get() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.media.capability.get", Some(serde_json::json!({})))
 }
 
-#[tauri::command]
-fn media_capture_start_pipewire(
-    app: AppHandle,
-    session_id: String,
-    pw_fd: i32,
-    pw_node_id: u32,
-    target_bitrate_bps: Option<u32>,
-    codec: Option<String>,
-) -> Result<serde_json::Value, String> {
-    media::start_pipewire_capture(
-        app,
-        session_id,
-        pw_fd,
-        pw_node_id,
-        target_bitrate_bps,
-        codec,
-    )
-    .map(media_capture_status_json)
-}
-
-#[tauri::command]
-fn media_capture_start_test(
-    app: AppHandle,
-    session_id: String,
-    num_buffers: Option<u32>,
-    target_bitrate_bps: Option<u32>,
-    codec: Option<String>,
-) -> Result<serde_json::Value, String> {
-    media::start_test_capture(app, session_id, num_buffers, target_bitrate_bps, codec)
-        .map(media_capture_status_json)
-}
-
-#[tauri::command]
-fn media_capture_stop() -> serde_json::Value {
-    media_capture_status_json(media::stop_outbound_capture("command"))
-}
-
-#[tauri::command]
-fn media_capture_status() -> serde_json::Value {
-    media_capture_status_json(media::capture_status())
-}
-
-fn media_capture_status_json(status: media::CaptureStatus) -> serde_json::Value {
-    serde_json::json!({
-        "active": status.active,
-        "sessionId": status.session_id,
-        "source": status.source,
-        "codec": status.codec,
-        "targetBitrateBps": status.target_bitrate_bps,
-        "socketConnected": status.socket_connected
-    })
-}
-
 fn media_session_source(value: &serde_json::Value) -> &serde_json::Value {
     value
         .get("session")
@@ -1267,7 +1214,6 @@ fn start_media_session_poll_loop(app: AppHandle) {
                 ) {
                     Ok(state) => {
                         capability_absent = false;
-                        media::sync_capture_with_session(&app, &state);
                         let phase = media_phase(&state);
                         let request_id = media_request_id(&state);
                         let phase_changed = phase != last_phase;
@@ -1404,10 +1350,6 @@ pub fn run() {
             media_decline_call,
             media_end_call,
             media_capability_get,
-            media_capture_start_pipewire,
-            media_capture_start_test,
-            media_capture_stop,
-            media_capture_status,
             integrations_status
         ])
         .setup(|app| {

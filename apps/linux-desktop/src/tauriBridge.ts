@@ -362,15 +362,6 @@ export type MercuryMediaCapability = {
   canViewScreenShare: boolean;
   reason?: string;
 };
-export type MercuryCaptureCodec = 'vp9' | 'av1';
-export type MercuryCaptureStatus = {
-  active: boolean;
-  sessionId?: string;
-  source?: string;
-  codec?: MercuryCaptureCodec | string;
-  targetBitrateBps?: number;
-  socketConnected: boolean;
-};
 // ─────────────────────────── P13: integrations status ─────────────────────
 
 export type IntegrationKind =
@@ -460,21 +451,6 @@ export interface LinuxShellBridge {
   mediaDeclineCall(requestId: string): Promise<MercuryMediaSessionState>;
   mediaEndCall(): Promise<MercuryMediaSessionState>;
   mediaCapabilityGet(): Promise<MercuryMediaCapability>;
-  mediaCaptureStartPipeWire?(
-    sessionId: string,
-    pwFd: number,
-    pwNodeId: number,
-    targetBitrateBps?: number,
-    codec?: MercuryCaptureCodec | string
-  ): Promise<MercuryCaptureStatus>;
-  mediaCaptureStartTest?(
-    sessionId: string,
-    numBuffers?: number,
-    targetBitrateBps?: number,
-    codec?: MercuryCaptureCodec | string
-  ): Promise<MercuryCaptureStatus>;
-  mediaCaptureStop?(): Promise<MercuryCaptureStatus>;
-  mediaCaptureStatus?(): Promise<MercuryCaptureStatus>;
   integrationsStatus(): Promise<IntegrationsStatus>;
 }
 
@@ -1372,24 +1348,6 @@ function mapMercuryCapability(raw: RawJsonValue): MercuryMediaCapability {
   };
 }
 
-function mapMercuryCaptureStatus(raw: RawJsonValue): MercuryCaptureStatus {
-  const bitrateRaw = pick(raw, 'targetBitrateBps', 'target_bitrate_bps');
-  const bitrate =
-    typeof bitrateRaw === 'number'
-      ? bitrateRaw
-      : typeof bitrateRaw === 'string' && Number.isFinite(Number(bitrateRaw))
-        ? Number(bitrateRaw)
-        : undefined;
-  return {
-    active: Boolean(pick(raw, 'active')),
-    sessionId: str(pick(raw, 'sessionId', 'session_id')) || undefined,
-    source: str(pick(raw, 'source')) || undefined,
-    codec: str(pick(raw, 'codec')) || undefined,
-    targetBitrateBps: bitrate,
-    socketConnected: Boolean(pick(raw, 'socketConnected', 'socket_connected'))
-  };
-}
-
 // ─────────────────────────── Bridge loader ────────────────────────────────
 
 export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
@@ -1674,33 +1632,6 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         }
         throw e;
       }
-    },
-    mediaCaptureStartPipeWire: async (sessionId, pwFd, pwNodeId, targetBitrateBps, codec) => {
-      const raw = await invoke<RawJsonValue>('media_capture_start_pipewire', {
-        sessionId,
-        pwFd,
-        pwNodeId,
-        targetBitrateBps,
-        codec
-      });
-      return mapMercuryCaptureStatus(raw);
-    },
-    mediaCaptureStartTest: async (sessionId, numBuffers, targetBitrateBps, codec) => {
-      const raw = await invoke<RawJsonValue>('media_capture_start_test', {
-        sessionId,
-        numBuffers,
-        targetBitrateBps,
-        codec
-      });
-      return mapMercuryCaptureStatus(raw);
-    },
-    mediaCaptureStop: async () => {
-      const raw = await invoke<RawJsonValue>('media_capture_stop');
-      return mapMercuryCaptureStatus(raw);
-    },
-    mediaCaptureStatus: async () => {
-      const raw = await invoke<RawJsonValue>('media_capture_status');
-      return mapMercuryCaptureStatus(raw);
     },
     // P13 — daemon-reported smart-display/device integration status.
     integrationsStatus: async () => {
