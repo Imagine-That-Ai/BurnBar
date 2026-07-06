@@ -695,7 +695,11 @@ final class OpenClawParser: LogParser, Sendable {
     private static func timestamp(in object: [String: Any]) -> Date? {
         for key in ["timestamp", "createdAt", "created_at", "time"] {
             if let string = object[key] as? String {
-                if let date = ISO8601DateFormatter().date(from: string) { return date }
+                // Shared lenient parser: accepts fractional seconds (default
+                // ISO8601DateFormatter() rejects them) without per-call allocation.
+                // Numeric-epoch fallback below is unaffected: numeric strings never
+                // parse as ISO8601.
+                if let date = ThreadSafeISO8601DateFormatter.parse(string) { return date }
                 if let seconds = Double(string) { return Date(timeIntervalSince1970: seconds) }
             }
             if let seconds = object[key] as? Double { return Date(timeIntervalSince1970: seconds) }

@@ -271,7 +271,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.sourceKind, .localCLI, snapshot.statusMessage)
+        XCTAssertEqual(snapshot.sourceKind, .localCLI, snapshot.statusMessage ?? "")
         XCTAssertEqual(snapshot.buckets.count, 7)
 
         let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })

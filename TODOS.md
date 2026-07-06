@@ -50,4 +50,16 @@
 **Priority:** P3
 **Depends on:** Stable daemon-native coding agent core and provider-routing test coverage
 
+## In-code deferrals (audited 2026-07-06)
+
+Known deferred items living in code comments, tracked here so they don't get lost:
+
+- **SmartHub voice routine hook is a no-op** — `POST /voice-refresh` logs and replies `voice:"unsupported"`; no routine is wired. `AgentLens/Services/SmartHub/SmartHubBridgeServer.swift`
+- **BudgetGate Phase 4B fallback resolution deferred** — in BOTH `AgentLens/Services/DataStore/BudgetGate.swift` and `OpenBurnBarMobile/Models/BudgetGate.swift`
+- **MacCloudEntitlementStore reads "free"** pending macOS StoreKit integration. `AgentLens/Services/MacCloudEntitlementStore.swift`
+- **iPhone→Mac calling not implemented.** `OpenBurnBarMobile/Views/Media/MercuryLiveSheet+MirrorControl.swift`
+- **MissionGroupObserver Phase B+ synthesis not implemented.** `OpenBurnBarMobile/Services/MissionGroupObserver.swift`
+- **Org-scope budget aggregation approximated.** `OpenBurnBarMobile/Models/BudgetLedger.swift`
+- **FTS rebuild TODO(C10) page reclamation.** `AgentLens/Services/DataStore/OpenBurnBarDatabase.swift`
+
 ## Completed

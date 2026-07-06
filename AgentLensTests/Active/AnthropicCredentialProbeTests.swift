@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+@testable import OpenBurnBarCore
 
 /// Coverage for the pure / deterministic surfaces of `AnthropicCredentialProbe`.
 ///

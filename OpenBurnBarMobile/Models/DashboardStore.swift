@@ -3,10 +3,13 @@ import OpenBurnBarCore
 import SwiftUI
 import FirebaseFirestore
 import WidgetKit
+import os.log
 
 @Observable
 @MainActor
 final class DashboardStore {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "DashboardStore")
+
     private let firestore: FirestoreRepository
     private let functions: FunctionsRepository
 
@@ -314,8 +317,10 @@ final class DashboardStore {
                 WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
             }
         } catch {
-            // Silently fail — widget will show placeholder until next successful write.
-            // Do NOT surface widget I/O errors to the user dashboard.
+            // Swallow (do NOT surface widget I/O errors to the user dashboard) —
+            // the widget shows a placeholder until the next successful write —
+            // but log so the failure is observable in Console/sysdiagnose.
+            Self.log.error("Widget snapshot write failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
