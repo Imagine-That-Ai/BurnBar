@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   announcement event instead of acknowledging a no-op, so the rendered smart
   display can pulse and speak the current provider summary on its next poll.
 
+### Fixed
+
+- **macOS StoreKit entitlement resolution** — `MacCloudEntitlementStore` now
+  reads StoreKit 2 current entitlements and transaction updates, maps the same
+  Cloud / Cloud Pro / Cloud Ultra SKUs as iOS, and uses locally verified
+  entitlements only when the cloud entitlement document is absent.
+
 ## [1.0.29] - 2026-07-05
 
 ### Added
