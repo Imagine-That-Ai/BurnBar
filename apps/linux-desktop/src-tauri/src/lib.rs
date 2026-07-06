@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -270,11 +271,14 @@ fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
+static TRAY_INIT_FAILED: AtomicBool = AtomicBool::new(false);
+
 #[tauri::command]
 fn tray_degraded() -> bool {
-    std::env::var("OPENBURNBAR_FORCE_TRAY_DEGRADED")
+    let forced = std::env::var("OPENBURNBAR_FORCE_TRAY_DEGRADED")
         .map(|v| v == "1")
-        .unwrap_or(false)
+        .unwrap_or(false);
+    forced || TRAY_INIT_FAILED.load(Ordering::Relaxed)
 }
 
 #[tauri::command]
@@ -611,6 +615,7 @@ pub fn run() {
         ])
         .setup(|app| {
             if let Err(e) = build_tray(app.handle()) {
+                TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
                 eprintln!("tray init degraded: {e}");
             }
             Ok(())
