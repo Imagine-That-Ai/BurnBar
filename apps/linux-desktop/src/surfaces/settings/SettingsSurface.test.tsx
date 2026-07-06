@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureConfigSnapshot } from '../../daemonFixture.js';
 import { useIntegrationsStore } from '../../state/integrationsStore.js';
@@ -47,6 +48,7 @@ function resetStores(): void {
 function bridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
   const config = fixtureConfigSnapshot();
   return {
+    ...bridgeStubDefaults,
     daemonHealth: async () => ({
       ok: true,
       protocolVersion: 1,
@@ -101,8 +103,6 @@ function bridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
     }),
     notificationCommand: async (command) => ({ command, ok: true, message: `${command} ok` }),
     sessionEnv: async () => ({}),
-    mediaStatus: async () => ({ capabilityAvailable: false, pairedDevices: [] }),
-    integrationsStatus: async () => ({ integrations: [] }),
     ...overrides
   };
 }

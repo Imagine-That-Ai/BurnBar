@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMediaStore } from '../../state/mediaStore.js';
 import { useShellStore } from '../../state/shellStore.js';
@@ -25,6 +26,7 @@ function resetStores(): void {
 
 function bridgeWithMedia(result: Promise<MercuryMediaStatus>): LinuxShellBridge {
   return {
+    ...bridgeStubDefaults,
     daemonHealth: vi.fn(),
     openDashboard: vi.fn(),
     quitApp: vi.fn(),
@@ -45,7 +47,6 @@ function bridgeWithMedia(result: Promise<MercuryMediaStatus>): LinuxShellBridge 
     appVersionInfo: vi.fn(),
     exportDiagnostics: vi.fn(),
     sessionEnv: vi.fn(),
-    integrationsStatus: vi.fn(async () => ({ integrations: [] })),
     mediaStatus: vi.fn().mockReturnValue(result)
   } as LinuxShellBridge;
 }

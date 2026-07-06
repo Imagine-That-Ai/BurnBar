@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { fixtureMissionList } from '../daemonFixture.js';
 import { useShellStore } from './shellStore.js';
-import type { ApprovalDecision, MissionListResult } from '../tauriBridge.js';
+import type { ApprovalDecision, MissionCreateInput, MissionListResult } from '../tauriBridge.js';
 
 export type ApprovalDecisionState = {
   pending: boolean;
@@ -13,8 +13,11 @@ export type MissionsState = {
   loading: boolean;
   error: string | null;
   approvalById: Record<string, ApprovalDecisionState>;
+  creating: boolean;
+  createError: string | null;
   load(): Promise<void>;
   decide(approvalId: string, decision: ApprovalDecision): Promise<void>;
+  create(input: MissionCreateInput): Promise<boolean>;
   resetApprovals(): void;
 };
 
@@ -23,6 +26,8 @@ export const useMissionsStore = create<MissionsState>()((set, get) => ({
   loading: false,
   error: null,
   approvalById: {},
+  creating: false,
+  createError: null,
 
   resetApprovals() {
     set({ approvalById: {} });
@@ -75,7 +80,9 @@ export const useMissionsStore = create<MissionsState>()((set, get) => ({
     }));
 
     try {
-      await bridge.missionApprovalDecision(approvalId, decision);
+      const approval = get().data?.pendingApprovals.find((item) => item.id === approvalId);
+      const missionId = approval?.missionId && approval.missionId !== 'unknown' ? approval.missionId : approvalId;
+      await bridge.missionApprovalDecision(missionId, decision);
       await get().load();
       set((s) => ({
         approvalById: {
@@ -91,6 +98,27 @@ export const useMissionsStore = create<MissionsState>()((set, get) => ({
           [approvalId]: { pending: false, error: message }
         }
       }));
+    }
+  },
+
+  async create(input) {
+    const { bridge, fixtureMode } = useShellStore.getState();
+    if (fixtureMode || !bridge) {
+      set({ creating: false, createError: 'Packaged shell required for live mission creation.' });
+      return false;
+    }
+    set({ creating: true, createError: null });
+    try {
+      await bridge.missionCreate(input);
+      await get().load();
+      set({ creating: false, createError: null });
+      return true;
+    } catch (e) {
+      set({
+        creating: false,
+        createError: e instanceof Error ? e.message : 'Mission creation failed'
+      });
+      return false;
     }
   }
 }));

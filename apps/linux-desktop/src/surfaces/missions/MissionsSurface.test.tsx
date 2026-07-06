@@ -19,7 +19,9 @@ function resetStores(): void {
     data: null,
     loading: false,
     error: null,
-    approvalById: {}
+    approvalById: {},
+    creating: false,
+    createError: null
   });
 }
 
@@ -183,10 +185,53 @@ describe('MissionsSurface', () => {
       await Promise.resolve();
     });
 
-    expect(missionApprovalDecision).toHaveBeenCalledWith('fx-appr-2', 'deny');
+    expect(missionApprovalDecision).toHaveBeenCalledWith('fx-mission-2', 'deny');
     expect(loadSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
     const live = document.querySelector('[aria-live="assertive"]');
     expect(live?.textContent).toMatch(/denied: refactor provider routing/i);
+  });
+
+  it('files a new mission through daemon.mission.create and reloads after success', async () => {
+    const initial = fixtureMissionList();
+    const missionCreate = vi.fn().mockResolvedValue({
+      id: 'new-mission',
+      title: 'Wire Linux mission create',
+      state: 'draft',
+      updatedAt: new Date().toISOString(),
+      laneCount: 0,
+      projectSlug: 'burnbar'
+    });
+    const missionList = vi.fn().mockResolvedValue(initial);
+    const bridge = {
+      missionCreate,
+      missionList,
+      projectList: vi.fn().mockResolvedValue([{ id: 'burnbar', name: 'BurnBar', path: '/tmp/BurnBar', scope: 'workspace' }])
+    } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    useMissionsStore.setState({ data: initial, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: /file new mission/i }));
+    fireEvent.change(screen.getByPlaceholderText('project-slug'), {
+      target: { value: 'burnbar' }
+    });
+    fireEvent.change(screen.getByPlaceholderText('Mission title'), {
+      target: { value: 'Wire Linux mission create' }
+    });
+    fireEvent.change(screen.getByPlaceholderText('What should this mission accomplish?'), {
+      target: { value: 'Use the existing daemon mission create RPC.' }
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^file mission$/i }));
+    });
+
+    expect(missionCreate).toHaveBeenCalledWith({
+      projectSlug: 'burnbar',
+      title: 'Wire Linux mission create',
+      summary: 'Use the existing daemon mission create RPC.'
+    });
+    expect(missionList).toHaveBeenCalled();
   });
 
   it('shows decision-failed banner with daemon error text', async () => {
