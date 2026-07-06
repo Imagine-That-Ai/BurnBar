@@ -1,5 +1,12 @@
 # OpenBurnBar Windows Port — Master Handoff (2026-07-03)
 
+> **⚠️ PARTIALLY SUPERSEDED (2026-07-06):** §2/§3/§6 predate the 2026-07-04 atomic integration (#1267) —
+> the burndown PRs described as unmerged are on `main` and the Windows CI workflows are live. For current
+> status, key off the status labels in [`PARITY_CERTIFICATION_BUNDLE.md`](PARITY_CERTIFICATION_BUNDLE.md)
+> (Real / Authored / deferred), and for the remaining work see
+> [`PARITY_100_REMEDIATION_PLAN.md`](PARITY_100_REMEDIATION_PLAN.md). "Phase done" phrasing below means
+> G0/G1 only; G2–G5 are not certified.
+
 The single doc to continue the entire Windows port. Read `docs/WINDOWS_PORT_MASTER_PLAN.md` (v2.1) for the
 authoritative spec; this is the *current state + how to finish*.
 

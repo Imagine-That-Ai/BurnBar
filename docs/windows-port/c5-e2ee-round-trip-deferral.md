@@ -1,7 +1,9 @@
 # WS-C5: Cross-platform E2EE round-trip — vector-parity proven, live round-trip deferred to WS-D
 
-**Status:** Vector-parity PROVEN (byte-identical across C# `CloudVaultCrypto` ↔ Swift `CloudVaultCrypto` ↔ TS `escrow.ts`). Live Windows-seal→Mac-open round-trip DEFERRED to the WS-D Win11-Pro validation pass per `PARITY_BURNDOWN_PLAN.md` §C5 ("or a formal, Alberto-signed deferral of the G2 cloud criterion to WS-D").
+**Status:** Vector-parity PROVEN (byte-identical across C# `CloudVaultCrypto` ↔ Swift `CloudVaultCrypto` ↔ TS `escrow.ts`). Live Windows-seal→Mac-open round-trip DEFERRED to the WS-D Win11-Pro validation pass per the parity-burndown plan §C5 ("or a formal, Alberto-signed deferral of the G2 cloud criterion to WS-D").
 **Date:** 2026-07-04
+
+> **Reference note (2026-07-06):** the `PARITY_BURNDOWN_PLAN.md` this doc originally cited was authored in the mission workspace and never committed to this repo. The in-repo successor defining the remaining work is [`PARITY_100_REMEDIATION_PLAN.md`](PARITY_100_REMEDIATION_PLAN.md); this deferral closes under its Wave 2 exit criterion (live E2EE round-trip on the Win11 Pro validation pass).
 **Contract:** `VAL-WS-C5-E2EE` (the G2 cloud criterion — cross-platform E2EE round-trip).
 
 ## What C5 requires
