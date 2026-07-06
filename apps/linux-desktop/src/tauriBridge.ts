@@ -120,6 +120,26 @@ export type DiagnosticsExport = { path: string };
 
 export type SessionEnv = { XDG_SESSION_TYPE?: string; XDG_CURRENT_DESKTOP?: string };
 
+// ─────────────────────────── P13: integrations status ─────────────────────
+
+export type IntegrationKind =
+  | 'smart_hub_bridge'
+  | 'google_cast'
+  | 'home_assistant'
+  | 'pixel_clock'
+  | 'awtrix_http';
+export type IntegrationState = 'connected' | 'configured' | 'unavailable' | 'disabled';
+export type IntegrationStatus = {
+  kind: IntegrationKind;
+  label: string;
+  state: IntegrationState;
+  detail: string;
+  dependency?: string;
+  configLocation?: string;
+  docsHref?: string;
+};
+export type IntegrationsStatus = { integrations: IntegrationStatus[] };
+
 // ─────────────────────────── Bridge contract ──────────────────────────────
 
 export interface LinuxShellBridge {
@@ -147,6 +167,7 @@ export interface LinuxShellBridge {
   appVersionInfo(): Promise<AppVersionInfo>;
   exportDiagnostics(): Promise<DiagnosticsExport>;
   sessionEnv(): Promise<SessionEnv>;
+  integrationsStatus(): Promise<IntegrationsStatus>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -467,6 +488,50 @@ function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {
   };
 }
 
+function normalizeIntegrationKind(value: string): IntegrationKind {
+  switch (value) {
+    case 'smart_hub_bridge':
+    case 'google_cast':
+    case 'home_assistant':
+    case 'pixel_clock':
+    case 'awtrix_http':
+      return value;
+    default:
+      return 'smart_hub_bridge';
+  }
+}
+
+function normalizeIntegrationState(value: string): IntegrationState {
+  switch (value.toLowerCase()) {
+    case 'connected':
+    case 'configured':
+    case 'unavailable':
+    case 'disabled':
+      return value.toLowerCase() as IntegrationState;
+    default:
+      return 'unavailable';
+  }
+}
+
+function mapIntegrationsStatus(raw: RawJsonValue): IntegrationsStatus {
+  const payload = pick(raw, 'result', 'status', 'snapshot') ?? raw;
+  const items = arr(pick(payload, 'integrations', 'items'));
+  return {
+    integrations: items.map((item, index): IntegrationStatus => {
+      const kind = normalizeIntegrationKind(str(pick(item, 'kind', 'adapter', 'id'), 'smart_hub_bridge'));
+      return {
+        kind,
+        label: str(pick(item, 'label', 'name'), `Integration ${index + 1}`),
+        state: normalizeIntegrationState(str(pick(item, 'state', 'status'), 'unavailable')),
+        detail: str(pick(item, 'detail', 'summary', 'blocker'), 'No daemon detail reported.'),
+        dependency: str(pick(item, 'dependency', 'linuxDependency')) || undefined,
+        configLocation: str(pick(item, 'configLocation', 'config_location')) || undefined,
+        docsHref: str(pick(item, 'docsHref', 'docs_href', 'documentation')) || undefined
+      };
+    })
+  };
+}
+
 function normalizeChannel(s: string): AppVersionInfo['packageChannel'] {
   const lower = s.toLowerCase();
   if (lower.includes('deb')) return 'deb';
@@ -570,6 +635,11 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         XDG_SESSION_TYPE: str(pick(raw, 'xdg_session_type', 'XDG_SESSION_TYPE')) || undefined,
         XDG_CURRENT_DESKTOP: str(pick(raw, 'xdg_current_desktop', 'XDG_CURRENT_DESKTOP')) || undefined
       };
+    },
+    // P13 — daemon-reported smart-display/device integration status.
+    integrationsStatus: async () => {
+      const raw = await invoke<RawJsonValue>('integrations_status');
+      return mapIntegrationsStatus(raw);
     }
   };
 }

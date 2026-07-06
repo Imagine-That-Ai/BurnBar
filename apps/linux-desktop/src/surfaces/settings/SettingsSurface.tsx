@@ -6,6 +6,7 @@ import { useSystemStore } from '../../state/systemStore.js';
 import { SystemStatusSection } from '../SystemStatusSection.js';
 import '../system/system.css';
 import './settings.css';
+import { IntegrationsSection } from './IntegrationsSection.js';
 import { SettingsDetailPane } from './SettingsDetailPane.js';
 import { SettingsSidebar } from './SettingsSidebar.js';
 import {
@@ -99,6 +100,7 @@ export function SettingsSurface() {
   return (
     <>
       <SystemStatusSection />
+      <IntegrationsSection />
       {body}
     </>
   );

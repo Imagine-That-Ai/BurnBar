@@ -52,7 +52,8 @@ function mockBridge(handlers: {
       updateCheck: 'skipped'
     }),
     exportDiagnostics: async () => ({ path: '/tmp/diag.zip' }),
-    sessionEnv: async () => ({})
+    sessionEnv: async () => ({}),
+    integrationsStatus: async () => ({ integrations: [] })
   };
   return bridge;
 }
