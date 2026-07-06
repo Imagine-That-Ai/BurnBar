@@ -118,9 +118,20 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
    Real FFI loopback proven on macOS (25/25 with cargo-built dylibs; 12 pass + 13 skip without).
    Remaining slice: FFI-008 — run the same loopback on the msvc runtime by adding a cargo build step
    (or crate-artifact download) to a Windows lane.
-5. Complete quota **acquisition** (the C2 adapter lift itself is on main): statusline hook (`.cmd`/PS
-   wrapper), `state.vscdb` SQLite reader, credential probes, file-watchers — the net8.0-windows adapter
-   halves flagged in `Presentation/Quota/*.cs`.
+5. ~~Complete quota **acquisition**~~ **BUILT + TESTED** (portable core): the `OpenBurnBar.App.Quota.Acquisition`
+   project supplies every deferred adapter half behind portable seams (`IQuotaPayloadSource`,
+   `IQuotaHttpTransport`, `IQuotaFileWatcher`, injectable `IQuotaAcquisitionClock`) — statusline snapshot
+   file source + freshness gate, Cursor `state.vscdb` read (`Microsoft.Data.Sqlite`), Codex `wham/usage`
+   HTTP, Anthropic rate-limit-header probe, the statusline `.cmd`/PS hook installer, and the
+   `QuotaAcquisitionCoordinator` (fan-in → snapshots, Mac pacing constants, debounce/retry/error-tracking on
+   the injectable clock). Proven by `windows/tests/quota-acquisition` (**57 tests green on macOS**, incl. the
+   real `FileSystemWatcher` adapter contract). The `.Windows` sibling ships the real `FileSystemWatcher` +
+   `%LOCALAPPDATA%/%APPDATA%` path defaults + the `WindowsQuotaAcquisitionHost` composition root. The
+   `QuotaWorkspacePage` data path now **prefers the live coordinator** (`QuotaAccountsSource` →
+   `QuotaLiveAccountMapper`) over B4 Firestore over `QuotaSampleData`, and `App.OnLaunched` configures the host.
+   **Windows-runner-deferred (WS-D):** exercising the live `FileSystemWatcher` + real `%APPDATA%` paths on a
+   Windows host, installing the hook against a real `~/.claude/settings.json`, and the WinUI XAML build of
+   `QuotaWorkspacePage` (XamlCompiler is Windows-only — the C# data path is done and macOS-compiled).
 6. ManagedAgentRuntime + CursorConnector ports. ~~ConPTY chat live (B1); land B6~~ — **on main already**;
    what remains is proving ConPTY + mission dispatch live on a real Windows host (WS-D pass).
    **Exit:** ~~#1270 landed + green engine run recorded (G2 headline); storage decision made and
