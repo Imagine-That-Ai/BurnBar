@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using OpenBurnBar.App.Presentation.Insights;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.CloudSync;
+using OpenBurnBar.App.Presentation.Dashboard;
 
 namespace OpenBurnBar.App.Insights;
 
@@ -21,8 +22,13 @@ public static class CloudSyncInsightSource
     /// the Engine analysis path; those templates remain visibly marked as samples.
     /// </summary>
     public static InsightWidgetData ResolveKpi(InsightWidgetKind kind, int seed)
+        => ResolveKpi(
+            kind,
+            seed,
+            OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary());
+
+    public static InsightWidgetData ResolveKpi(InsightWidgetKind kind, int seed, DashboardUsageSummary summary)
     {
-        var summary = OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary();
         if (summary.HasData)
         {
             return (kind, seed) switch

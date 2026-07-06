@@ -1,6 +1,8 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Presentation.Insights;
+using OpenBurnBar.App.Presentation.Dashboard;
 
 namespace OpenBurnBar.App.Insights;
 
@@ -15,8 +17,12 @@ public sealed partial class InsightsPage : Page
     {
         // Install before InitializeComponent(): the XAML tree constructs TemplateGalleryView,
         // and its constructor materializes InsightsBuiltInTemplates.All immediately.
+        var dashboardSummary = new Lazy<DashboardUsageSummary>(
+            OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary);
         InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
-            kind == InsightWidgetKind.KpiTile ? CloudSyncInsightSource.ResolveKpi(kind, seed) : null;
+            kind == InsightWidgetKind.KpiTile
+                ? CloudSyncInsightSource.ResolveKpi(kind, seed, dashboardSummary.Value)
+                : null;
 
         InitializeComponent();
         GalleryView.TemplateSelected += OnTemplateSelected;
