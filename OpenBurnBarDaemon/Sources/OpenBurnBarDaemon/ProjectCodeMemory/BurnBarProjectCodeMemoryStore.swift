@@ -180,6 +180,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         private let fd: Int32
         private let source: DispatchSourceRead
         private let roots: [URL]
+        private let onEvent: @Sendable () -> Void
+        private let onRebuild: (@Sendable () -> Void)?
         private var watchDescriptorsByPath: [String: Int32] = [:]
         private var pathsByWatchDescriptor: [Int32: String] = [:]
         private var cancelled = false
@@ -197,26 +199,39 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 | IN_MOVED_TO
         )
 
-        static func make(roots: [URL], queue: DispatchQueue, onEvent: @escaping @Sendable () -> Void) -> LinuxFileSystemEventStream? {
+        static func make(
+            roots: [URL],
+            queue: DispatchQueue,
+            onEvent: @escaping @Sendable () -> Void,
+            onRebuild: (@Sendable () -> Void)? = nil
+        ) -> LinuxFileSystemEventStream? {
             let fd = inotify_init1(Int32(IN_NONBLOCK | IN_CLOEXEC))
             guard fd >= 0 else { return nil }
 
-            let stream = LinuxFileSystemEventStream(fd: fd, roots: roots, queue: queue)
+            let stream = LinuxFileSystemEventStream(fd: fd, roots: roots, queue: queue, onEvent: onEvent, onRebuild: onRebuild)
             guard stream.installInitialWatches() else {
                 stream.cancel()
                 return nil
             }
             stream.source.setEventHandler { [weak stream] in
                 guard let stream else { return }
-                stream.drainEvents(onEvent: onEvent)
+                stream.drainEvents()
             }
             stream.source.resume()
             return stream
         }
 
-        private init(fd: Int32, roots: [URL], queue: DispatchQueue) {
+        private init(
+            fd: Int32,
+            roots: [URL],
+            queue: DispatchQueue,
+            onEvent: @escaping @Sendable () -> Void,
+            onRebuild: (@Sendable () -> Void)?
+        ) {
             self.fd = fd
             self.roots = Self.uniqueCanonicalDirectories(roots)
+            self.onEvent = onEvent
+            self.onRebuild = onRebuild
             source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
             source.setCancelHandler {
                 close(fd)
@@ -240,6 +255,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
 
         private func rebuildWatches() {
             guard cancelled == false else { return }
+            onRebuild?()
             for wd in pathsByWatchDescriptor.keys {
                 _ = inotify_rm_watch(fd, wd)
             }
@@ -283,7 +299,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             return true
         }
 
-        private func drainEvents(onEvent: () -> Void) {
+        private func drainEvents() {
             var shouldNotify = false
             var shouldRebuild = false
             var buffer = [UInt8](repeating: 0, count: Self.eventBufferSize)
@@ -354,8 +370,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             if mask & UInt32(IN_IGNORED) != 0 {
                 if let path = pathsByWatchDescriptor.removeValue(forKey: watchDescriptor) {
                     watchDescriptorsByPath.removeValue(forKey: path)
+                    shouldRebuild = true
                 }
-                shouldRebuild = true
                 return
             }
 
@@ -409,19 +425,46 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         private static func isSymbolicLink(_ url: URL) -> Bool {
             (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
         }
+
+#if DEBUG
+        func simulateQueueOverflowForTesting() {
+            var shouldNotify = false
+            var shouldRebuild = false
+            handleEvent(
+                watchDescriptor: -1,
+                mask: UInt32(IN_Q_OVERFLOW),
+                name: nil,
+                shouldNotify: &shouldNotify,
+                shouldRebuild: &shouldRebuild
+            )
+            if shouldRebuild {
+                rebuildWatches()
+            }
+            if shouldNotify {
+                onEvent()
+            }
+        }
+#endif
     }
 
 #if DEBUG
     static func _testOnlyMakeLinuxFileSystemEventStream(
         roots: [URL],
         queue: DispatchQueue,
-        onEvent: @escaping @Sendable () -> Void
+        onEvent: @escaping @Sendable () -> Void,
+        onRebuild: (@Sendable () -> Void)? = nil
     ) -> AnyObject? {
-        LinuxFileSystemEventStream.make(roots: roots, queue: queue, onEvent: onEvent)
+        LinuxFileSystemEventStream.make(roots: roots, queue: queue, onEvent: onEvent, onRebuild: onRebuild)
     }
 
     static func _testOnlyCancelLinuxFileSystemEventStream(_ stream: AnyObject) {
         (stream as? LinuxFileSystemEventStream)?.cancel()
+    }
+
+    static func _testOnlySimulateLinuxInotifyQueueOverflow(_ stream: AnyObject, queue: DispatchQueue) {
+        queue.sync {
+            (stream as? LinuxFileSystemEventStream)?.simulateQueueOverflowForTesting()
+        }
     }
 #endif
 #endif
