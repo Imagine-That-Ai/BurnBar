@@ -29,6 +29,7 @@ public protocol BurnBarCLIClient: Sendable {
     func cancelRun(_ request: BurnBarRunCancelRequest) throws -> BurnBarRunDetailResponse
     func retryRun(_ request: BurnBarRunRetryRequest) throws -> BurnBarRunDetailResponse
     func respondToApproval(_ request: BurnBarApprovalRespondRequest) throws -> BurnBarRunDetailResponse
+    func panicHalt(_ request: ComputerUsePanicHaltRequest) throws -> ComputerUsePanicHaltResponse
     func startSubscription(_ request: BurnBarSubscriptionStartRequest) throws -> BurnBarSubscriptionResponse
     func resumeSubscription(_ request: BurnBarSubscriptionResumeRequest) throws -> BurnBarSubscriptionResponse
     func runResume(
@@ -317,6 +318,16 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .approvalRespond,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func panicHalt(_ request: ComputerUsePanicHaltRequest) throws -> ComputerUsePanicHaltResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUsePanicHalt,
                 authToken: authToken,
                 params: request
             )
@@ -748,10 +759,47 @@ public struct BurnBarCLIRunner {
         }
 
         if effectiveArguments.first == "computer-use" {
-            return try BurnBarCLIComputerUseLiveSurface.run(arguments: Array(effectiveArguments.dropFirst()))
+            return try runComputerUseCommand(Array(effectiveArguments.dropFirst()))
         }
 
         return BurnBarCLIInvocationResult(output: try run(arguments: arguments), exitCode: EXIT_SUCCESS)
+    }
+
+    private func runComputerUseCommand(_ arguments: [String]) throws -> BurnBarCLIInvocationResult {
+        guard arguments.first == "panic-halt" else {
+            return try BurnBarCLIComputerUseLiveSurface.run(arguments: arguments)
+        }
+        let sessionId = try requiredOption("--session-id", in: arguments)
+        let source = optionValue("--source", in: arguments) ?? ComputerUsePanicSource.hotkey.rawValue
+        guard ComputerUsePanicSource(rawValue: source) != nil else {
+            throw BurnBarCLIError.missingArgument(
+                "--source must be one of \(ComputerUsePanicSource.allCases.map(\.rawValue).joined(separator: ", "))"
+            )
+        }
+        let response = try client.panicHalt(
+            ComputerUsePanicHaltRequest(sessionId: sessionId, source: source)
+        )
+        if arguments.contains("--json") {
+            return BurnBarCLIInvocationResult(
+                output: try Self.jsonString([
+                    "sessionId": response.sessionId,
+                    "endedAt": Self.formatDate(response.endedAt),
+                    "auditHeadHashHex": response.auditHeadHashHex,
+                    "source": source
+                ]),
+                exitCode: EXIT_SUCCESS
+            )
+        }
+        return BurnBarCLIInvocationResult(
+            output: [
+                "computer_use_panic_halt=accepted",
+                "session_id=\(response.sessionId)",
+                "source=\(source)",
+                "ended_at=\(Self.formatDate(response.endedAt))",
+                "audit_head_hash_hex=\(response.auditHeadHashHex)"
+            ].joined(separator: "\n"),
+            exitCode: EXIT_SUCCESS
+        )
     }
 
     private func runResumeCommand(_ effectiveArguments: [String]) throws -> (BurnBarRunResumeResponse, BurnBarResumeMode) {
@@ -1290,6 +1338,7 @@ public struct BurnBarCLIRunner {
       resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]
       remote-unlock-certification <status|record-hardware-proof|reset>
       audit-verify <session-directory> [--max-entry-index N] [--skip-opentimestamps]
+      computer-use panic-halt --session-id ID|* [--source hotkey|phone_gesture|mac_lock|remote_config|accessibility_revoked|stalled|revoked] [--json]
       computer-use live-surface-proof --panic-url URL --media-url URL [--audit-head HASH] [--json]
       local-peer <browse|advertise-metadata|disabled-state|parse-fixture> [--json] [--timeout SECONDS] [fixture-path]
       devices <discover|parity|pixel-clock|iot> [args...] [--json]

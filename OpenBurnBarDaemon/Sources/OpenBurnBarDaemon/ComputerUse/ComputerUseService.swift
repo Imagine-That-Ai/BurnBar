@@ -6,9 +6,10 @@ import OpenBurnBarComputerUseCore
 ///
 /// The Mac app still owns interactive approval UI and Mac-wide CGEvent
 /// dispatch. This service makes the wire contracts reachable, owns
-/// browser-session Playwright drivers, and rejects app-owned modes
-/// (`agent_watch` and `system`) at session start so callers cannot create
-/// a daemon session that appears valid but can never dispatch Path A/C.
+/// browser-session Playwright drivers, and rejects app-owned modes at session
+/// start on macOS so callers cannot create a daemon session that appears valid
+/// but can never dispatch Path A/C. On Linux, the daemon owns system input via
+/// Linux-native adapters because there is no AppKit host process to inject it.
 public actor ComputerUseService {
     public enum ServiceError: Error, Sendable, Equatable {
         case invalidMode(String)
@@ -29,6 +30,7 @@ public actor ComputerUseService {
     private let logger: BurnBarDaemonLogger
     private let bridgeScriptURL: URL
     private let auditExportSignerProvider: any ComputerUseAuditExportSignerProviding
+    private let systemInputAccessibilityTrusted: @Sendable (ComputerUseMode) -> Bool
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
 
     public init(
@@ -38,6 +40,9 @@ public actor ComputerUseService {
         bridgeScriptURL: URL? = nil,
         locateExecutable: BurnBarExecutableLocator? = nil,
         auditExportSignerProvider: (any ComputerUseAuditExportSignerProviding)? = nil,
+        systemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
+        systemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
+        systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) -> Bool)? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
@@ -50,10 +55,32 @@ public actor ComputerUseService {
         self.auditExportSignerProvider = auditExportSignerProvider ?? ComputerUseKeychainAuditExportSignerProvider(
             legacyRawKeyURL: Self.legacyRawAuditExportKeyURL(auditBaseDirectory: auditBaseDirectory)
         )
+        let defaultSystemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher?
+        let defaultSystemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher?
+        let defaultSystemAccessibilityTrusted: @Sendable (ComputerUseMode) -> Bool
+        #if os(Linux)
+        let linuxInputAdapter = LinuxComputerUseInputAdapter()
+        defaultSystemInputDispatcher = { _, action in
+            try await linuxInputAdapter.dispatch(action)
+        }
+        defaultSystemInspectDispatcher = { _, action in
+            try await linuxInputAdapter.inspectAccessibility(action)
+        }
+        defaultSystemAccessibilityTrusted = { mode in
+            mode == .system && linuxInputAdapter.isAvailableForSystemInput()
+        }
+        #else
+        defaultSystemInputDispatcher = nil
+        defaultSystemInspectDispatcher = nil
+        defaultSystemAccessibilityTrusted = { _ in false }
+        #endif
+        self.systemInputAccessibilityTrusted = systemInputAccessibilityTrusted ?? defaultSystemAccessibilityTrusted
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
                 try await approvalBridge.issue(request)
             },
+            macInputDispatcher: systemInputDispatcher ?? defaultSystemInputDispatcher,
+            macInspectDispatcher: systemInspectDispatcher ?? defaultSystemInspectDispatcher,
             macAppVersion: macAppVersion,
             auditBaseDirectory: auditBaseDirectory,
             logger: logger
@@ -67,13 +94,11 @@ public actor ComputerUseService {
         guard let trustMode = ComputerUseTrustMode(rawValue: request.trustMode) else {
             throw ServiceError.invalidTrustMode(request.trustMode)
         }
-        guard mode == .browser else {
-            // Path A and Path C are app-owned because they depend on the
-            // Mac app's live relay session, approval UI, AX trust state,
-            // and CGEvent dispatcher. The daemon owns only Path B browser
-            // Playwright sessions; fail early instead of starting a session
-            // that would later deny every System-mode action through a fake
-            // `accessibilityTrusted: false` capability.
+        guard Self.supportsDaemonMode(mode) else {
+            // Path A and Path C are app-owned on macOS because they depend on
+            // the Mac app's live relay session, approval UI, AX trust state,
+            // and CGEvent dispatcher. Linux allows `.system` because the
+            // daemon wires Linux-native input adapters directly.
             throw ServiceError.unsupportedDaemonMode(mode.rawValue)
         }
 
@@ -121,7 +146,7 @@ public actor ComputerUseService {
             session: state,
             concurrentSessionActive: false,
             killSwitch: false,
-            accessibilityTrusted: false
+            accessibilityTrusted: systemInputAccessibilityTrusted(manifest.mode)
         )
 
         // CU-021 fix: resolve scope rules against the browser action URL.
@@ -168,11 +193,30 @@ public actor ComputerUseService {
     }
 
     public func panicHalt(_ request: ComputerUsePanicHaltRequest) async throws -> ComputerUsePanicHaltResponse {
-        let sessionId = ComputerUseSessionID(request.sessionId)
-        guard let source = ComputerUsePanicSource(rawValue: request.source),
-              let state = await coordinator.session(sessionId) else {
+        guard let source = ComputerUsePanicSource(rawValue: request.source) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
+        if request.sessionId == "*" {
+            Self.activatePrivilegedInputKillSwitch(reason: source.rawValue)
+            let endedAt = Date()
+            let haltedSessionIds = await coordinator.panicHaltAll(source: source)
+            for sessionId in haltedSessionIds {
+                let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionId.rawValue, isDirectory: true)
+                finalizeAuditHeadIfPossible(sessionDirectory: sessionDirectory, closedAt: endedAt)
+                manifests.removeValue(forKey: sessionId)
+            }
+            return ComputerUsePanicHaltResponse(
+                sessionId: request.sessionId,
+                endedAt: endedAt,
+                auditHeadHashHex: ""
+            )
+        }
+
+        let sessionId = ComputerUseSessionID(request.sessionId)
+        guard let state = await coordinator.session(sessionId) else {
+            throw ServiceError.invalidSession(request.sessionId)
+        }
+        Self.activatePrivilegedInputKillSwitch(reason: source.rawValue)
         let lastHead = state.auditChainHeadHashHex ?? ""
         let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionId.rawValue, isDirectory: true)
         await coordinator.panicHalt(sessionId: sessionId, source: source)
@@ -316,6 +360,22 @@ public actor ComputerUseService {
             allowsTrustedScopes: true,    // SKU default: on
             allowsAuditExport: true       // SKU default: on
         )
+    }
+
+    private static func supportsDaemonMode(_ mode: ComputerUseMode) -> Bool {
+        #if os(Linux)
+        return mode == .browser || mode == .system
+        #else
+        return mode == .browser
+        #endif
+    }
+
+    private static func activatePrivilegedInputKillSwitch(reason: String) {
+        #if os(Linux)
+        LinuxPrivilegedInputKillFlag.activate(reason: reason)
+        #else
+        PrivilegedInputKillSwitch.activate(reason: reason)
+        #endif
     }
 
     /// Extracts a scope context from a tool invocation for browser-mode scope

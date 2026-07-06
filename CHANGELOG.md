@@ -64,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **SQL-side credential scan pre-filter** (B3): `INSTR`-based WHERE
     clauses skip conversations without credential indicators before
     loading `fullText` into Swift memory.
+- **Linux Computer Use input and panic lane** — Linux daemon-owned `system`
+  sessions now wire a native input dispatcher, preferring AT-SPI2 for
+  Wayland-accessibility clicks and X11/XTEST via `xdotool` as an explicit
+  degraded fallback, with missing adapters failing closed. Added
+  `openburnbar-cli computer-use panic-halt --session-id '*' --source hotkey`
+  and packaged Linux shell global emergency shortcut registration as
+  daemon-backed panic paths that trip the
+  `$XDG_RUNTIME_DIR/openburnbar/privileged-input-kill` flag before session
+  teardown.
 - **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
   `POST /v1/chat/completions` through the shared provider router, relays
   OpenAI-compatible SSE streams, and records gateway usage events with cache

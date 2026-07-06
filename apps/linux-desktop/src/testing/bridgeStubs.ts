@@ -1,6 +1,7 @@
 import type {
   DatabaseIndexActionResult,
   DatabaseWorkspaceStatus,
+  ComputerUsePanicHaltResult,
   IntegrationsStatus,
   MercuryMediaCapability,
   MercuryFileOfferListResponse,
@@ -84,8 +85,17 @@ export const emptyDatabaseIndexAction = (): Promise<DatabaseIndexActionResult> =
 
 export const emptyGatewayAuthToken = (): Promise<string | null> => Promise.resolve(null);
 
+export const emptyComputerUsePanicHalt = (): Promise<ComputerUsePanicHaltResult> =>
+  Promise.resolve({
+    sessionId: '*',
+    endedAt: new Date(0).toISOString(),
+    auditHeadHashHex: '',
+    source: 'hotkey'
+  });
+
 export const bridgeStubDefaults = {
   gatewayAuthToken: emptyGatewayAuthToken,
+  computerUsePanicHalt: emptyComputerUsePanicHalt,
   mediaStatus: emptyMediaStatus,
   mediaSessionState: emptyMediaSessionState,
   mediaAcceptCall: emptyMediaAction,
