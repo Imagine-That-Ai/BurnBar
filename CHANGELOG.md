@@ -52,6 +52,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (toolbar + tab-card strip) into one ~52pt bar with a ⌘K command palette for
   section fuzzy-filter + session search, and ⌘1–⌘7 section shortcuts.
 
+### Fixed
+
+- **macOS StoreKit entitlement resolution** — `MacCloudEntitlementStore` now
+  reads StoreKit 2 current entitlements and transaction updates, maps the same
+  Cloud / Cloud Pro / Cloud Ultra SKUs as iOS, and uses locally verified
+  entitlements only when the cloud entitlement document is absent.
+
 ## [1.0.29] - 2026-07-05
 
 ### Added

@@ -154,6 +154,133 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(store.hostedMediaPurchaseDate, purchase)
     }
 
+    func testMacCloudStoreKitCatalogMatchesIOSCommercialEntitlementIDs() {
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.cloudMonthlyProductID, "com.openburnbar.pro.monthly")
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.cloudAnnualProductID, "com.openburnbar.pro.annual")
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.cloudProMonthlyProductID, "com.openburnbar.proMax.v2.monthly")
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.cloudProAnnualProductID, "com.openburnbar.proMax.annual")
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID, "com.openburnbar.ultra.monthly")
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID, "com.openburnbar.ultra.annual.v2")
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.tier(for: "com.openburnbar.pro.monthly"), .cloud)
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.tier(for: "com.openburnbar.proMax.bundle.monthly"), .pro)
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.tier(for: "com.openburnbar.ultra.monthly"), .ultra)
+        XCTAssertTrue(MacCloudStoreKitProductCatalog.entitlementProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
+        XCTAssertTrue(MacCloudStoreKitProductCatalog.entitlementProductIDs.contains("com.openburnbar.hostedComputerUseSync.monthly"))
+    }
+
+    func testMacCloudEntitlementStoreResolvesLocalStoreKitProEntitlement() async {
+        let expires = Date(timeIntervalSinceNow: 3_600)
+        let purchase = Date(timeIntervalSinceNow: -86_400)
+        let provider = FakeMacStoreKitEntitlementProvider(entitlements: [
+            MacStoreKitEntitlementSnapshot(
+                productID: MacCloudStoreKitProductCatalog.cloudProAnnualProductID,
+                expirationDate: expires,
+                purchaseDate: purchase,
+                transactionID: 9_001
+            )
+        ])
+        let store = MacCloudEntitlementStore(
+            storeKitEntitlementProvider: provider,
+            observesStoreKitTransactions: false
+        )
+
+        await store.refreshStoreKitEntitlementsForTesting()
+
+        XCTAssertTrue(store.hasVerifiedStoreKitEntitlementSnapshot)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.hostedComputerUseIsActive)
+        XCTAssertFalse(store.isUltraActive)
+        XCTAssertEqual(store.currentTier, .pro)
+        XCTAssertEqual(store.cloudTier, .pro)
+        XCTAssertEqual(store.expirationDate?.timeIntervalSince1970 ?? 0, expires.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(store.purchaseDate?.timeIntervalSince1970 ?? 0, purchase.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(store.hostedComputerUseExpirationDate?.timeIntervalSince1970 ?? 0, expires.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(provider.currentEntitlementReadCount, 1)
+    }
+
+    func testMacCloudEntitlementStoreTreatsVerifiedEmptyStoreKitSnapshotAsFree() async {
+        let provider = FakeMacStoreKitEntitlementProvider(entitlements: [])
+        let store = MacCloudEntitlementStore(
+            storeKitEntitlementProvider: provider,
+            observesStoreKitTransactions: false
+        )
+
+        await store.refreshStoreKitEntitlementsForTesting()
+
+        XCTAssertTrue(store.hasVerifiedStoreKitEntitlementSnapshot)
+        XCTAssertFalse(store.isActive)
+        XCTAssertFalse(store.hostedComputerUseIsActive)
+        XCTAssertFalse(store.isUltraActive)
+        XCTAssertNil(store.expirationDate)
+        XCTAssertEqual(store.currentTier, .free)
+        XCTAssertEqual(store.cloudTier, .none)
+    }
+
+    func testMacCloudEntitlementStoreCloudSourceOverridesLocalStoreKitSnapshot() async {
+        let localUltraExpires = Date(timeIntervalSinceNow: 7_200)
+        let cloudExpires = Date(timeIntervalSinceNow: 1_800)
+        let provider = FakeMacStoreKitEntitlementProvider(entitlements: [
+            MacStoreKitEntitlementSnapshot(
+                productID: MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID,
+                expirationDate: localUltraExpires,
+                purchaseDate: Date(timeIntervalSinceNow: -7_200),
+                transactionID: 42
+            )
+        ])
+        let store = MacCloudEntitlementStore(
+            storeKitEntitlementProvider: provider,
+            observesStoreKitTransactions: false
+        )
+        await store.refreshStoreKitEntitlementsForTesting()
+        XCTAssertEqual(store.currentTier, .ultra)
+
+        store.applyHostedQuota(data: [
+            "active": true,
+            "productID": MacCloudStoreKitProductCatalog.cloudMonthlyProductID,
+            "expiresAt": cloudExpires
+        ])
+
+        XCTAssertTrue(store.isActive)
+        XCTAssertFalse(store.hostedComputerUseIsActive)
+        XCTAssertFalse(store.isUltraActive)
+        XCTAssertEqual(store.currentTier, .cloud)
+        XCTAssertEqual(store.cloudTier, .cloud)
+        XCTAssertEqual(store.expirationDate?.timeIntervalSince1970 ?? 0, cloudExpires.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testMacCloudEntitlementStoreRefreshesStoreKitSnapshotOnTransactionUpdate() async {
+        let expires = Date(timeIntervalSinceNow: 3_600)
+        let refreshObserved = expectation(description: "StoreKit update refreshed current entitlements")
+        let provider = FakeMacStoreKitEntitlementProvider(
+            entitlements: [
+                MacStoreKitEntitlementSnapshot(
+                    productID: MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID,
+                    expirationDate: expires,
+                    purchaseDate: Date(timeIntervalSinceNow: -300),
+                    transactionID: 777
+                )
+            ],
+            emitsImmediateUpdate: true
+        )
+        provider.onCurrentEntitlementsRead = {
+            refreshObserved.fulfill()
+        }
+        let store = MacCloudEntitlementStore(
+            storeKitEntitlementProvider: provider,
+            observesStoreKitTransactions: false
+        )
+
+        store.startStoreKitEntitlementObservationForTesting()
+        await fulfillment(of: [refreshObserved], timeout: 1.0)
+
+        XCTAssertTrue(store.hasVerifiedStoreKitEntitlementSnapshot)
+        XCTAssertEqual(store.currentTier, .ultra)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.hostedComputerUseIsActive)
+        XCTAssertTrue(store.isUltraActive)
+    }
+
     func testActiveSessionRegistryClampsCountsPerFeature() {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
         XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .screenShare), 0)
@@ -828,5 +955,37 @@ private final class RecordingRemoteUnlockKeychainOperations: SecurityKeychainOpe
                 query: dictionary
             )
         )
+    }
+}
+
+@MainActor
+private final class FakeMacStoreKitEntitlementProvider: MacStoreKitEntitlementProviding {
+    private let entitlements: [MacStoreKitEntitlementSnapshot]
+    private let emitsImmediateUpdate: Bool
+    private(set) var currentEntitlementReadCount = 0
+    var onCurrentEntitlementsRead: (() -> Void)?
+
+    init(
+        entitlements: [MacStoreKitEntitlementSnapshot],
+        emitsImmediateUpdate: Bool = false
+    ) {
+        self.entitlements = entitlements
+        self.emitsImmediateUpdate = emitsImmediateUpdate
+    }
+
+    func currentEntitlements() async -> [MacStoreKitEntitlementSnapshot] {
+        currentEntitlementReadCount += 1
+        onCurrentEntitlementsRead?()
+        return entitlements
+    }
+
+    func transactionUpdates() -> AsyncStream<Void> {
+        let shouldEmit = emitsImmediateUpdate
+        return AsyncStream { continuation in
+            if shouldEmit {
+                continuation.yield(())
+                continuation.finish()
+            }
+        }
     }
 }
