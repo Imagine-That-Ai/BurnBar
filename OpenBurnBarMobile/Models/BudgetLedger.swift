@@ -19,13 +19,16 @@ extension BudgetSpendDataSource {
     var budgetSpendSnapshotIsReadable: Bool { true }
 }
 
-enum BudgetLedgerReadError: Error, LocalizedError, Sendable {
+enum BudgetLedgerReadError: Error, LocalizedError, Equatable, Sendable {
     case spendSnapshotUnavailable
+    case projectScopeUnsupported
 
     var errorDescription: String? {
         switch self {
         case .spendSnapshotUnavailable:
             "Budget spend snapshot is not readable."
+        case .projectScopeUnsupported:
+            "Project-scope spend cannot be computed on iOS (rollups carry no per-project breakdown)."
         }
     }
 }
@@ -171,12 +174,20 @@ actor BudgetLedger {
             return RollupSpend(total: total)
 
         case .project:
-            // Rollups don't currently have per-project breakdowns — future enhancement.
-            return RollupSpend(total: 0)
+            // Rollups carry no per-project breakdown, so project spend is UNKNOWABLE here —
+            // not zero. Returning 0 made project rules silently enforce nothing; throwing
+            // routes the gate through its fail-closed path instead (audit wave 4, item 3).
+            throw BudgetLedgerReadError.projectScopeUnsupported
 
         case .organization:
             guard let identifier = Self.nonEmpty(rule.identifier) else { return RollupSpend(total: 0) }
-            let matches = rollup.accountSummaries.filter { Self.matchesOrganization($0, identifier: identifier) }
+            let memberAccountIDs = Self.organizationMemberAccountIDs(
+                identifier: identifier,
+                rollupsByWindow: rollupsByWindow
+            )
+            let matches = rollup.accountSummaries.filter {
+                Self.matchesOrganization($0, identifier: identifier, memberAccountIDs: memberAccountIDs)
+            }
             let total = matches.compactMap(\.totalCost).reduce(0, +)
             let keys = Set(matches.map { sessionKey(providerID: $0.providerID.rawValue, accountID: $0.accountID) })
             return RollupSpend(total: total, matchedAccountKeys: keys)
@@ -222,8 +233,34 @@ actor BudgetLedger {
         SessionSpendKey(providerID: providerID, accountID: accountID)
     }
 
-    private nonisolated static func matchesOrganization(_ summary: RollupProviderAccountSummary, identifier: String) -> Bool {
-        summary.accountLabel == identifier || summary.accountID == identifier
+    /// Rollup equivalent of the macOS ledger's recursive `providerAccountID` subquery: an
+    /// account whose label matched the organization in ANY rollup window is an org member,
+    /// so its spend still counts in windows where the summary carries a renamed label.
+    private nonisolated static func organizationMemberAccountIDs(
+        identifier: String,
+        rollupsByWindow: [RollupWindowKey: UsageRollupDoc]
+    ) -> Set<String> {
+        var members: Set<String> = []
+        for rollup in rollupsByWindow.values {
+            for summary in rollup.accountSummaries where summary.accountLabel == identifier {
+                if let accountID = nonEmpty(summary.accountID) {
+                    members.insert(accountID)
+                }
+            }
+        }
+        return members
+    }
+
+    private nonisolated static func matchesOrganization(
+        _ summary: RollupProviderAccountSummary,
+        identifier: String,
+        memberAccountIDs: Set<String>
+    ) -> Bool {
+        if summary.accountLabel == identifier || summary.accountID == identifier {
+            return true
+        }
+        guard let accountID = nonEmpty(summary.accountID) else { return false }
+        return memberAccountIDs.contains(accountID)
     }
 
     private nonisolated static func nonEmpty(_ value: String?) -> String? {

@@ -909,6 +909,27 @@ final class BudgetGateTests: XCTestCase {
     // MARK: - Wave 4 item 3: project scope fails closed on iOS
 
     @MainActor
+    func testProjectScopeCurrentSpendThrowsUnsupported() async throws {
+        let source = MockSpendDataSource(spend: 0)
+        let ledger = BudgetLedger(dataSource: source)
+        let rule = BudgetRule(
+            scope: .project,
+            projectName: "acme-app",
+            label: "Acme project cap",
+            amountUSD: 10,
+            period: .month,
+            behavior: .hardBlock
+        )
+
+        do {
+            let spend = try await ledger.currentSpend(forRule: rule)
+            XCTFail("Expected project-scope spend read to throw (no per-project rollups on iOS), got \(spend)")
+        } catch let error as BudgetLedgerReadError {
+            XCTAssertEqual(error, .projectScopeUnsupported)
+        }
+    }
+
+    @MainActor
     func testGateFailsClosedForProjectRuleOnIOS() async throws {
         let settings = makeSettings()
         let rule = BudgetRule(

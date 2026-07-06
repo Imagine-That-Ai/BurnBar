@@ -701,6 +701,22 @@ struct BudgetRuleCard: View {
                     .frame(height: 5)
                 }
 
+                // Project spend can't be measured from rollups on iOS, so the gate fails
+                // closed for this rule — say so instead of showing a fake $0/at-limit bar.
+                if rule.scope == .project {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                        Text(rule.behavior == .warnOnly
+                            ? "Project spend isn't measurable on iOS yet — matching requests surface a warning."
+                            : "Project spend isn't measurable on iOS yet — matching requests are blocked (fails closed).")
+                            .font(.system(size: 10, weight: .medium))
+                        Spacer()
+                    }
+                    .foregroundStyle(MobileTheme.warning)
+                    .padding(.top, 2)
+                }
+
                 // Forecast projection indicator
                 if let hitDate = projection?.projectedHitDate(), pct < 1.0 && !isPaused {
                     HStack(spacing: 4) {
@@ -994,7 +1010,7 @@ struct BudgetRuleEditorSheet: View {
                     } header: {
                         Text("Project Targeting")
                     } footer: {
-                        Text("Matches the project labels configured in the streams/projects tab.")
+                        Text("Matches the project labels configured in the streams/projects tab. Project spend isn't measurable on iOS yet, so this rule fails closed: matching requests are blocked (or warned for warn-only rules) instead of silently allowed. Full enforcement runs on Mac.")
                             .font(.caption2)
                             .foregroundStyle(MobileTheme.textSecondary)
                     }
