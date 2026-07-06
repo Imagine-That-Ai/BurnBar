@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
+import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import type { LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
 import { ACTIVITY_PAGE_SIZE, useActivityStore } from '../../state/activityStore.js';
 import { useShellStore } from '../../state/shellStore.js';
@@ -34,6 +35,7 @@ function mockBridge(handlers: {
 }): LinuxShellBridge {
   const emptyList = async (): Promise<SessionListResult> => ({ sessions: [], nextCursor: null });
   const bridge: LinuxShellBridge = {
+    ...bridgeStubDefaults,
     daemonHealth: async () => ({ ok: true }),
     openDashboard: async () => {},
     quitApp: async () => {},

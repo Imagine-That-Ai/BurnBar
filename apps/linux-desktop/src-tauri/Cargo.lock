@@ -2087,6 +2087,7 @@ dependencies = [
 name = "openburnbar-linux-desktop"
 version = "0.1.0"
 dependencies = [
+ "openburnbar-media",
  "serde",
  "serde_json",
  "tauri",
@@ -2095,6 +2096,10 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
 ]
+
+[[package]]
+name = "openburnbar-media"
+version = "0.1.0"
 
 [[package]]
 name = "option-ext"

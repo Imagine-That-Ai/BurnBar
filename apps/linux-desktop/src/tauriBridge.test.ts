@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { bridgeStubDefaults } from './testing/bridgeStubs';
 import { computeCacheHitRatePct } from './tauriBridge';
 
 describe('computeCacheHitRatePct', () => {
@@ -34,5 +35,15 @@ describe('computeCacheHitRatePct', () => {
   it('ignores negative token counts', () => {
     const events = [{ inputTokens: -10, cacheCreationTokens: 0, cacheReadTokens: 100 }];
     expect(computeCacheHitRatePct(events)).toBe(100);
+  });
+});
+
+describe('bridgeStubDefaults media wiring', () => {
+  it('keeps full-shape bridge mocks current for live media methods', async () => {
+    await expect(bridgeStubDefaults.mediaSessionState()).resolves.toMatchObject({ phase: 'capability-absent' });
+    await expect(bridgeStubDefaults.mediaAcceptCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
+    await expect(bridgeStubDefaults.mediaDeclineCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
+    await expect(bridgeStubDefaults.mediaEndCall()).resolves.toMatchObject({ phase: 'capability-absent' });
+    await expect(bridgeStubDefaults.mediaCapabilityGet()).resolves.toMatchObject({ available: false });
   });
 });

@@ -5,10 +5,13 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
+
+mod media;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -1106,6 +1109,112 @@ fn media_status() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.media.status", None)
 }
 
+#[tauri::command]
+fn media_session_state() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.media.session.state", None)
+}
+
+#[tauri::command]
+fn media_accept_call(request_id: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.media.call.accept",
+        Some(serde_json::json!({ "requestId": request_id })),
+    )
+}
+
+#[tauri::command]
+fn media_decline_call(request_id: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.media.call.decline",
+        Some(serde_json::json!({ "requestId": request_id })),
+    )
+}
+
+#[tauri::command]
+fn media_end_call() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.media.call.end", Some(serde_json::json!({})))
+}
+
+#[tauri::command]
+fn media_capability_get() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.media.capability.get", Some(serde_json::json!({})))
+}
+
+fn media_phase(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("phase")
+        .or_else(|| value.get("state"))
+        .or_else(|| value.get("status"))
+        .or_else(|| value.get("activeSession").and_then(|session| session.get("state")))
+        .and_then(|phase| phase.as_str())
+        .map(|phase| phase.to_string())
+}
+
+fn media_request_id(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("requestId")
+        .or_else(|| value.get("request_id"))
+        .or_else(|| value.get("incomingCall").and_then(|call| call.get("requestId")))
+        .or_else(|| value.get("incoming_call").and_then(|call| call.get("request_id")))
+        .and_then(|request_id| request_id.as_str())
+        .map(|request_id| request_id.to_string())
+}
+
+fn start_media_session_poll_loop(app: AppHandle) {
+    thread::Builder::new()
+        .name("openburnbar-media-session-poll".to_string())
+        .spawn(move || {
+            let mut last_phase: Option<String> = None;
+            let mut last_request_id: Option<String> = None;
+            let mut capability_absent = false;
+            loop {
+                match call_daemon_method_with_timeout(
+                    "daemon.media.session.state",
+                    None,
+                    Duration::from_secs(2),
+                ) {
+                    Ok(state) => {
+                        capability_absent = false;
+                        let phase = media_phase(&state);
+                        let request_id = media_request_id(&state);
+                        let phase_changed = phase != last_phase;
+                        if phase_changed {
+                            let _ = app.emit("media-call-state-changed", state.clone());
+                        }
+                        if matches!(phase.as_deref(), Some("ringing") | Some("incoming"))
+                            && request_id.is_some()
+                            && request_id != last_request_id
+                        {
+                            let _ = app.emit("media-incoming-call", state.clone());
+                        }
+                        last_phase = phase;
+                        last_request_id = request_id;
+                    }
+                    Err(e) => {
+                        let lower = e.to_lowercase();
+                        let is_absent = lower.contains("unknown")
+                            || lower.contains("unsupported")
+                            || lower.contains("not implemented")
+                            || lower.contains("no such method");
+                        if !capability_absent && is_absent {
+                            capability_absent = true;
+                            let _ = app.emit(
+                                "media-call-state-changed",
+                                serde_json::json!({
+                                    "phase": "capability-absent",
+                                    "capabilityAbsent": true,
+                                    "error": e
+                                }),
+                            );
+                        }
+                    }
+                }
+                thread::sleep(Duration::from_millis(500));
+            }
+        })
+        .expect("failed to spawn media session poll loop");
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open_i = MenuItemBuilder::with_id("open", "Open dashboard").build(app)?;
     let health_i = MenuItemBuilder::with_id("health", "Reconnect daemon").build(app)?;
@@ -1239,6 +1348,11 @@ pub fn run() {
             export_diagnostics,
             session_env,
             media_status,
+            media_session_state,
+            media_accept_call,
+            media_decline_call,
+            media_end_call,
+            media_capability_get,
             integrations_status
         ])
         .setup(|app| {
@@ -1246,6 +1360,8 @@ pub fn run() {
                 TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
                 eprintln!("tray init degraded: {e}");
             }
+            start_media_session_poll_loop(app.handle().clone());
+            media::start_media_socket_reader(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())
