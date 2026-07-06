@@ -32,7 +32,10 @@ interface BudgetRuleDao {
               OR identifier = :displayLabel
               OR identifier = :providerAccountID
               OR identifier = :providerAccountLabel
-              OR (:providerAccountID IS NULL AND :providerAccountLabel IS NULL)
+              OR (
+                  (:providerAccountID IS NULL OR :providerAccountID = '')
+                  AND (:providerAccountLabel IS NULL OR :providerAccountLabel = '')
+              )
           )
         """,
     )
