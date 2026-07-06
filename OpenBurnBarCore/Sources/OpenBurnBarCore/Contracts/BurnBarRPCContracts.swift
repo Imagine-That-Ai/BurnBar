@@ -30,6 +30,9 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case proxyRouteLogRecent = "daemon.proxy.route_log.recent"
     case proxyRouteLogClear = "daemon.proxy.route_log.clear"
     case perfMeasure = "perf.measure"
+    case membershipStatus = "daemon.membership.status"
+    case membershipCheckoutURL = "daemon.membership.checkoutUrl"
+    case membershipRestore = "daemon.membership.restore"
     case connectorPlaneGet = "daemon.connector.plane.get"
     case connectorConfigUpdate = "daemon.connector.config.update"
     case connectorAction = "daemon.connector.action"
@@ -206,6 +209,150 @@ public struct BurnBarPerfMeasureResponse: Codable, Hashable, Sendable {
         self.ok = ok
         self.source = source
         self.detail = detail
+    }
+}
+
+public enum BurnBarMembershipState: String, Codable, Hashable, Sendable {
+    case active
+    case cancelled
+    case paymentFailed
+    case offline
+}
+
+public enum BurnBarMembershipErrorCode: String, Codable, Hashable, Sendable {
+    case unauthenticated
+    case offline
+    case cloudUnavailable
+    case invalidResponse
+}
+
+public struct BurnBarMembershipErrorResult: Codable, Hashable, Sendable {
+    public let code: BurnBarMembershipErrorCode
+    public let message: String
+
+    public init(code: BurnBarMembershipErrorCode, message: String) {
+        self.code = code
+        self.message = message
+    }
+}
+
+public struct BurnBarMembershipEntitlementDocument: Codable, Hashable, Sendable {
+    public let active: Bool
+    public let productID: String?
+    public let expiresAt: String?
+    public let expireAt: String?
+    public let source: String?
+
+    public init(
+        active: Bool,
+        productID: String? = nil,
+        expiresAt: String? = nil,
+        expireAt: String? = nil,
+        source: String? = nil
+    ) {
+        self.active = active
+        self.productID = productID
+        self.expiresAt = expiresAt
+        self.expireAt = expireAt
+        self.source = source
+    }
+}
+
+public struct BurnBarMembershipSnapshot: Codable, Hashable, Sendable {
+    public let tier: String
+    public let entitlementIds: [String]
+    public let activeEntitlements: [String]
+    public let entitlementDocs: [String: BurnBarMembershipEntitlementDocument]
+    public let renewsAt: String?
+    public let restoreAvailable: Bool
+    public let state: BurnBarMembershipState
+    public let cacheEvent: String
+    public let shellCacheEvent: String
+    public let daemonCacheKey: String
+    public let source: String
+    public let updatedAt: String?
+    public let error: BurnBarMembershipErrorResult?
+
+    public init(
+        tier: String,
+        entitlementIds: [String],
+        activeEntitlements: [String]? = nil,
+        entitlementDocs: [String: BurnBarMembershipEntitlementDocument] = [:],
+        renewsAt: String? = nil,
+        restoreAvailable: Bool,
+        state: BurnBarMembershipState,
+        cacheEvent: String = "membership.entitlement_cache.updated",
+        shellCacheEvent: String = "membership.entitlement_cache.updated",
+        daemonCacheKey: String,
+        source: String,
+        updatedAt: String? = nil,
+        error: BurnBarMembershipErrorResult? = nil
+    ) {
+        self.tier = tier
+        self.entitlementIds = entitlementIds
+        self.activeEntitlements = activeEntitlements ?? entitlementIds
+        self.entitlementDocs = entitlementDocs
+        self.renewsAt = renewsAt
+        self.restoreAvailable = restoreAvailable
+        self.state = state
+        self.cacheEvent = cacheEvent
+        self.shellCacheEvent = shellCacheEvent
+        self.daemonCacheKey = daemonCacheKey
+        self.source = source
+        self.updatedAt = updatedAt
+        self.error = error
+    }
+}
+
+public struct BurnBarMembershipStatusResponse: Codable, Hashable, Sendable {
+    public let membership: BurnBarMembershipSnapshot
+
+    public init(membership: BurnBarMembershipSnapshot) {
+        self.membership = membership
+    }
+}
+
+public struct BurnBarMembershipCheckoutURLRequest: Codable, Hashable, Sendable {
+    public let successURL: String
+    public let cancelURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case successURL = "success_url"
+        case cancelURL = "cancel_url"
+    }
+
+    public init(
+        successURL: String = "openburnbar://membership/success",
+        cancelURL: String = "openburnbar://membership/cancel"
+    ) {
+        self.successURL = successURL
+        self.cancelURL = cancelURL
+    }
+}
+
+public struct BurnBarMembershipCheckoutURLResponse: Codable, Hashable, Sendable {
+    public let url: String
+    public let source: String
+
+    public init(url: String, source: String = "stripe_checkout") {
+        self.url = url
+        self.source = source
+    }
+}
+
+public struct BurnBarMembershipRestoreResponse: Codable, Hashable, Sendable {
+    public let ok: Bool
+    public let membership: BurnBarMembershipSnapshot?
+    public let error: BurnBarMembershipErrorResult?
+
+    public init(
+        ok: Bool,
+        membership: BurnBarMembershipSnapshot? = nil,
+        error: BurnBarMembershipErrorResult? = nil
+    ) {
+        self.ok = ok
+        self.membership = membership
+        self.error = error
     }
 }
 
