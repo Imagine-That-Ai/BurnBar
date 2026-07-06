@@ -15,6 +15,8 @@ cd "$repo_root"
 attempts="${OPENBURNBAR_SUBMODULE_UPDATE_ATTEMPTS:-5}"
 base_sleep_seconds="${OPENBURNBAR_SUBMODULE_UPDATE_BASE_SLEEP_SECONDS:-5}"
 dry_run=0
+saved_local_extraheaders=()
+saved_global_extraheaders=()
 
 if [[ "${1:-}" == "--dry-run" ]]; then
   dry_run=1
@@ -36,8 +38,39 @@ if ! [[ "$base_sleep_seconds" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 run_submodule_update() {
-  git submodule sync --recursive -- "${submodule_paths[@]}"
-  git submodule update --init --recursive --depth=1 --jobs=4 -- "${submodule_paths[@]}"
+  local status=0
+
+  clear_github_extraheaders
+  trap restore_github_extraheaders RETURN
+  git submodule sync --recursive -- "${submodule_paths[@]}" || status=$?
+  if ((status == 0)); then
+    git submodule update --init --recursive --depth=1 --jobs=4 -- "${submodule_paths[@]}" || status=$?
+  fi
+  trap - RETURN
+  restore_github_extraheaders
+  return "$status"
+}
+
+clear_github_extraheaders() {
+  mapfile -t saved_local_extraheaders < <(git config --local --get-all http.https://github.com/.extraheader 2>/dev/null || true)
+  mapfile -t saved_global_extraheaders < <(git config --global --get-all http.https://github.com/.extraheader 2>/dev/null || true)
+
+  git config --local --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
+  git config --global --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
+}
+
+restore_github_extraheaders() {
+  local value
+
+  git config --local --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
+  git config --global --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
+
+  for value in "${saved_local_extraheaders[@]}"; do
+    git config --local --add http.https://github.com/.extraheader "$value"
+  done
+  for value in "${saved_global_extraheaders[@]}"; do
+    git config --global --add http.https://github.com/.extraheader "$value"
+  done
 }
 
 reset_partial_submodule_checkout() {
