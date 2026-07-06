@@ -177,8 +177,76 @@ public static class GovernanceDecoding
             .Select(e => e!)
             .ToList();
 
-        return new AuditPage(parsed, payload.GetValueOrDefault("nextCursor") as string);
+        return new AuditPage(parsed, CursorString(payload.GetValueOrDefault("nextCursor")));
     }
+
+    /// <summary>
+    /// Normalize a <c>nextCursor</c> to the <see cref="AuditPage.NextCursor"/> string. The deployed
+    /// getAuditLog (functions/src/callables/auditLog.ts) returns <c>nextCursor</c> as a <b>number</b>
+    /// (last event seq + 1), omitting it on the final page; the macOS Swift VM read it with
+    /// <c>as? String</c> and so never advanced (a real reference bug). We coerce the numeric cursor to
+    /// its invariant string form here so the Windows client actually paginates, while a string cursor
+    /// (a dev-host / future contract) still passes through untouched.
+    /// </summary>
+    private static string? CursorString(object? raw) => raw switch
+    {
+        null => null,
+        string s => s.Length == 0 ? null : s,
+        long l => l.ToString(CultureInfo.InvariantCulture),
+        int i => i.ToString(CultureInfo.InvariantCulture),
+        double d => ((long)d).ToString(CultureInfo.InvariantCulture),
+        _ => null,
+    };
+
+    /// <summary>Parse deleteDomainData's <c>deleted.{firestoreDocs,storageObjects}</c> tally.</summary>
+    public static DeleteResult ParseDeleteResult(IReadOnlyDictionary<string, object?>? payload)
+    {
+        if (payload is null || CallableValue.Dict(payload.GetValueOrDefault("deleted")) is not { } deleted)
+        {
+            return new DeleteResult(0, 0);
+        }
+
+        return new DeleteResult(
+            CallableValue.Int(deleted.GetValueOrDefault("firestoreDocs")),
+            CallableValue.Int(deleted.GetValueOrDefault("storageObjects")));
+    }
+
+    /// <summary>
+    /// Parse revokeAllAccess's <c>revoked.{mcpClients,devices,escrowDevices,providers}</c> panic tally.
+    /// Mirrors the Swift <c>RevokeResult</c> exactly: the deployed function also returns
+    /// <c>revoked.signalSessions</c> and top-level <c>partial</c>/<c>failures</c>, which the macOS VM
+    /// ignores and the ported <see cref="RevokeResult"/> likewise does not surface.
+    /// </summary>
+    public static RevokeResult ParseRevokeResult(IReadOnlyDictionary<string, object?>? payload)
+    {
+        if (payload is null || CallableValue.Dict(payload.GetValueOrDefault("revoked")) is not { } revoked)
+        {
+            return new RevokeResult(0, 0, 0, 0);
+        }
+
+        return new RevokeResult(
+            CallableValue.Int(revoked.GetValueOrDefault("mcpClients")),
+            CallableValue.Int(revoked.GetValueOrDefault("devices")),
+            CallableValue.Int(revoked.GetValueOrDefault("escrowDevices")),
+            CallableValue.Int(revoked.GetValueOrDefault("providers")));
+    }
+
+    /// <summary>Parse verifyAuditLog's <c>{ valid, brokenAt? }</c> hash-chain verdict.</summary>
+    public static AuditVerification ParseAuditVerification(IReadOnlyDictionary<string, object?>? payload)
+    {
+        if (payload is null)
+        {
+            return new AuditVerification(false, null);
+        }
+
+        return new AuditVerification(
+            CallableValue.Bool(payload.GetValueOrDefault("valid")),
+            CallableValue.IntOrNull(payload.GetValueOrDefault("brokenAt")));
+    }
+
+    /// <summary>Read setupRecovery's <c>recoveryId</c>, or <c>null</c> when the payload lacks it.</summary>
+    public static string? ParseRecoveryId(IReadOnlyDictionary<string, object?>? payload) =>
+        payload?.GetValueOrDefault("recoveryId") as string;
 
     /// <summary>Parse the listRecovery methods (id + kind required). Swift: <c>refreshRecovery</c> map.</summary>
     public static IReadOnlyList<RecoveryMethod> ParseRecoveryMethods(IReadOnlyDictionary<string, object?>? payload)
