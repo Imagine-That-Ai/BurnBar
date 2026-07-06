@@ -1,0 +1,147 @@
+# Windows ↔ macOS Parity: Honest Assessment & 100% Remediation Plan
+
+**Date:** 2026-07-05
+**Author:** Claude (repo-wide audit: macOS feature inventory + Windows code audit + docs/git claims review, cross-checked)
+**Companion docs:** `docs/WINDOWS_PORT_MASTER_PLAN.md` (phases/gates), `docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md` (living G5 ledger), `docs/windows-port/HANDOFF.md` (partially stale, 2026-07-03)
+
+---
+
+## 1. TL;DR — the honest number
+
+**The Windows app is roughly 40% of the way to true parity, not "almost done."**
+
+Broken down honestly:
+
+| Layer | Parity | Basis |
+|---|---|---|
+| Portable logic (parsers, crypto, state machines, protocol codecs) | ~65–70% | ~126K LOC C#, ~1,677 test methods, real x64+ARM64 CI (`pr-windows-full.yml`) |
+| UI surfaces authored (XAML exists, navigable) | 13/13 destinations | But only **4/13 are "Real"** (live data); 9 run on sample/seeded data |
+| End-to-end proven on real Windows (live data, live cloud, OS integration) | ~10–15% | Every OS boundary is dev-host-deferred; all launch evidence is PLACEHOLDER |
+| Shippable artifact (signed installer a user can run) | 0% | No Authenticode cert (W0), MSIX never built/signed, updater round-trip never run |
+
+The port's architecture is sound and deliberately staged (portable `net8.0` cores tested on macOS + thin deferred Windows adapters), so this is *honest scaffolding*, not fake work — but "authored and unit-tested" has been allowed to read as "done" in some docs. Gate status per the repo's own ledger: **G0 ✅ G1 ✅ G2 ❌ (headline tracked FIX) G3 ❌ G4 ❌ G5 ❌**.
+
+---
+
+## 2. Claims vs. reality (verified 2026-07-05)
+
+| Claim (where) | Reality (verified) |
+|---|---|
+| "Phase 1 done, walking skeleton green" (HANDOFF §0) | TRUE — but the Windows Swift Engine lane compiles a **pruned subset** (GRDB storage, AgentInsights, TextExpansion, App Check contracts pruned). `STORAGE_PRUNE_WAIVER.md` still active; `openburnbar-engine-windows.yml` still sets the prune flag. |
+| "All 17 parity-burndown PRs landed" (#1267, 2026-07-04) | TRUE they're on `main` — but per `PARITY_MERGE_RUNBOOK.md` they were **admin-merged past 9 red required checks**, and a same-day repair (`fbb601591f`, "restore Swift core validation") is still unmerged on `origin/fix/windows-signal-core-contract-leaf`. |
+| "Byte-identical parser output" | Proven only via **macOS-host contract tests**. The G2 headline — Windows-side byte-identical diff in CI — is explicitly "tracked as FIX" (bundle §2). |
+| "E2EE parity proven" | Vector/KAT parity is byte-identical C#↔Swift↔TS ✅. The **live** Windows-seal→Mac-open round-trip is Alberto-signed deferred (`c5-e2ee-round-trip-deferral.md`). |
+| "13/13 surfaces resolve" (bundle) | TRUE — but only sessionLogs, memory, onboarding, settings are "Real". Dashboard, quota, chat, mission control, budget, DCC, insights, ElderWand, switcher run on sample/authored data. |
+| "~2,545 test fixtures" (windows/README) | ~1,677 `[Fact]`/`[Theory]` methods visible in source; the larger number counts Windows-only theory expansions. Tests cover portable logic only — zero WinUI rendering, WebView2, input synthesis, TPM, live Firebase, or MSIX coverage. |
+| `PARITY_BURNDOWN_PLAN.md` (cited by 2 docs) | **Does not exist anywhere in git history.** The WS-* lane definitions live only outside the repo. |
+
+**Additional red flags:**
+- `windows/native/` is an **empty skeleton** — the Rust↔managed FFI shim (iroh, burnbar-remote) does not exist; crates build in CI but nothing binds them.
+- `CloudSyncCallableHub.cs:35–62`: **8 of 9 cloud callables throw `NotImplementedException`** (exportUserData, deleteDomainData, listRecovery, setupRecovery, confirmRecovery, revokeAllAccess, getAuditLog, verifyAuditLog).
+- Engine binding is interim **`swift run`** (drift D7); UniFFI bindgen still open (WPD-0001).
+- ~1,288 compiled `.dll` + 54 `.so` + 16 `.dylib` + 110 `.pdb` are **committed into the tree** (hygiene/supply-chain smell).
+- `pr-windows-full.yml` is real (x64 + windows-11-arm dotnet build+test) but **not yet a required check** (WS-A2 pending Alberto).
+- `windows/README.md` still opens with "No product code lives here yet" — stale and misleading.
+
+---
+
+## 3. Gap register (macOS feature → Windows state)
+
+Baseline: macOS app = `AgentLens/` (~266K LOC) + `OpenBurnBarCore/` (~150K) + `OpenBurnBarDaemon/` (~54K). iOS-only (`OpenBurnBarWidget`, `OpenBurnBarKeyboard`) excluded.
+
+| # | macOS feature | Windows state | Gap class |
+|---|---|---|---|
+| 1 | Menu-bar popover (primary surface) | Tray + FlyoutWindow authored | Real-data wiring |
+| 2 | Dashboard + 6 layouts (Atelier/Aurora/Classic/Cockpit/Constellation/Nebula) | All 6 layouts authored | Sample data → live seams |
+| 3 | Quota workspace; ~20 quota adapters, 30+ providers, billing APIs | 4 parsers ported (Claude statusline, Cursor, Codex, Anthropic headers); acquisition (statusline hook, `state.vscdb`, credential probes, file-watch) deferred | Major — "full 20 in flight" |
+| 4 | 15 log parsers (Swift engine) | Via Swift-on-Windows engine subset; Windows-side byte-diff (G2 headline) unproven | G2 blocker |
+| 5 | Session logs + SQLCipher DB | Read seam proven byte-compat ✅; **write path deferred**; engine CI lane still storage-pruned | Waivered gap |
+| 6 | Chat (Hermes, ElderWand, panes, streaming) | Views + state machine authored; ConPTY path Windows-only, dev-host uses `StubCliStream` canned recording | Live proof |
+| 7 | Cloud sync (10+ domain services, Firestore listeners) | REST gateway + offline queue + fail-closed guard authored; **live transport deferred**; 8/9 callables `NotImplementedException` | Major |
+| 8 | E2EE / CloudVault / escrow / trusted devices | Crypto KAT byte-parity ✅; live round-trip deferred (C5); recovery/revoke callables unimplemented | Major |
+| 9 | App Check (device attestation) | Server half built; **Windows TPM/CNG client (R14) = last named kill-risk, unproven** | Kill-risk |
+| 10 | Daemon (54K LOC: HTTP gateway, provider router, Mission Control DAG, Pensieve, planner) | **No Windows counterpart decided/authored.** Mission Control UI runs `MissionDispatchDemoHost` ("Firestore later") | Unscoped — needs decision |
+| 11 | Computer Use (full loop, Playwright, virtual HID, Agent Watch) | Core policy/token/audit code + 100 tests ✅; SendInput/UIA/capture/ViGEm adapters unproven; full loop = Phase 4 | Phase 4 |
+| 12 | Pet companion (100+ models, SceneKit/SpriteKit) | Behavior core + WinUI shell + WebView2 three.js host authored; glTF vendoring is a manual dev step; never run on Windows | Live proof |
+| 13 | Particles/backdrops (~30 substrates, KernelBackdrop) | 30 substrates ported (CPU); Win2D GPU render deferred; **60fps ARM64 spike (WINUI-017) mandatory, pending** | G3 blocker |
+| 14 | Settings: 16 tabs, search, Copilot | 5 real pages + `SettingsPlaceholderPage` for the rest; search indexes tabs that have no UI | Major |
+| 15 | Integrations: Cast, Home Assistant, SmartHub/Nest, AWTRIX/PixelClock, Mercury media | Portable cores + tests ✅ (Cast protobuf/mDNS, HA REST, RFB/VNC codecs); live sockets/capture deferred; AWTRIX/PixelClock absent | Phase 4 |
+| 16 | Iroh P2P + BurnBarRemote (Rust) | Crates build in CI; `windows/native/` empty — **no FFI shim** | Missing |
+| 17 | Updater (signed feed, channels) | Ed25519 feed verify + WinSparkle interop authored; live round-trip never run | G5 |
+| 18 | Packaging/distribution (DMG/Homebrew/MAS ↔ MSIX/winget/choco/Store) | Manifests + verify kernels only; **no cert, no signed build, nothing installable** | G5 / Alberto-blocked |
+| 19 | Onboarding (8 steps) | Ported ✅ (one of the 4 "Real" surfaces) | — |
+| 20 | Memory/search (vector, reranker, extraction), Text Expansion, Managed runtimes, Cursor connector, account switcher store, Settings Copilot, analytics | Absent or sample-data-only on Windows; TextExpansion/AgentInsights pruned from engine lane | Long tail |
+
+---
+
+## 4. Remediation plan to 100%
+
+Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Rough sizing uses the repo's own PR-count conventions (Phase 3 plan alone budgets ~370–540 PRs; master plan floor 1,000–1,300 total, of which roughly a third has landed).
+
+### Wave 0 — Restore truth & foundation health (do first, ~1 week)
+1. Land `fbb601591f` (restore Swift core validation) to `main`; confirm macOS build+tests green on `main`.
+2. Burn down the 9 pre-existing red required checks on `main` (incl. "Windows dist verify" failing on clean main) — no more admin-merges.
+3. Flip `pr-windows-full.yml` to a **required** check (WS-A2 — Alberto, branch protection).
+4. Commit `PARITY_BURNDOWN_PLAN.md` (or rewrite the two dangling references) so WS-* lanes are defined in-repo.
+5. Refresh `windows/README.md` ("no product code" line, "intentionally empty" sln line) and mark HANDOFF §2/§3/§6 superseded by the bundle.
+6. Purge committed build artifacts (1,288 DLLs etc.) from the tree; add ignore rules + a ratchet.
+   **Exit:** `main` fully green; Windows CI blocking; docs match reality.
+
+### Wave 1 — G2: Engine & data parity (the current gate)
+1. **G2 headline:** Windows-side byte-identical parser diff in CI across the golden corpus (currently FIX).
+2. Un-prune the Swift Engine lane: restore GRDB/SQLCipher storage target on Windows; **delete `STORAGE_PRUNE_WAIVER.md`** (self-declared obligation). Land the live DataStore **write** path (B2 branch).
+3. Replace interim `swift run` engine binding with UniFFI bindgen (WPD-0001 / drift D7).
+4. Build the `windows/native/` FFI shim binding the already-built iroh + burnbar-remote crates.
+5. Complete quota acquisition: full 20 adapters / 30+ providers, statusline hook, `state.vscdb` reader, credential probes, file-watchers (C2 branch).
+6. ManagedAgentRuntime + CursorConnector ports; ConPTY chat live (B1 branch); land B6 mission dispatch.
+   **Exit:** G2 gate passes per master plan; waiver deleted; engine binding is production-shaped.
+
+### Wave 2 — Live cloud (unblocks most "Authored → Real")
+1. **R14 kill-risk:** Windows CNG `NCryptCreateClaim` TPM client → real-TPM App Check mint → enforced callable, on Win11 Pro hardware.
+2. Firebase auth on Windows: ID token/OAuth flows (replace "paste a dev-host token" in `DataSourceSettingsPage`), account sign-in.
+3. Live Firestore transport behind the REST gateway; snapshot listeners against real backend.
+4. Implement the **8 `NotImplementedException` callables** in `CloudSyncCallableHub` (export, delete, recovery ×3, revoke, audit ×2).
+5. **C5 closure:** live Windows-seal → Mac-open E2EE round-trip (retire the deferral doc); device registry/trusted-device chain live.
+   **Exit:** a Windows machine appears as a real trusted device syncing real data with the Mac; C5 + R14 retired.
+
+### Wave 3 — G3: UI real-data conversion + visual parity
+1. Convert the 9 "Authored" surfaces to "Real" (dashboard, quota, chat, mission control, budget, DCC, insights, ElderWand, switcher) — wire each to the live seams from Waves 1–2; replace `QuotaSampleData`, `SwitcherSampleData`, `MissionDispatchDemoHost`, command-palette stub search.
+2. Settings parity: replace `SettingsPlaceholderPage` tabs until all applicable macOS tabs (per Tier-C substitution list) exist; make settings search honest.
+3. Win2D GPU particle rendering + the **mandatory 60fps ARM64 sub-spike (WINUI-017)**; retire the dev-host frame generator.
+4. Pretext WebView2 metric parity vs Mac golden within tolerance (D12); design-system completion (Mica/Acrylic per D1).
+5. Pet overlay live on Windows (WebView2 glTF host, vendoring automated); budget toasts; global hotkey proven.
+   **Exit:** G3 per `PHASE3_UI_PARITY_PLAN.md`; zero sample-data surfaces; bundle surface matrix reads 13/13 **Real**.
+
+### Wave 4 — G4: System integration
+1. Computer-use full loop on Windows: SendInput/UIA/Graphics.Capture/named-pipe + ViGEm, kill-switch + audit chain verified end-to-end.
+2. Integrations live: Cast device session, Home Assistant against a real instance, SmartHub bridge, Mercury live capture/transfer between Windows↔Mac.
+3. Decide and execute the **daemon strategy** (gap #10): either port `OpenBurnBarDaemon` capabilities (gateway, provider router, Mission Control scheduler, Pensieve) via Swift-on-Windows, or formally Tier-C-substitute per capability in the bundle. This is currently **unscoped** — it is the largest undecided parity item.
+   **Exit:** G4; every live adapter demonstrated on real Windows hardware with evidence in the bundle.
+
+### Wave 5 — G5: Ship
+1. **Alberto (blocking):** obtain Authenticode cert (W0); Store/winget publisher accounts.
+2. Signed MSIX build in `openburnbar-release-windows.yml`; real artifact hashes; portable zip; choco/winget manifests submitted.
+3. Live WinSparkle update round-trip recorded; downgrade-block proven.
+4. **Win11 Pro validation pass (Alberto):** replace every PLACEHOLDER screenshot/recording in bundle §5 with real evidence.
+5. Certify G5; freeze the bundle version.
+   **Exit:** a signed, installable, auto-updating OpenBurnBar for Windows with a complete evidence bundle. That is 100%.
+
+### Alberto-owned blockers (nothing else can close these)
+| Item | Blocks |
+|---|---|
+| Authenticode cert (W0) | Wave 5 entirely |
+| Win11 Pro hardware validation pass | R14 TPM proof (Wave 2), all §5 evidence (Wave 5) |
+| Branch-protection flip for `pr-windows-full` (WS-A2) | Wave 0 §3 |
+| Store/winget publisher accounts | Wave 5 §2 |
+| Daemon strategy decision (port vs. substitute) | Wave 4 §3 scope |
+
+### Rough sizing
+Wave 0: ~5–10 PRs. Wave 1: ~60–100. Wave 2: ~40–70. Wave 3: ~200–350 (dominated by the Phase-3 plan). Wave 4: ~80–150 (+ daemon decision, potentially +100–200 if ported). Wave 5: ~15–30. **Total remaining: roughly 400–700 PRs**, consistent with the master plan's 1,000–1,300 floor minus what's landed.
+
+---
+
+## 5. Standing rules while remediating
+- Key all status claims off `PARITY_CERTIFICATION_BUNDLE.md` labels (Real / Authored / deferred), never off "done" phrasing in handoffs.
+- No admin-merges into the parity lane once Wave 0 completes.
+- Every deferral gets a doc with an expiry (the storage waiver pattern) — and gets deleted when closed.
+- "Parity" claims require Windows-runner or real-hardware evidence; macOS-host test parity is labeled as such.
