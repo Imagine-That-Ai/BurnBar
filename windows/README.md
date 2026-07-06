@@ -5,9 +5,16 @@ This tree is **new and separate** from the macOS app (`AgentLens/`, `OpenBurnBar
 `OpenBurnBarDaemon/`), the iOS app (`OpenBurnBarMobile/`), the Android app (`android/`), and the
 shared `packages/` — nothing here collides with those trees.
 
-Right now this is a **skeleton**: the layout, the aggregating solution, the CI lane, and the
-per-tree budget exist so that later workstreams drop real projects into a place that already
-builds, lints, and ratchets. No product code lives here yet.
+This tree now carries **real product code** (~950 `.cs`/`.xaml` source files, ~126K LOC): a full
+WinUI 3 shell + views, portable `net8.0` cores for every subsystem, and ~27 test projects that run
+on real Windows CI (x64 + ARM64, [`pr-windows-full.yml`](../.github/workflows/pr-windows-full.yml)).
+**Honest status:** the portable-logic layer is broad and genuinely tested, but the OS-integration
+halves (live cloud, TPM App Check, input synthesis, Win2D GPU render, WebView2 hosts, MSIX
+signing, auto-update round-trip) are explicitly *deferred* — see the per-tree notes below and the
+authoritative status ledger in
+[`docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md`](../docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md)
+plus the gap/remediation plan in
+[`docs/windows-port/PARITY_100_REMEDIATION_PLAN.md`](../docs/windows-port/PARITY_100_REMEDIATION_PLAN.md).
 
 ## Layout
 
@@ -29,12 +36,13 @@ builds, lints, and ratchets. No product code lives here yet.
 
 ## The aggregating solution
 
-`OpenBurnBar.sln` is an intentionally **empty** Visual Studio solution (standard header +
-solution configuration/platform rows, zero `Project(...)` entries). It is the single entry point
-`msbuild` / `dotnet` / Visual Studio open. As each workstream lands its project it adds a
-`Project(...)` stanza + per-config platform mappings — the WinUI app first (WINUI-016), then the
-PAL library, the native shim, and the test projects. Keeping the solution here from day one means
-those PRs only *add* to a known-good aggregator rather than inventing the top-level structure.
+`OpenBurnBar.sln` is the single entry point `msbuild` / `dotnet` / Visual Studio open. It now
+registers **~65 projects**: the WinUI app, the app satellite libraries
+(Presentation/Settings/Dashboard/Pet/CloudSync/Configuration), PAL (+ Windows variants), storage
+(+ SessionLogs), particles (+ perf harness), pretext, computeruse (core + windows), all
+integrations (cast/homeassistant/smarthub/mercury + variants), cloudsync (+ crypto + appcheck),
+dist, packaging/updater, and the test projects. Each workstream adds its `Project(...)` stanza +
+per-config platform mappings as it lands, so PRs only *add* to a known-good aggregator.
 
 ## Where new Windows source goes
 
