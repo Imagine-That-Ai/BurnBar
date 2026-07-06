@@ -9,7 +9,8 @@ import type {
   DbStatus,
   ProjectEntry,
   MemoryBoundary,
-  AccountStatus
+  AccountStatus,
+  MercuryMediaStatus
 } from './tauriBridge.js';
 
 export type DaemonRouteFixture = {
@@ -63,6 +64,36 @@ export function isDaemonFixtureMode(): boolean {
   } catch {
     return false;
   }
+}
+
+export function fixtureMercuryMediaStatus(): MercuryMediaStatus {
+  const now = Date.now();
+  return {
+    capabilityAvailable: true,
+    pairedDevices: [
+      {
+        id: 'macbook-pro-relay',
+        name: 'Alberto MacBook Pro',
+        platform: 'macos',
+        isOnline: true,
+        lastSeenAt: new Date(now - 45_000).toISOString(),
+        capabilities: ['mirror.host', 'file.send', 'file.receive', 'call.receive']
+      },
+      {
+        id: 'studio-mac-relay',
+        name: 'Studio Mac',
+        platform: 'macos',
+        isOnline: false,
+        lastSeenAt: new Date(now - 12 * 60_000).toISOString(),
+        capabilities: ['mirror.host', 'file.send', 'file.receive', 'call.receive']
+      }
+    ],
+    activeSession: {
+      kind: 'screen-share',
+      state: 'active',
+      peer: 'Alberto MacBook Pro'
+    }
+  };
 }
 
 export function setDaemonFixtureMode(enabled: boolean): void {

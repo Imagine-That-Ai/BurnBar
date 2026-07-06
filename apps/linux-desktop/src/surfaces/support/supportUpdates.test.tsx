@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../app/App.js';
 import { clearPerfSamples, recordPerfSample } from '../../perfMarks.js';
+import { useMediaStore } from '../../state/mediaStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
 import type { LinuxShellBridge } from '../../tauriBridge.js';
@@ -31,6 +32,12 @@ function resetStores(): void {
     exportState: 'idle',
     exportPath: null,
     exportError: null
+  });
+  useMediaStore.setState({
+    status: null,
+    loadState: 'idle',
+    error: null,
+    stageEvents: []
   });
 }
 
@@ -61,6 +68,7 @@ function mockBridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge
     }),
     exportDiagnostics: vi.fn().mockResolvedValue({ path: '/home/user/diagnostics.json' }),
     sessionEnv: vi.fn(),
+    mediaStatus: vi.fn().mockResolvedValue({ capabilityAvailable: false, pairedDevices: [] }),
     ...overrides
   } as LinuxShellBridge;
 }
@@ -165,6 +173,26 @@ describe('P09 updates and support', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enable daemon fixture (host smoke)' }));
     expect(useShellStore.getState().fixtureMode).toBe(true);
     expect(localStorage.getItem('openburnbar.linux.daemonFixture')).toBe('1');
+  });
+
+  it('mounts Mercury media below diagnostics and preserves media.control.stage perf sample', async () => {
+    recordPerfSample('media.control.stage', 8.5, 'test');
+    const bridge = mockBridge();
+    useShellStore.setState({ bridge, fixtureMode: false });
+    const { container } = render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().loadVersion();
+      await useMediaStore.getState().load();
+    });
+    const diagnostics = container.querySelector('.p09-diagnostics-card');
+    const media = container.querySelector('.p12-media-section');
+    const perf = container.querySelector('.p09-perf-table');
+    expect(diagnostics).not.toBeNull();
+    expect(media).not.toBeNull();
+    expect(perf).not.toBeNull();
+    expect(diagnostics!.compareDocumentPosition(media!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(media!.compareDocumentPosition(perf!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('media.control.stage')).toBeTruthy();
   });
 
   it('lists diagnostics manifest items before export', () => {
