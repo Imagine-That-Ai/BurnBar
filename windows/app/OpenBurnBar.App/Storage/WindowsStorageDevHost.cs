@@ -119,7 +119,12 @@ internal static class WindowsStorageDevHost
             long tokens = TokenUsageReadSeam.SumTotalTokens(connection);
             long sessions = TokenUsageReadSeam.CountDistinctSessions(connection);
             bool hasData = spend > 0 || tokens > 0 || sessions > 0;
-            return new DashboardUsageSummary(spend, tokens, sessions, hasData);
+            return new DashboardUsageSummary(
+                spend,
+                tokens,
+                sessions,
+                hasData,
+                hasData ? DashboardUsageOrigin.Local : DashboardUsageOrigin.Empty);
         }
         catch (Exception ex)
         {

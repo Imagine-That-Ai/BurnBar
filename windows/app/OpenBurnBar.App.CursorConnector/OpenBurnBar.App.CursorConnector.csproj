@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable CURSOR CONNECTOR layer — Windows peer of
+    AgentLens/Services/CursorConnector/*.swift (the log-stream manager, connector
+    models, session state machine, and the secret broker). Portable-first so every
+    seam is provable via `dotnet test` on the macOS authoring host; the runtime
+    halves that actually spawn the proxy/cloudflared process, open a TCP secret
+    broker listener, tail a live file, or read/write the on-disk state.vscdb belong
+    in the deferred OpenBurnBar.App.CursorConnector.Windows sibling (bucket B).
+
+    Faithful parity map (Swift oracle → this project):
+      • ConnectorModels.cs                — CursorConnectorModels.swift
+      • ConnectorProviderCatalog.cs       — ConnectorProvider metadata + Cursor-
+                                            Manager.supportedModel/provider(forBaseURL)
+      • CursorConnectorLogStreamManager.cs— CursorConnectorLogStreamManager.swift
+      • UsageEventNormalizer.cs           — CursorConnectorManager.normalizeUsageEvent
+      • UsageLogConsumer.cs               — CursorConnectorManager.consumeUsageLogChunk
+      • TryCloudflareUrlExtractor.cs      — CursorConnectorManager.extractTryCloudflareURL
+      • CursorConnectorSecretBroker.cs    — CursorConnectorManager+SecretBroker.swift
+      • RoutedClientConfigSyncService.cs  — RoutedClientConfigSyncService (models)
+      • CursorSettingsApplier.cs          — backupAndApplyCursorSettings/restore
+      • CursorConnectorSession.cs         — connect()/disconnect() state machine
+      • Seams.cs                          — KeychainStore/FileHandle/SecRandom/Date seams
+
+    State.vscdb reads are COMPOSED with the landed CursorStateDbReader
+    (app/OpenBurnBar.App.Quota.Acquisition) — never duplicated. Referencing that
+    project also gives the connector the same Microsoft.Data.Sqlite stack for the
+    deferred .Windows ItemTable read/write half.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.CursorConnector</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.CursorConnector</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compose with the landed state.vscdb reader (CursorStateDbReader /
+         CursorStateCredentials); the connector reuses it for Cursor account
+         identity rather than opening its own ItemTable reader. -->
+    <ProjectReference Include="..\OpenBurnBar.App.Quota.Acquisition\OpenBurnBar.App.Quota.Acquisition.csproj" />
+  </ItemGroup>
+
+</Project>
