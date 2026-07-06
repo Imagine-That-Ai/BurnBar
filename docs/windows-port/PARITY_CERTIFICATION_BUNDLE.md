@@ -156,7 +156,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 | **Win11 Pro validation pass** | §5 screenshots + D2 TPM proof | GPU fidelity = WS-D; this bundle only reserves paths |
 | **CI required-gate flip (A2)** | `pr-windows-full.yml` blocking merge | After green history on `windows-latest` |
 | **C5 / deferral call** | Project Code Memory Windows parser | WPD-0003 deferral; lexical fallback until lifted |
-| **In-flight PRs (no number yet)** | B1 ConPTY, B2 persistence, B6 mission dispatch, C2 quota | Branches: `windows/b1-conpty-cli-stream`, `windows/b2-sqlcipher-persistence`, `windows/b6-mission-dispatch`, `windows/c2-quota-lift` |
+| ~~In-flight PRs (no number yet)~~ **RESOLVED 2026-07-06: all four already integrated** | B1 ConPTY, B2 persistence, B6 mission dispatch, C2 quota | git audit: every file the 4 branches add is on `main` (landed by #1267 `8092d19ea1`; B6 further hardened by #1272 `b0edba64c9`). The branch refs (`windows/b1-conpty-cli-stream`, `windows/b2-sqlcipher-persistence`, `windows/b6-mission-dispatch`, `windows/phase2-c2-quota-lift`) are STALE older drafts — **do not merge**: B6's draft would delete #1272's `running`/`claimed`/`in_progress` status polling and C2's would regress the public `ClaudeOAuthCredentials` API. Safe to delete the refs. |
 
 ---
 
