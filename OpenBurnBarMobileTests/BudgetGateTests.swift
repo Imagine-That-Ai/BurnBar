@@ -194,6 +194,66 @@ final class BudgetGateTests: XCTestCase {
     }
 
     @MainActor
+    func testBudgetEnforcementUserSwitchReplacesRetainedSpendSource() async throws {
+        let enforcement = BudgetEnforcement.shared
+        enforcement.resetForTesting()
+        defer { enforcement.resetForTesting() }
+
+        let rule = BudgetRule(
+            scope: .global,
+            label: "Global cap",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .hardBlock
+        )
+        let credential = BudgetCredentialIdentity(
+            providerID: "openai",
+            slotID: "key_1",
+            displayLabel: "OpenAI Key",
+            billingMode: .perUsage
+        )
+
+        let oldSettings = makeSettings()
+        await oldSettings.upsertRule(rule, source: "test")
+        let oldGate = BudgetGate(
+            settings: oldSettings,
+            ledger: BudgetLedger(dataSource: MockSpendDataSource(spend: 150.0))
+        )
+        enforcement.configure(userID: "old-user", gate: oldGate)
+
+        let oldDecision = await enforcement.evaluate(credential: credential, estimatedCost: 1.0)
+        guard case .block = oldDecision else {
+            XCTFail("Expected old user's over-limit source to block before the switch, got \(oldDecision)")
+            return
+        }
+        XCTAssertFalse(enforcement.isConfigured(forUserID: "new-user"))
+
+        enforcement.resetIfConfiguredForDifferentUser("new-user")
+        let switchGapDecision = await enforcement.evaluate(credential: credential, estimatedCost: 1.0)
+        if case .allow = switchGapDecision {
+            // Success: the old user's source is not used while the new user's source is loading.
+        } else {
+            XCTFail("Expected stale user-scoped gate to be cleared during user switch, got \(switchGapDecision)")
+        }
+        XCTAssertFalse(enforcement.isConfigured)
+
+        let newSettings = makeSettings()
+        await newSettings.upsertRule(rule, source: "test")
+        let newGate = BudgetGate(
+            settings: newSettings,
+            ledger: BudgetLedger(dataSource: MockSpendDataSource(rollupsByWindow: [:], isReadable: true))
+        )
+        enforcement.configure(userID: "new-user", gate: newGate)
+
+        let newDecision = await enforcement.evaluate(credential: credential, estimatedCost: 1.0)
+        if case .allow = newDecision {
+            // Success: the singleton is reading the new user's source, not stale old-user spend.
+        } else {
+            XCTFail("Expected user switch to replace stale retained spend source, got \(newDecision)")
+        }
+    }
+
+    @MainActor
     func testHardBlockWithFallbackResolvesConfiguredCredential() async throws {
         let settings = makeSettings()
 
