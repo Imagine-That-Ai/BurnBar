@@ -643,6 +643,8 @@ final class MercuryLinuxMediaTests: XCTestCase {
 
         let noRoute = await controller.sendFile(DaemonMediaFileSendRequest(path: localFile.path))
         XCTAssertEqual(noRoute.errorCode, .noControlRoute)
+    }
+
     func testCapabilityModelRepresentsUnknownWhenMediaBackendUnavailable() {
         let media = MercuryLinuxMediaCapabilities(
             capabilitiesKnown: false,
