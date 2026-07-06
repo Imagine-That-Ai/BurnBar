@@ -72,6 +72,109 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
         }
     }
 
+    func testDenyRegionInspectorMapsPasswordRoleAtPoint() {
+        let recorder = CommandRecorder()
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                ["DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"][name]
+            },
+            resolveExecutable: { name in
+                name == "python3" ? "/usr/bin/python3" : nil
+            },
+            runCommand: { executable, arguments in
+                recorder.record(executable: executable, arguments: arguments)
+                return LinuxComputerUseInputAdapter.CommandResult(
+                    exitCode: 0,
+                    stdout: #"{"inspectable":true,"denyReason":"secure_text_field","detail":null}"#
+                )
+            }
+        )
+
+        let reason = adapter.accessibilityDenyReason(
+            for: MacInputAction(kind: .click, displayX: 220, displayY: 160)
+        )
+
+        XCTAssertEqual(reason, .secureTextField)
+        XCTAssertEqual(recorder.lastExecutable, "/usr/bin/python3")
+        XCTAssertEqual(Array(recorder.lastArguments?.suffix(3) ?? []), ["point", "220", "160"])
+    }
+
+    func testDenyRegionInspectorFailsClosedWhenTargetIsUninspectable() {
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                ["DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"][name]
+            },
+            resolveExecutable: { name in
+                name == "python3" ? "/usr/bin/python3" : nil
+            },
+            runCommand: { _, _ in
+                LinuxComputerUseInputAdapter.CommandResult(
+                    exitCode: 0,
+                    stdout: #"{"inspectable":false,"denyReason":null,"detail":"no accessible target"}"#
+                )
+            }
+        )
+
+        let reason = adapter.accessibilityDenyReason(
+            for: MacInputAction(kind: .click, displayX: 10, displayY: 20)
+        )
+
+        XCTAssertEqual(reason, .unknown)
+    }
+
+    func testDenyRegionInspectorUsesFocusedAccessibleForKeyboardInput() {
+        let recorder = CommandRecorder()
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                ["DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"][name]
+            },
+            resolveExecutable: { name in
+                name == "python3" ? "/usr/bin/python3" : nil
+            },
+            runCommand: { executable, arguments in
+                recorder.record(executable: executable, arguments: arguments)
+                return LinuxComputerUseInputAdapter.CommandResult(
+                    exitCode: 0,
+                    stdout: #"{"inspectable":true,"denyReason":null,"detail":null}"#
+                )
+            }
+        )
+
+        let reason = adapter.accessibilityDenyReason(
+            for: MacInputAction(kind: .type, text: "redacted-in-test")
+        )
+
+        XCTAssertNil(reason)
+        XCTAssertEqual(recorder.lastExecutable, "/usr/bin/python3")
+        XCTAssertEqual(recorder.lastArguments?.last, "focus")
+    }
+
+    func testDenyRegionInspectorChecksAbsolutePointerMoveTarget() {
+        let recorder = CommandRecorder()
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                ["DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"][name]
+            },
+            resolveExecutable: { name in
+                name == "python3" ? "/usr/bin/python3" : nil
+            },
+            runCommand: { executable, arguments in
+                recorder.record(executable: executable, arguments: arguments)
+                return LinuxComputerUseInputAdapter.CommandResult(
+                    exitCode: 0,
+                    stdout: #"{"inspectable":false,"denyReason":null,"detail":"no accessible target"}"#
+                )
+            }
+        )
+
+        let reason = adapter.accessibilityDenyReason(
+            for: MacInputAction(kind: .pointerMove, displayX: 400, displayY: 300)
+        )
+
+        XCTAssertEqual(reason, .unknown)
+        XCTAssertEqual(Array(recorder.lastArguments?.suffix(3) ?? []), ["point", "400", "300"])
+    }
+
     func testKillSwitchFlagBlocksDispatchBeforeCommandRuns() async throws {
         let flagPath = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-cu-kill-\(UUID().uuidString)")
@@ -161,6 +264,8 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
                 return .object(["posted": .bool(true), "adapter": .string("test-linux")])
             },
             systemInputAccessibilityTrusted: { mode in mode == .system },
+            systemInputAccessibilityDeny: { _ in nil },
+            computerUseKillSwitchEnabled: { false },
             logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
         )
         let start = try await service.startSession(
@@ -216,16 +321,14 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
     func testWildcardPanicHaltActivatesLinuxKillFlag() async throws {
         let auditDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
-        let flagPath = FileManager.default.temporaryDirectory
+        let flagDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-cu-kill-\(UUID().uuidString)", isDirectory: true)
+        let flagPath = flagDirectory
             .appendingPathComponent("privileged-input-kill")
             .path
-        unsetenv("OPENBURNBAR_PRIVILEGED_INPUT_KILL_FLAG_PATH")
-        setenv("OPENBURNBAR_PRIVILEGED_INPUT_KILL_FLAG_PATH", flagPath, 1)
         defer {
-            unsetenv("OPENBURNBAR_PRIVILEGED_INPUT_KILL_FLAG_PATH")
             try? FileManager.default.removeItem(at: auditDirectory)
-            try? FileManager.default.removeItem(atPath: flagPath)
+            try? FileManager.default.removeItem(at: flagDirectory)
         }
 
         let service = ComputerUseService(
@@ -233,6 +336,16 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
             bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
             systemInputDispatcher: { _, _ in .object(["posted": .bool(true)]) },
             systemInputAccessibilityTrusted: { mode in mode == .system },
+            systemInputAccessibilityDeny: { _ in nil },
+            computerUseKillSwitchEnabled: { false },
+            privilegedInputKillSwitchActivator: { reason in
+                let flagURL = URL(fileURLWithPath: flagPath)
+                try? FileManager.default.createDirectory(
+                    at: flagURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try? reason.write(toFile: flagPath, atomically: true, encoding: .utf8)
+            },
             logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
         )
         _ = try await service.startSession(
@@ -249,6 +362,212 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
 
         XCTAssertEqual(response.sessionId, "*")
         XCTAssertEqual(try String(contentsOfFile: flagPath, encoding: .utf8), "hotkey")
+    }
+
+    func testPasswordFieldDenyRegionRejectsBeforeLinuxDispatchAndAudits() async throws {
+        let auditDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: auditDirectory) }
+
+        let recorder = MacInputActionRecorder()
+        let service = ComputerUseService(
+            auditBaseDirectory: auditDirectory,
+            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
+            systemInputDispatcher: { _, action in
+                recorder.record(action)
+                return .object(["posted": .bool(true)])
+            },
+            systemInputAccessibilityTrusted: { mode in mode == .system },
+            systemInputAccessibilityDeny: { _ in .secureTextField },
+            computerUseKillSwitchEnabled: { false },
+            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+        )
+        let start = try await service.startSession(
+            ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "linux-test-client")
+            )
+        )
+
+        let response = try await service.invoke(
+            ComputerUseInvokeRequest(
+                sessionId: start.sessionId,
+                invocation: BurnBarToolInvocation(
+                    callID: "call-linux-password-field",
+                    runID: BurnBarRunID(rawValue: "run-linux-password-field"),
+                    tool: .macInputClick,
+                    arguments: .object([
+                        "displayX": .number(220),
+                        "displayY": .number(160)
+                    ]),
+                    requestedBy: BurnBarClientID(rawValue: "linux-test-client"),
+                    requestedAt: Date()
+                )
+            )
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.denyRegion.rawValue)
+        XCTAssertNil(recorder.last)
+        let entries = try auditEntries(
+            baseDirectory: auditDirectory,
+            sessionId: ComputerUseSessionID(start.sessionId)
+        )
+        let entry = try XCTUnwrap(entries.last)
+        XCTAssertEqual(entry.approvedBy, .denied)
+        XCTAssertEqual(entry.denyReason, ComputerUseDenyReason.denyRegion.rawValue)
+        XCTAssertEqual(entry.actionKind, "mac.input.click")
+    }
+
+    func testUninspectableLinuxRegionFailsClosedBeforeDispatch() async throws {
+        let auditDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: auditDirectory) }
+
+        let recorder = MacInputActionRecorder()
+        let service = ComputerUseService(
+            auditBaseDirectory: auditDirectory,
+            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
+            systemInputDispatcher: { _, action in
+                recorder.record(action)
+                return .object(["posted": .bool(true)])
+            },
+            systemInputAccessibilityTrusted: { mode in mode == .system },
+            systemInputAccessibilityDeny: { _ in .unknown },
+            computerUseKillSwitchEnabled: { false },
+            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+        )
+        let start = try await service.startSession(
+            ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "linux-test-client")
+            )
+        )
+
+        let response = try await service.invoke(
+            ComputerUseInvokeRequest(
+                sessionId: start.sessionId,
+                invocation: BurnBarToolInvocation(
+                    callID: "call-linux-uninspectable-type",
+                    runID: BurnBarRunID(rawValue: "run-linux-uninspectable-type"),
+                    tool: .macInputType,
+                    arguments: .object([
+                        "text": .string("password-field-fixture")
+                    ]),
+                    requestedBy: BurnBarClientID(rawValue: "linux-test-client"),
+                    requestedAt: Date()
+                )
+            )
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.denyRegion.rawValue)
+        XCTAssertNil(recorder.last)
+    }
+
+    func testLinuxKillSwitchProviderDeniesBeforeDispatch() async throws {
+        let auditDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: auditDirectory) }
+
+        let recorder = MacInputActionRecorder()
+        let service = ComputerUseService(
+            auditBaseDirectory: auditDirectory,
+            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
+            systemInputDispatcher: { _, action in
+                recorder.record(action)
+                return .object(["posted": .bool(true)])
+            },
+            systemInputAccessibilityTrusted: { mode in mode == .system },
+            systemInputAccessibilityDeny: { _ in nil },
+            computerUseKillSwitchEnabled: { true },
+            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+        )
+        let start = try await service.startSession(
+            ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "linux-test-client")
+            )
+        )
+
+        let response = try await service.invoke(
+            ComputerUseInvokeRequest(
+                sessionId: start.sessionId,
+                invocation: BurnBarToolInvocation(
+                    callID: "call-linux-kill-switch",
+                    runID: BurnBarRunID(rawValue: "run-linux-kill-switch"),
+                    tool: .macInputClick,
+                    arguments: .object([
+                        "displayX": .number(10),
+                        "displayY": .number(20)
+                    ]),
+                    requestedBy: BurnBarClientID(rawValue: "linux-test-client"),
+                    requestedAt: Date()
+                )
+            )
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.killSwitch.rawValue)
+        XCTAssertNil(recorder.last)
+    }
+
+    func testConcurrentLinuxSystemSessionDeniesBeforeDispatch() async throws {
+        let auditDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: auditDirectory) }
+
+        let recorder = MacInputActionRecorder()
+        let service = ComputerUseService(
+            auditBaseDirectory: auditDirectory,
+            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
+            systemInputDispatcher: { _, action in
+                recorder.record(action)
+                return .object(["posted": .bool(true)])
+            },
+            systemInputAccessibilityTrusted: { mode in mode == .system },
+            systemInputAccessibilityDeny: { _ in nil },
+            computerUseKillSwitchEnabled: { false },
+            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+        )
+        let first = try await service.startSession(
+            ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "linux-test-client")
+            )
+        )
+        _ = try await service.startSession(
+            ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "linux-test-client")
+            )
+        )
+
+        let response = try await service.invoke(
+            ComputerUseInvokeRequest(
+                sessionId: first.sessionId,
+                invocation: BurnBarToolInvocation(
+                    callID: "call-linux-concurrent",
+                    runID: BurnBarRunID(rawValue: "run-linux-concurrent"),
+                    tool: .macInputClick,
+                    arguments: .object([
+                        "displayX": .number(10),
+                        "displayY": .number(20)
+                    ]),
+                    requestedBy: BurnBarClientID(rawValue: "linux-test-client"),
+                    requestedAt: Date()
+                )
+            )
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.concurrentSession.rawValue)
+        XCTAssertNil(recorder.last)
     }
 
     private func waitForApproval(
@@ -268,6 +587,23 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         }
         XCTFail("timed out waiting for Computer Use approval", file: file, line: line)
         throw NSError(domain: "LinuxComputerUseServiceSystemInputTests", code: 1)
+    }
+
+    private func auditEntries(
+        baseDirectory: URL,
+        sessionId: ComputerUseSessionID
+    ) throws -> [ComputerUseAuditEntry] {
+        let chainURL = baseDirectory
+            .appendingPathComponent(sessionId.rawValue, isDirectory: true)
+            .appendingPathComponent("chain.jsonl")
+        let data = try Data(contentsOf: chainURL)
+        let lines = try XCTUnwrap(String(data: data, encoding: .utf8)?.split(separator: "\n"))
+        return try lines.map { line in
+            try ComputerUseAuditHasher.canonicalJSONDecoder.decode(
+                ComputerUseAuditEntry.self,
+                from: Data(line.utf8)
+            )
+        }
     }
 }
 

@@ -47,6 +47,26 @@ enum LinuxPrivilegedInputKillFlag {
         }
     }
 
+    static func isActive(
+        environment: (String) -> String? = { ProcessInfo.processInfo.environment[$0] },
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> Bool {
+        activeFlagPaths(environment: environment).contains(where: fileExists)
+    }
+
+    static func environmentKillSwitchActive(
+        environment: (String) -> String? = { ProcessInfo.processInfo.environment[$0] }
+    ) -> Bool {
+        [
+            "OPENBURNBAR_COMPUTER_USE_KILL_SWITCH",
+            "COMPUTER_USE_KILL_SWITCH",
+            "computer_use_kill_switch"
+        ].contains { name in
+            guard let value = nonEmpty(environment(name))?.lowercased() else { return false }
+            return ["1", "true", "yes", "on"].contains(value)
+        }
+    }
+
     private static func overrideFlagPath(environment: (String) -> String?) -> String? {
         nonEmpty(environment("OPENBURNBAR_PRIVILEGED_INPUT_KILL_FLAG_PATH"))
     }
@@ -98,6 +118,12 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         }
     }
 
+    public enum AccessibilityInspection: Equatable, Sendable {
+        case clear
+        case denied(ComputerUseAccessibilityDenyReason)
+        case uninspectable(String)
+    }
+
     public struct CommandResult: Sendable, Equatable {
         public var exitCode: Int32
         public var stdout: String
@@ -136,6 +162,13 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     private let environment: EnvironmentReader
     private let resolveExecutable: ExecutableResolver
     private let runCommand: CommandRunner
+
+    private enum DenyRegionTarget {
+        case clear
+        case focus
+        case points([(x: Int, y: Int)])
+        case uninspectable(String)
+    }
 
     init(
         environment: @escaping EnvironmentReader = { ProcessInfo.processInfo.environment[$0] },
@@ -190,6 +223,36 @@ public struct LinuxComputerUseInputAdapter: Sendable {
             "atspiBus": .bool(nonEmptyEnvironment("AT_SPI_BUS_ADDRESS") != nil),
             "python3": .bool(resolveExecutable("python3") != nil)
         ])
+    }
+
+    public func accessibilityDenyReason(for action: MacInputAction) -> ComputerUseAccessibilityDenyReason? {
+        switch inspectDenyRegion(for: action) {
+        case .clear:
+            return nil
+        case .denied(let reason):
+            return reason
+        case .uninspectable:
+            return .unknown
+        }
+    }
+
+    public func inspectDenyRegion(for action: MacInputAction) -> AccessibilityInspection {
+        switch denyRegionTarget(for: action) {
+        case .clear:
+            return .clear
+        case .uninspectable(let detail):
+            return .uninspectable(detail)
+        case .focus:
+            return inspectATSPIDenyRegion(arguments: ["focus"])
+        case .points(let points):
+            for point in points {
+                let result = inspectATSPIDenyRegion(arguments: ["point", String(point.x), String(point.y)])
+                if result != .clear {
+                    return result
+                }
+            }
+            return .clear
+        }
     }
 
     public func capabilityRows() -> [BurnBarJSONValue] {
@@ -330,6 +393,72 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         resolveExecutable("xdotool") != nil && nonEmptyEnvironment("DISPLAY") != nil
     }
 
+    private func denyRegionTarget(for action: MacInputAction) -> DenyRegionTarget {
+        switch action.kind {
+        case .click, .pointerClick:
+            guard let x = action.displayX, let y = action.displayY else {
+                return .uninspectable("\(action.kind.rawValue) target coordinates unavailable")
+            }
+            return .points([(x: x, y: y)])
+        case .dragDrop:
+            guard let startX = action.displayX,
+                  let startY = action.displayY,
+                  let endX = action.dragEndX,
+                  let endY = action.dragEndY else {
+                return .uninspectable("drag_drop target coordinates unavailable")
+            }
+            return .points([(x: startX, y: startY), (x: endX, y: endY)])
+        case .scroll:
+            guard let x = action.displayX, let y = action.displayY else {
+                return .uninspectable("scroll target coordinates unavailable")
+            }
+            return .points([(x: x, y: y)])
+        case .pointerMove:
+            guard let x = action.displayX, let y = action.displayY else {
+                return .clear
+            }
+            return .points([(x: x, y: y)])
+        case .type, .key, .shortcut:
+            return .focus
+        }
+    }
+
+    private func inspectATSPIDenyRegion(arguments: [String]) -> AccessibilityInspection {
+        guard atspi2Available() else {
+            return .uninspectable("AT-SPI2 bus or python3 is unavailable")
+        }
+        guard let python = resolveExecutable("python3") else {
+            return .uninspectable("python3 missing")
+        }
+        let result: CommandResult
+        do {
+            result = try runCommand(python, ["-c", Self.atspiDenyRegionScript] + arguments)
+        } catch {
+            return .uninspectable("AT-SPI2 inspection command failed: \(String(describing: error))")
+        }
+        guard result.exitCode == 0 else {
+            let detail = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .uninspectable(detail.isEmpty ? "AT-SPI2 inspection exited \(result.exitCode)" : detail)
+        }
+        return parseDenyRegionInspection(stdout: result.stdout)
+    }
+
+    private func parseDenyRegionInspection(stdout: String) -> AccessibilityInspection {
+        guard let data = stdout.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any],
+              let inspectable = dict["inspectable"] as? Bool else {
+            return .uninspectable("AT-SPI2 inspection returned invalid JSON")
+        }
+        if !inspectable {
+            return .uninspectable(dict["detail"] as? String ?? "AT-SPI2 target was uninspectable")
+        }
+        if let rawReason = dict["denyReason"] as? String, !rawReason.isEmpty {
+            return .denied(ComputerUseAccessibilityDenyReason(rawValue: rawReason) ?? .unknown)
+        }
+        return .clear
+    }
+
     private func forcedAdapter() -> AdapterID? {
         guard let raw = nonEmptyEnvironment("OPENBURNBAR_LINUX_CU_INPUT_ADAPTER")?.lowercased() else {
             return nil
@@ -411,14 +540,16 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     private static func which(_ name: String) -> String? {
-        let pathValue = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/local/bin:/usr/bin:/bin"
-        for directory in pathValue.split(separator: ":") {
-            let candidate = "\(directory)/\(name)"
-            if FileManager.default.isExecutableFile(atPath: candidate) {
-                return candidate
-            }
+        let candidates: [String]
+        switch name {
+        case "python3":
+            candidates = ["/usr/bin/python3", "/usr/local/bin/python3", "/bin/python3"]
+        case "xdotool":
+            candidates = ["/usr/bin/xdotool", "/usr/local/bin/xdotool"]
+        default:
+            candidates = []
         }
-        return nil
+        return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
     }
 
     private static func runProcess(executablePath: String, arguments: [String]) throws -> CommandResult {
@@ -498,6 +629,185 @@ if walk(desktop):
     sys.exit(0)
 print("no_actionable_accessible_at_coordinate", file=sys.stderr)
 sys.exit(73)
+"""#
+
+    private static let atspiDenyRegionScript = #"""
+import json
+import sys
+
+try:
+    import pyatspi
+except Exception as exc:
+    print("pyatspi_unavailable:%s" % exc, file=sys.stderr)
+    sys.exit(72)
+
+def emit(inspectable, deny_reason=None, detail=None):
+    print(json.dumps({
+        "inspectable": inspectable,
+        "denyReason": deny_reason,
+        "detail": detail
+    }))
+
+def text(value):
+    try:
+        return str(value or "").lower()
+    except Exception:
+        return ""
+
+def extents(acc):
+    try:
+        component = acc.queryComponent()
+        return component.getExtents(pyatspi.DESKTOP_COORDS)
+    except Exception:
+        return None
+
+def child_count(acc):
+    try:
+        return acc.childCount
+    except Exception:
+        return 0
+
+def child_at(acc, index):
+    try:
+        return acc.getChildAtIndex(index)
+    except Exception:
+        return None
+
+def role_value(acc):
+    try:
+        return int(acc.getRole())
+    except Exception:
+        return -1
+
+def role_name(acc):
+    try:
+        return text(acc.getRoleName())
+    except Exception:
+        return ""
+
+def state_contains(acc, state):
+    try:
+        return acc.getState().contains(state)
+    except Exception:
+        return False
+
+def state_names(acc):
+    names = []
+    for name in dir(pyatspi):
+        if not name.startswith("STATE_"):
+            continue
+        try:
+            value = getattr(pyatspi, name)
+            if state_contains(acc, value):
+                names.append(name.lower())
+        except Exception:
+            continue
+    return names
+
+def target_text(acc):
+    values = [
+        role_name(acc),
+        text(getattr(acc, "name", "")),
+        text(getattr(acc, "description", "")),
+        " ".join(state_names(acc))
+    ]
+    return " ".join(values)
+
+def classify(acc):
+    role = role_value(acc)
+    words = target_text(acc)
+    password_role = getattr(pyatspi, "ROLE_PASSWORD_TEXT", None)
+    if password_role is not None and role == int(password_role):
+        return "secure_text_field"
+    if "password" in words or "protected" in words or "secure text" in words:
+        return "secure_text_field"
+    if any(token in words for token in ["keyring", "gnome-keyring", "kwallet", "seahorse"]):
+        return "keychain_prompt"
+    auth_tokens = [
+        "authenticate",
+        "authentication",
+        "authorization",
+        "authorize",
+        "polkit",
+        "policykit",
+        "lock screen",
+        "unlock",
+        "login window",
+        "system password",
+        "sudo"
+    ]
+    role_tokens = ["alert", "dialog", "sheet", "window", "panel"]
+    if any(token in words for token in auth_tokens) and (
+        any(token in words for token in role_tokens) or "password" in words
+    ):
+        return "system_auth_sheet"
+    return None
+
+def deepest_at(acc, x, y, visited):
+    key = id(acc)
+    if key in visited:
+        return None
+    visited.add(key)
+    candidate = None
+    bounds = extents(acc)
+    if bounds and bounds.x <= x < bounds.x + bounds.width and bounds.y <= y < bounds.y + bounds.height:
+        candidate = acc
+    for index in range(child_count(acc)):
+        child = child_at(acc, index)
+        if child is None:
+            continue
+        nested = deepest_at(child, x, y, visited)
+        if nested is not None:
+            candidate = nested
+    return candidate
+
+def focused(acc, visited):
+    key = id(acc)
+    if key in visited:
+        return None
+    visited.add(key)
+    if state_contains(acc, pyatspi.STATE_FOCUSED):
+        return acc
+    for index in range(child_count(acc)):
+        child = child_at(acc, index)
+        if child is None:
+            continue
+        nested = focused(child, visited)
+        if nested is not None:
+            return nested
+    return None
+
+try:
+    mode = sys.argv[1]
+except Exception:
+    emit(False, detail="missing inspection mode")
+    sys.exit(0)
+
+try:
+    desktop = pyatspi.Registry.getDesktop(0)
+except Exception as exc:
+    emit(False, detail="desktop_unavailable:%s" % exc)
+    sys.exit(0)
+
+if mode == "point":
+    try:
+        x = int(sys.argv[2])
+        y = int(sys.argv[3])
+    except Exception:
+        emit(False, detail="invalid point coordinates")
+        sys.exit(0)
+    target = deepest_at(desktop, x, y, set())
+elif mode == "focus":
+    target = focused(desktop, set())
+else:
+    emit(False, detail="unknown inspection mode")
+    sys.exit(0)
+
+if target is None:
+    emit(False, detail="no accessible target")
+    sys.exit(0)
+
+emit(True, deny_reason=classify(target))
 """#
 }
 #endif

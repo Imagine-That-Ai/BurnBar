@@ -191,6 +191,14 @@ public actor ComputerUseRunCoordinator {
         sessions[id]?.state
     }
 
+    public func hasActiveSession(excluding sessionId: ComputerUseSessionID) -> Bool {
+        sessions.keys.contains { $0 != sessionId }
+    }
+
+    public func actionDescriptor(invocation: BurnBarToolInvocation) throws -> ComputerUseAction {
+        try decodeAction(invocation: invocation)
+    }
+
     // MARK: Dispatch
 
     public func invoke(

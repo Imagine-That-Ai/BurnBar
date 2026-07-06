@@ -31,6 +31,9 @@ public actor ComputerUseService {
     private let bridgeScriptURL: URL
     private let auditExportSignerProvider: any ComputerUseAuditExportSignerProviding
     private let systemInputAccessibilityTrusted: @Sendable (ComputerUseMode) -> Bool
+    private let systemInputAccessibilityDeny: @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?
+    private let computerUseKillSwitchEnabled: @Sendable () -> Bool
+    private let privilegedInputKillSwitchActivator: @Sendable (String) -> Void
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
 
     public init(
@@ -43,6 +46,9 @@ public actor ComputerUseService {
         systemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
         systemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
         systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) -> Bool)? = nil,
+        systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
+        computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
+        privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
@@ -58,6 +64,9 @@ public actor ComputerUseService {
         let defaultSystemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher?
         let defaultSystemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher?
         let defaultSystemAccessibilityTrusted: @Sendable (ComputerUseMode) -> Bool
+        let defaultSystemAccessibilityDeny: @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?
+        let defaultComputerUseKillSwitchEnabled: @Sendable () -> Bool
+        let defaultPrivilegedInputKillSwitchActivator: @Sendable (String) -> Void
         #if os(Linux)
         let linuxInputAdapter = LinuxComputerUseInputAdapter()
         defaultSystemInputDispatcher = { _, action in
@@ -69,12 +78,33 @@ public actor ComputerUseService {
         defaultSystemAccessibilityTrusted = { mode in
             mode == .system && linuxInputAdapter.isAvailableForSystemInput()
         }
+        defaultSystemAccessibilityDeny = { action in
+            linuxInputAdapter.accessibilityDenyReason(for: action)
+        }
+        defaultComputerUseKillSwitchEnabled = {
+            LinuxPrivilegedInputKillFlag.isActive()
+                || LinuxPrivilegedInputKillFlag.environmentKillSwitchActive()
+        }
+        defaultPrivilegedInputKillSwitchActivator = { reason in
+            LinuxPrivilegedInputKillFlag.activate(reason: reason)
+        }
         #else
         defaultSystemInputDispatcher = nil
         defaultSystemInspectDispatcher = nil
         defaultSystemAccessibilityTrusted = { _ in false }
+        defaultSystemAccessibilityDeny = { _ in nil }
+        defaultComputerUseKillSwitchEnabled = {
+            PrivilegedInputKillSwitch.isActive
+                || Self.environmentComputerUseKillSwitchEnabled()
+        }
+        defaultPrivilegedInputKillSwitchActivator = { reason in
+            PrivilegedInputKillSwitch.activate(reason: reason)
+        }
         #endif
         self.systemInputAccessibilityTrusted = systemInputAccessibilityTrusted ?? defaultSystemAccessibilityTrusted
+        self.systemInputAccessibilityDeny = systemInputAccessibilityDeny ?? defaultSystemAccessibilityDeny
+        self.computerUseKillSwitchEnabled = computerUseKillSwitchEnabled ?? defaultComputerUseKillSwitchEnabled
+        self.privilegedInputKillSwitchActivator = privilegedInputKillSwitchActivator ?? defaultPrivilegedInputKillSwitchActivator
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
                 try await approvalBridge.issue(request)
@@ -135,17 +165,15 @@ public actor ComputerUseService {
               let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
-        // TODO: Wire `phoneControlRespectsDenyRegions` from Remote Config when
-        // the config infrastructure is extended to the daemon. Currently the
-        // daemon only supports browser (Path B) sessions which do not involve
-        // phone control, so the default `false` is safe.
+        let action = try? await coordinator.actionDescriptor(invocation: request.invocation)
+        let accessibilityDeny = await accessibilityDenyReason(for: action, mode: manifest.mode)
         let capability = ComputerUseCapabilityContext(
             entitlement: entitlement(for: manifest.mode),
             envelope: .initialNormal,
             usage: ComputerUseQuotaUsage(dayKey: Self.todayKey()),
             session: state,
-            concurrentSessionActive: false,
-            killSwitch: false,
+            concurrentSessionActive: await coordinator.hasActiveSession(excluding: sessionId),
+            killSwitch: computerUseKillSwitchEnabled(),
             accessibilityTrusted: systemInputAccessibilityTrusted(manifest.mode)
         )
 
@@ -168,7 +196,7 @@ public actor ComputerUseService {
             invocation: request.invocation,
             scopeContext: scopeContext,
             scopeOutcome: scopeOutcome,
-            accessibilityDeny: nil,
+            accessibilityDeny: accessibilityDeny,
             capability: capability
         )
     }
@@ -197,7 +225,7 @@ public actor ComputerUseService {
             throw ServiceError.invalidSession(request.sessionId)
         }
         if request.sessionId == "*" {
-            Self.activatePrivilegedInputKillSwitch(reason: source.rawValue)
+            privilegedInputKillSwitchActivator(source.rawValue)
             let endedAt = Date()
             let haltedSessionIds = await coordinator.panicHaltAll(source: source)
             for sessionId in haltedSessionIds {
@@ -216,7 +244,7 @@ public actor ComputerUseService {
         guard let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
-        Self.activatePrivilegedInputKillSwitch(reason: source.rawValue)
+        privilegedInputKillSwitchActivator(source.rawValue)
         let lastHead = state.auditChainHeadHashHex ?? ""
         let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionId.rawValue, isDirectory: true)
         await coordinator.panicHalt(sessionId: sessionId, source: source)
@@ -370,12 +398,31 @@ public actor ComputerUseService {
         #endif
     }
 
-    private static func activatePrivilegedInputKillSwitch(reason: String) {
-        #if os(Linux)
-        LinuxPrivilegedInputKillFlag.activate(reason: reason)
-        #else
-        PrivilegedInputKillSwitch.activate(reason: reason)
-        #endif
+    private func accessibilityDenyReason(
+        for action: ComputerUseAction?,
+        mode: ComputerUseMode
+    ) async -> ComputerUseAccessibilityDenyReason? {
+        guard mode == .system,
+              case .macInput(let inputAction) = action else {
+            return nil
+        }
+        return await systemInputAccessibilityDeny(inputAction)
+    }
+
+    private static func environmentComputerUseKillSwitchEnabled() -> Bool {
+        [
+            "OPENBURNBAR_COMPUTER_USE_KILL_SWITCH",
+            "COMPUTER_USE_KILL_SWITCH",
+            "computer_use_kill_switch"
+        ].contains { name in
+            guard let value = ProcessInfo.processInfo.environment[name]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+                !value.isEmpty else {
+                return false
+            }
+            return ["1", "true", "yes", "on"].contains(value)
+        }
     }
 
     /// Extracts a scope context from a tool invocation for browser-mode scope
