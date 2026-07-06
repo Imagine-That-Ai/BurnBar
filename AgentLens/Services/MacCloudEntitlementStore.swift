@@ -154,12 +154,20 @@ final class MacStoreKitAppAccountTokenBindingStore: MacStoreKitAppAccountTokenBi
 
     private func load() -> [String: Binding] {
         guard let data = defaults.data(forKey: storageKey) else { return [:] }
-        return (try? JSONDecoder().decode([String: Binding].self, from: data)) ?? [:]
+        do {
+            return try JSONDecoder().decode([String: Binding].self, from: data)
+        } catch {
+            return [:]
+        }
     }
 
     private func save(_ bindings: [String: Binding]) {
-        guard let data = try? JSONEncoder().encode(bindings) else { return }
-        defaults.set(data, forKey: storageKey)
+        do {
+            let data = try JSONEncoder().encode(bindings)
+            defaults.set(data, forKey: storageKey)
+        } catch {
+            return
+        }
     }
 }
 
