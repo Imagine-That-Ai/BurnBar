@@ -422,10 +422,10 @@ public actor BurnBarHTTPGatewayServer {
                                 route: route,
                                 finalStatus: .failed,
                                 streamed: true,
-                                streamInterrupted: true,
                                 httpStatus: Self.httpStatus(from: error) ?? 502,
                                 attempts: attempts,
                                 usage: nil,
+                                streamInterrupted: true,
                                 failureMessage: Self.routeLogFailureMessage(from: error)
                             )
                             return .streamed
