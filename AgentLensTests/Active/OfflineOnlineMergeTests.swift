@@ -228,7 +228,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
         )
         let openState = await circuitBreaker.state
         guard case .open = openState else {
-            return XCTFail("Expected circuit breaker to open after retryable batch failure, got \(openState).")
+            XCTFail("Expected circuit breaker to open after retryable batch failure, got \(openState).")
+            return
         }
 
         await circuitBreaker.advanceTime(by: 61)
