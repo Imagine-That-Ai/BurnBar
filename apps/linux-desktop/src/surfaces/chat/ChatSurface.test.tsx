@@ -81,6 +81,7 @@ function mockBridge(handlers: {
     }),
     exportDiagnostics: async () => ({ path: '/tmp/diag.zip' }),
     sessionEnv: async () => ({}),
+    gatewayAuthToken: async () => null,
     mediaStatus: async () => ({ capabilityAvailable: false, pairedDevices: [] }),
     integrationsStatus: async () => ({ integrations: [] })
   };
@@ -251,8 +252,12 @@ describe('ChatSurface', () => {
     await waitFor(() => {
       expect(screen.getByText(/Fixture stream online/i)).toBeTruthy();
     });
-    expect(screen.getByText(/workspace.read/i)).toBeTruthy();
-    expect(screen.getAllByTitle(/Approval flows ride agent runs/i).length).toBeGreaterThan(0);
+    // The tool_call frame arrives one fixture-stream tick after the first
+    // delta, so it must be awaited too or the assertion races the stream.
+    await waitFor(() => {
+      expect(screen.getByText(/workspace.read/i)).toBeTruthy();
+      expect(screen.getAllByTitle(/Approval flows ride agent runs/i).length).toBeGreaterThan(0);
+    });
   });
 
   it('disables composer when gateway health is unreachable', async () => {

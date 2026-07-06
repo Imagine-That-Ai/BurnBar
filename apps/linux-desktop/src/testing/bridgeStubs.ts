@@ -54,7 +54,10 @@ export const emptyDatabaseWorkspaceStatus = (): Promise<DatabaseWorkspaceStatus>
 export const emptyDatabaseIndexAction = (): Promise<DatabaseIndexActionResult> =>
   Promise.resolve({ projectID: 'test-project', projectRoot: '/tmp/test', indexedFiles: 0 });
 
+export const emptyGatewayAuthToken = (): Promise<string | null> => Promise.resolve(null);
+
 export const bridgeStubDefaults = {
+  gatewayAuthToken: emptyGatewayAuthToken,
   mediaStatus: emptyMediaStatus,
   integrationsStatus: emptyIntegrationsStatus,
   missionCreate: emptyMissionCreate,
