@@ -2,8 +2,10 @@ import type {
   DatabaseIndexActionResult,
   DatabaseWorkspaceStatus,
   IntegrationsStatus,
+  MercuryMediaCapability,
   MemoryReviewInbox,
   MercuryMediaStatus,
+  MercuryMediaSessionState,
   MissionCreateInput,
   MissionListResult
 } from '../tauriBridge.js';
@@ -13,6 +15,20 @@ import type {
 // so existing full-mock tests keep type-checking without per-file edits.
 export const emptyMediaStatus = (): Promise<MercuryMediaStatus> =>
   Promise.resolve({ capabilityAvailable: false, pairedDevices: [] });
+
+export const emptyMediaSessionState = (): Promise<MercuryMediaSessionState> =>
+  Promise.resolve({ phase: 'capability-absent', kind: 'call', capabilityAvailable: false });
+
+export const emptyMediaAction = (_requestId?: string): Promise<MercuryMediaSessionState> =>
+  Promise.resolve({ phase: 'capability-absent', kind: 'call', capabilityAvailable: false });
+
+export const emptyMediaCapability = (): Promise<MercuryMediaCapability> =>
+  Promise.resolve({
+    available: false,
+    renderer: 'unknown',
+    canReceiveCalls: false,
+    canViewScreenShare: false
+  });
 
 export const emptyIntegrationsStatus = (): Promise<IntegrationsStatus> =>
   Promise.resolve({ integrations: [] });
@@ -59,6 +75,11 @@ export const emptyGatewayAuthToken = (): Promise<string | null> => Promise.resol
 export const bridgeStubDefaults = {
   gatewayAuthToken: emptyGatewayAuthToken,
   mediaStatus: emptyMediaStatus,
+  mediaSessionState: emptyMediaSessionState,
+  mediaAcceptCall: emptyMediaAction,
+  mediaDeclineCall: emptyMediaAction,
+  mediaEndCall: emptyMediaSessionState,
+  mediaCapabilityGet: emptyMediaCapability,
   integrationsStatus: emptyIntegrationsStatus,
   missionCreate: emptyMissionCreate,
   memoryReviewInbox: emptyMemoryReviewInbox,

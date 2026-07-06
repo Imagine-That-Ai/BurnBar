@@ -5,6 +5,10 @@ description = "OpenBurnBar Linux desktop shell"
 authors = ["OpenBurnBar"]
 edition = "2021"
 
+[features]
+default = []
+media-gst = ["dep:openburnbar-media"]
+
 [lib]
 name = "openburnbar_linux_desktop_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
@@ -17,3 +21,4 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+openburnbar-media = { path = "../../../crates/openburnbar-media", optional = true }
