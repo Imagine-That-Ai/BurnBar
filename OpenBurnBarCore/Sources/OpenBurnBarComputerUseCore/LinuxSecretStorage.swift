@@ -210,7 +210,9 @@ final class LinuxPersistentSecretStore: @unchecked Sendable {
     }
 
     private static func defaultLogger(_ message: String) {
-        fputs("\(message)\n", stderr)
+        // Glibc imports stderr as a mutable global (not concurrency-safe under
+        // Swift 6); FileHandle.standardError is Sendable on both platforms.
+        FileHandle.standardError.write(Data("\(message)\n".utf8))
     }
 }
 
