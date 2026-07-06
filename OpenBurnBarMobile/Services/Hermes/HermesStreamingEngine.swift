@@ -642,7 +642,8 @@ final class HermesStreamingEngine {
             await coordinator.refreshRelayDiscoveryBeforeLocalSendIfNeeded()
         }
         #if DEBUG
-        hermesE2ELogger.info("OpenBurnBarMobile Hermes E2E streamCompletion selected=\(coordinator.selectedConnection.id, privacy: .public) mode=\(coordinator.selectedConnection.mode.rawValue, privacy: .public) requestedModel=\(coordinator.activeRequestedModelID ?? "nil", privacy: .public) modelOptions=\(coordinator.modelOptions.count, privacy: .public)")
+        let line = "OpenBurnBarMobile Hermes E2E streamCompletion selected=\(coordinator.selectedConnection.id) mode=\(coordinator.selectedConnection.mode.rawValue) requestedModel=\(coordinator.activeRequestedModelID ?? "nil") modelOptions=\(coordinator.modelOptions.count)"
+        hermesE2ELogger.info("\(line, privacy: .public)")
         #endif
         if coordinator.selectedConnection.mode == .relayLink {
             try await streamRelayCompletion(coordinator: coordinator, context: context, iteration: iteration)
@@ -1099,7 +1100,9 @@ final class HermesStreamingEngine {
         }
 
         #if DEBUG
-        hermesE2ELogger.error("OpenBurnBarMobile Hermes E2E streamError selected=\(coordinator.selectedConnection.id, privacy: .public) mode=\(coordinator.selectedConnection.mode.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public) display=\(displayText, privacy: .public)")
+        let line = "OpenBurnBarMobile Hermes E2E streamError selected=\(coordinator.selectedConnection.id) mode=\(coordinator.selectedConnection.mode.rawValue)"
+            + " error=\(error.localizedDescription) display=\(displayText)"
+        hermesE2ELogger.error("\(line, privacy: .public)")
         #endif
 
         let errorMessage = HermesChatMessage(
