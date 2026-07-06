@@ -18,9 +18,13 @@ internal static class DashboardUsageSummaryFormatter
     public static string CacheHit(DashboardUsageSummary summary) => summary.HasData ? "Live" : "—";
 
     public static string Detail(DashboardUsageSummary summary, string configuredSource) =>
-        summary.HasData
-            ? "Live SQLCipher usage aggregates."
-            : OpenBurnBar.App.Configuration.RuntimeDataMode.EmptyStateDetail(configuredSource);
+        summary.Origin switch
+        {
+            DashboardUsageOrigin.Local => "Live SQLCipher usage aggregates.",
+            DashboardUsageOrigin.Cloud => "Live cloud usage aggregates (synced from your Mac).",
+            DashboardUsageOrigin.Sample => "Sample mode — labeled demo usage, not live.",
+            _ => OpenBurnBar.App.Configuration.RuntimeDataMode.EmptyStateDetail(configuredSource),
+        };
 
     private static string FormatTokenCount(long tokens)
     {

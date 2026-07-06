@@ -11,10 +11,10 @@ public sealed partial class NebulaLayoutView : UserControl
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
-        var summary = OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary();
+        var summary = await DashboardUsageProvider.LoadAsync();
         BurnTile.Text = DashboardUsageSummaryFormatter.BurnPerDay(summary);
         BurnDetailText.Text = DashboardUsageSummaryFormatter.Detail(summary, "SQLCipher usage database");
         TokensTile.Value = DashboardUsageSummaryFormatter.Tokens(summary);
