@@ -71,7 +71,9 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(ended.session.phase, .cooldown)
     }
 
-    func testSessionForwardsCapturedFramesAsOutboundRelayMedia() async throws {
+    // Fail closed: with no established media seal key, a captured frame must
+    // NOT egress as plaintext — the session drops to cooldown instead.
+    func testCapturedFrameWithoutSealKeyFailsClosedAndDoesNotEgressPlaintext() async throws {
         let channel = try MercuryLinuxMediaChannel(
             socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
             maxQueuedFrames: 4
@@ -86,6 +88,43 @@ final class MercuryLinuxMediaTests: XCTestCase {
         }
         let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
         XCTAssertTrue(accept.accepted)
+
+        await controller.ingestCapturedFrame(MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            presentationTimestampMillis: 777,
+            payload: Data([0xAB, 0xCD, 0xEF])
+        ))
+
+        // Only the mirror ack was ever sent — no stream frame egressed.
+        let sent = await replies.frames
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?.type, .mediaMirrorAck)
+        XCTAssertFalse(sent.contains { $0.type == .mediaStreamFrame })
+        let snapshot = await controller.sessionSnapshot()
+        XCTAssertEqual(snapshot.phase, .cooldown)
+    }
+
+    // With an established seal key, captured frames egress SEALED (AEAD), never
+    // plaintext — the sealed envelope opens back to the original frame.
+    func testSessionForwardsCapturedFramesSealed() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let controller = MercuryLinuxMediaSessionController(channel: channel)
+        try await controller.start()
+        defer { channel.stop() }
+
+        let replies = RecordingMercuryReplies()
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node") { frame in
+            await replies.append(frame)
+        }
+        let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
+        XCTAssertTrue(accept.accepted)
+
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        await controller.setMediaFrameSealKey(sealKey)
 
         let payload = Data([0xAB, 0xCD, 0xEF])
         await controller.ingestCapturedFrame(MediaFrame(
@@ -104,11 +143,21 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(streamFrame.uid, "uid-1")
         XCTAssertEqual(streamFrame.connectionId, "conn-1")
         XCTAssertEqual(streamFrame.media?.streamClass, "media.screen.video")
-        XCTAssertNil(streamFrame.media?.sealedFramePosition)
+        // Sealed egress: the position marker is present (not plaintext).
+        XCTAssertNotNil(streamFrame.media?.sealedFramePosition)
 
-        let encodedBase64 = try XCTUnwrap(streamFrame.media?.encodedFrameBase64)
-        let encoded = try XCTUnwrap(Data(base64Encoded: encodedBase64))
-        let decoded = try MediaPacketCodec().decode(encoded).frame
+        // The sealed envelope opens back to the original frame with the key.
+        let envelopeBase64 = try XCTUnwrap(streamFrame.media?.encodedFrameBase64)
+        let envelope = try XCTUnwrap(Data(base64Encoded: envelopeBase64))
+        let opened = try MediaFrameAEAD().open(
+            envelope: envelope,
+            key: sealKey,
+            streamClass: "media.screen.video",
+            kind: MediaFrame.Kind.videoNAL.rawValue,
+            gopID: 1,
+            frameIndex: 0
+        )
+        let decoded = try MediaPacketCodec().decode(opened).frame
         XCTAssertEqual(decoded.kind, .videoNAL)
         XCTAssertEqual(decoded.flags, [.keyframe])
         XCTAssertEqual(decoded.gopID, 1)
