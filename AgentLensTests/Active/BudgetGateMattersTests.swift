@@ -399,6 +399,88 @@ final class BudgetGateMattersTests: XCTestCase {
         XCTAssertNil(fallback)
     }
 
+    func test_fallbackWithExplicitAccountResolvesWhenBlockingRuleHasEmptyAccount() async {
+        // The blocking rule targets the provider's default slot (empty accountID — synced
+        // rules can carry "" where the editor stores nil). The self-exclusion comparison
+        // normalizes BOTH sides to "default", so a candidate with an explicit, different
+        // account must stay eligible as a fallback (audit wave 4, item 5).
+        let fallbackRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "openrouter",
+            accountID: "backup-slot"
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            providerID: "openrouter",
+            accountID: "",
+            fallbackCredentialIDs: [fallbackRule.id]
+        )
+        let ledger = StubLedger(
+            .returns(0),
+            perRule: [blocking.id: .returns(50.0)]
+        )
+        let gate = makeGate(rules: [blocking, fallbackRule], ledger: ledger)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openrouter",
+                slotID: "",
+                displayLabel: "OpenRouter default",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(let rule, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with explicit-account fallback, got \(decision)"); return
+        }
+        XCTAssertEqual(rule.id, blocking.id)
+        XCTAssertEqual(fallback.providerID, "openrouter")
+        XCTAssertEqual(fallback.slotID, "backup-slot")
+    }
+
+    func test_fallbackSelfExcludedWhenBothRulesTargetDefaultSlot() async {
+        // Candidate carries a whitespace-only accountID, the blocking rule "" — after
+        // trim+default normalization they are the SAME default slot, so the gate must
+        // never offer the blocked credential as its own fallback (audit wave 4, item 5).
+        let candidateRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "openrouter",
+            accountID: "  "
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            providerID: "openrouter",
+            accountID: "",
+            fallbackCredentialIDs: [candidateRule.id]
+        )
+        let ledger = StubLedger(
+            .returns(0),
+            perRule: [blocking.id: .returns(50.0)]
+        )
+        let gate = makeGate(rules: [blocking, candidateRule], ledger: ledger)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openrouter",
+                slotID: "",
+                displayLabel: "OpenRouter default",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(let rule, _, _, let fallback) = decision else {
+            XCTFail("Expected .block, got \(decision)"); return
+        }
+        XCTAssertEqual(rule.id, blocking.id)
+        XCTAssertNil(fallback, "A default-slot candidate must be excluded as its own fallback")
+    }
+
     func test_matchingOrganizationRuleIsEvaluatedForCredentialLabel() async {
         let organization = rule(
             scope: .organization,
