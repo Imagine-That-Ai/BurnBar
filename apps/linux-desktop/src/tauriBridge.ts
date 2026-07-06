@@ -323,6 +323,7 @@ export type SessionEnv = { XDG_SESSION_TYPE?: string; XDG_CURRENT_DESKTOP?: stri
 export type MercuryDevicePlatform = 'ios' | 'android' | 'macos' | 'linux' | 'unknown';
 export type MercurySessionKind = 'screen-share' | 'file' | 'call';
 export type MercurySessionState = 'staged' | 'connecting' | 'active' | 'ended';
+export type MercuryCallPhase = 'idle' | 'ringing' | 'streaming' | 'cooldown' | 'capability-absent';
 export type MercuryPairedDevice = {
   id: string;
   name: string;
@@ -335,11 +336,31 @@ export type MercuryActiveSession = {
   kind: MercurySessionKind;
   state: MercurySessionState;
   peer: string;
+  requestId?: string;
+  startedAt?: string;
 };
 export type MercuryMediaStatus = {
   capabilityAvailable: boolean;
   pairedDevices: MercuryPairedDevice[];
   activeSession?: MercuryActiveSession;
+};
+export type MercuryMediaSessionState = {
+  phase: MercuryCallPhase;
+  requestId?: string;
+  peerName?: string;
+  peerId?: string;
+  kind: MercurySessionKind;
+  startedAt?: string;
+  endedAt?: string;
+  capabilityAvailable: boolean;
+  raw?: RawJsonValue;
+};
+export type MercuryMediaCapability = {
+  available: boolean;
+  renderer: 'media-gst' | 'stub' | 'unknown';
+  canReceiveCalls: boolean;
+  canViewScreenShare: boolean;
+  reason?: string;
 };
 // ─────────────────────────── P13: integrations status ─────────────────────
 
@@ -425,6 +446,11 @@ export interface LinuxShellBridge {
   notificationCommand?(command: string, args?: string[]): Promise<NotificationCommandResult>;
   sessionEnv(): Promise<SessionEnv>;
   mediaStatus(): Promise<MercuryMediaStatus>;
+  mediaSessionState(): Promise<MercuryMediaSessionState>;
+  mediaAcceptCall(requestId: string): Promise<MercuryMediaSessionState>;
+  mediaDeclineCall(requestId: string): Promise<MercuryMediaSessionState>;
+  mediaEndCall(): Promise<MercuryMediaSessionState>;
+  mediaCapabilityGet(): Promise<MercuryMediaCapability>;
   integrationsStatus(): Promise<IntegrationsStatus>;
 }
 
@@ -1230,6 +1256,20 @@ function normalizeMercuryState(raw: string): MercurySessionState {
   return 'staged';
 }
 
+function normalizeMercuryCallPhase(raw: string): MercuryCallPhase {
+  const lower = raw.toLowerCase();
+  if (lower.includes('absent') || lower.includes('unsupported') || lower.includes('unavailable')) return 'capability-absent';
+  if (lower.includes('ring') || lower.includes('incoming')) return 'ringing';
+  if (lower.includes('stream') || lower.includes('active') || lower.includes('accepted') || lower.includes('viewer')) return 'streaming';
+  if (lower.includes('cool') || lower.includes('end') || lower.includes('declin') || lower.includes('stop')) return 'cooldown';
+  return 'idle';
+}
+
+function isCapabilityAbsentError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e);
+  return /unknown|unsupported|not implemented|no such method/i.test(message);
+}
+
 function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
   const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
   const availableRaw = pick(raw, 'capabilityAvailable', 'capability_available', 'available');
@@ -1249,13 +1289,62 @@ function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
       ? {
           kind: normalizeMercuryKind(str(pick(sessionRaw, 'kind', 'type'), 'screen-share')),
           state: normalizeMercuryState(str(pick(sessionRaw, 'state', 'phase', 'status'), 'staged')),
-          peer: str(pick(sessionRaw, 'peer', 'peerName', 'peer_name', 'deviceName'), 'Paired device')
+          peer: str(pick(sessionRaw, 'peer', 'peerName', 'peer_name', 'deviceName'), 'Paired device'),
+          requestId: str(pick(sessionRaw, 'requestId', 'request_id')) || undefined,
+          startedAt: str(pick(sessionRaw, 'startedAt', 'started_at')) || undefined
         }
       : undefined;
   return {
     capabilityAvailable: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
     pairedDevices,
     activeSession
+  };
+}
+
+function mapMercurySessionState(raw: RawJsonValue): MercuryMediaSessionState {
+  const incomingCall = pick(raw, 'incomingCall', 'incoming_call');
+  const activeSession = pick(raw, 'activeSession', 'active_session', 'session');
+  const source =
+    incomingCall && typeof incomingCall === 'object'
+      ? incomingCall
+      : activeSession && typeof activeSession === 'object'
+        ? activeSession
+        : raw;
+  const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
+  const availableRaw = pick(raw, 'capabilityAvailable', 'capability_available', 'available');
+  const phaseRaw = str(
+    pick(raw, 'phase', 'state', 'status') ?? pick(source, 'phase', 'state', 'status'),
+    absent ? 'capability-absent' : 'idle'
+  );
+  const phase = absent ? 'capability-absent' : normalizeMercuryCallPhase(phaseRaw);
+  return {
+    phase,
+    requestId: str(pick(raw, 'requestId', 'request_id') ?? pick(source, 'requestId', 'request_id')) || undefined,
+    peerName:
+      str(pick(raw, 'peerName', 'peer_name', 'peer', 'deviceName') ?? pick(source, 'peerName', 'peer_name', 'peer', 'deviceName')) ||
+      undefined,
+    peerId: str(pick(raw, 'peerId', 'peer_id', 'deviceId') ?? pick(source, 'peerId', 'peer_id', 'deviceId')) || undefined,
+    kind: normalizeMercuryKind(str(pick(raw, 'kind', 'type') ?? pick(source, 'kind', 'type'), 'call')),
+    startedAt: str(pick(raw, 'startedAt', 'started_at') ?? pick(source, 'startedAt', 'started_at')) || undefined,
+    endedAt: str(pick(raw, 'endedAt', 'ended_at') ?? pick(source, 'endedAt', 'ended_at')) || undefined,
+    capabilityAvailable: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    raw
+  };
+}
+
+function mapMercuryCapability(raw: RawJsonValue): MercuryMediaCapability {
+  const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
+  const availableRaw = pick(raw, 'available', 'capabilityAvailable', 'capability_available');
+  const rendererRaw = str(pick(raw, 'renderer', 'source'), 'unknown');
+  const renderer = rendererRaw === 'media-gst' || rendererRaw === 'stub' ? rendererRaw : 'unknown';
+  const capabilities = arr(pick(raw, 'capabilities', 'features')).map((capability) => str(capability)).filter(Boolean);
+  return {
+    available: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    renderer,
+    canReceiveCalls: Boolean(pick(raw, 'canReceiveCalls', 'can_receive_calls')) || capabilities.includes('call.receive'),
+    canViewScreenShare:
+      Boolean(pick(raw, 'canViewScreenShare', 'can_view_screen_share')) || capabilities.includes('mirror.viewer'),
+    reason: str(pick(raw, 'reason', 'error')) || undefined
   };
 }
 
@@ -1477,9 +1566,69 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         const raw = await invoke<RawJsonValue>('media_status');
         return mapMercuryMediaStatus(raw);
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        if (/unknown|unsupported|not implemented|no such method/i.test(message)) {
+        if (isCapabilityAbsentError(e)) {
           return { capabilityAvailable: false, pairedDevices: [] };
+        }
+        throw e;
+      }
+    },
+    mediaSessionState: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_session_state');
+        return mapMercurySessionState(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return { phase: 'capability-absent', kind: 'call', capabilityAvailable: false };
+        }
+        throw e;
+      }
+    },
+    mediaAcceptCall: async (requestId) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_accept_call', { requestId });
+        return mapMercurySessionState(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return { phase: 'capability-absent', requestId, kind: 'call', capabilityAvailable: false };
+        }
+        throw e;
+      }
+    },
+    mediaDeclineCall: async (requestId) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_decline_call', { requestId });
+        return mapMercurySessionState(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return { phase: 'capability-absent', requestId, kind: 'call', capabilityAvailable: false };
+        }
+        throw e;
+      }
+    },
+    mediaEndCall: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_end_call');
+        return mapMercurySessionState(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return { phase: 'capability-absent', kind: 'call', capabilityAvailable: false };
+        }
+        throw e;
+      }
+    },
+    mediaCapabilityGet: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_capability_get');
+        return mapMercuryCapability(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            available: false,
+            renderer: 'unknown',
+            canReceiveCalls: false,
+            canViewScreenShare: false,
+            reason: e instanceof Error ? e.message : String(e)
+          };
         }
         throw e;
       }

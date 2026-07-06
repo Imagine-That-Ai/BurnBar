@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMediaStore } from '../../state/mediaStore.js';
@@ -8,6 +8,7 @@ import type { LinuxShellBridge, MercuryMediaStatus } from '../../tauriBridge.js'
 import { MediaSection } from './MediaSection.js';
 
 function resetStores(): void {
+  useMediaStore.getState().reset();
   useShellStore.setState({
     fixtureMode: false,
     bridge: null,
@@ -20,6 +21,8 @@ function resetStores(): void {
     status: null,
     loadState: 'idle',
     error: null,
+    callError: null,
+    callState: { phase: 'idle', kind: 'call', source: 'live' },
     stageEvents: []
   });
 }
@@ -53,7 +56,10 @@ function bridgeWithMedia(result: Promise<MercuryMediaStatus>): LinuxShellBridge 
 
 describe('P12 Mercury media section', () => {
   beforeEach(resetStores);
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    useMediaStore.getState().reset();
+  });
 
   it('renders the primary capability-absent state for current Linux daemons', async () => {
     useShellStore.setState({
@@ -106,7 +112,7 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('socket closed')).toBeTruthy();
   });
 
-  it('renders fixture peers and session timeline without action controls', async () => {
+  it('renders fixture peers, incoming call controls, and scripted accept transition', async () => {
     useShellStore.setState({ fixtureMode: true, bridge: null });
     render(<MediaSection />);
     await act(async () => {
@@ -116,11 +122,14 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('fixture transcript')).toBeTruthy();
     expect(screen.getByText('Studio Mac')).toBeTruthy();
     expect(screen.getByText('Phase: Active')).toBeTruthy();
+    expect(screen.getByText('Incoming call')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    expect(screen.getByText('Viewer streaming')).toBeTruthy();
     expect(screen.getByText('Staged')).toBeTruthy();
     expect(screen.getByText('Connecting')).toBeTruthy();
     expect(screen.getByText('Active')).toBeTruthy();
     expect(screen.getByText('Ended')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /call|send file|end|forget/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'End' })).toBeTruthy();
   });
 
   it('renders live daemon peers with provenance when media_status is available', async () => {
