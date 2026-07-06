@@ -994,4 +994,8 @@ extension Data {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
     }
+
+    func hexEncodedString() -> String {
+        map { String(format: "%02x", $0) }.joined()
+    }
 }

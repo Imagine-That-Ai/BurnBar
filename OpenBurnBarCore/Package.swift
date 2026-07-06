@@ -571,7 +571,10 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarLinuxSecurity",
-            dependencies: [swiftCryptoDependency]
+            dependencies: [swiftCryptoDependency],
+            linkerSettings: [
+                .linkedLibrary("pam", .when(platforms: [.linux]))
+            ]
         ),
         .target(
             name: "OpenBurnBarSignalCore",
@@ -810,7 +813,10 @@ let firstPartyTargets: [Target] = firstPartyTargetsBase + (buildForLinuxBoundary
 let linuxSecurityOnlyTargets: [Target] = [
     .target(
         name: "OpenBurnBarLinuxSecurity",
-        dependencies: [swiftCryptoDependency]
+        dependencies: [swiftCryptoDependency],
+        linkerSettings: [
+            .linkedLibrary("pam", .when(platforms: [.linux]))
+        ]
     ),
     .testTarget(
         name: "OpenBurnBarLinuxSecurityTests",
