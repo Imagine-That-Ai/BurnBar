@@ -42,6 +42,13 @@ fs.mkdirSync(logsDir, { recursive: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
 fs.mkdirSync(sidecarDir, { recursive: true });
 
+const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() || '4';
+const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
+const packageBuildEnv = {
+  ...process.env,
+  CARGO_BUILD_JOBS: cargoBuildJobs
+};
+
 function writeLog(name, steps) {
   const body = steps
     .map((step) => [
@@ -61,7 +68,10 @@ const buildSteps = [];
 if (!args.has('--skip-tauri')) {
   buildSteps.push(runStep('npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir }));
   buildSteps.push(runStep('npm', ['run', 'build'], { cwd: appDir }));
-  buildSteps.push(runStep('npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], { cwd: appDir }));
+  buildSteps.push(runStep('npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], {
+    cwd: appDir,
+    env: packageBuildEnv
+  }));
 }
 writeLog('package-build.log', buildSteps);
 
@@ -81,6 +91,8 @@ if (!args.has('--skip-daemon')) {
   daemonSteps.push(runStep('swift', [
     'build',
     '--disable-automatic-resolution',
+    '--jobs',
+    swiftBuildJobs,
     '--package-path',
     'OpenBurnBarDaemon',
     '-c',
