@@ -8,6 +8,7 @@ import { useAccountStore } from '../../state/accountStore.js';
 import type { AccountStatus } from '../../tauriBridge.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { accountPlanTier } from './accountPlanTier.js';
+import { MembershipSection } from './membership/MembershipSection.js';
 import { SyncStateCard } from './SyncStateCard.js';
 import { TrustBadge } from './TrustBadge.js';
 import './account.css';
@@ -127,6 +128,8 @@ export function AccountSurface() {
           </div>
         </SurfaceCard>
       ) : null}
+
+      <MembershipSection />
 
       <div className="actions">
         <button type="button" className="primary" disabled={loading} onClick={() => void load()}>

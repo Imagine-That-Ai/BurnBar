@@ -17,8 +17,10 @@ import type {
   ProxyRouteLogEntry,
   MemoryReviewInbox,
   DatabaseWorkspaceStatus,
-  DatabaseIndexActionResult
+  DatabaseIndexActionResult,
+  MembershipStatus
 } from './tauriBridge.js';
+import { ENTITLEMENT_DOC_IDS } from '@openburnbar/entitlements';
 
 export type DaemonRouteFixture = {
   route: string;
@@ -680,4 +682,54 @@ export function fixtureNotificationHealth(): NotificationHealth {
       { channel: 'calendar', status: 'disabled', detail: 'Calendar export is off', checkedAt }
     ]
   };
+}
+
+// ─────────────────────────── P10: membership fixtures ────────────────────────────
+
+const MEMBERSHIP_CACHE_EVENT = 'membership.entitlement_cache.updated';
+const MEMBERSHIP_CHECKOUT_URL = 'https://checkout.stripe.test/session/cs_test_openburnbar';
+
+export type MembershipFixtureState = 'active' | 'cancelled' | 'paymentFailed' | 'offline';
+
+export function fixtureMembershipStatus(state: MembershipFixtureState = 'active'): MembershipStatus {
+  switch (state) {
+    case 'active':
+      return {
+        tier: 'pro',
+        entitlements: [ENTITLEMENT_DOC_IDS.pro, ENTITLEMENT_DOC_IDS.hostedQuotaSync],
+        renewsAt: new Date(Date.now() + 86_400_000 * 21).toISOString(),
+        restoreAvailable: true,
+        state: 'active',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'cancelled':
+      return {
+        tier: 'free',
+        entitlements: [],
+        renewsAt: undefined,
+        restoreAvailable: true,
+        state: 'cancelled',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'paymentFailed':
+      return {
+        tier: 'free',
+        entitlements: [],
+        restoreAvailable: true,
+        state: 'paymentFailed',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'offline':
+      return {
+        tier: 'free',
+        entitlements: [],
+        restoreAvailable: false,
+        state: 'offline',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+  }
+}
+
+export function fixtureMembershipCheckoutUrl(): string {
+  return MEMBERSHIP_CHECKOUT_URL;
 }

@@ -9,6 +9,7 @@ export default defineConfig({
   envPrefix: ['VITE_', 'TAURI_'],
   resolve: {
     alias: {
+      '@openburnbar/entitlements': fileURLToPath(new URL('../../packages/entitlements/src/index.ts', import.meta.url)),
       '@openburnbar/gl-engine': fileURLToPath(new URL('../../packages/gl-engine/src', import.meta.url))
     }
   },
