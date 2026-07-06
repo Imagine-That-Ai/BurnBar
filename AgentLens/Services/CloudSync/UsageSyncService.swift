@@ -11,6 +11,13 @@ import OpenBurnBarCore
 /// sealed with the per-user Cloud Vault key (`sealedProjectName`) instead of
 /// being written in plaintext. An opaque keyed `projectKeyHash` is also written
 /// so on-device readers can group usage by project without decrypting every row.
+extension Notification.Name {
+    /// Posted by UsageAggregator.recountAll after the local usage table has
+    /// been cleared and re-parsed, so the next usage sync reconciles
+    /// now-orphaned cloud docs exactly once.
+    static let usageRecountDidRebuildLocalRows = Notification.Name("OpenBurnBarUsageRecountDidRebuildLocalRows")
+}
+
 final class UsageSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
@@ -21,12 +28,29 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
 
+    /// Set when a Recount (or other full local rebuild) requests one-shot
+    /// cloud reconciliation. Orphan cleanup is O(total same-device history)
+    /// in Firestore reads, so it must not run on every incremental sync.
+    private let orphanReconciliationRequested = Locked(false)
+
     init(
         context: CloudSyncContext,
         vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
     ) {
         self.context = context
         self.vaultKeyProvider = vaultKeyProvider
+        NotificationCenter.default.addObserver(
+            forName: .usageRecountDidRebuildLocalRows,
+            object: nil,
+            queue: nil
+        ) { [orphanReconciliationRequested] _ in
+            orphanReconciliationRequested.withLock { $0 = true }
+        }
+    }
+
+    /// Request a one-shot orphaned-cloud-doc reconciliation on the next sync.
+    func requestOrphanReconciliation() {
+        orphanReconciliationRequested.withLock { $0 = true }
     }
 
     /// Upload all unsynced local usage rows to Firestore.
@@ -51,11 +75,6 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
             let resolvedVaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
-            try await deleteOrphanedUsageDocs(
-                collectionRef: collectionRef,
-                deviceId: deviceId,
-                keeping: Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
-            )
 
             while true {
                 let unsynced = try await context.dataStore.fetchUnsynced()
@@ -87,6 +106,29 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
                 let syncedIds = unsynced.map { $0.id }
                 try await context.dataStore.markSynced(ids: syncedIds)
+            }
+
+            // Orphan cleanup runs only AFTER the replacement upload committed
+            // (never leaves the cloud with neither old nor new docs), only when
+            // a recount explicitly requested reconciliation (bounds the
+            // full-history scan to recount events, not every incremental
+            // sync), and never against an empty local table (a failed recount
+            // persist must not delete the device's entire cloud history).
+            if orphanReconciliationRequested.read() {
+                let keeping = Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
+                if keeping.isEmpty {
+                    AppLogger.sync.error(
+                        "usage_orphan_cleanup_refused_empty_local_table",
+                        metadata: ["reason": "failed recount persist would delete entire cloud history"]
+                    )
+                } else {
+                    try await deleteOrphanedUsageDocs(
+                        collectionRef: collectionRef,
+                        deviceId: deviceId,
+                        keeping: keeping
+                    )
+                    orphanReconciliationRequested.withLock { $0 = false }
+                }
             }
 
             state.withLock {

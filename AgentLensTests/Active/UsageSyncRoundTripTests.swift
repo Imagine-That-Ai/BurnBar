@@ -266,12 +266,109 @@ final class UsageSyncRoundTripTests: XCTestCase {
         ], at: "users/test-uid-1/usage/remote-device-2_22222222-2222-4222-8222-222222222222")
         try await dataStore.insert(usage)
 
+        usageSync.requestOrphanReconciliation()
         await usageSync.sync()
 
         let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
         XCTAssertNil(docs["users/test-uid-1/usage/test-device-1_11111111-1111-4111-8111-111111111111"])
         XCTAssertNotNil(docs["users/test-uid-1/usage/\(currentDocID)"])
         XCTAssertNotNil(docs["users/test-uid-1/usage/remote-device-2_22222222-2222-4222-8222-222222222222"])
+    }
+
+    func test_orphanCleanup_skippedWithoutReconciliationRequest() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "incremental-session",
+            projectName: "IncrementalProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 10,
+            outputTokens: 5,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(30)
+        )
+        let staleDocPath = "users/test-uid-1/usage/test-device-1_33333333-3333-4333-8333-333333333333"
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "stale-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(30))
+        ], at: staleDocPath)
+        try await dataStore.insert(usage)
+
+        // No requestOrphanReconciliation(): an ordinary incremental sync must
+        // not run the O(total-history) orphan scan, so the stale doc survives.
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(docs[staleDocPath])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(usage.id.uuidString)"])
+    }
+
+    func test_orphanCleanup_refusedWhenLocalTableEmpty() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let cloudDocPath = "users/test-uid-1/usage/test-device-1_44444444-4444-4444-8444-444444444444"
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "history-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(30))
+        ], at: cloudDocPath)
+
+        // Recount requested reconciliation but persistence failed: the local
+        // table is empty. Cleanup must refuse rather than delete the device's
+        // entire cloud history.
+        usageSync.requestOrphanReconciliation()
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(docs[cloudDocPath])
+    }
+
+    func test_orphanCleanup_runsAfterReplacementUploadCommits() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "ordering-session",
+            projectName: "OrderingProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(60)
+        )
+        let staleDocPath = "users/test-uid-1/usage/test-device-1_55555555-5555-4555-8555-555555555555"
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "ordering-session-old",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: staleDocPath)
+        try await dataStore.insert(usage)
+
+        // Fail all writes (the replacement upload throws after retries), so
+        // cleanup must never have run: the old doc is still present even
+        // though it is orphaned.
+        fakeGateway.nextError = NSError(
+            domain: FirestoreErrorDomain,
+            code: FirestoreErrorCode.unavailable.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: "unavailable"]
+        )
+        usageSync.requestOrphanReconciliation()
+        await usageSync.sync()
+        fakeGateway.nextError = nil
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(docs[staleDocPath], "orphan cleanup must not run when the replacement upload failed")
     }
 
     func test_providerAccountUpload_writesOnlyNonSecretLocalAccountMetadata() async throws {
