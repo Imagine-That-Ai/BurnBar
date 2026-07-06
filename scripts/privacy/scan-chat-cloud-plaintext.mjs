@@ -1698,7 +1698,7 @@ assertIncludes(
   "iOS gateway must prefer ratchetEnvelope for capable phone events",
 );
 assertIncludesExecutable(
-  "OpenBurnBarMobile/Services/HermesGatewayAPI.swift",
+  "OpenBurnBarMobile/Services/HermesGatewayMessageRecord.swift",
   "decodedRatchetText(",
   "iOS gateway must open ratchetEnvelope agent replies",
 );
