@@ -218,19 +218,44 @@ opaque until the three-hour job timeout.
 
 Release-lane structure: keep signing, notarization, artifact generation,
 artifact-backed smoke, and publish serialized, but do not add unrelated quality
-checks to that critical path. Functions, Firestore rules, extension/TypeScript,
-replay-host, and supply-chain audit gates should run as independent release jobs
-and block `publish` through `needs`. This keeps a bad gate from shipping while
-allowing slow, independent checks to run beside macOS packaging instead of
-waiting in one long queue.
+checks to that critical path. Every validation gate runs as an independent
+release job and blocks `publish` through `needs`:
+
+- `release-preflight` resolves and validates the tag once (SemVer grammar,
+  dispatch-ref binding, origin/main reachability), scans the publishable tree
+  for secrets, runs the BurnBar provenance/product preflights, validates any
+  bypass reasons, and checks strict secret presence. Every other lane consumes
+  its `tag_name`/`tag_ref`/`release_commit`/`version`/`is_prerelease` outputs
+  and re-proves `HEAD == release_commit` after its own checkout.
+- `release-swift-gate` (Swift package tests + retrieval replay evals),
+  `release-app-gate` (release-critical app XCTest slice), `release-sqlcipher-gate`
+  (Release-configuration codec proof), `release-mobile-gate` (iOS simulator
+  smoke), and `release-android-gate` (Android JVM unit tests, ubuntu) run in
+  parallel with each other and with packaging. The pre-existing functions,
+  extension/TypeScript, and supply-chain gates are unchanged.
+- `build-and-release` is packaging only: Signal FFI, extension, daemon, Release
+  .app, Android signed bundle, macOS signing, notarization, provenance, and
+  artifact uploads — serialized in one job so attestations bind to the same
+  workspace that built the artifacts.
+- `publish` requires the preflight, all seven validation gates, packaging, and
+  the DMG smoke test. A failed or cancelled lane blocks publish; a lane is only
+  skipped through the owner-approved bypass inputs that `release-preflight`
+  validates fail-closed. `scripts/ci/verify-release-provenance-boundaries.mjs`
+  pins this `needs` list — update it and its mutation tests in the same PR when
+  the lane set changes.
+
+This keeps a bad gate from shipping while cutting the wall-clock from a ~6 hour
+serial chain to roughly the packaging lane's duration, and it makes retries
+cheap: "Re-run failed jobs" re-runs only the lane that failed (a flaky DMG
+smoke costs minutes, not a full pipeline).
 
 The protected `build-and-release` job intentionally has a larger wall-clock cap
-than the individual steps. It still contains secret-backed app/mobile,
-SQLCipher, Android signing, macOS signing, notarization, provenance, and
-artifact upload work; a cold runner can approach three hours even when every
-individual gate is healthy. Keep step-level timeouts tight for diagnostics, but
-do not let the aggregate job cap cancel a valid release after the expensive
-validation gates have already passed.
+than the individual steps. It contains Android signing, macOS signing,
+notarization, provenance, and artifact upload work; a cold runner can take a
+few hours even when healthy. Keep step-level timeouts tight for diagnostics,
+but do not let the aggregate job cap cancel a valid release mid-packaging. The
+validation gates carry their own job caps (and the retrieval replay evals step
+is capped at 75 minutes) so a hung gate can never silently eat the pipeline.
 
 Emergency retry lane: if a tag run already passed Swift tests, release app
 smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests for the
@@ -300,13 +325,21 @@ The workflow checks out that exact tag before building. This is intended for rel
 
 ## Release environment and tag protection
 
-The `build-and-release` job is bound to the GitHub environment named `release`.
-That environment should require a human reviewer and restrict deployments to `v*`
-release tags. Apple Developer ID, notary, Firebase, and optional checksum-signing
-secrets should live as environment secrets when possible; repository secrets are
-still accepted by GitHub Actions, but the environment approval gate is the
-release-time control that prevents an accidental tag push from immediately using
-Apple signing material.
+The `build-and-release` packaging job is bound to the GitHub environment named
+`release`. That environment should require a human reviewer and restrict
+deployments to `v*` release tags. Apple Developer ID, notary, Firebase, and
+optional checksum-signing secrets should live as environment secrets when
+possible; repository secrets are still accepted by GitHub Actions, but the
+environment approval gate is the release-time control that prevents an
+accidental tag push from immediately using Apple signing material.
+
+The validation gate jobs are intentionally NOT bound to the environment: they
+consume only repository-level config secrets (Firebase plist, Sentry DSNs,
+Android google-services), never Apple or Android signing material, so they
+start immediately on dispatch while the packaging lane waits for the single
+owner approval. Keystore injection and `bundleRelease` stay inside the
+approved `build-and-release` job for exactly this reason — do not move signing
+material into an unapproved lane.
 
 Protect `v*` tags with a repository ruleset that blocks deletion and non-fast-forward
 updates. A release tag should be created once, by `scripts/tag-release.sh`, and
