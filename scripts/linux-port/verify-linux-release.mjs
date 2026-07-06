@@ -125,9 +125,13 @@ for (const smoke of ['package-install-uninstall.log', 'package-update-rollback.l
 }
 
 const gitStatus = runStep('git', ['status', '--porcelain=v1']).stdout.split('\n').filter(Boolean);
-if (gitStatus.length > 0) {
-  fail('release checkout is dirty; release metadata cannot bind to a clean commit.', {
-    dirtyEntries: gitStatus.slice(0, 40)
+const unexpectedDirty = gitStatus.filter((entry) => {
+  const path = entry.slice(3);
+  return !path.startsWith(relative(outDir) + '/');
+});
+if (unexpectedDirty.length > 0) {
+  fail('release checkout has unexpected dirty files outside generated Linux release evidence.', {
+    dirtyEntries: unexpectedDirty.slice(0, 40)
   });
 }
 

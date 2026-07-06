@@ -129,14 +129,15 @@ public enum BurnBarLinuxLocalPeerDiscovery {
             daemonVersion: configuration.daemonVersion,
             protocolVersion: configuration.protocolVersion
         )
-        let txtArguments = txtPairs.flatMap { ["--txt", "\($0.key)=\($0.value)"] }
+        let txtArguments = txtPairs
+            .map { "\($0.key)=\($0.value)" }
+            .sorted()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: publishPath)
         process.arguments = [
             instance,
             serviceType,
-            domain,
             String(configuration.port),
         ] + txtArguments
         process.standardOutput = Pipe()

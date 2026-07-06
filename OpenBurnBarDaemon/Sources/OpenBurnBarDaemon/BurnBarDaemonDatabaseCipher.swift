@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarLinuxSecurity
 #if canImport(Security)
 import Security
 #endif
@@ -90,7 +91,10 @@ enum BurnBarDaemonDatabaseCipher {
         }
         return String(data: data, encoding: .utf8)
 #else
-        return nil
+        let custodian = LinuxSecretCustodian(backends: [LinuxHeadlessSecretStoreBackend()])
+        return try? custodian
+            .requireHighValueSecret(id: LinuxHighValueSecretClass.databaseKey.rawValue, secretClass: .databaseKey)
+            .secret
 #endif
     }
 

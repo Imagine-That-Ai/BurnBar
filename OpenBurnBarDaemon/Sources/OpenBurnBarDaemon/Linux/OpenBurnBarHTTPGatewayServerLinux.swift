@@ -87,6 +87,11 @@ public actor BurnBarHTTPGatewayServer {
             logger.error("gateway_config_invalid", metadata: ["error": detail])
             throw BurnBarHTTPGatewayError.invalidConfiguration(detail)
         }
+        guard configuration.normalizedHost != "::1" else {
+            let detail = "Linux gateway currently supports IPv4 loopback binds only; use 127.0.0.1 or localhost."
+            logger.error("gateway_config_invalid", metadata: ["error": detail])
+            throw BurnBarHTTPGatewayError.invalidConfiguration(detail)
+        }
 
         let fileDescriptor = Glibc.socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         guard fileDescriptor >= 0 else {
@@ -794,7 +799,8 @@ public actor BurnBarHTTPGatewayServer {
         if host == "localhost" {
             inet_pton(AF_INET, "127.0.0.1", &address)
         } else {
-            inet_pton(AF_INET, host, &address)
+            let parsed = inet_pton(AF_INET, host, &address)
+            precondition(parsed == 1, "Linux gateway only binds IPv4 loopback hosts")
         }
         return address
     }

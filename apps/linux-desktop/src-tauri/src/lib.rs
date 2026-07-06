@@ -105,6 +105,12 @@ fn linux_socket_path() -> PathBuf {
             return PathBuf::from(trimmed);
         }
     }
+    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+        let trimmed = runtime_dir.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join("openburnbar").join("daemon.sock");
+        }
+    }
     linux_support_dir().join("openburnbar-daemon.sock")
 }
 

@@ -19,13 +19,22 @@ import {
 } from './lib/linux-release-common.mjs';
 
 const args = new Set(process.argv.slice(2));
+const versionArgIndex = process.argv.indexOf('--version');
 const outDir = path.resolve(
   process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir
 );
 const appDir = path.join(repoRoot, 'apps/linux-desktop');
 const manifest = readJson(manifestPath);
-const version = packageVersion();
+const requestedVersion = versionArgIndex >= 0 ? process.argv[versionArgIndex + 1] : null;
+const version = requestedVersion?.trim() || packageVersion();
 const git = gitInfo();
+if (git.dirty) {
+  console.error(JSON.stringify({
+    error: 'release checkout is dirty before artifact generation',
+    dirtyEntries: git.dirtyEntries.slice(0, 40)
+  }, null, 2));
+  process.exit(1);
+}
 const logsDir = path.join(outDir, 'logs');
 const artifactsDir = path.join(outDir, 'artifacts');
 const sidecarDir = path.join(outDir, 'sidecars');
@@ -67,6 +76,29 @@ for (const step of buildSteps) {
   }
 }
 
+const daemonSteps = [];
+if (!args.has('--skip-daemon')) {
+  daemonSteps.push(runStep('swift', [
+    'build',
+    '--package-path',
+    'OpenBurnBarDaemon',
+    '-c',
+    'release',
+    '--product',
+    'OpenBurnBarDaemon'
+  ]));
+}
+writeLog('daemon-build.log', daemonSteps);
+for (const step of daemonSteps) {
+  if (step.exitCode !== 0) {
+    blockers.push({
+      kind: 'daemon-build',
+      message: `Command failed: ${step.command}`,
+      log: 'logs/daemon-build.log'
+    });
+  }
+}
+
 const copied = discoverBundleArtifacts().map((artifact) => {
   const dest = copyArtifact(artifact.file, artifactsDir);
   return {
@@ -77,6 +109,27 @@ const copied = discoverBundleArtifacts().map((artifact) => {
     sha256: sha256(dest)
   };
 });
+const daemonBinary = path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon');
+if (!args.has('--skip-daemon')) {
+  if (fs.existsSync(daemonBinary)) {
+    const daemonArtifact = path.join(artifactsDir, `openburnbar-daemon-${version}-linux-${linuxArch()}`);
+    fs.copyFileSync(daemonBinary, daemonArtifact);
+    fs.chmodSync(daemonArtifact, 0o755);
+    copied.push({
+      type: 'daemon',
+      file: relative(daemonArtifact),
+      sourceFile: relative(daemonBinary),
+      size: fileSize(daemonArtifact),
+      sha256: sha256(daemonArtifact)
+    });
+  } else {
+    blockers.push({
+      kind: 'missing-daemon-artifact',
+      message: 'Required Linux daemon executable was not produced by swift build.',
+      log: 'logs/daemon-build.log'
+    });
+  }
+}
 
 for (const required of manifest.requiredArtifacts) {
   if (!copied.some((artifact) => artifact.type === required)) {
@@ -219,10 +272,10 @@ if (privateKeyPem) {
   });
 }
 
-if (!process.env.SIGSTORE_ID_TOKEN) {
+if (!process.env.SIGSTORE_ID_TOKEN && !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
   blockers.push({
     kind: 'cosign-oidc',
-    message: 'SIGSTORE_ID_TOKEN is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC.'
+    message: 'GitHub OIDC request token is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC.'
   });
 }
 
@@ -287,3 +340,14 @@ writeJson(path.join(outDir, 'package-closure.json'), {
 
 console.log(JSON.stringify({ outDir: relative(outDir), artifacts: copied, blockers }, null, 2));
 process.exit(blockers.some((blocker) => blocker.kind === 'package-build') ? 1 : 0);
+
+function linuxArch() {
+  switch (process.arch) {
+    case 'arm64':
+      return 'aarch64';
+    case 'x64':
+      return 'x86_64';
+    default:
+      return process.arch;
+  }
+}
