@@ -3,8 +3,6 @@ import Foundation
 import Glibc
 import OpenBurnBarMedia
 
-public typealias MercuryLinuxShellFrameHandler = @Sendable (MediaFrame) -> Void
-
 public final class MercuryLinuxMediaChannel: @unchecked Sendable {
     public enum ChannelError: Error, LocalizedError, Equatable {
         case runtimeDirectoryUnavailable
@@ -38,7 +36,6 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
         public var shellConnected: Bool
         public var queuedFrameCount: Int
         public var droppedFrameCount: Int
-        public var incomingFrameCount: Int
     }
 
     public static var defaultSocketPath: String? {
@@ -59,12 +56,9 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
     private var clientFD: Int32 = -1
     private var queue: [Data] = []
     private var droppedFrames: Int = 0
-    private var incomingFrames: Int = 0
     private var running = false
     private var acceptTask: Task<Void, Never>?
     private var writerTask: Task<Void, Never>?
-    private var readerTask: Task<Void, Never>?
-    private var shellFrameHandler: MercuryLinuxShellFrameHandler?
 
     public init(
         socketPath: String? = MercuryLinuxMediaChannel.defaultSocketPath,
@@ -81,14 +75,12 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
         stop()
     }
 
-    public func start(incomingFrameHandler: MercuryLinuxShellFrameHandler? = nil) throws {
+    public func start() throws {
         condition.lock()
         if running {
-            shellFrameHandler = incomingFrameHandler
             condition.unlock()
             return
         }
-        shellFrameHandler = incomingFrameHandler
         condition.unlock()
 
         try FileManager.default.createDirectory(
@@ -147,10 +139,8 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
 
         acceptTask?.cancel()
         writerTask?.cancel()
-        readerTask?.cancel()
         acceptTask = nil
         writerTask = nil
-        readerTask = nil
 
         if oldListenFD >= 0 {
             _ = Glibc.shutdown(oldListenFD, Int32(SHUT_RDWR))
@@ -195,8 +185,7 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
             isRunning: running,
             shellConnected: clientFD >= 0,
             queuedFrameCount: queue.count,
-            droppedFrameCount: droppedFrames,
-            incomingFrameCount: incomingFrames
+            droppedFrameCount: droppedFrames
         )
     }
 
@@ -231,10 +220,6 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
             clientFD = fd
             condition.broadcast()
             condition.unlock()
-            readerTask?.cancel()
-            readerTask = Task.detached(priority: .utility) { [weak self] in
-                self?.readerLoop(clientFD: fd)
-            }
             if previous >= 0 {
                 _ = Glibc.shutdown(previous, Int32(SHUT_RDWR))
                 close(previous)
@@ -265,38 +250,6 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
                 _ = Glibc.shutdown(fd, Int32(SHUT_RDWR))
                 close(fd)
             }
-        }
-    }
-
-    private func readerLoop(clientFD fd: Int32) {
-        while true {
-            condition.lock()
-            let shouldRun = running && clientFD == fd
-            let handler = shellFrameHandler
-            condition.unlock()
-            if !shouldRun || Task.isCancelled { break }
-
-            guard let packet = Self.readShellFrame(from: fd) else {
-                break
-            }
-            condition.lock()
-            if running && clientFD == fd {
-                incomingFrames += 1
-            }
-            condition.unlock()
-            handler?(packet)
-        }
-
-        condition.lock()
-        let shouldClose = clientFD == fd
-        if shouldClose {
-            clientFD = -1
-            condition.broadcast()
-        }
-        condition.unlock()
-        if shouldClose {
-            _ = Glibc.shutdown(fd, Int32(SHUT_RDWR))
-            close(fd)
         }
     }
 
@@ -338,43 +291,6 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
         }
     }
 
-    private static func readShellFrame(from fd: Int32) -> MediaFrame? {
-        guard let prefix = readExact(count: 4, from: fd) else { return nil }
-        let bodyLength = Int(readUInt32BE(prefix, at: 0))
-        let maxBodyLength =
-            1 + 1 + 8 + (MediaPacketCodec.defaultMaxPayloadBytes - MediaFrame.headerByteCount)
-        guard bodyLength >= 1 + 1 + 8,
-              bodyLength <= maxBodyLength,
-              let body = readExact(count: bodyLength, from: fd),
-              let kind = MediaFrame.Kind(rawValue: body[0]) else {
-            return nil
-        }
-        let flags = MediaFrame.Flags(rawValue: body[1])
-        let pts = readUInt64BE(body, at: 2)
-        return MediaFrame(
-            kind: kind,
-            flags: flags,
-            presentationTimestampMillis: pts,
-            payload: body.subdata(in: 10..<body.count)
-        )
-    }
-
-    private static func readExact(count: Int, from fd: Int32) -> Data? {
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: min(count, 16 * 1024))
-        while data.count < count {
-            let remaining = count - data.count
-            let bytesRead = Glibc.read(fd, &buffer, min(buffer.count, remaining))
-            if bytesRead < 0 {
-                if errno == EINTR { continue }
-                return nil
-            }
-            if bytesRead == 0 { return nil }
-            data.append(contentsOf: buffer.prefix(bytesRead))
-        }
-        return data
-    }
-
     private static func appendUInt32BE(_ value: UInt32, to data: inout Data) {
         var be = value.bigEndian
         withUnsafeBytes(of: &be) { data.append(contentsOf: $0) }
@@ -385,20 +301,5 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
         withUnsafeBytes(of: &be) { data.append(contentsOf: $0) }
     }
 
-    private static func readUInt32BE(_ data: Data, at offset: Int) -> UInt32 {
-        var raw: UInt32 = 0
-        _ = withUnsafeMutableBytes(of: &raw) { dest in
-            data.copyBytes(to: dest, from: offset..<(offset + 4))
-        }
-        return UInt32(bigEndian: raw)
-    }
-
-    private static func readUInt64BE(_ data: Data, at offset: Int) -> UInt64 {
-        var raw: UInt64 = 0
-        _ = withUnsafeMutableBytes(of: &raw) { dest in
-            data.copyBytes(to: dest, from: offset..<(offset + 8))
-        }
-        return UInt64(bigEndian: raw)
-    }
 }
 #endif

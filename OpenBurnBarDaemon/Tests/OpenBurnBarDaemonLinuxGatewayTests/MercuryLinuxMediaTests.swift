@@ -34,37 +34,6 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(bytes.suffix(payload.count), payload)
     }
 
-    func testMediaChannelReadsLengthPrefixedShellFrames() async throws {
-        let socketPath = "/tmp/obb-media-\(UUID().uuidString).sock"
-        let recorder = RecordingShellFrames()
-        let channel = try MercuryLinuxMediaChannel(socketPath: socketPath, maxQueuedFrames: 4)
-        try channel.start { frame in
-            Task { await recorder.append(frame) }
-        }
-        defer { channel.stop() }
-
-        let client = try connectUnixSocket(path: socketPath)
-        defer { close(client) }
-
-        let payload = Data([0x10, 0x20, 0x30, 0x40])
-        let frame = MediaFrame(
-            kind: .videoNAL,
-            flags: [.keyframe],
-            presentationTimestampMillis: 42,
-            payload: payload
-        )
-        try writeAll(MercuryLinuxMediaChannel.encodeShellFrame(frame), to: client)
-
-        let frames = await recorder.waitForCount(1)
-        XCTAssertEqual(frames.count, 1)
-        let captured = try XCTUnwrap(frames.first)
-        XCTAssertEqual(captured.kind, .videoNAL)
-        XCTAssertEqual(captured.flags, [.keyframe])
-        XCTAssertEqual(captured.presentationTimestampMillis, 42)
-        XCTAssertEqual(captured.payload, payload)
-        XCTAssertEqual(channel.snapshot().incomingFrameCount, 1)
-    }
-
     func testSessionPhaseTransitionsAndAckEmission() async throws {
         let channel = try MercuryLinuxMediaChannel(
             socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
@@ -103,7 +72,7 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(ended.session.phase, .cooldown)
     }
 
-    func testSessionForwardsShellFramesAsOutboundRelayMedia() async throws {
+    func testSessionForwardsCapturedFramesAsOutboundRelayMedia() async throws {
         let channel = try MercuryLinuxMediaChannel(
             socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
             maxQueuedFrames: 4
@@ -120,7 +89,7 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertTrue(accept.accepted)
 
         let payload = Data([0xAB, 0xCD, 0xEF])
-        await controller.ingestShellFrame(MediaFrame(
+        await controller.ingestCapturedFrame(MediaFrame(
             kind: .videoNAL,
             flags: [.keyframe],
             presentationTimestampMillis: 777,
@@ -285,12 +254,13 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertTrue(capability.available)
         XCTAssertEqual(capability.mediaSocketPath, "/run/user/501/openburnbar-media.sock")
         XCTAssertTrue(capability.supportsDaemonToShellFrames)
-        XCTAssertTrue(capability.supportsShellToDaemonControl)
-        XCTAssertFalse(capability.codecsKnown)
-        XCTAssertEqual(capability.codecs["vp9"], false)
-        XCTAssertEqual(capability.codecs["opus"], false)
+        XCTAssertFalse(capability.supportsShellToDaemonControl)
+        XCTAssertTrue(capability.codecsKnown)
+        XCTAssertNotNil(capability.codecs["vp9"])
+        XCTAssertNotNil(capability.codecs["opus"])
         XCTAssertEqual(capability.codecs["h264"], false)
-        XCTAssertEqual(capability.codecs["av1"], false)
+        XCTAssertNotNil(capability.codecs["av1"])
+        XCTAssertEqual(capability.source, "COpenBurnBarMediaCapture.media_capability_probe")
     }
 
     func testFileOfferAcceptDownloadsToCollisionSafePathAndAcknowledges() async throws {
@@ -566,24 +536,6 @@ final class MercuryLinuxMediaTests: XCTestCase {
         return data
     }
 
-    private func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
-        try data.withUnsafeBytes { rawBuffer in
-            guard let baseAddress = rawBuffer.baseAddress else { return }
-            var offset = 0
-            while offset < data.count {
-                let written = Glibc.write(fileDescriptor, baseAddress.advanced(by: offset), data.count - offset)
-                if written < 0 {
-                    if errno == EINTR { continue }
-                    throw POSIXError(.init(rawValue: errno) ?? .EIO)
-                }
-                if written == 0 {
-                    throw POSIXError(.EPIPE)
-                }
-                offset += written
-            }
-        }
-    }
-
     private func readUInt32BE(_ data: Data, at offset: Int) -> UInt32 {
         var raw: UInt32 = 0
         _ = withUnsafeMutableBytes(of: &raw) { dest in
@@ -598,22 +550,6 @@ final class MercuryLinuxMediaTests: XCTestCase {
             data.copyBytes(to: dest, from: offset..<(offset + 8))
         }
         return UInt64(bigEndian: raw)
-    }
-}
-
-private actor RecordingShellFrames {
-    private var stored: [MediaFrame] = []
-
-    func append(_ frame: MediaFrame) {
-        stored.append(frame)
-    }
-
-    func waitForCount(_ count: Int, timeoutSeconds: TimeInterval = 2) async -> [MediaFrame] {
-        let deadline = Date().addingTimeInterval(timeoutSeconds)
-        while stored.count < count && Date() < deadline {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-        return stored
     }
 }
 

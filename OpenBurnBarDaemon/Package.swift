@@ -19,6 +19,7 @@ var daemonTargetDependencies: [Target.Dependency] = [
 var daemonLinkerSettings: [LinkerSetting] = []
 var daemonExecutableDependencies: [Target.Dependency] = ["OpenBurnBarDaemon"]
 var daemonExcludes: [String] = []
+var linuxMediaSystemTargets: [Target] = []
 
 #if os(macOS)
 if !buildForLinuxBoundary {
@@ -41,6 +42,13 @@ if !buildForLinuxBoundary {
 #if os(Linux)
 packageDependencies.append(.package(path: "../Vendor/GRDB-SQLCipher"))
 daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
+daemonTargetDependencies.append("COpenBurnBarMediaCapture")
+linuxMediaSystemTargets.append(
+    .systemLibrary(
+        name: "COpenBurnBarMediaCapture",
+        path: "Sources/COpenBurnBarMediaCapture"
+    )
+)
 #endif
 
 #if os(Linux)
@@ -112,7 +120,7 @@ var packageTargets: [Target] = [
         // region-isolation noise around POSIX buffers in XCTest helpers.
         swiftSettings: [.swiftLanguageMode(.v5)]
     )
-]
+] + linuxMediaSystemTargets
 
 #if os(macOS)
 packageProducts.append(contentsOf: [

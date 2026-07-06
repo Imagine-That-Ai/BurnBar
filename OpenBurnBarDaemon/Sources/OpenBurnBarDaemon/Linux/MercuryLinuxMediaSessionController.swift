@@ -50,6 +50,7 @@ public actor MercuryLinuxMediaSessionController {
     private let channel: MercuryLinuxMediaChannel?
     private let fileTransferService: MediaFileTransferService?
     private let downloadDirectoryProvider: @Sendable () -> URL
+    private let captureEngine: MercuryLinuxCaptureEngine
     private let packetCodec = MediaPacketCodec()
     private let frameAEAD = MediaFrameAEAD()
     private var mediaFrameSealKey: PlatformSymmetricKey?
@@ -74,24 +75,25 @@ public actor MercuryLinuxMediaSessionController {
             URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
                 .appendingPathComponent("Downloads", isDirectory: true)
         },
+        captureEngine: MercuryLinuxCaptureEngine = MercuryLinuxCaptureEngine(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "linux-media")
     ) {
         self.logger = logger
         self.channel = channel ?? (try? MercuryLinuxMediaChannel())
         self.fileTransferService = fileTransferService
         self.downloadDirectoryProvider = downloadDirectoryProvider
+        self.captureEngine = captureEngine
     }
 
     public func start() throws {
         guard let channel else {
             throw MercuryLinuxMediaChannel.ChannelError.runtimeDirectoryUnavailable
         }
-        try channel.start { [weak self] frame in
-            Task { await self?.ingestShellFrame(frame) }
-        }
+        try channel.start()
     }
 
     public func stop() {
+        captureEngine.stop()
         channel?.stop()
         phase = .idle
         pending = nil
@@ -208,7 +210,28 @@ public actor MercuryLinuxMediaSessionController {
         return DaemonMediaCallActionResponse(accepted: true, session: sessionSnapshot())
     }
 
-    public func ingestShellFrame(_ frame: MediaFrame) async {
+    public func startOutboundCapture(_ request: MercuryLinuxCaptureRequest) throws {
+        guard phase == .streaming,
+              let active,
+              active.kind == .mirror else {
+            throw MercuryLinuxCaptureError.sessionNotStreaming
+        }
+        try captureEngine.start(request) { [weak self] frame in
+            Task { await self?.ingestCapturedFrame(frame) }
+        }
+        updatedAt = Date()
+    }
+
+    public func stopOutboundCapture() {
+        captureEngine.stop()
+    }
+
+    public func setOutboundCaptureBitrate(_ targetBitrateBps: UInt32) throws {
+        try captureEngine.setBitrate(targetBitrateBps)
+        updatedAt = Date()
+    }
+
+    public func ingestCapturedFrame(_ frame: MediaFrame) async {
         guard phase == .streaming,
               let active,
               active.kind == .mirror,
@@ -256,7 +279,7 @@ public actor MercuryLinuxMediaSessionController {
             updatedAt = Date()
         } catch {
             logger.warning(
-                "linux_media_shell_frame_forward_failed",
+                "linux_media_capture_frame_forward_failed",
                 metadata: ["error": "\(error)"]
             )
         }
@@ -874,6 +897,7 @@ public actor MercuryLinuxMediaSessionController {
 
     private func transitionToCooldown(reason: String) {
         _ = reason
+        captureEngine.stop()
         phase = .cooldown
         pending = nil
         active = nil
