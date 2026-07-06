@@ -27,7 +27,14 @@ const appDir = path.join(repoRoot, 'apps/linux-desktop');
 const manifest = readJson(manifestPath);
 const requestedVersion = versionArgIndex >= 0 ? process.argv[versionArgIndex + 1] : null;
 const version = requestedVersion?.trim() || packageVersion();
-const git = gitInfo();
+const rawGit = gitInfo();
+const generatedEvidencePrefix = `${relative(outDir)}/`;
+const dirtyInputEntries = rawGit.dirtyEntries.filter((entry) => !entry.slice(3).startsWith(generatedEvidencePrefix));
+const git = {
+  ...rawGit,
+  dirty: dirtyInputEntries.length > 0,
+  dirtyEntries: dirtyInputEntries
+};
 if (git.dirty) {
   console.error(JSON.stringify({
     error: 'release checkout is dirty before artifact generation',
