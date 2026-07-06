@@ -111,6 +111,7 @@ final class BudgetGate {
                     used: used,
                     projected: projected,
                     estimatedCost: max(0, estimatedCost),
+                    projectName: projectName,
                     reference: reference
                 )
             } catch {
@@ -131,6 +132,7 @@ final class BudgetGate {
                 decision = await failClosedDecision(
                     for: rule,
                     estimatedCost: estimatedCost,
+                    projectName: projectName,
                     reference: reference
                 )
             }
@@ -163,6 +165,7 @@ final class BudgetGate {
     private func failClosedDecision(
         for rule: BudgetRule,
         estimatedCost: Double,
+        projectName: String?,
         reference: Date
     ) async -> BudgetGateDecision {
         let limit = rule.amountUSD
@@ -176,7 +179,12 @@ final class BudgetGate {
                 rule: rule,
                 used: limit,
                 limit: limit,
-                fallback: await resolveFallback(for: rule, estimatedCost: estimatedCost, reference: reference)
+                fallback: await resolveFallback(
+                    for: rule,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                )
             )
         }
     }
@@ -186,6 +194,7 @@ final class BudgetGate {
         used: Double,
         projected: Double,
         estimatedCost: Double,
+        projectName: String?,
         reference: Date
     ) async -> BudgetGateDecision {
         let limit = rule.amountUSD
@@ -220,6 +229,7 @@ final class BudgetGate {
                 let fallback = await resolveFallback(
                     for: rule,
                     estimatedCost: estimatedCost,
+                    projectName: projectName,
                     reference: reference
                 )
                 return .block(rule: rule, used: used, limit: limit, fallback: fallback)
@@ -238,6 +248,7 @@ final class BudgetGate {
     private func resolveFallback(
         for blockingRule: BudgetRule,
         estimatedCost: Double,
+        projectName: String?,
         reference: Date
     ) async -> BudgetCredentialIdentity? {
         let requestedIDs = blockingRule.fallbackCredentialIDs
@@ -252,7 +263,12 @@ final class BudgetGate {
         for id in requestedIDs {
             guard let candidate = rulesByID[id],
                   let identity = fallbackIdentity(for: candidate, blockedBy: blockingRule),
-                  await fallbackCanAccept(candidate, estimatedCost: estimatedCost, reference: reference) else {
+                  await fallbackCanAccept(
+                    identity,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                  ) else {
                 continue
             }
             return identity
@@ -288,33 +304,50 @@ final class BudgetGate {
     }
 
     private func fallbackCanAccept(
-        _ candidate: BudgetRule,
+        _ identity: BudgetCredentialIdentity,
         estimatedCost: Double,
+        projectName: String?,
         reference: Date
     ) async -> Bool {
-        if candidate.isPaused(at: reference) {
-            return true
-        }
+        let fallbackRules = matchingRules(credential: identity, projectName: projectName)
+        guard !fallbackRules.isEmpty else { return true }
 
-        do {
-            let used = try await ledger.currentSpend(forRule: candidate, reference: reference)
-            let projected = used + max(0, estimatedCost)
-            switch candidate.behavior {
-            case .warnOnly:
-                return true
-            case .warnThenBlock, .hardBlock, .hardBlockWithFallback:
-                return projected < candidate.amountUSD
+        for rule in fallbackRules {
+            if rule.isPaused(at: reference) {
+                continue
             }
-        } catch {
-            AppLogger.dataStore.error(
-                "budget_gate_fallback_ledger_read_failed",
-                metadata: [
-                    "ruleScope": candidate.scope.rawValue,
-                    "ruleBehavior": candidate.behavior.rawValue,
-                    "errorClass": "\(String(describing: type(of: error)))"
-                ]
-            )
+
+            do {
+                let used = try await ledger.currentSpend(forRule: rule, reference: reference)
+                if fallbackRuleWouldBlock(rule, used: used, estimatedCost: estimatedCost) {
+                    return false
+                }
+            } catch {
+                AppLogger.dataStore.error(
+                    "budget_gate_fallback_ledger_read_failed",
+                    metadata: [
+                        "ruleScope": rule.scope.rawValue,
+                        "ruleBehavior": rule.behavior.rawValue,
+                        "errorClass": "\(String(describing: type(of: error)))"
+                    ]
+                )
+                return false
+            }
+        }
+        return true
+    }
+
+    private func fallbackRuleWouldBlock(
+        _ rule: BudgetRule,
+        used: Double,
+        estimatedCost: Double
+    ) -> Bool {
+        let projected = used + max(0, estimatedCost)
+        switch rule.behavior {
+        case .warnOnly:
             return false
+        case .warnThenBlock, .hardBlock, .hardBlockWithFallback:
+            return projected >= rule.amountUSD
         }
     }
 

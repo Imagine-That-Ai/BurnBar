@@ -69,6 +69,7 @@ final class BudgetGate {
                 used: used,
                 projected: projected,
                 estimatedCost: max(0, estimatedCost),
+                projectName: projectName,
                 reference: reference
             )
             worst = pickMoreRestrictive(worst, decision)
@@ -95,6 +96,7 @@ final class BudgetGate {
         used: Double,
         projected: Double,
         estimatedCost: Double,
+        projectName: String?,
         reference: Date
     ) async -> BudgetGateDecision {
         let limit = rule.amountUSD
@@ -129,6 +131,7 @@ final class BudgetGate {
                 let fallback = await resolveFallback(
                     for: rule,
                     estimatedCost: estimatedCost,
+                    projectName: projectName,
                     reference: reference
                 )
                 return .block(rule: rule, used: used, limit: limit, fallback: fallback)
@@ -147,6 +150,7 @@ final class BudgetGate {
     private func resolveFallback(
         for blockingRule: BudgetRule,
         estimatedCost: Double,
+        projectName: String?,
         reference: Date
     ) async -> BudgetCredentialIdentity? {
         let requestedIDs = blockingRule.fallbackCredentialIDs
@@ -161,7 +165,12 @@ final class BudgetGate {
         for id in requestedIDs {
             guard let candidate = rulesByID[id],
                   let identity = fallbackIdentity(for: candidate, blockedBy: blockingRule),
-                  await fallbackCanAccept(candidate, estimatedCost: estimatedCost, reference: reference) else {
+                  await fallbackCanAccept(
+                    identity,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                  ) else {
                 continue
             }
             return identity
@@ -197,21 +206,38 @@ final class BudgetGate {
     }
 
     private func fallbackCanAccept(
-        _ candidate: BudgetRule,
+        _ identity: BudgetCredentialIdentity,
         estimatedCost: Double,
+        projectName: String?,
         reference: Date
     ) async -> Bool {
-        if candidate.isPaused(at: reference) {
-            return true
-        }
+        let fallbackRules = matchingRules(credential: identity, projectName: projectName)
+        guard !fallbackRules.isEmpty else { return true }
 
-        let used = await ledger.currentSpend(forRule: candidate, reference: reference)
+        for rule in fallbackRules {
+            if rule.isPaused(at: reference) {
+                continue
+            }
+
+            let used = await ledger.currentSpend(forRule: rule, reference: reference)
+            if fallbackRuleWouldBlock(rule, used: used, estimatedCost: estimatedCost) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func fallbackRuleWouldBlock(
+        _ rule: BudgetRule,
+        used: Double,
+        estimatedCost: Double
+    ) -> Bool {
         let projected = used + max(0, estimatedCost)
-        switch candidate.behavior {
+        switch rule.behavior {
         case .warnOnly:
-            return true
+            return false
         case .warnThenBlock, .hardBlock, .hardBlockWithFallback:
-            return projected < candidate.amountUSD
+            return projected >= rule.amountUSD
         }
     }
 
