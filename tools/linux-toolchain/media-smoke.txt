@@ -1,0 +1,70 @@
+image=openburnbar-linux-toolchain:mission-002
+gstreamer=gst-inspect-1.0 version 1.24.2
+== vp9enc ==
+Factory Details:
+  Rank                     primary (256)
+  Long-name                On2 VP9 Encoder
+  Klass                    Codec/Encoder/Video
+  Description              Encode VP9 video streams
+  Author                   David Schleef <ds@entropywave.com>, Sebastian Dr?ge <sebastian.droege@collabora.co.uk>
+  Documentation            https://gstreamer.freedesktop.org/documentation/vpx/vp9enc.html
+
+Plugin Details:
+  Name                     vpx
+  Description              VP8/VP9 video encoding and decoding based on libvpx
+  Filename                 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstvpx.so
+  Version                  1.24.2
+  License                  LGPL
+  Source module            gst-plugins-good
+  Documentation            https://gstreamer.freedesktop.org/documentation/vpx/
+== vp9dec ==
+Factory Details:
+  Rank                     primary (256)
+  Long-name                On2 VP9 Decoder
+  Klass                    Codec/Decoder/Video
+  Description              Decode VP9 video streams
+  Author                   David Schleef <ds@entropywave.com>, Sebastian Dr?ge <sebastian.droege@collabora.co.uk>
+  Documentation            https://gstreamer.freedesktop.org/documentation/vpx/vp9dec.html
+
+Plugin Details:
+  Name                     vpx
+  Description              VP8/VP9 video encoding and decoding based on libvpx
+  Filename                 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstvpx.so
+  Version                  1.24.2
+  License                  LGPL
+  Source module            gst-plugins-good
+  Documentation            https://gstreamer.freedesktop.org/documentation/vpx/
+== opusenc ==
+Factory Details:
+  Rank                     primary (256)
+  Long-name                Opus audio encoder
+  Klass                    Codec/Encoder/Audio
+  Description              Encodes audio in Opus format
+  Author                   Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
+  Documentation            https://gstreamer.freedesktop.org/documentation/opus/opusenc.html
+
+Plugin Details:
+  Name                     opus
+  Description              OPUS plugin library
+  Filename                 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstopus.so
+  Version                  1.24.2
+  License                  LGPL
+  Source module            gst-plugins-base
+  Documentation            https://gstreamer.freedesktop.org/documentation/opus/
+== pipewiresrc ==
+Factory Details:
+  Rank                     primary + 1 (257)
+  Long-name                PipeWire source
+  Klass                    Source/Audio/Video
+  Description              Uses PipeWire to create audio/video
+  Author                   Wim Taymans <wim.taymans@gmail.com>
+
+Plugin Details:
+  Name                     pipewire
+  Description              Uses PipeWire to handle media streams
+  Filename                 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstpipewire.so
+  Version                  1.0.5
+  License                  MIT/X11
+  Source module            pipewire
+  Binary package           pipewire
+  Origin URL               pipewire.org
