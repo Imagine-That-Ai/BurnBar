@@ -355,11 +355,18 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
         try prepareDirectory()
         let tempURL = rootDirectory.appendingPathComponent(".\(url.lastPathComponent).tmp.\(UUID().uuidString)")
         try writeBytes(data, to: tempURL, mode: S_IRUSR | S_IWUSR)
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
+        // Atomic replace via rename(2): overwrites the destination directory
+        // entry in a single step, eliminating the remove-then-move TOCTOU
+        // window. The temp file is already 0600 from writeBytes' fchmod, and
+        // rename preserves the inode's mode, so no post-rename chmod is needed.
+        let renamed = tempURL.path.withCString { src in
+            url.path.withCString { dst in Glibc.rename(src, dst) }
         }
-        try FileManager.default.moveItem(at: tempURL, to: url)
-        try chmodPath(url.path, mode: S_IRUSR | S_IWUSR)
+        guard renamed == 0 else {
+            let err = errno
+            try? FileManager.default.removeItem(at: tempURL)
+            throw LinuxSecretFileStoreError.posix(err)
+        }
     }
 
     private func writeBytes(_ data: Data, to url: URL, mode: mode_t) throws {
