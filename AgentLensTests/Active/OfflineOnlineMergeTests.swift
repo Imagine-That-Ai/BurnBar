@@ -174,9 +174,76 @@ final class OfflineOnlineMergeTests: XCTestCase {
     // MARK: - Circuit Breaker Recovery
 
     func test_circuitBreaker_halfOpenToClosed_recovery() async throws {
-        // Skipped by intent: this regression needs a retry harness that exposes
-        // breaker failure counts before a meaningful assertion is possible.
-        try XCTSkip("FakeFirestore errors do not trip CloudSyncCircuitBreaker through UsageSyncService yet; revive after retry harness exposes failure counts.")
+        let fastRetryPolicy = CloudSyncRetryPolicy(
+            maxAttempts: 2,
+            baseDelay: 0,
+            maxDelay: 0,
+            jitterFactor: 0
+        )
+        circuitBreaker = CloudSyncCircuitBreaker(
+            failureThreshold: 1,
+            resetTimeout: 60,
+            successThresholdToClose: 1
+        )
+        context = CloudSyncContext(
+            dataStore: dataStore,
+            accountManager: accountManager,
+            settingsManager: settingsManager,
+            firestoreGateway: fakeGateway,
+            circuitBreaker: circuitBreaker,
+            retryPolicy: fastRetryPolicy
+        )
+        usageSync = UsageSyncService(context: context, vaultKeyProvider: TestConversationVaultKeyProvider())
+
+        let usage = AppTokenUsage(
+            provider: AppAgentProvider.claudeCode,
+            sessionId: "circuit-recovery",
+            projectName: "CircuitBreakerProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 120,
+            outputTokens: 80,
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120)
+        )
+        try await dataStore.insert(usage)
+
+        fakeGateway.failNextBatchCommits(
+            1,
+            with: NSError(
+                domain: FirestoreErrorDomain,
+                code: FirestoreErrorCode.unavailable.rawValue,
+                userInfo: [NSLocalizedDescriptionKey: "Firestore unavailable"]
+            )
+        )
+
+        await usageSync.sync()
+
+        XCTAssertEqual(fakeGateway.batchCommitAttemptCount, 1)
+        XCTAssertEqual(fakeGateway.batchCommitFailureCount, 1)
+        XCTAssertTrue(fakeGateway.documents(under: "users/test-uid-1/usage").isEmpty)
+        let unsyncedAfterFailure = try await dataStore.fetchUnsynced()
+        XCTAssertTrue(
+            unsyncedAfterFailure.contains { $0.id == usage.id },
+            "Retryable batch failure must leave the local usage row pending."
+        )
+        let openState = await circuitBreaker.state
+        guard case .open = openState else {
+            return XCTFail("Expected circuit breaker to open after retryable batch failure, got \(openState).")
+        }
+
+        await circuitBreaker.advanceTime(by: 61)
+        await usageSync.sync()
+
+        XCTAssertEqual(fakeGateway.batchCommitAttemptCount, 2)
+        XCTAssertEqual(fakeGateway.batchCommitFailureCount, 1)
+        let closedState = await circuitBreaker.state
+        XCTAssertEqual(closedState, .closed)
+        XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
+        let unsyncedAfterRecovery = try await dataStore.fetchUnsynced()
+        XCTAssertFalse(
+            unsyncedAfterRecovery.contains { $0.id == usage.id },
+            "Half-open probe success should close the breaker and mark the row synced."
+        )
     }
 
     // MARK: - Buffered Local Upload on Reconnect
