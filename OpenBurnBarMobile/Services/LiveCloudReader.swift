@@ -412,9 +412,9 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
     }
 
     func bootstrapApproveSelf() async throws {
-        guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
+        guard let uid else { throw CloudGatewayError.classified(.notAuthenticated) }
         await registerSelfIfNeeded()
-        let ref = db.collection("users").document(uid!).collection("escrow_devices")
+        let ref = db.collection("users").document(uid).collection("escrow_devices")
         let others = try await ref.whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue).getDocuments()
         guard others.documents.isEmpty else {
             throw CloudGatewayError.classified(.other(message: "Another trusted device already exists. Approve from that device."))
