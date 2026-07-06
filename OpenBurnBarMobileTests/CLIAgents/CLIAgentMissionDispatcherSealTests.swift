@@ -306,13 +306,14 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         XCTAssertFalse(draft.commandsAllowed)
         XCTAssertFalse(draft.fileEditsAllowed)
         XCTAssertEqual(draft.sourceSurface, "ios-hermes-square")
+        XCTAssertEqual(draft.queuedEventSource, "ios")
         XCTAssertEqual(draft.deliveryMode, .fullStream)
         XCTAssertEqual(draft.targetProject, "BurnBar")
         XCTAssertTrue(draft.prompt.contains("Use only the supplied child outputs"))
         XCTAssertTrue(draft.prompt.contains("Original prompt:"))
         XCTAssertTrue(draft.prompt.contains("Audit mission group synthesis."))
-        XCTAssertTrue(draft.prompt.contains("Codex found the group merge path"))
-        XCTAssertTrue(draft.prompt.contains("Claude flagged that synthesis must stay read-only"))
+        XCTAssertTrue(draft.prompt.contains("Validated the iOS dispatch path"))
+        XCTAssertTrue(draft.prompt.contains("Checked approval and sealed payload boundaries"))
     }
 
     func test_missionGroupSynthesisDraft_buildsStandardSealedMissionRequest() throws {
@@ -379,17 +380,127 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         XCTAssertEqual(snapshot.liveSummary, "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it.")
     }
 
+    func test_missionGroupSynthesisDraft_usesEventAllowedQueuedSource() throws {
+        let draft = CLIAgentMissionDispatcher.missionGroupSynthesisDraft(
+            group: Self.baseMissionGroupDocument(),
+            childSnapshots: [
+                "child-1": try Self.childSnapshot(
+                    id: "child-1",
+                    title: "Codex result",
+                    requestedRuntime: "codex",
+                    runtimeName: "Codex",
+                    resultPreview: "Codex result.",
+                    eventMessage: "Codex completed."
+                ),
+                "child-2": try Self.childSnapshot(
+                    id: "child-2",
+                    title: "Claude result",
+                    requestedRuntime: "claude",
+                    runtimeName: "Claude",
+                    resultPreview: "Claude result.",
+                    eventMessage: "Claude completed."
+                )
+            ]
+        )
+
+        XCTAssertEqual(draft.sourceSurface, "ios-hermes-square")
+        XCTAssertEqual(draft.queuedEventSource, "ios")
+        XCTAssertEqual(
+            CLIAgentMissionDispatcher.initialQueuedEventSource(
+                missionKind: draft.missionKind,
+                sourceSurface: draft.sourceSurface
+            ),
+            "ios"
+        )
+        let queuedEvent = CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+            source: draft.queuedEventSource,
+            deliveryMode: draft.deliveryMode
+        )
+        XCTAssertEqual(queuedEvent["source"] as? String, "ios")
+        XCTAssertNil(queuedEvent["sourceSurface"])
+    }
+
+    func test_missionGroupSynthesisDraft_prefersFullFinalAnswerOverPreview() throws {
+        let marker = "FINAL_DETAIL_AFTER_PREVIEW"
+        let finalAnswer = String(repeating: "Detailed final answer. ", count: 80) + marker
+        let draft = CLIAgentMissionDispatcher.missionGroupSynthesisDraft(
+            group: Self.baseMissionGroupDocument(),
+            childSnapshots: [
+                "child-1": try Self.childSnapshot(
+                    id: "child-1",
+                    title: "Codex result",
+                    requestedRuntime: "codex",
+                    runtimeName: "Codex",
+                    resultPreview: "Preview only.",
+                    eventMessage: "Preview-sized completion.",
+                    fullMessage: finalAnswer
+                ),
+                "child-2": try Self.childSnapshot(
+                    id: "child-2",
+                    title: "Claude result",
+                    requestedRuntime: "claude",
+                    runtimeName: "Claude",
+                    resultPreview: "Claude result.",
+                    eventMessage: "Claude completed."
+                )
+            ]
+        )
+
+        XCTAssertTrue(draft.prompt.contains("Final answer:"))
+        XCTAssertTrue(draft.prompt.contains(marker))
+        XCTAssertFalse(draft.prompt.contains("Result preview:\nPreview only."))
+    }
+
+    func test_missionGroupSynthesisDraft_budgetsEveryChildInLargeFanOut() throws {
+        let ids = (1...16).map { "child-\($0)" }
+        let runtimes = (1...16).map { "runtime-\($0)" }
+        let group = Self.baseMissionGroupDocument(childMissionIDs: ids, runtimeTokens: runtimes)
+        var snapshots: [String: CLIAgentMissionSnapshot] = [:]
+        for (index, id) in ids.enumerated() {
+            let marker = "CHILD_\(index + 1)_FINAL_MARKER"
+            let finalAnswer = String(repeating: "x", count: 720)
+                + marker
+                + String(repeating: "y", count: 4_000)
+            snapshots[id] = try Self.childSnapshot(
+                id: id,
+                title: "Runtime \(index + 1) result",
+                requestedRuntime: runtimes[index],
+                runtimeName: "Runtime \(index + 1)",
+                resultPreview: "Preview \(index + 1).",
+                eventMessage: "Completed \(index + 1).",
+                fullMessage: finalAnswer
+            )
+        }
+
+        let draft = CLIAgentMissionDispatcher.missionGroupSynthesisDraft(
+            group: group,
+            childSnapshots: snapshots
+        )
+
+        XCTAssertLessThanOrEqual(draft.prompt.count, 24_000)
+        XCTAssertTrue(draft.prompt.contains("### 16. runtime-16 (child-16)"))
+        for index in 1...16 {
+            XCTAssertTrue(
+                draft.prompt.contains("CHILD_\(index)_FINAL_MARKER"),
+                "Expected child \(index) to retain a budgeted final-answer marker."
+            )
+        }
+    }
+
     // MARK: - Helpers
 
-    private static func baseMissionGroupDocument() -> MissionGroupDocument {
+    private static func baseMissionGroupDocument(
+        childMissionIDs: [String] = ["child-1", "child-2"],
+        runtimeTokens: [String] = ["codex", "claude"]
+    ) -> MissionGroupDocument {
         MissionGroupDocument(
             id: "grp-1",
             title: "Audit fan-out",
             prompt: "Audit mission group synthesis.",
             missionKind: "diligence",
             targetProject: "BurnBar",
-            childMissionIDs: ["child-1", "child-2"],
-            runtimeTokens: ["codex", "claude"],
+            childMissionIDs: childMissionIDs,
+            runtimeTokens: runtimeTokens,
             parallelismLimit: 2,
             mergeStrategy: .synthesize,
             phase: .awaitingMerge,
@@ -404,8 +515,21 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         requestedRuntime: String,
         runtimeName: String,
         resultPreview: String,
-        eventMessage: String
+        eventMessage: String,
+        fullMessage: String? = nil
     ) throws -> CLIAgentMissionSnapshot {
+        var event: [String: Any] = [
+            "sequence": 1,
+            "timestamp": "2026-06-02T12:02:00Z",
+            "kind": "final_answer",
+            "phase": "completed",
+            "title": "Completed",
+            "message": eventMessage,
+            "isError": false
+        ]
+        if let fullMessage {
+            event["fullMessage"] = fullMessage
+        }
         try XCTUnwrap(
             CLIAgentMissionSnapshot(
                 documentID: id,
@@ -420,17 +544,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
                     "liveSummary": "\(runtimeName) returned a result.",
                     "resultPreview": resultPreview,
                     "createdAt": "2026-06-02T12:01:00Z",
-                    "events": [
-                        [
-                            "sequence": 1,
-                            "timestamp": "2026-06-02T12:02:00Z",
-                            "kind": "final_answer",
-                            "phase": "completed",
-                            "title": "Completed",
-                            "message": eventMessage,
-                            "isError": false
-                        ]
-                    ]
+                    "events": [event]
                 ]
             )
         )

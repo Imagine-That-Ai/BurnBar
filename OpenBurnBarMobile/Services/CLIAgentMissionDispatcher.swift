@@ -239,6 +239,7 @@ final class CLIAgentMissionDispatcher {
         resumeAction: String? = nil,
         sourceSkillID: HermesSkillRunID? = nil,
         sourceSurface: String? = nil,
+        queuedEventSource: String? = nil,
         deliveryMode: SkillRunDeliveryMode = .actionOnly,
         parentHermesThreadID: String? = nil,
         presentationMode: CLIAgentChatPresentationMode = .nativeChat
@@ -310,8 +311,10 @@ final class CLIAgentMissionDispatcher {
         batch.setData(
             try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                 label: isChatRequest ? "Chat" : "Mission",
-                source: sourceSurface?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                    ?? (isChatRequest ? "ios-chat" : "ios"),
+                source: Self.initialQueuedEventSource(
+                    missionKind: missionKind,
+                    sourceSurface: queuedEventSource ?? sourceSurface
+                ),
                 sourceSkillID: sourceSkillID,
                 deliveryMode: deliveryMode,
                 now: Date(),
@@ -326,6 +329,22 @@ final class CLIAgentMissionDispatcher {
         )
         try await batch.commit()
         return id
+    }
+
+    static func initialQueuedEventSource(
+        missionKind: String,
+        sourceSurface: String?
+    ) -> String {
+        if let sourceSurface = sourceSurface?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            switch sourceSurface {
+            case "ios", "android", "ios-chat", "android-chat":
+                return sourceSurface
+            default:
+                break
+            }
+        }
+        let isChatRequest = missionKind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "chat"
+        return isChatRequest ? "ios-chat" : "ios"
     }
 
     func observe(
@@ -408,6 +427,61 @@ final class CLIAgentMissionDispatcher {
                 emitLatest()
             }
         return CLIAgentMissionObservation(registrations: [requestRegistration, eventsRegistration])
+    }
+
+    func fetchMissionSnapshot(requestID: String) async throws -> CLIAgentMissionSnapshot {
+        guard FirebaseApp.app() != nil else {
+            throw DispatchError.firebaseUnavailable
+        }
+        guard let uid = Auth.auth().currentUser?.uid else {
+            throw DispatchError.notSignedIn
+        }
+        let localVaultKey: Data?
+        do {
+            localVaultKey = try CloudVaultKeyStore().loadKey(uid: uid)
+        } catch {
+            localVaultKey = nil
+        }
+        let localSignalIdentity: OpenBurnBarSignalIdentityKeypair?
+        do {
+            let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+            localSignalIdentity = try OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
+        } catch {
+            localSignalIdentity = nil
+        }
+
+        let requestRef = firestoreProvider()
+            .collection("users").document(uid)
+            .collection("cli_agent_mission_requests").document(requestID)
+        let requestSnapshot = try await requestRef.getDocument(source: .server)
+        guard requestSnapshot.exists else {
+            throw DispatchError.missionSnapshotUnavailable(requestID)
+        }
+        let eventSnapshot = try await requestRef
+            .collection("events")
+            .order(by: "sequence")
+            .limit(to: 1000)
+            .getDocuments(source: .server)
+        let events = eventSnapshot.documents.compactMap { doc in
+            CLIAgentMissionEvent(
+                data: doc.data(),
+                vaultKey: localVaultKey,
+                uid: uid,
+                requestID: requestID,
+                eventID: doc.documentID
+            )
+        }
+        guard let mission = CLIAgentMissionSnapshot(
+            documentID: requestID,
+            data: requestSnapshot.data() ?? [:],
+            eventOverride: events.isEmpty ? nil : events,
+            vaultKey: localVaultKey,
+            signalIdentity: localSignalIdentity,
+            uid: uid
+        ) else {
+            throw DispatchError.missionSnapshotUnavailable(requestID)
+        }
+        return mission
     }
 
     // MARK: - Fan-out dispatch (Hermes Square §6.4)
@@ -621,6 +695,7 @@ final class CLIAgentMissionDispatcher {
             commandsAllowed: draft.commandsAllowed,
             fileEditsAllowed: draft.fileEditsAllowed,
             sourceSurface: draft.sourceSurface,
+            queuedEventSource: draft.queuedEventSource,
             deliveryMode: draft.deliveryMode
         )
     }
@@ -643,6 +718,11 @@ final class CLIAgentMissionDispatcher {
         group: MissionGroupDocument,
         childSnapshots: [String: CLIAgentMissionSnapshot]
     ) -> String {
+        let childCount = max(group.childMissionIDs.count, 1)
+        let perChildBudget = max(
+            800,
+            min(5_000, 19_000 / childCount)
+        )
         let childSections = group.childMissionIDs.enumerated().map { index, missionID in
             let runtime = group.runtimeTokens.indices.contains(index)
                 ? group.runtimeTokens[index]
@@ -657,7 +737,8 @@ final class CLIAgentMissionDispatcher {
             return missionGroupChildResultSection(
                 index: index,
                 runtime: runtime,
-                snapshot: snapshot
+                snapshot: snapshot,
+                limit: perChildBudget
             )
         }.joined(separator: "\n\n")
 
@@ -672,12 +753,12 @@ final class CLIAgentMissionDispatcher {
         residual risks.
 
         Group ID: \(group.id)
-        Original title: \(group.title)
-        Original mission kind: \(group.missionKind)
-        Target project: \(targetProject)
+        Original title: \(trimmed(group.title, limit: 500))
+        Original mission kind: \(trimmed(group.missionKind, limit: 120))
+        Target project: \(trimmed(targetProject, limit: 500))
 
         Original prompt:
-        \(group.prompt)
+        \(trimmed(group.prompt, limit: 3_000))
 
         Child mission outputs:
 
@@ -689,7 +770,8 @@ final class CLIAgentMissionDispatcher {
     private static func missionGroupChildResultSection(
         index: Int,
         runtime: String,
-        snapshot: CLIAgentMissionSnapshot
+        snapshot: CLIAgentMissionSnapshot,
+        limit: Int = 5_000
     ) -> String {
         var lines: [String] = [
             "### \(index + 1). \(runtime) (\(snapshot.id))",
@@ -703,24 +785,39 @@ final class CLIAgentMissionDispatcher {
         if let liveSummary = snapshot.liveSummary?.nilIfEmpty {
             lines.append("Live summary:\n\(trimmed(liveSummary, limit: 1_200))")
         }
-        if let resultPreview = snapshot.resultPreview?.nilIfEmpty {
+        if let finalAnswer = missionGroupFinalAnswerText(from: snapshot) {
+            lines.append("Final answer:\n\(trimmed(finalAnswer, limit: max(800, limit - 1_200)))")
+        } else if let resultPreview = snapshot.resultPreview?.nilIfEmpty {
             lines.append("Result preview:\n\(trimmed(resultPreview, limit: 3_000))")
         }
         if let errorMessage = snapshot.errorMessage?.nilIfEmpty {
             lines.append("Error:\n\(trimmed(errorMessage, limit: 1_200))")
         }
-        let eventLines = snapshot.events.suffix(6).compactMap { event -> String? in
-            let message = (event.fullMessage ?? event.message)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .nilIfEmpty
-            guard let message else { return nil }
-            let title = event.title?.nilIfEmpty ?? event.phase
-            return "- \(title): \(trimmed(message, limit: 700))"
-        }
+        let eventLines = snapshot.events
+            .filter { $0.kind != "final_answer" }
+            .suffix(4)
+            .compactMap { event -> String? in
+                let message = (event.fullMessage ?? event.message)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .nilIfEmpty
+                guard let message else { return nil }
+                let title = event.title?.nilIfEmpty ?? event.phase
+                return "- \(title): \(trimmed(message, limit: min(700, max(280, limit / 8))))"
+            }
         if !eventLines.isEmpty {
             lines.append("Latest events:\n\(eventLines.joined(separator: "\n"))")
         }
-        return trimmed(lines.joined(separator: "\n"), limit: 5_000)
+        return trimmed(lines.joined(separator: "\n"), limit: limit)
+    }
+
+    private static func missionGroupFinalAnswerText(from snapshot: CLIAgentMissionSnapshot) -> String? {
+        snapshot.events.reversed().first { event in
+            event.kind == "final_answer"
+        }.flatMap { event in
+            (event.fullMessage ?? event.message)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+        }
     }
 
     private static func trimmed(_ value: String, limit: Int) -> String {
@@ -836,6 +933,7 @@ final class CLIAgentMissionDispatcher {
         let commandsAllowed: Bool = false
         let fileEditsAllowed: Bool = false
         let sourceSurface: String = "ios-hermes-square"
+        let queuedEventSource: String = "ios"
         let deliveryMode: SkillRunDeliveryMode = .fullStream
     }
 
@@ -1038,6 +1136,7 @@ final class CLIAgentMissionDispatcher {
         case emptyPrompt
         case tooFewRuntimes
         case wandRoutingUnavailable(String)
+        case missionSnapshotUnavailable(String)
 
         var errorDescription: String? {
             switch self {
@@ -1051,6 +1150,8 @@ final class CLIAgentMissionDispatcher {
                 return "The Wand needs at least 1 agent."
             case let .wandRoutingUnavailable(message):
                 return message
+            case let .missionSnapshotUnavailable(requestID):
+                return "Mission snapshot \(requestID) was unavailable."
             }
         }
     }
