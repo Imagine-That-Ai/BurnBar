@@ -19,6 +19,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
     private var providerAccountSync: ProviderAccountSyncService!
     private var quotaSnapshotSync: QuotaSnapshotSyncService!
     private var vaultKeyProvider: TestConversationVaultKeyProvider!
+    private var analyticsTransport: FakeAnalyticsTransport!
 
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
@@ -36,6 +37,13 @@ final class UsageSyncRoundTripTests: XCTestCase {
         downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider)
         providerAccountSync = ProviderAccountSyncService(context: context)
         quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
+        let consent = AnalyticsConsentStore(defaults: makeIsolatedAnalyticsDefaults())
+        consent.grant()
+        analyticsTransport = FakeAnalyticsTransport()
+        AnalyticsRuntime.configure(
+            consentStore: consent,
+            recorder: Analytics(consent: consent, transport: analyticsTransport, superProperties: { [:] })
+        )
     }
 
     // MARK: - Write → Read Round Trip
@@ -216,6 +224,54 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 805)
         let remainingUnsynced = try await dataStore.fetchUnsynced()
         XCTAssertTrue(remainingUnsynced.isEmpty)
+        await Task.yield()
+        let completed = analyticsTransport.sent.last { $0.name == AnalyticsEvent.cloudsyncCompleted.rawValue }
+        XCTAssertEqual(
+            completed?.properties["item_count_bucket"],
+            .string(">500"),
+            "cloudsync.completed must bucket the full synced total, not the final partial batch"
+        )
+    }
+
+    func test_usageSyncDeletesSameDeviceRandomIdOrphansAfterDeterministicRecount() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "recount-session",
+            projectName: "RecountProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(60)
+        )
+        let currentDocID = "test-device-1_\(usage.id.uuidString)"
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "recount-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: "users/test-uid-1/usage/test-device-1_11111111-1111-4111-8111-111111111111")
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "remote-device-2",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "remote-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: "users/test-uid-1/usage/remote-device-2_22222222-2222-4222-8222-222222222222")
+        try await dataStore.insert(usage)
+
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNil(docs["users/test-uid-1/usage/test-device-1_11111111-1111-4111-8111-111111111111"])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/\(currentDocID)"])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/remote-device-2_22222222-2222-4222-8222-222222222222"])
     }
 
     func test_providerAccountUpload_writesOnlyNonSecretLocalAccountMetadata() async throws {

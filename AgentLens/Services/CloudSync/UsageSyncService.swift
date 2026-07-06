@@ -42,7 +42,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         guard state.beginSyncingIfIdle() else { return }
         let deviceId = gate.account.deviceId
         let syncStartTime = Date()
-        var lastBatchCount = 0
+        var syncedItemCount = 0
 
         defer { state.endSyncing() }
 
@@ -51,11 +51,16 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
             let resolvedVaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
+            try await deleteOrphanedUsageDocs(
+                collectionRef: collectionRef,
+                deviceId: deviceId,
+                keeping: Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
+            )
 
             while true {
                 let unsynced = try await context.dataStore.fetchUnsynced()
                 guard !unsynced.isEmpty else { break }
-                lastBatchCount = unsynced.count
+                syncedItemCount += unsynced.count
 
                 let batch = context.firestoreGateway.batch()
 
@@ -89,7 +94,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 $0.lastSyncError = nil
             }
             let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
-            let itemCountBucket = AnalyticsBuckets.count(lastBatchCount)
+            let itemCountBucket = AnalyticsBuckets.count(syncedItemCount)
             Task { @MainActor in
                 Analytics.shared.track(.cloudsyncCompleted, [
                     "domain": "usage",
@@ -101,6 +106,36 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
             await recordSyncError(error, uid: uid, deviceId: deviceId)
+        }
+    }
+
+    private func deleteOrphanedUsageDocs(
+        collectionRef: CloudSyncCollectionGateway,
+        deviceId: String,
+        keeping currentUsageIds: Set<String>
+    ) async throws {
+        let prefix = "\(deviceId)_"
+        let snapshot = try await collectionRef.whereField("deviceId", isEqualTo: deviceId).getDocuments()
+        let orphanDocIds = snapshot.documents.compactMap { document -> String? in
+            let documentID = document.documentID
+            guard documentID.hasPrefix(prefix) else { return nil }
+            let usageID = String(documentID.dropFirst(prefix.count))
+            return currentUsageIds.contains(usageID) ? nil : documentID
+        }
+        guard !orphanDocIds.isEmpty else { return }
+
+        for batchStart in stride(from: 0, to: orphanDocIds.count, by: 400) {
+            let batch = context.firestoreGateway.batch()
+            for docId in orphanDocIds[batchStart..<min(batchStart + 400, orphanDocIds.count)] {
+                batch.deleteDocument(collectionRef.document(docId))
+            }
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "usage"
+            ) {
+                try await batch.commit()
+            }
         }
     }
 
