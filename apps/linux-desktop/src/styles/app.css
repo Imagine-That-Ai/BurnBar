@@ -65,7 +65,8 @@ body.reduced-motion * { animation: none !important; transition: none !important;
   box-shadow: inset 0 1px 0 var(--color-frost-line), 0 4px 24px rgba(0, 0, 0, 0.25);
   position: relative; z-index: 10;
 }
-.deck-brand { display: flex; align-items: center; gap: var(--space-2); }
+.deck-brand { display: flex; align-items: center; gap: var(--space-2); background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.deck-brand:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 .deck-flame { font-size: 1.2rem; line-height: 1; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--color-brass-glow) 60%, transparent)); }
 .deck-wordmark { font-family: var(--font-display); font-size: 1rem; font-weight: 600; color: var(--color-text-bright); letter-spacing: -0.01em; }
 .deck-wordmark-accent { background: var(--ds-accent-gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }

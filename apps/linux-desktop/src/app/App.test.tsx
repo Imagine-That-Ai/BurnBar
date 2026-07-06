@@ -59,6 +59,14 @@ describe('App shell', () => {
     expect(useShellStore.getState().route).toBe('activity');
   });
 
+  it('navigates to the dashboard when the brand logo is clicked', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('tab', { name: /Missions/i }));
+    expect(useShellStore.getState().route).toBe('missions');
+    fireEvent.click(screen.getByRole('button', { name: /Go to dashboard overview/i }));
+    expect(useShellStore.getState().route).toBe('overview');
+  });
+
   it('renders BURN telemetry in the toolbar', async () => {
     act(() => {
       useShellStore.setState({ fixtureMode: true, bridgeReady: true });
