@@ -19,6 +19,14 @@ Surface Mercury media on Linux: paired-device list, media session status (screen
 2. If the daemon lacks a method, the surface renders the **capability-absent** state ("Media engine not yet available on this Linux build") — a named honest state, not an error.
 3. Fixtures: 2 paired devices + one active screen-share session.
 
+## W5-F5 outbound Linux capture
+
+The Linux shell media socket is bidirectional: daemon-origin frames still flow to the shell viewer, and shell-origin capture frames now flow back to the daemon as the same `[u32 length][kind][flags][ptsMs][payload]` protocol. During an accepted mirror session, the daemon wraps shell-origin frames with `MediaPacketCodec` and forwards them to the phone as `media.stream.frame`.
+
+The Tauri shell auto-starts outbound capture when `daemon.media.session.state` reports a streaming mirror session and the media socket is connected. For deterministic evidence use `OPENBURNBAR_MEDIA_CAPTURE_TEST=1` and optionally `OPENBURNBAR_MEDIA_CAPTURE_TEST_BUFFERS=<n>`. For real PipeWire capture, provide `OPENBURNBAR_MEDIA_PIPEWIRE_FD` and `OPENBURNBAR_MEDIA_PIPEWIRE_NODE_ID`; optional knobs are `OPENBURNBAR_MEDIA_CAPTURE_CODEC=vp9|av1` and `OPENBURNBAR_MEDIA_CAPTURE_BITRATE_BPS=<bps>`.
+
+Manual QA can call the Tauri commands `media_capture_start_test`, `media_capture_start_pipewire`, `media_capture_stop`, and `media_capture_status`. The shell emits `media-capture-started`, `media-capture-stopped`, and `media-capture-unavailable` events for evidence capture.
+
 ## Files
 
 `src/state/mediaStore.ts`; `src/surfaces/media/` (`MediaSection.tsx`, `DeviceRow.tsx`, `SessionStatusCard.tsx`) + tests; mount inside `SupportSurface` below diagnostics (coordinate with P09; Cross-agent receipt); `app.css` `/* ---- P12 media ---- */`.

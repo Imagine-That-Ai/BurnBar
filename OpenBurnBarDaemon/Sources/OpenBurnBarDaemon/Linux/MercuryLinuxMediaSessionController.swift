@@ -64,6 +64,8 @@ public actor MercuryLinuxMediaSessionController {
     private var lastControlRoute: MercuryControlRoute?
     private var fileTransfers: [String: FileTransferRecord] = [:]
     private var transferIDsByManifestID: [String: String] = [:]
+    private var outboundGOPID: UInt32 = 0
+    private var outboundFrameIndex: UInt32 = 0
 
     public init(
         channel: MercuryLinuxMediaChannel? = nil,
@@ -84,7 +86,9 @@ public actor MercuryLinuxMediaSessionController {
         guard let channel else {
             throw MercuryLinuxMediaChannel.ChannelError.runtimeDirectoryUnavailable
         }
-        try channel.start()
+        try channel.start { [weak self] frame in
+            Task { await self?.ingestShellFrame(frame) }
+        }
     }
 
     public func stop() {
@@ -96,6 +100,8 @@ public actor MercuryLinuxMediaSessionController {
         startedAt = nil
         cooldownUntil = nil
         lastControlRoute = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = Date()
     }
 
@@ -195,9 +201,65 @@ public actor MercuryLinuxMediaSessionController {
         self.phase = .streaming
         self.startedAt = Date()
         self.cooldownUntil = nil
+        self.outboundGOPID = 0
+        self.outboundFrameIndex = 0
         self.updatedAt = Date()
         await sendDecision(for: pending, accepted: true, sessionID: resolvedSessionID, detail: nil)
         return DaemonMediaCallActionResponse(accepted: true, session: sessionSnapshot())
+    }
+
+    public func ingestShellFrame(_ frame: MediaFrame) async {
+        guard phase == .streaming,
+              let active,
+              active.kind == .mirror,
+              let replySender = active.replySender else {
+            return
+        }
+
+        var outbound = frame
+        if outbound.flags.contains(.keyframe) {
+            outboundGOPID &+= 1
+            outboundFrameIndex = 0
+        }
+        outbound.gopID = outboundGOPID
+        outbound.frameIndex = outboundFrameIndex
+        outboundFrameIndex &+= 1
+
+        do {
+            var encoded = try packetCodec.encode(outbound)
+            var sealedPosition: HermesRealtimeRelaySealedMediaFramePosition?
+            if let mediaFrameSealKey {
+                encoded = try frameAEAD.seal(
+                    plaintext: encoded,
+                    key: mediaFrameSealKey,
+                    streamClass: active.streamClass,
+                    kind: outbound.kind.rawValue,
+                    gopID: outbound.gopID,
+                    frameIndex: outbound.frameIndex
+                )
+                sealedPosition = HermesRealtimeRelaySealedMediaFramePosition(
+                    kind: outbound.kind.rawValue,
+                    gopId: outbound.gopID,
+                    frameIndex: outbound.frameIndex
+                )
+            }
+            try await replySender(HermesRealtimeRelayFrame(
+                type: .mediaStreamFrame,
+                uid: active.uid,
+                connectionId: active.connectionID,
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: active.streamClass,
+                    encodedFrameBase64: encoded.base64EncodedString(),
+                    sealedFramePosition: sealedPosition
+                )
+            ))
+            updatedAt = Date()
+        } catch {
+            logger.warning(
+                "linux_media_shell_frame_forward_failed",
+                metadata: ["error": "\(error)"]
+            )
+        }
     }
 
     public func decline(_ request: DaemonMediaCallDeclineRequest) async -> DaemonMediaCallActionResponse {
@@ -716,6 +778,8 @@ public actor MercuryLinuxMediaSessionController {
         sessionID = nil
         startedAt = nil
         cooldownUntil = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = now
     }
 
@@ -752,6 +816,8 @@ public actor MercuryLinuxMediaSessionController {
         sessionID = nil
         startedAt = nil
         cooldownUntil = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = now
     }
 
@@ -814,6 +880,8 @@ public actor MercuryLinuxMediaSessionController {
         sessionID = nil
         startedAt = nil
         cooldownUntil = Date().addingTimeInterval(2)
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = Date()
     }
 
