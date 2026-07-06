@@ -120,6 +120,30 @@ export type DiagnosticsExport = { path: string };
 
 export type SessionEnv = { XDG_SESSION_TYPE?: string; XDG_CURRENT_DESKTOP?: string };
 
+// ─────────────────────────── P12: Mercury media ───────────────────────────
+
+export type MercuryDevicePlatform = 'ios' | 'android' | 'macos' | 'linux' | 'unknown';
+export type MercurySessionKind = 'screen-share' | 'file' | 'call';
+export type MercurySessionState = 'staged' | 'connecting' | 'active' | 'ended';
+export type MercuryPairedDevice = {
+  id: string;
+  name: string;
+  platform: MercuryDevicePlatform;
+  isOnline: boolean;
+  lastSeenAt: string;
+  capabilities: string[];
+};
+export type MercuryActiveSession = {
+  kind: MercurySessionKind;
+  state: MercurySessionState;
+  peer: string;
+};
+export type MercuryMediaStatus = {
+  capabilityAvailable: boolean;
+  pairedDevices: MercuryPairedDevice[];
+  activeSession?: MercuryActiveSession;
+};
+
 // ─────────────────────────── Bridge contract ──────────────────────────────
 
 export interface LinuxShellBridge {
@@ -147,6 +171,7 @@ export interface LinuxShellBridge {
   appVersionInfo(): Promise<AppVersionInfo>;
   exportDiagnostics(): Promise<DiagnosticsExport>;
   sessionEnv(): Promise<SessionEnv>;
+  mediaStatus(): Promise<MercuryMediaStatus>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -474,6 +499,59 @@ function normalizeChannel(s: string): AppVersionInfo['packageChannel'] {
   return 'unknown';
 }
 
+function normalizeMercuryPlatform(raw: string): MercuryDevicePlatform {
+  const lower = raw.toLowerCase();
+  if (lower.includes('ios') || lower.includes('iphone') || lower.includes('ipad')) return 'ios';
+  if (lower.includes('android')) return 'android';
+  if (lower.includes('mac')) return 'macos';
+  if (lower.includes('linux')) return 'linux';
+  return 'unknown';
+}
+
+function normalizeMercuryKind(raw: string): MercurySessionKind {
+  const lower = raw.toLowerCase();
+  if (lower.includes('file')) return 'file';
+  if (lower.includes('call') || lower.includes('voip')) return 'call';
+  return 'screen-share';
+}
+
+function normalizeMercuryState(raw: string): MercurySessionState {
+  const lower = raw.toLowerCase();
+  if (lower.includes('connect') || lower.includes('start')) return 'connecting';
+  if (lower.includes('active') || lower.includes('stream')) return 'active';
+  if (lower.includes('end') || lower.includes('stop') || lower.includes('done')) return 'ended';
+  return 'staged';
+}
+
+function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
+  const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
+  const availableRaw = pick(raw, 'capabilityAvailable', 'capability_available', 'available');
+  const pairedDevices = arr(pick(raw, 'pairedDevices', 'paired_devices', 'devices', 'peers')).map(
+    (d, i): MercuryPairedDevice => ({
+      id: str(pick(d, 'id', 'deviceId', 'device_id', 'connectionID', 'connectionId'), `device-${i}`),
+      name: str(pick(d, 'name', 'displayName', 'display_name', 'label'), `Device ${i + 1}`),
+      platform: normalizeMercuryPlatform(str(pick(d, 'platform', 'kind', 'os'), 'unknown')),
+      isOnline: Boolean(pick(d, 'isOnline', 'is_online', 'online')),
+      lastSeenAt: str(pick(d, 'lastSeenAt', 'last_seen_at', 'updatedAt'), new Date(0).toISOString()),
+      capabilities: arr(pick(d, 'capabilities', 'features')).map((capability) => str(capability)).filter(Boolean)
+    })
+  );
+  const sessionRaw = pick(raw, 'activeSession', 'active_session', 'session');
+  const activeSession =
+    sessionRaw && typeof sessionRaw === 'object'
+      ? {
+          kind: normalizeMercuryKind(str(pick(sessionRaw, 'kind', 'type'), 'screen-share')),
+          state: normalizeMercuryState(str(pick(sessionRaw, 'state', 'phase', 'status'), 'staged')),
+          peer: str(pick(sessionRaw, 'peer', 'peerName', 'peer_name', 'deviceName'), 'Paired device')
+        }
+      : undefined;
+  return {
+    capabilityAvailable: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    pairedDevices,
+    activeSession
+  };
+}
+
 // ─────────────────────────── Bridge loader ────────────────────────────────
 
 export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
@@ -570,6 +648,19 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         XDG_SESSION_TYPE: str(pick(raw, 'xdg_session_type', 'XDG_SESSION_TYPE')) || undefined,
         XDG_CURRENT_DESKTOP: str(pick(raw, 'xdg_current_desktop', 'XDG_CURRENT_DESKTOP')) || undefined
       };
+    },
+    // P12 — daemon media_status / media.control observation
+    mediaStatus: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_status');
+        return mapMercuryMediaStatus(raw);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        if (/unknown|unsupported|not implemented|no such method/i.test(message)) {
+          return { capabilityAvailable: false, pairedDevices: [] };
+        }
+        throw e;
+      }
     }
   };
 }

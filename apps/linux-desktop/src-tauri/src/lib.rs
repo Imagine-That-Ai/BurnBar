@@ -545,6 +545,14 @@ fn session_env() -> serde_json::Value {
     })
 }
 
+// ───────────────── P12: Mercury media status ─────────────────
+// Wire: proposed daemon.media.status. Current Linux daemons may reject this as
+// unknown; the TS bridge maps that rejection to the capability-absent state.
+#[tauri::command]
+fn media_status() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.media.status", None)
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open_i = MenuItemBuilder::with_id("open", "Open dashboard").build(app)?;
     let health_i = MenuItemBuilder::with_id("health", "Reconnect daemon").build(app)?;
@@ -607,7 +615,8 @@ pub fn run() {
             account_status,
             app_version_info,
             export_diagnostics,
-            session_env
+            session_env,
+            media_status
         ])
         .setup(|app| {
             if let Err(e) = build_tray(app.handle()) {

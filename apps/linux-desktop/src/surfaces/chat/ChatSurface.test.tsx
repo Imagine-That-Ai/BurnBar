@@ -52,7 +52,8 @@ function mockBridge(handlers: {
       updateCheck: 'skipped'
     }),
     exportDiagnostics: async () => ({ path: '/tmp/diag.zip' }),
-    sessionEnv: async () => ({})
+    sessionEnv: async () => ({}),
+    mediaStatus: async () => ({ capabilityAvailable: false, pairedDevices: [] })
   };
   return bridge;
 }

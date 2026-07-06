@@ -8,6 +8,7 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { SystemStatusSection } from '../SystemStatusSection.js';
 import { DiagnosticsExportCard } from './DiagnosticsExportCard.js';
 import { VersionGrid } from './VersionGrid.js';
+import { MediaSection } from '../media/MediaSection.js';
 import './support.css';
 
 function usePerfSamples() {
@@ -73,6 +74,7 @@ export function SupportSurface() {
       <SystemStatusSection showRawDiagnostic />
       {versionBlock}
       <DiagnosticsExportCard />
+      <MediaSection />
       <table className="table p09-perf-table">
         <thead>
           <tr>
