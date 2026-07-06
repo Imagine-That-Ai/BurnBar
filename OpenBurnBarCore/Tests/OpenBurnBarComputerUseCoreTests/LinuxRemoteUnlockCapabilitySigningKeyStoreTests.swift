@@ -20,14 +20,14 @@ final class LinuxRemoteUnlockCapabilitySigningKeyStoreTests: XCTestCase {
             fallbackDirectory: directory,
             secretService: secretService
         )
-        let first = OpenBurnBarRemoteUnlockCapabilitySigningKeyStore(keyStore: firstStore)
+        let first = try OpenBurnBarRemoteUnlockCapabilitySigningKeyStore(keyStore: firstStore)
             .copyOrCreateKeyMaterial()
 
         let secondStore = LinuxRemoteUnlockCapabilityPrivateKeyStore(
             fallbackDirectory: directory,
             secretService: secretService
         )
-        let second = OpenBurnBarRemoteUnlockCapabilitySigningKeyStore(keyStore: secondStore)
+        let second = try OpenBurnBarRemoteUnlockCapabilitySigningKeyStore(keyStore: secondStore)
             .copyOrCreateKeyMaterial()
 
         XCTAssertEqual(second.keyId, first.keyId)
