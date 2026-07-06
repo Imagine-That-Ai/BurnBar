@@ -15,13 +15,19 @@ public actor MercuryLinuxMediaSessionController {
         var requesterDisplayName: String
         var remotePeerNodeID: String?
         var replySender: MercuryLinuxMediaReplySender?
+        var mirrorRequest: HermesRealtimeRelayMirrorRequest?
+        var mirrorFrame: HermesRealtimeRelayFrame?
         var requestedAt: Date
     }
 
     private let logger: BurnBarDaemonLogger
     private let channel: MercuryLinuxMediaChannel?
+    private let captureEngine: MercuryLinuxCaptureEngine
+    private let captureAdapter: any MercuryLinuxCaptureAdapterProtocol
+    private let sealKeyOpener: any MercuryLinuxMediaSealKeyOpening
     private let packetCodec = MediaPacketCodec()
     private let frameAEAD = MediaFrameAEAD()
+    private var bitrateController = BitrateController(steps: .screenShare)
     private var mediaFrameSealKey: PlatformSymmetricKey?
     private var phase: DaemonMediaSessionPhase = .idle
     private var pending: PendingSession?
@@ -31,13 +37,23 @@ public actor MercuryLinuxMediaSessionController {
     private var updatedAt = Date()
     private var cooldownUntil: Date?
     private var lastPeer: MercuryPeer?
+    private var outboundGOPID: UInt32 = 0
+    private var outboundFrameIndex: UInt32 = 0
+    private var captureFrameQueue: MercuryLinuxCaptureFrameQueue?
+    private var captureFrameConsumerTask: Task<Void, Never>?
 
     public init(
         channel: MercuryLinuxMediaChannel? = nil,
+        captureEngine: MercuryLinuxCaptureEngine = MercuryLinuxCaptureEngine(),
+        captureAdapter: (any MercuryLinuxCaptureAdapterProtocol)? = nil,
+        sealKeyOpener: any MercuryLinuxMediaSealKeyOpening = MercuryLinuxMediaSealKeyOpener(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "linux-media")
     ) {
         self.logger = logger
         self.channel = channel ?? (try? MercuryLinuxMediaChannel())
+        self.captureEngine = captureEngine
+        self.captureAdapter = captureAdapter ?? MercuryLinuxCaptureAdapter(captureEngine: captureEngine)
+        self.sealKeyOpener = sealKeyOpener
     }
 
     public func start() throws {
@@ -48,6 +64,9 @@ public actor MercuryLinuxMediaSessionController {
     }
 
     public func stop() {
+        stopCaptureFramePump()
+        captureAdapter.stopOutboundCapture()
+        captureEngine.stop()
         channel?.stop()
         phase = .idle
         pending = nil
@@ -55,6 +74,9 @@ public actor MercuryLinuxMediaSessionController {
         sessionID = nil
         startedAt = nil
         cooldownUntil = nil
+        mediaFrameSealKey = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = Date()
     }
 
@@ -143,15 +165,210 @@ public actor MercuryLinuxMediaSessionController {
         }
 
         let resolvedSessionID = request.sessionID ?? UUID().uuidString
+        var establishedSealKey: PlatformSymmetricKey?
+        if pending.kind == .mirror {
+            guard let mirrorRequest = pending.mirrorRequest,
+                  let mirrorFrame = pending.mirrorFrame else {
+                await sendDecision(
+                    for: pending,
+                    accepted: false,
+                    sessionID: nil,
+                    detail: "Mirror request metadata is unavailable."
+                )
+                transitionToCooldown(reason: "missing_mirror_request")
+                return DaemonMediaCallActionResponse(
+                    accepted: false,
+                    session: sessionSnapshot(),
+                    detail: "Mirror request metadata is unavailable."
+                )
+            }
+            do {
+                establishedSealKey = try await sealKeyOpener.openMediaFrameSealKey(
+                    for: mirrorRequest,
+                    frame: mirrorFrame
+                )
+            } catch {
+                await sendDecision(
+                    for: pending,
+                    accepted: false,
+                    sessionID: nil,
+                    detail: "Media frame seal key was not established."
+                )
+                transitionToCooldown(reason: "seal_not_established")
+                return DaemonMediaCallActionResponse(
+                    accepted: false,
+                    session: sessionSnapshot(),
+                    detail: "Media frame seal key was not established."
+                )
+            }
+        }
+
         self.pending = nil
         self.active = pending
         self.sessionID = resolvedSessionID
         self.phase = .streaming
         self.startedAt = Date()
         self.cooldownUntil = nil
+        self.mediaFrameSealKey = establishedSealKey
+        self.outboundGOPID = 0
+        self.outboundFrameIndex = 0
         self.updatedAt = Date()
+        if pending.kind == .mirror {
+            do {
+                try await startPortalCaptureForActiveMirror()
+            } catch {
+                await sendDecision(
+                    for: pending,
+                    accepted: false,
+                    sessionID: nil,
+                    detail: "Linux ScreenCast capture did not start."
+                )
+                transitionToCooldown(reason: "capture_start_failed")
+                return DaemonMediaCallActionResponse(
+                    accepted: false,
+                    session: sessionSnapshot(),
+                    detail: "Linux ScreenCast capture did not start."
+                )
+            }
+        }
         await sendDecision(for: pending, accepted: true, sessionID: resolvedSessionID, detail: nil)
         return DaemonMediaCallActionResponse(accepted: true, session: sessionSnapshot())
+    }
+
+    public func startOutboundCapture(_ request: MercuryLinuxCaptureRequest) throws {
+        guard phase == .streaming,
+              let active,
+              active.kind == .mirror else {
+            throw MercuryLinuxCaptureError.sessionNotStreaming
+        }
+        let queue = startCaptureFramePump()
+        try captureEngine.start(
+            request,
+            onFrame: { frame in
+                queue.offer(frame)
+            },
+            onStopped: { [weak self] _ in
+                Task { await self?.capturePipelineEnded(reason: "capture_pipeline_ended") }
+            }
+        )
+        updatedAt = Date()
+    }
+
+    public func stopOutboundCapture() {
+        stopCaptureFramePump()
+        captureAdapter.stopOutboundCapture()
+        captureEngine.stop()
+    }
+
+    public func setOutboundCaptureBitrate(_ targetBitrateBps: UInt32) throws {
+        try captureAdapter.setOutboundCaptureBitrate(targetBitrateBps)
+        updatedAt = Date()
+    }
+
+    public func ingestBandwidthSample(_ sample: BitrateController.Sample) throws {
+        let next = bitrateController.apply(sample: sample)
+        try setOutboundCaptureBitrate(UInt32(max(0, next)))
+    }
+
+    private func startPortalCaptureForActiveMirror() async throws {
+        let queue = startCaptureFramePump()
+        try await captureAdapter.startOutboundCapture(
+            targetBitrateBps: UInt32(max(0, bitrateController.currentBitsPerSecond)),
+            codec: .vp9,
+            onFrame: { frame in
+                queue.offer(frame)
+            },
+            onStopped: { [weak self] _ in
+                Task { await self?.capturePipelineEnded(reason: "capture_pipeline_ended") }
+            }
+        )
+    }
+
+    private func startCaptureFramePump() -> MercuryLinuxCaptureFrameQueue {
+        stopCaptureFramePump()
+        let queue = MercuryLinuxCaptureFrameQueue(bufferingNewest: 30)
+        captureFrameQueue = queue
+        captureFrameConsumerTask = Task { [weak self, queue] in
+            for await frame in queue.stream {
+                await self?.ingestCapturedFrame(frame)
+            }
+        }
+        return queue
+    }
+
+    private func stopCaptureFramePump() {
+        captureFrameQueue?.finish()
+        captureFrameQueue = nil
+        captureFrameConsumerTask?.cancel()
+        captureFrameConsumerTask = nil
+    }
+
+    private func capturePipelineEnded(reason: String) {
+        _ = reason
+        transitionToCooldown(reason: "capture_pipeline_ended")
+    }
+
+    public func ingestCapturedFrame(_ frame: MediaFrame) async {
+        guard phase == .streaming,
+              let active,
+              active.kind == .mirror,
+              let replySender = active.replySender else {
+            return
+        }
+
+        var outbound = frame
+        if outbound.flags.contains(.keyframe) {
+            outboundGOPID &+= 1
+            outboundFrameIndex = 0
+        }
+        outbound.gopID = outboundGOPID
+        outbound.frameIndex = outboundFrameIndex
+        outboundFrameIndex &+= 1
+
+        // Fail closed: never egress a captured frame unsealed. If the media
+        // seal key was not established for this session, drop to cooldown
+        // rather than send plaintext over the relay (mirrors the inbound path).
+        guard let mediaFrameSealKey else {
+            logger.error("linux_media_outbound_seal_key_absent; ending capture session")
+            transitionToCooldown(reason: "seal_not_established")
+            return
+        }
+
+        do {
+            var encoded = try packetCodec.encode(outbound)
+            var sealedPosition: HermesRealtimeRelaySealedMediaFramePosition?
+            do {
+                encoded = try frameAEAD.seal(
+                    plaintext: encoded,
+                    key: mediaFrameSealKey,
+                    streamClass: active.streamClass,
+                    kind: outbound.kind.rawValue,
+                    gopID: outbound.gopID,
+                    frameIndex: outbound.frameIndex
+                )
+                sealedPosition = HermesRealtimeRelaySealedMediaFramePosition(
+                    kind: outbound.kind.rawValue,
+                    gopId: outbound.gopID,
+                    frameIndex: outbound.frameIndex
+                )
+            }
+            try await replySender(HermesRealtimeRelayFrame(
+                type: .mediaStreamFrame,
+                uid: active.uid,
+                connectionId: active.connectionID,
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: active.streamClass,
+                    encodedFrameBase64: encoded.base64EncodedString(),
+                    sealedFramePosition: sealedPosition
+                )
+            ))
+            updatedAt = Date()
+        } catch {
+            logger.warning(
+                "linux_media_capture_frame_forward_failed",
+                metadata: ["error": "\(error)"]
+            )
+        }
     }
 
     public func decline(_ request: DaemonMediaCallDeclineRequest) async -> DaemonMediaCallActionResponse {
@@ -221,6 +438,8 @@ public actor MercuryLinuxMediaSessionController {
             requesterDisplayName: request.requesterDisplayName,
             remotePeerNodeID: remotePeerNodeID,
             replySender: replySender,
+            mirrorRequest: request,
+            mirrorFrame: frame,
             requestedAt: request.requestedAt
         )
         lastPeer = MercuryPeer(
@@ -234,6 +453,8 @@ public actor MercuryLinuxMediaSessionController {
         sessionID = nil
         startedAt = nil
         cooldownUntil = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = now
     }
 
@@ -257,6 +478,8 @@ public actor MercuryLinuxMediaSessionController {
             requesterDisplayName: invite.requesterDisplayName,
             remotePeerNodeID: remotePeerNodeID,
             replySender: replySender,
+            mirrorRequest: nil,
+            mirrorFrame: nil,
             requestedAt: invite.requestedAt
         )
         lastPeer = MercuryPeer(
@@ -270,6 +493,8 @@ public actor MercuryLinuxMediaSessionController {
         sessionID = nil
         startedAt = nil
         cooldownUntil = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = now
     }
 
@@ -326,12 +551,18 @@ public actor MercuryLinuxMediaSessionController {
 
     private func transitionToCooldown(reason: String) {
         _ = reason
+        stopCaptureFramePump()
+        captureAdapter.stopOutboundCapture()
+        captureEngine.stop()
         phase = .cooldown
         pending = nil
         active = nil
         sessionID = nil
         startedAt = nil
         cooldownUntil = Date().addingTimeInterval(2)
+        mediaFrameSealKey = nil
+        outboundGOPID = 0
+        outboundFrameIndex = 0
         updatedAt = Date()
     }
 

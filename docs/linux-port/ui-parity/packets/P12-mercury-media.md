@@ -19,6 +19,16 @@ Surface Mercury media on Linux: paired-device list, media session status (screen
 2. If the daemon lacks a method, the surface renders the **capability-absent** state ("Media engine not yet available on this Linux build") — a named honest state, not an error.
 3. Fixtures: 2 paired devices + one active screen-share session.
 
+## W5-F5 outbound Linux capture
+
+The Linux shell media socket is daemon-to-shell only: daemon-origin frames flow to the shell viewer as `[u32 length][kind][flags][ptsMs][payload]`. Outbound Linux screen capture is daemon-owned. The W5 capture lane now drives the Wayland portal consent flow in the daemon (`CreateSession -> SelectSources -> Start -> OpenPipeWireRemote`), starts `media_capture_start(...)` through `COpenBurnBarMediaCapture`, seals callback frames with `MediaFrameSealSession`, and forwards them to the phone as `media.stream.frame`.
+
+Two guardrails are part of the shipped contract: capture cannot start without a live portal grant, and frame forwarding fails closed until the accepted mirror session has established a media seal key. The Linux daemon package currently exposes the relay-private-key and pinned-sender-key providers as an injection seam; production must bind those providers to the same relay trust source the macOS app uses before Linux mirror accept can complete outside tests. Audio remains a residual gap for this packet: call audio on macOS is coupled to the Mercury call stack, while this W5 lane is video-first screen-share capture only.
+
+VAL-CU-001 proves the Wayland portal path: `CreateSession -> SelectSources -> Start` returns a PipeWire `node_id`, and `OpenPipeWireRemote` returns an fd that produces frames on Sway/PipeWire. That fd is process-local. If a helper or shell process ever obtains it, it must pass the descriptor to the daemon with Unix `SCM_RIGHTS`; serializing the numeric fd through JSON or Tauri command params is invalid.
+
+The shell contract remains the five daemon RPC-backed Tauri commands: `media_session_state`, `media_accept_call`, `media_decline_call`, `media_end_call`, and `media_capability_get`, plus viewer events `media-incoming-call` and `media-call-state-changed`. Capability reporting uses the media C FFI probe and keeps H.264 false unless the user installs and enables it explicitly.
+
 ## Files
 
 `src/state/mediaStore.ts`; `src/surfaces/media/` (`MediaSection.tsx`, `DeviceRow.tsx`, `SessionStatusCard.tsx`) + tests; mount inside `SupportSurface` below diagnostics (coordinate with P09; Cross-agent receipt); `app.css` `/* ---- P12 media ---- */`.

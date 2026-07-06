@@ -88,7 +88,9 @@ pub fn start_media_socket_reader(app: AppHandle) {
             loop {
                 match media_socket_path() {
                     Some(path) => read_media_socket(app.clone(), path, &viewer),
-                    None => eprintln!("openburnbar media socket unavailable: XDG_RUNTIME_DIR is unset"),
+                    None => {
+                        eprintln!("openburnbar media socket unavailable: XDG_RUNTIME_DIR is unset")
+                    }
                 }
                 thread::sleep(Duration::from_millis(500));
             }
@@ -132,7 +134,10 @@ fn read_media_socket(app: AppHandle, path: PathBuf, viewer: &MediaViewer) {
             }
         }
         Err(e) => {
-            eprintln!("openburnbar media socket not connected at {}: {e}", path.display());
+            eprintln!(
+                "openburnbar media socket not connected at {}: {e}",
+                path.display()
+            );
         }
     }
 }
