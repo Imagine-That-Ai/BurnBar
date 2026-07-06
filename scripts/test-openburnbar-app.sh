@@ -34,6 +34,12 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Keep CI/package resolution on the source-built Firestore graph. The prebuilt
+# grpc-binary path is unsafe for iOS 27 and can be reintroduced by Xcode package
+# resolution unless the environment is present.
+export FIREBASE_SOURCE_FIRESTORE="${FIREBASE_SOURCE_FIRESTORE:-1}"
+
 cache_dir="$repo_root/.spm-cache-new"
 artifact_root="$repo_root/.derived-data"
 

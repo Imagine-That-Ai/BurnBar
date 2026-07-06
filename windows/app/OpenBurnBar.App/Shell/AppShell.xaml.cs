@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Theme;
 
 namespace OpenBurnBar.App.Shell;
@@ -152,12 +153,20 @@ public sealed partial class AppShell : UserControl
             return;
         }
 
-        _currentKey = destination.Key;
-        HeaderTitle.Text = destination.Title;
-        // Route through the resolver so ported surfaces render their real page while
-        // not-yet-ported destinations fall back to the stub. Each Phase-3 surface lane
-        // registers its key -> Page mapping in SurfacePageResolver.Resolve.
-        ContentFrame.Navigate(SurfacePageResolver.Resolve(destination.Key), destination);
+        Type pageType = SurfacePageResolver.Resolve(destination.Key);
+        AppDiagnostics.RouteBegin(destination.Key, pageType);
+        try
+        {
+            _currentKey = destination.Key;
+            HeaderTitle.Text = destination.Title;
+            ContentFrame.Navigate(pageType, destination);
+            AppDiagnostics.RouteSuccess(destination.Key, pageType);
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.RouteFailure(destination.Key, pageType, ex);
+            throw;
+        }
     }
 
     private void Palette_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

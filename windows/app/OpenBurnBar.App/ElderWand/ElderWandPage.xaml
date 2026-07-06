@@ -7,8 +7,8 @@
   `.gatedFeature(.elderWand)` and reached from the Settings tree ("Analysis Models") or the chat
   header — it is NOT one of the 12 top-level sidebar destinations. So this key is registered in the
   resolver + surfaced through the Command Palette (NavCatalog.Auxiliary), never added to
-  NavCatalog.All, keeping the 12-row sidebar parity. The live Settings-leaf / chat-header entry is
-  the integration wave's job; the code-behind seeds the form from the portable ElderWandSampleData.
+  NavCatalog.All, keeping the 12-row sidebar parity. The page binds persisted settings by default;
+  sample provider groups require OPENBURNBAR_SAMPLE_MODE=1.
 -->
 <Page
     x:Class="OpenBurnBar.App.ElderWand.ElderWandPage"
@@ -19,5 +19,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <elderwand:ElderWandConfiguratorView x:Name="ConfiguratorView" />
+    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+        <elderwand:ElderWandConfiguratorView x:Name="ConfiguratorView" />
+    </Grid>
 </Page>

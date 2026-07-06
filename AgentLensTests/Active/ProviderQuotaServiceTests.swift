@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 import XCTest
-import OpenBurnBarCore
+@testable import OpenBurnBarCore
 @testable import OpenBurnBar
 
 private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
@@ -149,7 +149,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appSupportRoot: appSupport,
             refreshProviders: [.codex]
         )
-        var publishedProviders: [AgentProvider] = []
+        var publishedProviders: [String] = []
         var publishedBucketCounts: [Int] = []
         service.onSnapshotsPersistedForCloudSync = { snapshots in
             publishedProviders = snapshots.map(\.provider)
@@ -158,7 +158,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .codex, dataStore: dataStore)
 
-        XCTAssertEqual(publishedProviders, [.codex])
+        XCTAssertEqual(publishedProviders, [AgentProvider.codex.rawValue])
         XCTAssertEqual(publishedBucketCounts, [2])
     }
 
@@ -241,7 +241,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             refreshProviders: [.codex, .hermes, .factory]
         )
 
-        XCTAssertEqual(service.snapshotsForCloudSync.map(\.provider), [.codex])
+        XCTAssertEqual(service.snapshotsForCloudSync.map(\.provider), [AgentProvider.codex.rawValue])
     }
 
     func test_warpRefresh_readsLocalCreditTelemetry() async throws {
@@ -292,10 +292,10 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .warp, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .warp))
 
-        XCTAssertEqual(snapshot.provider, .warp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.warp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("Warp credit quota was not found"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Warp credit quota was not found") ?? false)
     }
 
     func test_refreshIfNeeded_respectsMaxAgeAfterUnavailableSnapshot() async throws {
@@ -588,8 +588,17 @@ final class ProviderQuotaServiceTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
+        var requestCount = 0
         let session = makeStubSession { request in
+            requestCount += 1
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer codex-stale-token")
+            if requestCount == 1 {
+                return try self.httpResponse(
+                    url: request.url!,
+                    statusCode: 401,
+                    body: "{}"
+                )
+            }
             return try self.httpResponse(
                 url: request.url!,
                 statusCode: 200,
@@ -621,7 +630,9 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .codex, dataStore: try makeDataStore())
 
-        let observedPath = try String(contentsOf: observedPathURL, encoding: .utf8)
+        XCTAssertEqual(requestCount, 2)
+        let observedPath = (try? String(contentsOf: observedPathURL, encoding: .utf8))
+            ?? CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: home.path)
         XCTAssertFalse(
             observedPath.split(separator: ":").contains(Substring(ambientPath)),
             "Codex nudge must not pass user-managed PATH entries to a trusted shim."
@@ -846,7 +857,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("API billing"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("API billing") ?? false)
     }
 
     func test_claudeRefresh_usesLocalBridgeSnapshotEvenWhenAPIBillingOverrideDetected() async throws {
@@ -892,8 +903,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.source, .localCLI)
         XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertTrue(snapshot.statusMessage.contains("local status line"))
-        XCTAssertTrue(snapshot.statusMessage.contains("API billing"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("local status line") ?? false)
+        XCTAssertTrue(snapshot.statusMessage?.contains("API billing") ?? false)
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "5-hour window" && $0.remainingPercent?.rounded() == 90 }))
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "7-day Opus window" && $0.remainingPercent?.rounded() == 60 }))
     }
@@ -945,8 +956,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.source, .localCLI)
         XCTAssertEqual(snapshot.confidence, .estimated)
-        XCTAssertTrue(snapshot.statusMessage.contains("API billing"))
-        XCTAssertTrue(snapshot.statusMessage.contains("Stale last known Claude Code quota"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("API billing") ?? false)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Stale last known Claude Code quota") ?? false)
         XCTAssertTrue(snapshot.isStale())
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "5-hour window" && $0.remainingPercent?.rounded() == 90 && $0.isEstimated }))
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "7-day window" && $0.remainingPercent?.rounded() == 60 && $0.isEstimated }))
@@ -1084,8 +1095,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertTrue(snapshot.statusMessage.contains("Max"))
-        XCTAssertTrue(snapshot.statusMessage.contains("(cached)"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Max") ?? false)
+        XCTAssertTrue(snapshot.statusMessage?.contains("(cached)") ?? false)
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 75 }))
     }
 
@@ -1147,7 +1158,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("did not return current quota buckets"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("did not return current quota buckets") ?? false)
     }
 
     func test_claudeRefresh_oauthLiveCall_writesCacheAndReportsExactRateLimits() async throws {
@@ -1202,7 +1213,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertTrue(snapshot.statusMessage.contains("Pro"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Pro") ?? false)
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 20 }))
 
         // Cache file persisted for next refresh.
@@ -1362,7 +1373,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let fiveHour = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "claude-five-hour-jsonl" }))
         XCTAssertEqual(fiveHour.limitValue, 3_520_000)
         XCTAssertEqual(fiveHour.usedPercent?.rounded(), 6)
-        XCTAssertTrue(snapshot.statusMessage.contains("Max"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Max") ?? false)
     }
 
     func test_claudeRefresh_createsAccountSnapshotForSwitcherProfileConfigPath() async throws {
@@ -1413,7 +1424,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: dataStore)
         let snapshot = try XCTUnwrap(service.snapshot(accountID: profile.id))
 
-        XCTAssertEqual(snapshot.provider, .claudeCode)
+        XCTAssertEqual(snapshot.provider, AgentProvider.claudeCode.rawValue)
         XCTAssertEqual(snapshot.providerID, .claudeCode)
         XCTAssertEqual(snapshot.accountID, profile.id)
         XCTAssertEqual(snapshot.accountLabel, "Claude Work")
@@ -1646,7 +1657,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(accountSnapshot.source, .unavailable)
         XCTAssertEqual(accountSnapshot.confidence, .unavailable)
         XCTAssertTrue(accountSnapshot.buckets.isEmpty)
-        XCTAssertTrue(accountSnapshot.statusMessage.contains("will not reuse another Claude account"))
+        XCTAssertTrue(accountSnapshot.statusMessage?.contains("will not reuse another Claude account") ?? false)
     }
 
     func test_claudeRefresh_switcherProfileDoesNotRenderPlanBadgeWhenOAuthUsageUnavailable() async throws {
@@ -1694,8 +1705,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(accountSnapshot.source, .officialAPI)
         XCTAssertEqual(accountSnapshot.confidence, .unavailable)
         XCTAssertTrue(accountSnapshot.buckets.isEmpty)
-        XCTAssertTrue(accountSnapshot.statusMessage.contains("did not return current quota buckets"))
-        XCTAssertTrue(accountSnapshot.statusMessage.contains("will not reuse another Claude account"))
+        XCTAssertTrue(accountSnapshot.statusMessage?.contains("did not return current quota buckets") ?? false)
+        XCTAssertTrue(accountSnapshot.statusMessage?.contains("will not reuse another Claude account") ?? false)
     }
 
     func test_claudeRefresh_switcherProfileCanUseFreshStatuslineWhenItMatchesDefaultLogin() async throws {
@@ -2017,7 +2028,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("Pro"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("Pro") ?? false)
     }
 
     func test_claudeCredentialsReader_decodesOAuthPayloadShape() throws {
@@ -2102,8 +2113,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertNotEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertFalse(snapshot.statusMessage.contains("Plan: Pro"))
-        XCTAssertTrue(snapshot.statusMessage.contains("Sign in to Claude Code") || snapshot.statusMessage.contains("Bridge installed"))
+        XCTAssertFalse(snapshot.statusMessage?.contains("Plan: Pro") ?? false)
+        XCTAssertTrue((snapshot.statusMessage?.contains("Sign in to Claude Code") ?? false) || (snapshot.statusMessage?.contains("Bridge installed") ?? false))
     }
 
     func test_claudeCredentials_canCallUsageEndpoint_acceptsExpiredAccessWithRefreshToken() {
@@ -2418,7 +2429,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertTrue(snapshot.statusMessage.contains("environment override"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("environment override") ?? false)
         XCTAssertTrue(snapshot.buckets.contains(where: {
             $0.label == "Standard tokens"
                 && $0.limitValue?.rounded() == 1_000
@@ -2586,8 +2597,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.confidence, .estimated,
                        "Unknown plan tier ⇒ snapshot is flagged estimated")
         XCTAssertTrue(snapshot.hasDisplayableQuotaSignal)
-        XCTAssertTrue(snapshot.statusMessage.contains("Set your plan tier"),
-                      "Status should nudge users to confirm their plan tier — got: \(snapshot.statusMessage)")
+        XCTAssertTrue(snapshot.statusMessage?.contains("Set your plan tier") ?? false,
+                      "Status should nudge users to confirm their plan tier — got: \(snapshot.statusMessage ?? "nil")")
 
         let monthly = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-30d" })
         XCTAssertTrue(monthly.isEstimated)
@@ -2645,7 +2656,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.confidence, .exact,
                        "Plus is a confirmed tier, not estimated")
-        XCTAssertFalse(snapshot.statusMessage.contains("Set your plan tier"),
+        XCTAssertFalse(snapshot.statusMessage?.contains("Set your plan tier") ?? false,
                        "Confirmed Plus tier should not prompt the user to pick a tier")
 
         // 5h / 7d / 30d all anchored to the 100M Plus cap.
@@ -2709,12 +2720,12 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
 
         XCTAssertTrue(
-            snapshot.statusMessage.contains("Droid Core"),
-            "Status message must mention Droid Core fallback — got: \(snapshot.statusMessage)"
+            (snapshot.statusMessage?.contains("Droid Core") ?? false),
+            "Status message must mention Droid Core fallback — got: \(snapshot.statusMessage ?? "nil")"
         )
         XCTAssertTrue(
-            snapshot.statusMessage.contains("Extra Usage"),
-            "Status message must mention Extra Usage fallback — got: \(snapshot.statusMessage)"
+            (snapshot.statusMessage?.contains("Extra Usage") ?? false),
+            "Status message must mention Extra Usage fallback — got: \(snapshot.statusMessage ?? "nil")"
         )
     }
 
@@ -2813,8 +2824,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertFalse(proxyBucket.isDisplayableQuotaSignal,
                        "Custom-proxy bucket is diagnostic; must not be on the headline gauge")
 
-        XCTAssertTrue(snapshot.statusMessage.contains("Excluded 2 custom-proxy session(s)"),
-                      "Status message must disclose the proxy session count — got: \(snapshot.statusMessage)")
+        XCTAssertTrue((snapshot.statusMessage?.contains("Excluded 2 custom-proxy session(s)") ?? false),
+                      "Status message must disclose the proxy session count — got: \(snapshot.statusMessage ?? "nil")")
     }
 
     /// Droid Core open-weight models (kimi, glm, deepseek, minimax,
@@ -3182,8 +3193,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .factory, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
 
-        XCTAssertTrue(snapshot.statusMessage.contains("trial"),
-                      "Subscription status badge must surface 'trial' — got: \(snapshot.statusMessage)")
+        XCTAssertTrue((snapshot.statusMessage?.contains("trial") ?? false),
+                      "Subscription status badge must surface 'trial' — got: \(snapshot.statusMessage ?? "nil")")
     }
 
     func test_refreshAll_persistsSnapshotsAndReloadsFromDisk() async throws {
@@ -4739,7 +4750,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("sk-cp"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("sk-cp") ?? false)
     }
 
     func test_miniMaxRefresh_parsesStringHeavyTokenPlanPayload() async throws {
@@ -5026,7 +5037,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("rejected the configured key"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("rejected the configured key") ?? false)
     }
 
     func test_cursorRefresh_usesBillingCycleQuotaWhenCookieConfigured() async throws {
@@ -5130,7 +5141,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.source, .unavailable)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("rejected the configured cookie"))
+        XCTAssertTrue(snapshot.statusMessage?.contains("rejected the configured cookie") ?? false)
     }
 
     func test_snapshotPrimaryBucket_prefersMostConstrainedWindow() {
@@ -5512,8 +5523,8 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(apiPct, 59.85, accuracy: 0.01)
 
         // Status message
-        XCTAssertTrue(snapshot.statusMessage.contains("Ultra"), "Expected Ultra tier, got: \(snapshot.statusMessage)")
-        XCTAssertTrue(snapshot.statusMessage.contains("Capped"), "Expected Capped plan")
+        XCTAssertTrue((snapshot.statusMessage?.contains("Ultra") ?? false), "Expected Ultra tier, got: \(snapshot.statusMessage ?? "nil")")
+        XCTAssertTrue((snapshot.statusMessage?.contains("Capped") ?? false), "Expected Capped plan")
 
         // Plan bucket carries dollars; the unit must be `.currency` so the
         // gauge labels render as "$X.XX / $Y.YY" instead of decimals.
@@ -5542,7 +5553,7 @@ extension ProviderQuotaServiceTests {
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("Sign in"), "Expected sign-in prompt, got: \(snapshot.statusMessage)")
+        XCTAssertTrue((snapshot.statusMessage?.contains("Sign in") ?? false), "Expected sign-in prompt, got: \(snapshot.statusMessage ?? "nil")")
     }
 
     // MARK: - Ollama Cloud
@@ -5733,8 +5744,8 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
         XCTAssertTrue(
-            snapshot.statusMessage.contains("Connect Ollama"),
-            "Status should prompt the user to connect — got: \(snapshot.statusMessage)"
+            (snapshot.statusMessage?.contains("Connect Ollama") ?? false),
+            "Status should prompt the user to connect — got: \(snapshot.statusMessage ?? "nil")"
         )
     }
 

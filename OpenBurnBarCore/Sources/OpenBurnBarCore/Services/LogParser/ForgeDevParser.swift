@@ -490,7 +490,7 @@ public final class ForgeDevParser: LogParser, Sendable {
 
     private func discoverDatabasePaths() -> [String] {
         let fm = FileManager.default
-        let homeURL = fm.homeDirectoryForCurrentUser
+        let homeURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         var candidates: [String] = []
 
         candidates.append(((provider.logDirectory as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"))

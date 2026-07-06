@@ -112,7 +112,7 @@ public struct ClaudeOAuthUsageFetcher {
     /// refresh token is available, this method may transparently
     /// refresh the token. The refreshed credentials are returned for
     /// in-memory use only.
-    func fetchRateLimits(
+    public func fetchRateLimits(
         credentials: ClaudeOAuthCredentials,
         now: Date = Date()
     ) async -> RateLimitsResult {
@@ -222,15 +222,15 @@ public struct ClaudeOAuthUsageFetcher {
     /// Fully-typed payload (no `[String: Any]`). The dictionary form
     /// only lives at the JSON-decoding boundary; callers see only
     /// strongly-typed buckets.
-    struct RateLimitsResult: Sendable {
-        let rateLimits: ClaudeRateLimits?
-        let fetchedAt: Date?
-        let sourceWasCache: Bool
+    public struct RateLimitsResult: Sendable {
+        public let rateLimits: ClaudeRateLimits?
+        public let fetchedAt: Date?
+        public let sourceWasCache: Bool
         /// When the access token had to be refreshed during this call,
         /// the new credentials are surfaced here so the caller can
         /// update its in-memory copy. `nil` means the existing
         /// credentials are still valid.
-        let refreshedCredentials: ClaudeOAuthCredentials?
+        public let refreshedCredentials: ClaudeOAuthCredentials?
     }
 
     // MARK: - Live Request
@@ -515,7 +515,7 @@ enum ClaudeOAuthConstants {
 /// Anthropic's `/api/oauth/usage` payload, modeled as Sendable value
 /// types so we can pass it across actor boundaries safely. Replaces
 /// the old `[String: Any]` shape that violated Swift 6 concurrency.
-struct ClaudeRateLimits: Sendable, Equatable {
+public struct ClaudeRateLimits: Sendable, Equatable {
     let windows: [String: Window]
     /// Preserved JSON shape used purely for round-tripping into the
     /// disk cache. Read-only — callers must use `windows` for any
@@ -529,17 +529,17 @@ struct ClaudeRateLimits: Sendable, Equatable {
 
     var isEmpty: Bool { windows.isEmpty }
 
-    func window(named key: String) -> Window? { windows[key] }
+    public func window(named key: String) -> Window? { windows[key] }
 
     /// One named limit bucket returned by `/api/oauth/usage`. We model
     /// `usedPercentage`, `remainingPercentage`, and `resetsAt`; any
     /// other server fields are preserved in `rawDictionary` for the
     /// cache round-trip but ignored for UI.
-    struct Window: Sendable, Equatable {
-        let key: String
-        let usedPercentage: Double?
-        let remainingPercentage: Double?
-        let resetsAt: Date?
+    public struct Window: Sendable, Equatable {
+        public let key: String
+        public let usedPercentage: Double?
+        public let remainingPercentage: Double?
+        public let resetsAt: Date?
     }
 
     static let empty = ClaudeRateLimits(windows: [:], rawJSON: Data("{}".utf8))

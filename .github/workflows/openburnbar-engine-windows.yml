@@ -72,10 +72,15 @@ env:
   # real location and does not rely on this.
   SWIFT_ROOT: "C:\\Program Files\\Swift"
   # Prune the GRDB-SQLCipher path package + OpenBurnBarData from the Windows graph.
-  # The Engine subset (Core + walking skeleton) never links GRDB, and GRDB-SQLCipher
-  # does not resolve/build off-Apple yet, so leaving it in would fail package
-  # resolution before Core ever compiles. A first-class Windows storage story is
-  # later-phase work; this flag keeps the Phase-1 Engine compile honest and narrow.
+  # PERMANENT ARCHITECTURE per WPD-0005
+  # (docs/windows-port/decisions/0005-windows-storage-architecture.md): on Windows
+  # the Swift Engine is compute-only and storage is owned by the C# seam
+  # (windows/storage/, byte-compat proven per WPD-0004 / VAL-P0-DB-010).
+  # GRDB-SQLCipher does not resolve/build off-Apple, and no Windows Swift storage
+  # target is planned — leaving it in would fail package resolution before Core
+  # ever compiles. Any workflow setting this flag truthy must be named in
+  # WPD-0005's machine-read block (enforced fail-closed by
+  # scripts/ci/verify-windows-storage-architecture.sh in Fast Feedback).
   OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD: "1"
 
 jobs:

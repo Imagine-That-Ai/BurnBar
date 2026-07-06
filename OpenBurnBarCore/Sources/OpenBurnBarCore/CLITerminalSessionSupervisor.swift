@@ -91,6 +91,8 @@ public enum CLIQuotaExhaustionClassifier {
         case .codex:
             cliSpecificPatterns = [
                 "codex quota",
+                "codex is out of limit",
+                "codex is out of limits",
                 "chatgpt plan limit",
                 "run codex and use /status to refresh local quota data"
             ]

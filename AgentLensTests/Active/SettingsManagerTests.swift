@@ -1919,13 +1919,14 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - ChatBackendID Tests
 
     func test_chatBackendID_allCases() {
-        XCTAssertEqual(ChatBackendID.allCases.count, 10)
+        XCTAssertEqual(ChatBackendID.allCases.count, 11)
         XCTAssertTrue(ChatBackendID.allCases.contains(.codex))
         XCTAssertTrue(ChatBackendID.allCases.contains(.claude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.hermes))
         XCTAssertTrue(ChatBackendID.allCases.contains(.piAgent))
         XCTAssertTrue(ChatBackendID.allCases.contains(.openclaw))
         XCTAssertTrue(ChatBackendID.allCases.contains(.openClaude))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.omp))
         XCTAssertTrue(ChatBackendID.allCases.contains(.droid))
         XCTAssertTrue(ChatBackendID.allCases.contains(.forge))
         XCTAssertTrue(ChatBackendID.allCases.contains(.antigravity))
@@ -1938,6 +1939,8 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(ChatBackendID.hermes.displayName, "Hermes")
         XCTAssertEqual(ChatBackendID.piAgent.displayName, "Pi Agent")
         XCTAssertEqual(ChatBackendID.openclaw.displayName, "OpenClaw")
+        XCTAssertEqual(ChatBackendID.openClaude.displayName, "OpenClaude")
+        XCTAssertEqual(ChatBackendID.omp.displayName, "OMP")
         XCTAssertEqual(ChatBackendID.droid.displayName, "Droid")
         XCTAssertEqual(ChatBackendID.forge.displayName, "Forge")
         XCTAssertEqual(ChatBackendID.antigravity.displayName, "Antigravity")

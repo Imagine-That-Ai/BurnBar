@@ -1,4 +1,5 @@
 import XCTest
+@testable import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// Behavior tests for the cross-account statusline-reuse gate in

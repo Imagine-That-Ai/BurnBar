@@ -74,7 +74,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(unsyncedAfter.isEmpty)
     }
 
-    func test_usageSyncPublishesDeviceHeartbeatBeforeVaultKeyFailureWithoutSyncStatus() async throws {
+    func test_usageSyncPublishesDeviceHeartbeatAndFailureStatusBeforeVaultKeyFailure() async throws {
         let throwingProvider = ThrowingConversationVaultKeyProvider(error: TestVaultError.unavailable)
         usageSync = UsageSyncService(context: context, vaultKeyProvider: throwingProvider)
         let usage = TokenUsage(
@@ -96,10 +96,13 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(deviceDoc["platform"] as? String, "macOS")
         XCTAssertNotNil(deviceDoc["lastSeenAt"] as? Timestamp)
 
-        XCTAssertNil(
-            fakeGateway.documentData(at: "users/test-uid-1/sync_status/test-device-1"),
-            "sync_status must not claim usage is synced before the upload path succeeds"
-        )
+        let statusDoc = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/sync_status/test-device-1"))
+        XCTAssertEqual(statusDoc["deviceId"] as? String, "test-device-1")
+        XCTAssertEqual(statusDoc["isOnline"] as? Bool, true)
+        XCTAssertEqual(statusDoc["lastErrorCode"] as? String, "other")
+        XCTAssertNotNil(statusDoc["lastAttemptAt"] as? Timestamp)
+        XCTAssertNil(statusDoc["lastSyncAt"], "sync_status must not claim usage is synced before the upload path succeeds")
+        XCTAssertNil(statusDoc["collectionsInSync"], "sync_status must not claim usage is synced before the upload path succeeds")
 
         XCTAssertEqual(throwingProvider.callCount, 1)
         let unsyncedAfter = try await dataStore.fetchUnsynced()
@@ -147,7 +150,13 @@ final class UsageSyncRoundTripTests: XCTestCase {
 
         // A key holder can recover the exact project name (seal → open round trip).
         let envelope = try XCTUnwrap(OpenBurnBarCore.CloudVaultCrypto.decodeSealedText(from: sealed))
-        let opened = try CloudVaultCrypto.openText(envelope, keyData: vaultKeyProvider.keyData)
+        let aadContext = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: "usage",
+            docID: "test-device-1_\(usage.id.uuidString)",
+            field: "sealedProjectName"
+        )
+        let opened = try CloudVaultCrypto.openText(envelope, keyData: vaultKeyProvider.keyData, aadContext: aadContext)
         XCTAssertEqual(opened, "Top Secret Project")
 
         // The opaque hash is stable for the same name + key.

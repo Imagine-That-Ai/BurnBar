@@ -50,11 +50,11 @@
 
 | Area | macOS / shared contract | Windows implementation | Harness / tests | Status | PR / doc |
 |------|-------------------------|------------------------|-----------------|--------|----------|
-| **Log parsers (15 corpus)** | `AgentLensTests/Fixtures/ParserContract/`, `PARSER_OUTPUT_CONTRACT.md` | Swift Core parsers (Option A); Windows byte-diff **Phase 2** | `ParserOutputContractGoldenTests` (macOS); portable golden `parser-output-golden.json` | **Contract LIVE**; Windows diff pending G2 CI | **#1250** (CLEAN lift); **#1251** (SEAM + storage proof) |
+| **Log parsers (15 corpus)** | `AgentLensTests/Fixtures/ParserContract/`, `PARSER_OUTPUT_CONTRACT.md` | Swift Core parsers (Option A) lifted into the Engine; `OpenBurnBarG2ParserParity` byte-diff runs in the Windows engine lane | `ParserOutputContractGoldenTests` (macOS); `OpenBurnBarG2ParserParity` vs `parser-output-golden.json` on native Windows CI (x64 + ARM64) | **PROVEN on Windows CI** — 15 providers / 26 fixtures byte-identical, both arches green (run [28775204323](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/28775204323) on PR **#1270**, merged `cc56024f07`) | **#1250** (CLEAN lift); **#1251** (SEAM + storage proof); `85b898255f` → `67de06b5c7` (G2 harness); **#1270** (green lane) |
 | **Stream JSON** | `STREAM_JSON_MAC_GOLDEN.md`, `claude-stream-mac-golden.jsonl` | Replay through Windows stream parser port | `ClaudeStreamGoldenParseDiffTests` (macOS) | **Golden committed**; Windows replay G2 | **#1250** |
 | **Prompt-injection wrap** | `LLMSafeContent.wrapUntrusted` in Core (#1181) | Must match delimiter-defang + truncation-reseal | Wrap vector corpus (C3) | **Vectors** committed; Windows consumer G2 | **#1254** (C3 wrap vectors); R18 |
 | **Quota adapters (20 / 4 mechanisms)** | `Services/ProviderQuota/` | C# ports in `windows/` quota lane | `OpenBurnBar.App.Quota.Tests` (4 header/status parsers + fixtures) | **Partial** (lifted subset); full 20 in flight | C2 `windows/c2-quota-lift` (in flight) |
-| **SQLite / SQLCipher seam (C4)** | GRDB + 53 migrations (`AgentLens/`) | `windows/storage/OpenBurnBar.Storage` + `Microsoft.Data.Sqlite` + `bundle_e_sqlcipher` | `windows/storage/OpenBurnBar.Storage.Tests` (`DbByteCompatVectorTests`, 10/10 per WPD-0004) | **Byte-compat proven** (read seam) | **#1251**; **WPD-0004** |
+| **SQLite / SQLCipher seam (C4)** | GRDB + 53 migrations (`AgentLens/`) | `windows/storage/OpenBurnBar.Storage` + `Microsoft.Data.Sqlite` + `bundle_e_sqlcipher` — the **permanent** Windows storage owner per **WPD-0005** (Engine computes, shell persists) | `windows/storage/OpenBurnBar.Storage.Tests` (`DbByteCompatVectorTests`, 10/10 per WPD-0004) | **Byte-compat proven** (read seam); prune = architecture, gated by `verify-windows-storage-architecture.sh` | **#1251**; **WPD-0004**; **WPD-0005** |
 | **CloudVault / E2EE** | `CloudVaultCrypto` (Swift) | `windows/cloudsync/OpenBurnBar.CloudSync.Crypto` | `windows/tests/cloudsync/*Crypto.Tests` + KAT `cloudvault-kat-vectors.json` | **KAT parity** on macOS host | **#1251**; shared KAT triplets |
 | **Firestore REST + models** | Native Firebase SDK | `OpenBurnBar.CloudSync` gateway + model codecs | `OpenBurnBar.CloudSync.Tests` (`ModelParityTests`, REST fakes) | **Authored**; live TPM App Check pending | R14; `windows/cloudsync/appcheck/` |
 | **App Check (R14)** | Apple App Attest | TPM `NCryptCreateClaim` + mint backend | `OpenBurnBar.CloudSync.AppCheck.Tests` | **Server half built**; Win11 Pro TPM pass **Alberto** | HANDOFF §R14; not **#1253** alone |
@@ -63,7 +63,7 @@
 | **C-ABI engine binding** | In-process Swift | `@_cdecl` export (`obb_parse_cli_stdout`) + C# P/Invoke test (1/1 macOS) | Engine binding test project | **Proven on macOS**; Windows CI pending | **#1267** (integration) |
 | **Computer Use core** | `OpenBurnBarComputerUseCore` | PAL input + policy tests | `OpenBurnBar.ComputerUse.Tests`, `OpenBurnBar.Pal.Input.Tests` | **Phase 4** (G4); not G5 blocker for local peer v1 | WS-D deferred render pass |
 
-**G2 headline (not yet certified in this bundle):** multi-provider session corpus → **byte-identical** `ParserOutputContractRecord` vs Mac golden on Windows — tracked as **FIX** until `pr-windows-full` / engine lane records green logs in §5.
+**G2 headline (PROVEN 2026-07-06):** multi-provider session corpus → **byte-identical** `ParserOutputContractRecord` vs Mac golden on Windows. `OpenBurnBarG2ParserParity` byte-diffs **15 providers / 26 fixtures** on native Windows CI, **x64 + ARM64 both green**: run [28775204323](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/28775204323) on PR **#1270** (head `bf38e3b2eb`, merged to `main` as `cc56024f07`). Harness landed in `85b898255f` (ClaudeCode + FactoryDroid lift + byte-diff gate) → `67de06b5c7` (Codex + Hermes via the read-only SQLite reader seam, "15/15 byte-identical"). Formerly tracked as FIX pending a green engine-lane run; PR #1270's swift-crypto Sendable fix unblocked the lane.
 
 ---
 
@@ -71,7 +71,7 @@
 
 | Subsystem | Tier | macOS | Windows | Tests / workflow | Status | PR / WPD |
 |-----------|------|-------|---------|------------------|--------|----------|
-| **Storage** | A | GRDB + SQLCipher | C# SQLCipher fallback seam | `OpenBurnBar.Storage.Tests` | **Read path proven** | **WPD-0004**, **#1251** |
+| **Storage** | A | GRDB + SQLCipher | C# SQLCipher seam — **permanent architecture** (WPD-0005): Windows Swift Engine is compute-only, `windows/storage/` owns persistence | `OpenBurnBar.Storage.Tests` | **Read path proven**; write/migration seam is the WPD-0004 follow-up | **WPD-0004**, **WPD-0005**, **#1251** |
 | **Cloud sync** | A/B | Firestore SDK + CloudVault | REST gateway + crypto | `OpenBurnBar.CloudSync.Tests`, `CloudSync.Crypto.Tests` | **Codec parity**; live cloud gated on App Check | **#1251** |
 | **PAL: IPC** | B | Unix socket + codesign | Named pipe + signed-nonce handshake | `OpenBurnBar.Pal.Ipc.Tests` (20/20 cited HANDOFF) | **Proven** | `design/0004-named-pipe-peer-auth.md`; B1 `windows/b1-conpty-cli-stream` |
 | **PAL: ConPTY** | B | `openpty` | `ConPtySession` | IPC Windows project + runbook `CONPTY-019-dev-host-runbook.md` | **Harness built** | B1 in flight |
@@ -102,7 +102,7 @@ These are **explicit** Tier-B/C substitutions or interim postures from the maste
 | D3 | **XamlCompiler** | Xcode | **Windows-only** full compile | `NETSDK1100` / XamlCompiler on macOS | `pr-windows-full.yml` green on `windows-latest` |
 | D4 | **Claude statusline bridge** | `DispatchSource` / FSEvents | `FileSystemWatcher` / `ReadDirectoryChangesW` | Tier-B PAL mapping (`WINDOWS_PORT_MASTER_PLAN.md` §2) | Quota statusline parser tests + live file watch smoke |
 | D5 | **Web login helpers** | `CursorLoginHelper` / `FactoryLoginHelper` (AppKit/WebKit) | Deferred; OAuth loopback + web views later | Not on critical path for local-peer v1 | Documented deferral; Switcher uses portable sample until B2 |
-| D6 | **GRDB → SQLite seam** | GRDB API | C# `Microsoft.Data.Sqlite` + SQLCipher bundle | **Byte-identical file** per C4, not API-identical | `DbByteCompatVectorTests` + cross-open Mac DB on Windows host |
+| D6 | **GRDB → SQLite seam** | GRDB API | C# `Microsoft.Data.Sqlite` + SQLCipher bundle | **Byte-identical file** per C4, not API-identical; **permanent** per WPD-0005 (Engine compute-only, shell persists) | `DbByteCompatVectorTests` + cross-open Mac DB on Windows host; `verify-windows-storage-architecture.sh` gate |
 | D7 | **Engine binding** | In-process Swift | **Interim** `swift run` wrapper; UniFFI C# bindgen target | B0 spike proved path; full in-proc binding follows | **#1257** spike evidence; WPD-0001 tracks bindgen |
 | D8 | **Elder Wand reachability** | Settings leaf + chat header | Command Palette auxiliary (not sidebar row) | Preserves 12-row + Ctrl+1..9 parity | `NavCatalog.Auxiliary` + `ElderWandPage` |
 | D9 | **Sign in with Apple / IAP** | Apple / StoreKit | MSA/Google/email; Stripe or Store IAP | Tier C (`WINDOWS_PORT_MASTER_PLAN.md` §2) | Substitute checkout flow tested |
@@ -110,6 +110,7 @@ These are **explicit** Tier-B/C substitutions or interim postures from the maste
 | D11 | **SendInput capability gate** | CGEvent | Advisory `SendInput`; driver path for non-bypassable | R17 | Documented; ViGEm for secure-desktop v1.1 |
 | D12 | **Pretext metrics** | WebKit | WebView2 + **same** `pretext.bundle.min.js` | R22 Chromium vs WebKit tolerance | `0005-pretext-webview2-metric-parity.md` corpus harness |
 | D13 | **project-code-static-parser** | Rust helper on Mac | Deferred Windows target (lexical fallback) | WPD-0003 | No Windows v1 regression vs documented fallback |
+| D14 | **Daemon (`OpenBurnBarDaemon`) — no monolithic port** | LaunchAgent daemon: HTTP gateway, provider router/executors, headless run/resume, Mission Control DAG execution, Pensieve watcher, planner, RPC server, companion CLI | Per-capability substitution in the WinUI app process + portable C# cores (`FirestoreMissionDispatchHost`, `ConPtyCliStream`, `TokenUsageWriteSeam`, `ComputerUse.Core`, toast seam); gateway / headless runs / local mission execution / Pensieve = named v1.1 deferrals with revive triggers | **WPD-0006** (34-row matrix); consistent with WPD-0007's no-service call; revive path = daemon Linux boundary build as a Windows Service | Each SUB-DONE row cites landed tests (bundle §1–§3); deferral revisit triggers named in WPD-0006; no daemon capability claimed as "parity" without a matrix row |
 
 ---
 
@@ -134,7 +135,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 | Onboarding wizard | PLACEHOLDER `screenshots/g5-onboarding.png` | `OpenBurnBar.App.Onboarding.Tests` | — |
 | Command Palette → Elder Wand | PLACEHOLDER `screenshots/g5-elderwand.png` | `ElderWand*Tests` | D8 |
 | DB byte-compat vector | _(no screenshot)_ | `dotnet test windows/storage/OpenBurnBar.Storage.Tests` log archived | D6 |
-| Parser-output golden | _(no screenshot)_ | Mac `ParserOutputContractGoldenTests` + future Windows diff job | — |
+| Parser-output golden | _(no screenshot)_ | Mac `ParserOutputContractGoldenTests` + Windows `OpenBurnBarG2ParserParity` byte-diff **green** (15 providers / 26 fixtures, x64 + ARM64): run [28775204323](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/28775204323), PR #1270 → `cc56024f07` | — |
 | Wrap vector (C3) | _(no screenshot)_ | Committed corpus per **#1254** | — |
 | CloudVault KAT | _(no screenshot)_ | `dotnet test windows/tests/cloudsync` | — |
 | IPC handshake 20/20 | _(no screenshot)_ | `dotnet test windows/tests/ipc` | — |
@@ -156,7 +157,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 | **Win11 Pro validation pass** | §5 screenshots + D2 TPM proof | GPU fidelity = WS-D; this bundle only reserves paths |
 | **CI required-gate flip (A2)** | `pr-windows-full.yml` blocking merge | After green history on `windows-latest` |
 | **C5 / deferral call** | Project Code Memory Windows parser | WPD-0003 deferral; lexical fallback until lifted |
-| **In-flight PRs (no number yet)** | B1 ConPTY, B2 persistence, B6 mission dispatch, C2 quota | Branches: `windows/b1-conpty-cli-stream`, `windows/b2-sqlcipher-persistence`, `windows/b6-mission-dispatch`, `windows/c2-quota-lift` |
+| ~~In-flight PRs (no number yet)~~ **RESOLVED 2026-07-06: all four already integrated** | B1 ConPTY, B2 persistence, B6 mission dispatch, C2 quota | git audit: every file the 4 branches add is on `main` (landed by #1267 `8092d19ea1`; B6 further hardened by #1272 `b0edba64c9`). The branch refs (`windows/b1-conpty-cli-stream`, `windows/b2-sqlcipher-persistence`, `windows/b6-mission-dispatch`, `windows/phase2-c2-quota-lift`) are STALE older drafts — **do not merge**: B6's draft would delete #1272's `running`/`claimed`/`in_progress` status polling and C2's would regress the public `ClaudeOAuthCredentials` API. Safe to delete the refs. |
 
 ---
 
