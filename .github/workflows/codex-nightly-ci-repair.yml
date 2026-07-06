@@ -83,7 +83,7 @@ jobs:
             --state open \
             --base main \
             --head "${GH_OWNER}:${REPAIR_BRANCH}" \
-            --json number,url,title,baseRefName,headRefName,headRefOid,author,authorAssociation,isCrossRepository,headRepository,headRepositoryOwner,state,statusCheckRollup \
+            --json number,url,title,baseRefName,headRefName,headRefOid,author,isCrossRepository,headRepository,headRepositoryOwner,state,statusCheckRollup \
             > "$pr_json"
 
           count="$(jq 'length' "$pr_json")"
