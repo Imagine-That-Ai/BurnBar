@@ -106,7 +106,13 @@ final class BudgetGate {
             do {
                 let used = try await ledger.currentSpend(forRule: rule, reference: reference)
                 let projected = used + max(0, estimatedCost)
-                decision = classify(rule: rule, used: used, projected: projected)
+                decision = await classify(
+                    rule: rule,
+                    used: used,
+                    projected: projected,
+                    estimatedCost: max(0, estimatedCost),
+                    reference: reference
+                )
             } catch {
                 // FAIL CLOSED. A failed ledger read means current spend is UNKNOWN. The
                 // previous `(try?...) ?? 0` coerced the unknown to 0, so a rule that was
@@ -122,7 +128,11 @@ final class BudgetGate {
                         "errorClass": "\(String(describing: type(of: error)))"
                     ]
                 )
-                decision = failClosedDecision(for: rule)
+                decision = await failClosedDecision(
+                    for: rule,
+                    estimatedCost: estimatedCost,
+                    reference: reference
+                )
             }
             worst = pickMoreRestrictive(worst, decision)
         }
@@ -150,17 +160,34 @@ final class BudgetGate {
     /// `.warnOnly` is contractually non-blocking — it must always let the request through —
     /// so it cannot fail closed to `.block`; instead it fails to `.warn` so the failed read
     /// is still surfaced to the user rather than silently allowed.
-    private func failClosedDecision(for rule: BudgetRule) -> BudgetGateDecision {
+    private func failClosedDecision(
+        for rule: BudgetRule,
+        estimatedCost: Double,
+        reference: Date
+    ) async -> BudgetGateDecision {
         let limit = rule.amountUSD
         switch rule.behavior {
         case .warnOnly:
             return .warn(rule: rule, usedPercent: 1.0, used: limit, limit: limit)
-        case .warnThenBlock, .hardBlock, .hardBlockWithFallback:
+        case .warnThenBlock, .hardBlock:
             return .block(rule: rule, used: limit, limit: limit, fallback: nil)
+        case .hardBlockWithFallback:
+            return .block(
+                rule: rule,
+                used: limit,
+                limit: limit,
+                fallback: await resolveFallback(for: rule, estimatedCost: estimatedCost, reference: reference)
+            )
         }
     }
 
-    private func classify(rule: BudgetRule, used: Double, projected: Double) -> BudgetGateDecision {
+    private func classify(
+        rule: BudgetRule,
+        used: Double,
+        projected: Double,
+        estimatedCost: Double,
+        reference: Date
+    ) async -> BudgetGateDecision {
         let limit = rule.amountUSD
         let projectedPercent = limit > 0 ? projected / limit : 0
         let usedPercent = limit > 0 ? used / limit : 0
@@ -190,14 +217,110 @@ final class BudgetGate {
 
         case .hardBlockWithFallback:
             if projectedPercent >= 1.0 {
-                // Fallback resolution is left to Phase 4 part B — for now we surface the
-                // intent and let callers fall through to their existing failover logic.
-                return .block(rule: rule, used: used, limit: limit, fallback: nil)
+                let fallback = await resolveFallback(
+                    for: rule,
+                    estimatedCost: estimatedCost,
+                    reference: reference
+                )
+                return .block(rule: rule, used: used, limit: limit, fallback: fallback)
             } else if projectedPercent >= warningThreshold {
                 return .warn(rule: rule, usedPercent: usedPercent, used: used, limit: limit)
             }
             return .allow
         }
+    }
+
+    /// Resolves the ordered fallback rule IDs attached to a hard-block rule into the first
+    /// concrete credential identity callers can promote. Fallback IDs point at credential
+    /// budget rules, not secrets; the billing mode stays `.unknown` so a later gate evaluation
+    /// never accidentally treats the destination as a subscription credential. A candidate is
+    /// only returned when its own rule would not hard-block the same estimated request.
+    private func resolveFallback(
+        for blockingRule: BudgetRule,
+        estimatedCost: Double,
+        reference: Date
+    ) async -> BudgetCredentialIdentity? {
+        let requestedIDs = blockingRule.fallbackCredentialIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !requestedIDs.isEmpty else { return nil }
+
+        var rulesByID: [String: BudgetRule] = [:]
+        for rule in settings.rules where rulesByID[rule.id] == nil {
+            rulesByID[rule.id] = rule
+        }
+        for id in requestedIDs {
+            guard let candidate = rulesByID[id],
+                  let identity = fallbackIdentity(for: candidate, blockedBy: blockingRule),
+                  await fallbackCanAccept(candidate, estimatedCost: estimatedCost, reference: reference) else {
+                continue
+            }
+            return identity
+        }
+        return nil
+    }
+
+    private func fallbackIdentity(
+        for candidate: BudgetRule,
+        blockedBy blockingRule: BudgetRule
+    ) -> BudgetCredentialIdentity? {
+        guard candidate.id != blockingRule.id,
+              candidate.scope == .credential,
+              candidate.isEnabled,
+              candidate.amountUSD > 0,
+              let providerID = normalized(candidate.providerID) else {
+            return nil
+        }
+
+        let slotID = normalized(candidate.accountID) ?? "default"
+        if blockingRule.scope == .credential,
+           normalized(blockingRule.providerID) == providerID,
+           (normalized(blockingRule.accountID) ?? "default") == slotID {
+            return nil
+        }
+
+        return BudgetCredentialIdentity(
+            providerID: providerID,
+            slotID: slotID,
+            displayLabel: candidate.displayLabel,
+            billingMode: .unknown
+        )
+    }
+
+    private func fallbackCanAccept(
+        _ candidate: BudgetRule,
+        estimatedCost: Double,
+        reference: Date
+    ) async -> Bool {
+        if candidate.isPaused(at: reference) {
+            return true
+        }
+
+        do {
+            let used = try await ledger.currentSpend(forRule: candidate, reference: reference)
+            let projected = used + max(0, estimatedCost)
+            switch candidate.behavior {
+            case .warnOnly:
+                return true
+            case .warnThenBlock, .hardBlock, .hardBlockWithFallback:
+                return projected < candidate.amountUSD
+            }
+        } catch {
+            AppLogger.dataStore.error(
+                "budget_gate_fallback_ledger_read_failed",
+                metadata: [
+                    "ruleScope": candidate.scope.rawValue,
+                    "ruleBehavior": candidate.behavior.rawValue,
+                    "errorClass": "\(String(describing: type(of: error)))"
+                ]
+            )
+            return false
+        }
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Exposes all active rules (credential + project + global) for the Hermes context
