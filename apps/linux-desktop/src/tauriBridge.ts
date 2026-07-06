@@ -430,6 +430,21 @@ export type MercuryFileTransferActionResponse = {
   errorCode?: MercuryFileTransferErrorCode;
   detail?: string;
 };
+export type ComputerUsePanicSource =
+  | 'hotkey'
+  | 'phone_gesture'
+  | 'mac_lock'
+  | 'remote_config'
+  | 'accessibility_revoked'
+  | 'stalled'
+  | 'revoked';
+export type ComputerUsePanicHaltResult = {
+  sessionId: string;
+  endedAt: string;
+  auditHeadHashHex: string;
+  source: ComputerUsePanicSource;
+  raw?: RawJsonValue;
+};
 // ─────────────────────────── P13: integrations status ─────────────────────
 
 export type IntegrationKind =
@@ -525,6 +540,7 @@ export interface LinuxShellBridge {
     request: MercuryFileTransferActionRequest & { reason?: string }
   ): Promise<MercuryFileTransferActionResponse>;
   mediaFileSend(request: MercuryFileTransferSendRequest): Promise<MercuryFileTransferActionResponse>;
+  computerUsePanicHalt(sessionId?: string, source?: ComputerUsePanicSource): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
 }
 
@@ -1525,6 +1541,19 @@ function mapMercuryFileAction(raw: RawJsonValue): MercuryFileTransferActionRespo
   };
 }
 
+function mapComputerUsePanicHalt(
+  raw: RawJsonValue,
+  source: ComputerUsePanicSource
+): ComputerUsePanicHaltResult {
+  return {
+    sessionId: str(pick(raw, 'sessionId', 'session_id'), '*'),
+    endedAt: str(pick(raw, 'endedAt', 'ended_at'), new Date().toISOString()),
+    auditHeadHashHex: str(pick(raw, 'auditHeadHashHex', 'audit_head_hash_hex')),
+    source,
+    raw
+  };
+}
+
 // ─────────────────────────── Bridge loader ────────────────────────────────
 
 export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
@@ -1873,6 +1902,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         }
         throw e;
       }
+    },
+    computerUsePanicHalt: async (sessionId = '*', source = 'hotkey') => {
+      const raw = await invoke<RawJsonValue>('computer_use_panic_halt', { sessionId, source });
+      return mapComputerUsePanicHalt(raw, source);
     },
     // P13 — daemon-reported smart-display/device integration status.
     integrationsStatus: async () => {
