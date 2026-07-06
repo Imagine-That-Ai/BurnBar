@@ -80,6 +80,7 @@ const daemonSteps = [];
 if (!args.has('--skip-daemon')) {
   daemonSteps.push(runStep('swift', [
     'build',
+    '--disable-automatic-resolution',
     '--package-path',
     'OpenBurnBarDaemon',
     '-c',
