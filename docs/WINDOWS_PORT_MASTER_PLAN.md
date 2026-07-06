@@ -649,7 +649,7 @@ WS = owning workstream.
 | E2EE / Signal | libsignal + HPKE | libsignal-Windows + vectors | A | W2 |
 | P2P relay (Iroh/burnbar-remote) | Rust crates | windows-msvc target | A | W2 |
 | App↔daemon IPC | Unix socket + codesign gate | Hardened named pipe (R16) | B | W1 |
-| Daemon lifecycle | LaunchAgent | Windows Service | B | W1 |
+| Daemon lifecycle | LaunchAgent | **No v1 service — per-capability substitution (WPD-0006)**; Windows Service is the documented revive shape (daemon Linux boundary build) | B/C | W1 |
 | Computer use | ComputerUseCore + Mac glue | SendInput/UIA/WGC/ViGEm (R17) | B (secure-desktop C) | W5 |
 | **Budget rules / enforcement / notifications** | `DataStore/Budget*`, `Views/Settings/BudgetSettingsView` | Port (core product!) | A | W3/W7 |
 | **Mission Control / MissionsLane** | `Views/Dashboard/Missions*`, `CloudSync/CLIAgentMission*` | Port + Firestore dispatch | A/B | W7 |
