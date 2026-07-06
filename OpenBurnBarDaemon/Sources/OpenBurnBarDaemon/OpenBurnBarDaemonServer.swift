@@ -46,6 +46,7 @@ public actor BurnBarDaemonServer {
     let toolingProxy: BurnBarToolingProxyService
     let computerUseService: ComputerUseService
     let missionControlService: any BurnBarMissionControlServing
+    let membershipService: any BurnBarMembershipServing
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
     let resumeService: BurnBarResumeService?
@@ -66,6 +67,7 @@ public actor BurnBarDaemonServer {
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
+        membershipService: (any BurnBarMembershipServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
@@ -177,6 +179,7 @@ public actor BurnBarDaemonServer {
             },
             executionReadinessGate: executionReadinessGate
         )
+        self.membershipService = membershipService ?? BurnBarMembershipService()
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false,
@@ -569,6 +572,12 @@ public actor BurnBarDaemonServer {
                 )
             case .usageRecord, .usageRecent:
                 return try await handleUsageRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
+                return try await handleMembershipRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

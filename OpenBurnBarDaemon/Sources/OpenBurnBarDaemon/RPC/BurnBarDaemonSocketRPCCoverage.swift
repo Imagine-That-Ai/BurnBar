@@ -36,6 +36,12 @@ enum BurnBarDaemonSocketRPCCoverage {
         .perfMeasure
     ]
 
+    static let membership: Set<BurnBarRPCMethod> = [
+        .membershipStatus,
+        .membershipCheckoutURL,
+        .membershipRestore
+    ]
+
     static let tooling: Set<BurnBarRPCMethod> = [
         .connectorPlaneGet,
         .connectorConfigUpdate,
@@ -140,6 +146,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(config)
             .union(usage)
             .union(observability)
+            .union(membership)
             .union(tooling)
             .union(computerUse)
             .union(missionControl)
@@ -155,6 +162,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if config.contains(method) { return "config" }
         if usage.contains(method) { return "usage" }
         if observability.contains(method) { return "observability" }
+        if membership.contains(method) { return "membership" }
         if tooling.contains(method) { return "tooling" }
         if computerUse.contains(method) { return "computer_use" }
         if missionControl.contains(method) { return "mission_control" }

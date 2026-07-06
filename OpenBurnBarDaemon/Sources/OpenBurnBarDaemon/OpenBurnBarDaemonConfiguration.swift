@@ -94,6 +94,10 @@ public enum BurnBarDaemonPaths {
     public static var defaultClaudeHandoffSessionsURL: URL {
         supportDirectoryURL.appendingPathComponent("claude-handoff-sessions.json", isDirectory: false)
     }
+
+    public static var defaultMembershipCacheURL: URL {
+        supportDirectoryURL.appendingPathComponent("membership-entitlement-cache.json", isDirectory: false)
+    }
 }
 
 public enum BurnBarDaemonVersion {

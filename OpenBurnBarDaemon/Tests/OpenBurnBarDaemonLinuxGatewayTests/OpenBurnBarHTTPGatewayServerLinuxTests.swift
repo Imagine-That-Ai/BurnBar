@@ -78,6 +78,138 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(response.rawText.components(separatedBy: "HTTP/1.1 ").count - 1, 1)
     }
 
+    func testStreamsAnthropicChatCompletionsThroughMessagesTransformerAndRecordsUsage() async throws {
+        let upstream = LinuxMockOpenAIStreamServer(response: .anthropicMessagesStream)
+        try upstream.start()
+        defer { upstream.stop() }
+
+        let harness = try LinuxGatewayHarness()
+        defer { Task { await harness.stop() } }
+        try await harness.configureAnthropicProvider(baseURL: "http://127.0.0.1:\(upstream.port)/anthropic/v1")
+        try await harness.start()
+
+        let body = #"{"model":"claude-sonnet-4-6","stream":true,"max_tokens":64,"messages":[{"role":"user","content":"ping"}]}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(response.headers["content-type"], "text/event-stream")
+        XCTAssertTrue(response.body.contains(#""object":"chat.completion.chunk""#), response.body)
+        XCTAssertTrue(response.body.contains(#""delta":{"role":"assistant"}"#), response.body)
+        XCTAssertTrue(response.body.contains(#""content":"hello ""#), response.body)
+        XCTAssertTrue(response.body.contains(#""tool_calls""#), response.body)
+        XCTAssertTrue(response.body.contains(#""arguments":"{\"city\":\"Ch""#), response.body)
+        XCTAssertTrue(response.body.contains(#""finish_reason":"tool_calls""#), response.body)
+        XCTAssertTrue(response.body.contains("data: [DONE]"), response.body)
+        XCTAssertFalse(response.body.contains("event: content_block_delta"), response.body)
+
+        let upstreamRequest = try XCTUnwrap(upstream.recordedRequests.first)
+        XCTAssertEqual(upstreamRequest.path, "/anthropic/v1/messages")
+        XCTAssertEqual(upstreamRequest.xApiKey, "sk-ant-api03-primary-key")
+        XCTAssertTrue(upstreamRequest.body.contains(#""stream":true"#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#), upstreamRequest.body)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        let event = try XCTUnwrap(usage.first)
+        XCTAssertEqual(event.providerID, "anthropic")
+        XCTAssertEqual(event.modelID, "claude-sonnet-4-6")
+        XCTAssertEqual(event.inputTokens, 11)
+        XCTAssertEqual(event.outputTokens, 8)
+        XCTAssertEqual(event.cacheCreationTokens, 3)
+        XCTAssertEqual(event.cacheReadTokens, 2)
+
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        let entry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(entry.requestPath, "/v1/chat/completions")
+        XCTAssertEqual(entry.endpoint, "Chat Completions")
+        XCTAssertTrue(entry.streamed)
+        XCTAssertEqual(entry.usage?.inputTokens, 11)
+        XCTAssertEqual(entry.usage?.outputTokens, 8)
+    }
+
+    func testProxiesResponsesThroughConfiguredProviderAndRecordsUsage() async throws {
+        let upstream = LinuxMockOpenAIStreamServer(response: .openAIResponsesJSON)
+        try upstream.start()
+        defer { upstream.stop() }
+
+        let harness = try LinuxGatewayHarness()
+        defer { Task { await harness.stop() } }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
+        try await harness.start()
+
+        let body = #"{"model":"glm-5-turbo","input":"ping"}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/responses",
+            body: body
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(response.headers["content-type"], "application/json")
+        XCTAssertTrue(response.body.contains(#""object":"response""#), response.body)
+        XCTAssertTrue(response.body.contains("response from linux"), response.body)
+
+        let upstreamRequest = try XCTUnwrap(upstream.recordedRequests.first)
+        XCTAssertEqual(upstreamRequest.path, "/v1/responses")
+        XCTAssertEqual(upstreamRequest.authorization, "Bearer primary-key")
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"glm-5-turbo""#), upstreamRequest.body)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        let event = try XCTUnwrap(usage.first)
+        XCTAssertEqual(event.providerID, "zai")
+        XCTAssertEqual(event.inputTokens, 13)
+        XCTAssertEqual(event.outputTokens, 7)
+
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        let entry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(entry.requestPath, "/v1/responses")
+        XCTAssertEqual(entry.endpoint, "Responses")
+        XCTAssertFalse(entry.streamed)
+    }
+
+    func testProxiesAnthropicMessagesThroughConfiguredProviderAndRecordsUsage() async throws {
+        let upstream = LinuxMockOpenAIStreamServer(response: .anthropicMessagesJSON)
+        try upstream.start()
+        defer { upstream.stop() }
+
+        let harness = try LinuxGatewayHarness()
+        defer { Task { await harness.stop() } }
+        try await harness.configureAnthropicProvider(baseURL: "http://127.0.0.1:\(upstream.port)/anthropic/v1")
+        try await harness.start()
+
+        let body = #"{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"ping"}]}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/messages",
+            body: body
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(response.headers["content-type"], "application/json")
+        XCTAssertTrue(response.body.contains(#""type":"message""#), response.body)
+        XCTAssertTrue(response.body.contains("anthropic linux"), response.body)
+
+        let upstreamRequest = try XCTUnwrap(upstream.recordedRequests.first)
+        XCTAssertEqual(upstreamRequest.path, "/anthropic/v1/messages")
+        XCTAssertEqual(upstreamRequest.xApiKey, "sk-ant-api03-primary-key")
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#), upstreamRequest.body)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        let event = try XCTUnwrap(usage.first)
+        XCTAssertEqual(event.providerID, "anthropic")
+        XCTAssertEqual(event.inputTokens, 17)
+        XCTAssertEqual(event.outputTokens, 4)
+
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        let entry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(entry.requestPath, "/v1/messages")
+        XCTAssertEqual(entry.endpoint, "Anthropic Messages")
+        XCTAssertFalse(entry.streamed)
+    }
+
     func testRejectsMalformedChatCompletionsRequestBeforeRouting() async throws {
         let harness = try LinuxGatewayHarness()
         defer { Task { await harness.stop() } }
@@ -157,6 +289,24 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
         )
     }
 
+    func configureAnthropicProvider(baseURL: String) async throws {
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: baseURL,
+                preferredModelIDs: ["claude-sonnet-4-6"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "primary",
+            label: "Primary",
+            apiKey: "sk-ant-api03-primary-key"
+        )
+    }
+
     func start() async throws {
         try await server.start()
         try await LinuxSocketSupport.waitForListener(port: port)
@@ -172,7 +322,15 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
     struct Request: Sendable {
         let path: String
         let authorization: String?
+        let xApiKey: String?
         let body: String
+    }
+
+    enum Response: Sendable {
+        case openAIChatStream
+        case openAIResponsesJSON
+        case anthropicMessagesJSON
+        case anthropicMessagesStream
     }
 
     private let lock = NSLock()
@@ -181,9 +339,11 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
     private var acceptTask: Task<Void, Never>?
     private(set) var port: Int = 0
     private let dropsAfterFirstChunk: Bool
+    private let response: Response
 
-    init(dropsAfterFirstChunk: Bool = false) {
+    init(dropsAfterFirstChunk: Bool = false, response: Response = .openAIChatStream) {
         self.dropsAfterFirstChunk = dropsAfterFirstChunk
+        self.response = response
     }
 
     var recordedRequests: [Request] {
@@ -261,26 +421,91 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
         requests.append(request)
         lock.unlock()
 
-        let contentLength = dropsAfterFirstChunk ? "Content-Length: 10000\r\n" : ""
-        let head = "HTTP/1.1 200 OK\r\n"
-            + "Content-Type: text/event-stream\r\n"
-            + "Cache-Control: no-cache\r\n"
-            + contentLength
-            + "Connection: close\r\n"
-            + "\r\n"
-        _ = try? LinuxSocketSupport.sendAll(Data(head.utf8), to: clientFD)
+        switch response {
+        case .openAIChatStream:
+            let contentLength = dropsAfterFirstChunk ? "Content-Length: 10000\r\n" : ""
+            let head = "HTTP/1.1 200 OK\r\n"
+                + "Content-Type: text/event-stream\r\n"
+                + "Cache-Control: no-cache\r\n"
+                + contentLength
+                + "Connection: close\r\n"
+                + "\r\n"
+            _ = try? LinuxSocketSupport.sendAll(Data(head.utf8), to: clientFD)
 
-        let firstChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}"# + "\n\n"
-        _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
-        if dropsAfterFirstChunk {
-            var resetLinger = linger(l_onoff: 1, l_linger: 0)
-            setsockopt(clientFD, SOL_SOCKET, SO_LINGER, &resetLinger, socklen_t(MemoryLayout<linger>.size))
-            return
+            let firstChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}"# + "\n\n"
+            _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
+            if dropsAfterFirstChunk {
+                var resetLinger = linger(l_onoff: 1, l_linger: 0)
+                setsockopt(clientFD, SOL_SOCKET, SO_LINGER, &resetLinger, socklen_t(MemoryLayout<linger>.size))
+                return
+            }
+            Glibc.usleep(50_000)
+            let usageChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"
+            _ = try? LinuxSocketSupport.sendAll(Data(usageChunk.utf8), to: clientFD)
+            _ = try? LinuxSocketSupport.sendAll(Data("data: [DONE]\n\n".utf8), to: clientFD)
+        case .openAIResponsesJSON:
+            sendJSON(
+                """
+                {"id":"resp_linux","object":"response","created_at":1783200000,"status":"completed","model":"glm-5-turbo","output":[{"id":"msg_linux","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"response from linux","annotations":[]}]}],"output_text":"response from linux","usage":{"input_tokens":13,"output_tokens":7,"total_tokens":20}}
+                """,
+                to: clientFD
+            )
+        case .anthropicMessagesJSON:
+            sendJSON(
+                """
+                {"id":"msg_linux","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"anthropic linux"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":17,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}
+                """,
+                to: clientFD
+            )
+        case .anthropicMessagesStream:
+            let head = "HTTP/1.1 200 OK\r\n"
+                + "Content-Type: text/event-stream\r\n"
+                + "Cache-Control: no-cache\r\n"
+                + "Connection: close\r\n"
+                + "\r\n"
+            _ = try? LinuxSocketSupport.sendAll(Data(head.utf8), to: clientFD)
+            let chunks = [
+                #"""
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_stream","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"usage":{"input_tokens":11,"output_tokens":0,"cache_creation_input_tokens":3,"cache_read_input_tokens":2}}}
+
+"""# + "\n",
+                #"""
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello "}}
+
+"""# + "\n",
+                #"""
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_linux","name":"get_weather","input":{}}}
+
+"""# + "\n",
+                #"""
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":\"Ch"}}
+
+"""# + "\n",
+                #"""
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"icago\"}"}}
+
+"""# + "\n",
+                #"""
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":8}}
+
+"""# + "\n",
+                #"""
+event: message_stop
+data: {"type":"message_stop"}
+
+"""# + "\n"
+            ]
+            for chunk in chunks {
+                _ = try? LinuxSocketSupport.sendAll(Data(chunk.utf8), to: clientFD)
+                Glibc.usleep(10_000)
+            }
         }
-        Glibc.usleep(50_000)
-        let usageChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"
-        _ = try? LinuxSocketSupport.sendAll(Data(usageChunk.utf8), to: clientFD)
-        _ = try? LinuxSocketSupport.sendAll(Data("data: [DONE]\n\n".utf8), to: clientFD)
     }
 
     private static func parseRequest(_ raw: String) -> Request {
@@ -290,11 +515,25 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
         let path = requestLine.count > 1 ? String(requestLine[1]) : ""
         let authorization = headerLines.first { $0.lowercased().hasPrefix("authorization:") }
             .map { $0.dropFirst("authorization:".count).trimmingCharacters(in: .whitespaces) }
+        let xApiKey = headerLines.first { $0.lowercased().hasPrefix("x-api-key:") }
+            .map { $0.dropFirst("x-api-key:".count).trimmingCharacters(in: .whitespaces) }
         return Request(
             path: path,
             authorization: authorization,
+            xApiKey: xApiKey,
             body: sections.dropFirst().joined(separator: "\r\n\r\n")
         )
+    }
+
+    private func sendJSON(_ body: String, to clientFD: Int32) {
+        let data = Data(body.utf8)
+        let head = "HTTP/1.1 200 OK\r\n"
+            + "Content-Type: application/json\r\n"
+            + "Content-Length: \(data.count)\r\n"
+            + "Connection: close\r\n"
+            + "\r\n"
+        _ = try? LinuxSocketSupport.sendAll(Data(head.utf8), to: clientFD)
+        _ = try? LinuxSocketSupport.sendAll(data, to: clientFD)
     }
 }
 

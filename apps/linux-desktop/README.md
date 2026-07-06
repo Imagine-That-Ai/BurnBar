@@ -7,7 +7,7 @@ Tauri 2 + React 19 + Vite shell for mission-001 `W06LinuxShellUx`.
 - `src/main.tsx` — boot (perf `app.start`, reduced motion, onboarding redirect) + React mount.
 - `src/state/shellStore.ts` — Zustand shell store (route, daemon health, fixture mode, skin, bridge); `useDaemonStatusCopy()`.
 - `src/app/App.tsx` — layout landmarks (skip link → `nav[aria-label="Primary"]` → `main#main`).
-- `src/components/` — design-system primitives (SurfaceCard, DataTable, Banner, OfflineNotice, FailureStateList, StatusPill, ProviderGlyphs, Sparkline, MeshBackdrop, NavRail).
+- `src/components/` — design-system primitives (SurfaceCard, DataTable, Banner, OfflineNotice, FailureStateList, StatusPill, ProviderGlyphs, Sparkline, MeshBackdrop).
 - `src/surfaces/` — one module per route; `SurfaceRouter.tsx` is the route→surface registry.
 - `src/styles/tokens.css` (generated from `packages/design-tokens/`) + `src/styles/app.css` (skins + component styles; nav geometry is pinned by the packaged smoke).
 
