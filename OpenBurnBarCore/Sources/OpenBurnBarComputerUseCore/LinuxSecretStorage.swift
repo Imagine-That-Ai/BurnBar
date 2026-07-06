@@ -210,7 +210,8 @@ final class LinuxPersistentSecretStore: @unchecked Sendable {
     }
 
     private static func defaultLogger(_ message: String) {
-        fputs("\(message)\n", stderr)
+        guard let data = "\(message)\n".data(using: .utf8) else { return }
+        FileHandle.standardError.write(data)
     }
 }
 

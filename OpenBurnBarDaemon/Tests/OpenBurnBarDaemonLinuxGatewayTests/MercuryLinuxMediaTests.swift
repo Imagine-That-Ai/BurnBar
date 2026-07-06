@@ -2,6 +2,7 @@
 import Foundation
 import Glibc
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarDaemon
 import XCTest
@@ -106,6 +107,58 @@ final class MercuryLinuxMediaTests: XCTestCase {
         )
         XCTAssertEqual(statusResponse.result?.session.phase, .idle)
 
+        let fileListRequest = BurnBarRPCRequestEnvelope(id: "file-list", method: .daemonMediaFileOfferList)
+        let fileListResponse: BurnBarRPCResponseEnvelope<DaemonMediaFileOfferListResponse> = try await invoke(
+            server: server,
+            method: .daemonMediaFileOfferList,
+            request: fileListRequest,
+            requestData: try JSONEncoder().encode(fileListRequest),
+            decoder: decoder
+        )
+        XCTAssertNotNil(fileListResponse.result)
+
+        let fileAccept = BurnBarRPCRequestEnvelopeWithParams(
+            id: "file-accept",
+            method: .daemonMediaFileAccept,
+            params: DaemonMediaFileAcceptRequest(transferID: "missing")
+        )
+        let fileAcceptResponse: BurnBarRPCResponseEnvelope<DaemonMediaFileActionResponse> = try await invoke(
+            server: server,
+            method: .daemonMediaFileAccept,
+            request: BurnBarRPCRequestEnvelope(id: fileAccept.id, method: fileAccept.method),
+            requestData: try JSONEncoder().encode(fileAccept),
+            decoder: decoder
+        )
+        XCTAssertEqual(fileAcceptResponse.result?.accepted, false)
+
+        let fileDecline = BurnBarRPCRequestEnvelopeWithParams(
+            id: "file-decline",
+            method: .daemonMediaFileDecline,
+            params: DaemonMediaFileDeclineRequest(transferID: "missing", reason: "test")
+        )
+        let fileDeclineResponse: BurnBarRPCResponseEnvelope<DaemonMediaFileActionResponse> = try await invoke(
+            server: server,
+            method: .daemonMediaFileDecline,
+            request: BurnBarRPCRequestEnvelope(id: fileDecline.id, method: fileDecline.method),
+            requestData: try JSONEncoder().encode(fileDecline),
+            decoder: decoder
+        )
+        XCTAssertEqual(fileDeclineResponse.result?.accepted, false)
+
+        let fileSend = BurnBarRPCRequestEnvelopeWithParams(
+            id: "file-send",
+            method: .daemonMediaFileSend,
+            params: DaemonMediaFileSendRequest(path: "/tmp/openburnbar-missing-\(UUID().uuidString)")
+        )
+        let fileSendResponse: BurnBarRPCResponseEnvelope<DaemonMediaFileActionResponse> = try await invoke(
+            server: server,
+            method: .daemonMediaFileSend,
+            request: BurnBarRPCRequestEnvelope(id: fileSend.id, method: fileSend.method),
+            requestData: try JSONEncoder().encode(fileSend),
+            decoder: decoder
+        )
+        XCTAssertEqual(fileSendResponse.result?.accepted, false)
+
         let accept = BurnBarRPCRequestEnvelopeWithParams(
             id: "accept",
             method: .daemonMediaCallAccept,
@@ -163,6 +216,154 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(capability.codecs["av1"], false)
     }
 
+    func testFileOfferAcceptDownloadsToCollisionSafePathAndAcknowledges() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-file-accept-\(UUID().uuidString)", isDirectory: true)
+        let downloads = root.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        try Data("existing".utf8).write(to: downloads.appendingPathComponent("report.txt"))
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let received = Data("downloaded from phone".utf8)
+        let backend = InMemoryIrohBlobBackend(fetchBodies: ["ticket-in": received])
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: root.appendingPathComponent("BlobStore", isDirectory: true),
+                inboxDirectoryURL: root.appendingPathComponent("Inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x11, count: 32) }
+            )
+        )
+        let controller = MercuryLinuxMediaSessionController(
+            fileTransferService: service,
+            downloadDirectoryProvider: { downloads }
+        )
+        let replies = RecordingMercuryReplies()
+
+        await controller.ingestMercuryFrame(
+            fileAdvertiseFrame(filename: "report.txt", ticket: "ticket-in", size: Int64(received.count))
+        ) { frame in
+            await replies.append(frame)
+        }
+
+        let pendingList = await controller.fileOfferList()
+        XCTAssertTrue(pendingList.capabilityAvailable)
+        XCTAssertEqual(pendingList.transfers.first?.phase, .pendingAccept)
+
+        let accept = await controller.acceptFile(DaemonMediaFileAcceptRequest(transferID: pendingList.transfers.first?.transferID))
+        XCTAssertTrue(accept.accepted)
+
+        let completed = try await waitForTransfer(
+            controller: controller,
+            transferID: pendingList.transfers.first?.transferID,
+            phase: .completed
+        )
+        XCTAssertEqual(completed.filename, "report.txt")
+        XCTAssertEqual(completed.localPath?.hasSuffix("report (1).txt"), true)
+        XCTAssertEqual(completed.progress.bytesTransferred, Int64(received.count))
+        XCTAssertEqual(completed.progress.fraction, 1.0)
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: try XCTUnwrap(completed.localPath))), received)
+
+        let sent = await replies.frames
+        XCTAssertEqual(sent.last?.type, .mediaBlobAck)
+        XCTAssertEqual(sent.last?.media?.ack?.status, .received)
+        XCTAssertEqual(backend.fetchCallCount, 1)
+    }
+
+    func testFileOfferDeclineSendsRejectedAckWithoutFetch() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-file-decline-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let backend = InMemoryIrohBlobBackend(fetchBodies: ["ticket-in": Data("unused".utf8)])
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: root.appendingPathComponent("BlobStore", isDirectory: true),
+                inboxDirectoryURL: root.appendingPathComponent("Inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x22, count: 32) }
+            )
+        )
+        let controller = MercuryLinuxMediaSessionController(
+            fileTransferService: service,
+            downloadDirectoryProvider: { root.appendingPathComponent("Downloads", isDirectory: true) }
+        )
+        let replies = RecordingMercuryReplies()
+
+        await controller.ingestMercuryFrame(fileAdvertiseFrame(ticket: "ticket-in")) { frame in
+            await replies.append(frame)
+        }
+        let transferID = await controller.fileOfferList().transfers.first?.transferID
+        let declined = await controller.declineFile(
+            DaemonMediaFileDeclineRequest(transferID: transferID, reason: "not now")
+        )
+
+        XCTAssertTrue(declined.accepted)
+        XCTAssertEqual(declined.transfer?.phase, .declined)
+        let sent = await replies.frames
+        XCTAssertEqual(sent.last?.media?.ack?.status, .rejected)
+        XCTAssertEqual(sent.last?.media?.ack?.reason, "not now")
+        XCTAssertEqual(backend.fetchCallCount, 0)
+    }
+
+    func testCollisionSafeDownloadNaming() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-file-collision-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data().write(to: root.appendingPathComponent("photo.png"))
+        try Data().write(to: root.appendingPathComponent("photo (1).png"))
+
+        let next = try MercuryLinuxMediaSessionController.collisionSafeDownloadURL(
+            filename: "../photo.png",
+            in: root
+        )
+        XCTAssertEqual(next.lastPathComponent, "-photo.png")
+
+        let collided = try MercuryLinuxMediaSessionController.collisionSafeDownloadURL(
+            filename: "photo.png",
+            in: root
+        )
+        XCTAssertEqual(collided.lastPathComponent, "photo (2).png")
+    }
+
+    func testFileTransferErrorTaxonomy() async throws {
+        let noEngine = MercuryLinuxMediaSessionController()
+        let noEngineSend = await noEngine.sendFile(DaemonMediaFileSendRequest(path: "/tmp/missing"))
+        XCTAssertEqual(noEngineSend.errorCode, .capabilityAbsent)
+        XCTAssertFalse(noEngineSend.accepted)
+
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-file-errors-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let localFile = root.appendingPathComponent("send.txt", isDirectory: false)
+        try Data("hello".utf8).write(to: localFile)
+        let service = MediaFileTransferService(
+            backend: InMemoryIrohBlobBackend(fetchBodies: [:]),
+            configuration: .init(
+                storeDirectoryURL: root.appendingPathComponent("BlobStore", isDirectory: true),
+                inboxDirectoryURL: root.appendingPathComponent("Inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x33, count: 32) }
+            )
+        )
+        let controller = MercuryLinuxMediaSessionController(
+            fileTransferService: service,
+            downloadDirectoryProvider: { root.appendingPathComponent("Downloads", isDirectory: true) }
+        )
+
+        let missingAccept = await controller.acceptFile(DaemonMediaFileAcceptRequest(transferID: "missing"))
+        XCTAssertEqual(missingAccept.errorCode, .transferNotFound)
+
+        let missingFile = await controller.sendFile(
+            DaemonMediaFileSendRequest(path: root.appendingPathComponent("missing.txt").path)
+        )
+        XCTAssertEqual(missingFile.errorCode, .localFileMissing)
+
+        let noRoute = await controller.sendFile(DaemonMediaFileSendRequest(path: localFile.path))
+        XCTAssertEqual(noRoute.errorCode, .noControlRoute)
+    }
+
     private func invoke<Response: Decodable>(
         server: BurnBarDaemonServer,
         method: BurnBarRPCMethod,
@@ -194,6 +395,53 @@ final class MercuryLinuxMediaTests: XCTestCase {
                 )
             )
         )
+    }
+
+    private func fileAdvertiseFrame(
+        filename: String = "notes.txt",
+        ticket: String = "ticket",
+        size: Int64 = 0
+    ) -> HermesRealtimeRelayFrame {
+        let manifest = HermesRealtimeRelayAttachmentManifest(
+            manifestId: "manifest-\(UUID().uuidString)",
+            blobHash: "blob-hash",
+            filename: filename,
+            mime: "text/plain",
+            size: size,
+            peerDeviceId: "iphone",
+            createdAt: Date()
+        )
+        return HermesRealtimeRelayFrame(
+            type: .mediaBlobAdvertise,
+            uid: "uid-1",
+            connectionId: "conn-1",
+            requestId: manifest.manifestId,
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: MediaStreamClass.blobAdvertise.rawValue,
+                attachment: manifest,
+                blobTicket: ticket
+            )
+        )
+    }
+
+    private func waitForTransfer(
+        controller: MercuryLinuxMediaSessionController,
+        transferID: String?,
+        phase: DaemonMediaFileTransferPhase,
+        timeout: TimeInterval = 2
+    ) async throws -> DaemonMediaFileTransferSnapshot {
+        let transferID = try XCTUnwrap(transferID)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let list = await controller.fileOfferList()
+            if let transfer = list.transfers.first(where: { $0.transferID == transferID }),
+               transfer.phase == phase {
+                return transfer
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("Timed out waiting for transfer \(transferID) to reach \(phase.rawValue)")
+        throw CocoaError(.featureUnsupported)
     }
 
     private func connectUnixSocket(path: String) throws -> Int32 {
@@ -267,6 +515,87 @@ private actor RecordingMercuryReplies {
 
     func append(_ frame: HermesRealtimeRelayFrame) {
         stored.append(frame)
+    }
+}
+
+private final class InMemoryIrohBlobBackend: IrohBlobBackend, @unchecked Sendable {
+    private var fetchBodies: [String: Data]
+    private(set) var fetchCallCount = 0
+    private(set) var publishedPaths: [String] = []
+    private var bootstrapped = false
+
+    init(fetchBodies: [String: Data]) {
+        self.fetchBodies = fetchBodies
+    }
+
+    func bootstrap(
+        secret: Data,
+        storeDirectoryPath: String,
+        relayURL: String?
+    ) async throws -> IrohEndpointIdentity {
+        XCTAssertEqual(secret.count, 32)
+        try FileManager.default.createDirectory(
+            atPath: storeDirectoryPath,
+            withIntermediateDirectories: true
+        )
+        bootstrapped = true
+        return IrohEndpointIdentity(
+            nodeId: "test-node",
+            rawPublicKey: Data(repeating: 0xAB, count: 32),
+            relayURL: relayURL
+        )
+    }
+
+    func publishBlob(localPath: String) async throws -> String {
+        guard bootstrapped else { throw IrohBlobBackendError.notInitialized }
+        guard FileManager.default.fileExists(atPath: localPath) else {
+            throw IrohBlobBackendError.publishFailed("missing")
+        }
+        publishedPaths.append(localPath)
+        return "ticket-\((localPath as NSString).lastPathComponent)"
+    }
+
+    func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
+        guard bootstrapped else { throw IrohBlobBackendError.notInitialized }
+        guard let data = fetchBodies[ticketText] else {
+            throw IrohBlobBackendError.invalidTicket(ticketText)
+        }
+        try FileManager.default.createDirectory(
+            atPath: (destination as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true
+        )
+        try data.write(to: URL(fileURLWithPath: destination), options: [.atomic])
+        fetchCallCount += 1
+        return BlobTransferStats(
+            bytesTotal: UInt64(data.count),
+            blake3Hash: "fake-hash",
+            durationMillis: 1,
+            didResume: false
+        )
+    }
+
+    func fetchBlob(
+        ticketText: String,
+        destination: String,
+        expectedSizeBytes: UInt64
+    ) async throws -> BlobTransferStats {
+        let stats = try await fetchBlob(ticketText: ticketText, destination: destination)
+        guard stats.bytesTotal <= expectedSizeBytes else {
+            throw IrohBlobBackendError.fetchFailed("too large")
+        }
+        return stats
+    }
+
+    func identity() async throws -> IrohEndpointIdentity {
+        guard bootstrapped else { throw IrohBlobBackendError.notInitialized }
+        return IrohEndpointIdentity(
+            nodeId: "test-node",
+            rawPublicKey: Data(repeating: 0xAB, count: 32)
+        )
+    }
+
+    func shutdown() async {
+        bootstrapped = false
     }
 }
 #endif

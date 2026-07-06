@@ -84,6 +84,50 @@ extension BurnBarDaemonServer {
             #endif
             return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: result))
 
+        case .daemonMediaFileOfferList:
+            #if os(Linux)
+            let result = await mediaService.fileOfferList()
+            #else
+            let result = Self.unavailableMediaFileOfferList()
+            #endif
+            return encode(BurnBarRPCResponseEnvelope(id: request.id, result: result))
+
+        case .daemonMediaFileAccept:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<DaemonMediaFileAcceptRequest>.self,
+                from: requestData
+            )
+            #if os(Linux)
+            let result = await mediaService.acceptFile(typedRequest.params)
+            #else
+            let result = Self.unavailableMediaFileAction()
+            #endif
+            return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: result))
+
+        case .daemonMediaFileDecline:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<DaemonMediaFileDeclineRequest>.self,
+                from: requestData
+            )
+            #if os(Linux)
+            let result = await mediaService.declineFile(typedRequest.params)
+            #else
+            let result = Self.unavailableMediaFileAction()
+            #endif
+            return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: result))
+
+        case .daemonMediaFileSend:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<DaemonMediaFileSendRequest>.self,
+                from: requestData
+            )
+            #if os(Linux)
+            let result = await mediaService.sendFile(typedRequest.params)
+            #else
+            let result = Self.unavailableMediaFileAction()
+            #endif
+            return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: result))
+
         default:
             preconditionFailure("Unhandled media RPC method: \(method.rawValue)")
         }
@@ -110,6 +154,23 @@ extension BurnBarDaemonServer {
             shellConnected: false,
             queuedFrameCount: 0,
             droppedFrameCount: 0
+        )
+    }
+
+    private nonisolated static func unavailableMediaFileOfferList() -> DaemonMediaFileOfferListResponse {
+        DaemonMediaFileOfferListResponse(
+            capabilityAvailable: false,
+            downloadDirectory: nil,
+            transfers: [],
+            detail: "Linux Mercury file transfer is unavailable on this platform."
+        )
+    }
+
+    private nonisolated static func unavailableMediaFileAction() -> DaemonMediaFileActionResponse {
+        DaemonMediaFileActionResponse(
+            accepted: false,
+            errorCode: .capabilityAbsent,
+            detail: "Linux Mercury file transfer is unavailable on this platform."
         )
     }
 }

@@ -1140,6 +1140,52 @@ fn media_capability_get() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.media.capability.get", Some(serde_json::json!({})))
 }
 
+#[tauri::command]
+fn media_file_offer_list() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.media.file.offer.list", Some(serde_json::json!({})))
+}
+
+#[tauri::command]
+fn media_file_accept(
+    transfer_id: Option<String>,
+    manifest_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.media.file.accept",
+        Some(serde_json::json!({
+            "transferID": transfer_id,
+            "manifestID": manifest_id
+        })),
+    )
+}
+
+#[tauri::command]
+fn media_file_decline(
+    transfer_id: Option<String>,
+    manifest_id: Option<String>,
+    reason: Option<String>,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.media.file.decline",
+        Some(serde_json::json!({
+            "transferID": transfer_id,
+            "manifestID": manifest_id,
+            "reason": reason
+        })),
+    )
+}
+
+#[tauri::command]
+fn media_file_send(path: String, peer_id: Option<String>) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.media.file.send",
+        Some(serde_json::json!({
+            "path": path,
+            "peerID": peer_id
+        })),
+    )
+}
+
 fn media_phase(value: &serde_json::Value) -> Option<String> {
     value
         .get("phase")
@@ -1311,6 +1357,10 @@ pub fn run() {
             media_decline_call,
             media_end_call,
             media_capability_get,
+            media_file_offer_list,
+            media_file_accept,
+            media_file_decline,
+            media_file_send,
             integrations_status
         ])
         .setup(|app| {

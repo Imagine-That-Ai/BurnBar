@@ -3,6 +3,10 @@ import type {
   DatabaseWorkspaceStatus,
   IntegrationsStatus,
   MercuryMediaCapability,
+  MercuryFileOfferListResponse,
+  MercuryFileTransferActionRequest,
+  MercuryFileTransferActionResponse,
+  MercuryFileTransferSendRequest,
   MemoryReviewInbox,
   MercuryMediaStatus,
   MercuryMediaSessionState,
@@ -29,6 +33,14 @@ export const emptyMediaCapability = (): Promise<MercuryMediaCapability> =>
     canReceiveCalls: false,
     canViewScreenShare: false
   });
+
+export const emptyMediaFileOfferList = (): Promise<MercuryFileOfferListResponse> =>
+  Promise.resolve({ capabilityAvailable: false, transfers: [] });
+
+export const emptyMediaFileAction = (
+  _request?: MercuryFileTransferActionRequest | MercuryFileTransferSendRequest
+): Promise<MercuryFileTransferActionResponse> =>
+  Promise.resolve({ accepted: false, errorCode: 'capabilityAbsent' });
 
 export const emptyIntegrationsStatus = (): Promise<IntegrationsStatus> =>
   Promise.resolve({ integrations: [] });
@@ -80,6 +92,10 @@ export const bridgeStubDefaults = {
   mediaDeclineCall: emptyMediaAction,
   mediaEndCall: emptyMediaSessionState,
   mediaCapabilityGet: emptyMediaCapability,
+  mediaFileOfferList: emptyMediaFileOfferList,
+  mediaFileAccept: emptyMediaFileAction,
+  mediaFileDecline: emptyMediaFileAction,
+  mediaFileSend: emptyMediaFileAction,
   integrationsStatus: emptyIntegrationsStatus,
   missionCreate: emptyMissionCreate,
   memoryReviewInbox: emptyMemoryReviewInbox,
