@@ -6,6 +6,7 @@ using OpenBurnBar.CloudSync.Callable;
 using OpenBurnBar.CloudSync.Firestore;
 using OpenBurnBar.CloudSync.Gateway;
 using OpenBurnBar.CloudSync.Offline;
+using OpenBurnBar.CloudSync.Sync;
 
 namespace OpenBurnBar.App.CloudSync;
 
@@ -93,6 +94,89 @@ public sealed class CloudSyncCompositionRoot
             firebaseProjectId,
             firebaseUid,
             appCheckProvider);
+    }
+
+    /// <summary>
+    /// Live root: a signed-in <see cref="DesktopOAuthCredentialsProvider"/> supplies
+    /// the real Firebase id token for both Firestore auth and the App Check mint
+    /// (the provider is the id-token source). This is the credential gate that
+    /// flips the "Authored→Real" surfaces on. App Check stays optional: pass an
+    /// <paramref name="appCheckMintTransport"/> (e.g. the HttpClient mint transport)
+    /// to require + attach <c>X-Firebase-AppCheck</c>; omit it to run id-token-only
+    /// (App Check disabled) while its dedicated lane matures.
+    /// </summary>
+    public static CloudSyncCompositionRoot CreateWithOAuth(
+        DesktopOAuthCredentialsProvider oauth,
+        string firebaseProjectId,
+        string firebaseUid,
+        IAppCheckMintTransport? appCheckMintTransport = null,
+        bool? requireAppCheckOnFirestore = null)
+    {
+        if (oauth is null) throw new ArgumentNullException(nameof(oauth));
+        if (string.IsNullOrWhiteSpace(firebaseProjectId)) throw new ArgumentException("firebaseProjectId is required.", nameof(firebaseProjectId));
+        if (string.IsNullOrWhiteSpace(firebaseUid)) throw new ArgumentException("firebaseUid is required.", nameof(firebaseUid));
+
+        bool requireAppCheck = requireAppCheckOnFirestore ?? (appCheckMintTransport is not null);
+
+        WindowsAppCheckProvider? appCheckProvider = null;
+        if (appCheckMintTransport is not null)
+        {
+            var endpoint = AppCheckMintEndpoint.ForProject(firebaseProjectId);
+            var mintClient = new AppCheckMintClient(endpoint, appCheckMintTransport);
+            var options = new AppCheckProviderOptions { AppId = $"1:openburnbar:web:{firebaseProjectId}" };
+            appCheckProvider = new WindowsAppCheckProvider(
+                new MockAttestationProducer(),
+                mintClient,
+                oauth, // the live Firebase id token drives the mint bearer
+                options,
+                SystemClock.Instance);
+        }
+
+        var credentials = new AppCheckCredentialsProvider(oauth, appCheckProvider);
+        var http = new HttpClientCloudSyncTransport(new HttpClient());
+        var database = new FirestoreDatabase(firebaseProjectId);
+        var gateway = new FirestoreRestGateway(http, credentials, database, requireAppCheck);
+        var callable = new CallableClient(http, credentials, new CallableEndpoint("us-central1", firebaseProjectId));
+        var queue = new OfflineWriteQueue(gateway, startOnline: true);
+
+        return new CloudSyncCompositionRoot(
+            gateway,
+            callable,
+            queue,
+            credentials,
+            firebaseProjectId,
+            firebaseUid,
+            appCheckProvider);
+    }
+
+    /// <summary>
+    /// Build the live sync coordinator for the standard per-user domains
+    /// (<c>cli_agent_mission_requests</c>, <c>quota_snapshots</c>, <c>memory_facts</c>)
+    /// — the poll-then-snapshot-diff loop that pulls real documents through this
+    /// root's gateway and raises per-domain change events. Once credentials exist,
+    /// this is how the seam-ready surfaces receive live data.
+    /// </summary>
+    public FirestoreSyncCoordinator CreateLiveSyncCoordinator(
+        TimeSpan? pollInterval = null,
+        SyncBackoffPolicy? backoff = null,
+        ISyncClock? clock = null)
+    {
+        string uid = FirebaseUid.Trim();
+        var domains = new[]
+        {
+            SyncDomainDefinition.ForCollection(SyncDomains.Missions, $"users/{uid}/cli_agent_mission_requests", limit: 500),
+            SyncDomainDefinition.ForCollection(SyncDomains.QuotaSnapshots, $"users/{uid}/quota_snapshots", limit: 500),
+            SyncDomainDefinition.ForCollection(SyncDomains.MemoryFacts, $"users/{uid}/memory_facts", limit: 500),
+        };
+        return new FirestoreSyncCoordinator(Gateway, domains, clock, backoff, pollInterval);
+    }
+
+    /// <summary>Stable domain names raised by <see cref="CreateLiveSyncCoordinator"/>.</summary>
+    public static class SyncDomains
+    {
+        public const string Missions = "missions";
+        public const string QuotaSnapshots = "quota_snapshots";
+        public const string MemoryFacts = "memory_facts";
     }
 
     private sealed class NoOpAppCheckMintTransport : IAppCheckMintTransport

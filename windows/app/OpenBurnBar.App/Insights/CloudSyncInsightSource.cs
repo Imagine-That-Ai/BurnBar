@@ -8,24 +8,26 @@ using OpenBurnBar.App.Presentation.Dashboard;
 namespace OpenBurnBar.App.Insights;
 
 /// <summary>
-/// Resolves real insight data from the SQLCipher DB (token_usage aggregates via
-/// <see cref="OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary"/>)
-/// for the KPI tiles, and from Firestore insight canvas docs for saved canvases.
-/// KPI widgets use real SQLCipher aggregates or honest empty-state values. Non-KPI templates can
-/// still render deterministic samples, with the visible "SampleChip" marker.
+/// Resolves real insight data for the KPI tiles from the composed Dashboard usage summary
+/// (<see cref="OpenBurnBar.App.Dashboard.DashboardUsageProvider"/>): LIVE local SQLCipher
+/// <c>token_usage</c> aggregates, then the signed-in cloud usage feed
+/// (<c>users/{uid}/usage</c>) when the local DB is empty, then an honest empty state.
+/// Non-KPI templates (narratives, recommendations, forecasts) still need the Engine
+/// analysis path and render deterministic samples with the visible "SampleChip" marker.
+/// (A Firestore saved-canvas read is not implemented — the page only stamps built-ins.)
 /// </summary>
 public static class CloudSyncInsightSource
 {
     /// <summary>
-    /// Returns real KPI widget data from the SQLCipher DB when configured, or honest empty-state
-    /// KPI values when not. Complex widgets (narratives, recommendations, forecasts) still need
-    /// the Engine analysis path; those templates remain visibly marked as samples.
+    /// Returns real KPI widget data from the composed local→cloud usage summary when data
+    /// exists, or honest empty-state KPI values when not. Complex widgets still need the
+    /// Engine analysis path; those templates remain visibly marked as samples.
     /// </summary>
     public static InsightWidgetData ResolveKpi(InsightWidgetKind kind, int seed)
         => ResolveKpi(
             kind,
             seed,
-            OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary());
+            OpenBurnBar.App.Dashboard.DashboardUsageProvider.Load());
 
     public static InsightWidgetData ResolveKpi(InsightWidgetKind kind, int seed, DashboardUsageSummary summary)
     {
