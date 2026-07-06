@@ -11,10 +11,10 @@ public sealed partial class ConstellationLayoutView : UserControl
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
-        var summary = OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary();
+        var summary = await DashboardUsageProvider.LoadAsync();
         SpendTile.Value = DashboardUsageSummaryFormatter.Spend(summary);
         TokensTile.Value = DashboardUsageSummaryFormatter.Tokens(summary);
         ProvidersTile.Value = DashboardUsageSummaryFormatter.Providers(summary);
