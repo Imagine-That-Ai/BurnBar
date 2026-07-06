@@ -98,7 +98,11 @@ var packageTargets: [Target] = [
     ),
     .testTarget(
         name: "OpenBurnBarDaemonLinuxGatewayTests",
-        dependencies: ["OpenBurnBarDaemon"],
+        dependencies: [
+            "OpenBurnBarDaemon",
+            .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
+            .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+        ],
         // Socket-level Linux gateway harness stays Swift 5 to avoid
         // region-isolation noise around POSIX buffers in XCTest helpers.
         swiftSettings: [.swiftLanguageMode(.v5)]
