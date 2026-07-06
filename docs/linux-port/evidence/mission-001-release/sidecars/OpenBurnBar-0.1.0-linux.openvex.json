@@ -1,6 +1,6 @@
 {
   "@context": "https://openvex.dev/ns/v0.2.0",
-  "@id": "https://openburnbar.dev/vex/0aa2d04b-7127-46a5-9be6-945181181140",
+  "@id": "https://openburnbar.dev/vex/e2d902f6-f9d2-449e-8073-81300f703da2",
   "author": "OpenBurnBar Release Engineering",
   "statements": [
     {
@@ -12,12 +12,12 @@
       ],
       "status": "not_affected",
       "status_notes": "OpenBurnBar v0.1.0: no VEX exceptions filed at generation time. Re-run with statement entries when npm/OSV/cargo-deny findings are triaged.",
-      "timestamp": "2026-07-05T12:51:04Z",
+      "timestamp": "2026-07-06T10:52:43Z",
       "vulnerability": {
         "name": "placeholder-no-known-exploitable-in-release-sbom"
       }
     }
   ],
-  "timestamp": "2026-07-05T12:51:04Z",
+  "timestamp": "2026-07-06T10:52:43Z",
   "version": 1
 }

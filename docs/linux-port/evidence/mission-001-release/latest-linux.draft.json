@@ -3,11 +3,33 @@
   "product": "OpenBurnBar",
   "platform": "linux",
   "version": "0.1.0",
-  "commit": "1af805eb1878cc5af8821ee35cac838c5ac473ee",
-  "generatedAt": "2026-07-05T12:51:04.921Z",
+  "commit": "ce1b6abdf3f60a6d13e8d9171d03852dc80db6fc",
+  "generatedAt": "2026-07-06T10:52:44.449Z",
   "promotionState": "blocked",
   "primaryArtifact": null,
-  "artifacts": [],
+  "artifacts": [
+    {
+      "type": "deb",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_arm64.deb",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.0_arm64.deb",
+      "size": 7112208,
+      "sha256": "bdd000bef3e4b38074a7d1f81d16974ccba5b0386e54bec9ace968e3e7cec9ea"
+    },
+    {
+      "type": "rpm",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/rpm/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "size": 7113094,
+      "sha256": "9a48f234784a6abffdcdbf06267f4d68518dc129b8a61d23f38c9b38f4fe8d9b"
+    },
+    {
+      "type": "daemon",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/openburnbar-daemon-0.1.0-linux-aarch64",
+      "sourceFile": "OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon",
+      "size": 95050760,
+      "sha256": "64b6344a73a79bf6a798dbf526ac8aa2edc44cba031adb237ce8be784d9c9c94"
+    }
+  ],
   "sidecars": {
     "checksums": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux-checksums.txt",
     "sbom": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
@@ -25,24 +47,12 @@
       "message": "Required Linux appimage artifact was not produced by Tauri bundle output."
     },
     {
-      "kind": "missing-artifact",
-      "message": "Required Linux deb artifact was not produced by Tauri bundle output."
-    },
-    {
-      "kind": "missing-artifact",
-      "message": "Required Linux rpm artifact was not produced by Tauri bundle output."
-    },
-    {
-      "kind": "dirty-worktree",
-      "message": "Release metadata cannot be promoted from a dirty worktree; source archive only represents HEAD."
-    },
-    {
       "kind": "signing-credentials",
       "message": "OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is not configured; detached package signatures were not produced."
     },
     {
       "kind": "cosign-oidc",
-      "message": "SIGSTORE_ID_TOKEN is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC."
+      "message": "GitHub OIDC request token is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC."
     }
   ]
 }
