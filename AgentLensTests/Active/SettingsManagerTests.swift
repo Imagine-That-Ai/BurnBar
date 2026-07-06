@@ -235,6 +235,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.desktopWallpaperBackground = .forestMoss
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertEqual(settings.desktopWallpaperBackground, .forestMoss)
     }
 
     func test_desktopWallpaperBackgrounds_areBurnBarOwnedBackdrops() {
@@ -275,6 +276,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.clickDesktopToCycleSwarm = true
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertTrue(settings.clickDesktopToCycleSwarm)
     }
 
     func test_cycleShapesScreensaver_postsChangeNotification() {
@@ -293,6 +295,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.cycleShapesScreensaver = false
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertFalse(settings.cycleShapesScreensaver)
     }
 
     func test_desktopWallpaperSpeed_defaultValue_isBalanced() {
@@ -334,6 +337,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.desktopWallpaperSpeed = 1.2
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertEqual(settings.desktopWallpaperSpeed, 1.2, accuracy: 0.000_001)
     }
 
     func test_desktopWallpaperProviderGlyphs_defaultToAllProviders() {
@@ -372,6 +376,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.desktopWallpaperProviderGlyphs = [.codex]
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertEqual(settings.desktopWallpaperProviderGlyphs, [.codex])
     }
 
     func test_excludeBrandShapesFromSwarm_defaultsToFalse() {
@@ -406,6 +411,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.excludeBrandShapesFromSwarm = true
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertTrue(settings.excludeBrandShapesFromSwarm)
     }
 
     func test_swarmWallpaperColorDriver_prioritizesRunningProvidersOverHistoricalUsage() {
