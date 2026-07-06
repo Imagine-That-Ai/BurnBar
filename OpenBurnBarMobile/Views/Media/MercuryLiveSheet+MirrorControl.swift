@@ -126,6 +126,17 @@ extension MercuryLiveSheet {
                 }
             }
         }
+        controlStreamCoordinator.callAckHandler = { ack in
+            await MainActor.run {
+                guard ack.requestId == self.pendingCallRequestID else { return }
+                self.callTimeoutTask?.cancel()
+                self.callTimeoutTask = nil
+                self.pendingCallRequestID = nil
+                self.lastCallAck = ack
+                self.lastError = nil
+                self.personalization.haptics.play()
+            }
+        }
         controlStreamCoordinator.clipboardResponseHandler = { response in
             await MainActor.run {
                 self.handleClipboardResponse(response)
@@ -605,11 +616,47 @@ extension MercuryLiveSheet {
     }
 
     func placeCall() async {
-        // VoIP wake from iOS → Mac requires a separate Cloud Function
-        // (sibling to `triggerVoIPCall`). v1 of this sheet wires the
-        // affordance and surfaces an honest error. The iroh transport
-        // alone can't ring a sleeping Mac.
-        lastError = "Calling Mac from iPhone arrives in a follow-up. Use the Mac to call your iPhone for now."
+        guard peer.canPlaceCall else {
+            lastError = "This Mac is not advertising call receive."
+            return
+        }
+        guard controlStreamCoordinator.phase == .live else {
+            lastError = callStatusMessage ?? "Mercury is still connecting. Try again after the Mac shows as live."
+            return
+        }
+        let requestID = "call_\(UUID().uuidString)"
+        pendingCallRequestID = requestID
+        lastCallAck = nil
+        lastError = nil
+        do {
+            try await controlStreamCoordinator.sendCallInvite(
+                requestId: requestID,
+                requesterDisplayName: deviceDisplayName(),
+                callKind: "video",
+                timeout: 4
+            )
+            startCallAckTimeout(requestID: requestID)
+        } catch {
+            callTimeoutTask?.cancel()
+            callTimeoutTask = nil
+            pendingCallRequestID = nil
+            lastError = error.localizedDescription
+        }
+    }
+
+    func startCallAckTimeout(requestID: String) {
+        callTimeoutTask?.cancel()
+        callTimeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            guard !Task.isCancelled, pendingCallRequestID == requestID else { return }
+            callTimeoutTask = nil
+            pendingCallRequestID = nil
+            lastError = "No response from the Mac. Mercury reconnected; try Call Mac again."
+            if let uid = uidProvider(), !uid.isEmpty {
+                await controlStreamCoordinator.stop()
+                controlStreamCoordinator.start(uid: uid, connectionID: connectionID)
+            }
+        }
     }
 
     func handleFilePick(_ result: Result<[URL], Error>) async {

@@ -58,6 +58,10 @@ struct MercuryLiveSheet: View {
 
     @State var lastAckReceivedAt: Date?
 
+    @State var lastCallAck: HermesRealtimeRelayCallAck?
+
+    @State var pendingCallRequestID: String?
+
     @State var cooldownClock = Date()
 
     @State var awaitingRequestID: String?
@@ -79,6 +83,8 @@ struct MercuryLiveSheet: View {
     @State var isShowingMirrorViewer = false
 
     @State var mirrorTimeoutTask: Task<Void, Never>?
+
+    @State var callTimeoutTask: Task<Void, Never>?
 
     @State var cooldownTickerTask: Task<Void, Never>?
 
@@ -237,6 +243,7 @@ struct MercuryLiveSheet: View {
                             inFlightCount: fileTransferService?.inFlightCount ?? 0,
                             moodName: MercuryMoodPreset.matching(personalization)?.name,
                             canRequestMirror: canRequestMirror,
+                            canPlaceCall: canPlaceCall,
                             canSendFile: canSendFiles,
                             onReconnect: {
                                 Task {
@@ -266,12 +273,14 @@ struct MercuryLiveSheet: View {
                         peer: peer,
                         accent: accent,
                         canRequestMirror: canRequestMirror,
-                        canPlaceCall: peer.canPlaceCall,
+                        canPlaceCall: canPlaceCall,
                         canSendFile: canSendFiles,
                         mirrorAutoAccept: mirrorAutoAccept,
                         awaitingRequestID: awaitingRequestID,
+                        pendingCallRequestID: pendingCallRequestID,
                         sendingFile: sendingFile,
                         mercuryStatusMessage: mercuryStatusMessage,
+                        callStatusMessage: callStatusMessage,
                         onRequestMirror: { Task { await requestMirror() } },
                         onPlaceCall: { Task { await placeCall() } },
                         onSendFile: { openFileImporterIfAvailable() },
@@ -314,6 +323,12 @@ struct MercuryLiveSheet: View {
                             .padding(.top, 8)
                     }
 
+                    if let callAck = lastCallAck {
+                        floatingCallAckHUD(for: callAck)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .padding(.top, 8)
+                    }
+
                     Spacer()
                 }
             }
@@ -342,6 +357,8 @@ struct MercuryLiveSheet: View {
             // Explicit close paths call `stopActiveMirror(reason:)`.
             mirrorTimeoutTask?.cancel()
             mirrorTimeoutTask = nil
+            callTimeoutTask?.cancel()
+            callTimeoutTask = nil
             cooldownTickerTask?.cancel()
             cooldownTickerTask = nil
             errorDismissTask?.cancel()
@@ -349,6 +366,7 @@ struct MercuryLiveSheet: View {
             ackDismissTask?.cancel()
             ackDismissTask = nil
             awaitingRequestID = nil
+            pendingCallRequestID = nil
             pendingRemoteUnlockCredentialRequestID = nil
             remoteUnlockCredentialAckTimeoutTask?.cancel()
             remoteUnlockCredentialAckTimeoutTask = nil
@@ -357,6 +375,7 @@ struct MercuryLiveSheet: View {
             controlStreamCoordinator.mirrorFrameV2Handler = nil
             controlStreamCoordinator.focusContextHandler = nil
             controlStreamCoordinator.controlDeniedHandler = nil
+            controlStreamCoordinator.callAckHandler = nil
             controlStreamCoordinator.clipboardResponseHandler = nil
             controlStreamCoordinator.remoteUnlockStateHandler = nil
             controlStreamCoordinator.remoteUnlockResultHandler = nil
