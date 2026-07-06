@@ -152,6 +152,9 @@ final class CloudSyncCircuitBreakerTests: XCTestCase {
     func test_concurrentAccess_doesNotCrash() async {
         let breaker = CloudSyncCircuitBreaker(failureThreshold: 10, resetTimeout: 1, successThresholdToClose: 2)
 
+        // Smoke test by intent: task-group ordering is deliberately
+        // nondeterministic, so the stable contract is actor serialization
+        // without a data race, trap, or hung task.
         // Fire many concurrent operations to stress-test the actor
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<100 {

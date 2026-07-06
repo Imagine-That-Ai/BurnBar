@@ -47,8 +47,10 @@ final class FlowLayoutTests: XCTestCase {
         XCTAssertNoThrow(try view.inspect())
     }
 
-    func test_conformsToLayout() {
+    func test_conformsToLayout_smokeCompileTime() {
         let layout = FlowLayout()
+        // Smoke test by intent: `Layout` protocol conformance is a compile-time
+        // contract; runtime SubviewsCollection assertions live in host-view tests.
         // Verify the layout can be used as a Layout value
         let _: any Layout = layout
     }

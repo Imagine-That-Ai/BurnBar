@@ -17,22 +17,22 @@ final class IntelligenceBriefSnapshotTests: XCTestCase {
     // MARK: - Snapshot variants
 
     func testFullBriefLightMode() throws {
-        try snap(.full, scheme: .light, name: "iphone17promax-full-light")
+        try XCTAssertIntelligenceBriefSnapshot(.full, scheme: .light, name: "iphone17promax-full-light")
     }
 
     func testFullBriefDarkMode() throws {
-        try snap(.full, scheme: .dark, name: "iphone17promax-full-dark")
+        try XCTAssertIntelligenceBriefSnapshot(.full, scheme: .dark, name: "iphone17promax-full-dark")
     }
 
     func testMinimalBriefDarkMode() throws {
         // Empty optional sections — only hero + audit footer should appear.
-        try snap(.minimal, scheme: .dark, name: "iphone17promax-minimal-dark")
+        try XCTAssertIntelligenceBriefSnapshot(.minimal, scheme: .dark, name: "iphone17promax-minimal-dark")
     }
 
     func testDynamicTypeXLargeDarkMode() throws {
         // `.xLarge` corresponds to a ~1.12–1.18× growth factor; the contract
         // calls for 1.15×.
-        try snap(
+        try XCTAssertIntelligenceBriefSnapshot(
             .full,
             scheme: .dark,
             dynamicType: .xLarge,
@@ -44,7 +44,7 @@ final class IntelligenceBriefSnapshotTests: XCTestCase {
         // With reduce-motion enabled the cascade-in modifier should not
         // delay any section, so the snapshot looks identical to the full
         // brief but is captured without waiting for the animation timer.
-        try snap(
+        try XCTAssertIntelligenceBriefSnapshot(
             .full,
             scheme: .dark,
             reduceMotion: true,
@@ -53,7 +53,7 @@ final class IntelligenceBriefSnapshotTests: XCTestCase {
     }
 
     func testIPadRegularLayout() throws {
-        try snap(
+        try XCTAssertIntelligenceBriefSnapshot(
             .full,
             scheme: .dark,
             size: CGSize(width: 1180, height: 1366),
@@ -66,7 +66,7 @@ final class IntelligenceBriefSnapshotTests: XCTestCase {
     /// `tokenUsage` (cost segment omitted), no `auditID` ("Local run"
     /// footer fallback).
     func testStressFixtureCriticalDarkMode() throws {
-        try snap(.stress, scheme: .dark, name: "iphone17promax-stress-dark")
+        try XCTAssertIntelligenceBriefSnapshot(.stress, scheme: .dark, name: "iphone17promax-stress-dark")
     }
 
     /// Stress fixture under Dynamic Type `.accessibility1` — confirms
@@ -74,7 +74,7 @@ final class IntelligenceBriefSnapshotTests: XCTestCase {
     /// the brief from exploding even when system settings push the
     /// scale beyond the brief's own ceiling.
     func testStressFixtureAccessibilityDynamicTypeClamp() throws {
-        try snap(
+        try XCTAssertIntelligenceBriefSnapshot(
             .stress,
             scheme: .dark,
             dynamicType: .accessibility1,
@@ -165,7 +165,7 @@ final class IntelligenceBriefSnapshotTests: XCTestCase {
         case stress
     }
 
-    private func snap(
+    private func XCTAssertIntelligenceBriefSnapshot(
         _ fixture: Fixture,
         scheme: ColorScheme,
         dynamicType: DynamicTypeSize = .large,

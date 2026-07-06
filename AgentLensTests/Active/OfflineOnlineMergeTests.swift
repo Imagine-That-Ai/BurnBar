@@ -174,6 +174,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
     // MARK: - Circuit Breaker Recovery
 
     func test_circuitBreaker_halfOpenToClosed_recovery() async throws {
+        // Skipped by intent: this regression needs a retry harness that exposes
+        // breaker failure counts before a meaningful assertion is possible.
         try XCTSkip("FakeFirestore errors do not trip CloudSyncCircuitBreaker through UsageSyncService yet; revive after retry harness exposes failure counts.")
     }
 

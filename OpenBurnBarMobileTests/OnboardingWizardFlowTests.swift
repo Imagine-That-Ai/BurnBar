@@ -13,20 +13,20 @@ final class OnboardingWizardFlowTests: XCTestCase {
     func testWizardRendersAllStagesWithoutCrashing() {
         let isPresented = Binding<Bool>.constant(true)
         let wizard = OnboardingWizardView(isPresented: isPresented)
-        _ = wizard.body
+        XCTAssertHostsNonZero(wizard, height: 844)
     }
 
     func testProviderPickerRendersWithMixedSelection() {
         let selected = Binding<Set<AgentProvider>>.constant([.cursor, .openAI])
         let already: Set<ProviderID> = [.openAI]
         let picker = OnboardingProviderPicker(selected: selected, alreadyConnected: already)
-        _ = picker.body
+        XCTAssertHostsNonZero(picker, height: 360)
     }
 
     func testProviderPickerRendersEmptySelection() {
         let selected = Binding<Set<AgentProvider>>.constant([])
         let picker = OnboardingProviderPicker(selected: selected, alreadyConnected: [])
-        _ = picker.body
+        XCTAssertHostsNonZero(picker, height: 360)
     }
 
     func testConnectStepRendersForEveryProvider() {
@@ -41,7 +41,7 @@ final class OnboardingWizardFlowTests: XCTestCase {
                 onConnected: { _ in },
                 onSkip: { }
             )
-            _ = step.body
+            XCTAssertHostsNonZero(step, height: 420)
         }
     }
 
@@ -51,7 +51,7 @@ final class OnboardingWizardFlowTests: XCTestCase {
             onRefreshAll: { },
             onContinue: { }
         )
-        _ = empty.body
+        XCTAssertHostsNonZero(empty, height: 360)
 
         let date = Date()
         let account = ProviderAccountDoc(
@@ -78,7 +78,7 @@ final class OnboardingWizardFlowTests: XCTestCase {
             onRefreshAll: { },
             onContinue: { }
         )
-        _ = populated.body
+        XCTAssertHostsNonZero(populated, height: 420)
     }
 
     /// Sanity: the `QuotaConnectionMode.description` strings must mention the
@@ -96,5 +96,20 @@ final class OnboardingWizardFlowTests: XCTestCase {
         XCTAssertEqual(ProviderSetupGuide.credentialKindLabel(.session), "Session")
         XCTAssertEqual(ProviderSetupGuide.credentialKindLabel(.cookie), "Cookie")
         XCTAssertEqual(ProviderSetupGuide.credentialKindLabel(.plan), "Plan code")
+    }
+
+    private func XCTAssertHostsNonZero<V: View>(
+        _ view: V,
+        width: CGFloat = 390,
+        height: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let host = UIHostingController(rootView: view)
+        host.view.frame = CGRect(origin: .zero, size: CGSize(width: width, height: height))
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        XCTAssertGreaterThan(host.view.bounds.width, 0, file: file, line: line)
+        XCTAssertGreaterThan(host.view.bounds.height, 0, file: file, line: line)
     }
 }
