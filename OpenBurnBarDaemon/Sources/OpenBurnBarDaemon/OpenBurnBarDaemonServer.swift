@@ -45,6 +45,9 @@ public actor BurnBarDaemonServer {
     let runService: BurnBarRunService
     let toolingProxy: BurnBarToolingProxyService
     let computerUseService: ComputerUseService
+    #if os(Linux)
+    let mediaService: MercuryLinuxMediaSessionController
+    #endif
     let missionControlService: any BurnBarMissionControlServing
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
@@ -113,6 +116,11 @@ public actor BurnBarDaemonServer {
             browserToolService: resolvedRunService.browserToolService
         )
         self.computerUseService = ComputerUseService()
+        #if os(Linux)
+        self.mediaService = MercuryLinuxMediaSessionController(
+            logger: BurnBarDaemonLogger(category: "linux-media")
+        )
+        #endif
         self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
         // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
         // When gate data is unavailable (no config, no connector plane), the gate returns a failure
@@ -322,6 +330,16 @@ public actor BurnBarDaemonServer {
             configStore: configStore,
             logger: logger
         )
+        #if os(Linux)
+        do {
+            try await mediaService.start()
+        } catch {
+            logger.warning(
+                "media_channel_start_failed",
+                metadata: ["error": "\(error)"]
+            )
+        }
+        #endif
         if configuration.startsMissionControlBackgroundLoops {
             await missionControlService.startBackgroundLoops()
         } else {
@@ -417,6 +435,9 @@ public actor BurnBarDaemonServer {
             )
         }
         await missionControlService.stopBackgroundLoops()
+        #if os(Linux)
+        await mediaService.stop()
+        #endif
 
         // Stop HTTP gateway
         if let gatewayServer {
@@ -593,6 +614,15 @@ public actor BurnBarDaemonServer {
                 return try await handleComputerUseRPC(
                     method: method,
                     decoder: decoder,
+                    requestData: requestData
+                )
+            case .daemonMediaSessionState, .daemonMediaCallAccept,
+                 .daemonMediaCallDecline, .daemonMediaCallEnd,
+                 .daemonMediaCapabilityGet, .daemonMediaStatus:
+                return try await handleMediaRPC(
+                    method: method,
+                    decoder: decoder,
+                    request: request,
                     requestData: requestData
                 )
             case .controllerSummary, .controllerRuntimeSnapshot,
