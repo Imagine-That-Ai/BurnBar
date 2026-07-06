@@ -63,6 +63,15 @@ enum BurnBarDaemonSocketRPCCoverage {
         .phoneControlPinProvision
     ]
 
+    static let media: Set<BurnBarRPCMethod> = [
+        .daemonMediaSessionState,
+        .daemonMediaCallAccept,
+        .daemonMediaCallDecline,
+        .daemonMediaCallEnd,
+        .daemonMediaCapabilityGet,
+        .daemonMediaStatus
+    ]
+
     static let missionControl: Set<BurnBarRPCMethod> = [
         .controllerSummary,
         .controllerRuntimeSnapshot,
@@ -152,6 +161,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(membership)
             .union(tooling)
             .union(computerUse)
+            .union(media)
             .union(missionControl)
             .union(client)
             .union(runWorkspaceApproval)
@@ -168,6 +178,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if membership.contains(method) { return "membership" }
         if tooling.contains(method) { return "tooling" }
         if computerUse.contains(method) { return "computer_use" }
+        if media.contains(method) { return "media" }
         if missionControl.contains(method) { return "mission_control" }
         if client.contains(method) { return "client" }
         if runWorkspaceApproval.contains(method) { return "run_workspace_approval" }
