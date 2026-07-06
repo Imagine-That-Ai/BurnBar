@@ -598,10 +598,11 @@ final class MacCloudEntitlementStore: ObservableObject {
             proMaxSourceState.membership,
             ultraSourceState.membership
         ].compactMap { $0 }
+        let cloudEffective = MacMembershipEntitlementState.combined(cloudStates)
 
-        let effective = cloudStates.isEmpty
+        let effective = cloudEffective.isEmpty
             ? localStoreKitMembershipState
-            : MacMembershipEntitlementState.combined(cloudStates)
+            : cloudEffective
 
         isActive = effective.cloud.isActive
         expirationDate = effective.cloud.expiresAt
@@ -693,7 +694,7 @@ final class MacCloudEntitlementStore: ObservableObject {
         case let seconds as TimeInterval: return Date(timeIntervalSince1970: seconds)
         case let int as Int: return Date(timeIntervalSince1970: TimeInterval(int))
         case let string as String:
-            return ISO8601DateFormatter().date(from: string)
+            return ThreadSafeISO8601DateFormatter.parse(string)
         default:
             return nil
         }
