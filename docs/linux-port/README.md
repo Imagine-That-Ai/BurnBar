@@ -33,6 +33,29 @@ The release verifier refuses to publish `latest-linux.json` while the package
 closure has missing artifacts, missing signatures, missing Sigstore provenance,
 dirty commit state, missing package smoke logs, or blocked parity rows.
 
+Computer Use input and panic:
+
+- Linux daemon-owned `system` Computer Use sessions are enabled only on Linux.
+  macOS daemon sessions remain browser-only because app-owned CGEvent/AX
+  dispatch stays in AgentLens.
+- Linux input dispatch uses approved native adapters: AT-SPI2 for Wayland
+  accessibility actions when a session bus is available, and X11/XTEST via
+  `xdotool` as a degraded X11 fallback. Missing adapter prerequisites fail
+  closed instead of silently substituting a fixture or keylogger path.
+- Panic halt is exposed through daemon RPC, the packaged shell's global
+  emergency shortcut registration (`Ctrl+Alt+Super+.` with
+  `Ctrl+Alt+Shift+.` fallback), the focused-window webview fallback for the
+  same chords, and the bindable CLI command
+  `openburnbar-cli computer-use panic-halt --session-id '*' --source hotkey`.
+  The wildcard form halts every daemon-owned Computer Use session and trips the
+  privileged-input kill flag before teardown. On Linux, the default flag lives
+  at `$XDG_RUNTIME_DIR/openburnbar/privileged-input-kill` so it works under the
+  packaged user service's `RuntimeDirectory=openburnbar` confinement; the
+  `OPENBURNBAR_PRIVILEGED_INPUT_KILL_FLAG_PATH` override remains available for
+  tests and deployment-specific wiring. Desktop environments that reject global
+  shortcut registration remain evidence-gated; unavailable global hooks must be
+  recorded as blocked rows for that DE.
+
 Fast local checks:
 
 ```bash
