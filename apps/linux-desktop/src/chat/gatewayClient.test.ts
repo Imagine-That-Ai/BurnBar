@@ -6,7 +6,7 @@ import {
   streamGatewayChat
 } from './gatewayClient.js';
 
-function streamFromChunks(chunks: string[], signal?: AbortSignal): ReadableStream<Uint8Array> {
+function streamFromChunks(chunks: string[], signal?: AbortSignal, closeAfterChunks = true): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -16,6 +16,7 @@ function streamFromChunks(chunks: string[], signal?: AbortSignal): ReadableStrea
         { once: true }
       );
       for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      if (closeAfterChunks) controller.close();
     }
   });
 }
@@ -120,13 +121,23 @@ describe('streamGatewayChat', () => {
     ).rejects.toMatchObject({ kind: 'unimplemented', status: 503 });
   });
 
+  it('treats EOF before DONE as an interrupted stream', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(streamFromChunks(['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'])))
+    );
+    await expect(
+      collect({ baseURL: 'http://127.0.0.1:8642', model: 'hermes', messages: [] })
+    ).rejects.toMatchObject({ kind: 'stream_interrupted' });
+  });
+
   it('aborts an active stream', async () => {
     const abort = new AbortController();
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_url, init) => {
         const signal = (init as RequestInit).signal ?? abort.signal;
-        return new Response(streamFromChunks(['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'], signal));
+        return new Response(streamFromChunks(['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'], signal, false));
       })
     );
     const iterator = streamGatewayChat({
@@ -144,5 +155,14 @@ describe('streamGatewayChat', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
     await expect(probeGatewayHealth('http://127.0.0.1:8642')).resolves.toBe(true);
     expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8642/health', expect.objectContaining({ method: 'GET' }));
+  });
+
+  it('passes bearer tokens to health probes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    await expect(probeGatewayHealth('http://127.0.0.1:8642', 'secret-token')).resolves.toBe(true);
+    expect(fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8642/health',
+      expect.objectContaining({ headers: { Authorization: 'Bearer secret-token' } })
+    );
   });
 });

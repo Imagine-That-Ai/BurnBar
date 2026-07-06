@@ -220,6 +220,10 @@ public actor BurnBarHTTPGatewayServer {
     }
 
     private func handleRequest(_ request: LinuxHTTPRequest, fileDescriptor: Int32) async -> LinuxGatewayResponse {
+        if request.method == "OPTIONS" {
+            return .buffered(httpResponse(status: 204, headers: [:], body: Data()))
+        }
+
         if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
             guard let provided = gatewayAuthToken(from: request.headers),
                   constantTimeTokensEqual(provided, requiredToken) else {
@@ -292,10 +296,12 @@ public actor BurnBarHTTPGatewayServer {
         } catch {
             return .buffered(jsonResponse(status: 400, message: "invalid JSON request body"))
         }
-        let modelID = (decoded.model ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !modelID.isEmpty else {
+        let clientModelID = (decoded.model ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clientModelID.isEmpty else {
             return .buffered(jsonResponse(status: 400, message: "model field required"))
         }
+        let resolvedModel = await resolveLinuxGatewayModel(clientModelID)
+        let modelID = resolvedModel.modelID
 
         let accountingRequestID = UUID().uuidString
         let router = BurnBarProviderRouter(
@@ -323,40 +329,46 @@ public actor BurnBarHTTPGatewayServer {
                     let attemptStartedAt = Date()
                     do {
                         if decoded.stream == true, let streamPlan = streamPlan(for: route, formatFamily: formatFamily, body: request.body) {
-                            let proxyStream = try await streamPlan.open()
-                            let usage = try await relayStream(
-                                proxyStream,
-                                usageFormat: streamPlan.usageFormat,
-                                route: route,
-                                accountingRequestID: accountingRequestID,
-                                streamCommit: streamCommit,
-                                fileDescriptor: fileDescriptor
-                            )
-                            attempts.append(routeAttempt(
-                                sequence: attempts.count + 1,
-                                startedAt: attemptStartedAt,
-                                completedAt: Date(),
-                                route: route,
-                                status: .exact,
-                                httpStatus: proxyStream.statusCode
-                            ))
-                            await recordProxyRouteLogEntry(
-                                startedAt: startedAt,
-                                modelID: modelID,
-                                route: route,
-                                finalStatus: .exact,
-                                streamed: true,
-                                httpStatus: proxyStream.statusCode,
-                                attempts: attempts,
-                                usage: usage
-                            )
-                            return .streamed
+                            do {
+                                let proxyStream = try await streamPlan.open(resolvedModel.variant)
+                                let usage = try await relayStream(
+                                    proxyStream,
+                                    usageFormat: streamPlan.usageFormat,
+                                    route: route,
+                                    accountingRequestID: accountingRequestID,
+                                    streamCommit: streamCommit,
+                                    fileDescriptor: fileDescriptor
+                                )
+                                attempts.append(routeAttempt(
+                                    sequence: attempts.count + 1,
+                                    startedAt: attemptStartedAt,
+                                    completedAt: Date(),
+                                    route: route,
+                                    status: .exact,
+                                    httpStatus: proxyStream.statusCode
+                                ))
+                                await recordProxyRouteLogEntry(
+                                    startedAt: startedAt,
+                                    modelID: clientModelID,
+                                    route: route,
+                                    finalStatus: .exact,
+                                    streamed: true,
+                                    httpStatus: proxyStream.statusCode,
+                                    attempts: attempts,
+                                    usage: usage
+                                )
+                                return .streamed
+                            } catch is BurnBarProxyStreamingUnsupported {
+                                // Provider can serve the route, just not as SSE.
+                                // Fall through to the buffered proxy below.
+                            }
                         }
 
                         let response = try await proxyChatCompletions(
                             body: request.body,
                             route: route,
-                            formatFamily: formatFamily
+                            formatFamily: formatFamily,
+                            variant: resolvedModel.variant
                         )
                         await recordUsageIfAvailable(
                             response.usage,
@@ -373,7 +385,7 @@ public actor BurnBarHTTPGatewayServer {
                         ))
                         await recordProxyRouteLogEntry(
                             startedAt: startedAt,
-                            modelID: modelID,
+                            modelID: clientModelID,
                             route: route,
                             finalStatus: .exact,
                             streamed: false,
@@ -406,10 +418,11 @@ public actor BurnBarHTTPGatewayServer {
                             ])
                             await recordProxyRouteLogEntry(
                                 startedAt: startedAt,
-                                modelID: modelID,
+                                modelID: clientModelID,
                                 route: route,
                                 finalStatus: .failed,
                                 streamed: true,
+                                streamInterrupted: true,
                                 httpStatus: Self.httpStatus(from: error) ?? 502,
                                 attempts: attempts,
                                 usage: nil,
@@ -427,7 +440,7 @@ public actor BurnBarHTTPGatewayServer {
 
             await recordProxyRouteLogEntry(
                 startedAt: startedAt,
-                modelID: modelID,
+                modelID: clientModelID,
                 route: nil,
                 finalStatus: .rejected,
                 streamed: false,
@@ -441,7 +454,7 @@ public actor BurnBarHTTPGatewayServer {
             logger.error("gateway_linux_route_error", metadata: ["model": modelID, "error": "\(error)"])
             await recordProxyRouteLogEntry(
                 startedAt: startedAt,
-                modelID: modelID,
+                modelID: clientModelID,
                 route: nil,
                 finalStatus: .rejected,
                 streamed: false,
@@ -455,7 +468,7 @@ public actor BurnBarHTTPGatewayServer {
             logger.error("gateway_linux_route_error", metadata: ["model": modelID, "error": "\(error)"])
             await recordProxyRouteLogEntry(
                 startedAt: startedAt,
-                modelID: modelID,
+                modelID: clientModelID,
                 route: lastFailedRoute,
                 finalStatus: .failed,
                 streamed: false,
@@ -478,6 +491,31 @@ public actor BurnBarHTTPGatewayServer {
         return headers["x-api-key"]?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
     }
 
+    private struct LinuxGatewayResolvedModel {
+        var modelID: String
+        var variant: BurnBarModelVariant?
+    }
+
+    private func resolveLinuxGatewayModel(_ requested: String) async -> LinuxGatewayResolvedModel {
+        let trimmed = requested.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let configurations = try? await configStore.resolvedConfigurations() else {
+            return LinuxGatewayResolvedModel(modelID: trimmed, variant: nil)
+        }
+        for configuration in configurations {
+            if let variant = configuration.settings.modelVariants.first(where: {
+                $0.variantID.caseInsensitiveCompare(trimmed) == .orderedSame
+            }) {
+                return LinuxGatewayResolvedModel(modelID: variant.baseModelID, variant: variant)
+            }
+            if let alias = configuration.settings.modelAliases.first(where: {
+                $0.aliasID.caseInsensitiveCompare(trimmed) == .orderedSame
+            }) {
+                return LinuxGatewayResolvedModel(modelID: alias.baseModelID, variant: nil)
+            }
+        }
+        return LinuxGatewayResolvedModel(modelID: trimmed, variant: nil)
+    }
+
     private func preferredGatewayFormatFamilies(for modelID: String) -> [BurnBarProviderFormatFamily] {
         let normalized = modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized.contains("claude") || normalized.contains("anthropic")
@@ -488,16 +526,17 @@ public actor BurnBarHTTPGatewayServer {
     private func proxyChatCompletions(
         body: Data,
         route: BurnBarProviderRoute,
-        formatFamily: BurnBarProviderFormatFamily
+        formatFamily: BurnBarProviderFormatFamily,
+        variant: BurnBarModelVariant?
     ) async throws -> BurnBarProviderProxyResponse {
         if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
-            return try await factoryExecutor.proxyChatCompletions(body: body, route: route)
+            return try await factoryExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
         }
         switch formatFamily {
         case .openaiCompat:
-            return try await providerExecutor.proxyChatCompletions(body: body, route: route)
+            return try await providerExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
         case .anthropic:
-            return try await anthropicExecutor.proxyChatCompletions(body: body, route: route)
+            return try await anthropicExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
         }
     }
 
@@ -510,7 +549,7 @@ public actor BurnBarHTTPGatewayServer {
         switch formatFamily {
         case .openaiCompat:
             return LinuxGatewayStreamPlan(usageFormat: .openAI) {
-                try await self.providerExecutor.openChatCompletionsStream(body: body, route: route)
+                try await self.providerExecutor.openChatCompletionsStream(body: body, route: route, variant: $0)
             }
         case .anthropic:
             return nil
@@ -616,6 +655,7 @@ public actor BurnBarHTTPGatewayServer {
         httpStatus: Int?,
         attempts: [BurnBarProxyRouteAttempt],
         usage: BurnBarProviderProxyUsage?,
+        streamInterrupted: Bool = false,
         failureMessage: String? = nil
     ) async {
         guard let proxyRouteLogStore else { return }
@@ -648,7 +688,7 @@ public actor BurnBarHTTPGatewayServer {
             exactModelInvariant: route?.canonicalModelID == nil ? .unavailable : .passed,
             finalStatus: finalStatus,
             streamed: streamed,
-            streamInterrupted: false,
+            streamInterrupted: streamInterrupted,
             httpStatus: httpStatus,
             attempts: attempts,
             usage: route.flatMap { proxyRouteUsage(from: usage, route: $0) },
@@ -819,7 +859,7 @@ private enum LinuxGatewayResponse {
 
 private struct LinuxGatewayStreamPlan {
     let usageFormat: GatewayStreamUsageFormat
-    let open: () async throws -> BurnBarProviderProxyStream
+    let open: (BurnBarModelVariant?) async throws -> BurnBarProviderProxyStream
 }
 
 private final class LinuxGatewayStreamCommit {
@@ -905,6 +945,9 @@ private func httpResponse(status: Int, headers: [String: String], body: Data) ->
 
 private func httpResponseHead(status: Int, headers: [String: String], contentLength: Int? = nil) -> Data {
     var responseHeaders = headers
+    responseHeaders["Access-Control-Allow-Origin"] = "*"
+    responseHeaders["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-API-Key"
+    responseHeaders["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     if let contentLength {
         responseHeaders["Content-Length"] = "\(contentLength)"
     }
@@ -918,6 +961,7 @@ private func httpResponseHead(status: Int, headers: [String: String], contentLen
 private func statusText(_ status: Int) -> String {
     switch status {
     case 200: return "OK"
+    case 204: return "No Content"
     case 400: return "Bad Request"
     case 401: return "Unauthorized"
     case 404: return "Not Found"

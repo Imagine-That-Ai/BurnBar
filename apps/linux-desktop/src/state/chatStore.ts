@@ -174,12 +174,16 @@ function gatewayBaseURLFromHealth(): string | null {
   return `http://${host}:${port}`;
 }
 
-async function resolveGatewayStatus(fixtureMode: boolean): Promise<{ status: ChatGatewayStatus; baseURL: string | null }> {
+async function resolveGatewayStatus(
+  fixtureMode: boolean
+): Promise<{ status: ChatGatewayStatus; baseURL: string | null; bearerToken?: string }> {
   if (fixtureMode) return { status: 'reachable', baseURL: 'fixture://gateway' };
   const baseURL = gatewayBaseURLFromHealth();
   if (!baseURL) return { status: 'disabled', baseURL: null };
-  const reachable = await probeGatewayHealth(baseURL);
-  return { status: reachable ? 'reachable' : 'unreachable', baseURL };
+  const bridge = useShellStore.getState().bridge;
+  const bearerToken = (await bridge?.gatewayAuthToken?.().catch(() => null)) ?? undefined;
+  const reachable = await probeGatewayHealth(baseURL, bearerToken);
+  return { status: reachable ? 'reachable' : 'unreachable', baseURL, bearerToken };
 }
 
 function newId(prefix: string): string {
@@ -449,6 +453,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             baseURL: gateway.baseURL ?? '',
             model,
             messages: [{ role: 'system', content: 'You are Hermes inside OpenBurnBar.' }, ...outboundHistory],
+            bearerToken: gateway.bearerToken,
             signal: controller.signal
           });
       let firstText = false;

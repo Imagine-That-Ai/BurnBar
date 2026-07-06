@@ -365,6 +365,7 @@ export type IntegrationsStatus = { integrations: IntegrationStatus[] };
 
 export interface LinuxShellBridge {
   daemonHealth(): Promise<DaemonHealth>;
+  gatewayAuthToken(): Promise<string | null>;
   openDashboard(): Promise<void>;
   quitApp(): Promise<void>;
   trayDegraded(): Promise<boolean>;
@@ -1266,6 +1267,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
   }
   return {
     daemonHealth: () => invoke<DaemonHealth>('daemon_health'),
+    gatewayAuthToken: () => invoke<string | null>('gateway_auth_token'),
     openDashboard: () => invoke<void>('open_dashboard'),
     quitApp: () => invoke<void>('quit_app'),
     trayDegraded: () => invoke<boolean>('tray_degraded'),

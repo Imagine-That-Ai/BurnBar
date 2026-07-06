@@ -122,6 +122,35 @@ fn read_auth_token() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+fn read_gateway_auth_token() -> Option<String> {
+    if let Ok(token) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN") {
+        let trimmed = token.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    if let Ok(path) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN_FILE") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            if let Ok(token) = fs::read_to_string(trimmed) {
+                let token = token.trim();
+                if !token.is_empty() {
+                    return Some(token.to_string());
+                }
+            }
+        }
+    }
+    fs::read_to_string(linux_support_dir().join("gateway-auth-token"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+#[tauri::command]
+fn gateway_auth_token() -> Option<String> {
+    read_gateway_auth_token()
+}
+
 fn probe_daemon_health() -> DaemonHealth {
     let socket_path = linux_socket_path();
     let mut stream = match UnixStream::connect(&socket_path) {
@@ -465,9 +494,17 @@ fn call_daemon_method(
     method: &str,
     params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
+    call_daemon_method_with_timeout(method, params, Duration::from_secs(5))
+}
+
+fn call_daemon_method_with_timeout(
+    method: &str,
+    params: Option<serde_json::Value>,
+    timeout: Duration,
+) -> Result<serde_json::Value, String> {
     let socket_path = linux_socket_path();
     let mut stream = UnixStream::connect(&socket_path).map_err(|e| e.to_string())?;
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 
     let stamp = std::time::SystemTime::now()
@@ -928,7 +965,7 @@ fn database_workspace_status(project_path: Option<String>) -> serde_json::Value 
 // Wire: daemon.code.index_project (BurnBarRPCMethod.codeIndexProject)
 #[tauri::command]
 fn database_index_project(project_path: Option<String>) -> Result<serde_json::Value, String> {
-    call_daemon_method(
+    call_daemon_method_with_timeout(
         "daemon.code.index_project",
         Some(serde_json::json!({
             "projectPath": project_path,
@@ -936,6 +973,7 @@ fn database_index_project(project_path: Option<String>) -> Result<serde_json::Va
             "maxFileBytes": 512000,
             "storageBudgetBytes": null
         })),
+        Duration::from_secs(120),
     )
 }
 
@@ -1111,6 +1149,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             daemon_health,
+            gateway_auth_token,
             open_dashboard,
             quit_app,
             tray_degraded,

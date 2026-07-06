@@ -256,17 +256,26 @@ export async function* streamGatewayChat(request: GatewayChatRequest): AsyncGene
 
     const parser = new OpenAICompatibleSSEParser();
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    let sawDone = false;
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         for (const event of parser.push(value)) {
+          if (event.type === 'done') sawDone = true;
           yield event;
           if (event.type === 'done') return;
         }
       }
-      for (const event of parser.finish()) yield event;
+      for (const event of parser.finish()) {
+        if (event.type === 'done') sawDone = true;
+        yield event;
+      }
+      if (!sawDone) {
+        throw new GatewayChatError('stream_interrupted', 'Gateway stream ended before the completion marker.');
+      }
     } catch (error) {
+      if (error instanceof GatewayChatError) throw error;
       if (signal.aborted) throw new GatewayChatError('aborted', 'Chat stream aborted.');
       throw new GatewayChatError('stream_interrupted', error instanceof Error ? error.message : 'Chat stream interrupted.');
     } finally {
