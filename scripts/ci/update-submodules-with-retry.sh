@@ -15,8 +15,8 @@ cd "$repo_root"
 attempts="${OPENBURNBAR_SUBMODULE_UPDATE_ATTEMPTS:-5}"
 base_sleep_seconds="${OPENBURNBAR_SUBMODULE_UPDATE_BASE_SLEEP_SECONDS:-5}"
 dry_run=0
-saved_local_extraheaders=()
-saved_global_extraheaders=()
+saved_local_extraheaders_file=""
+saved_global_extraheaders_file=""
 
 if [[ "${1:-}" == "--dry-run" ]]; then
   dry_run=1
@@ -52,8 +52,11 @@ run_submodule_update() {
 }
 
 clear_github_extraheaders() {
-  mapfile -t saved_local_extraheaders < <(git config --local --get-all http.https://github.com/.extraheader 2>/dev/null || true)
-  mapfile -t saved_global_extraheaders < <(git config --global --get-all http.https://github.com/.extraheader 2>/dev/null || true)
+  saved_local_extraheaders_file="$(mktemp "${TMPDIR:-/tmp}/openburnbar-local-extraheaders.XXXXXX")"
+  saved_global_extraheaders_file="$(mktemp "${TMPDIR:-/tmp}/openburnbar-global-extraheaders.XXXXXX")"
+
+  git config --local --get-all http.https://github.com/.extraheader >"$saved_local_extraheaders_file" 2>/dev/null || true
+  git config --global --get-all http.https://github.com/.extraheader >"$saved_global_extraheaders_file" 2>/dev/null || true
 
   git config --local --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
   git config --global --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
@@ -65,12 +68,18 @@ restore_github_extraheaders() {
   git config --local --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
   git config --global --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
 
-  for value in "${saved_local_extraheaders[@]}"; do
-    git config --local --add http.https://github.com/.extraheader "$value"
-  done
-  for value in "${saved_global_extraheaders[@]}"; do
-    git config --global --add http.https://github.com/.extraheader "$value"
-  done
+  if [[ -n "${saved_local_extraheaders_file:-}" && -f "$saved_local_extraheaders_file" ]]; then
+    while IFS= read -r value; do
+      git config --local --add http.https://github.com/.extraheader "$value"
+    done <"$saved_local_extraheaders_file"
+    rm -f "$saved_local_extraheaders_file"
+  fi
+  if [[ -n "${saved_global_extraheaders_file:-}" && -f "$saved_global_extraheaders_file" ]]; then
+    while IFS= read -r value; do
+      git config --global --add http.https://github.com/.extraheader "$value"
+    done <"$saved_global_extraheaders_file"
+    rm -f "$saved_global_extraheaders_file"
+  fi
 }
 
 reset_partial_submodule_checkout() {
