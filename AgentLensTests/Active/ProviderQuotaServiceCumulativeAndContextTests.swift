@@ -253,7 +253,7 @@ extension ProviderQuotaServiceTests {
             )
         )
         XCTAssertEqual(merged.confidence, .unavailable)
-        XCTAssertTrue(merged.statusMessage.contains("Stale"))
+        XCTAssertEqual(merged.statusMessage?.contains("Stale"), true)
     }
 
     // MARK: Cumulative-test fixtures
@@ -391,10 +391,10 @@ extension ProviderQuotaServiceTests {
         await service.refresh(provider: .claudeCode, dataStore: try makeSplitDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.provider, .claudeCode)
+        XCTAssertEqual(snapshot.provider, AgentProvider.claudeCode.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertFalse(snapshot.statusMessage.contains("Context window"))
+        XCTAssertNotEqual(snapshot.statusMessage?.contains("Context window"), true)
     }
 
     func test_claudeRefresh_staleContextWindowOnlySnapshotDoesNotRenderAsQuota() async throws {
@@ -410,7 +410,7 @@ extension ProviderQuotaServiceTests {
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertFalse(snapshot.statusMessage.contains("context window"))
+        XCTAssertNotEqual(snapshot.statusMessage?.contains("context window"), true)
     }
 
     func test_claudeRefresh_statuslineRateLimitsWinEvenWhenContextWindowIsPresent() async throws {

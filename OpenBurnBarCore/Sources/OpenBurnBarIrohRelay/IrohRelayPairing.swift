@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import OpenBurnBarCore
 
@@ -107,7 +106,7 @@ public enum IrohPairingSignature {
         directAddresses: [String] = [],
         publishedAtMillis: Int64,
         protocolVersion: Int = IrohRelayProtocol.frameProtocolVersion,
-        with signingKey: Curve25519.Signing.PrivateKey
+        with signingKey: PlatformEd25519SigningMaterial
     ) throws -> IrohPairingRecord {
         let payload = canonicalPayload(
             uid: uid,
@@ -118,7 +117,7 @@ public enum IrohPairingSignature {
             publishedAtMillis: publishedAtMillis,
             protocolVersion: protocolVersion
         )
-        let signature = try signingKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: signingKey)
         return IrohPairingRecord(
             uid: uid,
             connectionId: connectionId,
@@ -143,9 +142,9 @@ public enum IrohPairingSignature {
         guard let signatureBytes = Data(base64Encoded: record.signature) else {
             throw IrohPairingError.malformed
         }
-        let publicKey: Curve25519.Signing.PublicKey
+        let publicKey: PlatformEd25519PublicKey
         do {
-            publicKey = try Curve25519.Signing.PublicKey(rawRepresentation: rawPublicKey)
+            publicKey = try PlatformCrypto.ed25519PublicKey(rawRepresentation: rawPublicKey)
         } catch {
             throw IrohPairingError.invalidPublicKey
         }
@@ -158,7 +157,7 @@ public enum IrohPairingSignature {
             publishedAtMillis: record.publishedAtMillis,
             protocolVersion: record.protocolVersion
         )
-        guard publicKey.isValidSignature(signatureBytes, for: payload) else {
+        guard (try? PlatformCrypto.verifyEd25519Signature(signatureBytes, message: payload, publicKey: publicKey)) == true else {
             throw IrohPairingError.invalidSignature
         }
         let publishedAt = Date(timeIntervalSince1970: Double(record.publishedAtMillis) / 1000.0)
@@ -172,12 +171,12 @@ public enum IrohPairingSignature {
 /// Convenience wrapper for tests and dev tooling that keeps the keypair
 /// material in memory. Production callers go through `IrohRelayKeyStore`
 /// which lives in `AgentLens/Services/IrohRelay/` and persists in Keychain.
-public struct IrohPairingKeypair: Sendable {
-    public let signingKey: Curve25519.Signing.PrivateKey
+public struct IrohPairingKeypair: @unchecked Sendable { // AUDIT sendable-allowlist: swift-crypto-key-material
+    public let signingKey: PlatformEd25519SigningMaterial
     public var publicKeyRaw: Data { signingKey.publicKey.rawRepresentation }
     public var publicKeyBase64: String { publicKeyRaw.base64EncodedString() }
 
-    public init(signingKey: Curve25519.Signing.PrivateKey = Curve25519.Signing.PrivateKey()) {
+    public init(signingKey: PlatformEd25519SigningMaterial = PlatformCrypto.ed25519PrivateKey()) {
         self.signingKey = signingKey
     }
 }

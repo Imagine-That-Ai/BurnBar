@@ -915,14 +915,16 @@ jobs:
       - name: Check production env files
         run: bash scripts/ci/check-env-no-secrets.sh
 
-  # ── Windows-port parity honesty: storage-prune waiver ───────────────────────
-  # While the Windows Engine lane compiles a PRUNED Engine subset (drops
-  # GRDB-SQLCipher + OpenBurnBarData via OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD),
-  # that gap must be an explicit, dated, tracked waiver — never silent parity.
-  # This gate fails if any workflow prunes storage without an active, unexpired
-  # waiver naming it, and auto-passes once the un-prune lane removes the flag.
-  windows-storage-prune-waiver:
-    name: Windows storage-prune waiver
+  # ── Windows-port architecture honesty: storage architecture (WPD-0005) ──────
+  # The Windows Engine lane compiles a storage-pruned Engine subset (drops
+  # GRDB-SQLCipher + OpenBurnBarData via OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD).
+  # Per WPD-0005 that prune is PERMANENT ARCHITECTURE — the Engine computes, the
+  # C# seam (windows/storage/) persists — not a waived gap. This gate fails if
+  # any workflow sets the flag without being named in WPD-0005's machine-read
+  # block, if the WPD is missing/malformed, or if the C# storage seam's test
+  # project disappears. (Replaced the storage-prune WAIVER gate on 2026-07-06.)
+  windows-storage-architecture:
+    name: Windows storage architecture (WPD-0005)
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
@@ -932,15 +934,16 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             .github/workflows
-            docs/windows-port/STORAGE_PRUNE_WAIVER.md
-            scripts/ci/verify-windows-storage-prune-waiver.sh
-            scripts/ci/verify-windows-storage-prune-waiver.test.sh
+            docs/windows-port/decisions/0005-windows-storage-architecture.md
+            windows/storage/OpenBurnBar.Storage.Tests
+            scripts/ci/verify-windows-storage-architecture.sh
+            scripts/ci/verify-windows-storage-architecture.test.sh
 
-      - name: Self-test the storage-prune waiver gate
-        run: bash scripts/ci/verify-windows-storage-prune-waiver.test.sh
+      - name: Self-test the storage architecture gate
+        run: bash scripts/ci/verify-windows-storage-architecture.test.sh
 
-      - name: Verify Windows storage-prune waiver (parity honesty)
-        run: bash scripts/ci/verify-windows-storage-prune-waiver.sh
+      - name: Verify Windows storage architecture (WPD-0005 honesty)
+        run: bash scripts/ci/verify-windows-storage-architecture.sh
 
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
@@ -1058,7 +1061,7 @@ jobs:
       - services-fast
       - no-suppressions
       - twin-basenames
-      - windows-storage-prune-waiver
+      - windows-storage-architecture
       - debt-budgets
       - functions-correctness
     runs-on: ubuntu-latest

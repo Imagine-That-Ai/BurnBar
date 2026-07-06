@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import OpenBurnBarCore
 
 /// F10 — one shared implementation of the control-seal session lifecycle so
@@ -38,7 +37,7 @@ public enum ControlFrameSealSession {
         senderCounter: Int64,
         recipientPublicKeyBase64: String,
         senderPrivateKey: HermesRelayPrivateKey
-    ) throws -> (envelope: HermesRealtimeRelayControlSealKeyEnvelope, key: SymmetricKey) {
+    ) throws -> (envelope: HermesRealtimeRelayControlSealKeyEnvelope, key: PlatformSymmetricKey) {
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
         let wrap = try HermesRelayCrypto.sealKeyV3(
             keyData,
@@ -75,7 +74,7 @@ public enum ControlFrameSealSession {
         peerNodeId: String,
         recipientPrivateKey: HermesRelayPrivateKey,
         pinnedSenderPublicKeyBase64: String
-    ) throws -> SymmetricKey {
+    ) throws -> PlatformSymmetricKey {
         guard let enc = Data(base64Encoded: envelope.encBase64),
               let wrappedKey = Data(base64Encoded: envelope.wrappedKeyBase64) else {
             throw HermesRelayCryptoError.invalidCiphertext
@@ -101,7 +100,7 @@ public enum ControlFrameSealSession {
     /// routing, everything else rides inside the OBCFS1 envelope.
     public static func sealPayload(
         _ payload: HermesRealtimeRelayControlPayload,
-        key: SymmetricKey,
+        key: PlatformSymmetricKey,
         peerNodeId: String,
         frameType: String
     ) throws -> HermesRealtimeRelayControlPayload {
@@ -123,7 +122,7 @@ public enum ControlFrameSealSession {
     /// dispatched.
     public static func openPayload(
         _ payload: HermesRealtimeRelayControlPayload,
-        key: SymmetricKey,
+        key: PlatformSymmetricKey,
         peerNodeId: String,
         frameType: String
     ) throws -> HermesRealtimeRelayControlPayload {
@@ -144,7 +143,7 @@ public enum ControlFrameSealSession {
         }
     }
 
-    private static func deriveKey(sessionSecret: Data, connectionID: String) -> SymmetricKey {
+    private static func deriveKey(sessionSecret: Data, connectionID: String) -> PlatformSymmetricKey {
         ControlFrameSeal().deriveSessionKey(
             hpkeSessionKey: sessionSecret,
             salt: Data(connectionID.utf8)

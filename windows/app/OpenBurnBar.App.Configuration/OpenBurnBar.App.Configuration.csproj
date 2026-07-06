@@ -18,5 +18,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="OpenBurnBar.App.Configuration.Tests" />
+    <InternalsVisibleTo Include="OpenBurnBar.App.Shell.Tests" />
+    <InternalsVisibleTo Include="OpenBurnBar.App.MissionControl.Tests" />
+    <InternalsVisibleTo Include="OpenBurnBar.App.Storage.Tests" />
   </ItemGroup>
 </Project>

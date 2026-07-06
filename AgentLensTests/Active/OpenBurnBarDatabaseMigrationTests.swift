@@ -83,7 +83,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v53_memory_forget_outbox",
+            OpenBurnBarDatabase.latestMigrationIdentifier,
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }
@@ -301,7 +301,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(statuses.newDefault, "quarantined")
     }
 
-    func test_chatMemoryAuthorityWritesAreDisabledByDefault() async throws {
+    func test_chatMemoryAuthorityWritesCanBeDisabled() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -309,7 +309,8 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         do {
             _ = try await store.addChatMemoryAuthorityRecord(
-                MemoryAddRequest(text: "never write while disabled", scope: MemoryScope(userID: "u-disabled"))
+                MemoryAddRequest(text: "never write while disabled", scope: MemoryScope(userID: "u-disabled")),
+                enabled: false
             )
             XCTFail("Expected disabled chat-memory authority write to throw.")
         } catch {

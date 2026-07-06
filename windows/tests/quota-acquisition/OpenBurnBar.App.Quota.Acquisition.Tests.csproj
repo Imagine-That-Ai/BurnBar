@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the quota ACQUISITION layer (Wave 1 item 5) — the
+    adapter halves feeding the landed portable parsers proven by tests/quota.
+    Same recorded fixtures (linked from ../quota/Fixtures — one oracle, two
+    layers), plus:
+      • statusline file source: freshness gate + value-for-value payload parse;
+      • hook installer: settings.json edit, original-statusline preservation +
+        chained-command spec, wrapper script contract, uninstall restore;
+      • Cursor: a state.vscdb CONSTRUCTED IN-TEST via Microsoft.Data.Sqlite
+        (keeps the tree text-only), the exact ItemTable keys, cookie derivation,
+        and the usage-summary HTTP round-trip through the transport seam;
+      • Codex: auth.json validation, bearer header, refresh-nudge retry;
+      • Anthropic: probe request shape, DelegatingHandler capture, staleness;
+      • coordinator: fan-in, retry isolation, sticky snapshots, deterministic
+        debounce via the injectable clock, watcher-seam contract (no real
+        FileSystemWatcher), auto-refresh cadence;
+      • the real FileSystemWatcher adapter smoke (temp dir).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Quota.Acquisition/OpenBurnBar.App.Quota.Acquisition.csproj" />
+    <ProjectReference Include="../../app/OpenBurnBar.App.Quota.Acquisition.Windows/OpenBurnBar.App.Quota.Acquisition.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tests/quota recorded fixtures are the shared parity oracle. -->
+    <Content Include="../quota/Fixtures/**/*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Fixtures/%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+
+</Project>

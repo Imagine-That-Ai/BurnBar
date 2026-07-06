@@ -112,7 +112,7 @@ public sealed partial class SubscriptionConstellationHero : UserControl
     private TextBlock MetaLabel(string text, bool dim) => new()
     {
         Text = text,
-        FontFamily = (FontFamily)Application.Current.Resources["PensieveFontMono"],
+        FontFamily = new FontFamily((string)Application.Current.Resources["PensieveFontMono"]),
         FontSize = 10,
         Foreground = new SolidColorBrush(dim ? Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF) : Muted),
     };

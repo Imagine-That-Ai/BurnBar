@@ -26,37 +26,25 @@
 
             <!-- Three stat pills. -->
             <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
-                <layouts:ConceptStatTile Value="$1,284" Caption="Spend"
+                <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend"
                                          AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-                <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+                <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
                                          AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-                <layouts:ConceptStatTile Value="7" Caption="Providers"
+                <layouts:ConceptStatTile x:Name="ProvidersTile" Value="—" Caption="Data source"
                                          AccentBrush="{StaticResource OBBAccentBrush}" />
             </StackPanel>
 
-            <!-- Provider chips wrap. -->
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                <Border Padding="12,6" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                        Background="{StaticResource OBBSurfaceBrush}"
-                        BorderThickness="0.75" BorderBrush="{StaticResource OBBStrokeBrush}">
-                    <TextBlock Text="Anthropic" FontSize="12" />
-                </Border>
-                <Border Padding="12,6" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                        Background="{StaticResource OBBSurfaceBrush}"
-                        BorderThickness="0.75" BorderBrush="{StaticResource OBBStrokeBrush}">
-                    <TextBlock Text="OpenAI" FontSize="12" />
-                </Border>
-                <Border Padding="12,6" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                        Background="{StaticResource OBBSurfaceBrush}"
-                        BorderThickness="0.75" BorderBrush="{StaticResource OBBStrokeBrush}">
-                    <TextBlock Text="Google" FontSize="12" />
-                </Border>
-                <Border Padding="12,6" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                        Background="{StaticResource OBBSurfaceBrush}"
-                        BorderThickness="0.75" BorderBrush="{StaticResource OBBStrokeBrush}">
-                    <TextBlock Text="xAI" FontSize="12" />
-                </Border>
-            </StackPanel>
+            <!-- Data readiness. -->
+            <Border Padding="14,10"
+                    CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                    Background="{StaticResource OBBSurfaceBrush}"
+                    BorderThickness="0.75"
+                    BorderBrush="{StaticResource OBBStrokeBrush}">
+                <TextBlock x:Name="ProviderStatusText"
+                           Text="Connect a SQLCipher database for live provider data"
+                           TextWrapping="Wrap"
+                           FontSize="12" />
+            </Border>
         </StackPanel>
     </Grid>
 </UserControl>

@@ -30,7 +30,9 @@ jobs:
         if: env.FACTORY_API_KEY_AVAILABLE == 'false'
         run: echo "::notice::FACTORY_API_KEY is unavailable; skipping Droid review."
       - name: Run Droid Auto Review
+        id: droid_auto_review
         if: env.FACTORY_API_KEY_AVAILABLE == 'true'
+        continue-on-error: true
         uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
           github_token: ${{ github.token }}
@@ -40,3 +42,12 @@ jobs:
           review_model: glm-5.2
           reasoning_effort: high
           security_model: glm-5.2
+      - name: Report Droid review service degradation
+        if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.droid_auto_review.outcome == 'failure'
+        run: |
+          echo "::warning::Droid Auto Review service returned a failure. The review artifact/comment link is preserved for diagnosis, but PR mergeability is not blocked on Factory API quota or transient SaaS availability."
+          {
+            echo "### Droid Auto Review degraded"
+            echo
+            echo "The Droid review action failed after preparing the review run. Treat this as an external review-service degradation, not a product build failure. The workflow uploaded its debug artifact and updated the PR review comment with the job link."
+          } >> "$GITHUB_STEP_SUMMARY"

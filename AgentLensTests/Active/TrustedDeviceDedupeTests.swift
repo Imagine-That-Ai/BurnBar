@@ -1,3 +1,4 @@
+import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
 
@@ -9,6 +10,7 @@ import XCTest
 /// identity — and with the old name+platform key there was no row left to
 /// approve, breaking mirroring/computer-control onboarding with no visible
 /// error. Regression pin for the 2026-07-03 incident.
+@MainActor
 final class TrustedDeviceDedupeTests: XCTestCase {
 
     private func device(

@@ -1,0 +1,5 @@
+# .NET build outputs for the openburnbar-iroh C# binding.
+# The generated binding (OpenBurnBarIroh.Ffi/generated/) IS committed; build
+# artifacts, restored packages, and the copied native cdylib are not.
+bin/
+obj/

@@ -58,6 +58,9 @@ env:
   DESTINATION: "platform=macOS,arch=arm64"
   CACHE_DIR: .spm-cache
   DERIVED_DATA: .derived-data
+  # Source-built Firestore is a release invariant everywhere the SwiftPM graph
+  # is resolved (gates and packaging): the prebuilt grpc binary SIGSEGVs.
+  FIREBASE_SOURCE_FIRESTORE: "1"
 
 jobs:
   release-functions-gate:
@@ -157,32 +160,26 @@ jobs:
       - name: Run supply chain audit
         run: ./scripts/supply-chain-audit.sh
 
-  build-and-release:
+  # Resolves and validates the release tag once; every downstream lane consumes
+  # its outputs and re-verifies the checkout commit. Also owns the publishable
+  # secrets scan, provenance preflights, and bypass-reason validation so a bad
+  # release fails in minutes, not hours. Strict signing-secret validation lives
+  # in the environment-bound build-and-release job instead: environment secrets
+  # are only exposed to jobs bound to the release environment, so a fail-hard
+  # APPLE_*/Sparkle check here would break setups that scope them there.
+  release-preflight:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    environment: release
-    # Keep release builds on the same current GA macOS/Xcode image as PR app
-    # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
+    name: Release Preflight
     runs-on: macos-26
-    # The approved release lane still serializes the secret-backed app/mobile,
-    # SQLCipher, Android signing, notarization, and artifact generation steps.
-    # v1.0.16 proved those gates can legitimately run past 180 minutes on cold
-    # macOS runners, so keep the independent gates parallel but give this
-    # protected packaging lane enough headroom to reach publish.
-    timeout-minutes: 360
+    timeout-minutes: 30
+    permissions:
+      contents: read
     outputs:
-      dmg_path: ${{ steps.dmg.outputs.dmg_path }}
-      dmg_name: ${{ steps.dmg.outputs.dmg_name }}
-      zip_path: ${{ steps.zip.outputs.zip_path }}
-      zip_name: ${{ steps.zip.outputs.zip_name }}
       tag_name: ${{ steps.version.outputs.tag_name }}
       tag_ref: ${{ steps.version.outputs.tag_ref }}
       release_commit: ${{ steps.version.outputs.release_commit }}
       version: ${{ steps.version.outputs.version }}
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
-    env:
-      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' }}
-      HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
-      HAS_NOTARY_SECRETS: ${{ secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_API_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
 
     steps:
       - name: Check out repository
@@ -344,10 +341,518 @@ jobs:
           echo "Version: $VERSION"
           echo "Strict notarized release mode: true"
           echo "Run release validation gates: ${RUN_RELEASE_VALIDATION_GATES}"
-          echo "Firebase secrets available: ${HAS_FIREBASE_SECRETS}"
-          echo "Signing secrets available: ${HAS_SIGNING_SECRETS}"
-          echo "Notary API secrets available: ${HAS_NOTARY_SECRETS}"
 
+      - name: Verify Apple App Check public release policy
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+        run: bash ./scripts/ci/verify-apple-appcheck-release-env.sh
+
+      - name: Record owner-approved mobile unit test bypass
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MOBILE_UNIT_TEST_BYPASS_REASON: ${{ inputs.mobile_unit_test_bypass_reason }}
+        run: |
+          echo "::warning::Bypassing OpenBurnBar mobile unit tests for manual release ${TAG_NAME}: ${MOBILE_UNIT_TEST_BYPASS_REASON}"
+          {
+            echo "## Owner-approved mobile unit test bypass"
+            echo "- Tag: ${TAG_NAME}"
+            echo "- Version: ${VERSION}"
+            echo "- Reason/evidence: ${MOBILE_UNIT_TEST_BYPASS_REASON}"
+            echo "- Scope: iOS simulator mobile unit-test gate only; Swift tests, app tests, SQLCipher codec checks, TypeScript tests, Firestore rules, Android tests, supply-chain checks, signing, notarization, and artifact verification still run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record owner-approved release validation bypass
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_release_validation_gates }}
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_VALIDATION_BYPASS_REASON: ${{ inputs.release_validation_bypass_reason }}
+        run: |
+          echo "::warning::Bypassing slow release validation gates for manual release ${TAG_NAME}: ${RELEASE_VALIDATION_BYPASS_REASON}"
+          {
+            echo "## Owner-approved release validation bypass"
+            echo "- Tag: ${TAG_NAME}"
+            echo "- Version: ${VERSION}"
+            echo "- Reason/evidence: ${RELEASE_VALIDATION_BYPASS_REASON}"
+            echo "- Scope: Swift tests, release app smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests only; preflight, secret validation, Firebase/App Check config injection, Android release bundle build, macOS signing, notarization, artifact smoke, provenance, publish, and live feed verification still run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release-swift-gate:
+    name: Release Swift and Retrieval Gate
+    needs: release-preflight
+    runs-on: macos-26
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Check out release tag for validation gate
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          TAG_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin "+${TAG_REF}:${TAG_REF}"
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git submodule update --init --recursive Vendor/libsignal
+
+      - name: Inject Firebase config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: Inject iOS/macOS Sentry config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
+        run: bash ./scripts/ci/inject-sentry-config-ios.sh
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Resolve libsignal revision
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        id: libsignal
+        run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore SwiftPM package cache
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: .spm-cache-new
+          key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
+          restore-keys: |
+            release-spm-gate-${{ runner.os }}-
+
+      - name: Restore cargo cache for libsignal FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Vendor/libsignal/target
+          key: release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-${{ steps.libsignal.outputs.rev }}
+          restore-keys: |
+            release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-
+
+      - name: Run Swift tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        timeout-minutes: 25
+        # Coverage is a PR/CI responsibility. Release publication needs pass/fail
+        # proof and bounded diagnostics, not a cold-runner coverage rebuild.
+        run: ./scripts/test-openburnbar-swift.sh
+
+      - name: Run retrieval replay evals
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        timeout-minutes: 75
+        run: ./scripts/test-openburnbar-retrieval-evals.sh
+
+  release-app-gate:
+    name: Release App Test Gate
+    needs: release-preflight
+    runs-on: macos-26
+    timeout-minutes: 100
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Check out release tag for validation gate
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          TAG_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin "+${TAG_REF}:${TAG_REF}"
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git submodule update --init --recursive Vendor/libsignal
+
+      - name: Inject Firebase config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: Inject iOS/macOS Sentry config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
+        run: bash ./scripts/ci/inject-sentry-config-ios.sh
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Resolve libsignal revision
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        id: libsignal
+        run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore SwiftPM package cache
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: .spm-cache-new
+          key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
+          restore-keys: |
+            release-spm-gate-${{ runner.os }}-
+
+      - name: Restore cargo cache for libsignal FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Vendor/libsignal/target
+          key: release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-${{ steps.libsignal.outputs.rev }}
+          restore-keys: |
+            release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-
+
+      - name: Run OpenBurnBar release-critical app tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        timeout-minutes: 75
+        # The full OpenBurnBarTests app suite is a PR/CI responsibility. Release
+        # publication needs a bounded app-host smoke that still proves the
+        # surfaces most likely to break a shipped binary: direct-download
+        # metadata, Firebase/App Check config, menu-bar click/popover behavior,
+        # and the newest chat pane tiling contracts. The selected test slice is
+        # intentionally narrow, but cold GitHub macOS runners still compile the
+        # app host and SwiftPM graph before XCTest starts, so this step keeps
+        # enough wall-clock headroom for dependency build time without restoring
+        # the full app-suite release gate.
+        run: |
+          source scripts/lib/openburnbar-release-app-test-filters.sh
+          OPENBURNBAR_APP_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
+          OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
+          OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)" \
+            ./scripts/test-openburnbar-app.sh
+
+  release-sqlcipher-gate:
+    name: Release SQLCipher Gate
+    needs: release-preflight
+    runs-on: macos-26
+    timeout-minutes: 95
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Check out release tag for validation gate
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          TAG_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin "+${TAG_REF}:${TAG_REF}"
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git submodule update --init --recursive Vendor/libsignal
+
+      - name: Inject Firebase config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: Inject iOS/macOS Sentry config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
+        run: bash ./scripts/ci/inject-sentry-config-ios.sh
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Resolve libsignal revision
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        id: libsignal
+        run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore SwiftPM package cache
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: .spm-cache-new
+          key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
+          restore-keys: |
+            release-spm-gate-${{ runner.os }}-
+
+      - name: Restore cargo cache for libsignal FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Vendor/libsignal/target
+          key: release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-${{ steps.libsignal.outputs.rev }}
+          restore-keys: |
+            release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-
+
+      - name: Verify SQLCipher codec in Release configuration
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        timeout-minutes: 75
+        run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh
+
+  release-mobile-gate:
+    name: Release Mobile Test Gate
+    needs: release-preflight
+    runs-on: macos-26
+    timeout-minutes: 100
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Check out release tag for validation gate
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        env:
+          TAG_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin "+${TAG_REF}:${TAG_REF}"
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git submodule update --init --recursive Vendor/libsignal
+
+      - name: Inject Firebase config
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: Inject iOS/macOS Sentry config
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        env:
+          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
+        run: bash ./scripts/ci/inject-sentry-config-ios.sh
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Resolve libsignal revision
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        id: libsignal
+        run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore SwiftPM package cache
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: .spm-cache-new
+          key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
+          restore-keys: |
+            release-spm-gate-${{ runner.os }}-
+
+      - name: Restore cargo cache for libsignal FFI
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Vendor/libsignal/target
+          key: release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-${{ steps.libsignal.outputs.rev }}
+          restore-keys: |
+            release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-
+
+      - name: Run OpenBurnBar mobile unit tests
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
+        timeout-minutes: 75
+        # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
+        # The full mobile suite is a PR/CI responsibility. Release publication
+        # needs a bounded mobile-host smoke that still proves App Store/TestFlight
+        # metadata, Firebase/App Check readiness, auth startup safety, iPad
+        # navigation, and the newest mobile kernel/backdrop contracts. Cold
+        # GitHub macOS runners still compile the iOS app host and SwiftPM graph,
+        # so this step keeps enough wall-clock headroom for dependency build time
+        # without restoring the full mobile-suite release gate.
+        run: |
+          source scripts/lib/openburnbar-release-mobile-test-filters.sh
+          OPENBURNBAR_MOBILE_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_MOBILE_TEST_DEFAULT_ALLOWANCE=240 \
+          OPENBURNBAR_MOBILE_TEST_MAX_ALLOWANCE=480 \
+          OPENBURNBAR_MOBILE_TEST_FILTER="$(openburnbar_release_mobile_test_filters_env)" \
+            ./scripts/test-openburnbar-mobile.sh
+
+  release-android-gate:
+    name: Release Android Test Gate
+    needs: release-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Check out release tag for validation gate
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          TAG_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin "+${TAG_REF}:${TAG_REF}"
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git submodule update --init --recursive Vendor/libsignal
+
+      - name: Set up Java 21 (Android release tests)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      - name: Set up Android SDK
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
+        with:
+          packages: "platforms;android-35 build-tools;36.0.0"
+
+      - name: Inject Android Firebase config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          OPENBURNBAR_ANDROID_FIREBASE_STRICT: "1"
+        run: bash ./scripts/ci/inject-firebase-config-android.sh
+
+      - name: Verify Android Firebase release config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        run: node ./scripts/ci/verify-android-firebase-release-config.mjs --strict-release
+
+      - name: Inject Android Sentry config
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        env:
+          ANDROID_SENTRY_DSN: ${{ secrets.ANDROID_SENTRY_DSN }}
+        run: bash ./scripts/ci/inject-sentry-config-android.sh
+
+      - name: Run Android unit tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
+        run: ./scripts/test-openburnbar-android.sh
+
+  # The protected packaging lane: builds, signs, notarizes, and attests every
+  # release artifact behind the `release` environment approval. Validation
+  # gates run in parallel jobs; `publish` requires all of them, so nothing
+  # ships on a red gate. Signing, notarization, artifact generation, and
+  # provenance stay serialized in this single job so attestations bind to the
+  # same workspace that built the artifacts.
+  build-and-release:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    environment: release
+    name: build-and-release
+    needs: release-preflight
+    # Keep release builds on the same current GA macOS/Xcode image as PR app
+    # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
+    runs-on: macos-26
+    # Packaging only (validation gates run as parallel jobs): FFI + daemon +
+    # extension + Release app builds, Android bundle, signing, notarization,
+    # and provenance. Cold-runner worst case stays well under five hours now
+    # that the ~3.5h serial validation prefix is gone.
+    timeout-minutes: 300
+    outputs:
+      dmg_path: ${{ steps.dmg.outputs.dmg_path }}
+      dmg_name: ${{ steps.dmg.outputs.dmg_name }}
+      zip_path: ${{ steps.zip.outputs.zip_path }}
+      zip_name: ${{ steps.zip.outputs.zip_name }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Check out release tag for packaging
+        env:
+          TAG_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin "+${TAG_REF}:${TAG_REF}"
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git submodule update --init --recursive Vendor/libsignal
+
+      # Runs inside the environment-bound job on purpose: environment-scoped
+      # secrets only resolve for jobs bound to the release environment, so this
+      # fail-hard presence check must live with the signing work it protects.
       - name: Validate strict release secrets
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -378,11 +883,6 @@ jobs:
             echo "::error::Missing required release secrets: ${missing[*]}"
             exit 1
           fi
-
-      - name: Verify Apple App Check public release policy
-        env:
-          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
-        run: bash ./scripts/ci/verify-apple-appcheck-release-env.sh
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
@@ -448,92 +948,28 @@ jobs:
           fi
           protoc --version
 
-      - name: Run Swift tests
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        timeout-minutes: 25
-        # Coverage is a PR/CI responsibility. Release publication needs pass/fail
-        # proof and bounded diagnostics, not a cold-runner coverage rebuild.
-        run: ./scripts/test-openburnbar-swift.sh
+      - name: Resolve libsignal revision
+        id: libsignal
+        run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
 
-      - name: Run OpenBurnBar release-critical app tests
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        timeout-minutes: 75
-        # The full OpenBurnBarTests app suite is a PR/CI responsibility. Release
-        # publication needs a bounded app-host smoke that still proves the
-        # surfaces most likely to break a shipped binary: direct-download
-        # metadata, Firebase/App Check config, menu-bar click/popover behavior,
-        # and the newest chat pane tiling contracts. The selected test slice is
-        # intentionally narrow, but cold GitHub macOS runners still compile the
-        # app host and SwiftPM graph before XCTest starts, so this step keeps
-        # enough wall-clock headroom for dependency build time without restoring
-        # the full app-suite release gate.
-        run: |
-          source scripts/lib/openburnbar-release-app-test-filters.sh
-          OPENBURNBAR_APP_TEST_ATTEMPTS=2 \
-          OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
-          OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
-          OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)" \
-            ./scripts/test-openburnbar-app.sh
+      - name: Restore SwiftPM package cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: .spm-cache
+          key: release-spm-package-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
+          restore-keys: |
+            release-spm-package-${{ runner.os }}-
 
-      - name: Verify SQLCipher codec in Release configuration
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        timeout-minutes: 60
-        run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh
-
-      - name: Run OpenBurnBar mobile unit tests
-        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
-        timeout-minutes: 75
-        # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
-        # The full mobile suite is a PR/CI responsibility. Release publication
-        # needs a bounded mobile-host smoke that still proves App Store/TestFlight
-        # metadata, Firebase/App Check readiness, auth startup safety, iPad
-        # navigation, and the newest mobile kernel/backdrop contracts. Cold
-        # GitHub macOS runners still compile the iOS app host and SwiftPM graph,
-        # so this step keeps enough wall-clock headroom for dependency build time
-        # without restoring the full mobile-suite release gate.
-        run: |
-          source scripts/lib/openburnbar-release-mobile-test-filters.sh
-          OPENBURNBAR_MOBILE_TEST_ATTEMPTS=2 \
-          OPENBURNBAR_MOBILE_TEST_DEFAULT_ALLOWANCE=240 \
-          OPENBURNBAR_MOBILE_TEST_MAX_ALLOWANCE=480 \
-          OPENBURNBAR_MOBILE_TEST_FILTER="$(openburnbar_release_mobile_test_filters_env)" \
-            ./scripts/test-openburnbar-mobile.sh
-
-      - name: Record owner-approved mobile unit test bypass
-        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
-        env:
-          TAG_NAME: ${{ steps.version.outputs.tag_name }}
-          VERSION: ${{ steps.version.outputs.version }}
-          MOBILE_UNIT_TEST_BYPASS_REASON: ${{ inputs.mobile_unit_test_bypass_reason }}
-        run: |
-          echo "::warning::Bypassing OpenBurnBar mobile unit tests for manual release ${TAG_NAME}: ${MOBILE_UNIT_TEST_BYPASS_REASON}"
-          {
-            echo "## Owner-approved mobile unit test bypass"
-            echo "- Tag: ${TAG_NAME}"
-            echo "- Version: ${VERSION}"
-            echo "- Reason/evidence: ${MOBILE_UNIT_TEST_BYPASS_REASON}"
-            echo "- Scope: iOS simulator mobile unit-test gate only; Swift tests, app tests, SQLCipher codec checks, TypeScript tests, Firestore rules, Android tests, supply-chain checks, signing, notarization, and artifact verification still run."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Record owner-approved release validation bypass
-        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_release_validation_gates }}
-        env:
-          TAG_NAME: ${{ steps.version.outputs.tag_name }}
-          VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_VALIDATION_BYPASS_REASON: ${{ inputs.release_validation_bypass_reason }}
-        run: |
-          echo "::warning::Bypassing slow release validation gates for manual release ${TAG_NAME}: ${RELEASE_VALIDATION_BYPASS_REASON}"
-          {
-            echo "## Owner-approved release validation bypass"
-            echo "- Tag: ${TAG_NAME}"
-            echo "- Version: ${VERSION}"
-            echo "- Reason/evidence: ${RELEASE_VALIDATION_BYPASS_REASON}"
-            echo "- Scope: Swift tests, release app smoke, SQLCipher, mobile smoke, retrieval replay, and Android unit tests only; preflight, secret validation, Firebase/App Check config injection, Android release bundle build, macOS signing, notarization, artifact smoke, provenance, publish, and live feed verification still run."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run retrieval replay evals
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        run: ./scripts/test-openburnbar-retrieval-evals.sh
+      - name: Restore cargo cache for libsignal FFI
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Vendor/libsignal/target
+          key: release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-${{ steps.libsignal.outputs.rev }}
+          restore-keys: |
+            release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-
 
       - name: Prepare Signal FFI XCFramework for release app
         env:
@@ -548,11 +984,12 @@ jobs:
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
-      - name: Set up Java 21 (Android release tests)
+      - name: Set up Java 21 (Android release bundle)
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
+          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
@@ -580,10 +1017,6 @@ jobs:
           OPENBURNBAR_ANDROID_KEY_ALIAS: ${{ secrets.OPENBURNBAR_ANDROID_KEY_ALIAS }}
           OPENBURNBAR_ANDROID_KEY_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEY_PASSWORD }}
         run: bash ./scripts/ci/inject-android-keystore.sh
-
-      - name: Run Android unit tests
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        run: ./scripts/test-openburnbar-android.sh
 
       - name: Build signed Android release bundle
         env:
@@ -993,7 +1426,7 @@ jobs:
       - name: Create DMG
         id: dmg
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           DMG_NAME="OpenBurnBar-${VERSION}-macOS.dmg"
@@ -1099,7 +1532,7 @@ jobs:
       - name: Create ZIP archive
         id: zip
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           ZIP_NAME="OpenBurnBar-${VERSION}-macOS.zip"
@@ -1138,7 +1571,7 @@ jobs:
       - name: Build corresponding source archive
         id: corresponding-source
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
           HERMES_AGENT_SRC: ${{ steps.hermes-agent-source.outputs.path }}
           OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE: "1"
         run: |
@@ -1158,7 +1591,7 @@ jobs:
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
           OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
           OPENBURNBAR_MAC_UPDATE_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
           # Tag pushes are never critical by default; manual reruns can flag a
@@ -1221,7 +1654,7 @@ jobs:
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
 
@@ -1265,7 +1698,7 @@ jobs:
         env:
           CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
         # Sigstore keyless attestations below are the required SOTA provenance
         # control. GPG checksum signatures are retained as an optional legacy
         # compatibility artifact when operators configure RELEASE_SIGNING_KEY.
@@ -1298,7 +1731,7 @@ jobs:
       - name: Generate SBOM
         id: sbom
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           SBOM_FILE="$RUNNER_TEMP/sbom-v${VERSION}.spdx.json"
 
@@ -1312,7 +1745,7 @@ jobs:
       - name: Generate OpenVEX sidecar
         id: vex
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
           SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
         run: |
           VEX_FILE="$RUNNER_TEMP/openburnbar-v${VERSION}.vex.json"
@@ -1336,10 +1769,10 @@ jobs:
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
-          VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag_name }}
-          RELEASE_REF: ${{ steps.version.outputs.tag_ref }}
-          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          RELEASE_TAG: ${{ needs.release-preflight.outputs.tag_name }}
+          RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: |
           set -euo pipefail
@@ -1429,7 +1862,7 @@ jobs:
 
       - name: Verify Apple privacy manifests in release bundles
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           set -euo pipefail
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
@@ -1448,7 +1881,7 @@ jobs:
       - name: Generate third-party NOTICES from SBOM
         id: notices
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
           SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
         run: |
           NOTICES_FILE="$RUNNER_TEMP/NOTICES-v${VERSION}.txt"
@@ -1484,9 +1917,9 @@ jobs:
       - name: Write release metadata
         id: metadata
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG_NAME: ${{ steps.version.outputs.tag_name }}
-          SOURCE_ARCHIVE: OpenBurnBar-${{ steps.version.outputs.version }}-corresponding-source.tar.gz
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          TAG_NAME: ${{ needs.release-preflight.outputs.tag_name }}
+          SOURCE_ARCHIVE: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-corresponding-source.tar.gz
           UPDATE_BASE_URL: ${{ steps.update-feeds.outputs.update_base_url }}
           APPCAST_FILE: appcast.xml
           LATEST_FILE: latest-macos.json
@@ -1540,21 +1973,21 @@ jobs:
       - name: Upload appcast artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: appcast-v${{ steps.version.outputs.version }}
+          name: appcast-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.update-feeds.outputs.appcast_path }}
           if-no-files-found: error
 
       - name: Upload latest macOS metadata artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: latest-macos-v${{ steps.version.outputs.version }}
+          name: latest-macos-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.update-feeds.outputs.latest_path }}
           if-no-files-found: error
 
       - name: Upload checksums artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: checksums-v${{ steps.version.outputs.version }}
+          name: checksums-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.checksums.outputs.checksums_path }}
           if-no-files-found: error
 
@@ -1562,21 +1995,21 @@ jobs:
         if: steps.sign-checksums.outputs.sig_path != ''
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: checksums-v${{ steps.version.outputs.version }}-signature
+          name: checksums-v${{ needs.release-preflight.outputs.version }}-signature
           path: ${{ steps.sign-checksums.outputs.sig_path }}
           if-no-files-found: error
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: sbom-v${{ steps.version.outputs.version }}
+          name: sbom-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.sbom.outputs.sbom_path }}
           if-no-files-found: error
 
       - name: Upload corresponding source artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: OpenBurnBar-${{ steps.version.outputs.version }}-corresponding-source
+          name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-corresponding-source
           path: |
             ${{ steps.corresponding-source.outputs.source_path }}
             ${{ steps.corresponding-source.outputs.source_sha256_path }}
@@ -1585,28 +2018,28 @@ jobs:
       - name: Upload VEX artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: vex-v${{ steps.version.outputs.version }}
+          name: vex-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.vex.outputs.vex_path }}
           if-no-files-found: error
 
       - name: Upload release provenance bundles artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: release-provenance-v${{ steps.version.outputs.version }}
+          name: release-provenance-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.sigstore-provenance.outputs.provenance_dir }}
           if-no-files-found: error
 
       - name: Upload NOTICES artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: notices-v${{ steps.version.outputs.version }}
+          name: notices-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.notices.outputs.notices_path }}
           if-no-files-found: error
 
       - name: Upload release metadata artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: release-metadata-v${{ steps.version.outputs.version }}
+          name: release-metadata-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.metadata.outputs.metadata_path }}
           if-no-files-found: error
 
@@ -1647,7 +2080,22 @@ jobs:
           bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"
 
   publish:
-    needs: [build-and-release, smoke-test, release-functions-gate, release-extension-gate, release-supply-chain-gate]
+    # Fail-closed release gate: publish requires every validation lane and the
+    # packaging + artifact smoke chain. A skipped gate only occurs through the
+    # owner-approved bypass inputs validated in release-preflight; a failed or
+    # cancelled gate blocks publish.
+    needs:
+      - release-preflight
+      - release-swift-gate
+      - release-app-gate
+      - release-sqlcipher-gate
+      - release-mobile-gate
+      - release-android-gate
+      - release-functions-gate
+      - release-extension-gate
+      - release-supply-chain-gate
+      - build-and-release
+      - smoke-test
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -1663,12 +2111,12 @@ jobs:
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.build-and-release.outputs.version }}
-          VERSION: ${{ needs.build-and-release.outputs.version }}
+          TAG_NAME: ${{ needs.release-preflight.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
           DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
           ZIP_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.zip_name }}
-          # Prerelease status is derived from the tag (set in build-and-release).
-          IS_PRERELEASE: ${{ needs.build-and-release.outputs.is_prerelease }}
+          # Prerelease status is derived from the tag (set in release-preflight).
+          IS_PRERELEASE: ${{ needs.release-preflight.outputs.is_prerelease }}
           # 'latest' (which atomically repoints the in-app update feed) is opt-in:
           # only an explicit workflow_dispatch promote=true sets it, and never
           # for a prerelease tag.
@@ -1772,7 +2220,7 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT_MACOS: openburnbar-macos
           SENTRY_PROJECT_FUNCTIONS: openburnbar-functions
-          VERSION: ${{ needs.build-and-release.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           set -euo pipefail
           npm install --global @sentry/cli@2.42.2
@@ -1802,12 +2250,12 @@ jobs:
   # pinned in Info.plist. A release whose own update feed is broken fails here.
   verify-live-update-feed:
     name: Verify live update feed
-    needs: [build-and-release, publish]
+    needs: [release-preflight, publish]
     # Tag pushes intentionally publish stable assets without repointing
     # `releases/latest`. Only an explicit promote=true dispatch changes the
     # update channel, so only that promoted run can truthfully verify the live
     # updater feed for this release.
-    if: ${{ needs.build-and-release.outputs.is_prerelease == 'false' && github.event_name == 'workflow_dispatch' && inputs.promote == true }}
+    if: ${{ needs.release-preflight.outputs.is_prerelease == 'false' && github.event_name == 'workflow_dispatch' && inputs.promote == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -1816,7 +2264,7 @@ jobs:
 
       - name: Fetch and verify published feed, appcast, and DMG signature
         env:
-          VERSION: ${{ needs.build-and-release.outputs.version }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
           OPENBURNBAR_MAC_UPDATE_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
         run: |
           set -euo pipefail

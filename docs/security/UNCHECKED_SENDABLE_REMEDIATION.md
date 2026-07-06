@@ -28,6 +28,7 @@ actor, a real `Sendable` payload, or a lock-guarded owned value whenever that is
 | `locked-formatter-cache` | Non-thread-safe formatter caches (ISO8601DateFormatter) | Every cache read/write runs under an NSLock; formatters never escape the lock scope. |
 | `nslock-blocking-outcome` | NSLock-protected generic result boxes | Outcome is set once under lock and read under lock; no concurrent mutation. |
 | `nslock-protected-storage` | NSLock-protected generic mutable storage | All reads and writes run through the lock; no unsynchronized access path. |
+| `swift-crypto-key-material` | Swift Crypto / CryptoKit key-material value wrappers | The values are immutable key-material handles passed across module/actor boundaries; OpenBurnBar exposes no shared mutable mutation path and uses them only through deterministic crypto operations. |
 
 ## Current Handoff 2 Additions
 

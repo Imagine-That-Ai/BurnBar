@@ -54,14 +54,14 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         static let max20x = ClaudePlanCaps(fiveHourTokens: 3_520_000, sevenDayTokens: 30_800_000)
     }
 
-    /// Token totals across the rolling Claude windows. Public so the macOS
-    /// app test target (`ClaudeQuotaJSONLScannerTests`) can assert on the
-    /// scan output via the ``LiftedQuotaTypeAliases`` re-export.
+    /// Token totals across the rolling Claude windows. Public so app and
+    /// package tests can assert on the scan output.
     public struct JSONLTokenWindows {
         public let fiveHourTokens: Int
         public let sevenDayTokens: Int
         public let latestTimestamp: Date?
         public let filesScanned: Int
+
         public init(fiveHourTokens: Int, sevenDayTokens: Int, latestTimestamp: Date?, filesScanned: Int) {
             self.fiveHourTokens = fiveHourTokens
             self.sevenDayTokens = sevenDayTokens
@@ -604,9 +604,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     // MARK: - File Discovery
 
     /// Sum real assistant-turn token usage across the rolling 5-hour and
-    /// 7-day windows from local Claude transcripts. Public so the macOS app
-    /// test target (`ClaudeQuotaJSONLScannerTests`) can drive it against a
-    /// temp directory via the ``LiftedQuotaTypeAliases`` re-export.
+    /// 7-day windows from local Claude transcripts. Public so the app XCTest
+    /// bundle can drive it against a temp directory.
     public static func scanJSONLTokenWindows(
         homeDirectoryURL: URL,
         fileManager: FileManager,
