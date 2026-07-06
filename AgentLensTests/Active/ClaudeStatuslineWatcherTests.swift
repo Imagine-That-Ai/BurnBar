@@ -144,7 +144,7 @@ final class ClaudeStatuslineWatcherTests: XCTestCase {
     /// Multiple consecutive stop()s must be safe — and crucially must
     /// not double-close the FD. We can't directly detect FD reuse, but a
     /// crash or assertion in close() would surface here.
-    func test_watcher_stopIsIdempotent() async throws {
+    func test_watcher_stopIsIdempotent_smokeNoCrash() async throws {
         let dir = try makeTemporaryDirectory()
         let file = dir.appendingPathComponent("snap.json")
         try Data("{}".utf8).write(to: file)

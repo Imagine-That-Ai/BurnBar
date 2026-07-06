@@ -942,9 +942,11 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let sealedReceived = expectation(description: "sealed frame routed after seal confirmation")
         coordinator.mirrorFrameHandler = { frame in
             if frame == plaintextFrame {
+                XCTFail("Plaintext frame must be dropped after the frame-seal ack")
                 plaintextDropped.fulfill()
             }
             if frame == sealedFrame {
+                XCTAssertEqual(frame, sealedFrame)
                 sealedReceived.fulfill()
             }
         }

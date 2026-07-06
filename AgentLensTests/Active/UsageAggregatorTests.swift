@@ -1586,6 +1586,8 @@ final class ParseResultTests: XCTestCase {
         let result = ParseResult(usages: [], conversations: [])
         func requireSendable<T: Sendable>(_: T) {}
         requireSendable(result)
+        XCTAssertTrue(result.usages.isEmpty)
+        XCTAssertTrue(result.conversations.isEmpty)
     }
 }
 

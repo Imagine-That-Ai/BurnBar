@@ -56,7 +56,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let database = OpenBurnBarDatabase(databaseQueue: queue)
 
         // Should not throw and should not attempt file backup
-        try database.runMigrationsSafely()
+        XCTAssertNoThrow(try database.runMigrationsSafely())
     }
 
     func test_runMigrationsSafely_skipsBackup_whenFileBasedDBIsCurrent() throws {

@@ -147,6 +147,8 @@ final class CLIProfileStreamFailoverRunnerMattersTests: XCTestCase {
 
     func test_faultingStore_writes_doNotCrashOrThrow() throws {
         let adapter = ProductionSwitcherProfileStoreAdapter(store: try makeFaultingStore())
+        // Smoke test by intent: the faulting store only exposes this contract
+        // by not trapping or propagating through the adapter's non-throwing API.
         // Each write hits a missing table and throws underneath. The new do/catch
         // surfaces the failure via AppLogger.dataStore.error instead of swallowing
         // it, but must not crash or propagate past the non-throwing method.
