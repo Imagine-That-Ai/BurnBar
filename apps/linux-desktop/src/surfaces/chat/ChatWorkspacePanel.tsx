@@ -28,8 +28,10 @@ export type ChatWorkspacePanelProps = {
   warnings: ChatWarningBanner[];
   sharedFeaturesAvailable: boolean;
   streaming: boolean;
+  streamError: string | null;
   composerDisabled: boolean;
   composerDisabledReason: string;
+  onSendMessage: (text: string) => void;
   onStopStreaming: () => void;
   mainFallback?: ReactNode;
 };
@@ -54,11 +56,15 @@ export function ChatWorkspacePanel({
   warnings,
   sharedFeaturesAvailable,
   streaming,
+  streamError,
   composerDisabled,
   composerDisabledReason,
+  onSendMessage,
   onStopStreaming,
   mainFallback
 }: ChatWorkspacePanelProps) {
+  const hasActiveTranscript = Boolean(selectedThread) || messages.length > 0 || streaming;
+
   return (
     <>
       <ChatToolbar
@@ -82,12 +88,13 @@ export function ChatWorkspacePanel({
           onNewChat={onNewChat}
         />
         <div className="chat-main">
-          {selectedThread ? (
+          {hasActiveTranscript ? (
             <MessageStream
               messages={messages}
               loading={messagesLoading}
               warnings={warnings}
               sharedFeaturesAvailable={sharedFeaturesAvailable}
+              streamError={streamError}
             />
           ) : (
             (mainFallback ?? <p className="chat-empty">Select a thread from the rail.</p>)
@@ -97,6 +104,7 @@ export function ChatWorkspacePanel({
             disabled={composerDisabled}
             disabledReason={composerDisabledReason}
             streaming={streaming}
+            onSend={onSendMessage}
             onStop={onStopStreaming}
           />
         </div>

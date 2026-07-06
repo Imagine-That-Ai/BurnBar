@@ -24,6 +24,9 @@ export function ChatSurface() {
   const backend = useChatStore((s) => s.backend);
   const modelLabel = useChatStore((s) => s.modelLabel);
   const streaming = useChatStore((s) => s.streaming);
+  const streamError = useChatStore((s) => s.streamError);
+  const gatewayStatus = useChatStore((s) => s.gatewayStatus);
+  const gatewayBaseURL = useChatStore((s) => s.gatewayBaseURL);
   const warnings = useChatStore((s) => s.warnings);
   const sharedFeaturesAvailable = useChatStore((s) => s.sharedFeaturesAvailable);
   const load = useChatStore((s) => s.load);
@@ -32,6 +35,7 @@ export function ChatSurface() {
   const loadMoreThreads = useChatStore((s) => s.loadMoreThreads);
   const setBackend = useChatStore((s) => s.setBackend);
   const startNewChat = useChatStore((s) => s.startNewChat);
+  const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
 
   useLaneLoad(load);
@@ -41,7 +45,16 @@ export function ChatSurface() {
   const visibleThreads = threads.slice(0, visibleThreadCount);
   const hasMoreThreads = threads.length > visibleThreadCount;
   const selectedThread = threads.find((t) => t.id === selectedThreadId) ?? null;
-  const gatewayHint = config?.paths.socketPath ? `gateway ${config.paths.socketPath}` : null;
+  const gatewayHint = gatewayBaseURL ? `gateway ${gatewayBaseURL}` : null;
+  const liveComposerDisabled = !fixtureMode && gatewayStatus !== 'reachable';
+  const liveComposerDisabledReason =
+    gatewayStatus === 'disabled'
+      ? 'Gateway chat is disabled in daemon health.'
+      : gatewayStatus === 'unreachable'
+        ? 'Gateway health check failed.'
+        : gatewayStatus === 'unknown'
+          ? 'Checking gateway health…'
+          : '';
 
   const panelProps = {
     threads: visibleThreads,
@@ -63,6 +76,8 @@ export function ChatSurface() {
     warnings,
     sharedFeaturesAvailable,
     streaming,
+    streamError,
+    onSendMessage: (text: string) => void sendMessage(text),
     onStopStreaming: stopStreaming
   };
 
@@ -125,9 +140,9 @@ export function ChatSurface() {
         selectedId={null}
         hasMore={false}
         selectedThread={null}
-        messages={[]}
-        composerDisabled
-        composerDisabledReason="Select or start a thread to compose."
+        messages={messages}
+        composerDisabled={liveComposerDisabled}
+        composerDisabledReason={liveComposerDisabledReason}
         mainFallback={<p className="chat-empty">No conversations match &lsquo;{query.trim()}&rsquo;.</p>}
       />
     );
@@ -139,9 +154,9 @@ export function ChatSurface() {
         selectedId={null}
         hasMore={false}
         selectedThread={null}
-        messages={[]}
-        composerDisabled
-        composerDisabledReason="Start a conversation when Hermes dispatch is available."
+        messages={messages}
+        composerDisabled={liveComposerDisabled}
+        composerDisabledReason={liveComposerDisabledReason}
         mainFallback={<p className="chat-empty">No conversations yet</p>}
       />
     );
@@ -149,8 +164,8 @@ export function ChatSurface() {
     body = (
       <ChatWorkspacePanel
         {...panelProps}
-        composerDisabled
-        composerDisabledReason="Live send and streaming are not wired on Linux v1 — browse indexed sessions."
+        composerDisabled={liveComposerDisabled}
+        composerDisabledReason={liveComposerDisabledReason}
         mainFallback={<p className="chat-empty">Select a thread from the rail.</p>}
       />
     );
