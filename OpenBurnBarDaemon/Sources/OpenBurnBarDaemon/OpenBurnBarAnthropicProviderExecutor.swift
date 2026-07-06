@@ -224,6 +224,27 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         )
     }
 
+    /// Open a true streaming OpenAI Chat Completions response backed by an
+    /// Anthropic Messages stream. The event mapping intentionally mirrors
+    /// `chatCompletionsStreamFromAnthropicStream`; this variant performs the
+    /// same transform incrementally instead of buffering the upstream SSE body.
+    public func openChatCompletionsStream(
+        body: Data,
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
+    ) async throws -> BurnBarProviderProxyStream {
+        let (messagesBody, _) = try Self.anthropicMessagesBodyFromChatCompletionsRequest(
+            body,
+            modelID: route.resolvedModelID,
+            variant: variant
+        )
+        let upstream = try await openMessagesStream(body: messagesBody, route: route, variant: variant)
+        return Self.chatCompletionsStreamFromAnthropicMessagesStream(
+            upstream,
+            modelID: route.resolvedModelID
+        )
+    }
+
     /// Serve OpenAI Chat Completions clients from an Anthropic-family route.
     ///
     /// `/v1/models` may advertise Claude to OpenAI-shape CLIs only because
@@ -1136,10 +1157,307 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         )
     }
 
+    static func chatCompletionsStreamFromAnthropicMessagesStream(
+        _ upstream: BurnBarProviderProxyStream,
+        modelID: String
+    ) -> BurnBarProviderProxyStream {
+        let streamID = "chatcmpl_\(UUID().uuidString)"
+        let created = Int(Date().timeIntervalSince1970)
+        let transformed = AsyncThrowingStream<Data, Error> { continuation in
+            let task = Task {
+                var parser = AnthropicServerSentEventParser()
+                var mapper = AnthropicChatCompletionsStreamMapper(
+                    streamID: streamID,
+                    modelID: modelID,
+                    created: created
+                )
+
+                do {
+                    continuation.yield(try mapper.startChunk())
+                    for try await chunk in upstream.chunks {
+                        for event in parser.consume(chunk) {
+                            for output in try mapper.map(event) {
+                                continuation.yield(output)
+                            }
+                        }
+                    }
+                    for event in parser.finish() {
+                        for output in try mapper.map(event) {
+                            continuation.yield(output)
+                        }
+                    }
+                    try continuation.yield(mapper.finishChunk())
+                    continuation.yield(Data("data: [DONE]\n\n".utf8))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+
+        return BurnBarProviderProxyStream(
+            statusCode: upstream.statusCode,
+            contentType: "text/event-stream",
+            chunks: transformed
+        )
+    }
+
     private struct AnthropicStreamToolBlock {
         let id: String
         let index: Int
         let name: String
+    }
+
+    private struct AnthropicChatCompletionsStreamMapper {
+        let streamID: String
+        let modelID: String
+        let created: Int
+        var finishReason: Any = NSNull()
+        var toolBlocks: [Int: AnthropicStreamToolBlock] = [:]
+        var nextToolIndex = 0
+        var usage = AnthropicStreamUsage()
+
+        func startChunk() throws -> Data {
+            try Self.chatCompletionsSSEData(
+                id: streamID,
+                modelID: modelID,
+                created: created,
+                delta: ["role": "assistant"],
+                finishReason: NSNull(),
+                usage: nil
+            )
+        }
+
+        mutating func map(_ event: ServerSentEvent) throws -> [Data] {
+            let type = event.payload["type"] as? String
+            if type == "message_start",
+               let message = event.payload["message"] as? [String: Any],
+               let eventUsage = message["usage"] as? [String: Any] {
+                usage.mergeAnthropicUsage(eventUsage)
+            }
+
+            if type == "content_block_start",
+               let blockIndex = nonNegativeIntValue(event.payload["index"]),
+               let block = event.payload["content_block"] as? [String: Any],
+               block["type"] as? String == "tool_use" {
+                let toolIndex = nextToolIndex
+                nextToolIndex += 1
+                let toolID = (block["id"] as? String) ?? "toolu_\(blockIndex)"
+                let name = (block["name"] as? String) ?? "tool"
+                toolBlocks[blockIndex] = AnthropicStreamToolBlock(
+                    id: toolID,
+                    index: toolIndex,
+                    name: name
+                )
+                var function: [String: Any] = ["name": name]
+                if let input = block["input"] as? [String: Any],
+                   !input.isEmpty,
+                   let arguments = try? jsonString(input) {
+                    function["arguments"] = arguments
+                }
+                return [
+                    try Self.chatCompletionsSSEData(
+                        id: streamID,
+                        modelID: modelID,
+                        created: created,
+                        delta: [
+                            "tool_calls": [[
+                                "index": toolIndex,
+                                "id": toolID,
+                                "type": "function",
+                                "function": function
+                            ]]
+                        ],
+                        finishReason: NSNull(),
+                        usage: nil
+                    )
+                ]
+            }
+
+            if type == "content_block_delta",
+               let delta = event.payload["delta"] as? [String: Any] {
+                if delta["type"] as? String == "text_delta",
+                   let text = delta["text"] as? String,
+                   !text.isEmpty {
+                    return [
+                        try Self.chatCompletionsSSEData(
+                            id: streamID,
+                            modelID: modelID,
+                            created: created,
+                            delta: ["content": text],
+                            finishReason: NSNull(),
+                            usage: nil
+                        )
+                    ]
+                }
+                if delta["type"] as? String == "input_json_delta",
+                   let partialJSON = delta["partial_json"] as? String,
+                   !partialJSON.isEmpty,
+                   let blockIndex = nonNegativeIntValue(event.payload["index"]) {
+                    let toolBlock: AnthropicStreamToolBlock
+                    if let existing = toolBlocks[blockIndex] {
+                        toolBlock = existing
+                    } else {
+                        let synthesized = AnthropicStreamToolBlock(
+                            id: "toolu_\(blockIndex)",
+                            index: nextToolIndex,
+                            name: "tool"
+                        )
+                        nextToolIndex += 1
+                        toolBlocks[blockIndex] = synthesized
+                        toolBlock = synthesized
+                    }
+                    return [
+                        try Self.chatCompletionsSSEData(
+                            id: streamID,
+                            modelID: modelID,
+                            created: created,
+                            delta: [
+                                "tool_calls": [[
+                                    "index": toolBlock.index,
+                                    "id": toolBlock.id,
+                                    "type": "function",
+                                    "function": [
+                                        "name": toolBlock.name,
+                                        "arguments": partialJSON
+                                    ]
+                                ]]
+                            ],
+                            finishReason: NSNull(),
+                            usage: nil
+                        )
+                    ]
+                }
+            }
+
+            if type == "message_delta" {
+                if let delta = event.payload["delta"] as? [String: Any] {
+                    finishReason = chatFinishReason(from: delta["stop_reason"] as? String)
+                }
+                if let eventUsage = event.payload["usage"] as? [String: Any] {
+                    usage.mergeAnthropicUsage(eventUsage)
+                }
+            }
+
+            if type == "error" {
+                return [try Self.appendableSSEData(["error": event.payload["error"] ?? "Anthropic stream error"])]
+            }
+
+            return []
+        }
+
+        func finishChunk() throws -> Data {
+            try Self.chatCompletionsSSEData(
+                id: streamID,
+                modelID: modelID,
+                created: created,
+                delta: [:],
+                finishReason: finishReason,
+                usage: usage.openAIUsageObject
+            )
+        }
+
+        private static func chatCompletionsSSEData(
+            id: String,
+            modelID: String,
+            created: Int,
+            delta: [String: Any],
+            finishReason: Any,
+            usage: [String: Any]?
+        ) throws -> Data {
+            var chunk = chatChunk(
+                id: id,
+                modelID: modelID,
+                created: created,
+                delta: delta,
+                finishReason: finishReason
+            )
+            if let usage {
+                chunk["usage"] = usage
+            }
+            return try appendableSSEData(chunk)
+        }
+
+        private static func appendableSSEData(_ payload: [String: Any]) throws -> Data {
+            Data("data: \(try jsonString(payload))\n\n".utf8)
+        }
+    }
+
+    private struct AnthropicStreamUsage {
+        var inputTokens = 0
+        var outputTokens = 0
+        var cacheCreationTokens = 0
+        var cacheReadTokens = 0
+        var sawUsage = false
+
+        mutating func mergeAnthropicUsage(_ usage: [String: Any]) {
+            sawUsage = true
+            inputTokens = intValue(usage["input_tokens"]) ?? inputTokens
+            outputTokens = intValue(usage["output_tokens"]) ?? outputTokens
+            cacheCreationTokens = intValue(usage["cache_creation_input_tokens"]) ?? cacheCreationTokens
+            cacheReadTokens = intValue(usage["cache_read_input_tokens"]) ?? cacheReadTokens
+        }
+
+        var openAIUsageObject: [String: Any]? {
+            guard sawUsage else { return nil }
+            let promptTokens = inputTokens + cacheReadTokens
+            return [
+                "prompt_tokens": promptTokens,
+                "completion_tokens": outputTokens,
+                "total_tokens": promptTokens + outputTokens + cacheCreationTokens,
+                "cache_creation_input_tokens": cacheCreationTokens,
+                "prompt_tokens_details": ["cached_tokens": cacheReadTokens]
+            ]
+        }
+    }
+
+    private struct AnthropicServerSentEventParser {
+        private var buffer = ""
+
+        mutating func consume(_ data: Data) -> [ServerSentEvent] {
+            guard let text = String(data: data, encoding: .utf8) else { return [] }
+            buffer += text.replacingOccurrences(of: "\r\n", with: "\n")
+            return drainCompleteEvents()
+        }
+
+        mutating func finish() -> [ServerSentEvent] {
+            guard !buffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+            defer { buffer.removeAll(keepingCapacity: false) }
+            return parseEvent(buffer).map { [$0] } ?? []
+        }
+
+        private mutating func drainCompleteEvents() -> [ServerSentEvent] {
+            var events: [ServerSentEvent] = []
+            while let range = buffer.range(of: "\n\n") {
+                let chunk = String(buffer[..<range.lowerBound])
+                buffer.removeSubrange(buffer.startIndex..<range.upperBound)
+                if let event = parseEvent(chunk) {
+                    events.append(event)
+                }
+            }
+            return events
+        }
+
+        private func parseEvent(_ chunk: String) -> ServerSentEvent? {
+            var eventName: String?
+            var dataLines: [String] = []
+            for line in chunk.split(separator: "\n", omittingEmptySubsequences: false) {
+                if line.hasPrefix("event:") {
+                    eventName = line.dropFirst("event:".count).trimmingCharacters(in: .whitespaces)
+                } else if line.hasPrefix("data:") {
+                    let dataLine = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+                    if dataLine == "[DONE]" { return nil }
+                    dataLines.append(dataLine)
+                }
+            }
+            guard !dataLines.isEmpty,
+                  let payloadData = dataLines.joined(separator: "\n").data(using: .utf8),
+                  let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+                return nil
+            }
+            return ServerSentEvent(event: eventName, payload: payload)
+        }
     }
 
     private static func responsesStreamFromAnthropicStream(

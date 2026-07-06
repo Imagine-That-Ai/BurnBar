@@ -266,13 +266,11 @@ public actor BurnBarHTTPGatewayServer {
                 body: #"{"object":"list","data":[]}"#
             ))
         case ("POST", "/v1/chat/completions"):
-            return await handleChatCompletions(request: request, fileDescriptor: fileDescriptor)
-        case ("POST", "/v1/responses"), ("POST", "/v1/messages"):
-            return .buffered(httpResponse(
-                status: 501,
-                headers: ["Content-Type": "application/json"],
-                body: errorBody("Linux gateway currently serves /v1/chat/completions; \(request.path) is not available on this platform yet.")
-            ))
+            return await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor)
+        case ("POST", "/v1/responses"):
+            return await handleModelEndpoint(.responses, request: request, fileDescriptor: fileDescriptor)
+        case ("POST", "/v1/messages"):
+            return await handleModelEndpoint(.anthropicMessages, request: request, fileDescriptor: fileDescriptor)
         default:
             return .buffered(httpResponse(
                 status: 404,
@@ -282,7 +280,8 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
-    private func handleChatCompletions(
+    private func handleModelEndpoint(
+        _ endpoint: LinuxGatewayEndpoint,
         request: LinuxHTTPRequest,
         fileDescriptor: Int32
     ) async -> LinuxGatewayResponse {
@@ -290,9 +289,9 @@ public actor BurnBarHTTPGatewayServer {
         guard !request.body.isEmpty else {
             return .buffered(jsonResponse(status: 400, message: "request body required"))
         }
-        let decoded: LinuxChatCompletionsRequest
+        let decoded: LinuxGatewayModelRequest
         do {
-            decoded = try JSONDecoder().decode(LinuxChatCompletionsRequest.self, from: request.body)
+            decoded = try JSONDecoder().decode(LinuxGatewayModelRequest.self, from: request.body)
         } catch {
             return .buffered(jsonResponse(status: 400, message: "invalid JSON request body"))
         }
@@ -310,7 +309,7 @@ public actor BurnBarHTTPGatewayServer {
             routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
             allowDynamicOpenAICompatibleModels: true
         )
-        let formatFamilies = preferredGatewayFormatFamilies(for: modelID)
+        let formatFamilies = preferredGatewayFormatFamilies(for: modelID, endpoint: endpoint)
         var lastFailedRoute: BurnBarProviderRoute?
         var attempts: [BurnBarProxyRouteAttempt] = []
         let streamCommit = LinuxGatewayStreamCommit()
@@ -328,7 +327,13 @@ public actor BurnBarHTTPGatewayServer {
                 for (index, route) in routes.enumerated() {
                     let attemptStartedAt = Date()
                     do {
-                        if decoded.stream == true, let streamPlan = streamPlan(for: route, formatFamily: formatFamily, body: request.body) {
+                        if decoded.stream == true,
+                           let streamPlan = streamPlan(
+                            for: route,
+                            formatFamily: formatFamily,
+                            endpoint: endpoint,
+                            body: request.body
+                           ) {
                             do {
                                 let proxyStream = try await streamPlan.open(resolvedModel.variant)
                                 let usage = try await relayStream(
@@ -350,6 +355,7 @@ public actor BurnBarHTTPGatewayServer {
                                 await recordProxyRouteLogEntry(
                                     startedAt: startedAt,
                                     modelID: clientModelID,
+                                    endpoint: endpoint,
                                     route: route,
                                     finalStatus: .exact,
                                     streamed: true,
@@ -364,9 +370,10 @@ public actor BurnBarHTTPGatewayServer {
                             }
                         }
 
-                        let response = try await proxyChatCompletions(
+                        let response = try await proxyEndpoint(
                             body: request.body,
                             route: route,
+                            endpoint: endpoint,
                             formatFamily: formatFamily,
                             variant: resolvedModel.variant
                         )
@@ -386,6 +393,7 @@ public actor BurnBarHTTPGatewayServer {
                         await recordProxyRouteLogEntry(
                             startedAt: startedAt,
                             modelID: clientModelID,
+                            endpoint: endpoint,
                             route: route,
                             finalStatus: .exact,
                             streamed: false,
@@ -419,6 +427,7 @@ public actor BurnBarHTTPGatewayServer {
                             await recordProxyRouteLogEntry(
                                 startedAt: startedAt,
                                 modelID: clientModelID,
+                                endpoint: endpoint,
                                 route: route,
                                 finalStatus: .failed,
                                 streamed: true,
@@ -441,20 +450,22 @@ public actor BurnBarHTTPGatewayServer {
             await recordProxyRouteLogEntry(
                 startedAt: startedAt,
                 modelID: clientModelID,
+                endpoint: endpoint,
                 route: nil,
                 finalStatus: .rejected,
                 streamed: false,
                 httpStatus: 503,
                 attempts: attempts,
                 usage: nil,
-                failureMessage: "No eligible route for \(modelID)."
+                failureMessage: "No eligible route for \(modelID) on \(endpoint.requestPath)."
             )
-            return .buffered(noEligibleRouteResponse(modelID: modelID))
+            return .buffered(noEligibleRouteResponse(modelID: modelID, endpoint: endpoint))
         } catch let error as BurnBarProviderRouterError {
             logger.error("gateway_linux_route_error", metadata: ["model": modelID, "error": "\(error)"])
             await recordProxyRouteLogEntry(
                 startedAt: startedAt,
                 modelID: clientModelID,
+                endpoint: endpoint,
                 route: nil,
                 finalStatus: .rejected,
                 streamed: false,
@@ -463,12 +474,13 @@ public actor BurnBarHTTPGatewayServer {
                 usage: nil,
                 failureMessage: error.localizedDescription
             )
-            return .buffered(noEligibleRouteResponse(modelID: modelID))
+            return .buffered(noEligibleRouteResponse(modelID: modelID, endpoint: endpoint))
         } catch {
             logger.error("gateway_linux_route_error", metadata: ["model": modelID, "error": "\(error)"])
             await recordProxyRouteLogEntry(
                 startedAt: startedAt,
                 modelID: clientModelID,
+                endpoint: endpoint,
                 route: lastFailedRoute,
                 finalStatus: .failed,
                 streamed: false,
@@ -516,42 +528,69 @@ public actor BurnBarHTTPGatewayServer {
         return LinuxGatewayResolvedModel(modelID: trimmed, variant: nil)
     }
 
-    private func preferredGatewayFormatFamilies(for modelID: String) -> [BurnBarProviderFormatFamily] {
+    private func preferredGatewayFormatFamilies(
+        for modelID: String,
+        endpoint: LinuxGatewayEndpoint
+    ) -> [BurnBarProviderFormatFamily] {
+        if endpoint == .anthropicMessages {
+            return [.anthropic, .openaiCompat]
+        }
         let normalized = modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized.contains("claude") || normalized.contains("anthropic")
             ? [.anthropic, .openaiCompat]
             : [.openaiCompat, .anthropic]
     }
 
-    private func proxyChatCompletions(
+    private func proxyEndpoint(
         body: Data,
         route: BurnBarProviderRoute,
+        endpoint: LinuxGatewayEndpoint,
         formatFamily: BurnBarProviderFormatFamily,
         variant: BurnBarModelVariant?
     ) async throws -> BurnBarProviderProxyResponse {
         if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
+            guard endpoint == .chatCompletions else {
+                throw BurnBarProxyStreamingUnsupported(reason: "factory-\(endpoint.requestPath)")
+            }
             return try await factoryExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
         }
-        switch formatFamily {
-        case .openaiCompat:
+        switch (endpoint, formatFamily) {
+        case (.chatCompletions, .openaiCompat):
             return try await providerExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
-        case .anthropic:
+        case (.chatCompletions, .anthropic):
             return try await anthropicExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        case (.responses, .openaiCompat):
+            return try await providerExecutor.proxyResponses(body: body, route: route, variant: variant)
+        case (.responses, .anthropic):
+            return try await anthropicExecutor.proxyResponses(body: body, route: route, variant: variant)
+        case (.anthropicMessages, .anthropic):
+            return try await anthropicExecutor.proxyMessages(body: body, route: route, variant: variant)
+        case (.anthropicMessages, .openaiCompat):
+            return try await providerExecutor.proxyMessages(body: body, route: route, variant: variant)
         }
     }
 
     private func streamPlan(
         for route: BurnBarProviderRoute,
         formatFamily: BurnBarProviderFormatFamily,
+        endpoint: LinuxGatewayEndpoint,
         body: Data
     ) -> LinuxGatewayStreamPlan? {
         guard route.providerID.caseInsensitiveCompare("factory") != .orderedSame else { return nil }
-        switch formatFamily {
-        case .openaiCompat:
+        switch (endpoint, formatFamily) {
+        case (.chatCompletions, .openaiCompat):
             return LinuxGatewayStreamPlan(usageFormat: .openAI) {
                 try await self.providerExecutor.openChatCompletionsStream(body: body, route: route, variant: $0)
             }
-        case .anthropic:
+        case (.chatCompletions, .anthropic):
+            return LinuxGatewayStreamPlan(usageFormat: .openAI) {
+                try await self.anthropicExecutor.openChatCompletionsStream(body: body, route: route, variant: $0)
+            }
+        case (.anthropicMessages, .anthropic):
+            return LinuxGatewayStreamPlan(usageFormat: .anthropic) {
+                try await self.anthropicExecutor.openMessagesStream(body: body, route: route, variant: $0)
+            }
+        case (.responses, _), (.anthropicMessages, .openaiCompat):
             return nil
         }
     }
@@ -649,6 +688,7 @@ public actor BurnBarHTTPGatewayServer {
     private func recordProxyRouteLogEntry(
         startedAt: Date,
         modelID: String,
+        endpoint: LinuxGatewayEndpoint,
         route: BurnBarProviderRoute?,
         finalStatus: BurnBarProxyRouteFinalStatus,
         streamed: Bool,
@@ -664,8 +704,8 @@ public actor BurnBarHTTPGatewayServer {
             occurredAt: startedAt,
             completedAt: completedAt,
             durationMilliseconds: Self.elapsedMilliseconds(from: startedAt, to: completedAt),
-            requestPath: "/v1/chat/completions",
-            endpoint: "Chat Completions",
+            requestPath: endpoint.requestPath,
+            endpoint: endpoint.displayName,
             clientModelSlug: modelID,
             advertisedModelSlug: modelID,
             routingModelSlug: modelID,
@@ -765,10 +805,10 @@ public actor BurnBarHTTPGatewayServer {
         return "gateway:\(Self.stableDigest("\(accountingRequestID)|\(routePart)"))"
     }
 
-    private func noEligibleRouteResponse(modelID: String) -> Data {
+    private func noEligibleRouteResponse(modelID: String, endpoint: LinuxGatewayEndpoint) -> Data {
         jsonResponse(
             status: 503,
-            message: "No eligible route for \(modelID). Add or enable an account/provider that serves this model."
+            message: "No eligible route for \(modelID) on \(endpoint.requestPath). Add or enable an account/provider that serves this model."
         )
     }
 
@@ -866,7 +906,35 @@ private final class LinuxGatewayStreamCommit {
     var responseStarted = false
 }
 
-private struct LinuxChatCompletionsRequest: Decodable {
+private enum LinuxGatewayEndpoint: Equatable {
+    case chatCompletions
+    case responses
+    case anthropicMessages
+
+    var requestPath: String {
+        switch self {
+        case .chatCompletions:
+            return "/v1/chat/completions"
+        case .responses:
+            return "/v1/responses"
+        case .anthropicMessages:
+            return "/v1/messages"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .chatCompletions:
+            return "Chat Completions"
+        case .responses:
+            return "Responses"
+        case .anthropicMessages:
+            return "Anthropic Messages"
+        }
+    }
+}
+
+private struct LinuxGatewayModelRequest: Decodable {
     let model: String?
     let stream: Bool?
 }
