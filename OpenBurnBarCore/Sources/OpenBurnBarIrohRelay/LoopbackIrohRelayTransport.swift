@@ -12,14 +12,27 @@ import OpenBurnBarCore
 /// against real iroh in CI's `iroh-xcframework.yml` workflow and in the
 /// device test plan.
 public final class LoopbackIrohRelayRendezvous: Sendable {
-    /// `PendingConnect` carries a continuation, so the rendezvous tables live
-    /// inside a portable lock box that mediates every access.
-    private struct State: Sendable {
+    /// `PendingConnect` carries a non-Sendable `CheckedContinuation`, so the
+    /// rendezvous tables live inside an `OSAllocatedUnfairLock` (itself Sendable)
+    /// that mediates every access. The lock is the sole stored property, so the
+    /// rendezvous is plainly `Sendable`.
+    private struct State {
         var registeredHosts: [String: LoopbackIrohRelayTransport] = [:]
         var pendingByPeer: [String: [PendingConnect]] = [:]
     }
 
-    private let state = Locked(State())
+    private final class LockedState: @unchecked Sendable { // AUDIT sendable-allowlist: nslock-protected-storage
+        private let lock = NSLock()
+        private var state = State()
+
+        func withLock<R>(_ body: (inout State) throws -> R) rethrows -> R {
+            lock.lock()
+            defer { lock.unlock() }
+            return try body(&state)
+        }
+    }
+
+    private let state = LockedState()
 
     public init() {}
 

@@ -1,8 +1,6 @@
 import Foundation
 #if canImport(CryptoKit)
 import CryptoKit
-#else
-@preconcurrency import Crypto
 #endif
 import OpenBurnBarCore
 
@@ -12,11 +10,11 @@ import OpenBurnBarCore
 /// (`r‖s`) ECDSA-over-SHA256 signature `PhoneControlVerifyingKey` accepts, so
 /// the signer code is identical whether the key lives in the enclave or not.
 public protocol PhoneControlP256AuthoritySigning: Sendable {
-    var publicKey: P256.Signing.PublicKey { get }
-    func signature(for data: Data) throws -> P256.Signing.ECDSASignature
+    var publicKey: PlatformP256SigningPublicKey { get }
+    func signature(for data: Data) throws -> PlatformP256SigningSignature
 }
 
-extension P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
+extension PlatformP256SigningMaterial: PhoneControlP256AuthoritySigning {}
 #if canImport(CryptoKit)
 extension SecureEnclave.P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
 #endif
@@ -35,7 +33,7 @@ public enum PhoneControlSecureEnclaveKeyPolicy {
 /// Ed25519 vs. Secure-Enclave/StrongBox P-256) is a property of the stored
 /// identity rather than of each call site.
 public enum PhoneControlAuthoritySigningKey: Sendable {
-    case ed25519(Curve25519.Signing.PrivateKey)
+    case ed25519(PlatformEd25519SigningMaterial)
     /// A NIST P-256 key — `P256.Signing.PrivateKey` in tests / software
     /// fallback, `SecureEnclave.P256.Signing.PrivateKey` on device.
     case secureEnclaveP256(any PhoneControlP256AuthoritySigning)
@@ -78,7 +76,7 @@ public enum PhoneControlAuthoritySigningKey: Sendable {
     public func signatureBase64(for payload: Data) throws -> String {
         switch self {
         case .ed25519(let key):
-            return try key.signature(for: payload).base64EncodedString()
+            return try PlatformCrypto.ed25519Signature(message: payload, privateKey: key).base64EncodedString()
         case .secureEnclaveP256(let key):
             return try key.signature(for: payload).rawRepresentation.base64EncodedString()
         }
@@ -98,11 +96,7 @@ extension ComputerUsePhoneControlSigner {
         timestamp: Date,
         key: PhoneControlAuthoritySigningKey
     ) throws -> SignedAuthority {
-        let payload = signablePayload(
-            intentHashHex: intentHashHex,
-            counter: counter,
-            timestamp: timestamp
-        )
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,

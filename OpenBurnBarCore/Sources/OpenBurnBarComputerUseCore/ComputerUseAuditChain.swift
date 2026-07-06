@@ -1,9 +1,5 @@
 import Foundation
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-@preconcurrency import Crypto
-#endif
+import OpenBurnBarCore
 
 /// One entry in the Computer Use audit chain. The field set is locked at
 /// Phase 10 ship and never reordered — the chain hashes a canonical-JSON
@@ -114,8 +110,7 @@ public struct ComputerUseAuditHasher: Sendable {
     public func hash(data: Data) -> String {
         switch algorithm {
         case .sha256:
-            let digest = SHA256.hash(data: data)
-            return digest.map { String(format: "%02x", $0) }.joined()
+            return PlatformCrypto.sha256Hex(data)
         }
     }
 

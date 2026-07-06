@@ -1,19 +1,12 @@
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-@preconcurrency import Crypto
-#endif
 import Foundation
 import OpenBurnBarCore
 #if os(macOS)
 import LocalAuthentication
+#if canImport(Security)
 import Security
 #endif
-
-#if os(macOS)
-public typealias ComputerUseAuditExportSignerStoreStatus = OSStatus
 #else
-public typealias ComputerUseAuditExportSignerStoreStatus = Int32
+public typealias OSStatus = Int32
 #endif
 
 public protocol ComputerUseAuditExportSignerProviding: Sendable {
@@ -95,15 +88,13 @@ public struct ComputerUseAuditExportSecurityKeyStore: ComputerUseAuditExportKeyS
 }
 
 public enum ComputerUseAuditExportSignerStoreError: Error, Equatable {
-    case keychainStatus(ComputerUseAuditExportSignerStoreStatus)
+    case keychainStatus(OSStatus)
     case invalidStoredKey
     case keychainUnavailable
 }
 
 /// Trusted-device signer for Phase 13 audit exports and WS3 signed chain heads.
-public struct ComputerUseKeychainAuditExportSignerProvider:
-    ComputerUseAuditExportSignerProviding,
-    Sendable {
+public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExportSignerProviding, Sendable {
     public static let defaultService = "ai.openburnbar.computer-use.audit-export"
     public static let defaultAccount = "trusted-device-ed25519-v1"
 
@@ -129,7 +120,7 @@ public struct ComputerUseKeychainAuditExportSignerProvider:
 
     public func signer() throws -> ComputerUseEd25519AuditExportSigner {
         let key = try loadOrCreateKey()
-        let fingerprint = Data(SHA256.hash(data: key.publicKey.rawRepresentation))
+        let fingerprint = PlatformCrypto.sha256(key.publicKey.rawRepresentation)
             .prefix(12)
             .map { String(format: "%02x", $0) }
             .joined()
@@ -140,7 +131,7 @@ public struct ComputerUseKeychainAuditExportSignerProvider:
         )
     }
 
-    private func loadOrCreateKey() throws -> Curve25519.Signing.PrivateKey {
+    private func loadOrCreateKey() throws -> PlatformEd25519SigningMaterial {
         if let data = try keyStore.data(service: service, account: account) {
             return try decodeKey(data)
         }
@@ -149,12 +140,12 @@ public struct ComputerUseKeychainAuditExportSignerProvider:
             return migrated
         }
 
-        let fresh = Curve25519.Signing.PrivateKey()
+        let fresh = PlatformCrypto.ed25519PrivateKey()
         try keyStore.set(fresh.rawRepresentation, service: service, account: account)
         return fresh
     }
 
-    private func migrateLegacyRawKeyIfPresent() throws -> Curve25519.Signing.PrivateKey? {
+    private func migrateLegacyRawKeyIfPresent() throws -> PlatformEd25519SigningMaterial? {
         guard let legacyRawKeyURL,
               fileSystem.fileExists(atPath: legacyRawKeyURL.path) else {
             return nil
@@ -166,12 +157,12 @@ public struct ComputerUseKeychainAuditExportSignerProvider:
         return key
     }
 
-    private func decodeKey(_ data: Data) throws -> Curve25519.Signing.PrivateKey {
+    private func decodeKey(_ data: Data) throws -> PlatformEd25519SigningMaterial {
         guard data.count == 32 else {
             throw ComputerUseAuditExportSignerStoreError.invalidStoredKey
         }
         do {
-            return try Curve25519.Signing.PrivateKey(rawRepresentation: data)
+            return try PlatformCrypto.ed25519PrivateKey(rawRepresentation: data)
         } catch {
             throw ComputerUseAuditExportSignerStoreError.invalidStoredKey
         }

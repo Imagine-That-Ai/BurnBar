@@ -1,9 +1,5 @@
 import Foundation
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-@preconcurrency import Crypto
-#endif
+import OpenBurnBarCore
 
 /// F10 — confidentiality seal for `control.*` iroh frames.
 ///
@@ -46,13 +42,19 @@ public struct ControlFrameSeal: Sendable {
         hpkeSessionKey: Data,
         salt: Data,
         info: String = "OpenBurnBar-ControlFrameSeal-v1"
-    ) -> SymmetricKey {
-        HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: hpkeSessionKey),
-            salt: salt,
-            info: Data(info.utf8),
-            outputByteCount: 32
-        )
+    ) -> PlatformSymmetricKey {
+        // Prior callers already pass the HPKE output; preserve the non-throwing
+        // API while routing the primitive through the platform seam.
+        do {
+            return try PlatformCrypto.deriveHKDFSHA256Key(
+                inputKeyMaterial: hpkeSessionKey,
+                salt: salt,
+                info: Data(info.utf8),
+                outputByteCount: 32
+            )
+        } catch {
+            preconditionFailure("Control frame HKDF derivation failed: \(error)")
+        }
     }
 
     /// Domain-separated AAD binding the frame to its controller and type.
@@ -73,13 +75,21 @@ public struct ControlFrameSeal: Sendable {
     /// Seal control JSON. Returns `magic ‖ version ‖ AES-GCM combined`.
     public func seal(
         plaintext: Data,
-        key: SymmetricKey,
+        key: PlatformSymmetricKey,
         peerNodeId: String,
         frameType: String
     ) throws -> Data {
         let authenticatedData = Self.aad(peerNodeId: peerNodeId, frameType: frameType)
-        let box = try AES.GCM.seal(plaintext, using: key, authenticating: authenticatedData)
-        guard let combined = box.combined else { throw SealError.openFailed }
+        let combined: Data
+        do {
+            combined = try PlatformCrypto.sealAESGCM(
+                plaintext: plaintext,
+                key: key,
+                authenticating: authenticatedData
+            )
+        } catch {
+            throw SealError.openFailed
+        }
         var envelope = Data()
         envelope.append(contentsOf: Self.magic)
         envelope.append(Self.version)
@@ -89,7 +99,7 @@ public struct ControlFrameSeal: Sendable {
 
     public func open(
         envelope: Data,
-        key: SymmetricKey,
+        key: PlatformSymmetricKey,
         peerNodeId: String,
         frameType: String
     ) throws -> Data {
@@ -103,8 +113,11 @@ public struct ControlFrameSeal: Sendable {
         let combined = normalized.suffix(from: normalized.startIndex + Self.headerByteCount)
         let authenticatedData = Self.aad(peerNodeId: peerNodeId, frameType: frameType)
         do {
-            let box = try AES.GCM.SealedBox(combined: combined)
-            return try AES.GCM.open(box, using: key, authenticating: authenticatedData)
+            return try PlatformCrypto.openAESGCM(
+                combined: Data(combined),
+                key: key,
+                authenticating: authenticatedData
+            )
         } catch {
             throw SealError.openFailed
         }

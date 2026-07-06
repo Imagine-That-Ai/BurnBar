@@ -23,28 +23,19 @@ import Foundation
 // because the caller passes the PINNED peer key to `unwrapSymmetricKey` (never a wire
 // `senderPublicKey` field), rooted at pairing time in the two-key safety code.
 
-public struct HermesRelayPrivateKey: Sendable, Equatable {
-    private let keyData: Data
+public struct HermesRelayPrivateKey: @unchecked Sendable, Equatable { // AUDIT sendable-allowlist: swift-crypto-key-material
+    fileprivate let key: PlatformP256KeyAgreementPrivateKey
 
     public init(rawRepresentation: Data) throws {
-        _ = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
-        self.keyData = rawRepresentation
+        self.key = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
     }
 
     fileprivate init(_ key: PlatformP256KeyAgreementPrivateKey) {
-        self.keyData = key.rawRepresentation
-    }
-
-    fileprivate var key: PlatformP256KeyAgreementPrivateKey {
-        do {
-            return try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: keyData)
-        } catch {
-            preconditionFailure("validated Hermes relay private key became invalid")
-        }
+        self.key = key
     }
 
     public var rawRepresentation: Data {
-        keyData
+        key.rawRepresentation
     }
 
     public var publicKeyBase64: String {
@@ -598,28 +589,19 @@ public enum HermesRelayCrypto {
     }
 }
 
-public struct PiAgentRelayPrivateKey: Sendable, Equatable {
-    private let keyData: Data
+public struct PiAgentRelayPrivateKey: @unchecked Sendable, Equatable { // AUDIT sendable-allowlist: swift-crypto-key-material
+    fileprivate let key: PlatformP256KeyAgreementPrivateKey
 
     public init(rawRepresentation: Data) throws {
-        _ = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
-        self.keyData = rawRepresentation
+        self.key = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
     }
 
     fileprivate init(_ key: PlatformP256KeyAgreementPrivateKey) {
-        self.keyData = key.rawRepresentation
-    }
-
-    fileprivate var key: PlatformP256KeyAgreementPrivateKey {
-        do {
-            return try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: keyData)
-        } catch {
-            preconditionFailure("validated Pi agent relay private key became invalid")
-        }
+        self.key = key
     }
 
     public var rawRepresentation: Data {
-        keyData
+        key.rawRepresentation
     }
 
     public var publicKeyBase64: String {
