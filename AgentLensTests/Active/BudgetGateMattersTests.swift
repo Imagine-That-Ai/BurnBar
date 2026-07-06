@@ -27,6 +27,7 @@ final class BudgetGateMattersTests: XCTestCase {
 
         var rules: [BudgetRule] { allRules }
         var globalRules: [BudgetRule] { allRules.filter { $0.scope == .global } }
+        var organizationRules: [BudgetRule] { allRules.filter { $0.scope == .organization } }
 
         func rules(forCredential providerID: String, accountID: String?) -> [BudgetRule] {
             allRules.filter {
@@ -87,15 +88,18 @@ final class BudgetGateMattersTests: XCTestCase {
         accountID: String? = "slot-1",
         projectName: String? = nil,
         fallbackCredentialIDs: [String] = [],
+        identifier: String? = nil,
+        label: String = "Test rule",
         isEnabled: Bool = true
     ) -> BudgetRule {
         BudgetRule(
             id: "rule-\(UUID().uuidString)",
             scope: scope,
+            identifier: identifier,
             providerID: providerID,
             accountID: accountID,
             projectName: projectName,
-            label: "Test rule",
+            label: label,
             amountUSD: amountUSD,
             period: .month,
             behavior: behavior,
@@ -107,12 +111,13 @@ final class BudgetGateMattersTests: XCTestCase {
     private func credential(
         billingMode: BudgetBillingMode = .perUsage,
         providerID: String = "openrouter",
-        slotID: String = "slot-1"
+        slotID: String = "slot-1",
+        displayLabel: String = "Test credential"
     ) -> BudgetCredentialIdentity {
         BudgetCredentialIdentity(
             providerID: providerID,
             slotID: slotID,
-            displayLabel: "Test credential",
+            displayLabel: displayLabel,
             billingMode: billingMode
         )
     }
@@ -357,6 +362,54 @@ final class BudgetGateMattersTests: XCTestCase {
             XCTFail("Expected .block without fallback, got \(decision)"); return
         }
         XCTAssertNil(fallback)
+    }
+
+    func test_matchingOrganizationRuleIsEvaluatedForCredentialLabel() async {
+        let organization = rule(
+            scope: .organization,
+            behavior: .hardBlock,
+            amountUSD: 50,
+            providerID: nil,
+            accountID: nil,
+            identifier: "Acme Org",
+            label: "Acme Org"
+        )
+        let gate = makeGate(rules: [organization], ledger: StubLedger(.returns(49)))
+
+        let decision = await gate.evaluate(
+            credential: credential(slotID: "acct-a", displayLabel: "Acme Org"),
+            estimatedCost: 2
+        )
+
+        guard case .block(let rule, let used, let limit, _) = decision else {
+            XCTFail("Expected matching organization rule to block, got \(decision)"); return
+        }
+        XCTAssertEqual(rule.id, organization.id)
+        XCTAssertEqual(used, 49)
+        XCTAssertEqual(limit, 50)
+    }
+
+    func test_nonMatchingOrganizationRuleIsIgnored() async {
+        let organization = rule(
+            scope: .organization,
+            behavior: .hardBlock,
+            amountUSD: 50,
+            providerID: nil,
+            accountID: nil,
+            identifier: "Acme Org",
+            label: "Acme Org"
+        )
+        let ledger = StubLedger(.throwsError)
+        let gate = makeGate(rules: [organization], ledger: ledger)
+
+        let decision = await gate.evaluate(
+            credential: credential(slotID: "acct-other", displayLabel: "Other Org"),
+            estimatedCost: 100
+        )
+
+        XCTAssertEqual(decision, .allow)
+        let reads = await ledger.reads()
+        XCTAssertEqual(reads, 0)
     }
 
     // MARK: - Fail CLOSED but honor the non-blocking contract for .warnOnly

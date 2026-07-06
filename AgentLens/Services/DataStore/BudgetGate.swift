@@ -27,6 +27,7 @@ struct BudgetBlockedError: Error, LocalizedError, Sendable {
 protocol BudgetRuleProviding: AnyObject {
     var rules: [BudgetRule] { get }
     var globalRules: [BudgetRule] { get }
+    var organizationRules: [BudgetRule] { get }
     func rules(forCredential providerID: String, accountID: String?) -> [BudgetRule]
     func rules(forProject projectName: String) -> [BudgetRule]
 }
@@ -148,6 +149,10 @@ final class BudgetGate {
     private func matchingRules(credential: BudgetCredentialIdentity, projectName: String?) -> [BudgetRule] {
         var rules: [BudgetRule] = []
         rules.append(contentsOf: settings.rules(forCredential: credential.providerID, accountID: credential.slotID))
+        rules.append(contentsOf: settings.organizationRules.filter { rule in
+            guard let identifier = Self.nonEmpty(rule.identifier) else { return false }
+            return identifier == credential.slotID || identifier == credential.displayLabel
+        })
         if let projectName, !projectName.isEmpty {
             rules.append(contentsOf: settings.rules(forProject: projectName))
         }
@@ -187,6 +192,12 @@ final class BudgetGate {
                 )
             )
         }
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func classify(

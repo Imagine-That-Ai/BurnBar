@@ -606,6 +606,103 @@ final class BudgetGateTests: XCTestCase {
     }
 
     @MainActor
+    func testOrganizationLedgerAggregatesOnlyMatchingAccountSessionSpend() async throws {
+        let source = MockSpendDataSource(
+            spend: 100,
+            accountSummaries: [
+                accountSummary(providerID: "openai", accountID: "acct-a", accountLabel: "Acme Org", totalCost: 10),
+                accountSummary(providerID: "anthropic", accountID: "acct-b", accountLabel: "Acme Org", totalCost: 7),
+                accountSummary(providerID: "openai", accountID: "acct-other", accountLabel: "Other Org", totalCost: 83)
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: source)
+        await ledger.recordSessionCost(providerID: "openai", accountID: "acct-a", cost: 2)
+        await ledger.recordSessionCost(providerID: "anthropic", accountID: "acct-b", cost: 3)
+        await ledger.recordSessionCost(providerID: "factory", accountID: "fresh-acct", accountLabel: "Acme Org", cost: 4)
+        await ledger.recordSessionCost(providerID: "openai", accountID: "acct-other", accountLabel: "Other Org", cost: 50)
+
+        let rule = BudgetRule(
+            scope: .organization,
+            identifier: "Acme Org",
+            label: "Acme Org",
+            amountUSD: 100,
+            period: .month,
+            behavior: .hardBlock
+        )
+
+        let spend = await ledger.currentSpend(forRule: rule)
+
+        XCTAssertEqual(spend, 26, accuracy: 0.0001)
+    }
+
+    @MainActor
+    func testOrganizationLedgerDoesNotFallbackToFullSessionSpendWhenNoAccountsMatch() async throws {
+        let source = MockSpendDataSource(
+            spend: 100,
+            accountSummaries: [
+                accountSummary(providerID: "openai", accountID: "acct-other", accountLabel: "Other Org", totalCost: 10)
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: source)
+        await ledger.recordSessionCost(providerID: "openai", accountID: "acct-other", accountLabel: "Other Org", cost: 90)
+
+        let rule = BudgetRule(
+            scope: .organization,
+            identifier: "Acme Org",
+            label: "Acme Org",
+            amountUSD: 100,
+            period: .month,
+            behavior: .hardBlock
+        )
+
+        let spend = await ledger.currentSpend(forRule: rule)
+
+        XCTAssertEqual(spend, 0, accuracy: 0.0001)
+    }
+
+    @MainActor
+    func testGateBlocksMatchingOrganizationRule() async throws {
+        let settings = makeSettings()
+        let rule = BudgetRule(
+            scope: .organization,
+            identifier: "Acme Org",
+            label: "Acme Org",
+            amountUSD: 20,
+            period: .month,
+            behavior: .hardBlock
+        )
+        await settings.upsertRule(rule, source: "test")
+
+        let source = MockSpendDataSource(
+            spend: 100,
+            accountSummaries: [
+                accountSummary(providerID: "openai", accountID: "acct-a", accountLabel: "Acme Org", totalCost: 19),
+                accountSummary(providerID: "openai", accountID: "acct-b", accountLabel: "Other Org", totalCost: 81)
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: source)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openai",
+                slotID: "acct-a",
+                displayLabel: "Acme Org",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 2
+        )
+
+        if case .block(let activeRule, let used, let limit, _) = decision {
+            XCTAssertEqual(activeRule.id, rule.id)
+            XCTAssertEqual(used, 19, accuracy: 0.0001)
+            XCTAssertEqual(limit, 20, accuracy: 0.0001)
+        } else {
+            XCTFail("Expected .block decision for matching organization rule, got \(decision)")
+        }
+    }
+
+    @MainActor
     private func makeSettings() -> BudgetSettings {
         let suiteName = "BudgetGateTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -614,6 +711,22 @@ final class BudgetGateTests: XCTestCase {
             store: BudgetRulesStore(forceTestingMode: true),
             legacyBudgetDefaults: defaults,
             migrateLegacyBudget: false
+        )
+    }
+
+    private func accountSummary(
+        providerID: String,
+        accountID: String,
+        accountLabel: String,
+        totalCost: Double
+    ) -> RollupProviderAccountSummary {
+        RollupProviderAccountSummary(
+            providerID: ProviderID(rawValue: providerID),
+            accountID: accountID,
+            accountLabel: accountLabel,
+            totalRequests: 1,
+            totalTokens: 100,
+            totalCost: totalCost
         )
     }
 }

@@ -84,11 +84,21 @@ final class BudgetGate {
     private func matchingRules(credential: BudgetCredentialIdentity, projectName: String?) -> [BudgetRule] {
         var rules: [BudgetRule] = []
         rules.append(contentsOf: settings.rules(forCredential: credential.providerID, accountID: credential.slotID))
+        rules.append(contentsOf: settings.organizationRules.filter { rule in
+            guard let identifier = Self.nonEmpty(rule.identifier) else { return false }
+            return identifier == credential.slotID || identifier == credential.displayLabel
+        })
         if let projectName, !projectName.isEmpty {
             rules.append(contentsOf: settings.rules(forProject: projectName))
         }
         rules.append(contentsOf: settings.globalRules)
         return rules.filter { $0.isEnabled && $0.amountUSD > 0 }
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func classify(
