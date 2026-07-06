@@ -1,4 +1,5 @@
 import XCTest
+import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -112,18 +113,52 @@ final class BudgetGateMattersTests: XCTestCase {
         billingMode: BudgetBillingMode = .perUsage,
         providerID: String = "openrouter",
         slotID: String = "slot-1",
-        displayLabel: String = "Test credential"
+        displayLabel: String = "Test credential",
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
     ) -> BudgetCredentialIdentity {
         BudgetCredentialIdentity(
             providerID: providerID,
             slotID: slotID,
             displayLabel: displayLabel,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel,
             billingMode: billingMode
         )
     }
 
     private func makeGate(rules: [BudgetRule], ledger: StubLedger) -> BudgetGate {
         BudgetGate(ruleProvider: FakeRuleProvider(rules: rules), ledger: ledger, warningThreshold: 0.8)
+    }
+
+    private func makeMigratedQueue() throws -> DatabaseQueue {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true)
+        return queue
+    }
+
+    private func insertUsage(
+        into queue: DatabaseQueue,
+        cost: Double,
+        at startTime: Date,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
+    ) async throws {
+        let store = UsageStore(dbQueue: queue)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "budget-gate-\(UUID().uuidString)",
+            projectName: "BudgetGateTest",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: cost,
+            startTime: startTime,
+            endTime: startTime,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel
+        )
+        try await store.insert(usage)
     }
 
     // MARK: - Fail CLOSED: a failed ledger read must not let a request through
@@ -389,6 +424,46 @@ final class BudgetGateMattersTests: XCTestCase {
         XCTAssertEqual(limit, 50)
     }
 
+    func test_accountLabelOrganizationRuleBlocksWhenGatewayLabelIsHost() async throws {
+        let now = Date()
+        let queue = try makeMigratedQueue()
+        try await insertUsage(
+            into: queue,
+            cost: 49,
+            at: now,
+            providerAccountID: "acct-a",
+            providerAccountLabel: "Acme Org"
+        )
+
+        let organization = rule(
+            scope: .organization,
+            behavior: .hardBlock,
+            amountUSD: 50,
+            providerID: nil,
+            accountID: nil,
+            identifier: "Acme Org",
+            label: "Acme Org"
+        )
+        let gate = BudgetGate(
+            ruleProvider: FakeRuleProvider(rules: [organization]),
+            ledger: BudgetLedger(dbQueue: queue),
+            warningThreshold: 0.8
+        )
+
+        let decision = await gate.evaluate(
+            credential: credential(slotID: "hashed-api-key", displayLabel: "api.openai.com"),
+            estimatedCost: 2,
+            reference: now.addingTimeInterval(60)
+        )
+
+        guard case .block(let rule, let used, let limit, _) = decision else {
+            XCTFail("Expected account-label organization rule to block with host display label, got \(decision)"); return
+        }
+        XCTAssertEqual(rule.id, organization.id)
+        XCTAssertEqual(used, 49, accuracy: 0.0001)
+        XCTAssertEqual(limit, 50, accuracy: 0.0001)
+    }
+
     func test_nonMatchingOrganizationRuleIsIgnored() async {
         let organization = rule(
             scope: .organization,
@@ -403,7 +478,11 @@ final class BudgetGateMattersTests: XCTestCase {
         let gate = makeGate(rules: [organization], ledger: ledger)
 
         let decision = await gate.evaluate(
-            credential: credential(slotID: "acct-other", displayLabel: "Other Org"),
+            credential: credential(
+                slotID: "acct-other",
+                displayLabel: "Other Org",
+                providerAccountLabel: "Other Org"
+            ),
             estimatedCost: 100
         )
 

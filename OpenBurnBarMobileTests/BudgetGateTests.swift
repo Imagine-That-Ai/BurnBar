@@ -703,6 +703,48 @@ final class BudgetGateTests: XCTestCase {
     }
 
     @MainActor
+    func testGateBlocksAccountLabelOrganizationRuleWhenRelayLabelIsRuntime() async throws {
+        let settings = makeSettings()
+        let rule = BudgetRule(
+            scope: .organization,
+            identifier: "Acme Org",
+            label: "Acme Org",
+            amountUSD: 20,
+            period: .month,
+            behavior: .hardBlock
+        )
+        await settings.upsertRule(rule, source: "test")
+
+        let source = MockSpendDataSource(
+            spend: 100,
+            accountSummaries: [
+                accountSummary(providerID: "openai", accountID: "acct-a", accountLabel: "Acme Org", totalCost: 19),
+                accountSummary(providerID: "openai", accountID: "acct-b", accountLabel: "Other Org", totalCost: 81)
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: source)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "codex",
+                slotID: "default",
+                displayLabel: "codex",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 2
+        )
+
+        if case .block(let activeRule, let used, let limit, _) = decision {
+            XCTAssertEqual(activeRule.id, rule.id)
+            XCTAssertEqual(used, 19, accuracy: 0.0001)
+            XCTAssertEqual(limit, 20, accuracy: 0.0001)
+        } else {
+            XCTFail("Expected account-label organization rule to block with runtime display label, got \(decision)")
+        }
+    }
+
+    @MainActor
     private func makeSettings() -> BudgetSettings {
         let suiteName = "BudgetGateTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
