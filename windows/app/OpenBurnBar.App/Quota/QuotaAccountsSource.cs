@@ -6,13 +6,23 @@ using OpenBurnBar.App.CloudSync;
 namespace OpenBurnBar.App.Quota;
 
 /// <summary>
-/// Resolves quota workspace accounts: Firestore snapshots when B4 is configured; otherwise an
-/// empty production state or explicitly enabled sample set.
+/// Resolves quota workspace accounts, preferring signal over samples:
+/// (1) LIVE locally-acquired snapshots (the quota acquisition coordinator —
+/// statusline hook, Cursor state.vscdb, Codex wham/usage, Anthropic headers);
+/// (2) B4 Firestore snapshots when configured; (3) an empty production state or
+/// the explicitly enabled sample set (dev host).
 /// </summary>
 internal static class QuotaAccountsSource
 {
     public static async Task<IReadOnlyList<QuotaSampleAccount>> LoadAsync()
     {
+        IReadOnlyList<QuotaSampleAccount> live =
+            await QuotaLiveAccountMapper.TryLoadLiveAsync().ConfigureAwait(false);
+        if (live.Count > 0)
+        {
+            return live;
+        }
+
         CloudSyncCompositionRoot? root = WinAppCloudSyncHost.Root;
         if (root is null)
         {

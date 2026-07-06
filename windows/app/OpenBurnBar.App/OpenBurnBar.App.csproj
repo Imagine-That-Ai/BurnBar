@@ -114,6 +114,14 @@
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
     <!--
+      Quota ACQUISITION layer (Wave 1 item 5): the portable sources + coordinator
+      feeding the landed Presentation/Quota parsers, and the Windows host half
+      (default %LOCALAPPDATA%/%APPDATA% paths, FileSystemWatcher, statusline hook
+      installer). Unit-tested on macOS (windows/tests/quota-acquisition).
+    -->
+    <ProjectReference Include="../OpenBurnBar.App.Quota.Acquisition/OpenBurnBar.App.Quota.Acquisition.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.Quota.Acquisition.Windows/OpenBurnBar.App.Quota.Acquisition.Windows.csproj" />
+    <!--
       Portable Dashboard layer (net8.0, no WinUI) for the Dashboard surface (Phase 3 ·
       W7, Bucket C): the layout-switch state machine + the FULL frame-stepped easter-egg
       particle SIMULATION (logo-storm / cloud-token-rain / boundary-pop) with its

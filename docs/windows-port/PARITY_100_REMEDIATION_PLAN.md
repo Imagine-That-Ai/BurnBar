@@ -124,10 +124,14 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
    file source + freshness gate, Cursor `state.vscdb` read (`Microsoft.Data.Sqlite`), Codex `wham/usage`
    HTTP, Anthropic rate-limit-header probe, the statusline `.cmd`/PS hook installer, and the
    `QuotaAcquisitionCoordinator` (fan-in → snapshots, Mac pacing constants, debounce/retry/error-tracking on
-   the injectable clock). Proven by `windows/tests/quota-acquisition` (**50 tests green on macOS**). The
-   `.Windows` sibling ships the real `FileSystemWatcher` + `%APPDATA%` paths. **Windows-runner-deferred (WS-D):**
-   the live `FileSystemWatcher`/path defaults, the hook installation against a real `~/.claude/settings.json`,
-   and wiring the coordinator into `QuotaWorkspacePage` in place of `QuotaSampleData` (needs a WinUI build).
+   the injectable clock). Proven by `windows/tests/quota-acquisition` (**57 tests green on macOS**, incl. the
+   real `FileSystemWatcher` adapter contract). The `.Windows` sibling ships the real `FileSystemWatcher` +
+   `%LOCALAPPDATA%/%APPDATA%` path defaults + the `WindowsQuotaAcquisitionHost` composition root. The
+   `QuotaWorkspacePage` data path now **prefers the live coordinator** (`QuotaAccountsSource` →
+   `QuotaLiveAccountMapper`) over B4 Firestore over `QuotaSampleData`, and `App.OnLaunched` configures the host.
+   **Windows-runner-deferred (WS-D):** exercising the live `FileSystemWatcher` + real `%APPDATA%` paths on a
+   Windows host, installing the hook against a real `~/.claude/settings.json`, and the WinUI XAML build of
+   `QuotaWorkspacePage` (XamlCompiler is Windows-only — the C# data path is done and macOS-compiled).
 6. ManagedAgentRuntime + CursorConnector ports. ~~ConPTY chat live (B1); land B6~~ — **on main already**;
    what remains is proving ConPTY + mission dispatch live on a real Windows host (WS-D pass).
    **Exit:** ~~#1270 landed + green engine run recorded (G2 headline); storage decision made and

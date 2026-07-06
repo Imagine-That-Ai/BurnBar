@@ -45,6 +45,7 @@ public partial class App : Application
     {
         AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
         _theme = new ThemeService(_state);
 
         if ((RouteSmokeOptions.Parse(args.Arguments) ?? RouteSmokeOptions.Parse(Environment.CommandLine)) is { } smoke)
