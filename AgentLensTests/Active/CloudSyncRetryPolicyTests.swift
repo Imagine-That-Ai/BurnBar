@@ -246,6 +246,31 @@ final class CloudSyncRetryExecutorTests: XCTestCase {
         }
     }
 
+    // MARK: - Zero Attempts Throws Typed Exhaustion Error
+
+    func test_withRetry_zeroMaxAttempts_throwsTypedExhaustionError() async {
+        let breaker = CloudSyncCircuitBreaker(failureThreshold: 10, resetTimeout: 60, successThresholdToClose: 2)
+        // maxAttempts = 0 never enters the attempt loop, so no underlying error
+        // is ever captured. This must surface as a typed exhaustion error, not
+        // a force-unwrap crash on a nil lastError.
+        let policy = CloudSyncRetryPolicy(maxAttempts: 0, baseDelay: 0.01, maxDelay: 0.1, jitterFactor: 0.0)
+
+        let callCount = ManagedAtomic(0)
+        do {
+            let _: String = try await withCloudSyncRetry(policy: policy, circuitBreaker: breaker, domain: "test") {
+                callCount.increment()
+                return "unreachable"
+            }
+            XCTFail("Should have thrown")
+        } catch let error as CloudSyncRetryExhaustedError {
+            XCTAssertEqual(error.domain, "test")
+            XCTAssertEqual(error.attempts, 0)
+            XCTAssertEqual(callCount.value, 0, "Operation must never run with zero attempts")
+        } catch {
+            XCTFail("Expected CloudSyncRetryExhaustedError, got \(error)")
+        }
+    }
+
     // MARK: - Circuit Breaker Open Rejects Immediately
 
     func test_withRetry_rejectsWhenCircuitBreakerOpen() async {
