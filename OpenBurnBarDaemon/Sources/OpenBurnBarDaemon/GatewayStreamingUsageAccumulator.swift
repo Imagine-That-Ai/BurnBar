@@ -71,11 +71,16 @@ final class GatewayStreamingUsageAccumulator {
         sawUsage = true
         let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
         let cached = Self.intValue(promptDetails?["cached_tokens"]) ?? 0
+        let created = Self.intValue(usage["cache_creation_input_tokens"])
+            ?? Self.intValue(promptDetails?["cache_creation_tokens"])
+            ?? Self.intValue(promptDetails?["cache_creation_input_tokens"])
+            ?? 0
         let completionDetails = usage["completion_tokens_details"] as? [String: Any]
         let reasoning = Self.intValue(completionDetails?["reasoning_tokens"]) ?? 0
         // The final usage chunk is authoritative — overwrite rather than sum.
         inputTokens = max((prompt ?? 0) - cached, 0)
         outputTokens = completion ?? 0
+        cacheCreationTokens = created
         cacheReadTokens = cached
         reasoningTokens = reasoning
     }

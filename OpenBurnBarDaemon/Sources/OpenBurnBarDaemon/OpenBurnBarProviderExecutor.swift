@@ -136,29 +136,25 @@ public enum BurnBarProxyStreaming {
         defaultContentType: String
     ) async throws -> BurnBarProviderProxyStream {
         #if os(Linux)
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw BurnBarProviderExecutorError.invalidResponse
+        let delegate = LinuxURLSessionByteStreamDelegate(defaultContentType: defaultContentType)
+        let stream = delegate.makeStream()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 300
+        configuration.timeoutIntervalForResource = 86_400
+        configuration.httpShouldUsePipelining = false
+        let streamingSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        let task = streamingSession.dataTask(with: request)
+        delegate.setTerminationHandler {
+            task.cancel()
+            streamingSession.invalidateAndCancel()
         }
+        task.resume()
 
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            throw BurnBarProviderExecutorError.upstreamError(
-                httpResponse.statusCode,
-                String(data: data.prefix(64 * 1024), encoding: .utf8) ?? ""
-            )
-        }
-
-        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? defaultContentType
-        let stream = AsyncThrowingStream<Data, Error> { continuation in
-            if !data.isEmpty {
-                continuation.yield(data)
-            }
-            continuation.finish()
-        }
+        let response = try await delegate.awaitHTTPResponse()
 
         return BurnBarProviderProxyStream(
-            statusCode: httpResponse.statusCode,
-            contentType: contentType,
+            statusCode: response.statusCode,
+            contentType: response.contentType,
             chunks: stream
         )
         #else
@@ -238,6 +234,154 @@ public enum BurnBarProxyStreaming {
         return chunk
     }
 }
+
+#if os(Linux)
+private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    struct ResponseHead {
+        let statusCode: Int
+        let contentType: String
+    }
+
+    private let lock = NSLock()
+    private let defaultContentType: String
+    private var responseContinuation: CheckedContinuation<ResponseHead, Error>?
+    private var responseResult: Result<ResponseHead, Error>?
+    private var streamContinuation: AsyncThrowingStream<Data, Error>.Continuation?
+    private var terminationHandler: (() -> Void)?
+    private var successStatusCode: Int?
+    private var upstreamErrorStatusCode: Int?
+    private var upstreamErrorData = Data()
+    private var finished = false
+
+    init(defaultContentType: String) {
+        self.defaultContentType = defaultContentType
+    }
+
+    func makeStream() -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { continuation in
+            lock.lock()
+            streamContinuation = continuation
+            lock.unlock()
+
+            continuation.onTermination = { [weak self] _ in
+                self?.lock.lock()
+                let handler = self?.terminationHandler
+                self?.lock.unlock()
+                handler?()
+            }
+        }
+    }
+
+    func setTerminationHandler(_ handler: @escaping () -> Void) {
+        lock.lock()
+        terminationHandler = handler
+        lock.unlock()
+    }
+
+    func awaitHTTPResponse() async throws -> ResponseHead {
+        try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
+            if let responseResult {
+                lock.unlock()
+                continuation.resume(with: responseResult)
+            } else {
+                responseContinuation = continuation
+                lock.unlock()
+            }
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            completeResponse(.failure(BurnBarProviderExecutorError.invalidResponse))
+            completionHandler(.cancel)
+            return
+        }
+
+        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? defaultContentType
+        if (200..<300).contains(httpResponse.statusCode) {
+            lock.lock()
+            successStatusCode = httpResponse.statusCode
+            lock.unlock()
+            completeResponse(.success(ResponseHead(statusCode: httpResponse.statusCode, contentType: contentType)))
+        } else {
+            lock.lock()
+            upstreamErrorStatusCode = httpResponse.statusCode
+            lock.unlock()
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        let isSuccess = successStatusCode != nil
+        let continuation = streamContinuation
+        if !isSuccess, upstreamErrorData.count < 64 * 1024 {
+            upstreamErrorData.append(data.prefix(max(0, 64 * 1024 - upstreamErrorData.count)))
+        }
+        lock.unlock()
+
+        if isSuccess, !data.isEmpty {
+            continuation?.yield(data)
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        let continuation = streamContinuation
+        let upstreamStatus = upstreamErrorStatusCode
+        let upstreamBody = String(data: upstreamErrorData, encoding: .utf8) ?? ""
+        let sawSuccess = successStatusCode != nil
+        lock.unlock()
+
+        defer { session.finishTasksAndInvalidate() }
+
+        if let error {
+            completeResponse(.failure(error))
+            continuation?.finish(throwing: error)
+            return
+        }
+
+        if let upstreamStatus {
+            let upstreamError = BurnBarProviderExecutorError.upstreamError(upstreamStatus, upstreamBody)
+            completeResponse(.failure(upstreamError))
+            continuation?.finish(throwing: upstreamError)
+            return
+        }
+
+        if sawSuccess {
+            continuation?.finish()
+        } else {
+            let invalid = BurnBarProviderExecutorError.invalidResponse
+            completeResponse(.failure(invalid))
+            continuation?.finish(throwing: invalid)
+        }
+    }
+
+    private func completeResponse(_ result: Result<ResponseHead, Error>) {
+        lock.lock()
+        if responseResult == nil {
+            responseResult = result
+            let continuation = responseContinuation
+            responseContinuation = nil
+            lock.unlock()
+            continuation?.resume(with: result)
+        } else {
+            lock.unlock()
+        }
+    }
+}
+#endif
 
 public struct BurnBarStructuredPromptRequest: Sendable {
     public let systemPrompt: String?

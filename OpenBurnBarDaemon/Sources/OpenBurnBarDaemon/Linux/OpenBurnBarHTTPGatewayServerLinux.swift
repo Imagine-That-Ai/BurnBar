@@ -31,6 +31,11 @@ public actor BurnBarHTTPGatewayServer {
 
     let configuration: BurnBarGatewayConfiguration
     let configStore: BurnBarConfigStore
+    let usageRecorder: BurnBarUsageRecorder?
+    let proxyRouteLogStore: BurnBarProxyRouteLogStore?
+    let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
+    let anthropicExecutor: BurnBarAnthropicProviderExecutor
+    let factoryExecutor: FactoryDroidProviderExecutor
     let logger: any BurnBarDaemonLogging
     let rateLimiter: BurnBarRateLimiter?
     let unauthenticatedLoopbackRateLimiter: BurnBarRateLimiter?
@@ -43,15 +48,21 @@ public actor BurnBarHTTPGatewayServer {
         configStore: BurnBarConfigStore,
         usageRecorder: BurnBarUsageRecorder? = nil,
         proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
+        providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
+        anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
+        factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
         modelCatalogCacheTTL: TimeInterval = 0,
         logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
-        _ = usageRecorder
-        _ = proxyRouteLogStore
         _ = modelCatalogCacheTTL
         self.configuration = configuration
         self.configStore = configStore
+        self.usageRecorder = usageRecorder
+        self.proxyRouteLogStore = proxyRouteLogStore
+        self.providerExecutor = providerExecutor
+        self.anthropicExecutor = anthropicExecutor
+        self.factoryExecutor = factoryExecutor
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
@@ -190,8 +201,12 @@ public actor BurnBarHTTPGatewayServer {
         do {
             let data = try readHTTPRequest(from: fileDescriptor)
             let request = parseRequest(data)
-            let response = await handleRequest(request)
-            try writeAll(response, to: fileDescriptor)
+            switch await handleRequest(request, fileDescriptor: fileDescriptor) {
+            case .buffered(let response):
+                try writeAll(response, to: fileDescriptor)
+            case .streamed:
+                break
+            }
         } catch {
             let body = #"{"error":{"message":"bad request"}}"#
             let response = httpResponse(status: 400, headers: ["Content-Type": "application/json"], body: body)
@@ -199,60 +214,231 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
-    private func handleRequest(_ request: LinuxHTTPRequest) async -> Data {
+    private func handleRequest(_ request: LinuxHTTPRequest, fileDescriptor: Int32) async -> LinuxGatewayResponse {
         if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
             guard let provided = gatewayAuthToken(from: request.headers),
                   constantTimeTokensEqual(provided, requiredToken) else {
                 logger.warning("gateway_request_unauthorized", metadata: ["path": request.path])
-                return httpResponse(
+                return .buffered(httpResponse(
                     status: 401,
                     headers: ["Content-Type": "application/json"],
                     body: #"{"error":{"message":"unauthorized"}}"#
-                )
+                ))
             }
         } else if let unauthenticatedLoopbackRateLimiter {
             let limitResult = await unauthenticatedLoopbackRateLimiter.checkLimit(clientKey: "unauthenticated-loopback")
             if case .throttled(let retryAfter) = limitResult {
-                return httpResponse(
+                return .buffered(httpResponse(
                     status: 429,
                     headers: [
                         "Content-Type": "application/json",
                         "Retry-After": String(format: "%.1f", retryAfter)
                     ],
                     body: #"{"error":{"message":"rate limit exceeded"}}"#
-                )
+                ))
             }
         }
 
         switch (request.method, request.path) {
         case ("GET", "/health"), ("GET", "/v1/health"):
-            return httpResponse(
+            return .buffered(httpResponse(
                 status: 200,
                 headers: ["Content-Type": "application/json"],
                 body: #"{"ok":true,"gateway":"openburnbar","platform":"linux"}"#
-            )
+            ))
         case ("GET", "/metrics"):
             let snapshot = BurnBarGatewayMetricsSnapshot.live(gatewayEnabled: configuration.isEnabled)
             let body = (try? String(data: JSONEncoder().encode(snapshot), encoding: .utf8)) ?? #"{"gatewayEnabled":true}"#
-            return httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body)
+            return .buffered(httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body))
         case ("GET", "/v1/models"):
-            return httpResponse(
+            return .buffered(httpResponse(
                 status: 200,
                 headers: ["Content-Type": "application/json"],
                 body: #"{"object":"list","data":[]}"#
-            )
-        case ("POST", "/v1/chat/completions"), ("POST", "/v1/responses"), ("POST", "/v1/messages"):
-            return httpResponse(
-                status: 503,
+            ))
+        case ("POST", "/v1/chat/completions"):
+            return await handleChatCompletions(request: request, fileDescriptor: fileDescriptor)
+        case ("POST", "/v1/responses"), ("POST", "/v1/messages"):
+            return .buffered(httpResponse(
+                status: 501,
                 headers: ["Content-Type": "application/json"],
-                body: #"{"error":{"message":"No Linux gateway provider route is configured for this request.","type":"openburnbar_no_route"}}"#
-            )
+                body: errorBody("Linux gateway currently serves /v1/chat/completions; \(request.path) is not available on this platform yet.")
+            ))
         default:
-            return httpResponse(
+            return .buffered(httpResponse(
                 status: 404,
                 headers: ["Content-Type": "application/json"],
                 body: #"{"error":{"message":"not found"}}"#
+            ))
+        }
+    }
+
+    private func handleChatCompletions(
+        request: LinuxHTTPRequest,
+        fileDescriptor: Int32
+    ) async -> LinuxGatewayResponse {
+        let startedAt = Date()
+        guard !request.body.isEmpty else {
+            return .buffered(jsonResponse(status: 400, message: "request body required"))
+        }
+        let decoded: LinuxChatCompletionsRequest
+        do {
+            decoded = try JSONDecoder().decode(LinuxChatCompletionsRequest.self, from: request.body)
+        } catch {
+            return .buffered(jsonResponse(status: 400, message: "invalid JSON request body"))
+        }
+        let modelID = (decoded.model ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !modelID.isEmpty else {
+            return .buffered(jsonResponse(status: 400, message: "model field required"))
+        }
+
+        let accountingRequestID = UUID().uuidString
+        let router = BurnBarProviderRouter(
+            configStore: configStore,
+            logger: BurnBarDaemonLogger(category: "gateway-router-linux"),
+            routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
+            allowDynamicOpenAICompatibleModels: true
+        )
+        let formatFamilies = preferredGatewayFormatFamilies(for: modelID)
+        var lastFailedRoute: BurnBarProviderRoute?
+        var attempts: [BurnBarProxyRouteAttempt] = []
+
+        do {
+            for formatFamily in formatFamilies {
+                let ranking = try await router.scoreAndRankRoutes(
+                    modelName: modelID,
+                    requestedFormatFamily: formatFamily
+                )
+                await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
+                let routes = ranking.rankedRoutes.map(\.route)
+                guard !routes.isEmpty else { continue }
+
+                for (index, route) in routes.enumerated() {
+                    let attemptStartedAt = Date()
+                    do {
+                        if decoded.stream == true, let streamPlan = streamPlan(for: route, formatFamily: formatFamily, body: request.body) {
+                            let proxyStream = try await streamPlan.open()
+                            let usage = try await relayStream(
+                                proxyStream,
+                                usageFormat: streamPlan.usageFormat,
+                                route: route,
+                                accountingRequestID: accountingRequestID,
+                                fileDescriptor: fileDescriptor
+                            )
+                            attempts.append(routeAttempt(
+                                sequence: attempts.count + 1,
+                                startedAt: attemptStartedAt,
+                                completedAt: Date(),
+                                route: route,
+                                status: .exact,
+                                httpStatus: proxyStream.statusCode
+                            ))
+                            await recordProxyRouteLogEntry(
+                                startedAt: startedAt,
+                                modelID: modelID,
+                                route: route,
+                                finalStatus: .exact,
+                                streamed: true,
+                                httpStatus: proxyStream.statusCode,
+                                attempts: attempts,
+                                usage: usage
+                            )
+                            return .streamed
+                        }
+
+                        let response = try await proxyChatCompletions(
+                            body: request.body,
+                            route: route,
+                            formatFamily: formatFamily
+                        )
+                        await recordUsageIfAvailable(
+                            response.usage,
+                            route: route,
+                            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route)
+                        )
+                        attempts.append(routeAttempt(
+                            sequence: attempts.count + 1,
+                            startedAt: attemptStartedAt,
+                            completedAt: Date(),
+                            route: route,
+                            status: .exact,
+                            httpStatus: response.statusCode
+                        ))
+                        await recordProxyRouteLogEntry(
+                            startedAt: startedAt,
+                            modelID: modelID,
+                            route: route,
+                            finalStatus: .exact,
+                            streamed: false,
+                            httpStatus: response.statusCode,
+                            attempts: attempts,
+                            usage: response.usage
+                        )
+                        return .buffered(httpResponse(
+                            status: response.statusCode,
+                            headers: ["Content-Type": response.contentType],
+                            body: response.body
+                        ))
+                    } catch {
+                        lastFailedRoute = route
+                        attempts.append(routeAttempt(
+                            sequence: attempts.count + 1,
+                            startedAt: attemptStartedAt,
+                            completedAt: Date(),
+                            route: route,
+                            status: .failed,
+                            httpStatus: Self.httpStatus(from: error),
+                            failureMessage: Self.routeLogFailureMessage(from: error)
+                        ))
+                        await router.markRouteFailure(route, error: error)
+                        if index < routes.count - 1, shouldFailOverProviderError(error) {
+                            continue
+                        }
+                        throw error
+                    }
+                }
+            }
+
+            await recordProxyRouteLogEntry(
+                startedAt: startedAt,
+                modelID: modelID,
+                route: nil,
+                finalStatus: .rejected,
+                streamed: false,
+                httpStatus: 503,
+                attempts: attempts,
+                usage: nil,
+                failureMessage: "No eligible route for \(modelID)."
             )
+            return .buffered(noEligibleRouteResponse(modelID: modelID))
+        } catch let error as BurnBarProviderRouterError {
+            logger.error("gateway_linux_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            await recordProxyRouteLogEntry(
+                startedAt: startedAt,
+                modelID: modelID,
+                route: nil,
+                finalStatus: .rejected,
+                streamed: false,
+                httpStatus: 503,
+                attempts: attempts,
+                usage: nil,
+                failureMessage: error.localizedDescription
+            )
+            return .buffered(noEligibleRouteResponse(modelID: modelID))
+        } catch {
+            logger.error("gateway_linux_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            await recordProxyRouteLogEntry(
+                startedAt: startedAt,
+                modelID: modelID,
+                route: lastFailedRoute,
+                finalStatus: .failed,
+                streamed: false,
+                httpStatus: Self.httpStatus(from: error) ?? 502,
+                attempts: attempts,
+                usage: nil,
+                failureMessage: Self.routeLogFailureMessage(from: error)
+            )
+            return .buffered(providerFailureResponse(error, modelID: modelID))
         }
     }
 
@@ -264,6 +450,320 @@ public actor BurnBarHTTPGatewayServer {
             }
         }
         return headers["x-api-key"]?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+    }
+
+    private func preferredGatewayFormatFamilies(for modelID: String) -> [BurnBarProviderFormatFamily] {
+        let normalized = modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.contains("claude") || normalized.contains("anthropic")
+            ? [.anthropic, .openaiCompat]
+            : [.openaiCompat, .anthropic]
+    }
+
+    private func proxyChatCompletions(
+        body: Data,
+        route: BurnBarProviderRoute,
+        formatFamily: BurnBarProviderFormatFamily
+    ) async throws -> BurnBarProviderProxyResponse {
+        if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
+            return try await factoryExecutor.proxyChatCompletions(body: body, route: route)
+        }
+        switch formatFamily {
+        case .openaiCompat:
+            return try await providerExecutor.proxyChatCompletions(body: body, route: route)
+        case .anthropic:
+            return try await anthropicExecutor.proxyChatCompletions(body: body, route: route)
+        }
+    }
+
+    private func streamPlan(
+        for route: BurnBarProviderRoute,
+        formatFamily: BurnBarProviderFormatFamily,
+        body: Data
+    ) -> LinuxGatewayStreamPlan? {
+        guard route.providerID.caseInsensitiveCompare("factory") != .orderedSame else { return nil }
+        switch formatFamily {
+        case .openaiCompat:
+            return LinuxGatewayStreamPlan(usageFormat: .openAI) {
+                try await self.providerExecutor.openChatCompletionsStream(body: body, route: route)
+            }
+        case .anthropic:
+            return nil
+        }
+    }
+
+    private func relayStream(
+        _ proxyStream: BurnBarProviderProxyStream,
+        usageFormat: GatewayStreamUsageFormat,
+        route: BurnBarProviderRoute,
+        accountingRequestID: String,
+        fileDescriptor: Int32
+    ) async throws -> BurnBarProviderProxyUsage? {
+        let headers = [
+            "Content-Type": proxyStream.contentType,
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no"
+        ]
+        try writeAll(httpResponseHead(status: proxyStream.statusCode, headers: headers), to: fileDescriptor)
+
+        let accumulator = GatewayStreamingUsageAccumulator(format: usageFormat)
+        for try await chunk in proxyStream.chunks {
+            accumulator.consume(chunk)
+            try writeAll(chunk, to: fileDescriptor)
+        }
+        let usage = accumulator.finalize()
+        await recordUsageIfAvailable(
+            usage,
+            route: route,
+            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route)
+        )
+        return usage
+    }
+
+    private func shouldFailOverProviderError(_ error: Error) -> Bool {
+        if let providerError = error as? BurnBarProviderExecutorError {
+            switch providerError {
+            case .upstreamError(let statusCode, let body):
+                if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
+                    return true
+                }
+                if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
+                    return true
+                }
+                let normalizedBody = body.lowercased()
+                return normalizedBody.contains("quota")
+                    || normalizedBody.contains("rate limit")
+                    || normalizedBody.contains("rate_limit")
+                    || normalizedBody.contains("insufficient_quota")
+                    || normalizedBody.contains("insufficient funds")
+                    || normalizedBody.contains("insufficient balance")
+                    || normalizedBody.contains("exhaust")
+            case .invalidBaseURL, .invalidResponse:
+                return false
+            }
+        }
+
+        let description = error.localizedDescription.lowercased()
+        return description.contains("quota")
+            || description.contains("rate limit")
+            || description.contains("429")
+    }
+
+    private func recordUsageIfAvailable(
+        _ usage: BurnBarProviderProxyUsage?,
+        route: BurnBarProviderRoute,
+        idempotencyKey: String
+    ) async {
+        guard let usage, let usageRecorder else { return }
+        let event = BurnBarUsageEvent(
+            providerID: route.providerID,
+            modelID: route.resolvedModelID,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            reasoningTokens: usage.reasoningTokens,
+            cost: route.pricing.cost(
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                cacheCreationTokens: usage.cacheCreationTokens,
+                cacheReadTokens: usage.cacheReadTokens
+            ),
+            recordedAt: Date(),
+            projectName: "OpenBurnBar Gateway",
+            confidence: usage.confidence
+        )
+        do {
+            _ = try await usageRecorder.record(event, idempotencyKey: idempotencyKey)
+        } catch {
+            logger.silentFailure("gateway_usage_record", error: error)
+        }
+    }
+
+    private func recordProxyRouteLogEntry(
+        startedAt: Date,
+        modelID: String,
+        route: BurnBarProviderRoute?,
+        finalStatus: BurnBarProxyRouteFinalStatus,
+        streamed: Bool,
+        httpStatus: Int?,
+        attempts: [BurnBarProxyRouteAttempt],
+        usage: BurnBarProviderProxyUsage?,
+        failureMessage: String? = nil
+    ) async {
+        guard let proxyRouteLogStore else { return }
+        let completedAt = Date()
+        let entry = BurnBarProxyRouteLogEntry(
+            occurredAt: startedAt,
+            completedAt: completedAt,
+            durationMilliseconds: Self.elapsedMilliseconds(from: startedAt, to: completedAt),
+            requestPath: "/v1/chat/completions",
+            endpoint: "Chat Completions",
+            clientModelSlug: modelID,
+            advertisedModelSlug: modelID,
+            routingModelSlug: modelID,
+            upstreamModelSlug: route?.resolvedModelID,
+            providerReportedModelSlug: nil,
+            clientModelDisplayName: modelID,
+            routingModelDisplayName: modelID,
+            upstreamModelDisplayName: route?.resolvedModelID,
+            providerID: route?.providerID,
+            providerName: route?.providerDisplayName,
+            providerLogoKey: route.map { providerLogoKey(for: $0) },
+            accountID: route?.credentialSlotID,
+            accountLabel: route?.credentialSlotLabel,
+            requestedCanonicalModelID: route?.canonicalModelID,
+            servedCanonicalModelID: route?.canonicalModelID,
+            formatFamily: route?.formatFamily.rawValue,
+            endpointProfileID: route?.endpointProfileID,
+            transportKind: route.map(transportKind(for:)),
+            rewriteKind: .none,
+            exactModelInvariant: route?.canonicalModelID == nil ? .unavailable : .passed,
+            finalStatus: finalStatus,
+            streamed: streamed,
+            streamInterrupted: false,
+            httpStatus: httpStatus,
+            attempts: attempts,
+            usage: route.flatMap { proxyRouteUsage(from: usage, route: $0) },
+            failureMessage: Self.sanitizedFailureMessage(failureMessage),
+            parentRequestID: nil
+        )
+        await proxyRouteLogStore.append(entry)
+    }
+
+    private func routeAttempt(
+        sequence: Int,
+        startedAt: Date,
+        completedAt: Date,
+        route: BurnBarProviderRoute,
+        status: BurnBarProxyRouteFinalStatus,
+        httpStatus: Int?,
+        failureMessage: String? = nil
+    ) -> BurnBarProxyRouteAttempt {
+        BurnBarProxyRouteAttempt(
+            sequence: sequence,
+            startedAt: startedAt,
+            completedAt: completedAt,
+            durationMilliseconds: Self.elapsedMilliseconds(from: startedAt, to: completedAt),
+            providerID: route.providerID,
+            providerName: route.providerDisplayName,
+            providerLogoKey: providerLogoKey(for: route),
+            accountID: route.credentialSlotID,
+            accountLabel: route.credentialSlotLabel,
+            routingModelSlug: route.requestedModel,
+            upstreamModelSlug: route.resolvedModelID,
+            canonicalModelID: route.canonicalModelID,
+            formatFamily: route.formatFamily.rawValue,
+            endpointProfileID: route.endpointProfileID,
+            transportKind: transportKind(for: route),
+            status: status,
+            httpStatus: httpStatus,
+            failureMessage: Self.sanitizedFailureMessage(failureMessage)
+        )
+    }
+
+    private func proxyRouteUsage(
+        from usage: BurnBarProviderProxyUsage?,
+        route: BurnBarProviderRoute
+    ) -> BurnBarProxyRouteUsage? {
+        guard let usage else { return nil }
+        return BurnBarProxyRouteUsage(
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            reasoningTokens: usage.reasoningTokens,
+            cost: route.pricing.cost(
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                cacheCreationTokens: usage.cacheCreationTokens,
+                cacheReadTokens: usage.cacheReadTokens
+            ),
+            confidence: usage.confidence
+        )
+    }
+
+    private func providerLogoKey(for route: BurnBarProviderRoute) -> String {
+        configStore.catalogSupport.catalog.provider(id: route.providerID)?.bundledLogoName
+            ?? BurnBarCatalogProvider.bundledLogoName(forProviderID: route.providerID)
+            ?? "\(route.providerID.capitalized)Logo"
+    }
+
+    private func transportKind(for route: BurnBarProviderRoute) -> BurnBarProxyTransportKind {
+        route.providerID.caseInsensitiveCompare("factory") == .orderedSame ? .factoryDroid : .http
+    }
+
+    private func usageIdempotencyKey(accountingRequestID: String, route: BurnBarProviderRoute) -> String {
+        let routePart = "\(route.providerID)#\(route.credentialSlotID ?? "legacy")#\(route.resolvedModelID)"
+        return "gateway:\(Self.stableDigest("\(accountingRequestID)|\(routePart)"))"
+    }
+
+    private func noEligibleRouteResponse(modelID: String) -> Data {
+        jsonResponse(
+            status: 503,
+            message: "No eligible route for \(modelID). Add or enable an account/provider that serves this model."
+        )
+    }
+
+    private func providerFailureResponse(_ error: Error, modelID: String) -> Data {
+        if let providerError = error as? BurnBarProviderExecutorError,
+           case .upstreamError(let statusCode, let body) = providerError {
+            let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedBody.isEmpty {
+                return httpResponse(status: statusCode, headers: ["Content-Type": "application/json"], body: trimmedBody)
+            }
+            return jsonResponse(status: statusCode, message: "upstream provider returned HTTP \(statusCode)")
+        }
+        return jsonResponse(status: 502, message: "routing failed: \(error.localizedDescription)")
+    }
+
+    private func jsonResponse(status: Int, message: String) -> Data {
+        httpResponse(status: status, headers: ["Content-Type": "application/json"], body: errorBody(message))
+    }
+
+    private func errorBody(_ message: String) -> String {
+        let escaped = message
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+        return #"{"error":"\#(escaped)"}"#
+    }
+
+    private nonisolated static func httpStatus(from error: Error) -> Int? {
+        if case let BurnBarProviderExecutorError.upstreamError(status, _) = error {
+            return status
+        }
+        return nil
+    }
+
+    private nonisolated static func routeLogFailureMessage(from error: Error) -> String {
+        if case let BurnBarProviderExecutorError.upstreamError(statusCode, _) = error {
+            return "OpenBurnBar provider request failed with status \(statusCode)."
+        }
+        return sanitizedFailureMessage(error.localizedDescription) ?? "OpenBurnBar provider request failed."
+    }
+
+    private nonisolated static func sanitizedFailureMessage(_ message: String?) -> String? {
+        guard let message else { return nil }
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let oneLine = trimmed
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+        return String(oneLine.prefix(260))
+    }
+
+    private nonisolated static func elapsedMilliseconds(from start: Date, to end: Date) -> Int {
+        max(0, Int((end.timeIntervalSince1970 - start.timeIntervalSince1970) * 1_000))
+    }
+
+    private nonisolated static func stableDigest(_ input: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in input.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        return String(format: "%016llx", hash)
     }
 
     private nonisolated func loopbackAddress(for host: String) -> in_addr {
@@ -281,6 +781,21 @@ public actor BurnBarHTTPGatewayServer {
         setsockopt(fileDescriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(fileDescriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
     }
+}
+
+private enum LinuxGatewayResponse {
+    case buffered(Data)
+    case streamed
+}
+
+private struct LinuxGatewayStreamPlan {
+    let usageFormat: GatewayStreamUsageFormat
+    let open: () async throws -> BurnBarProviderProxyStream
+}
+
+private struct LinuxChatCompletionsRequest: Decodable {
+    let model: String?
+    let stream: Bool?
 }
 
 private struct LinuxHTTPRequest {
@@ -348,14 +863,23 @@ private func parseRequest(_ data: Data) -> LinuxHTTPRequest {
 }
 
 private func httpResponse(status: Int, headers: [String: String], body: String) -> Data {
-    let bodyData = Data(body.utf8)
+    httpResponse(status: status, headers: headers, body: Data(body.utf8))
+}
+
+private func httpResponse(status: Int, headers: [String: String], body: Data) -> Data {
+    httpResponseHead(status: status, headers: headers, contentLength: body.count) + body
+}
+
+private func httpResponseHead(status: Int, headers: [String: String], contentLength: Int? = nil) -> Data {
     var responseHeaders = headers
-    responseHeaders["Content-Length"] = "\(bodyData.count)"
+    if let contentLength {
+        responseHeaders["Content-Length"] = "\(contentLength)"
+    }
     responseHeaders["Connection"] = "close"
     let head = "HTTP/1.1 \(status) \(statusText(status))\r\n"
         + responseHeaders.map { "\($0.key): \($0.value)" }.joined(separator: "\r\n")
         + "\r\n\r\n"
-    return Data(head.utf8) + bodyData
+    return Data(head.utf8)
 }
 
 private func statusText(_ status: Int) -> String {
@@ -365,6 +889,8 @@ private func statusText(_ status: Int) -> String {
     case 401: return "Unauthorized"
     case 404: return "Not Found"
     case 429: return "Too Many Requests"
+    case 501: return "Not Implemented"
+    case 502: return "Bad Gateway"
     case 503: return "Service Unavailable"
     default: return "OK"
     }
