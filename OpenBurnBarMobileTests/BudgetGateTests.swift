@@ -123,6 +123,77 @@ final class BudgetGateTests: XCTestCase {
     }
 
     @MainActor
+    func testGateFailsClosedWhenSpendSnapshotUnreadable() async throws {
+        let settings = makeSettings()
+
+        let rule = BudgetRule(
+            scope: .global,
+            label: "Unreadable global cap",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .hardBlock
+        )
+        await settings.upsertRule(rule, source: "test")
+
+        let mockSource = MockSpendDataSource(spend: 0, isReadable: false)
+        let ledger = BudgetLedger(dataSource: mockSource)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openai",
+                slotID: "key_1",
+                displayLabel: "OpenAI Key",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(let activeRule, let used, let limit, let fallback) = decision else {
+            XCTFail("Expected unreadable spend to fail closed with .block, got \(decision)")
+            return
+        }
+        XCTAssertEqual(activeRule.id, rule.id)
+        XCTAssertEqual(used, rule.amountUSD)
+        XCTAssertEqual(limit, rule.amountUSD)
+        XCTAssertNil(fallback)
+    }
+
+    @MainActor
+    func testGateAllowsReadableEmptySnapshotAsZeroSpend() async throws {
+        let settings = makeSettings()
+
+        let rule = BudgetRule(
+            scope: .global,
+            label: "Readable empty global cap",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .hardBlock
+        )
+        await settings.upsertRule(rule, source: "test")
+
+        let mockSource = MockSpendDataSource(rollupsByWindow: [:], isReadable: true)
+        let ledger = BudgetLedger(dataSource: mockSource)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openai",
+                slotID: "key_1",
+                displayLabel: "OpenAI Key",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        if case .allow = decision {
+            // Success: readable empty rollups are a legitimate zero-spend snapshot.
+        } else {
+            XCTFail("Expected readable empty spend snapshot to allow under-limit request, got \(decision)")
+        }
+    }
+
+    @MainActor
     func testHardBlockWithFallbackResolvesConfiguredCredential() async throws {
         let settings = makeSettings()
 
@@ -630,7 +701,7 @@ final class BudgetGateTests: XCTestCase {
             behavior: .hardBlock
         )
 
-        let spend = await ledger.currentSpend(forRule: rule)
+        let spend = try await ledger.currentSpend(forRule: rule)
 
         XCTAssertEqual(spend, 26, accuracy: 0.0001)
     }
@@ -655,7 +726,7 @@ final class BudgetGateTests: XCTestCase {
             behavior: .hardBlock
         )
 
-        let spend = await ledger.currentSpend(forRule: rule)
+        let spend = try await ledger.currentSpend(forRule: rule)
 
         XCTAssertEqual(spend, 0, accuracy: 0.0001)
     }
@@ -778,8 +849,10 @@ final class BudgetGateTests: XCTestCase {
 @MainActor
 final class MockSpendDataSource: BudgetSpendDataSource {
     var rollupsByWindow: [RollupWindowKey: UsageRollupDoc] = [:]
+    var budgetSpendSnapshotIsReadable: Bool
 
-    init(spend: Double, accountSummaries: [RollupProviderAccountSummary] = []) {
+    init(spend: Double, accountSummaries: [RollupProviderAccountSummary] = [], isReadable: Bool = true) {
+        self.budgetSpendSnapshotIsReadable = isReadable
         let rollup = UsageRollupDoc(
             windowKey: .thirtyDays,
             totals: RollupTotals(requests: 10, tokens: 1000, costUsd: spend),
@@ -797,5 +870,10 @@ final class MockSpendDataSource: BudgetSpendDataSource {
             .sevenDays: rollup,
             .allTime: rollup
         ]
+    }
+
+    init(rollupsByWindow: [RollupWindowKey: UsageRollupDoc], isReadable: Bool = true) {
+        self.rollupsByWindow = rollupsByWindow
+        self.budgetSpendSnapshotIsReadable = isReadable
     }
 }

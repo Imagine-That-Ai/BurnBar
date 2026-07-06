@@ -344,4 +344,6 @@ final class DashboardStore {
     }
 }
 
-extension DashboardStore: BudgetSpendDataSource {}
+extension DashboardStore: BudgetSpendDataSource {
+    var budgetSpendSnapshotIsReadable: Bool { hasLoadedOnce }
+}

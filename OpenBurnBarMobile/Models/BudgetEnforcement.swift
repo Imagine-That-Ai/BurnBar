@@ -61,7 +61,7 @@ final class BudgetEnforcement {
         var activeBlocks: [String] = []
         let now = Date()
         for rule in rules.prefix(8) {
-            let used = (try? await gate.ledgerSpend(forRule: rule, reference: now)) ?? 0
+            let used = (try? await gate.ledgerSpend(forRule: rule, reference: now)) ?? rule.amountUSD
             let limit = rule.amountUSD
             let percent = limit > 0 ? Int((used / limit) * 100) : 0
             let label = rule.displayLabel
