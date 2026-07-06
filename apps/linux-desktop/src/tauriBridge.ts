@@ -315,7 +315,29 @@ function mapUsageInsights(raw: RawJsonValue): UsageInsights {
   const weekly = buildWeeklyBuckets(events);
   const providerMix = buildMix(events, (e) => str(pick(e, 'providerId', 'provider'), 'unknown'));
   const modelMix = buildMix(events, (e) => str(pick(e, 'modelId', 'model'), 'unknown'));
-  return { weekly, providerMix, modelMix, cacheHitRatePct: 0 };
+  return { weekly, providerMix, modelMix, cacheHitRatePct: computeCacheHitRatePct(events) };
+}
+
+// Mirrors macOS CacheEfficiency.hitRate (UnifiedCacheHitRateBadge.swift):
+// cacheReadTokens / (inputTokens + cacheCreationTokens + cacheReadTokens),
+// prompt-side denominator only. Events may nest token fields under `event`.
+export function computeCacheHitRatePct(events: RawJsonValue[]): number {
+  let read = 0;
+  let create = 0;
+  let input = 0;
+  for (const e of events) {
+    const nested = pick(e, 'event');
+    const field = (name: string) => {
+      const top = num(pick(e, name));
+      return top > 0 ? top : num(pick(nested, name));
+    };
+    read += Math.max(0, field('cacheReadTokens'));
+    create += Math.max(0, field('cacheCreationTokens'));
+    input += Math.max(0, field('inputTokens'));
+  }
+  const basis = input + create + read;
+  if (basis <= 0) return 0;
+  return Math.round((read / basis) * 100);
 }
 
 function buildWeeklyBuckets(events: RawJsonValue[]): WeeklyPoint[] {

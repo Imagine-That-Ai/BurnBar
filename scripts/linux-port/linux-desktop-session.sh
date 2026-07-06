@@ -129,135 +129,29 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     "Text expansion"
   )
 
-  # ── Nav coordinate discovery ──────────────────────────────────────────
-  # The shell layout has a Command Deck top bar (~52px) + sidebar command
-  # header + segmented picker above the nav items, so the original hardcoded
-  # Y coordinates are stale. Try AT-SPI first (layout-immune), then fall back
-  # to computed coordinates from the known CSS geometry.
-  #
-  # AT-SPI path: query the accessibility tree for each nav-link button by its
-  # accessible name (which matches the route label), get its on-screen extents,
-  # and click the center. If pyatspi is unavailable or the query fails, fall
-  # back to the computed pixel coordinates below.
-  nav_coords_tsv="$work_dir/nav-coords.tsv"
-  if python3 -c "import pyatspi" 2>/dev/null; then
-    echo "== discovering nav coordinates via AT-SPI =="
-    python3 - "$window_id" "$nav_coords_tsv" "${route_names[@]}" "${route_labels[@]}" <<'PYATSPI' || true
-import sys, pyatspi
-
-window_id = sys.argv[1]
-out_path = sys.argv[2]
-route_names = sys.argv[3:3+16]
-route_labels = sys.argv[3+16:]
-
-# Exact label lookup sourced from routes.ts ROUTES[].label — not derived.
-ROUTE_LABELS = dict(zip(route_names, route_labels))
-
-desktop = pyatspi.Registry.getDesktop(0)
-found = {}
-
-def find_nav_landmark(obj):
-    """Find the nav[aria-label='Primary'] landmark in the AT-SPI tree."""
-    name = (obj.name or "").strip()
-    role = obj.getRole()
-    if role in (pyatspi.ROLE_SECTION, pyatspi.ROLE_PANEL, pyatspi.ROLE_LANDMARK) and name == "Primary":
-        return obj
-    for i in range(obj.childCount):
-        result = find_nav_landmark(obj[i])
-        if result is not None:
-            return result
-    return None
-
-def collect_nav_buttons(nav_obj, route_labels):
-    """Collect push buttons within the nav landmark, matched by exact name."""
-    matches = {}
-    def walk(obj):
-        if obj.getRole() == pyatspi.ROLE_PUSH_BUTTON:
-            name = (obj.name or "").strip()
-            for route, expected_label in route_labels.items():
-                if name == expected_label and route not in matches:
-                    ext = obj.getExtents()
-                    cx = int(ext.x + ext.width / 2)
-                    cy = int(ext.y + ext.height / 2)
-                    matches[route] = (cx, cy)
-                    break
-        for i in range(obj.childCount):
-            walk(obj[i])
-    walk(nav_obj)
-    return matches
-
-for app in desktop:
-    if app.name and "OpenBurnBar" in app.name:
-        nav = find_nav_landmark(app)
-        if nav is not None:
-            found = collect_nav_buttons(nav, ROUTE_LABELS)
-        break
-
-with open(out_path, "w") as f:
-    for route in route_names:
-        if route in found:
-            cx, cy = found[route]
-            f.write(f"{route}\t{cx}\t{cy}\tatspi\n")
-        else:
-            f.write(f"{route}\t0\t0\tmiss\n")
-PYATSPI
-  fi
-
-  # ── Fallback: computed coordinates from CSS geometry ──────────────────
-  # Command Deck: min-height 52px + padding (8px top + 8px bottom) = 68px
-  # Sidebar: padding 16px + brand (~28px) + gap 8px + status pill (~30px) +
-  #   gap 8px + command header (~57px: kicker 10px + title 19px + desc 16px +
-  #   gap 8px + margin 4px) + gap 8px + segmented picker (~27px) + gap 8px +
-  #   nav-group-title "Dashboard" (~20px) = 188px to first nav item
-  # Total offset from window top to first nav-link center:
-  #   68 (deck) + 188 (sidebar chrome) = 256px
-  # Nav stride: 37px (padding 6px*2 + ~25px content)
-  # Group gap: 66px (nav-group-title "System" + gap)
-  # Dashboard routes (9): overview=256, stride 37
-  # System routes (7): after 66px gap
-  fallback_click_y=(
-    256
-    293
-    330
-    367
-    404
-    441
-    478
-    515
-    552
-    618
-    655
-    692
-    729
-    766
-    803
-    840
-  )
-
+  # ── Route navigation via command palette (layout-immune) ─────────────
+  # The shell's primary nav is the horizontal TopTabbar (7 primary routes)
+  # plus the Ctrl/Cmd+K command palette, which reaches all 16 routes and
+  # drives the same shellStore.setRoute() path — emitting the
+  # route.navigation perf sample with source packaged-ui-route:<route>.
+  # Palette navigation is keyboard-only, so it survives chrome layout
+  # changes that repeatedly broke fixed-coordinate sidebar clicks (the old
+  # x=120 fallback clicked an empty content area after the TopTabbar
+  # migration, which is why packaged runs had no route.navigation samples).
   xdotool windowactivate "$window_id"
+  sleep 0.5
   for index in "${!route_names[@]}"; do
     route="${route_names[$index]}"
-    click_x=120
-    click_y="${fallback_click_y[$index]}"
-    coord_source="fallback"
+    label="${route_labels[$index]}"
+    nav_method="palette"
 
-    # Override with AT-SPI coordinates if available
-    if [[ -f "$nav_coords_tsv" ]]; then
-      atspi_line="$(grep "^${route}\t" "$nav_coords_tsv" 2>/dev/null || true)"
-      if [[ -n "$atspi_line" ]]; then
-        ax="$(echo "$atspi_line" | cut -f2)"
-        ay="$(echo "$atspi_line" | cut -f3)"
-        asrc="$(echo "$atspi_line" | cut -f4)"
-        if [[ "$asrc" == "atspi" && "$ax" -gt 0 && "$ay" -gt 0 ]]; then
-          click_x="$ax"
-          click_y="$ay"
-          coord_source="atspi"
-        fi
-      fi
-    fi
+    xdotool key --clearmodifiers ctrl+k
+    sleep 0.5
+    xdotool type --clearmodifiers --delay 40 "$label"
+    sleep 0.5
+    xdotool key --clearmodifiers Return
+    sleep 0.6
 
-    xdotool mousemove --window "$window_id" "$click_x" "$click_y" click 1
-    sleep 0.45
     screenshot="$out_dir/screenshot-route-${route}.png"
     xwininfo_route="$out_dir/window-route-${route}-xwininfo.txt"
     scrot "$screenshot"
@@ -267,8 +161,37 @@ PYATSPI
       exit 1
     fi
     xwininfo -id "$current_window_id" >"$xwininfo_route"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$route" "$(basename "$screenshot")" "$(basename "$xwininfo_route")" "$current_window_id" "$click_y" "$coord_source" >>"$route_tsv"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$route" "$(basename "$screenshot")" "$(basename "$xwininfo_route")" "$current_window_id" "$nav_method" >>"$route_tsv"
   done
+
+  # ── Navigation truth check ────────────────────────────────────────────
+  # Every palette navigation must have produced a route.navigation perf
+  # sample tagged packaged-ui-route:<route>. This catches silent
+  # mis-navigation (screenshots of the wrong surface) that coordinate
+  # drift previously let through.
+  node - "$out_dir/runtime-perf-samples.jsonl" "${route_names[@]}" <<'NAVCHECK'
+const fs = require('fs');
+const [samplesPath, ...routes] = process.argv.slice(2);
+const seen = new Set();
+if (fs.existsSync(samplesPath)) {
+  for (const line of fs.readFileSync(samplesPath, 'utf8').split(/\n+/)) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      if (row.name === 'route.navigation' && typeof row.source === 'string') {
+        const m = row.source.match(/^packaged-ui-route:(.+)$/);
+        if (m) seen.add(m[1]);
+      }
+    } catch {}
+  }
+}
+const missing = routes.filter((r) => !seen.has(r));
+if (missing.length > 0) {
+  console.error(`route.navigation samples missing for: ${missing.join(', ')}`);
+  process.exit(1);
+}
+console.log(`route.navigation verified for all ${routes.length} routes`);
+NAVCHECK
 
   node - "$route_tsv" "$out_dir/packaged-route-session-transcript.json" "$out_dir/daemon-session-oracle.json" <<'NODE'
 const fs = require('fs');
@@ -280,18 +203,18 @@ const routes = fs.readFileSync(tsvPath, 'utf8')
   .split(/\n+/)
   .filter(Boolean)
   .map((line, index) => {
-    const [route, screenshot, xwininfo, windowId, clickY, coordSource] = line.split('\t');
+    const [route, screenshot, xwininfo, windowId, navMethod] = line.split('\t');
     return {
       index,
       route,
       screenshot,
       xwininfo,
       windowId,
-      action: `xdotool click visible nav at x=120 y=${clickY} (${coordSource || 'fallback'})`,
+      action: `command palette (ctrl+k) keyboard navigation to \"${route}\"`,
       surface: 'installed-tauri-deb-xvfb-xfce',
       targetScenario: targetRoutes.has(route),
       daemonOracleMode: oracle?.mode ?? 'missing',
-      coordSource: coordSource || 'fallback'
+      navMethod: navMethod || 'palette'
     };
   });
 const payload = {

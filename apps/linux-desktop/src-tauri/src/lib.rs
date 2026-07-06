@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -270,11 +271,14 @@ fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
+static TRAY_INIT_FAILED: AtomicBool = AtomicBool::new(false);
+
 #[tauri::command]
 fn tray_degraded() -> bool {
-    std::env::var("OPENBURNBAR_FORCE_TRAY_DEGRADED")
+    let forced = std::env::var("OPENBURNBAR_FORCE_TRAY_DEGRADED")
         .map(|v| v == "1")
-        .unwrap_or(false)
+        .unwrap_or(false);
+    forced || TRAY_INIT_FAILED.load(Ordering::Relaxed)
 }
 
 #[tauri::command]
@@ -429,17 +433,22 @@ fn mission_list() -> Result<serde_json::Value, String> {
 // BurnBarMissionApproveRequest/CancelRequest require `missionID` (capital ID —
 // matches the Swift property name verbatim, no CodingKeys remap) and a
 // non-optional `actor: String`. Missing either → Swift Codable decode throws.
-#[tauri::command]
-fn mission_approval_decision(id: String, decision: String) -> Result<serde_json::Value, String> {
+fn mission_decision_wire(id: &str, decision: &str) -> (&'static str, serde_json::Value) {
     let method = if decision == "deny" {
         "daemon.mission.cancel"
     } else {
         "daemon.mission.approve"
     };
-    call_daemon_method(
+    (
         method,
-        Some(serde_json::json!({"missionID": id, "actor": "linux-shell"})),
+        serde_json::json!({"missionID": id, "actor": "linux-shell"}),
     )
+}
+
+#[tauri::command]
+fn mission_approval_decision(id: String, decision: String) -> Result<serde_json::Value, String> {
+    let (method, params) = mission_decision_wire(&id, &decision);
+    call_daemon_method(method, Some(params))
 }
 
 // ───────────────── P07: config snapshot ─────────────────
@@ -611,6 +620,7 @@ pub fn run() {
         ])
         .setup(|app| {
             if let Err(e) = build_tray(app.handle()) {
+                TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
                 eprintln!("tray init degraded: {e}");
             }
             Ok(())
@@ -629,4 +639,28 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // BurnBarMissionApproveRequest/CancelRequest decode `missionID` (capital ID,
+    // Swift property name verbatim — no CodingKeys remap) plus a non-optional
+    // `actor`. A rename on either side makes the daemon's Codable decode throw,
+    // silently breaking approvals. This test pins the wire shape.
+    #[test]
+    fn mission_decision_wire_contract_is_pinned() {
+        let (method, params) = mission_decision_wire("m-42", "approve");
+        assert_eq!(method, "daemon.mission.approve");
+        assert_eq!(params["missionID"], "m-42");
+        assert_eq!(params["actor"], "linux-shell");
+        assert!(params.get("missionId").is_none());
+        assert!(params.get("id").is_none());
+
+        let (method, params) = mission_decision_wire("m-43", "deny");
+        assert_eq!(method, "daemon.mission.cancel");
+        assert_eq!(params["missionID"], "m-43");
+        assert_eq!(params["actor"], "linux-shell");
+    }
 }
