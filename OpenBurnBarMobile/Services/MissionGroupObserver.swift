@@ -94,27 +94,34 @@ final class MissionGroupObserver {
     /// publishes back through `onUpdate`.
     func applyMerge(_ action: MissionFanOutGroupCard.MergeAction) async {
         guard let group else { return }
-        switch action {
-        case .pickOne(let id):
-            try? await CLIAgentMissionDispatcher.shared.mergeMissionGroup(
-                groupID: group.id,
-                winnerMissionID: id,
-                synthesisSummary: nil
-            )
-        case .keepAll:
-            try? await CLIAgentMissionDispatcher.shared.mergeMissionGroup(
-                groupID: group.id,
-                winnerMissionID: nil,
-                synthesisSummary: nil
-            )
-        case .synthesize:
-            // Phase B+: this would kick off a second-stage synthesizer
-            // mission. For now we just record the user's intent.
-            try? await CLIAgentMissionDispatcher.shared.mergeMissionGroup(
-                groupID: group.id,
-                winnerMissionID: nil,
-                synthesisSummary: "Synthesizing across \(group.runtimeTokens.joined(separator: ", "))…"
-            )
+        do {
+            switch action {
+            case .pickOne(let id):
+                try await CLIAgentMissionDispatcher.shared.mergeMissionGroup(
+                    groupID: group.id,
+                    winnerMissionID: id,
+                    synthesisSummary: nil
+                )
+            case .keepAll:
+                try await CLIAgentMissionDispatcher.shared.mergeMissionGroup(
+                    groupID: group.id,
+                    winnerMissionID: nil,
+                    synthesisSummary: nil
+                )
+            case .synthesize:
+                let synthesisRequestID = try await CLIAgentMissionDispatcher.shared.dispatchMissionGroupSynthesis(
+                    group: group,
+                    childSnapshots: childSnapshots
+                )
+                try await CLIAgentMissionDispatcher.shared.mergeMissionGroup(
+                    groupID: group.id,
+                    winnerMissionID: synthesisRequestID,
+                    synthesisSummary: "Queued synthesizer mission \(synthesisRequestID) across \(group.runtimeTokens.joined(separator: ", "))."
+                )
+            }
+            inlineError = nil
+        } catch {
+            inlineError = error.localizedDescription
         }
     }
 }

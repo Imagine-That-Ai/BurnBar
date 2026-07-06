@@ -602,6 +602,130 @@ final class CLIAgentMissionDispatcher {
         return FanOutDispatchResult(groupID: groupID, childMissionIDs: childMissionIDs)
     }
 
+    func dispatchMissionGroupSynthesis(
+        group: MissionGroupDocument,
+        childSnapshots: [String: CLIAgentMissionSnapshot]
+    ) async throws -> String {
+        let draft = Self.missionGroupSynthesisDraft(
+            group: group,
+            childSnapshots: childSnapshots
+        )
+        return try await dispatch(
+            title: draft.title,
+            prompt: draft.prompt,
+            missionKind: draft.missionKind,
+            requestedRuntime: draft.requestedRuntime,
+            targetProject: draft.targetProject,
+            depth: draft.depth,
+            approvalMode: draft.approvalMode,
+            commandsAllowed: draft.commandsAllowed,
+            fileEditsAllowed: draft.fileEditsAllowed,
+            sourceSurface: draft.sourceSurface,
+            deliveryMode: draft.deliveryMode
+        )
+    }
+
+    static func missionGroupSynthesisDraft(
+        group: MissionGroupDocument,
+        childSnapshots: [String: CLIAgentMissionSnapshot]
+    ) -> MissionGroupSynthesisDraft {
+        MissionGroupSynthesisDraft(
+            title: "Synthesize \(group.title)",
+            prompt: missionGroupSynthesisPrompt(
+                group: group,
+                childSnapshots: childSnapshots
+            ),
+            targetProject: group.targetProject
+        )
+    }
+
+    private static func missionGroupSynthesisPrompt(
+        group: MissionGroupDocument,
+        childSnapshots: [String: CLIAgentMissionSnapshot]
+    ) -> String {
+        let childSections = group.childMissionIDs.enumerated().map { index, missionID in
+            let runtime = group.runtimeTokens.indices.contains(index)
+                ? group.runtimeTokens[index]
+                : "runtime-\(index + 1)"
+            guard let snapshot = childSnapshots[missionID] else {
+                return """
+                ### \(index + 1). \(runtime) (\(missionID))
+                Status: missing_snapshot
+                No mobile snapshot was available when synthesis was requested.
+                """
+            }
+            return missionGroupChildResultSection(
+                index: index,
+                runtime: runtime,
+                snapshot: snapshot
+            )
+        }.joined(separator: "\n\n")
+
+        let targetProject = group.targetProject?.nilIfEmpty ?? "not specified"
+        let prompt = """
+        You are OpenBurnBar's Phase B second-stage synthesizer.
+
+        Synthesize the child mission outputs below into one final answer for the user. Use only the supplied child outputs; do not run shell commands, ask for repo access, or edit files. Resolve agreement and disagreement explicitly, keep useful minority findings, and produce a concise final recommendation with validation notes and residual risks.
+
+        Group ID: \(group.id)
+        Original title: \(group.title)
+        Original mission kind: \(group.missionKind)
+        Target project: \(targetProject)
+
+        Original prompt:
+        \(group.prompt)
+
+        Child mission outputs:
+
+        \(childSections)
+        """
+        return trimmed(prompt, limit: 24_000)
+    }
+
+    private static func missionGroupChildResultSection(
+        index: Int,
+        runtime: String,
+        snapshot: CLIAgentMissionSnapshot
+    ) -> String {
+        var lines: [String] = [
+            "### \(index + 1). \(runtime) (\(snapshot.id))",
+            "Status: \(snapshot.status)",
+            "Requested runtime: \(snapshot.requestedRuntime)",
+            "Selected runtime: \(snapshot.runtimeLabel)"
+        ]
+        if let model = snapshot.selectedModelID ?? snapshot.requestedModelID {
+            lines.append("Model: \(model)")
+        }
+        if let liveSummary = snapshot.liveSummary?.nilIfEmpty {
+            lines.append("Live summary:\n\(trimmed(liveSummary, limit: 1_200))")
+        }
+        if let resultPreview = snapshot.resultPreview?.nilIfEmpty {
+            lines.append("Result preview:\n\(trimmed(resultPreview, limit: 3_000))")
+        }
+        if let errorMessage = snapshot.errorMessage?.nilIfEmpty {
+            lines.append("Error:\n\(trimmed(errorMessage, limit: 1_200))")
+        }
+        let eventLines = snapshot.events.suffix(6).compactMap { event -> String? in
+            let message = (event.fullMessage ?? event.message)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+            guard let message else { return nil }
+            let title = event.title?.nilIfEmpty ?? event.phase
+            return "- \(title): \(trimmed(message, limit: 700))"
+        }
+        if !eventLines.isEmpty {
+            lines.append("Latest events:\n\(eventLines.joined(separator: "\n"))")
+        }
+        return trimmed(lines.joined(separator: "\n"), limit: 5_000)
+    }
+
+    private static func trimmed(_ value: String, limit: Int) -> String {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count > limit else { return text }
+        let cutoff = text.index(text.startIndex, offsetBy: limit)
+        return String(text[..<cutoff]).trimmingCharacters(in: .whitespacesAndNewlines) + "\n[truncated]"
+    }
+
     private static func selectedModelID(
         forRequestedRuntime runtimeToken: String,
         wandPolicy: WandPolicy? = nil
@@ -695,6 +819,20 @@ final class CLIAgentMissionDispatcher {
     struct FanOutDispatchResult: Sendable, Equatable {
         let groupID: String
         let childMissionIDs: [String]
+    }
+
+    struct MissionGroupSynthesisDraft: Sendable, Equatable {
+        let title: String
+        let prompt: String
+        let missionKind: String = "synthesizer"
+        let requestedRuntime: String = "hermes"
+        let targetProject: String?
+        let depth: String = "standard"
+        let approvalMode: String = "read_only"
+        let commandsAllowed: Bool = false
+        let fileEditsAllowed: Bool = false
+        let sourceSurface: String = "ios-hermes-square"
+        let deliveryMode: SkillRunDeliveryMode = .fullStream
     }
 
     // MARK: - Mission group observation

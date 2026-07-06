@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mission fan-out synthesis now launches Phase B second-stage missions** —
+  tapping Synthesize on a completed fan-out group queues a sealed, read-only
+  Hermes synthesizer mission with the child results as input, then records the
+  queued synthesizer request in the group merge summary.
 - **Settings overhaul — "Command Bridge"** — completely redesigned the Settings
   sidebar and navigation for discoverability:
   - **Sectioned sidebar**: the flat 14-tab list is now grouped into labeled

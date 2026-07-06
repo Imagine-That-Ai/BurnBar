@@ -273,7 +273,168 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         XCTAssertNil(group.synthesisSummary)
     }
 
+    func test_missionGroupSynthesisDraft_isReadOnlyHermesAndCarriesChildResults() throws {
+        let group = Self.baseMissionGroupDocument()
+        let snapshots = [
+            "child-1": try Self.childSnapshot(
+                id: "child-1",
+                title: "Codex result",
+                requestedRuntime: "codex",
+                runtimeName: "Codex",
+                resultPreview: "Codex found the group merge path records intent but never starts a second-stage mission.",
+                eventMessage: "Validated the iOS dispatch path and Mac listener schema."
+            ),
+            "child-2": try Self.childSnapshot(
+                id: "child-2",
+                title: "Claude result",
+                requestedRuntime: "claude",
+                runtimeName: "Claude Code",
+                resultPreview: "Claude flagged that synthesis must stay read-only and pass through cli_agent_mission_requests.",
+                eventMessage: "Checked approval and sealed payload boundaries."
+            )
+        ]
+
+        let draft = CLIAgentMissionDispatcher.missionGroupSynthesisDraft(
+            group: group,
+            childSnapshots: snapshots
+        )
+
+        XCTAssertEqual(draft.title, "Synthesize Audit fan-out")
+        XCTAssertEqual(draft.missionKind, "synthesizer")
+        XCTAssertEqual(draft.requestedRuntime, "hermes")
+        XCTAssertEqual(draft.approvalMode, "read_only")
+        XCTAssertFalse(draft.commandsAllowed)
+        XCTAssertFalse(draft.fileEditsAllowed)
+        XCTAssertEqual(draft.sourceSurface, "ios-hermes-square")
+        XCTAssertEqual(draft.deliveryMode, .fullStream)
+        XCTAssertEqual(draft.targetProject, "BurnBar")
+        XCTAssertTrue(draft.prompt.contains("Use only the supplied child outputs"))
+        XCTAssertTrue(draft.prompt.contains("Original prompt:"))
+        XCTAssertTrue(draft.prompt.contains("Audit mission group synthesis."))
+        XCTAssertTrue(draft.prompt.contains("Codex found the group merge path"))
+        XCTAssertTrue(draft.prompt.contains("Claude flagged that synthesis must stay read-only"))
+    }
+
+    func test_missionGroupSynthesisDraft_buildsStandardSealedMissionRequest() throws {
+        let group = Self.baseMissionGroupDocument()
+        let snapshots = [
+            "child-1": try Self.childSnapshot(
+                id: "child-1",
+                title: "Codex result",
+                requestedRuntime: "codex",
+                runtimeName: "Codex",
+                resultPreview: "Codex result.",
+                eventMessage: "Codex completed."
+            )
+        ]
+        let draft = CLIAgentMissionDispatcher.missionGroupSynthesisDraft(
+            group: group,
+            childSnapshots: snapshots
+        )
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+
+        let payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: "synth-1",
+            title: draft.title,
+            prompt: draft.prompt,
+            missionKind: draft.missionKind,
+            requestedRuntime: draft.requestedRuntime,
+            targetProject: draft.targetProject,
+            depth: draft.depth,
+            approvalMode: draft.approvalMode,
+            commandsAllowed: draft.commandsAllowed,
+            fileEditsAllowed: draft.fileEditsAllowed,
+            sourceSurface: draft.sourceSurface,
+            deliveryMode: draft.deliveryMode,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
+
+        XCTAssertEqual(payload["id"] as? String, "synth-1")
+        XCTAssertEqual(payload["missionKind"] as? String, "synthesizer")
+        XCTAssertEqual(payload["requestedRuntime"] as? String, "hermes")
+        XCTAssertEqual(payload["depth"] as? String, "standard")
+        XCTAssertEqual(payload["approvalMode"] as? String, "read_only")
+        XCTAssertEqual(payload["commandsAllowed"] as? Bool, false)
+        XCTAssertEqual(payload["fileEditsAllowed"] as? Bool, false)
+        XCTAssertEqual(payload["source"] as? String, "ios-insights")
+        XCTAssertEqual(payload["sourceSurface"] as? String, "ios-hermes-square")
+        XCTAssertEqual(payload["deliveryMode"] as? String, "full_stream")
+        XCTAssertNil(payload["title"])
+        XCTAssertNil(payload["prompt"])
+        XCTAssertNil(payload["targetProject"])
+        XCTAssertNil(payload["groupID"])
+        XCTAssertEqual(payload["contentSealed"] as? Bool, true)
+        XCTAssertEqual(payload["sealedSchemaVersion"] as? Int, 2)
+        XCTAssertEqual(payload["vaultKeyID"] as? String, vaultKeyID)
+
+        let snapshot = try XCTUnwrap(
+            CLIAgentMissionSnapshot(documentID: "synth-1", data: payload, vaultKey: key)
+        )
+        XCTAssertEqual(snapshot.title, draft.title)
+        XCTAssertEqual(snapshot.requestedRuntime, "hermes")
+        XCTAssertEqual(snapshot.targetProject, "BurnBar")
+        XCTAssertEqual(snapshot.deliveryMode, .fullStream)
+        XCTAssertEqual(snapshot.liveSummary, "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it.")
+    }
+
     // MARK: - Helpers
+
+    private static func baseMissionGroupDocument() -> MissionGroupDocument {
+        MissionGroupDocument(
+            id: "grp-1",
+            title: "Audit fan-out",
+            prompt: "Audit mission group synthesis.",
+            missionKind: "diligence",
+            targetProject: "BurnBar",
+            childMissionIDs: ["child-1", "child-2"],
+            runtimeTokens: ["codex", "claude"],
+            parallelismLimit: 2,
+            mergeStrategy: .synthesize,
+            phase: .awaitingMerge,
+            createdAt: ISO8601DateFormatter().date(from: "2026-06-02T12:00:00Z")!,
+            updatedAt: ISO8601DateFormatter().date(from: "2026-06-02T12:05:00Z")!
+        )
+    }
+
+    private static func childSnapshot(
+        id: String,
+        title: String,
+        requestedRuntime: String,
+        runtimeName: String,
+        resultPreview: String,
+        eventMessage: String
+    ) throws -> CLIAgentMissionSnapshot {
+        try XCTUnwrap(
+            CLIAgentMissionSnapshot(
+                documentID: id,
+                data: [
+                    "id": id,
+                    "title": title,
+                    "status": "completed",
+                    "requestedRuntime": requestedRuntime,
+                    "selectedRuntime": requestedRuntime,
+                    "selectedRuntimeName": runtimeName,
+                    "targetProject": "BurnBar",
+                    "liveSummary": "\(runtimeName) returned a result.",
+                    "resultPreview": resultPreview,
+                    "createdAt": "2026-06-02T12:01:00Z",
+                    "events": [
+                        [
+                            "sequence": 1,
+                            "timestamp": "2026-06-02T12:02:00Z",
+                            "kind": "final_answer",
+                            "phase": "completed",
+                            "title": "Completed",
+                            "message": eventMessage,
+                            "isError": false
+                        ]
+                    ]
+                ]
+            )
+        )
+    }
 
     /// A realistic sealed mission_groups request document — title/prompt/
     /// targetProject live inside `sealedPayload`, mirroring production
