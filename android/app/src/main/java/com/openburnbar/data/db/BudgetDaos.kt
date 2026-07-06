@@ -20,6 +20,24 @@ interface BudgetRuleDao {
     @Query("SELECT * FROM budget_rules WHERE scope = 'project' AND projectName = :projectName AND isEnabled = 1")
     fun getProjectRules(projectName: String): List<BudgetRuleEntity>
 
+    @Query(
+        """
+        SELECT * FROM budget_rules
+        WHERE scope = 'organization'
+          AND isEnabled = 1
+          AND identifier IS NOT NULL
+          AND identifier != ''
+          AND (
+              identifier = :slotID
+              OR identifier = :displayLabel
+              OR identifier = :providerAccountID
+              OR identifier = :providerAccountLabel
+              OR (:providerAccountID IS NULL AND :providerAccountLabel IS NULL)
+          )
+        """,
+    )
+    fun getOrganizationRules(slotID: String?, displayLabel: String?, providerAccountID: String?, providerAccountLabel: String?): List<BudgetRuleEntity>
+
     @Query("SELECT * FROM budget_rules WHERE scope = 'global' AND isEnabled = 1")
     fun getGlobalRules(): List<BudgetRuleEntity>
 
@@ -72,7 +90,23 @@ interface BudgetSpendDao {
         SELECT COALESCE(SUM(CASE WHEN costUsd > 0.0 THEN costUsd ELSE cost END), 0.0)
         FROM token_usage
         WHERE startTime >= :windowStart AND startTime <= :reference
-          AND (providerAccountLabel = :identifier OR providerAccountId = :identifier)
+          AND (
+              providerAccountLabel = :identifier
+              OR providerAccountId = :identifier
+              OR (
+                  providerAccountId IS NOT NULL
+                  AND providerAccountId != ''
+                  AND providerAccountId IN (
+                      SELECT DISTINCT providerAccountId
+                      FROM token_usage
+                      WHERE providerAccountLabel = :identifier
+                        AND providerAccountId IS NOT NULL
+                        AND providerAccountId != ''
+                        AND startTime >= :windowStart
+                        AND startTime <= :reference
+                  )
+              )
+          )
         """,
     )
     fun getOrganizationSpend(windowStart: Long, reference: Long, identifier: String): Double
@@ -169,6 +203,9 @@ class BudgetDatabaseAccess(
     fun getCredentialRules(providerID: String, accountID: String?): List<BudgetRuleEntity> = ruleDao.getCredentialRules(providerID, accountID)
 
     fun getProjectRules(projectName: String): List<BudgetRuleEntity> = ruleDao.getProjectRules(projectName)
+
+    fun getOrganizationRules(slotID: String?, displayLabel: String?, providerAccountID: String?, providerAccountLabel: String?): List<BudgetRuleEntity> =
+        ruleDao.getOrganizationRules(slotID, displayLabel, providerAccountID, providerAccountLabel)
 
     fun getGlobalRules(): List<BudgetRuleEntity> = ruleDao.getGlobalRules()
 
