@@ -84,6 +84,79 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(rows.allSatisfy { $0.setupUX.isEmpty == false })
     }
 
+    func testDesktopOwnerLocalAuthenticationUsesPolkitAllowUserInteraction() async throws {
+        let polkit = FakePolkitAuthority(
+            result: .success(LinuxPolkitAuthorizationResult(isAuthorized: true, isChallenge: false))
+        )
+        let authenticator = LinuxDesktopOwnerAuthenticator(
+            polkit: polkit,
+            pam: FakePAMAuthenticator(result: .failure(.pamUnavailable("not reached"))),
+            processID: 42,
+            nowMillis: { 1_800_000_000_123 }
+        )
+
+        let proof = try await authenticator.authenticate(
+            reason: "Allow Desktop Computer Use tools for this agent thread."
+        )
+
+        XCTAssertTrue(proof.localAuthenticationSatisfied)
+        XCTAssertEqual(proof.authority, "polkit")
+        XCTAssertEqual(proof.actionID, LinuxDesktopOwnerAuthenticator.computerUseGrantActionID)
+        XCTAssertEqual(proof.authenticatedAtMillis, 1_800_000_000_123)
+        XCTAssertEqual(polkit.calls.count, 1)
+        XCTAssertEqual(polkit.calls[0].actionID, LinuxDesktopOwnerAuthenticator.computerUseGrantActionID)
+        XCTAssertEqual(polkit.calls[0].unixProcessID, 42)
+        XCTAssertTrue(polkit.calls[0].allowUserInteraction)
+    }
+
+    func testDesktopOwnerLocalAuthenticationFallsBackToPAMWhenPolkitUnavailable() async throws {
+        let polkit = FakePolkitAuthority(
+            result: .failure(.polkitUnavailable("system bus unavailable"))
+        )
+        let pam = FakePAMAuthenticator(result: .success(true))
+        let authenticator = LinuxDesktopOwnerAuthenticator(
+            polkit: polkit,
+            pam: pam,
+            processID: 43,
+            nowMillis: { 1_800_000_000_456 }
+        )
+
+        let proof = try await authenticator.authenticate(reason: "Allow trusted Computer Use session.")
+
+        XCTAssertTrue(proof.localAuthenticationSatisfied)
+        XCTAssertEqual(proof.authority, "pam")
+        XCTAssertEqual(polkit.calls.count, 1)
+        XCTAssertEqual(pam.calls.count, 1)
+        XCTAssertEqual(pam.calls[0].serviceName, LinuxDesktopOwnerAuthenticator.defaultPAMServiceName)
+    }
+
+    func testDesktopOwnerLocalAuthenticationFailsClosedForDeniedAndUnavailablePaths() async throws {
+        let deniedPolkit = LinuxDesktopOwnerAuthenticator(
+            polkit: FakePolkitAuthority(result: .success(LinuxPolkitAuthorizationResult(isAuthorized: false, isChallenge: true))),
+            pam: FakePAMAuthenticator(result: .success(true))
+        )
+        do {
+            _ = try await deniedPolkit.authenticate(reason: "Allow Desktop Computer Use tools.")
+            XCTFail("polkit denial must fail closed")
+        } catch {
+            XCTAssertEqual(error as? LinuxDesktopOwnerAuthenticationError, .polkitDenied)
+        }
+
+        let unavailable = LinuxDesktopOwnerAuthenticator(
+            polkit: FakePolkitAuthority(result: .failure(.polkitUnavailable("system bus unavailable"))),
+            pam: FakePAMAuthenticator(result: .failure(.pamUnavailable("no conversation provider")))
+        )
+        do {
+            _ = try await unavailable.authenticate(reason: "Allow Desktop Computer Use tools.")
+            XCTFail("unavailable polkit + PAM must fail closed")
+        } catch {
+            XCTAssertEqual(
+                error as? LinuxDesktopOwnerAuthenticationError,
+                .localAuthUnavailable("no conversation provider")
+            )
+        }
+    }
+
     func testPKCELoopbackAuthAndTokenCustody() async throws {
         let flow = LinuxPKCELoopbackFlow(
             authBaseURL: URL(string: "https://securetoken.google.com/auth")!,
@@ -307,6 +380,60 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.step == "retry_backoff_before_commit" && $0.backoffMillis == [100, 250, 500] })
         XCTAssertTrue(rows.contains { $0.step == "conflict_remote_newer_wins" && $0.conflictResolution == "remote_newer_by_update_time" })
         XCTAssertEqual(rows.last?.watermark, 1_800_000_001_000)
+    }
+}
+
+private final class FakePolkitAuthority: LinuxPolkitAuthorizing, @unchecked Sendable {
+    typealias Call = (actionID: String, unixProcessID: Int32, allowUserInteraction: Bool)
+
+    private let queue = DispatchQueue(label: "FakePolkitAuthority")
+    private let result: Result<LinuxPolkitAuthorizationResult, LinuxDesktopOwnerAuthenticationError>
+    private var recordedCalls: [Call] = []
+    var calls: [Call] { queue.sync { recordedCalls } }
+
+    init(result: Result<LinuxPolkitAuthorizationResult, LinuxDesktopOwnerAuthenticationError>) {
+        self.result = result
+    }
+
+    func checkAuthorization(
+        actionID: String,
+        unixProcessID: Int32,
+        allowUserInteraction: Bool
+    ) async throws -> LinuxPolkitAuthorizationResult {
+        queue.sync {
+            recordedCalls.append((actionID, unixProcessID, allowUserInteraction))
+        }
+        switch result {
+        case .success(let value):
+            return value
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private final class FakePAMAuthenticator: LinuxPAMAuthenticating, @unchecked Sendable {
+    typealias Call = (serviceName: String, reason: String)
+
+    private let queue = DispatchQueue(label: "FakePAMAuthenticator")
+    private let result: Result<Bool, LinuxDesktopOwnerAuthenticationError>
+    private var recordedCalls: [Call] = []
+    var calls: [Call] { queue.sync { recordedCalls } }
+
+    init(result: Result<Bool, LinuxDesktopOwnerAuthenticationError>) {
+        self.result = result
+    }
+
+    func authenticate(serviceName: String, reason: String) async throws -> Bool {
+        queue.sync {
+            recordedCalls.append((serviceName, reason))
+        }
+        switch result {
+        case .success(let value):
+            return value
+        case .failure(let error):
+            throw error
+        }
     }
 }
 
