@@ -422,11 +422,17 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             }
 
             let signedInUser = Auth.auth().currentUser.flatMap { $0.isAnonymous ? nil : $0 }
-            guard signedInUser != nil else {
+            guard let signedInUser else {
                 throw MacHostedQuotaPurchaseError.signedOutSubscriptionPurchase
             }
+            let appAccountToken = try await mintAppAccountToken(productID: productID)
+            MacStoreKitAppAccountTokenBindingStore.shared.record(
+                appAccountToken: appAccountToken,
+                uid: signedInUser.uid,
+                productID: productID
+            )
             let purchaseOptions: Set<Product.PurchaseOption> = [
-                .appAccountToken(try await mintAppAccountToken(productID: productID))
+                .appAccountToken(appAccountToken)
             ]
 
             let result = try await purchaseTarget.purchase(options: purchaseOptions)

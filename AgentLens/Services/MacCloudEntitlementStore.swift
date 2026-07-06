@@ -48,6 +48,7 @@ enum MacCloudStoreKitProductCatalog {
     static let cloudProAnnualProductID = "com.openburnbar.proMax.annual"
     static let cloudUltraMonthlyProductID = "com.openburnbar.ultra.monthly"
     static let cloudUltraAnnualProductID = "com.openburnbar.ultra.annual.v2"
+    static let legacyCloudUltraAnnualProductID = "com.openburnbar.ultra.annual"
     static let legacyHostedQuotaProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
     static let legacyHostedQuotaOriginalProductID = "com.openburnbar.hostedQuotaSync.monthly"
     static let legacyHostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
@@ -73,7 +74,8 @@ enum MacCloudStoreKitProductCatalog {
 
     static let ultraProductIDs: Set<String> = [
         cloudUltraMonthlyProductID,
-        cloudUltraAnnualProductID
+        cloudUltraAnnualProductID,
+        legacyCloudUltraAnnualProductID
     ]
 
     static let entitlementProductIDs = cloudProductIDs
@@ -95,19 +97,69 @@ struct MacStoreKitEntitlementSnapshot: Equatable, Sendable {
     let purchaseDate: Date?
     let revocationDate: Date?
     let transactionID: UInt64?
+    let appAccountToken: UUID?
 
     init(
         productID: String,
         expirationDate: Date? = nil,
         purchaseDate: Date? = nil,
         revocationDate: Date? = nil,
-        transactionID: UInt64? = nil
+        transactionID: UInt64? = nil,
+        appAccountToken: UUID? = nil
     ) {
         self.productID = productID
         self.expirationDate = expirationDate
         self.purchaseDate = purchaseDate
         self.revocationDate = revocationDate
         self.transactionID = transactionID
+        self.appAccountToken = appAccountToken
+    }
+}
+
+@MainActor
+protocol MacStoreKitAppAccountTokenBindingProviding {
+    func appAccountToken(_ token: UUID, isBoundToFirebaseUID uid: String) -> Bool
+}
+
+@MainActor
+final class MacStoreKitAppAccountTokenBindingStore: MacStoreKitAppAccountTokenBindingProviding {
+    static let shared = MacStoreKitAppAccountTokenBindingStore()
+
+    private struct Binding: Codable, Equatable {
+        let uid: String
+        let productID: String
+        let createdAt: Date
+    }
+
+    private let defaults: UserDefaults
+    private let storageKey = "OpenBurnBar.MacStoreKitAppAccountTokenBindings.v1"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func record(appAccountToken token: UUID, uid: String, productID: String) {
+        var bindings = load()
+        bindings[Self.key(for: token)] = Binding(uid: uid, productID: productID, createdAt: Date())
+        save(bindings)
+    }
+
+    func appAccountToken(_ token: UUID, isBoundToFirebaseUID uid: String) -> Bool {
+        load()[Self.key(for: token)]?.uid == uid
+    }
+
+    private static func key(for token: UUID) -> String {
+        token.uuidString.lowercased()
+    }
+
+    private func load() -> [String: Binding] {
+        guard let data = defaults.data(forKey: storageKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: Binding].self, from: data)) ?? [:]
+    }
+
+    private func save(_ bindings: [String: Binding]) {
+        guard let data = try? JSONEncoder().encode(bindings) else { return }
+        defaults.set(data, forKey: storageKey)
     }
 }
 
@@ -132,7 +184,8 @@ struct StoreKitMacEntitlementProvider: MacStoreKitEntitlementProviding {
                         expirationDate: transaction.expirationDate,
                         purchaseDate: transaction.originalPurchaseDate,
                         revocationDate: transaction.revocationDate,
-                        transactionID: transaction.id
+                        transactionID: transaction.id,
+                        appAccountToken: transaction.appAccountToken
                     )
                 )
             } catch {
@@ -277,7 +330,9 @@ final class MacCloudEntitlementStore: ObservableObject {
     private var storeKitUpdatesTask: Task<Void, Never>?
     private var started = false
     private let storeKitEntitlementProvider: any MacStoreKitEntitlementProviding
+    private let appAccountTokenBindingProvider: any MacStoreKitAppAccountTokenBindingProviding
     private let observesStoreKitTransactions: Bool
+    private var signedInUID: String?
     private var hostedQuotaSourceState: MacCloudMembershipSourceState = .missing
     private var hostedComputerUseSourceState: MacCloudMembershipSourceState = .missing
     private var proMaxSourceState: MacCloudMembershipSourceState = .missing
@@ -309,10 +364,15 @@ final class MacCloudEntitlementStore: ObservableObject {
 
     init(
         storeKitEntitlementProvider: any MacStoreKitEntitlementProviding = StoreKitMacEntitlementProvider(),
-        observesStoreKitTransactions: Bool = true
+        appAccountTokenBindingProvider: any MacStoreKitAppAccountTokenBindingProviding =
+            MacStoreKitAppAccountTokenBindingStore.shared,
+        observesStoreKitTransactions: Bool = true,
+        signedInUID: String? = nil
     ) {
         self.storeKitEntitlementProvider = storeKitEntitlementProvider
+        self.appAccountTokenBindingProvider = appAccountTokenBindingProvider
         self.observesStoreKitTransactions = observesStoreKitTransactions
+        self.signedInUID = signedInUID
     }
 
     deinit {
@@ -347,6 +407,8 @@ final class MacCloudEntitlementStore: ObservableObject {
     }
 
     private func restartListener(uid: String?) {
+        let uidChanged = signedInUID != uid
+        signedInUID = uid
         listener?.remove()
         listener = nil
         computerUseListener?.remove()
@@ -361,6 +423,10 @@ final class MacCloudEntitlementStore: ObservableObject {
         hostedComputerUseSourceState = .missing
         proMaxSourceState = .missing
         ultraSourceState = .missing
+        if uidChanged {
+            localStoreKitMembershipState = MacMembershipEntitlementState()
+            hasVerifiedStoreKitEntitlementSnapshot = false
+        }
         guard let uid else {
             localStoreKitMembershipState = MacMembershipEntitlementState()
             hasVerifiedStoreKitEntitlementSnapshot = false
@@ -559,21 +625,43 @@ final class MacCloudEntitlementStore: ObservableObject {
     }
 
     private func refreshStoreKitEntitlements() async {
+        guard let signedInUID else {
+            localStoreKitMembershipState = MacMembershipEntitlementState()
+            hasVerifiedStoreKitEntitlementSnapshot = false
+            publishMembershipEntitlements()
+            return
+        }
         let snapshots = await storeKitEntitlementProvider.currentEntitlements()
-        localStoreKitMembershipState = Self.membershipState(fromStoreKitSnapshots: snapshots)
+        localStoreKitMembershipState = Self.membershipState(
+            fromStoreKitSnapshots: snapshots,
+            signedInUID: signedInUID,
+            appAccountTokenBindingProvider: appAccountTokenBindingProvider
+        )
         hasVerifiedStoreKitEntitlementSnapshot = true
         publishMembershipEntitlements()
     }
 
     private static func membershipState(
-        fromStoreKitSnapshots snapshots: [MacStoreKitEntitlementSnapshot]
+        fromStoreKitSnapshots snapshots: [MacStoreKitEntitlementSnapshot],
+        signedInUID: String,
+        appAccountTokenBindingProvider: any MacStoreKitAppAccountTokenBindingProviding
     ) -> MacMembershipEntitlementState {
         var state = MacMembershipEntitlementState()
         for snapshot in snapshots {
+            // StoreKit entitlements are Apple-ID scoped. The local fallback only
+            // trusts transactions carrying a server-minted appAccountToken that
+            // this Mac recorded for the currently signed-in Firebase UID. Missing
+            // or legacy tokens fail closed to free; migrated legacy purchases must
+            // come through the server-authored cloud entitlement docs.
             guard MacCloudStoreKitProductCatalog.entitlementProductIDs.contains(snapshot.productID),
                   snapshot.revocationDate == nil,
                   snapshot.expirationDate.map({ $0 > Date() }) ?? true,
-                  let tier = MacCloudStoreKitProductCatalog.tier(for: snapshot.productID)
+                  let tier = MacCloudStoreKitProductCatalog.tier(for: snapshot.productID),
+                  let appAccountToken = snapshot.appAccountToken,
+                  appAccountTokenBindingProvider.appAccountToken(
+                    appAccountToken,
+                    isBoundToFirebaseUID: signedInUID
+                  )
             else {
                 continue
             }

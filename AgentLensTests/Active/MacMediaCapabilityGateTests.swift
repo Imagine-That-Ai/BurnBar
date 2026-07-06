@@ -23,6 +23,10 @@ final class MacMediaCapabilityGateTests: XCTestCase {
     )
 
     private let zeroUsage = MediaQuotaUsageSnapshot()
+    private let storeKitUID = "firebase-uid-a"
+    private let otherStoreKitUID = "firebase-uid-b"
+    private let proAppAccountToken = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
+    private let ultraAppAccountToken = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!
 
     private let normalBudget = MediaBudgetStatus(
         level: .normal,
@@ -164,8 +168,10 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(MacCloudStoreKitProductCatalog.tier(for: "com.openburnbar.pro.monthly"), .cloud)
         XCTAssertEqual(MacCloudStoreKitProductCatalog.tier(for: "com.openburnbar.proMax.bundle.monthly"), .pro)
         XCTAssertEqual(MacCloudStoreKitProductCatalog.tier(for: "com.openburnbar.ultra.monthly"), .ultra)
+        XCTAssertEqual(MacCloudStoreKitProductCatalog.tier(for: "com.openburnbar.ultra.annual"), .ultra)
         XCTAssertTrue(MacCloudStoreKitProductCatalog.entitlementProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
         XCTAssertTrue(MacCloudStoreKitProductCatalog.entitlementProductIDs.contains("com.openburnbar.hostedComputerUseSync.monthly"))
+        XCTAssertTrue(MacCloudStoreKitProductCatalog.entitlementProductIDs.contains("com.openburnbar.ultra.annual"))
     }
 
     func testMacCloudEntitlementStoreResolvesLocalStoreKitProEntitlement() async {
@@ -176,12 +182,17 @@ final class MacMediaCapabilityGateTests: XCTestCase {
                 productID: MacCloudStoreKitProductCatalog.cloudProAnnualProductID,
                 expirationDate: expires,
                 purchaseDate: purchase,
-                transactionID: 9_001
+                transactionID: 9_001,
+                appAccountToken: proAppAccountToken
             )
         ])
         let store = MacCloudEntitlementStore(
             storeKitEntitlementProvider: provider,
-            observesStoreKitTransactions: false
+            appAccountTokenBindingProvider: FakeMacStoreKitAppAccountTokenBindingProvider(bindings: [
+                proAppAccountToken: storeKitUID
+            ]),
+            observesStoreKitTransactions: false,
+            signedInUID: storeKitUID
         )
 
         await store.refreshStoreKitEntitlementsForTesting()
@@ -202,7 +213,9 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let provider = FakeMacStoreKitEntitlementProvider(entitlements: [])
         let store = MacCloudEntitlementStore(
             storeKitEntitlementProvider: provider,
-            observesStoreKitTransactions: false
+            appAccountTokenBindingProvider: FakeMacStoreKitAppAccountTokenBindingProvider(),
+            observesStoreKitTransactions: false,
+            signedInUID: storeKitUID
         )
 
         await store.refreshStoreKitEntitlementsForTesting()
@@ -224,12 +237,17 @@ final class MacMediaCapabilityGateTests: XCTestCase {
                 productID: MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID,
                 expirationDate: localUltraExpires,
                 purchaseDate: Date(timeIntervalSinceNow: -7_200),
-                transactionID: 42
+                transactionID: 42,
+                appAccountToken: ultraAppAccountToken
             )
         ])
         let store = MacCloudEntitlementStore(
             storeKitEntitlementProvider: provider,
-            observesStoreKitTransactions: false
+            appAccountTokenBindingProvider: FakeMacStoreKitAppAccountTokenBindingProvider(bindings: [
+                ultraAppAccountToken: storeKitUID
+            ]),
+            observesStoreKitTransactions: false,
+            signedInUID: storeKitUID
         )
         await store.refreshStoreKitEntitlementsForTesting()
         XCTAssertEqual(store.currentTier, .ultra)
@@ -257,7 +275,8 @@ final class MacMediaCapabilityGateTests: XCTestCase {
                     productID: MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID,
                     expirationDate: expires,
                     purchaseDate: Date(timeIntervalSinceNow: -300),
-                    transactionID: 777
+                    transactionID: 777,
+                    appAccountToken: ultraAppAccountToken
                 )
             ],
             emitsImmediateUpdate: true
@@ -267,7 +286,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         }
         let store = MacCloudEntitlementStore(
             storeKitEntitlementProvider: provider,
-            observesStoreKitTransactions: false
+            appAccountTokenBindingProvider: FakeMacStoreKitAppAccountTokenBindingProvider(bindings: [
+                ultraAppAccountToken: storeKitUID
+            ]),
+            observesStoreKitTransactions: false,
+            signedInUID: storeKitUID
         )
 
         store.startStoreKitEntitlementObservationForTesting()
@@ -279,6 +302,59 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertTrue(store.isActive)
         XCTAssertTrue(store.hostedComputerUseIsActive)
         XCTAssertTrue(store.isUltraActive)
+    }
+
+    func testMacCloudEntitlementStoreIgnoresLocalStoreKitEntitlementWithoutAppAccountToken() async {
+        let provider = FakeMacStoreKitEntitlementProvider(entitlements: [
+            MacStoreKitEntitlementSnapshot(
+                productID: MacCloudStoreKitProductCatalog.cloudProAnnualProductID,
+                expirationDate: Date(timeIntervalSinceNow: 3_600),
+                purchaseDate: Date(timeIntervalSinceNow: -300),
+                transactionID: 9_002
+            )
+        ])
+        let store = MacCloudEntitlementStore(
+            storeKitEntitlementProvider: provider,
+            appAccountTokenBindingProvider: FakeMacStoreKitAppAccountTokenBindingProvider(),
+            observesStoreKitTransactions: false,
+            signedInUID: storeKitUID
+        )
+
+        await store.refreshStoreKitEntitlementsForTesting()
+
+        XCTAssertTrue(store.hasVerifiedStoreKitEntitlementSnapshot)
+        XCTAssertEqual(store.currentTier, .free)
+        XCTAssertEqual(store.cloudTier, .none)
+        XCTAssertFalse(store.isActive)
+        XCTAssertFalse(store.hostedComputerUseIsActive)
+    }
+
+    func testMacCloudEntitlementStoreIgnoresLocalStoreKitEntitlementForDifferentFirebaseUID() async {
+        let provider = FakeMacStoreKitEntitlementProvider(entitlements: [
+            MacStoreKitEntitlementSnapshot(
+                productID: MacCloudStoreKitProductCatalog.cloudUltraAnnualProductID,
+                expirationDate: Date(timeIntervalSinceNow: 3_600),
+                purchaseDate: Date(timeIntervalSinceNow: -300),
+                transactionID: 9_003,
+                appAccountToken: ultraAppAccountToken
+            )
+        ])
+        let store = MacCloudEntitlementStore(
+            storeKitEntitlementProvider: provider,
+            appAccountTokenBindingProvider: FakeMacStoreKitAppAccountTokenBindingProvider(bindings: [
+                ultraAppAccountToken: otherStoreKitUID
+            ]),
+            observesStoreKitTransactions: false,
+            signedInUID: storeKitUID
+        )
+
+        await store.refreshStoreKitEntitlementsForTesting()
+
+        XCTAssertTrue(store.hasVerifiedStoreKitEntitlementSnapshot)
+        XCTAssertEqual(store.currentTier, .free)
+        XCTAssertEqual(store.cloudTier, .none)
+        XCTAssertFalse(store.isUltraActive)
+        XCTAssertFalse(store.hostedComputerUseIsActive)
     }
 
     func testActiveSessionRegistryClampsCountsPerFeature() {
@@ -987,5 +1063,22 @@ private final class FakeMacStoreKitEntitlementProvider: MacStoreKitEntitlementPr
                 continuation.finish()
             }
         }
+    }
+}
+
+@MainActor
+private final class FakeMacStoreKitAppAccountTokenBindingProvider: MacStoreKitAppAccountTokenBindingProviding {
+    private let bindings: [String: String]
+
+    init(bindings: [UUID: String] = [:]) {
+        self.bindings = Dictionary(
+            uniqueKeysWithValues: bindings.map { token, uid in
+                (token.uuidString.lowercased(), uid)
+            }
+        )
+    }
+
+    func appAccountToken(_ token: UUID, isBoundToFirebaseUID uid: String) -> Bool {
+        bindings[token.uuidString.lowercased()] == uid
     }
 }
