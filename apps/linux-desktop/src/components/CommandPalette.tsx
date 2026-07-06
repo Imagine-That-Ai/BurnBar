@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { routeMatchesQuery } from '../commandPaletteMatch.js';
+import { routeMatchRank, routeMatchesQuery } from '../commandPaletteMatch.js';
 import { pushCommandPaletteRecent, readCommandPaletteRecents } from '../commandPaletteRecents.js';
 import { ROUTES, type RouteMeta, type ShellRoute } from '../routes.js';
 import { useShellStore } from '../state/shellStore.js';
@@ -38,7 +38,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const navigateRoutes = useMemo(
-    () => ROUTES.filter((r) => routeMatchesQuery(r.label, r.description, query)),
+    () =>
+      ROUTES.filter((r) => routeMatchesQuery(r.label, r.description, query)).sort(
+        (a, b) =>
+          routeMatchRank(a.label, a.description, query) -
+          routeMatchRank(b.label, b.description, query)
+      ),
     [query]
   );
 
