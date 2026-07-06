@@ -19,7 +19,7 @@ Broken down honestly:
 | End-to-end proven on real Windows (live data, live cloud, OS integration) | ~10–15% | Every OS boundary is dev-host-deferred; all launch evidence is PLACEHOLDER |
 | Shippable artifact (signed installer a user can run) | 0% | No Authenticode cert (W0), MSIX never built/signed, updater round-trip never run |
 
-The port's architecture is sound and deliberately staged (portable `net8.0` cores tested on macOS + thin deferred Windows adapters), so this is *honest scaffolding*, not fake work — but "authored and unit-tested" has been allowed to read as "done" in some docs. Gate status per the repo's own ledger: **G0 ✅ G1 ✅ G2 ❌ (headline tracked FIX) G3 ❌ G4 ❌ G5 ❌**.
+The port's architecture is sound and deliberately staged (portable `net8.0` cores tested on macOS + thin deferred Windows adapters), so this is *honest scaffolding*, not fake work — but "authored and unit-tested" has been allowed to read as "done" in some docs. Gate status per the repo's own ledger: **G0 ✅ G1 ✅ G2 ❌ (headline PROVEN 2026-07-06 — Wave 1 item 1; remaining G2 items open) G3 ❌ G4 ❌ G5 ❌**.
 
 ---
 
@@ -27,7 +27,7 @@ The port's architecture is sound and deliberately staged (portable `net8.0` core
 
 | Claim (where) | Reality (verified) |
 |---|---|
-| "Phase 1 done, walking skeleton green" (HANDOFF §0) | TRUE — but the Windows Swift Engine lane compiles a **pruned subset** (GRDB storage, AgentInsights, TextExpansion, App Check contracts pruned). `STORAGE_PRUNE_WAIVER.md` still active; `openburnbar-engine-windows.yml` still sets the prune flag. |
+| "Phase 1 done, walking skeleton green" (HANDOFF §0) | TRUE — but the Windows Swift Engine lane compiles a **pruned subset** (GRDB storage, AgentInsights, TextExpansion, App Check contracts pruned). **Update 2026-07-06:** the *storage* half of that prune is now decided permanent architecture (**WPD-0005**, Engine compute-only + C# seam owns storage); the waiver is retired and the flag is gated by `verify-windows-storage-architecture.sh`. The non-storage pruned subsystems remain Phase-2+ gaps. |
 | "All 17 parity-burndown PRs landed" (#1267, 2026-07-04) | TRUE they're on `main` — but per `PARITY_MERGE_RUNBOOK.md` they were **admin-merged past 9 red required checks**, and a same-day repair (`fbb601591f`, "restore Swift core validation") is still unmerged on `origin/fix/windows-signal-core-contract-leaf`. |
 | "Byte-identical parser output" | Proven only via **macOS-host contract tests**. The G2 headline — Windows-side byte-identical diff in CI — is explicitly "tracked as FIX" (bundle §2). |
 | "E2EE parity proven" | Vector/KAT parity is byte-identical C#↔Swift↔TS ✅. The **live** Windows-seal→Mac-open round-trip is Alberto-signed deferred (`c5-e2ee-round-trip-deferral.md`). |
@@ -93,20 +93,21 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
 > item 2 is harder. The B1/B2/B6/C2 branches are **already integrated** on main (#1267 + #1272) — their
 > refs are stale drafts, do-not-merge (see bundle §6).
 
-1. **G2 headline — harness DONE, gate blocked on merge order:** `OpenBurnBarG2ParserParity` already
-   byte-diffs **15 providers / 26 fixtures** on x64 + ARM64 in `openburnbar-engine-windows.yml`
-   (commits `85b898255f` → `67de06b5c7`, "15/15 byte-identical"; Codex + Hermes ride the SQLite reader
-   seam). The lane is red on main only because of the pre-existing swift-crypto Sendable breakage that
-   **PR #1270 fixes** — land #1270, observe a green engine run, then flip the bundle's G2-headline row
-   from FIX to proven.
-2. **Storage un-prune = R2, not a flag flip.** The boundary flag prunes exactly `OpenBurnBarData`
-   (GRDB-SQLCipher), which **does not resolve/build off-Apple at all** (workflow comment + waiver
-   §Un-prune tracking). The C# seam (`Microsoft.Data.Sqlite` + `e_sqlcipher`, drift D6) is how Windows
-   actually opens the Mac DB today — byte-compat proven (`5c4fd006f8`, VAL-P0-DB-010). **Decision needed
-   (Alberto):** (a) port GRDB-SQLCipher to MSVC so the Swift engine owns storage on Windows (heavy,
-   retires R2 literally), or (b) author a WPD formalizing the C# storage seam as the permanent Windows
-   architecture — then the flag becomes documented architecture, the waiver is deleted, and the
-   `verify-windows-storage-prune-waiver.sh` gate is retired with it.
+1. **G2 headline — ✅ DONE (2026-07-06):** `OpenBurnBarG2ParserParity` byte-diffs **15 providers /
+   26 fixtures** on x64 + ARM64 in `openburnbar-engine-windows.yml` (commits `85b898255f` →
+   `67de06b5c7`, "15/15 byte-identical"; Codex + Hermes ride the SQLite reader seam). **PR #1270**
+   fixed the pre-existing swift-crypto Sendable breakage and the lane ran **green** on it (run
+   `28775204323`, both arches; merged to main as `cc56024f07`). The bundle's G2-headline row is
+   flipped to proven.
+2. **Storage architecture — ✅ DECIDED + EXECUTED (2026-07-06, option b):** Alberto deferred the call
+   to the goal driver; **WPD-0005** (`decisions/0005-windows-storage-architecture.md`) formalizes the
+   C# storage seam (`Microsoft.Data.Sqlite` + `e_sqlcipher`, drift D6, byte-compat proven
+   `5c4fd006f8` / VAL-P0-DB-010) as the **permanent** Windows storage architecture: the Swift Engine
+   on Windows is compute-only ("Engine computes, shell persists"). The boundary flag is documented
+   architecture, `STORAGE_PRUNE_WAIVER.md` is deleted, R2 is retired-by-architecture, and the waiver
+   gate is rewritten as `verify-windows-storage-architecture.sh` (fail-closed: flag-setting workflows
+   must be named in WPD-0005's machine-read block + the C# storage tests must exist). Option (a),
+   porting GRDB-SQLCipher to MSVC, was rejected — months of effort buying purity, not product.
 3. Replace interim `swift run` engine binding with UniFFI bindgen (WPD-0001 / drift D7).
 4. Build the `windows/native/` FFI shim binding the already-built iroh + burnbar-remote crates.
 5. Complete quota **acquisition** (the C2 adapter lift itself is on main): statusline hook (`.cmd`/PS
@@ -114,8 +115,9 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
    halves flagged in `Presentation/Quota/*.cs`.
 6. ManagedAgentRuntime + CursorConnector ports. ~~ConPTY chat live (B1); land B6~~ — **on main already**;
    what remains is proving ConPTY + mission dispatch live on a real Windows host (WS-D pass).
-   **Exit:** #1270 landed + green engine run recorded (G2 headline); storage decision made and executed;
-   waiver deleted (either path); engine binding is production-shaped.
+   **Exit:** ~~#1270 landed + green engine run recorded (G2 headline); storage decision made and
+   executed; waiver deleted (either path)~~ — **all three done 2026-07-06** (items 1–2 above);
+   remaining: engine binding is production-shaped (item 3) + items 4–6.
 
 ### Wave 2 — Live cloud (unblocks most "Authored → Real")
 1. **R14 kill-risk:** Windows CNG `NCryptCreateClaim` TPM client → real-TPM App Check mint → enforced callable, on Win11 Pro hardware.
@@ -170,5 +172,5 @@ Wave 0: ~5–10 PRs. Wave 1: ~60–100. Wave 2: ~40–70. Wave 3: ~200–350 (do
 ## 5. Standing rules while remediating
 - Key all status claims off `PARITY_CERTIFICATION_BUNDLE.md` labels (Real / Authored / deferred), never off "done" phrasing in handoffs.
 - No admin-merges into the parity lane once Wave 0 completes.
-- Every deferral gets a doc with an expiry (the storage waiver pattern) — and gets deleted when closed.
+- Every deferral gets a doc with an expiry (the storage waiver pattern; that waiver itself was retired 2026-07-06 when WPD-0005 turned the gap into a decision) — and gets deleted when closed.
 - "Parity" claims require Windows-runner or real-hardware evidence; macOS-host test parity is labeled as such.
