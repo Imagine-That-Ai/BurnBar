@@ -36,7 +36,7 @@ The port's architecture is sound and deliberately staged (portable `net8.0` core
 | `PARITY_BURNDOWN_PLAN.md` (cited by 2 docs) | **Does not exist anywhere in git history.** The WS-* lane definitions live only outside the repo. |
 
 **Additional red flags:**
-- `windows/native/` is an **empty skeleton** — the Rust↔managed FFI shim (iroh, burnbar-remote) does not exist; crates build in CI but nothing binds them.
+- ~~`windows/native/` is an **empty skeleton** — the Rust↔managed FFI shim (iroh, burnbar-remote) does not exist; crates build in CI but nothing binds them.~~ **CLOSED 2026-07-06 (Wave 1 item 4):** `windows/native/` now carries the real shim — `OpenBurnBar.Native` (hardened absolute-path loader + graceful `NativeShimUnavailableException`), `OpenBurnBar.Native.BurnBarRemote` + `OpenBurnBar.Native.Iroh` (availability-gated facades over the committed uniffi-bindgen-cs bindings for BOTH crates, per WPD-0001), `windows/tests/native` (25 tests: locator/surface/shape on any host + real-FFI loopback that ran green against cargo-built dylibs on macOS and skips when absent), and a codegen-drift gate (`scripts/windows-port/check-csharp-binding-drift.sh` + `csharp-binding-drift.yml`). The msvc-runtime execution of the same loopback (FFI-008) still needs a Windows-runner cargo step.
 - `CloudSyncCallableHub.cs:35–62`: **8 of 9 cloud callables throw `NotImplementedException`** (exportUserData, deleteDomainData, listRecovery, setupRecovery, confirmRecovery, revokeAllAccess, getAuditLog, verifyAuditLog).
 - Engine binding is interim **`swift run`** (drift D7); UniFFI bindgen still open (WPD-0001).
 - ~~1,288 compiled DLLs committed into the tree~~ **CORRECTED 2026-07-06:** those binaries are local `bin/`/`obj/` build outputs — all gitignored (root `.gitignore` `**/bin/`+`**/obj/`) and **untracked**; `git ls-tree origin/main -- windows/` is 100% text. The only real event (104 binaries, ~4.7 MB, commit `9e6912bc8d`) was removed the same day in PR #1190. Residual risk is only a future force-add — closed by a no-tracked-binaries tripwire in `scripts/debt/check-windows-tree-budget.sh`.
@@ -66,7 +66,7 @@ Baseline: macOS app = `AgentLens/` (~266K LOC) + `OpenBurnBarCore/` (~150K) + `O
 | 13 | Particles/backdrops (~30 substrates, KernelBackdrop) | 30 substrates ported (CPU); Win2D GPU render deferred; **60fps ARM64 spike (WINUI-017) mandatory, pending** | G3 blocker |
 | 14 | Settings: 16 tabs, search, Copilot | 5 real pages + `SettingsPlaceholderPage` for the rest; search indexes tabs that have no UI | Major |
 | 15 | Integrations: Cast, Home Assistant, SmartHub/Nest, AWTRIX/PixelClock, Mercury media | Portable cores + tests ✅ (Cast protobuf/mDNS, HA REST, RFB/VNC codecs); live sockets/capture deferred; AWTRIX/PixelClock absent | Phase 4 |
-| 16 | Iroh P2P + BurnBarRemote (Rust) | Crates build in CI; `windows/native/` empty — **no FFI shim** | Missing |
+| 16 | Iroh P2P + BurnBarRemote (Rust) | Crates build in CI; `windows/native/` shim LANDED 2026-07-06 (loader + both uniffi C# bindings + facades + 25 tests incl. real macOS FFI loopback + drift gate); msvc-runtime loopback (FFI-008) pending a Windows-runner cargo step | Shim landed; FFI-008 pending |
 | 17 | Updater (signed feed, channels) | Ed25519 feed verify + WinSparkle interop authored; live round-trip never run | G5 |
 | 18 | Packaging/distribution (DMG/Homebrew/MAS ↔ MSIX/winget/choco/Store) | Manifests + verify kernels only; **no cert, no signed build, nothing installable** | G5 / Alberto-blocked |
 | 19 | Onboarding (8 steps) | Ported ✅ (one of the 4 "Real" surfaces) | — |
@@ -109,7 +109,15 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
    must be named in WPD-0005's machine-read block + the C# storage tests must exist). Option (a),
    porting GRDB-SQLCipher to MSVC, was rejected — months of effort buying purity, not product.
 3. Replace interim `swift run` engine binding with UniFFI bindgen (WPD-0001 / drift D7).
-4. Build the `windows/native/` FFI shim binding the already-built iroh + burnbar-remote crates.
+4. ~~Build the `windows/native/` FFI shim binding the already-built iroh + burnbar-remote crates.~~
+   **DONE 2026-07-06:** `OpenBurnBar.Native{,.BurnBarRemote,.Iroh}` + `windows/tests/native` registered
+   in the sln; iroh got its own committed uniffi-bindgen-cs binding
+   (`crates/openburnbar-iroh/bindings/csharp/`) beside burnbar-remote's; both pinned to
+   `uniffi-bindgen-cs v0.9.2+v0.28.3` and drift-gated
+   (`scripts/windows-port/check-csharp-binding-drift.sh`, `.github/workflows/csharp-binding-drift.yml`).
+   Real FFI loopback proven on macOS (25/25 with cargo-built dylibs; 12 pass + 13 skip without).
+   Remaining slice: FFI-008 — run the same loopback on the msvc runtime by adding a cargo build step
+   (or crate-artifact download) to a Windows lane.
 5. Complete quota **acquisition** (the C2 adapter lift itself is on main): statusline hook (`.cmd`/PS
    wrapper), `state.vscdb` SQLite reader, credential probes, file-watchers — the net8.0-windows adapter
    halves flagged in `Presentation/Quota/*.cs`.
