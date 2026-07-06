@@ -58,7 +58,6 @@ daemonExcludes = [
     "OpenBurnBarHTTPGatewayServer+UsageLogging.swift",
     "GatewayModelCatalogSource.swift",
     "GatewayRouteLogging.swift",
-    "GatewayStreamingUsageAccumulator.swift",
     "PensieveKnowledgeWatcher.swift",
     "DaemonSelfCodeSignatureVerifier.swift",
     "ElderWandFusionOrchestrator.swift",
@@ -67,125 +66,144 @@ daemonExcludes = [
 ]
 #endif
 
+var packageProducts: [Product] = [
+    .executable(
+        name: "OpenBurnBarDaemon",
+        targets: ["OpenBurnBarDaemonExecutable"]
+    ),
+    .executable(
+        name: "OpenBurnBarCLI",
+        targets: ["OpenBurnBarCLI"]
+    )
+]
+
+var packageTargets: [Target] = [
+    .target(
+        name: "OpenBurnBarDaemon",
+        dependencies: daemonTargetDependencies,
+        exclude: daemonExcludes,
+        cSettings: [
+            .define("SQLITE_HAS_CODEC")
+        ],
+        linkerSettings: daemonLinkerSettings
+    ),
+    .executableTarget(
+        name: "OpenBurnBarDaemonExecutable",
+        dependencies: daemonExecutableDependencies
+    ),
+    .executableTarget(
+        name: "OpenBurnBarCLI",
+        dependencies: ["OpenBurnBarDaemon"]
+    ),
+    .testTarget(
+        name: "OpenBurnBarDaemonLinuxGatewayTests",
+        dependencies: ["OpenBurnBarDaemon"],
+        // Socket-level Linux gateway harness stays Swift 5 to avoid
+        // region-isolation noise around POSIX buffers in XCTest helpers.
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    )
+]
+
+#if os(macOS)
+packageProducts.append(contentsOf: [
+    .executable(
+        name: "OpenBurnBarRemoteAccessAgent",
+        targets: ["OpenBurnBarRemoteAccessAgent"]
+    ),
+    .executable(
+        name: "OpenBurnBarVirtualHIDBridge",
+        targets: ["OpenBurnBarVirtualHIDBridge"]
+    ),
+    .executable(
+        name: "OpenBurnBarPrivilegedInputExecution",
+        targets: ["OpenBurnBarPrivilegedInputExecution"]
+    ),
+    .executable(
+        name: "OpenBurnBarPrivilegedSocketRedTeamProbe",
+        targets: ["OpenBurnBarPrivilegedSocketRedTeamProbe"]
+    ),
+    .executable(
+        name: "OpenBurnBarPrivilegedInputKillSwitchWatchdog",
+        targets: ["OpenBurnBarPrivilegedInputKillSwitchWatchdog"]
+    ),
+    .library(
+        name: "OpenBurnBarRemoteAccessAgentCore",
+        targets: ["OpenBurnBarRemoteAccessAgentCore"]
+    )
+])
+
+packageTargets.append(contentsOf: [
+    .target(
+        name: "OpenBurnBarRemoteAccessAgentCore",
+        dependencies: [
+            .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+        ],
+        linkerSettings: [
+            .unsafeFlags([
+                "-framework", "Security",
+                "-framework", "CoreGraphics",
+                "-framework", "IOKit"
+            ])
+        ]
+    ),
+    .executableTarget(
+        name: "OpenBurnBarRemoteAccessAgent",
+        dependencies: ["OpenBurnBarRemoteAccessAgentCore"],
+        linkerSettings: [
+            .unsafeFlags([
+                "-framework", "ApplicationServices",
+                "-framework", "IOKit",
+                "-framework", "SystemConfiguration"
+            ])
+        ]
+    ),
+    .executableTarget(
+        name: "OpenBurnBarVirtualHIDBridge",
+        dependencies: [
+            "OpenBurnBarRemoteAccessAgentCore",
+            .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+        ],
+        linkerSettings: [
+            .unsafeFlags(["-framework", "SystemConfiguration"])
+        ]
+    ),
+    .executableTarget(
+        name: "OpenBurnBarPrivilegedInputExecution",
+        dependencies: ["OpenBurnBarRemoteAccessAgentCore"]
+    ),
+    .testTarget(
+        name: "OpenBurnBarDaemonTests",
+        dependencies: ["OpenBurnBarDaemon"],
+        // Harness-only test target stays Swift 5 (region-isolation checker gaps).
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    ),
+    .executableTarget(
+        name: "OpenBurnBarPrivilegedSocketRedTeamProbe",
+        dependencies: ["OpenBurnBarRemoteAccessAgentCore"]
+    ),
+    .executableTarget(
+        name: "OpenBurnBarPrivilegedInputKillSwitchWatchdog",
+        dependencies: [
+            .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+        ]
+    ),
+    .testTarget(
+        name: "OpenBurnBarRemoteAccessAgentCoreTests",
+        dependencies: [
+            "OpenBurnBarRemoteAccessAgentCore",
+            .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+        ],
+        // Harness-only test target stays Swift 5 (region-isolation checker gaps).
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    )
+])
+#endif
+
 let package = Package(
     name: "OpenBurnBarDaemon",
     platforms: packagePlatforms,
-    products: [
-        .executable(
-            name: "OpenBurnBarDaemon",
-            targets: ["OpenBurnBarDaemonExecutable"]
-        ),
-        .executable(
-            name: "OpenBurnBarCLI",
-            targets: ["OpenBurnBarCLI"]
-        ),
-        .executable(
-            name: "OpenBurnBarRemoteAccessAgent",
-            targets: ["OpenBurnBarRemoteAccessAgent"]
-        ),
-        .executable(
-            name: "OpenBurnBarVirtualHIDBridge",
-            targets: ["OpenBurnBarVirtualHIDBridge"]
-        ),
-        .executable(
-            name: "OpenBurnBarPrivilegedInputExecution",
-            targets: ["OpenBurnBarPrivilegedInputExecution"]
-        ),
-        .executable(
-            name: "OpenBurnBarPrivilegedSocketRedTeamProbe",
-            targets: ["OpenBurnBarPrivilegedSocketRedTeamProbe"]
-        ),
-        .executable(
-            name: "OpenBurnBarPrivilegedInputKillSwitchWatchdog",
-            targets: ["OpenBurnBarPrivilegedInputKillSwitchWatchdog"]
-        ),
-        .library(
-            name: "OpenBurnBarRemoteAccessAgentCore",
-            targets: ["OpenBurnBarRemoteAccessAgentCore"]
-        )
-    ],
+    products: packageProducts,
     dependencies: packageDependencies,
-    targets: [
-        .target(
-            name: "OpenBurnBarDaemon",
-            dependencies: daemonTargetDependencies,
-            exclude: daemonExcludes,
-            cSettings: [
-                .define("SQLITE_HAS_CODEC")
-            ],
-            linkerSettings: daemonLinkerSettings
-        ),
-        .executableTarget(
-            name: "OpenBurnBarDaemonExecutable",
-            dependencies: daemonExecutableDependencies
-        ),
-        .executableTarget(
-            name: "OpenBurnBarCLI",
-            dependencies: ["OpenBurnBarDaemon"]
-        ),
-        .target(
-            name: "OpenBurnBarRemoteAccessAgentCore",
-            dependencies: [
-                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
-            ],
-            linkerSettings: [
-                .unsafeFlags([
-                    "-framework", "Security",
-                    "-framework", "CoreGraphics",
-                    "-framework", "IOKit"
-                ])
-            ]
-        ),
-        .executableTarget(
-            name: "OpenBurnBarRemoteAccessAgent",
-            dependencies: ["OpenBurnBarRemoteAccessAgentCore"],
-            linkerSettings: [
-                .unsafeFlags([
-                    "-framework", "ApplicationServices",
-                    "-framework", "IOKit",
-                    "-framework", "SystemConfiguration"
-                ])
-            ]
-        ),
-        .executableTarget(
-            name: "OpenBurnBarVirtualHIDBridge",
-            dependencies: [
-                "OpenBurnBarRemoteAccessAgentCore",
-                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
-            ],
-            linkerSettings: [
-                .unsafeFlags(["-framework", "SystemConfiguration"])
-            ]
-        ),
-        .executableTarget(
-            name: "OpenBurnBarPrivilegedInputExecution",
-            dependencies: ["OpenBurnBarRemoteAccessAgentCore"]
-        ),
-        .testTarget(
-            name: "OpenBurnBarDaemonTests",
-            dependencies: ["OpenBurnBarDaemon"],
-            // Harness-only test target stays Swift 5 (region-isolation checker gaps).
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
-        .executableTarget(
-            name: "OpenBurnBarPrivilegedSocketRedTeamProbe",
-            dependencies: ["OpenBurnBarRemoteAccessAgentCore"]
-        ),
-        .executableTarget(
-            name: "OpenBurnBarPrivilegedInputKillSwitchWatchdog",
-            dependencies: [
-                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
-            ]
-        ),
-        .testTarget(
-            name: "OpenBurnBarRemoteAccessAgentCoreTests",
-            dependencies: [
-                "OpenBurnBarRemoteAccessAgentCore",
-                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
-            ],
-            // Harness-only test target stays Swift 5 (region-isolation checker gaps).
-            swiftSettings: [.swiftLanguageMode(.v5)]
-        )
-    ],
+    targets: packageTargets,
     swiftLanguageModes: [.v6]
 )
