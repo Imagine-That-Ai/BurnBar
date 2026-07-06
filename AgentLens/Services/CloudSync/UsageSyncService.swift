@@ -11,6 +11,13 @@ import OpenBurnBarCore
 /// sealed with the per-user Cloud Vault key (`sealedProjectName`) instead of
 /// being written in plaintext. An opaque keyed `projectKeyHash` is also written
 /// so on-device readers can group usage by project without decrypting every row.
+extension Notification.Name {
+    /// Posted by UsageAggregator.recountAll after the local usage table has
+    /// been cleared and re-parsed, so the next usage sync reconciles
+    /// now-orphaned cloud docs exactly once.
+    static let usageRecountDidRebuildLocalRows = Notification.Name("OpenBurnBarUsageRecountDidRebuildLocalRows")
+}
+
 final class UsageSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
@@ -21,12 +28,29 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
 
+    /// Set when a Recount (or other full local rebuild) requests one-shot
+    /// cloud reconciliation. Orphan cleanup is O(total same-device history)
+    /// in Firestore reads, so it must not run on every incremental sync.
+    private let orphanReconciliationRequested = Locked(false)
+
     init(
         context: CloudSyncContext,
         vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
     ) {
         self.context = context
         self.vaultKeyProvider = vaultKeyProvider
+        NotificationCenter.default.addObserver(
+            forName: .usageRecountDidRebuildLocalRows,
+            object: nil,
+            queue: nil
+        ) { [orphanReconciliationRequested] _ in
+            orphanReconciliationRequested.withLock { $0 = true }
+        }
+    }
+
+    /// Request a one-shot orphaned-cloud-doc reconciliation on the next sync.
+    func requestOrphanReconciliation() {
+        orphanReconciliationRequested.withLock { $0 = true }
     }
 
     /// Upload all unsynced local usage rows to Firestore.
@@ -42,7 +66,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         guard state.beginSyncingIfIdle() else { return }
         let deviceId = gate.account.deviceId
         let syncStartTime = Date()
-        var lastBatchCount = 0
+        var syncedItemCount = 0
 
         defer { state.endSyncing() }
 
@@ -55,7 +79,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             while true {
                 let unsynced = try await context.dataStore.fetchUnsynced()
                 guard !unsynced.isEmpty else { break }
-                lastBatchCount = unsynced.count
+                syncedItemCount += unsynced.count
 
                 let batch = context.firestoreGateway.batch()
 
@@ -84,12 +108,35 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 try await context.dataStore.markSynced(ids: syncedIds)
             }
 
+            // Orphan cleanup runs only AFTER the replacement upload committed
+            // (never leaves the cloud with neither old nor new docs), only when
+            // a recount explicitly requested reconciliation (bounds the
+            // full-history scan to recount events, not every incremental
+            // sync), and never against an empty local table (a failed recount
+            // persist must not delete the device's entire cloud history).
+            if orphanReconciliationRequested.read() {
+                let keeping = Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
+                if keeping.isEmpty {
+                    AppLogger.sync.error(
+                        "usage_orphan_cleanup_refused_empty_local_table",
+                        metadata: ["reason": "failed recount persist would delete entire cloud history"]
+                    )
+                } else {
+                    try await deleteOrphanedUsageDocs(
+                        collectionRef: collectionRef,
+                        deviceId: deviceId,
+                        keeping: keeping
+                    )
+                    orphanReconciliationRequested.withLock { $0 = false }
+                }
+            }
+
             state.withLock {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = nil
             }
             let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
-            let itemCountBucket = AnalyticsBuckets.count(lastBatchCount)
+            let itemCountBucket = AnalyticsBuckets.count(syncedItemCount)
             Task { @MainActor in
                 Analytics.shared.track(.cloudsyncCompleted, [
                     "domain": "usage",
@@ -101,6 +148,36 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
             await recordSyncError(error, uid: uid, deviceId: deviceId)
+        }
+    }
+
+    private func deleteOrphanedUsageDocs(
+        collectionRef: CloudSyncCollectionGateway,
+        deviceId: String,
+        keeping currentUsageIds: Set<String>
+    ) async throws {
+        let prefix = "\(deviceId)_"
+        let snapshot = try await collectionRef.whereField("deviceId", isEqualTo: deviceId).getDocuments()
+        let orphanDocIds = snapshot.documents.compactMap { document -> String? in
+            let documentID = document.documentID
+            guard documentID.hasPrefix(prefix) else { return nil }
+            let usageID = String(documentID.dropFirst(prefix.count))
+            return currentUsageIds.contains(usageID) ? nil : documentID
+        }
+        guard !orphanDocIds.isEmpty else { return }
+
+        for batchStart in stride(from: 0, to: orphanDocIds.count, by: 400) {
+            let batch = context.firestoreGateway.batch()
+            for docId in orphanDocIds[batchStart..<min(batchStart + 400, orphanDocIds.count)] {
+                batch.deleteDocument(collectionRef.document(docId))
+            }
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "usage"
+            ) {
+                try await batch.commit()
+            }
         }
     }
 

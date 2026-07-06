@@ -1,6 +1,7 @@
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.DataControlCenter;
 using OpenBurnBar.App.Presentation.Memories;
+using OpenBurnBar.CloudSync.AppCheck.Mint;
 using OpenBurnBar.CloudSync.Crypto;
 
 namespace OpenBurnBar.App.CloudSync;
@@ -62,6 +63,53 @@ public static class WinAppCloudSyncHost
             _memory = new CloudSyncMemoryStore(_root.Gateway, firebaseUid, vaultKey);
             _quotaSnapshots = new CloudSyncQuotaSnapshotStore(_root.Gateway, firebaseUid);
         }
+    }
+
+    /// <summary>
+    /// Live root wiring backed by a signed-in desktop OAuth provider (real Firebase
+    /// id token). Flips <see cref="Root"/> to the OAuth-authenticated gateway so the
+    /// seam-ready surfaces read live Firestore data. App Check stays optional via
+    /// <paramref name="appCheckMintTransport"/>.
+    /// </summary>
+    public static void ConfigureWithOAuth(
+        DesktopOAuthCredentialsProvider oauth,
+        string firebaseProjectId,
+        string firebaseUid,
+        byte[] vaultKey,
+        IAppCheckMintTransport? appCheckMintTransport = null)
+    {
+        if (oauth is null) throw new ArgumentNullException(nameof(oauth));
+        lock (Gate)
+        {
+            _vaultKey = vaultKey;
+            _isSignedIn = () => oauth.IsSignedIn;
+            _root = CloudSyncCompositionRoot.CreateWithOAuth(
+                oauth,
+                firebaseProjectId,
+                firebaseUid,
+                appCheckMintTransport);
+            _memory = new CloudSyncMemoryStore(_root.Gateway, firebaseUid, vaultKey);
+            _quotaSnapshots = new CloudSyncQuotaSnapshotStore(_root.Gateway, firebaseUid);
+        }
+    }
+
+    /// <summary>
+    /// Ensure the provider is signed in (runs the browser loopback flow if needed),
+    /// derive the Firebase uid from the resulting session, and wire the live root.
+    /// Returns the signed-in uid.
+    /// </summary>
+    public static async Task<string> ConfigureWithOAuthAsync(
+        DesktopOAuthCredentialsProvider oauth,
+        string firebaseProjectId,
+        byte[] vaultKey,
+        IAppCheckMintTransport? appCheckMintTransport = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (oauth is null) throw new ArgumentNullException(nameof(oauth));
+        FirebaseOAuthSession session = oauth.CurrentSession
+            ?? await oauth.SignInAsync(cancellationToken).ConfigureAwait(false);
+        ConfigureWithOAuth(oauth, firebaseProjectId, session.Uid, vaultKey, appCheckMintTransport);
+        return session.Uid;
     }
 
     public static void ConfigureFromAppConfiguration()
