@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App.js';
 import { ROUTES } from '../routes.js';
 import { fixtureUsageSummary } from '../daemonFixture.js';
 import { DaemonDataSection } from '../surfaces/DaemonDataSection.js';
 import { useOverviewStore } from '../state/overviewStore.js';
 import { useShellStore } from '../state/shellStore.js';
+import type { LinuxShellBridge } from '../tauriBridge.js';
 
 function resetShell(): void {
   localStorage.clear();
@@ -195,5 +196,32 @@ describe('App shell', () => {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
     expect(useShellStore.getState().route).toBe('memory');
+  });
+
+  it('fires daemon-wide Computer Use panic from the emergency hotkey', async () => {
+    const computerUsePanicHalt = vi.fn().mockResolvedValue({
+      sessionId: '*',
+      endedAt: new Date(0).toISOString(),
+      auditHeadHashHex: '',
+      source: 'hotkey'
+    });
+    useShellStore.setState({
+      bridge: { computerUsePanicHalt } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+    render(<App />);
+
+    fireEvent.keyDown(window, {
+      key: '.',
+      code: 'Period',
+      ctrlKey: true,
+      altKey: true,
+      metaKey: true
+    });
+
+    await waitFor(() => {
+      expect(computerUsePanicHalt).toHaveBeenCalledWith('*', 'hotkey');
+    });
   });
 });
