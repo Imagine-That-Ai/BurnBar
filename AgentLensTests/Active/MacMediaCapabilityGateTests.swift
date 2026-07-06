@@ -266,6 +266,48 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(store.expirationDate?.timeIntervalSince1970 ?? 0, cloudExpires.timeIntervalSince1970, accuracy: 0.001)
     }
 
+    func testMacCloudEntitlementStoreUsesLocalStoreKitWhenOnlyCloudDocIsLapsed() async {
+        let localExpires = Date(timeIntervalSinceNow: 7_200)
+        let localPurchase = Date(timeIntervalSinceNow: -3_600)
+        let cloudLapsedExpires = Date(timeIntervalSinceNow: -1_800)
+        let fractionalISO8601 = ISO8601DateFormatter()
+        fractionalISO8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let provider = FakeMacStoreKitEntitlementProvider(entitlements: [
+            MacStoreKitEntitlementSnapshot(
+                productID: MacCloudStoreKitProductCatalog.cloudProAnnualProductID,
+                expirationDate: localExpires,
+                purchaseDate: localPurchase,
+                transactionID: 9_004,
+                appAccountToken: proAppAccountToken
+            )
+        ])
+        let store = MacCloudEntitlementStore(
+            storeKitEntitlementProvider: provider,
+            appAccountTokenBindingProvider: FakeMacStoreKitAppAccountTokenBindingProvider(bindings: [
+                proAppAccountToken: storeKitUID
+            ]),
+            observesStoreKitTransactions: false,
+            signedInUID: storeKitUID
+        )
+        await store.refreshStoreKitEntitlementsForTesting()
+
+        store.applyHostedQuota(data: [
+            "active": true,
+            "productID": MacCloudStoreKitProductCatalog.cloudMonthlyProductID,
+            "expiresAt": fractionalISO8601.string(from: cloudLapsedExpires)
+        ])
+
+        XCTAssertTrue(store.hasVerifiedStoreKitEntitlementSnapshot)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.hostedComputerUseIsActive)
+        XCTAssertFalse(store.isUltraActive)
+        XCTAssertEqual(store.currentTier, .pro)
+        XCTAssertEqual(store.cloudTier, .pro)
+        XCTAssertEqual(store.expirationDate?.timeIntervalSince1970 ?? 0, localExpires.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(store.purchaseDate?.timeIntervalSince1970 ?? 0, localPurchase.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(provider.currentEntitlementReadCount, 1)
+    }
+
     func testMacCloudEntitlementStoreRefreshesStoreKitSnapshotOnTransactionUpdate() async {
         let expires = Date(timeIntervalSinceNow: 3_600)
         let refreshObserved = expectation(description: "StoreKit update refreshed current entitlements")
