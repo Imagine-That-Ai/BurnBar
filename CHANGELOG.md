@@ -66,6 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cloud / Cloud Pro / Cloud Ultra SKUs as iOS, and uses locally verified
   entitlements only when the cloud entitlement document is absent.
 
+### Fixed
+
+- **Recount cloud usage duplication** - makes Mac usage IDs deterministic across
+  Recount reparses, removes stale same-device Firestore usage docs, and reports
+  the full cloud-sync batch total to analytics.
+
 ## [1.0.29] - 2026-07-05
 
 ### Added
