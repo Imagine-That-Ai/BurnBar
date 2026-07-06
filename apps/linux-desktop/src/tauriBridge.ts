@@ -86,6 +86,63 @@ export type ConfigSnapshot = {
   secretServiceStatus: string;
   telemetryEnabled: boolean;
   privacyOptIn: boolean;
+  providers?: ProviderSettings[];
+  routerMode?: string;
+};
+export type ProviderCredentialSlot = {
+  slotID: string;
+  label: string;
+  isEnabled: boolean;
+  status: string;
+  cooldownUntil?: string;
+  lastQuotaRemainingPercent?: number;
+  lastQuotaResetsAt?: string;
+  lastStatusMessage?: string;
+  endpointProfileID?: string;
+  authMethodID?: string;
+  updatedAt?: string;
+};
+export type ModelVariant = {
+  variantID: string;
+  label: string;
+  baseModelID: string;
+  thinkingLevel: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  maxOutputTokens?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+export type ModelAlias = {
+  aliasID: string;
+  baseModelID: string;
+  displayName: string;
+  hidesBaseModel: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+export type ModelDisplayOverride = {
+  modelID: string;
+  displayName: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+export type CustomModel = {
+  modelID: string;
+  displayName: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+export type ProviderSettings = {
+  providerID: string;
+  isEnabled: boolean;
+  baseURL: string;
+  preferredModelIDs: string[];
+  disabledAdvertisedModelIDs: string[];
+  preferredCredentialSlotID?: string;
+  credentialSlots: ProviderCredentialSlot[];
+  modelVariants: ModelVariant[];
+  modelAliases: ModelAlias[];
+  modelDisplayOverrides: ModelDisplayOverride[];
+  customModels: CustomModel[];
 };
 export type DbStatus = {
   sqlcipherOk: boolean;
@@ -115,6 +172,55 @@ export type AppVersionInfo = {
   updateCheck: string;
 };
 export type DiagnosticsExport = { path: string };
+
+// ─────────────────────────── P10: proxy route log ─────────────────────────
+
+export type ProxyRouteLogEntry = {
+  id: string;
+  occurredAt: string;
+  endpoint: string;
+  clientModelSlug: string;
+  routingModelSlug?: string;
+  upstreamModelSlug?: string;
+  providerName?: string;
+  accountLabel?: string;
+  finalStatus: string;
+  rewriteKind: string;
+  exactModelInvariant: string;
+  streamed: boolean;
+  httpStatus?: number;
+  failureMessage?: string;
+};
+
+// ─────────────────────────── P12: notifications ──────────────────────────
+
+export type NotificationConfig = {
+  defaultSnoozeMinutes: number;
+  nudgeHoursLocal: number[];
+  local: {
+    isEnabled: boolean;
+    quietHoursStart: number | null;
+    quietHoursEnd: number | null;
+  };
+  telegram: {
+    isEnabled: boolean;
+    botTokenConfigured: boolean;
+    botToken?: string | null;
+    botTokenHint?: string | null;
+    chatID?: string | null;
+    supportedCommands: string[];
+  };
+  calendar: {
+    isEnabled: boolean;
+    defaultDurationMinutes: number;
+    defaultCalendarName?: string | null;
+  };
+};
+export type NotificationHealth = {
+  checkedAt: string;
+  channels: { channel: 'local' | 'telegram' | 'calendar'; status: string; detail?: string | null; checkedAt: string }[];
+};
+export type NotificationCommandResult = { command: string; ok: boolean; message: string };
 
 // ─────────────────────────── P11: session env ─────────────────────────────
 
@@ -189,6 +295,31 @@ export interface LinuxShellBridge {
   accountStatus(): Promise<AccountStatus>;
   appVersionInfo(): Promise<AppVersionInfo>;
   exportDiagnostics(): Promise<DiagnosticsExport>;
+  configUpdate?(snapshot: ConfigSnapshot): Promise<ConfigSnapshot>;
+  providerCredentialSlotUpsert?(params: {
+    providerID: string;
+    slotID?: string;
+    label: string;
+    apiKey: string;
+    isEnabled: boolean;
+    endpointProfileID?: string | null;
+    authMethodID?: string | null;
+  }): Promise<ConfigSnapshot>;
+  providerCredentialSlotRemove?(providerID: string, slotID: string): Promise<ConfigSnapshot>;
+  providerModelVariantUpsert?(providerID: string, variant: ModelVariant): Promise<ConfigSnapshot>;
+  providerModelVariantRemove?(providerID: string, variantID: string): Promise<ConfigSnapshot>;
+  providerModelAliasUpsert?(providerID: string, alias: ModelAlias): Promise<ConfigSnapshot>;
+  providerModelAliasRemove?(providerID: string, aliasID: string): Promise<ConfigSnapshot>;
+  providerCustomModelUpsert?(providerID: string, customModel: CustomModel): Promise<ConfigSnapshot>;
+  providerCustomModelRemove?(providerID: string, modelID: string): Promise<ConfigSnapshot>;
+  providerModelDisplayNameSet?(providerID: string, modelID: string, displayName: string): Promise<ConfigSnapshot>;
+  providerModelDisplayNameClear?(providerID: string, modelID: string): Promise<ConfigSnapshot>;
+  proxyRouteLogRecent?(limit: number): Promise<ProxyRouteLogEntry[]>;
+  proxyRouteLogClear?(): Promise<boolean>;
+  notificationConfigGet?(): Promise<NotificationConfig>;
+  notificationConfigUpdate?(config: NotificationConfig): Promise<NotificationConfig>;
+  notificationHealth?(): Promise<NotificationHealth>;
+  notificationCommand?(command: string, args?: string[]): Promise<NotificationCommandResult>;
   sessionEnv(): Promise<SessionEnv>;
   mediaStatus(): Promise<MercuryMediaStatus>;
   integrationsStatus(): Promise<IntegrationsStatus>;
@@ -467,7 +598,83 @@ function mapConfigSnapshot(raw: RawJsonValue): ConfigSnapshot {
     },
     secretServiceStatus: str(pick(snap, 'secretServiceStatus', 'secret_service_status'), 'unknown'),
     telemetryEnabled: Boolean(pick(snap, 'telemetryEnabled', 'telemetry_enabled')),
-    privacyOptIn: Boolean(pick(snap, 'privacyOptIn', 'privacy_opt_in'))
+    privacyOptIn: Boolean(pick(snap, 'privacyOptIn', 'privacy_opt_in')),
+    providers: arr(pick(snap, 'providers')).map(mapProviderSettings),
+    routerMode: str(pick(snap, 'routerMode'), 'providerFamilyFailover')
+  };
+}
+
+function mapProviderSettings(raw: RawJsonValue, i = 0): ProviderSettings {
+  return {
+    providerID: str(pick(raw, 'providerID', 'providerId', 'provider_id'), `provider-${i}`),
+    isEnabled: Boolean(pick(raw, 'isEnabled', 'enabled')),
+    baseURL: str(pick(raw, 'baseURL', 'baseUrl', 'base_url')),
+    preferredModelIDs: arr(pick(raw, 'preferredModelIDs', 'preferredModelIds', 'preferred_model_ids')).map((v) => str(v)).filter(Boolean),
+    disabledAdvertisedModelIDs: arr(pick(raw, 'disabledAdvertisedModelIDs', 'disabledAdvertisedModelIds')).map((v) => str(v)).filter(Boolean),
+    preferredCredentialSlotID: str(pick(raw, 'preferredCredentialSlotID', 'preferredCredentialSlotId')) || undefined,
+    credentialSlots: arr(pick(raw, 'credentialSlots')).map(mapCredentialSlot),
+    modelVariants: arr(pick(raw, 'modelVariants')).map(mapModelVariant),
+    modelAliases: arr(pick(raw, 'modelAliases')).map(mapModelAlias),
+    modelDisplayOverrides: arr(pick(raw, 'modelDisplayOverrides')).map(mapModelDisplayOverride),
+    customModels: arr(pick(raw, 'customModels')).map(mapCustomModel)
+  };
+}
+
+function mapCredentialSlot(raw: RawJsonValue, i = 0): ProviderCredentialSlot {
+  return {
+    slotID: str(pick(raw, 'slotID', 'slotId', 'id'), `slot-${i}`),
+    label: str(pick(raw, 'label'), `Slot ${i + 1}`),
+    isEnabled: Boolean(pick(raw, 'isEnabled', 'enabled')),
+    status: str(pick(raw, 'status'), 'missingSecret'),
+    cooldownUntil: str(pick(raw, 'cooldownUntil')) || undefined,
+    lastQuotaRemainingPercent: pick(raw, 'lastQuotaRemainingPercent') == null ? undefined : num(pick(raw, 'lastQuotaRemainingPercent')),
+    lastQuotaResetsAt: str(pick(raw, 'lastQuotaResetsAt')) || undefined,
+    lastStatusMessage: str(pick(raw, 'lastStatusMessage')) || undefined,
+    endpointProfileID: str(pick(raw, 'endpointProfileID', 'endpointProfileId')) || undefined,
+    authMethodID: str(pick(raw, 'authMethodID', 'authMethodId')) || undefined,
+    updatedAt: str(pick(raw, 'updatedAt')) || undefined
+  };
+}
+
+function mapModelVariant(raw: RawJsonValue, i = 0): ModelVariant {
+  const level = str(pick(raw, 'thinkingLevel'), 'medium') as ModelVariant['thinkingLevel'];
+  return {
+    variantID: str(pick(raw, 'variantID', 'variantId'), `variant-${i}`),
+    label: str(pick(raw, 'label'), 'Variant'),
+    baseModelID: str(pick(raw, 'baseModelID', 'baseModelId')),
+    thinkingLevel: ['low', 'medium', 'high', 'xhigh', 'max'].includes(level) ? level : 'medium',
+    maxOutputTokens: pick(raw, 'maxOutputTokens') == null ? null : num(pick(raw, 'maxOutputTokens')),
+    createdAt: str(pick(raw, 'createdAt')) || undefined,
+    updatedAt: str(pick(raw, 'updatedAt')) || undefined
+  };
+}
+
+function mapModelAlias(raw: RawJsonValue, i = 0): ModelAlias {
+  return {
+    aliasID: str(pick(raw, 'aliasID', 'aliasId'), `alias-${i}`),
+    baseModelID: str(pick(raw, 'baseModelID', 'baseModelId')),
+    displayName: str(pick(raw, 'displayName')),
+    hidesBaseModel: Boolean(pick(raw, 'hidesBaseModel')),
+    createdAt: str(pick(raw, 'createdAt')) || undefined,
+    updatedAt: str(pick(raw, 'updatedAt')) || undefined
+  };
+}
+
+function mapModelDisplayOverride(raw: RawJsonValue): ModelDisplayOverride {
+  return {
+    modelID: str(pick(raw, 'modelID', 'modelId')),
+    displayName: str(pick(raw, 'displayName')),
+    createdAt: str(pick(raw, 'createdAt')) || undefined,
+    updatedAt: str(pick(raw, 'updatedAt')) || undefined
+  };
+}
+
+function mapCustomModel(raw: RawJsonValue): CustomModel {
+  return {
+    modelID: str(pick(raw, 'modelID', 'modelId')),
+    displayName: str(pick(raw, 'displayName')),
+    createdAt: str(pick(raw, 'createdAt')) || undefined,
+    updatedAt: str(pick(raw, 'updatedAt')) || undefined
   };
 }
 
@@ -575,6 +782,94 @@ function mapIntegrationsStatus(raw: RawJsonValue): IntegrationsStatus {
         docsHref: str(pick(item, 'docsHref', 'docs_href', 'documentation')) || undefined
       };
     })
+  };
+}
+
+function snapshotFromMutation(raw: RawJsonValue): ConfigSnapshot {
+  return mapConfigSnapshot(pick(raw, 'snapshot') ? raw : { snapshot: pick(raw, 'snapshot') ?? raw });
+}
+
+function mapProxyRouteLog(raw: RawJsonValue): ProxyRouteLogEntry[] {
+  return arr(pick(raw, 'entries')).map((entry, i): ProxyRouteLogEntry => ({
+    id: str(pick(entry, 'id'), `route-log-${i}`),
+    occurredAt: str(pick(entry, 'occurredAt'), new Date().toISOString()),
+    endpoint: str(pick(entry, 'endpoint')),
+    clientModelSlug: str(pick(entry, 'clientModelSlug')),
+    routingModelSlug: str(pick(entry, 'routingModelSlug')) || undefined,
+    upstreamModelSlug: str(pick(entry, 'upstreamModelSlug')) || undefined,
+    providerName: str(pick(entry, 'providerName')) || undefined,
+    accountLabel: str(pick(entry, 'accountLabel')) || undefined,
+    finalStatus: str(pick(entry, 'finalStatus'), 'unknown'),
+    rewriteKind: str(pick(entry, 'rewriteKind'), 'none'),
+    exactModelInvariant: str(pick(entry, 'exactModelInvariant'), 'not_applicable'),
+    streamed: Boolean(pick(entry, 'streamed')),
+    httpStatus: pick(entry, 'httpStatus') == null ? undefined : num(pick(entry, 'httpStatus')),
+    failureMessage: str(pick(entry, 'failureMessage')) || undefined
+  }));
+}
+
+export function defaultNotificationConfig(): NotificationConfig {
+  return {
+    defaultSnoozeMinutes: 30,
+    nudgeHoursLocal: [9, 13, 17],
+    local: { isEnabled: true, quietHoursStart: null, quietHoursEnd: null },
+    telegram: {
+      isEnabled: false,
+      botTokenConfigured: false,
+      botToken: null,
+      botTokenHint: null,
+      chatID: null,
+      supportedCommands: ['help', 'pending', 'followups', 'latest', 'status']
+    },
+    calendar: { isEnabled: false, defaultDurationMinutes: 30, defaultCalendarName: null }
+  };
+}
+
+function mapNotificationConfig(raw: RawJsonValue): NotificationConfig {
+  const c = pick(raw, 'config') ?? raw;
+  const fallback = defaultNotificationConfig();
+  return {
+    defaultSnoozeMinutes: num(pick(c, 'defaultSnoozeMinutes'), fallback.defaultSnoozeMinutes),
+    nudgeHoursLocal: arr(pick(c, 'nudgeHoursLocal')).map((v) => num(v)).filter((v) => v >= 0 && v <= 23),
+    local: {
+      isEnabled: Boolean(pick(pick(c, 'local'), 'isEnabled')),
+      quietHoursStart: pick(pick(c, 'local'), 'quietHoursStart') == null ? null : num(pick(pick(c, 'local'), 'quietHoursStart')),
+      quietHoursEnd: pick(pick(c, 'local'), 'quietHoursEnd') == null ? null : num(pick(pick(c, 'local'), 'quietHoursEnd'))
+    },
+    telegram: {
+      isEnabled: Boolean(pick(pick(c, 'telegram'), 'isEnabled')),
+      botTokenConfigured: Boolean(pick(pick(c, 'telegram'), 'botTokenConfigured')),
+      botToken: str(pick(pick(c, 'telegram'), 'botToken')) || null,
+      botTokenHint: str(pick(pick(c, 'telegram'), 'botTokenHint')) || null,
+      chatID: str(pick(pick(c, 'telegram'), 'chatID', 'chatId')) || null,
+      supportedCommands: arr(pick(pick(c, 'telegram'), 'supportedCommands')).map((v) => str(v)).filter(Boolean)
+    },
+    calendar: {
+      isEnabled: Boolean(pick(pick(c, 'calendar'), 'isEnabled')),
+      defaultDurationMinutes: num(pick(pick(c, 'calendar'), 'defaultDurationMinutes'), fallback.calendar.defaultDurationMinutes),
+      defaultCalendarName: str(pick(pick(c, 'calendar'), 'defaultCalendarName')) || null
+    }
+  };
+}
+
+function mapNotificationHealth(raw: RawJsonValue): NotificationHealth {
+  const h = pick(raw, 'health') ?? raw;
+  return {
+    checkedAt: str(pick(h, 'checkedAt'), new Date().toISOString()),
+    channels: arr(pick(h, 'channels')).map((channel) => ({
+      channel: str(pick(channel, 'channel'), 'local') as 'local' | 'telegram' | 'calendar',
+      status: str(pick(channel, 'status'), 'disabled'),
+      detail: str(pick(channel, 'detail')) || null,
+      checkedAt: str(pick(channel, 'checkedAt'), new Date().toISOString())
+    }))
+  };
+}
+
+function mapNotificationCommand(raw: RawJsonValue): NotificationCommandResult {
+  return {
+    command: str(pick(raw, 'command'), 'status'),
+    ok: Boolean(pick(raw, 'ok')),
+    message: str(pick(raw, 'message'), 'Command finished.')
   };
 }
 
@@ -696,6 +991,74 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     configSnapshot: async () => {
       const raw = await invoke<RawJsonValue>('config_snapshot');
       return mapConfigSnapshot(raw);
+    },
+    configUpdate: async (snapshot) => {
+      const raw = await invoke<RawJsonValue>('config_update', { snapshot });
+      return snapshotFromMutation(raw);
+    },
+    providerCredentialSlotUpsert: async (params) => {
+      const raw = await invoke<RawJsonValue>('provider_credential_slot_upsert', { params });
+      return snapshotFromMutation(raw);
+    },
+    providerCredentialSlotRemove: async (providerID, slotID) => {
+      const raw = await invoke<RawJsonValue>('provider_credential_slot_remove', { providerId: providerID, slotId: slotID });
+      return snapshotFromMutation(raw);
+    },
+    providerModelVariantUpsert: async (providerID, variant) => {
+      const raw = await invoke<RawJsonValue>('provider_model_variant_upsert', { providerId: providerID, variant });
+      return snapshotFromMutation(raw);
+    },
+    providerModelVariantRemove: async (providerID, variantID) => {
+      const raw = await invoke<RawJsonValue>('provider_model_variant_remove', { providerId: providerID, variantId: variantID });
+      return snapshotFromMutation(raw);
+    },
+    providerModelAliasUpsert: async (providerID, alias) => {
+      const raw = await invoke<RawJsonValue>('provider_model_alias_upsert', { providerId: providerID, alias });
+      return snapshotFromMutation(raw);
+    },
+    providerModelAliasRemove: async (providerID, aliasID) => {
+      const raw = await invoke<RawJsonValue>('provider_model_alias_remove', { providerId: providerID, aliasId: aliasID });
+      return snapshotFromMutation(raw);
+    },
+    providerCustomModelUpsert: async (providerID, customModel) => {
+      const raw = await invoke<RawJsonValue>('provider_custom_model_upsert', { providerId: providerID, customModel });
+      return snapshotFromMutation(raw);
+    },
+    providerCustomModelRemove: async (providerID, modelID) => {
+      const raw = await invoke<RawJsonValue>('provider_custom_model_remove', { providerId: providerID, modelId: modelID });
+      return snapshotFromMutation(raw);
+    },
+    providerModelDisplayNameSet: async (providerID, modelID, displayName) => {
+      const raw = await invoke<RawJsonValue>('provider_model_display_name_set', { providerId: providerID, modelId: modelID, displayName });
+      return snapshotFromMutation(raw);
+    },
+    providerModelDisplayNameClear: async (providerID, modelID) => {
+      const raw = await invoke<RawJsonValue>('provider_model_display_name_clear', { providerId: providerID, modelId: modelID });
+      return snapshotFromMutation(raw);
+    },
+    proxyRouteLogRecent: async (limit) => {
+      const raw = await invoke<RawJsonValue>('proxy_route_log_recent', { limit });
+      return mapProxyRouteLog(raw);
+    },
+    proxyRouteLogClear: async () => {
+      const raw = await invoke<RawJsonValue>('proxy_route_log_clear');
+      return Boolean(pick(raw, 'cleared'));
+    },
+    notificationConfigGet: async () => {
+      const raw = await invoke<RawJsonValue>('notification_config_get');
+      return mapNotificationConfig(raw);
+    },
+    notificationConfigUpdate: async (config) => {
+      const raw = await invoke<RawJsonValue>('notification_config_update', { config });
+      return mapNotificationConfig(raw);
+    },
+    notificationHealth: async () => {
+      const raw = await invoke<RawJsonValue>('notification_health');
+      return mapNotificationHealth(raw);
+    },
+    notificationCommand: async (command, args = []) => {
+      const raw = await invoke<RawJsonValue>('notification_command', { command, arguments: args });
+      return mapNotificationCommand(raw);
     },
     // P07 — derived from daemon.config.get + daemon.health
     dbStatus: async () => {
