@@ -11,10 +11,10 @@ public sealed partial class ClassicLayoutView : UserControl
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
-        ApplyUsageSummary(OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary());
+        ApplyUsageSummary(await DashboardUsageProvider.LoadAsync());
     }
 
     internal void ApplyUsageSummary(OpenBurnBar.App.Presentation.Dashboard.DashboardUsageSummary summary)
