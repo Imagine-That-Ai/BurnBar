@@ -1,4 +1,4 @@
-import { useId, type KeyboardEvent } from 'react';
+import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { composerPlaceholder, type ChatBackendId } from './chatTypes.js';
 
 type ComposerProps = {
@@ -6,16 +6,26 @@ type ComposerProps = {
   disabled: boolean;
   disabledReason: string;
   streaming: boolean;
+  onSend: (text: string) => void;
   onStop: () => void;
 };
 
-export function Composer({ backend, disabled, disabledReason, streaming, onStop }: ComposerProps) {
+export function Composer({ backend, disabled, disabledReason, streaming, onSend, onStop }: ComposerProps) {
   const areaId = useId();
+  const [draft, setDraft] = useState('');
   const placeholder = composerPlaceholder(backend);
-  const sendDisabled = disabled || streaming;
+  const sendDisabled = disabled || streaming || draft.trim().length === 0;
+
+  const submit = (ev?: FormEvent) => {
+    ev?.preventDefault();
+    const message = draft.trim();
+    if (!message || disabled || streaming) return;
+    setDraft('');
+    onSend(message);
+  };
 
   return (
-    <div className="chat-composer">
+    <form className="chat-composer" onSubmit={submit}>
       <div className="chat-composer-inner">
         <div className="chat-composer-row chat-composer-input-row">
           <button
@@ -36,9 +46,12 @@ export function Composer({ backend, disabled, disabledReason, streaming, onStop 
             disabled={disabled}
             placeholder={placeholder}
             rows={1}
+            value={draft}
+            onChange={(ev) => setDraft(ev.currentTarget.value)}
             onKeyDown={(ev: KeyboardEvent<HTMLTextAreaElement>) => {
               if (ev.key === 'Enter' && !ev.shiftKey) {
                 ev.preventDefault();
+                submit();
               }
             }}
           />
@@ -53,7 +66,8 @@ export function Composer({ backend, disabled, disabledReason, streaming, onStop 
               className="chat-composer-send"
               disabled={sendDisabled}
               aria-label="Send message"
-              title={sendDisabled ? 'Send requires live Hermes dispatch on Linux v1' : 'Send message'}
+              title={sendDisabled ? disabledReason || 'Enter a message before sending' : 'Send message'}
+              onClick={() => submit()}
             >
               <span aria-hidden="true">↑</span>
             </button>
@@ -64,9 +78,9 @@ export function Composer({ backend, disabled, disabledReason, streaming, onStop 
             ? disabledReason
             : streaming
               ? 'Streaming in progress — Stop cancels the active turn.'
-              : 'Shift+Enter newline · Send ships with live dispatch'}
+              : 'Shift+Enter newline'}
         </p>
       </div>
-    </div>
+    </form>
   );
 }
