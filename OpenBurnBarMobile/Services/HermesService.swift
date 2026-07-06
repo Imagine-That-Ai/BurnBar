@@ -6,6 +6,9 @@ import FirebaseFirestore
 import OpenBurnBarAnalytics
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+import os.log
+
+private let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
 
 // MARK: - Hermes Chat Message
 
@@ -572,6 +575,7 @@ final class HermesService {
                 messages = loaded
             }
         } catch {
+            hermesE2ELogger.error("hermes_service_resume_session_failed sessionID=\(session.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
             messages = []
             runtimeErrorText = "Could not load the selected Hermes transcript: \(error.localizedDescription)"
         }
