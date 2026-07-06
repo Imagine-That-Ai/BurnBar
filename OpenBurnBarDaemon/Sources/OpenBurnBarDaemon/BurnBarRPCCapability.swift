@@ -89,7 +89,9 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             // can pin a phone key.
             return .config
         case .daemonMediaSessionState, .daemonMediaCapabilityGet, .daemonMediaStatus,
-             .daemonMediaCallAccept, .daemonMediaCallDecline, .daemonMediaCallEnd:
+             .daemonMediaCallAccept, .daemonMediaCallDecline, .daemonMediaCallEnd,
+             .daemonMediaFileOfferList, .daemonMediaFileAccept, .daemonMediaFileDecline,
+             .daemonMediaFileSend:
             return .media
         case .controllerSummary, .controllerRuntimeSnapshot,
              .controllerProjectsList, .controllerProjectGet,

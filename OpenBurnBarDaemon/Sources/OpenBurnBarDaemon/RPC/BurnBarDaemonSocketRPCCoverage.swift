@@ -69,7 +69,11 @@ enum BurnBarDaemonSocketRPCCoverage {
         .daemonMediaCallDecline,
         .daemonMediaCallEnd,
         .daemonMediaCapabilityGet,
-        .daemonMediaStatus
+        .daemonMediaStatus,
+        .daemonMediaFileOfferList,
+        .daemonMediaFileAccept,
+        .daemonMediaFileDecline,
+        .daemonMediaFileSend
     ]
 
     static let missionControl: Set<BurnBarRPCMethod> = [

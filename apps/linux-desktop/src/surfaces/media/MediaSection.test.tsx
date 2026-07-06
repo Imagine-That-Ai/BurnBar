@@ -4,7 +4,7 @@ import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMediaStore } from '../../state/mediaStore.js';
 import { useShellStore } from '../../state/shellStore.js';
-import type { LinuxShellBridge, MercuryMediaStatus } from '../../tauriBridge.js';
+import type { LinuxShellBridge, MercuryFileTransfer, MercuryMediaStatus } from '../../tauriBridge.js';
 import { MediaSection } from './MediaSection.js';
 
 function resetStores(): void {
@@ -23,11 +23,16 @@ function resetStores(): void {
     error: null,
     callError: null,
     callState: { phase: 'idle', kind: 'call', source: 'live' },
-    stageEvents: []
+    stageEvents: [],
+    fileTransfers: [],
+    fileCapabilityAvailable: null,
+    fileDownloadDirectory: null,
+    fileError: null,
+    fileBusyTransferID: null
   });
 }
 
-function bridgeWithMedia(result: Promise<MercuryMediaStatus>): LinuxShellBridge {
+function bridgeWithMedia(result: Promise<MercuryMediaStatus>, overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
   return {
     ...bridgeStubDefaults,
     daemonHealth: vi.fn(),
@@ -50,8 +55,27 @@ function bridgeWithMedia(result: Promise<MercuryMediaStatus>): LinuxShellBridge 
     appVersionInfo: vi.fn(),
     exportDiagnostics: vi.fn(),
     sessionEnv: vi.fn(),
-    mediaStatus: vi.fn().mockReturnValue(result)
+    mediaStatus: vi.fn().mockReturnValue(result),
+    ...overrides
   } as LinuxShellBridge;
+}
+
+function fileTransfer(overrides: Partial<MercuryFileTransfer> = {}): MercuryFileTransfer {
+  const now = '2026-07-06T10:00:00.000Z';
+  return {
+    transferID: 'transfer-1',
+    manifestID: 'manifest-1',
+    direction: 'inbound',
+    phase: 'pendingAccept',
+    filename: 'report.pdf',
+    mime: 'application/pdf',
+    size: 100,
+    peer: { id: 'phone', name: 'Live iPhone', isOnline: true, lastSeenAt: now, capabilities: ['file.send'] },
+    progress: { bytesTransferred: 0, bytesTotal: 100, fraction: 0 },
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
+  };
 }
 
 describe('P12 Mercury media section', () => {
@@ -162,5 +186,73 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('live daemon')).toBeTruthy();
     expect(screen.getAllByText('Live iPhone').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Phase: Connecting')).toBeTruthy();
+  });
+
+  it('renders incoming file offer actions and completed path rows', async () => {
+    const completed = fileTransfer({
+      phase: 'completed',
+      progress: { bytesTransferred: 100, bytesTotal: 100, fraction: 1 },
+      localPath: '/home/alberto/Downloads/report.pdf',
+      completedAt: '2026-07-06T10:01:00.000Z'
+    });
+    const mediaFileAccept = vi.fn().mockResolvedValue({
+      accepted: true,
+      transfer: fileTransfer({ phase: 'downloading', progress: { bytesTransferred: 50, bytesTotal: 100, fraction: 0.5 } })
+    });
+    const mediaFileOfferList = vi
+      .fn()
+      .mockResolvedValueOnce({
+        capabilityAvailable: true,
+        downloadDirectory: '/home/alberto/Downloads',
+        transfers: [fileTransfer()]
+      })
+      .mockResolvedValueOnce({
+        capabilityAvailable: true,
+        downloadDirectory: '/home/alberto/Downloads',
+        transfers: [fileTransfer()]
+      })
+      .mockResolvedValueOnce({
+        capabilityAvailable: true,
+        downloadDirectory: '/home/alberto/Downloads',
+        transfers: [completed]
+      });
+    useShellStore.setState({
+      bridge: bridgeWithMedia(
+        Promise.resolve({
+          capabilityAvailable: true,
+          pairedDevices: [
+            {
+              id: 'live-iphone',
+              name: 'Live iPhone',
+              platform: 'ios',
+              isOnline: true,
+              lastSeenAt: new Date().toISOString(),
+              capabilities: ['file.send', 'file.receive']
+            }
+          ]
+        }),
+        {
+          mediaSessionState: vi.fn().mockResolvedValue({ phase: 'idle', kind: 'call', capabilityAvailable: true }),
+          mediaFileOfferList,
+          mediaFileAccept
+        }
+      )
+    });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+
+    expect(screen.getByLabelText('Incoming file offer')).toBeTruthy();
+    expect(screen.getByText('report.pdf')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Accept file' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mediaFileAccept).toHaveBeenCalledWith({ transferID: 'transfer-1', manifestID: 'manifest-1' });
+    expect(screen.getByText('/home/alberto/Downloads/report.pdf')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send file' })).toBeTruthy();
   });
 });

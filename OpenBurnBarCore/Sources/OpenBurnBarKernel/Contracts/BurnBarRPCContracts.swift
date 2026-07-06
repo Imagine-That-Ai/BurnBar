@@ -56,6 +56,10 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case daemonMediaCallEnd = "daemon.media.call.end"
     case daemonMediaCapabilityGet = "daemon.media.capability.get"
     case daemonMediaStatus = "daemon.media.status"
+    case daemonMediaFileOfferList = "daemon.media.file.offer.list"
+    case daemonMediaFileAccept = "daemon.media.file.accept"
+    case daemonMediaFileDecline = "daemon.media.file.decline"
+    case daemonMediaFileSend = "daemon.media.file.send"
     case controllerSummary = "daemon.controller.summary"
     /// Aggregated controller runtime (summary + questions + followups +
     /// missions + notification health + simulator runs) in one round trip.
@@ -543,6 +547,169 @@ public struct DaemonMediaCallActionResponse: Codable, Hashable, Sendable {
     ) {
         self.accepted = accepted
         self.session = session
+        self.detail = detail
+    }
+}
+
+public enum DaemonMediaFileTransferDirection: String, Codable, Hashable, Sendable {
+    case inbound
+    case outbound
+}
+
+public enum DaemonMediaFileTransferPhase: String, Codable, Hashable, Sendable {
+    case pendingAccept
+    case downloading
+    case sending
+    case offered
+    case completed
+    case declined
+    case failed
+}
+
+public enum DaemonMediaFileTransferErrorCode: String, Codable, Hashable, Sendable {
+    case capabilityAbsent
+    case invalidRequest
+    case transferNotFound
+    case localFileMissing
+    case noControlRoute
+    case publishFailed
+    case fetchFailed
+    case ioFailed
+    case peerRejected
+}
+
+public struct DaemonMediaFileTransferProgress: Codable, Hashable, Sendable {
+    public let bytesTransferred: Int64
+    public let bytesTotal: Int64
+    public let fraction: Double
+
+    public init(bytesTransferred: Int64, bytesTotal: Int64) {
+        self.bytesTransferred = max(0, bytesTransferred)
+        self.bytesTotal = max(0, bytesTotal)
+        self.fraction = bytesTotal > 0
+            ? min(1.0, max(0.0, Double(max(0, bytesTransferred)) / Double(bytesTotal)))
+            : 0
+    }
+}
+
+public struct DaemonMediaFileTransferSnapshot: Codable, Hashable, Sendable {
+    public let transferID: String
+    public let manifestID: String
+    public let direction: DaemonMediaFileTransferDirection
+    public let phase: DaemonMediaFileTransferPhase
+    public let filename: String
+    public let mime: String
+    public let size: Int64
+    public let peer: DaemonMediaPeerSnapshot?
+    public let progress: DaemonMediaFileTransferProgress
+    public let localPath: String?
+    public let errorCode: DaemonMediaFileTransferErrorCode?
+    public let detail: String?
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let completedAt: Date?
+
+    public init(
+        transferID: String,
+        manifestID: String,
+        direction: DaemonMediaFileTransferDirection,
+        phase: DaemonMediaFileTransferPhase,
+        filename: String,
+        mime: String,
+        size: Int64,
+        peer: DaemonMediaPeerSnapshot? = nil,
+        progress: DaemonMediaFileTransferProgress,
+        localPath: String? = nil,
+        errorCode: DaemonMediaFileTransferErrorCode? = nil,
+        detail: String? = nil,
+        createdAt: Date,
+        updatedAt: Date,
+        completedAt: Date? = nil
+    ) {
+        self.transferID = transferID
+        self.manifestID = manifestID
+        self.direction = direction
+        self.phase = phase
+        self.filename = filename
+        self.mime = mime
+        self.size = size
+        self.peer = peer
+        self.progress = progress
+        self.localPath = localPath
+        self.errorCode = errorCode
+        self.detail = detail
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.completedAt = completedAt
+    }
+}
+
+public struct DaemonMediaFileOfferListResponse: Codable, Hashable, Sendable {
+    public let capabilityAvailable: Bool
+    public let downloadDirectory: String?
+    public let transfers: [DaemonMediaFileTransferSnapshot]
+    public let detail: String?
+
+    public init(
+        capabilityAvailable: Bool,
+        downloadDirectory: String? = nil,
+        transfers: [DaemonMediaFileTransferSnapshot],
+        detail: String? = nil
+    ) {
+        self.capabilityAvailable = capabilityAvailable
+        self.downloadDirectory = downloadDirectory
+        self.transfers = transfers
+        self.detail = detail
+    }
+}
+
+public struct DaemonMediaFileAcceptRequest: Codable, Hashable, Sendable {
+    public let transferID: String?
+    public let manifestID: String?
+
+    public init(transferID: String? = nil, manifestID: String? = nil) {
+        self.transferID = transferID
+        self.manifestID = manifestID
+    }
+}
+
+public struct DaemonMediaFileDeclineRequest: Codable, Hashable, Sendable {
+    public let transferID: String?
+    public let manifestID: String?
+    public let reason: String?
+
+    public init(transferID: String? = nil, manifestID: String? = nil, reason: String? = nil) {
+        self.transferID = transferID
+        self.manifestID = manifestID
+        self.reason = reason
+    }
+}
+
+public struct DaemonMediaFileSendRequest: Codable, Hashable, Sendable {
+    public let path: String
+    public let peerID: String?
+
+    public init(path: String, peerID: String? = nil) {
+        self.path = path
+        self.peerID = peerID
+    }
+}
+
+public struct DaemonMediaFileActionResponse: Codable, Hashable, Sendable {
+    public let accepted: Bool
+    public let transfer: DaemonMediaFileTransferSnapshot?
+    public let errorCode: DaemonMediaFileTransferErrorCode?
+    public let detail: String?
+
+    public init(
+        accepted: Bool,
+        transfer: DaemonMediaFileTransferSnapshot? = nil,
+        errorCode: DaemonMediaFileTransferErrorCode? = nil,
+        detail: String? = nil
+    ) {
+        self.accepted = accepted
+        self.transfer = transfer
+        self.errorCode = errorCode
         self.detail = detail
     }
 }

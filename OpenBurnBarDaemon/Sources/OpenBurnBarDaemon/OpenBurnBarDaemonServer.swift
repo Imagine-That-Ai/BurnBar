@@ -131,8 +131,13 @@ public actor BurnBarDaemonServer {
         )
         self.computerUseService = ComputerUseService()
         #if os(Linux)
+        let mediaLogger = BurnBarDaemonLogger(category: "linux-media")
         self.mediaService = MercuryLinuxMediaSessionController(
-            logger: BurnBarDaemonLogger(category: "linux-media")
+            fileTransferService: MercuryLinuxFileTransferFactory.make(logger: mediaLogger),
+            downloadDirectoryProvider: {
+                MercuryLinuxFileTransferFactory.downloadDirectoryURL()
+            },
+            logger: mediaLogger
         )
         #endif
         self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
@@ -643,7 +648,9 @@ public actor BurnBarDaemonServer {
                 )
             case .daemonMediaSessionState, .daemonMediaCallAccept,
                  .daemonMediaCallDecline, .daemonMediaCallEnd,
-                 .daemonMediaCapabilityGet, .daemonMediaStatus:
+                 .daemonMediaCapabilityGet, .daemonMediaStatus,
+                 .daemonMediaFileOfferList, .daemonMediaFileAccept,
+                 .daemonMediaFileDecline, .daemonMediaFileSend:
                 return try await handleMediaRPC(
                     method: method,
                     decoder: decoder,

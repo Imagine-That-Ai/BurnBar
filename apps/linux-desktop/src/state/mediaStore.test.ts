@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bridgeStubDefaults } from '../testing/bridgeStubs.js';
-import type { LinuxShellBridge, MercuryMediaSessionState } from '../tauriBridge.js';
+import type { LinuxShellBridge, MercuryFileTransfer, MercuryMediaSessionState } from '../tauriBridge.js';
 import {
   mergeStageEvent,
   normalizeCallPhase,
@@ -60,6 +60,30 @@ function bridgeWithSession(overrides: Partial<LinuxShellBridge>): LinuxShellBrid
     }),
     ...overrides
   } as LinuxShellBridge;
+}
+
+function fileTransfer(overrides: Partial<MercuryFileTransfer> = {}): MercuryFileTransfer {
+  const now = '2026-07-06T10:00:00.000Z';
+  return {
+    transferID: 'transfer-1',
+    manifestID: 'manifest-1',
+    direction: 'inbound',
+    phase: 'pendingAccept',
+    filename: 'report.pdf',
+    mime: 'application/pdf',
+    size: 100,
+    peer: {
+      id: 'peer-1',
+      name: 'Live iPhone',
+      isOnline: true,
+      lastSeenAt: now,
+      capabilities: ['file.send']
+    },
+    progress: { bytesTransferred: 0, bytesTotal: 100, fraction: 0 },
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
+  };
 }
 
 describe('mediaStore stage reducer', () => {
@@ -197,5 +221,112 @@ describe('mediaStore live call state machine', () => {
       peerName: 'Event Peer',
       source: 'event'
     });
+  });
+});
+
+describe('mediaStore file transfer state machine', () => {
+  beforeEach(resetStores);
+  afterEach(resetStores);
+
+  it('loads an offer, accepts it, and refreshes to completed-with-path', async () => {
+    const pending = fileTransfer();
+    const downloading = fileTransfer({
+      phase: 'downloading',
+      progress: { bytesTransferred: 40, bytesTotal: 100, fraction: 0.4 },
+      updatedAt: '2026-07-06T10:00:01.000Z'
+    });
+    const completed = fileTransfer({
+      phase: 'completed',
+      progress: { bytesTransferred: 100, bytesTotal: 100, fraction: 1 },
+      localPath: '/home/alberto/Downloads/report.pdf',
+      updatedAt: '2026-07-06T10:00:02.000Z',
+      completedAt: '2026-07-06T10:00:02.000Z'
+    });
+    const mediaFileOfferList = vi
+      .fn()
+      .mockResolvedValueOnce({ capabilityAvailable: true, downloadDirectory: '/home/alberto/Downloads', transfers: [pending] })
+      .mockResolvedValueOnce({ capabilityAvailable: true, downloadDirectory: '/home/alberto/Downloads', transfers: [completed] });
+    const mediaFileAccept = vi.fn().mockResolvedValue({ accepted: true, transfer: downloading });
+    useShellStore.setState({
+      bridge: bridgeWithSession({
+        mediaSessionState: vi.fn().mockResolvedValue({ phase: 'idle', kind: 'call', capabilityAvailable: true }),
+        mediaFileOfferList,
+        mediaFileAccept
+      })
+    });
+
+    await useMediaStore.getState().load();
+    expect(useMediaStore.getState().fileTransfers[0]).toMatchObject({ phase: 'pendingAccept', filename: 'report.pdf' });
+    await useMediaStore.getState().acceptFileTransfer('transfer-1');
+
+    expect(mediaFileAccept).toHaveBeenCalledWith({ transferID: 'transfer-1', manifestID: undefined });
+    expect(useMediaStore.getState().fileTransfers[0]).toMatchObject({
+      phase: 'completed',
+      localPath: '/home/alberto/Downloads/report.pdf'
+    });
+    expect(useMediaStore.getState().fileError).toBeNull();
+  });
+
+  it('declines an incoming offer and keeps the declined row visible', async () => {
+    const pending = fileTransfer();
+    const declined = fileTransfer({
+      phase: 'declined',
+      updatedAt: '2026-07-06T10:00:03.000Z',
+      completedAt: '2026-07-06T10:00:03.000Z'
+    });
+    const mediaFileOfferList = vi
+      .fn()
+      .mockResolvedValueOnce({ capabilityAvailable: true, transfers: [pending] })
+      .mockResolvedValueOnce({ capabilityAvailable: true, transfers: [declined] });
+    const mediaFileDecline = vi.fn().mockResolvedValue({ accepted: true, transfer: declined });
+    useShellStore.setState({
+      bridge: bridgeWithSession({
+        mediaSessionState: vi.fn().mockResolvedValue({ phase: 'idle', kind: 'call', capabilityAvailable: true }),
+        mediaFileOfferList,
+        mediaFileDecline
+      })
+    });
+
+    await useMediaStore.getState().load();
+    await useMediaStore.getState().declineFileTransfer('transfer-1');
+
+    expect(mediaFileDecline).toHaveBeenCalledWith({
+      transferID: 'transfer-1',
+      manifestID: undefined,
+      reason: 'declined-from-linux-shell'
+    });
+    expect(useMediaStore.getState().fileTransfers[0].phase).toBe('declined');
+  });
+
+  it('scripts a fixture offer through progress to completion', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    await useMediaStore.getState().load();
+    expect(useMediaStore.getState().fileTransfers[0].phase).toBe('pendingAccept');
+
+    await useMediaStore.getState().acceptFileTransfer('fixture-file-001');
+
+    const completed = useMediaStore.getState().fileTransfers[0];
+    expect(completed.phase).toBe('completed');
+    expect(completed.progress.fraction).toBe(1);
+    expect(completed.localPath).toContain('mercury-fixture.pdf');
+  });
+
+  it('surfaces send failures with daemon error taxonomy', async () => {
+    const mediaFileSend = vi.fn().mockResolvedValue({
+      accepted: false,
+      errorCode: 'localFileMissing',
+      detail: 'Local file is unavailable.'
+    });
+    useShellStore.setState({
+      bridge: bridgeWithSession({
+        mediaFileOfferList: vi.fn().mockResolvedValue({ capabilityAvailable: true, transfers: [] }),
+        mediaFileSend
+      })
+    });
+
+    await useMediaStore.getState().sendFileTransfer('/tmp/missing.pdf');
+
+    expect(mediaFileSend).toHaveBeenCalledWith({ path: '/tmp/missing.pdf', peerID: undefined });
+    expect(useMediaStore.getState().fileError).toBe('Local file is unavailable.');
   });
 });

@@ -12,6 +12,7 @@ let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAE
 var daemonTargetDependencies: [Target.Dependency] = [
     .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
+    .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarLinuxSecurity", package: "OpenBurnBarCore")
 ]
@@ -104,6 +105,7 @@ var packageTargets: [Target] = [
             "OpenBurnBarDaemon",
             .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
+            .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore")
         ],
         // Socket-level Linux gateway harness stays Swift 5 to avoid
