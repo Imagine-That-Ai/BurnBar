@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
@@ -24,6 +24,7 @@ export function ChatSurface() {
   const backend = useChatStore((s) => s.backend);
   const modelLabel = useChatStore((s) => s.modelLabel);
   const streaming = useChatStore((s) => s.streaming);
+  const streamPhase = useChatStore((s) => s.streamPhase);
   const streamError = useChatStore((s) => s.streamError);
   const gatewayStatus = useChatStore((s) => s.gatewayStatus);
   const gatewayBaseURL = useChatStore((s) => s.gatewayBaseURL);
@@ -37,8 +38,17 @@ export function ChatSurface() {
   const startNewChat = useChatStore((s) => s.startNewChat);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
+  const [streamAnnouncement, setStreamAnnouncement] = useState({ text: '', count: 0 });
 
   useLaneLoad(load);
+
+  useEffect(() => {
+    if (streamPhase === 'done') {
+      setStreamAnnouncement((previous) => ({ text: 'Response complete.', count: previous.count + 1 }));
+    } else if (streamPhase === 'aborted') {
+      setStreamAnnouncement((previous) => ({ text: 'Stream stopped.', count: previous.count + 1 }));
+    }
+  }, [streamPhase]);
 
   const offline = !fixtureMode && !bridge;
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
@@ -176,6 +186,9 @@ export function ChatSurface() {
       <p className="muted chat-provenance">Source: {provenance}</p>
       <p className="sr-only" aria-live="polite">
         {loading ? 'Loading threads' : `${threads.length} thread${threads.length === 1 ? '' : 's'}`}
+      </p>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {streamAnnouncement.text ? `${streamAnnouncement.text} ${streamAnnouncement.count}` : ''}
       </p>
       {body}
     </div>

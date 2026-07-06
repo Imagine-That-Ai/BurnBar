@@ -164,6 +164,36 @@ describe('ChatSurface', () => {
     expect(screen.getByRole('button', { name: /Stop generating/i })).toBeTruthy();
   });
 
+  it('announces stream completion and abort transitions politely', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null, bridgeReady: true });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+
+    act(() => {
+      useChatStore.setState({ streamPhase: 'streaming' });
+    });
+    act(() => {
+      useChatStore.setState({ streamPhase: 'done' });
+    });
+    await waitFor(() => expect(screen.getByText('Response complete. 1')).toBeTruthy());
+
+    act(() => {
+      useChatStore.setState({ streamPhase: 'streaming' });
+    });
+    act(() => {
+      useChatStore.setState({ streamPhase: 'done' });
+    });
+    await waitFor(() => expect(screen.getByText('Response complete. 2')).toBeTruthy());
+
+    act(() => {
+      useChatStore.setState({ streamPhase: 'streaming' });
+    });
+    act(() => {
+      useChatStore.setState({ streamPhase: 'aborted' });
+    });
+    await waitFor(() => expect(screen.getByText('Stream stopped. 3')).toBeTruthy());
+  });
+
   it('uses backend-specific composer placeholder for Codex', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({
