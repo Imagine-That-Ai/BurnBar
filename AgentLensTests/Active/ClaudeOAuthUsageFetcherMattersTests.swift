@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+@testable import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
 

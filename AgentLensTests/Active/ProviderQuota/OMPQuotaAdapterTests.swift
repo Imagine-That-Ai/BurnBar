@@ -32,7 +32,7 @@ final class OMPQuotaAdapterTests: XCTestCase {
 
         XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertEqual(snapshot.source, .unavailable)
+        XCTAssertEqual(snapshot.sourceKind, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
         XCTAssertTrue(snapshot.statusMessage?.contains("OMP CLI was not found") ?? false)
     }
@@ -70,7 +70,7 @@ final class OMPQuotaAdapterTests: XCTestCase {
 
         XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertEqual(snapshot.source, .localCLI)
+        XCTAssertEqual(snapshot.sourceKind, .localCLI)
         XCTAssertEqual(snapshot.buckets.count, 1)
         let bucket = try XCTUnwrap(snapshot.buckets.first)
         XCTAssertEqual(bucket.key, "omp-openai-codex-codex-5h")

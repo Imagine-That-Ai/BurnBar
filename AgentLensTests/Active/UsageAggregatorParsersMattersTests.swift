@@ -1,5 +1,4 @@
 import XCTest
-import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// Behavioral coverage for the formerly-silent `try?` error-swallows in

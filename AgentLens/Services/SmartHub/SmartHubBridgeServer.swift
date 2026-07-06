@@ -2,6 +2,7 @@ import Foundation
 import Network
 import OpenBurnBarCore
 import Security
+import os
 
 // MARK: - Smart Hub Bridge Server
 //
@@ -16,7 +17,8 @@ import Security
 //   GET  /state.json        → {version, lastRefreshedAt, providers: [...]}
 //   POST /refresh           → bumps the version counter; Nest Hub polls /state.json
 //                              and re-renders when the version changes
-//   POST /voice-refresh     → no-op for now; logs the request so a future
+//   POST /voice-refresh     → no-op for now; logs the request and replies
+//                              {"ok":true,"voice":"unsupported"} so a future
 //                              Google Routine can be hooked up
 //
 // The Nest Hub's cast surface caches the page aggressively, so we use a
@@ -25,6 +27,8 @@ import Security
 
 @MainActor
 final class SmartHubBridgeServer {
+
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "SmartHubBridgeServer")
 
     static let shared = SmartHubBridgeServer()
 
@@ -319,9 +323,13 @@ final class SmartHubBridgeServer {
                 sendStatus(401, on: connection)
                 return
             }
-            // Voice routine hook — not implemented yet, but we ack so the
-            // iPhone's "Speak Now" button gets a clean response.
-            sendJSON("{\"ok\":true,\"voice\":\"queued\"}", on: connection)
+            // Voice routine hook — not implemented yet. Ack receipt so
+            // callers (the bridge page's fire-and-forget fetch, or a
+            // Google Routine curl) get a clean response, but report the
+            // honest state instead of pretending anything was queued.
+            // No client parses the "voice" field today.
+            Self.log.notice("POST /voice-refresh received — voice routine hook not implemented; replying voice=unsupported")
+            sendJSON("{\"ok\":true,\"voice\":\"unsupported\"}", on: connection)
         default:
             sendStatus(404, on: connection)
         }
