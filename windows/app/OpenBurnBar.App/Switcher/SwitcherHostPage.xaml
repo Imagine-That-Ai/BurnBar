@@ -4,9 +4,9 @@
   Frame navigates Page types (SurfacePageResolver.Resolve); the ported surface ships as the
   SwitcherSettingsView UserControl. This thin Page adapts the two so the "switcher" destination —
   destination #10 of the 12 in NavCatalog — renders its real surface instead of SurfaceStubPage.
-  The code-behind seeds a SwitcherSettingsViewModel from the portable, unit-tested
-  SwitcherSampleData store (the dev-host analog of BudgetPage's SeedRules) until the encrypted
-  Windows profile store lands with the storage seam.
+  The code-behind binds a SwitcherSettingsViewModel to the configured encrypted profile store.
+  Missing credentials produce an honest empty profile list; OPENBURNBAR_SAMPLE_MODE=1 enables
+  labeled demo profiles.
 -->
 <Page
     x:Class="OpenBurnBar.App.Switcher.SwitcherHostPage"
@@ -17,5 +17,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <switcher:SwitcherSettingsView x:Name="SwitcherView" />
+    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+        <switcher:SwitcherSettingsView x:Name="SwitcherView" />
+    </Grid>
 </Page>

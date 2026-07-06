@@ -45,11 +45,11 @@
                     Orientation="Horizontal"
                     Spacing="16"
                     HorizontalAlignment="Left">
-            <layouts:ConceptStatTile Value="$1,284" Caption="Spend this month"
+            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend this month"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-            <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile Value="7" Caption="Active providers"
+            <layouts:ConceptStatTile x:Name="ProvidersTile" Value="—" Caption="Data source"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
         </StackPanel>
     </Grid>

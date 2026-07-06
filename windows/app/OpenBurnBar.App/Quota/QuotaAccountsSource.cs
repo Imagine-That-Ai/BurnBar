@@ -1,12 +1,13 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.CloudSync;
 
 namespace OpenBurnBar.App.Quota;
 
 /// <summary>
-/// Resolves quota workspace accounts: Firestore snapshots when B4 is configured,
-/// otherwise the explicit dev-host sample set.
+/// Resolves quota workspace accounts: Firestore snapshots when B4 is configured; otherwise an
+/// empty production state or explicitly enabled sample set.
 /// </summary>
 internal static class QuotaAccountsSource
 {
@@ -15,7 +16,9 @@ internal static class QuotaAccountsSource
         CloudSyncCompositionRoot? root = WinAppCloudSyncHost.Root;
         if (root is null)
         {
-            return QuotaSampleData.Accounts();
+            return RuntimeDataMode.SampleModeEnabled
+                ? QuotaSampleData.Accounts()
+                : new List<QuotaSampleAccount>();
         }
 
         var store = new CloudSyncQuotaSnapshotStore(root.Gateway, root.FirebaseUid);
