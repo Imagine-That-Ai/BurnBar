@@ -35,11 +35,13 @@ launch_plist="$support_dir/${launch_label}.plist"
 log_path="$installed_daemon_dir/openburnbar-daemon.log"
 preexisting_app_pids_path="$support_dir/preexisting-openburnbar-pids.txt"
 smoke_app_pids_path="$support_dir/smoke-openburnbar-pids.txt"
+copied_app_path="$support_dir/OpenBurnBar.app"
 socket_auth_token="$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')"
 if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
   echo "::add-mask::$socket_auth_token"
 fi
 mounted=0
+launch_source_label=""
 
 positive_integer_or_default() {
   local raw="$1"
@@ -178,34 +180,55 @@ if [[ ! -f "$installed_project_code_memory_corpus" ]]; then
   exit 1
 fi
 
-for launch_attempt in {1..5}; do
-  if open -n "$app_path"; then
-    echo "Issued OpenBurnBar launch attempt $launch_attempt from mounted DMG."
-  else
-    echo "OpenBurnBar launch attempt $launch_attempt failed; retrying after launchd settles." >&2
-  fi
+try_launch_app() {
+  local candidate_app_path="$1"
+  local launch_context="$2"
 
-  for _ in {1..12}; do
-    pgrep -x OpenBurnBar \
-      | while IFS= read -r pid; do
-          if ! grep -qx "$pid" "$preexisting_app_pids_path"; then
-            echo "$pid"
-          fi
-        done > "$smoke_app_pids_path" || true
-    if [[ -s "$smoke_app_pids_path" ]]; then
-      break 2
+  rm -f "$smoke_app_pids_path"
+  for launch_attempt in {1..5}; do
+    if open -n "$candidate_app_path"; then
+      echo "Issued OpenBurnBar launch attempt $launch_attempt from $launch_context."
+    else
+      echo "OpenBurnBar launch attempt $launch_attempt from $launch_context failed; retrying after launchd settles." >&2
     fi
-    sleep 1
+
+    for _ in {1..12}; do
+      pgrep -x OpenBurnBar \
+        | while IFS= read -r pid; do
+            if ! grep -qx "$pid" "$preexisting_app_pids_path"; then
+              echo "$pid"
+            fi
+          done > "$smoke_app_pids_path" || true
+      if [[ -s "$smoke_app_pids_path" ]]; then
+        launch_source_label="$launch_context"
+        return 0
+      fi
+      sleep 1
+    done
+    sleep 3
   done
-  sleep 3
-done
+
+  return 1
+}
+
+if ! try_launch_app "$app_path" "mounted DMG"; then
+  echo "OpenBurnBar did not launch directly from the mounted DMG; copying DMG app content to runner temp for launch retry." >&2
+  rm -rf "$copied_app_path"
+  ditto "$app_path" "$copied_app_path"
+  xattr -dr com.apple.quarantine "$copied_app_path" >/dev/null 2>&1 || true
+  if ! try_launch_app "$copied_app_path" "copied DMG app"; then
+    echo "::error::OpenBurnBar app failed to launch from the mounted DMG or copied DMG app content"
+    print_failure_diagnostics
+    exit 1
+  fi
+fi
 
 if [[ ! -s "$smoke_app_pids_path" ]]; then
-  echo "::error::OpenBurnBar app failed to launch from the mounted DMG"
+  echo "::error::OpenBurnBar app launch did not produce a detectable OpenBurnBar process"
   print_failure_diagnostics
   exit 1
 fi
-echo "OpenBurnBar app launched from mounted DMG with pid(s): $(tr '\n' ' ' < "$smoke_app_pids_path")"
+echo "OpenBurnBar app launched from $launch_source_label with pid(s): $(tr '\n' ' ' < "$smoke_app_pids_path")"
 
 python3 - <<PY
 from pathlib import Path

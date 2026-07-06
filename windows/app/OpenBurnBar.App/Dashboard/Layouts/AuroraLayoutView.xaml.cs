@@ -8,5 +8,16 @@ public sealed partial class AuroraLayoutView : UserControl
     public AuroraLayoutView()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+    }
+
+    private void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        Loaded -= OnLoaded;
+        var summary = OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary();
+        SpendTile.Value = DashboardUsageSummaryFormatter.Spend(summary);
+        TokensTile.Value = DashboardUsageSummaryFormatter.Tokens(summary);
+        SessionsTile.Value = DashboardUsageSummaryFormatter.Sessions(summary);
+        ProviderStatusText.Text = DashboardUsageSummaryFormatter.Detail(summary, "SQLCipher usage database");
     }
 }

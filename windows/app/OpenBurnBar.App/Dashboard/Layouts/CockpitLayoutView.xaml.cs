@@ -8,5 +8,20 @@ public sealed partial class CockpitLayoutView : UserControl
     public CockpitLayoutView()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+    }
+
+    private void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        Loaded -= OnLoaded;
+        var summary = OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary();
+        BurnTile.Value = DashboardUsageSummaryFormatter.BurnPerDay(summary);
+        TokensTile.Value = DashboardUsageSummaryFormatter.Tokens(summary);
+        SessionsTile.Value = DashboardUsageSummaryFormatter.Sessions(summary);
+        CacheTile.Value = DashboardUsageSummaryFormatter.CacheHit(summary);
+        string detail = DashboardUsageSummaryFormatter.Detail(summary, "SQLCipher usage database");
+        ProviderStatusText.Text = detail;
+        RoutingStatusText.Text = summary.HasData ? "Routing telemetry connected" : "Routing idle until live sessions are connected";
+        CostCurveText.Text = detail;
     }
 }

@@ -86,6 +86,39 @@ public sealed class InsightsBuiltInTemplatesTests
         Assert.All(canvas.Widgets, w => Assert.NotNull(w.Data));
     }
 
+    [Fact]
+    public void RealDataResolver_RebuildsCachedTemplatesAfterInitialSampleAccess()
+    {
+        try
+        {
+            _ = InsightsBuiltInTemplates.All.Count;
+            InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
+                kind == InsightWidgetKind.KpiTile
+                    ? new KpiData(
+                        MetricLabel: $"Real KPI {seed}",
+                        Value: seed,
+                        ValueFormat: ValueFormat.Count,
+                        Delta: null,
+                        Sparkline: null,
+                        ContextLabel: "resolver")
+                    : null;
+
+            InsightCanvas canvas = InsightsBuiltInTemplates.Find("today")!.Instantiate();
+            List<KpiData> kpis = canvas.Widgets
+                .Where(w => w.Kind == InsightWidgetKind.KpiTile)
+                .Select(w => Assert.IsType<KpiData>(w.Data))
+                .ToList();
+
+            Assert.Equal(4, kpis.Count);
+            Assert.All(kpis, data => Assert.Equal("resolver", data.ContextLabel));
+            Assert.Contains(kpis, data => data.MetricLabel == "Real KPI 1");
+        }
+        finally
+        {
+            InsightsBuiltInTemplates.RealDataResolver = null;
+        }
+    }
+
     private static void AssertNoOverlap(InsightLayout layout)
     {
         var occupied = new HashSet<(int Col, int Row)>();

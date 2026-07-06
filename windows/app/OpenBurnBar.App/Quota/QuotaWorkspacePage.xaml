@@ -12,12 +12,11 @@
       Windows peer of AgentLens/Views/Dashboard/Quota/QuotaWorkspaceView.swift (Bucket C, Quota lane).
       Composes the constellation hero over a grid of twin-ring QuotaArcDial cards. A tap on any hero
       orb pivots the workspace to that provider — the dial grid collapses to just its accounts —
-      matching the macOS onOrbTap → displayedEntries filter propagation. Selection lives here (the
-      workspace), exactly as the SwiftUI @State selectedProvider does. The quota numbers are
-      representative sample data; live ProviderQuotaService wiring is a later Phase-3 lane (same
-      pattern as the Session Logs stub stream).
+      matching the macOS onOrbTap → displayedEntries filter propagation. Selection lives here
+      exactly as the SwiftUI @State selectedProvider does. In production this page reads configured
+      quota snapshots; explicit sample mode can still seed representative rows.
     -->
-    <ScrollViewer>
+    <ScrollViewer Background="{StaticResource PensieveColorInkBaseBrush}">
         <StackPanel Padding="24"
                     MaxWidth="1100"
                     HorizontalAlignment="Stretch"

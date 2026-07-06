@@ -27,10 +27,11 @@
         <!-- Provider panel. -->
         <components:UnifiedGlassCard Grid.Row="0" Grid.Column="0">
             <StackPanel Spacing="8">
-                <TextBlock Text="Providers" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
-                <TextBlock Text="Anthropic" FontSize="14" />
-                <TextBlock Text="OpenAI" FontSize="14" />
-                <TextBlock Text="Google" FontSize="14" />
+                <TextBlock Text="Data source" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
+                <TextBlock x:Name="ProviderStatusText"
+                           Text="No SQLCipher database connected"
+                           TextWrapping="Wrap"
+                           FontSize="14" />
             </StackPanel>
         </components:UnifiedGlassCard>
 
@@ -38,8 +39,8 @@
         <components:UnifiedGlassCard Grid.Row="0" Grid.Column="1" Interactive="True">
             <StackPanel Spacing="6" VerticalAlignment="Center">
                 <TextBlock Text="Burn rate" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
-                <TextBlock Text="$42.80 / day" FontSize="34" FontWeight="Bold" />
-                <TextBlock Text="+8% vs last week" FontSize="13" Opacity="0.7" />
+                <TextBlock x:Name="BurnTile" Text="—" FontSize="34" FontWeight="Bold" />
+                <TextBlock x:Name="BurnDetailText" Text="Connect a usage database for live aggregates" FontSize="13" Opacity="0.7" />
             </StackPanel>
         </components:UnifiedGlassCard>
 
@@ -58,11 +59,11 @@
         <!-- Bottom row: tokens / sessions / cost-curve. -->
         <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
                     Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile Value="342" Caption="Sessions"
+            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
-            <layouts:ConceptStatTile Value="$1,284" Caption="Cost"
+            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Cost"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
         </StackPanel>
     </Grid>

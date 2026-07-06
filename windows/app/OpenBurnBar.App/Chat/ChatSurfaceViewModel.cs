@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.Chat;
 
 namespace OpenBurnBar.App.Chat;
@@ -31,7 +32,9 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 
     public ChatSurfaceViewModel(IChatStreamDriver? driver = null, string backendLabel = "hermes")
     {
-        _driver = driver ?? new ScriptedChatStreamDriver();
+        _driver = driver ?? (RuntimeDataMode.SampleModeEnabled
+            ? new ScriptedChatStreamDriver()
+            : new UnavailableChatStreamDriver());
         _backendLabel = backendLabel;
 
         Messages = new ObservableCollection<ChatMessageViewModel>();
