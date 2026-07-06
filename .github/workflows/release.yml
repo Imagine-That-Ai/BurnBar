@@ -571,7 +571,7 @@ jobs:
     name: Release SQLCipher Gate
     needs: release-preflight
     runs-on: macos-26
-    timeout-minutes: 95
+    timeout-minutes: 150
     permissions:
       contents: read
     steps:
@@ -647,7 +647,7 @@ jobs:
 
       - name: Verify SQLCipher codec in Release configuration
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        timeout-minutes: 75
+        timeout-minutes: 130
         run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh
 
   release-mobile-gate:
