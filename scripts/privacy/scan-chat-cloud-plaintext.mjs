@@ -1033,18 +1033,18 @@ for (const field of [
   "personaScopeJSON",
 ]) {
   assertIncludes(
-    "OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift",
+    "OpenBurnBarMobile/Services/CLIAgentMissionRequestPayloadFactory.swift",
     `"${field}"`,
     `mobile mission sealer handles ${field}`,
   );
 }
 assertIncludes(
-  "OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift",
+  "OpenBurnBarMobile/Services/CLIAgentMissionRequestPayloadFactory.swift",
   "payload.removeValue(forKey: key)",
   "mobile mission removes private top-level fields",
 );
 assertIncludes(
-  "OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift",
+  "OpenBurnBarMobile/Services/CLIAgentMissionRequestPayloadFactory.swift",
   "sealedPayload",
   "mobile mission sealed payload",
 );
