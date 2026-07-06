@@ -162,7 +162,7 @@ struct StoreKitMacEntitlementProvider: MacStoreKitEntitlementProviding {
         }
     }
 
-    private static func checked<T>(_ result: VerificationResult<T>) throws -> T {
+    private nonisolated static func checked<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .verified(let value): return value
         case .unverified(_, let error): throw error
