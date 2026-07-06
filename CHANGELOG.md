@@ -68,6 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **iPhone Call Mac action** — replaces the Mercury Live Sheet follow-up stub
+  with real `media.call.invite` signaling over the live paired-Mac control
+  stream, shows pending/ack status on iPhone, and keeps the Mac wake path scoped
+  to the existing PushKit/FCM callable for Mac-originated calls.
+
 - **Recount cloud usage duplication** - makes Mac usage IDs deterministic across
   Recount reparses, removes stale same-device Firestore usage docs, and reports
   the full cloud-sync batch total to analytics.
