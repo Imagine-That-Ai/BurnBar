@@ -64,7 +64,14 @@ final class BudgetGate {
             }
             let used = await ledger.currentSpend(forRule: rule, reference: reference)
             let projected = used + max(0, estimatedCost)
-            let decision = classify(rule: rule, used: used, projected: projected)
+            let decision = await classify(
+                rule: rule,
+                used: used,
+                projected: projected,
+                estimatedCost: max(0, estimatedCost),
+                projectName: projectName,
+                reference: reference
+            )
             worst = pickMoreRestrictive(worst, decision)
         }
         return worst
@@ -84,7 +91,14 @@ final class BudgetGate {
         return rules.filter { $0.isEnabled && $0.amountUSD > 0 }
     }
 
-    private func classify(rule: BudgetRule, used: Double, projected: Double) -> BudgetGateDecision {
+    private func classify(
+        rule: BudgetRule,
+        used: Double,
+        projected: Double,
+        estimatedCost: Double,
+        projectName: String?,
+        reference: Date
+    ) async -> BudgetGateDecision {
         let limit = rule.amountUSD
         let projectedPercent = limit > 0 ? projected / limit : 0
         let usedPercent = limit > 0 ? used / limit : 0
@@ -114,14 +128,122 @@ final class BudgetGate {
 
         case .hardBlockWithFallback:
             if projectedPercent >= 1.0 {
-                // Fallback resolution is left to Phase 4 part B — for now we surface the
-                // intent and let callers fall through to their existing failover logic.
-                return .block(rule: rule, used: used, limit: limit, fallback: nil)
+                let fallback = await resolveFallback(
+                    for: rule,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                )
+                return .block(rule: rule, used: used, limit: limit, fallback: fallback)
             } else if projectedPercent >= warningThreshold {
                 return .warn(rule: rule, usedPercent: usedPercent, used: used, limit: limit)
             }
             return .allow
         }
+    }
+
+    /// Resolves the ordered fallback rule IDs attached to a hard-block rule into the first
+    /// concrete credential identity callers can promote. Fallback IDs point at credential
+    /// budget rules, not secrets; the billing mode stays `.unknown` so a later gate evaluation
+    /// never accidentally treats the destination as a subscription credential. A candidate is
+    /// only returned when its own rule would not hard-block the same estimated request.
+    private func resolveFallback(
+        for blockingRule: BudgetRule,
+        estimatedCost: Double,
+        projectName: String?,
+        reference: Date
+    ) async -> BudgetCredentialIdentity? {
+        let requestedIDs = blockingRule.fallbackCredentialIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !requestedIDs.isEmpty else { return nil }
+
+        var rulesByID: [String: BudgetRule] = [:]
+        for rule in settings.rules where rulesByID[rule.id] == nil {
+            rulesByID[rule.id] = rule
+        }
+        for id in requestedIDs {
+            guard let candidate = rulesByID[id],
+                  let identity = fallbackIdentity(for: candidate, blockedBy: blockingRule),
+                  await fallbackCanAccept(
+                    identity,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                  ) else {
+                continue
+            }
+            return identity
+        }
+        return nil
+    }
+
+    private func fallbackIdentity(
+        for candidate: BudgetRule,
+        blockedBy blockingRule: BudgetRule
+    ) -> BudgetCredentialIdentity? {
+        guard candidate.id != blockingRule.id,
+              candidate.scope == .credential,
+              candidate.isEnabled,
+              candidate.amountUSD > 0,
+              let providerID = normalized(candidate.providerID) else {
+            return nil
+        }
+
+        let slotID = normalized(candidate.accountID) ?? "default"
+        if blockingRule.scope == .credential,
+           normalized(blockingRule.providerID) == providerID,
+           (normalized(blockingRule.accountID) ?? "default") == slotID {
+            return nil
+        }
+
+        return BudgetCredentialIdentity(
+            providerID: providerID,
+            slotID: slotID,
+            displayLabel: candidate.displayLabel,
+            billingMode: .unknown
+        )
+    }
+
+    private func fallbackCanAccept(
+        _ identity: BudgetCredentialIdentity,
+        estimatedCost: Double,
+        projectName: String?,
+        reference: Date
+    ) async -> Bool {
+        let fallbackRules = matchingRules(credential: identity, projectName: projectName)
+        guard !fallbackRules.isEmpty else { return true }
+
+        for rule in fallbackRules {
+            if rule.isPaused(at: reference) {
+                continue
+            }
+
+            let used = await ledger.currentSpend(forRule: rule, reference: reference)
+            if fallbackRuleWouldBlock(rule, used: used, estimatedCost: estimatedCost) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func fallbackRuleWouldBlock(
+        _ rule: BudgetRule,
+        used: Double,
+        estimatedCost: Double
+    ) -> Bool {
+        let projected = used + max(0, estimatedCost)
+        switch rule.behavior {
+        case .warnOnly:
+            return false
+        case .warnThenBlock, .hardBlock, .hardBlockWithFallback:
+            return projected >= rule.amountUSD
+        }
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Exposes all active rules (credential + project + global) for the Hermes context

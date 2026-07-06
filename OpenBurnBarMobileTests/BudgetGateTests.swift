@@ -123,6 +123,411 @@ final class BudgetGateTests: XCTestCase {
     }
 
     @MainActor
+    func testHardBlockWithFallbackResolvesConfiguredCredential() async throws {
+        let settings = makeSettings()
+
+        let fallbackRule = BudgetRule(
+            scope: .credential,
+            providerID: "anthropic",
+            accountID: "cheap-slot",
+            label: "Claude Haiku fallback",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .warnThenBlock
+        )
+        let blockingRule = BudgetRule(
+            scope: .credential,
+            providerID: "openrouter",
+            accountID: "key_1",
+            label: "OpenRouter primary",
+            amountUSD: 50.0,
+            period: .month,
+            behavior: .hardBlockWithFallback,
+            fallbackCredentialIDs: [fallbackRule.id]
+        )
+
+        await settings.upsertRule(blockingRule, source: "test")
+        await settings.upsertRule(fallbackRule, source: "test")
+
+        let mockSource = MockSpendDataSource(
+            spend: 50.0,
+            accountSummaries: [
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "openrouter"),
+                    accountID: "key_1",
+                    accountLabel: "OpenRouter primary",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 50.0
+                )
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: mockSource)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let credential = BudgetCredentialIdentity(
+            providerID: "openrouter",
+            slotID: "key_1",
+            displayLabel: "OpenRouter Key",
+            billingMode: .perUsage
+        )
+
+        let decision = await gate.evaluate(
+            credential: credential,
+            estimatedCost: 1.0
+        )
+
+        guard case .block(let activeRule, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with fallback, got \(decision)")
+            return
+        }
+        XCTAssertEqual(activeRule.id, blockingRule.id)
+        XCTAssertEqual(fallback.providerID, "anthropic")
+        XCTAssertEqual(fallback.slotID, "cheap-slot")
+        XCTAssertEqual(fallback.displayLabel, fallbackRule.displayLabel)
+        XCTAssertEqual(fallback.billingMode, .unknown)
+    }
+
+    @MainActor
+    func testHardBlockWithFallbackSkipsMissingNonCredentialAndDisabledFallbacks() async throws {
+        let settings = makeSettings()
+
+        let projectRule = BudgetRule(
+            scope: .project,
+            projectName: "demo",
+            label: "Project rule",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .warnThenBlock
+        )
+        let disabledRule = BudgetRule(
+            scope: .credential,
+            providerID: "xai",
+            accountID: "disabled-slot",
+            label: "Disabled fallback",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .warnThenBlock,
+            isEnabled: false
+        )
+        let viableRule = BudgetRule(
+            scope: .credential,
+            providerID: "openai",
+            accountID: "fallback-slot",
+            label: "OpenAI fallback",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .warnThenBlock
+        )
+        let blockingRule = BudgetRule(
+            scope: .credential,
+            providerID: "openrouter",
+            accountID: "key_1",
+            label: "OpenRouter primary",
+            amountUSD: 50.0,
+            period: .month,
+            behavior: .hardBlockWithFallback,
+            fallbackCredentialIDs: ["missing", projectRule.id, disabledRule.id, viableRule.id]
+        )
+
+        for rule in [blockingRule, projectRule, disabledRule, viableRule] {
+            await settings.upsertRule(rule, source: "test")
+        }
+
+        let mockSource = MockSpendDataSource(
+            spend: 50.0,
+            accountSummaries: [
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "openrouter"),
+                    accountID: "key_1",
+                    accountLabel: "OpenRouter primary",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 50.0
+                )
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: mockSource)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openrouter",
+                slotID: "key_1",
+                displayLabel: "OpenRouter Key",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(_, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with viable fallback, got \(decision)")
+            return
+        }
+        XCTAssertEqual(fallback.providerID, "openai")
+        XCTAssertEqual(fallback.slotID, "fallback-slot")
+    }
+
+    @MainActor
+    func testHardBlockWithFallbackSkipsFallbackWhoseOwnCapWouldBlock() async throws {
+        let settings = makeSettings()
+
+        let exhaustedRule = BudgetRule(
+            scope: .credential,
+            providerID: "anthropic",
+            accountID: "exhausted-slot",
+            label: "Claude exhausted fallback",
+            amountUSD: 25.0,
+            period: .month,
+            behavior: .warnThenBlock
+        )
+        let viableRule = BudgetRule(
+            scope: .credential,
+            providerID: "openai",
+            accountID: "fallback-slot",
+            label: "OpenAI fallback",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .warnThenBlock
+        )
+        let blockingRule = BudgetRule(
+            scope: .credential,
+            providerID: "openrouter",
+            accountID: "key_1",
+            label: "OpenRouter primary",
+            amountUSD: 50.0,
+            period: .month,
+            behavior: .hardBlockWithFallback,
+            fallbackCredentialIDs: [exhaustedRule.id, viableRule.id]
+        )
+
+        for rule in [blockingRule, exhaustedRule, viableRule] {
+            await settings.upsertRule(rule, source: "test")
+        }
+
+        let mockSource = MockSpendDataSource(
+            spend: 0,
+            accountSummaries: [
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "openrouter"),
+                    accountID: "key_1",
+                    accountLabel: "OpenRouter primary",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 50.0
+                ),
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "anthropic"),
+                    accountID: "exhausted-slot",
+                    accountLabel: "Claude exhausted fallback",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 25.0
+                ),
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "openai"),
+                    accountID: "fallback-slot",
+                    accountLabel: "OpenAI fallback",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 2.0
+                )
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: mockSource)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openrouter",
+                slotID: "key_1",
+                displayLabel: "OpenRouter Key",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(_, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with viable fallback, got \(decision)")
+            return
+        }
+        XCTAssertEqual(fallback.providerID, "openai")
+        XCTAssertEqual(fallback.slotID, "fallback-slot")
+    }
+
+    @MainActor
+    func testHardBlockWithFallbackSkipsFallbackBlockedByAnotherMatchingRule() async throws {
+        let settings = makeSettings()
+
+        let fallbackRule = BudgetRule(
+            scope: .credential,
+            providerID: "anthropic",
+            accountID: "shared-slot",
+            label: "Claude fallback",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .warnThenBlock
+        )
+        let siblingBlocker = BudgetRule(
+            scope: .credential,
+            providerID: "anthropic",
+            accountID: "shared-slot",
+            label: "Claude sibling cap",
+            amountUSD: 5.0,
+            period: .month,
+            behavior: .hardBlock
+        )
+        let viableRule = BudgetRule(
+            scope: .credential,
+            providerID: "openai",
+            accountID: "fallback-slot",
+            label: "OpenAI fallback",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .warnThenBlock
+        )
+        let blockingRule = BudgetRule(
+            scope: .credential,
+            providerID: "openrouter",
+            accountID: "key_1",
+            label: "OpenRouter primary",
+            amountUSD: 50.0,
+            period: .month,
+            behavior: .hardBlockWithFallback,
+            fallbackCredentialIDs: [fallbackRule.id, viableRule.id]
+        )
+
+        for rule in [blockingRule, fallbackRule, siblingBlocker, viableRule] {
+            await settings.upsertRule(rule, source: "test")
+        }
+
+        let mockSource = MockSpendDataSource(
+            spend: 0,
+            accountSummaries: [
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "openrouter"),
+                    accountID: "key_1",
+                    accountLabel: "OpenRouter primary",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 50.0
+                ),
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "anthropic"),
+                    accountID: "shared-slot",
+                    accountLabel: "Claude fallback",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 5.0
+                ),
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "openai"),
+                    accountID: "fallback-slot",
+                    accountLabel: "OpenAI fallback",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 2.0
+                )
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: mockSource)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openrouter",
+                slotID: "key_1",
+                displayLabel: "OpenRouter Key",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(_, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with viable fallback, got \(decision)")
+            return
+        }
+        XCTAssertEqual(fallback.providerID, "openai")
+        XCTAssertEqual(fallback.slotID, "fallback-slot")
+    }
+
+    @MainActor
+    func testHardBlockWithFallbackReturnsNilWhenGlobalRuleBlocksFallback() async throws {
+        let settings = makeSettings()
+
+        let fallbackRule = BudgetRule(
+            scope: .credential,
+            providerID: "anthropic",
+            accountID: "cheap-slot",
+            label: "Claude fallback",
+            amountUSD: 100.0,
+            period: .month,
+            behavior: .warnThenBlock
+        )
+        let globalBlocker = BudgetRule(
+            scope: .global,
+            label: "Global cap",
+            amountUSD: 5.0,
+            period: .month,
+            behavior: .hardBlock
+        )
+        let blockingRule = BudgetRule(
+            scope: .credential,
+            providerID: "openrouter",
+            accountID: "key_1",
+            label: "OpenRouter primary",
+            amountUSD: 50.0,
+            period: .month,
+            behavior: .hardBlockWithFallback,
+            fallbackCredentialIDs: [fallbackRule.id]
+        )
+
+        for rule in [blockingRule, fallbackRule, globalBlocker] {
+            await settings.upsertRule(rule, source: "test")
+        }
+
+        let mockSource = MockSpendDataSource(
+            spend: 5.0,
+            accountSummaries: [
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "openrouter"),
+                    accountID: "key_1",
+                    accountLabel: "OpenRouter primary",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 50.0
+                ),
+                RollupProviderAccountSummary(
+                    providerID: ProviderID(rawValue: "anthropic"),
+                    accountID: "cheap-slot",
+                    accountLabel: "Claude fallback",
+                    totalRequests: 1,
+                    totalTokens: 100,
+                    totalCost: 1.0
+                )
+            ]
+        )
+        let ledger = BudgetLedger(dataSource: mockSource)
+        let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openrouter",
+                slotID: "key_1",
+                displayLabel: "OpenRouter Key",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(_, _, _, let fallback) = decision else {
+            XCTFail("Expected .block without fallback, got \(decision)")
+            return
+        }
+        XCTAssertNil(fallback)
+    }
+
+    @MainActor
     func testSubscriptionBypass() async throws {
         let settings = makeSettings()
 
@@ -219,11 +624,12 @@ final class BudgetGateTests: XCTestCase {
 final class MockSpendDataSource: BudgetSpendDataSource {
     var rollupsByWindow: [RollupWindowKey: UsageRollupDoc] = [:]
 
-    init(spend: Double) {
+    init(spend: Double, accountSummaries: [RollupProviderAccountSummary] = []) {
         let rollup = UsageRollupDoc(
             windowKey: .thirtyDays,
             totals: RollupTotals(requests: 10, tokens: 1000, costUsd: spend),
             providerSummaries: [],
+            accountSummaries: accountSummaries,
             modelSummaries: [],
             deviceSummaries: [],
             dailyPoints: [],
