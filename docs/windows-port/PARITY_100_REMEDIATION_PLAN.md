@@ -39,7 +39,7 @@ The port's architecture is sound and deliberately staged (portable `net8.0` core
 - `windows/native/` is an **empty skeleton** — the Rust↔managed FFI shim (iroh, burnbar-remote) does not exist; crates build in CI but nothing binds them.
 - `CloudSyncCallableHub.cs:35–62`: **8 of 9 cloud callables throw `NotImplementedException`** (exportUserData, deleteDomainData, listRecovery, setupRecovery, confirmRecovery, revokeAllAccess, getAuditLog, verifyAuditLog).
 - Engine binding is interim **`swift run`** (drift D7); UniFFI bindgen still open (WPD-0001).
-- ~1,288 compiled `.dll` + 54 `.so` + 16 `.dylib` + 110 `.pdb` are **committed into the tree** (hygiene/supply-chain smell).
+- ~~1,288 compiled DLLs committed into the tree~~ **CORRECTED 2026-07-06:** those binaries are local `bin/`/`obj/` build outputs — all gitignored (root `.gitignore` `**/bin/`+`**/obj/`) and **untracked**; `git ls-tree origin/main -- windows/` is 100% text. The only real event (104 binaries, ~4.7 MB, commit `9e6912bc8d`) was removed the same day in PR #1190. Residual risk is only a future force-add — closed by a no-tracked-binaries tripwire in `scripts/debt/check-windows-tree-budget.sh`.
 - `pr-windows-full.yml` is real (x64 + windows-11-arm dotnet build+test) but **not yet a required check** (WS-A2 pending Alberto).
 - `windows/README.md` still opens with "No product code lives here yet" — stale and misleading.
 
@@ -84,7 +84,7 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
 3. Flip `pr-windows-full.yml` to a **required** check (WS-A2 — Alberto, branch protection).
 4. Commit `PARITY_BURNDOWN_PLAN.md` (or rewrite the two dangling references) so WS-* lanes are defined in-repo.
 5. Refresh `windows/README.md` ("no product code" line, "intentionally empty" sln line) and mark HANDOFF §2/§3/§6 superseded by the bundle.
-6. Purge committed build artifacts (1,288 DLLs etc.) from the tree; add ignore rules + a ratchet.
+6. ~~Purge committed build artifacts~~ **RESOLVED as misdiagnosis 2026-07-06** (see §2): tree verified clean at tip, ignore rules already complete; the remaining ask is the no-tracked-binaries tripwire (shipped separately), and no history rewrite (~4.7 MB of dead blobs is not worth `filter-repo` churn).
    **Exit:** `main` fully green; Windows CI blocking; docs match reality.
 
 ### Wave 1 — G2: Engine & data parity (the current gate)
