@@ -186,7 +186,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             )
         )
 
-        let semanticHealth = try await XCTUnwrap(harness.retrievalHealthRecord(for: .semantic))
+        let semanticHealthRecord = try await harness.retrievalHealthRecord(for: .semantic)
+        let semanticHealth = try XCTUnwrap(semanticHealthRecord)
         XCTAssertEqual(semanticHealth.status, .degraded)
         XCTAssertEqual(semanticHealth.errorCode, "SEMANTIC_EMBEDDING_INDEXING_FAILED")
         try await harness.assertDegraded(
