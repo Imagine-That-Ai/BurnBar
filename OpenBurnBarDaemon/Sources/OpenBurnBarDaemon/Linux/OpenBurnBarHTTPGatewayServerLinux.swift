@@ -302,6 +302,7 @@ public actor BurnBarHTTPGatewayServer {
         let formatFamilies = preferredGatewayFormatFamilies(for: modelID)
         var lastFailedRoute: BurnBarProviderRoute?
         var attempts: [BurnBarProxyRouteAttempt] = []
+        let streamCommit = LinuxGatewayStreamCommit()
 
         do {
             for formatFamily in formatFamilies {
@@ -323,6 +324,7 @@ public actor BurnBarHTTPGatewayServer {
                                 usageFormat: streamPlan.usageFormat,
                                 route: route,
                                 accountingRequestID: accountingRequestID,
+                                streamCommit: streamCommit,
                                 fileDescriptor: fileDescriptor
                             )
                             attempts.append(routeAttempt(
@@ -391,6 +393,25 @@ public actor BurnBarHTTPGatewayServer {
                             failureMessage: Self.routeLogFailureMessage(from: error)
                         ))
                         await router.markRouteFailure(route, error: error)
+                        if streamCommit.responseStarted {
+                            logger.error("gateway_linux_stream_interrupted", metadata: [
+                                "model": modelID,
+                                "provider_id": route.providerID,
+                                "error": "\(error)"
+                            ])
+                            await recordProxyRouteLogEntry(
+                                startedAt: startedAt,
+                                modelID: modelID,
+                                route: route,
+                                finalStatus: .failed,
+                                streamed: true,
+                                httpStatus: Self.httpStatus(from: error) ?? 502,
+                                attempts: attempts,
+                                usage: nil,
+                                failureMessage: Self.routeLogFailureMessage(from: error)
+                            )
+                            return .streamed
+                        }
                         if index < routes.count - 1, shouldFailOverProviderError(error) {
                             continue
                         }
@@ -496,6 +517,7 @@ public actor BurnBarHTTPGatewayServer {
         usageFormat: GatewayStreamUsageFormat,
         route: BurnBarProviderRoute,
         accountingRequestID: String,
+        streamCommit: LinuxGatewayStreamCommit,
         fileDescriptor: Int32
     ) async throws -> BurnBarProviderProxyUsage? {
         let headers = [
@@ -503,6 +525,7 @@ public actor BurnBarHTTPGatewayServer {
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no"
         ]
+        streamCommit.responseStarted = true
         try writeAll(httpResponseHead(status: proxyStream.statusCode, headers: headers), to: fileDescriptor)
 
         let accumulator = GatewayStreamingUsageAccumulator(format: usageFormat)
@@ -791,6 +814,10 @@ private enum LinuxGatewayResponse {
 private struct LinuxGatewayStreamPlan {
     let usageFormat: GatewayStreamUsageFormat
     let open: () async throws -> BurnBarProviderProxyStream
+}
+
+private final class LinuxGatewayStreamCommit {
+    var responseStarted = false
 }
 
 private struct LinuxChatCompletionsRequest: Decodable {

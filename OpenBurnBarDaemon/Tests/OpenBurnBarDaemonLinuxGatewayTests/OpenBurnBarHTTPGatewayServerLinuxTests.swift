@@ -50,6 +50,32 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(entry.finalStatus, .exact)
         XCTAssertEqual(entry.httpStatus, 200)
         XCTAssertTrue(entry.streamed)
+
+        try await assertMidStreamUpstreamDropClosesWithoutSecondHTTPResponse()
+    }
+
+    private func assertMidStreamUpstreamDropClosesWithoutSecondHTTPResponse() async throws {
+        let upstream = LinuxMockOpenAIStreamServer(dropsAfterFirstChunk: true)
+        try upstream.start()
+        defer { upstream.stop() }
+
+        let harness = try LinuxGatewayHarness()
+        defer { Task { await harness.stop() } }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
+        try await harness.start()
+
+        let body = #"{"model":"glm-5-turbo","stream":true,"messages":[{"role":"user","content":"ping"}]}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(response.headers["content-type"], "text/event-stream")
+        XCTAssertTrue(response.body.contains("data: {\"id\":\"chatcmpl-linux\""))
+        XCTAssertFalse(response.body.contains("HTTP/1.1 "), "gateway must not append a second buffered HTTP response after streaming starts")
+        XCTAssertEqual(response.rawText.components(separatedBy: "HTTP/1.1 ").count - 1, 1)
     }
 
     func testRejectsMalformedChatCompletionsRequestBeforeRouting() async throws {
@@ -154,6 +180,11 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
     private var listenFD: Int32 = -1
     private var acceptTask: Task<Void, Never>?
     private(set) var port: Int = 0
+    private let dropsAfterFirstChunk: Bool
+
+    init(dropsAfterFirstChunk: Bool = false) {
+        self.dropsAfterFirstChunk = dropsAfterFirstChunk
+    }
 
     var recordedRequests: [Request] {
         lock.lock()
@@ -230,18 +261,22 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
         requests.append(request)
         lock.unlock()
 
-        let head = """
-        HTTP/1.1 200 OK\r
-        Content-Type: text/event-stream\r
-        Cache-Control: no-cache\r
-        Connection: close\r
-        \r
-
-        """
+        let contentLength = dropsAfterFirstChunk ? "Content-Length: 10000\r\n" : ""
+        let head = "HTTP/1.1 200 OK\r\n"
+            + "Content-Type: text/event-stream\r\n"
+            + "Cache-Control: no-cache\r\n"
+            + contentLength
+            + "Connection: close\r\n"
+            + "\r\n"
         _ = try? LinuxSocketSupport.sendAll(Data(head.utf8), to: clientFD)
 
         let firstChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}"# + "\n\n"
         _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
+        if dropsAfterFirstChunk {
+            var resetLinger = linger(l_onoff: 1, l_linger: 0)
+            setsockopt(clientFD, SOL_SOCKET, SO_LINGER, &resetLinger, socklen_t(MemoryLayout<linger>.size))
+            return
+        }
         Glibc.usleep(50_000)
         let usageChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"
         _ = try? LinuxSocketSupport.sendAll(Data(usageChunk.utf8), to: clientFD)
@@ -268,6 +303,7 @@ private enum LinuxHTTPClient {
         let statusCode: Int
         let headers: [String: String]
         let body: String
+        let rawText: String
     }
 
     static func post(port: Int, path: String, body: String) async throws -> Response {
@@ -303,7 +339,7 @@ private enum LinuxHTTPClient {
             let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces)
             headers[String(name)] = value
         }
-        return Response(statusCode: statusCode, headers: headers, body: body)
+        return Response(statusCode: statusCode, headers: headers, body: body, rawText: text)
     }
 }
 
