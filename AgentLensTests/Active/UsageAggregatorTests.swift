@@ -464,6 +464,73 @@ final class UsageAggregatorTests: XCTestCase {
         XCTAssertEqual(mockParser.parseCallCount, 1)
         XCTAssertTrue(dataStore.usages.isEmpty)
     }
+
+    func test_recountAll_postsLifecycleNotifications_whenRebuildCommits() async throws {
+        let dataStore = try makeTestDataStore()
+        let mockParser = MockParser(provider: .factory)
+        mockParser.parseResult = ParseResult(usages: [], conversations: [])
+        let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
+
+        let events = Locked<[String]>([])
+        let willObserver = NotificationCenter.default.addObserver(
+            forName: .usageRecountWillRebuildLocalRows,
+            object: nil,
+            queue: nil
+        ) { _ in events.withLock { $0.append("will") } }
+        let didObserver = NotificationCenter.default.addObserver(
+            forName: .usageRecountDidRebuildLocalRows,
+            object: nil,
+            queue: nil
+        ) { _ in events.withLock { $0.append("did") } }
+        defer {
+            NotificationCenter.default.removeObserver(willObserver)
+            NotificationCenter.default.removeObserver(didObserver)
+        }
+
+        await aggregator.recountAll()
+
+        XCTAssertNil(aggregator.typedPersistenceError)
+        XCTAssertEqual(
+            events.read(),
+            ["will", "did"],
+            "a committed rebuild must demote first, then arm reconciliation only after the persist committed"
+        )
+    }
+
+    func test_recountRebuildCommitted_gatesOnClearRefreshAndPersist() {
+        XCTAssertTrue(UsageAggregator.recountRebuildCommitted(
+            clearSucceeded: true,
+            refreshApplied: true,
+            typedPersistenceError: nil
+        ))
+        XCTAssertFalse(
+            UsageAggregator.recountRebuildCommitted(
+                clearSucceeded: false,
+                refreshApplied: true,
+                typedPersistenceError: nil
+            ),
+            "a failed table clear must keep reconciliation un-armed"
+        )
+        XCTAssertFalse(
+            UsageAggregator.recountRebuildCommitted(
+                clearSucceeded: true,
+                refreshApplied: false,
+                typedPersistenceError: nil
+            ),
+            "a cancelled/short-circuited refresh must keep reconciliation un-armed"
+        )
+        XCTAssertFalse(
+            UsageAggregator.recountRebuildCommitted(
+                clearSucceeded: true,
+                refreshApplied: true,
+                typedPersistenceError: OpenBurnBarError.database(
+                    "usage_persist_failed",
+                    message: "partial persist"
+                )
+            ),
+            "a partial persist must keep reconciliation un-armed — the table is non-empty but incomplete"
+        )
+    }
 }
 
 // MARK: - TokenExtractionUtility Tests

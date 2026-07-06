@@ -12,10 +12,36 @@ import OpenBurnBarCore
 /// being written in plaintext. An opaque keyed `projectKeyHash` is also written
 /// so on-device readers can group usage by project without decrypting every row.
 extension Notification.Name {
-    /// Posted by UsageAggregator.recountAll after the local usage table has
-    /// been cleared and re-parsed, so the next usage sync reconciles
-    /// now-orphaned cloud docs exactly once.
+    /// Posted by UsageAggregator.recountAll just before it clears and rebuilds
+    /// the local usage table. Demotes any already-armed reconciliation so
+    /// orphan cleanup can never run against a mid-rebuild (partially
+    /// populated) table.
+    static let usageRecountWillRebuildLocalRows = Notification.Name("OpenBurnBarUsageRecountWillRebuildLocalRows")
+    /// Posted by UsageAggregator.recountAll only after the local usage table
+    /// has been cleared, re-parsed, AND the persist verifiably committed, so
+    /// the next usage sync reconciles now-orphaned cloud docs exactly once.
+    /// A recount whose persist failed partway never posts this: the request
+    /// stays pending (`awaitingRecountCompletion`) until a successful retry
+    /// re-arms it.
     static let usageRecountDidRebuildLocalRows = Notification.Name("OpenBurnBarUsageRecountDidRebuildLocalRows")
+}
+
+/// Lifecycle of a one-shot orphaned-cloud-doc reconciliation request.
+///
+/// Cleanup deletes every same-device cloud doc whose usage ID is missing from
+/// the local table, so it must only ever compare against a FULLY persisted
+/// table. A recount that is mid-persist (or failed partway) leaves the table
+/// non-empty but incomplete — reconciling against it would destroy cloud
+/// history for rows not yet persisted.
+enum UsageOrphanReconciliationState: Sendable, Equatable {
+    /// No reconciliation pending.
+    case idle
+    /// A recount started rebuilding the local table but its persist has not
+    /// verifiably committed. Cleanup must NOT run, and the request must stay
+    /// pending so a successful recount retry can re-arm it.
+    case awaitingRecountCompletion
+    /// The rebuild fully committed; the next sync may reconcile orphans.
+    case readyForReconciliation
 }
 
 final class UsageSyncService: CloudSyncDomain, Sendable {
@@ -28,10 +54,12 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
 
-    /// Set when a Recount (or other full local rebuild) requests one-shot
+    /// Tracks a Recount (or other full local rebuild) requesting one-shot
     /// cloud reconciliation. Orphan cleanup is O(total same-device history)
-    /// in Firestore reads, so it must not run on every incremental sync.
-    private let orphanReconciliationRequested = Locked(false)
+    /// in Firestore reads, so it must not run on every incremental sync — and
+    /// it only runs in `.readyForReconciliation`, i.e. after the rebuild's
+    /// local persist verifiably committed.
+    private let orphanReconciliationState = Locked(UsageOrphanReconciliationState.idle)
 
     init(
         context: CloudSyncContext,
@@ -40,17 +68,25 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         self.context = context
         self.vaultKeyProvider = vaultKeyProvider
         NotificationCenter.default.addObserver(
+            forName: .usageRecountWillRebuildLocalRows,
+            object: nil,
+            queue: nil
+        ) { [orphanReconciliationState] _ in
+            orphanReconciliationState.withLock { $0 = .awaitingRecountCompletion }
+        }
+        NotificationCenter.default.addObserver(
             forName: .usageRecountDidRebuildLocalRows,
             object: nil,
             queue: nil
-        ) { [orphanReconciliationRequested] _ in
-            orphanReconciliationRequested.withLock { $0 = true }
+        ) { [orphanReconciliationState] _ in
+            orphanReconciliationState.withLock { $0 = .readyForReconciliation }
         }
     }
 
     /// Request a one-shot orphaned-cloud-doc reconciliation on the next sync.
+    /// Callers assert the local table is fully persisted and authoritative.
     func requestOrphanReconciliation() {
-        orphanReconciliationRequested.withLock { $0 = true }
+        orphanReconciliationState.withLock { $0 = .readyForReconciliation }
     }
 
     /// Upload all unsynced local usage rows to Firestore.
@@ -110,11 +146,14 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
             // Orphan cleanup runs only AFTER the replacement upload committed
             // (never leaves the cloud with neither old nor new docs), only when
-            // a recount explicitly requested reconciliation (bounds the
-            // full-history scan to recount events, not every incremental
-            // sync), and never against an empty local table (a failed recount
-            // persist must not delete the device's entire cloud history).
-            if orphanReconciliationRequested.read() {
+            // a recount explicitly requested reconciliation AND its local
+            // persist verifiably committed (`.readyForReconciliation` — a
+            // recount that is mid-persist or failed partway leaves the table
+            // partially populated, and reconciling against it would delete
+            // cloud docs for rows not yet persisted), and never against an
+            // empty local table (a fully failed recount persist must not
+            // delete the device's entire cloud history).
+            if orphanReconciliationState.read() == .readyForReconciliation {
                 let keeping = Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
                 if keeping.isEmpty {
                     AppLogger.sync.error(
@@ -122,12 +161,20 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                         metadata: ["reason": "failed recount persist would delete entire cloud history"]
                     )
                 } else {
-                    try await deleteOrphanedUsageDocs(
+                    let completed = try await deleteOrphanedUsageDocs(
                         collectionRef: collectionRef,
                         deviceId: deviceId,
                         keeping: keeping
                     )
-                    orphanReconciliationRequested.withLock { $0 = false }
+                    // Clear the one-shot request only after cleanup verifiably
+                    // completed, and only while still armed: if a new recount
+                    // started meanwhile (`.awaitingRecountCompletion`), keep
+                    // its state instead of stomping it.
+                    if completed {
+                        orphanReconciliationState.withLock {
+                            if $0 == .readyForReconciliation { $0 = .idle }
+                        }
+                    }
                 }
             }
 
@@ -151,11 +198,17 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         }
     }
 
+    /// Deletes same-device cloud usage docs whose usage IDs are missing from
+    /// `currentUsageIds`. Returns `true` when cleanup fully completed, `false`
+    /// when it aborted because a new recount started mid-cleanup (the local
+    /// table is being rebuilt, so `currentUsageIds` may no longer describe a
+    /// fully persisted table — deleting against it could destroy cloud history
+    /// for rows not yet re-persisted).
     private func deleteOrphanedUsageDocs(
         collectionRef: CloudSyncCollectionGateway,
         deviceId: String,
         keeping currentUsageIds: Set<String>
-    ) async throws {
+    ) async throws -> Bool {
         let prefix = "\(deviceId)_"
         let snapshot = try await collectionRef.whereField("deviceId", isEqualTo: deviceId).getDocuments()
         let orphanDocIds = snapshot.documents.compactMap { document -> String? in
@@ -164,9 +217,19 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             let usageID = String(documentID.dropFirst(prefix.count))
             return currentUsageIds.contains(usageID) ? nil : documentID
         }
-        guard !orphanDocIds.isEmpty else { return }
+        guard !orphanDocIds.isEmpty else { return true }
 
         for batchStart in stride(from: 0, to: orphanDocIds.count, by: 400) {
+            // Re-check the reconciliation state before every delete commit: a
+            // recount posting `usageRecountWillRebuildLocalRows` demotes the
+            // state, and deletion must stop before touching another doc.
+            guard orphanReconciliationState.read() == .readyForReconciliation else {
+                AppLogger.sync.notice(
+                    "usage_orphan_cleanup_aborted_recount_started",
+                    metadata: ["deletedSoFar": "\(batchStart)", "planned": "\(orphanDocIds.count)"]
+                )
+                return false
+            }
             let batch = context.firestoreGateway.batch()
             for docId in orphanDocIds[batchStart..<min(batchStart + 400, orphanDocIds.count)] {
                 batch.deleteDocument(collectionRef.document(docId))
@@ -179,6 +242,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 try await batch.commit()
             }
         }
+        return true
     }
 
     private func publishDeviceHeartbeatBestEffort(uid: String, deviceId: String) async {
