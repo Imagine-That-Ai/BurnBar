@@ -665,7 +665,11 @@ final class CLIAgentMissionDispatcher {
         let prompt = """
         You are OpenBurnBar's Phase B second-stage synthesizer.
 
-        Synthesize the child mission outputs below into one final answer for the user. Use only the supplied child outputs; do not run shell commands, ask for repo access, or edit files. Resolve agreement and disagreement explicitly, keep useful minority findings, and produce a concise final recommendation with validation notes and residual risks.
+        Synthesize the child mission outputs below into one final answer for the user.
+        Use only the supplied child outputs; do not run shell commands, ask for repo access,
+        or edit files. Resolve agreement and disagreement explicitly, keep useful minority
+        findings, and produce a concise final recommendation with validation notes and
+        residual risks.
 
         Group ID: \(group.id)
         Original title: \(group.title)
