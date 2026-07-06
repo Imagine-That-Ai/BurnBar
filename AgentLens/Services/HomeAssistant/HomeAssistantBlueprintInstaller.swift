@@ -29,7 +29,9 @@ struct HomeAssistantBlueprintInstaller: Sendable {
     /// Generates the deep link the user clicks. HA's own blueprint
     /// importer accepts a single `blueprint_url` query parameter.
     static func importDeepLink(blueprintURL: URL = defaultBlueprintURL) -> URL {
-        var components = URLComponents(url: myHARedirectBaseURL, resolvingAgainstBaseURL: false)!
+        guard var components = URLComponents(url: myHARedirectBaseURL, resolvingAgainstBaseURL: false) else {
+            return myHARedirectBaseURL
+        }
         components.queryItems = [URLQueryItem(name: "blueprint_url", value: blueprintURL.absoluteString)]
         return components.url ?? myHARedirectBaseURL
     }

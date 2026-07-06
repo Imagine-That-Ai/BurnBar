@@ -152,7 +152,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         var publishedProviders: [String] = []
         var publishedBucketCounts: [Int] = []
         service.onSnapshotsPersistedForCloudSync = { snapshots in
-            publishedProviders = snapshots.map(\.provider)
+            publishedProviders = snapshots.compactMap { AgentProvider(rawValue: $0.provider) }
             publishedBucketCounts = snapshots.map { $0.displayableQuotaBuckets.count }
         }
 
@@ -271,7 +271,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .warp, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .warp))
 
-        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertEqual(snapshot.buckets.first?.label, "Monthly credits")
         XCTAssertEqual(snapshot.buckets.first?.usedValue, 25)
@@ -341,7 +341,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refreshClaudeFromStatuslineHook(dataStore: try makeDataStore())
 
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
-        XCTAssertEqual(snapshot.source, .localCLI)
+        XCTAssertEqual(snapshot.sourceKind, .localCLI)
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "5-hour window" && $0.usedPercent == 12 }))
         XCTAssertNil(service.lastFetch, "Hook-driven refresh must not gate the next all-provider auto-refresh")
     }
@@ -483,7 +483,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .codex, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
-        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertEqual(snapshot.buckets.count, 2)
         XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "5-hour window" })?.remainingPercent?.rounded(), 78)
@@ -554,7 +554,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             "Codex auth refresh must not execute an ambient PATH binary when the trusted resolver has no Codex executable."
         )
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.primaryDisplayableBucket?.remainingPercent?.rounded(), 75)
     }
 
@@ -667,7 +667,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .codex, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
-        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
         XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "5-hour window" })?.remainingPercent?.rounded(), 65)
         XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "7-day window" })?.remainingPercent?.rounded(), 58)
     }
@@ -696,7 +696,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await second.refresh(provider: .codex, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(second.snapshot(for: .codex))
 
-        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
         XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "5-hour window" })?.remainingPercent?.rounded(), 59)
 
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: rolloutURL.path)
@@ -901,7 +901,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .localCLI)
+        XCTAssertEqual(snapshot.sourceKind, .localCLI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertTrue(snapshot.statusMessage?.contains("local status line") ?? false)
         XCTAssertTrue(snapshot.statusMessage?.contains("API billing") ?? false)
@@ -954,7 +954,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .localCLI)
+        XCTAssertEqual(snapshot.sourceKind, .localCLI)
         XCTAssertEqual(snapshot.confidence, .estimated)
         XCTAssertTrue(snapshot.statusMessage?.contains("API billing") ?? false)
         XCTAssertTrue(snapshot.statusMessage?.contains("Stale last known Claude Code quota") ?? false)
@@ -1034,7 +1034,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 20 }))
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("7-day") && $0.remainingPercent?.rounded() == 70 }))
@@ -1093,7 +1093,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertTrue(snapshot.statusMessage?.contains("Max") ?? false)
         XCTAssertTrue(snapshot.statusMessage?.contains("(cached)") ?? false)
@@ -1155,7 +1155,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
         XCTAssertTrue(snapshot.statusMessage?.contains("did not return current quota buckets") ?? false)
@@ -1211,7 +1211,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertTrue(snapshot.statusMessage?.contains("Pro") ?? false)
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 20 }))
@@ -1318,7 +1318,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertEqual(
             observedUsageAuths.read(),
@@ -1368,7 +1368,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
         // Max-20x five-hour cap = 3.52M tokens. 220K / 3.52M ≈ 6.25%.
         let fiveHour = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "claude-five-hour-jsonl" }))
         XCTAssertEqual(fiveHour.limitValue, 3_520_000)
@@ -1428,7 +1428,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.providerID, .claudeCode)
         XCTAssertEqual(snapshot.accountID, profile.id)
         XCTAssertEqual(snapshot.accountLabel, "Claude Work")
-        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
 
         let fiveHour = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "claude-five-hour-jsonl" }))
         XCTAssertEqual(fiveHour.limitValue, 3_520_000)
@@ -1582,9 +1582,9 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let workFiveHour = try XCTUnwrap(workSnapshot.buckets.first(where: { $0.key == "claude-five_hour" }))
         let reserveFiveHour = try XCTUnwrap(reserveSnapshot.buckets.first(where: { $0.key == "claude-five_hour" }))
 
-        XCTAssertEqual(workSnapshot.source, .officialAPI)
+        XCTAssertEqual(workSnapshot.sourceKind, .officialAPI)
         XCTAssertEqual(workSnapshot.confidence, .exact)
-        XCTAssertEqual(reserveSnapshot.source, .officialAPI)
+        XCTAssertEqual(reserveSnapshot.sourceKind, .officialAPI)
         XCTAssertEqual(reserveSnapshot.confidence, .exact)
         XCTAssertEqual(workFiveHour.remainingPercent?.rounded(), 89)
         XCTAssertEqual(reserveFiveHour.remainingPercent?.rounded(), 36)
@@ -1654,7 +1654,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: dataStore)
 
         let accountSnapshot = try XCTUnwrap(service.snapshot(accountID: profile.id))
-        XCTAssertEqual(accountSnapshot.source, .unavailable)
+        XCTAssertEqual(accountSnapshot.sourceKind, .unavailable)
         XCTAssertEqual(accountSnapshot.confidence, .unavailable)
         XCTAssertTrue(accountSnapshot.buckets.isEmpty)
         XCTAssertTrue(accountSnapshot.statusMessage?.contains("will not reuse another Claude account") ?? false)
@@ -1702,7 +1702,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: dataStore)
 
         let accountSnapshot = try XCTUnwrap(service.snapshot(accountID: profile.id))
-        XCTAssertEqual(accountSnapshot.source, .officialAPI)
+        XCTAssertEqual(accountSnapshot.sourceKind, .officialAPI)
         XCTAssertEqual(accountSnapshot.confidence, .unavailable)
         XCTAssertTrue(accountSnapshot.buckets.isEmpty)
         XCTAssertTrue(accountSnapshot.statusMessage?.contains("did not return current quota buckets") ?? false)
@@ -1785,7 +1785,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: dataStore)
 
         let accountSnapshot = try XCTUnwrap(service.snapshot(accountID: profile.id))
-        XCTAssertEqual(accountSnapshot.source, .localCLI)
+        XCTAssertEqual(accountSnapshot.sourceKind, .localCLI)
         XCTAssertEqual(accountSnapshot.confidence, .exact)
         XCTAssertEqual(accountSnapshot.accountLabel, "alberto@example.com")
         let bucket = try XCTUnwrap(accountSnapshot.buckets.first)
@@ -2111,7 +2111,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertNotEqual(snapshot.source, .officialAPI)
+        XCTAssertNotEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertFalse(snapshot.statusMessage?.contains("Plan: Pro") ?? false)
         XCTAssertTrue((snapshot.statusMessage?.contains("Sign in to Claude Code") ?? false) || (snapshot.statusMessage?.contains("Bridge installed") ?? false))
@@ -2302,7 +2302,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertTrue(snapshot.buckets.contains { $0.usedPercent?.rounded() == 12 })
 
         let credentialsURL = home
@@ -2427,7 +2427,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .factory, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertTrue(snapshot.statusMessage?.contains("environment override") ?? false)
         XCTAssertTrue(snapshot.buckets.contains(where: {
@@ -2520,7 +2520,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .factory, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
 
-        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
         XCTAssertEqual(snapshot.confidence, .exact, "Pro plan tier ⇒ exact, not estimated")
         XCTAssertTrue(snapshot.hasDisplayableQuotaSignal,
                       "Local-session buckets must survive the displayable filter")
@@ -3068,7 +3068,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .factory, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
 
         let standard = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-standard" })
@@ -3704,7 +3704,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .minimax, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.buckets.count, 2)
         XCTAssertEqual(snapshot.buckets.first?.remainingPercent?.rounded(), 75)
     }
@@ -3744,7 +3744,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshot = try XCTUnwrap(service.snapshot(for: .deepSeek))
         let bucket = try XCTUnwrap(snapshot.primaryDisplayableBucket)
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertEqual(bucket.label, "CNY credit balance")
         XCTAssertEqual(bucket.remainingValue ?? -1, 123.45, accuracy: 0.01)
@@ -4268,8 +4268,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let workFiveHour = try XCTUnwrap(work.buckets.first { $0.key == "claude-five_hour" })
         let reserveFiveHour = try XCTUnwrap(reserve.buckets.first { $0.key == "claude-five_hour" })
 
-        XCTAssertEqual(work.source, .officialAPI)
-        XCTAssertEqual(reserve.source, .officialAPI)
+        XCTAssertEqual(work.sourceKind, .officialAPI)
+        XCTAssertEqual(reserve.sourceKind, .officialAPI)
         XCTAssertEqual(workFiveHour.remainingPercent?.rounded(), 90)
         XCTAssertEqual(reserveFiveHour.remainingPercent?.rounded(), 40)
         XCTAssertEqual(
@@ -4842,7 +4842,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
         let bucket = try XCTUnwrap(snapshot.primaryBucket)
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(bucket.label, "Minimax M2.7 Highspeed")
         XCTAssertEqual(bucket.limitValue?.rounded(), 1_500)
         XCTAssertEqual(bucket.remainingValue?.rounded(), 1_437)
@@ -4962,7 +4962,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .zai, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertGreaterThanOrEqual(snapshot.buckets.count, 2)
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.lowercased().contains("token") }))
     }
@@ -5007,7 +5007,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .zai, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertEqual(snapshot.buckets.count, 1)
         XCTAssertEqual(snapshot.buckets.first?.remainingPercent?.rounded(), 80)
@@ -5109,7 +5109,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
         let primary = try XCTUnwrap(snapshot.primaryBucket)
 
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertEqual(primary.label, "Included usage")
         XCTAssertEqual(primary.remainingValue?.rounded(), 380)
@@ -5139,7 +5139,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .cursor, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
 
-        XCTAssertEqual(snapshot.source, .unavailable)
+        XCTAssertEqual(snapshot.sourceKind, .unavailable)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.statusMessage?.contains("rejected the configured cookie") ?? false)
     }
@@ -5494,7 +5494,7 @@ extension ProviderQuotaServiceTests {
 
         // Confidence
         XCTAssertEqual(snapshot.confidence, .exact, "Cursor must be .exact — we hit the real API")
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
 
         // Plan bucket — real numbers from the golden fixture
         let planBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "cursor-plan" }))
@@ -5694,7 +5694,7 @@ extension ProviderQuotaServiceTests {
                       "Adapter must replay the stored Ollama cookie jar")
 
         XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.sourceKind, .officialAPI)
         XCTAssertEqual(snapshot.buckets.map(\.key), ["ollama-cloud-session", "ollama-cloud-weekly"])
         XCTAssertEqual(snapshot.hourlyBucket?.usedPercent, 17.5)
         XCTAssertEqual(snapshot.weeklyBucket?.usedPercent, 42)

@@ -681,9 +681,20 @@ final class ICloudSessionMirrorService {
 
     private var stateFileURL: URL {
         // try?-ok(best-effort support dir)
-        let base = (try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager))
-            ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("OpenBurnBar", isDirectory: true)
+        let base: URL
+        if let prepared = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager) {
+            base = prepared
+        } else {
+            // Fall back to ~/Library/Application Support; if that lookup comes
+            // back empty (never expected on macOS), derive the same path from
+            // the home directory so we still return a deterministic location
+            // instead of crashing.
+            let supportDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? fileManager.homeDirectoryForCurrentUser
+                    .appendingPathComponent("Library", isDirectory: true)
+                    .appendingPathComponent("Application Support", isDirectory: true)
+            base = supportDirectory.appendingPathComponent("OpenBurnBar", isDirectory: true)
+        }
         return base.appendingPathComponent("ICloudSessionMirrorState.json", isDirectory: false)
     }
 }

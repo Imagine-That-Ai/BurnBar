@@ -1,5 +1,6 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
+import os.log
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
@@ -11,6 +12,7 @@ import OpenBurnBarComputerUseCore
 /// Live Stage agree on a single coordinator, single relay stream, and
 /// single Ed25519 phone authority.
 struct AgentWatchScreen: View {
+    private static let computerUseE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "ComputerUseE2E")
     private let authUID: String?
     private let hermesService: HermesService
     @ObservedObject private var singleton: AgentWatchOverlaySingleton
@@ -131,7 +133,7 @@ struct AgentWatchScreen: View {
     #if DEBUG
     private func computerUseE2EProofLog(_ message: String) {
         let line = "OpenBurnBarMobile ComputerUseE2E \(message)"
-        print(line)
+        Self.computerUseE2ELogger.info("\(line, privacy: .public)")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("computer-use-e2e-proof.jsonl")
         let payload: [String: String] = [
             "event": message,
