@@ -57,6 +57,34 @@ struct PerfOperationResult {
     detail: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceParityRow {
+    adapter: String,
+    status: String,
+    discovery_method: String,
+    blocker: Option<String>,
+    evidence: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IntegrationStatusRow {
+    kind: String,
+    label: String,
+    state: String,
+    detail: String,
+    dependency: Option<String>,
+    config_location: String,
+    docs_href: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IntegrationsStatusPayload {
+    integrations: Vec<IntegrationStatusRow>,
+}
+
 fn linux_support_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         let trimmed = xdg.trim();
@@ -255,6 +283,106 @@ fn daemon_health() -> DaemonHealth {
         }
     }
     probe_daemon_health()
+}
+
+fn integration_label(kind: &str) -> &'static str {
+    match kind {
+        "pixel_clock" => "PixelClock",
+        "google_cast" => "Google Cast",
+        "awtrix_http" => "AWTRIX HTTP",
+        "home_assistant" => "Home Assistant",
+        "smart_hub_bridge" => "SmartHub Bridge",
+        _ => "Smart Device Integration",
+    }
+}
+
+fn integration_dependency(kind: &str, discovery_method: &str) -> Option<String> {
+    match kind {
+        "pixel_clock" => Some("AWTRIX HTTP endpoint, runtime agent, or _http._tcp mDNS".to_string()),
+        "google_cast" => Some("avahi-daemon + avahi-utils for _googlecast._tcp discovery".to_string()),
+        "awtrix_http" => Some("avahi-daemon + avahi-utils for _http._tcp discovery".to_string()),
+        "home_assistant" => Some("OPENBURNBAR_HOME_ASSISTANT_URL and daemon-held Home Assistant token".to_string()),
+        "smart_hub_bridge" => Some("Linux SmartHub bridge on loopback HTTP".to_string()),
+        _ if discovery_method.is_empty() => None,
+        _ => Some(discovery_method.to_string()),
+    }
+}
+
+fn integration_config_location(kind: &str) -> &'static str {
+    match kind {
+        "pixel_clock" => "Configure via openburnbar-cli devices pixel-clock ...",
+        "google_cast" => "Configure via openburnbar-cli devices iot cast status",
+        "awtrix_http" => "Configure via openburnbar-cli devices discover awtrix",
+        "home_assistant" => "Configure via openburnbar-cli devices iot homeassistant status",
+        "smart_hub_bridge" => "Configure via openburnbar-cli devices iot smarthub status",
+        _ => "Configure via openburnbar-cli devices parity --json",
+    }
+}
+
+fn map_integration_state(kind: &str, status: &str, blocker: Option<&str>) -> &'static str {
+    match status {
+        "control_ok" | "cast_reachable" | "home_assistant_control_ok" | "bridge_control_ok" => "connected",
+        "runtime_agent_detected" | "discoverable" | "api_reachable_control_blocked" | "bridge_reachable_control_blocked" => "configured",
+        "disabled" => "disabled",
+        "blocked" | "blocked_no_runtime_agent_or_device" | "blocked_missing_home_assistant_url"
+        | "blocked_home_assistant_api_unreachable" | "blocked_bridge_not_reachable"
+        | "blocked_googlecast_control_unreachable" | "blocked_no_googlecast_instances"
+        | "blocked_until_bridge_health_reachable" => "unavailable",
+        "configured" if kind == "home_assistant" => "configured",
+        _ if blocker.map(|b| !b.trim().is_empty()).unwrap_or(false) => "unavailable",
+        _ => "configured",
+    }
+}
+
+fn map_parity_row(row: DeviceParityRow) -> Option<IntegrationStatusRow> {
+    let kind = row.adapter.as_str();
+    match kind {
+        "pixel_clock" | "google_cast" | "awtrix_http" | "home_assistant" | "smart_hub_bridge" => {}
+        _ => return None,
+    }
+    let state = map_integration_state(kind, row.status.as_str(), row.blocker.as_deref()).to_string();
+    let status_detail = row.status.replace('_', " ");
+    let detail = row
+        .blocker
+        .as_ref()
+        .filter(|b| !b.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| {
+            format!(
+                "{} via {}; evidence: {}",
+                status_detail, row.discovery_method, row.evidence
+            )
+        });
+    Some(IntegrationStatusRow {
+        kind: kind.to_string(),
+        label: integration_label(kind).to_string(),
+        state,
+        detail,
+        dependency: integration_dependency(kind, row.discovery_method.as_str()),
+        config_location: integration_config_location(kind).to_string(),
+        docs_href: "docs/SMART_DISPLAY_DEVICE_QA.md".to_string(),
+    })
+}
+
+#[tauri::command]
+fn integrations_status() -> Result<IntegrationsStatusPayload, String> {
+    let output = Command::new("openburnbar-cli")
+        .args(["devices", "parity", "--json"])
+        .output()
+        .map_err(|e| format!("openburnbar-cli devices parity --json unavailable: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "openburnbar-cli devices parity --json failed".to_string()
+        } else {
+            stderr
+        });
+    }
+    let rows = serde_json::from_slice::<Vec<DeviceParityRow>>(&output.stdout)
+        .map_err(|e| format!("Invalid devices parity JSON: {e}"))?;
+    Ok(IntegrationsStatusPayload {
+        integrations: rows.into_iter().filter_map(map_parity_row).collect(),
+    })
 }
 
 #[tauri::command]
@@ -625,7 +753,8 @@ pub fn run() {
             app_version_info,
             export_diagnostics,
             session_env,
-            media_status
+            media_status,
+            integrations_status
         ])
         .setup(|app| {
             if let Err(e) = build_tray(app.handle()) {

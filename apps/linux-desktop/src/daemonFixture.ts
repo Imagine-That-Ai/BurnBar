@@ -10,7 +10,8 @@ import type {
   ProjectEntry,
   MemoryBoundary,
   AccountStatus,
-  MercuryMediaStatus
+  MercuryMediaStatus,
+  IntegrationsStatus
 } from './tauriBridge.js';
 
 export type DaemonRouteFixture = {
@@ -52,6 +53,61 @@ export function fixtureDaemonHealth(socketPath: string): DaemonHealth {
     gatewayEnabled: false,
     gatewayHost: '127.0.0.1',
     gatewayPort: 0
+  };
+}
+
+export function fixtureIntegrationsStatus(): IntegrationsStatus {
+  const kinds = [
+    {
+      kind: 'smart_hub_bridge' as const,
+      label: 'SmartHub Bridge',
+      dependency: 'Linux SmartHub bridge on loopback HTTP',
+      configLocation: 'Configure via openburnbar-cli devices iot smarthub status'
+    },
+    {
+      kind: 'google_cast' as const,
+      label: 'Google Cast',
+      dependency: 'avahi-daemon + avahi-utils for _googlecast._tcp discovery',
+      configLocation: 'Configure via openburnbar-cli devices iot cast status'
+    },
+    {
+      kind: 'home_assistant' as const,
+      label: 'Home Assistant',
+      dependency: 'OPENBURNBAR_HOME_ASSISTANT_URL and daemon-held Home Assistant token',
+      configLocation: 'Configure via openburnbar-cli devices iot homeassistant status'
+    },
+    {
+      kind: 'pixel_clock' as const,
+      label: 'PixelClock',
+      dependency: 'AWTRIX HTTP endpoint, runtime agent, or _http._tcp mDNS',
+      configLocation: 'Configure via openburnbar-cli devices pixel-clock ...'
+    },
+    {
+      kind: 'awtrix_http' as const,
+      label: 'AWTRIX HTTP',
+      dependency: 'avahi-daemon + avahi-utils for _http._tcp discovery',
+      configLocation: 'Configure via openburnbar-cli devices discover awtrix'
+    }
+  ];
+  const stateDetails = {
+    connected: 'Live control path is reachable and the daemon has current evidence.',
+    configured: 'Discovery or configuration exists, but live control is not proven in this snapshot.',
+    unavailable: 'Install avahi-utils for mDNS browse or provide the daemon-side endpoint before control.',
+    disabled: 'Integration is intentionally disabled by daemon config.'
+  } as const;
+  return {
+    integrations: kinds.flatMap((kind) =>
+      (['connected', 'configured', 'unavailable', 'disabled'] as const).map((state) => ({
+        ...kind,
+        label: `${kind.label} ${state}`,
+        state,
+        detail:
+          state === 'unavailable' && kind.kind === 'home_assistant'
+            ? 'Set OPENBURNBAR_HOME_ASSISTANT_URL for authenticated control.'
+            : stateDetails[state],
+        docsHref: 'docs/SMART_DISPLAY_DEVICE_QA.md'
+      }))
+    )
   };
 }
 

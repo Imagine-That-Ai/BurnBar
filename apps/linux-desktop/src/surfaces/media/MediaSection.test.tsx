@@ -45,6 +45,7 @@ function bridgeWithMedia(result: Promise<MercuryMediaStatus>): LinuxShellBridge 
     appVersionInfo: vi.fn(),
     exportDiagnostics: vi.fn(),
     sessionEnv: vi.fn(),
+    integrationsStatus: vi.fn(async () => ({ integrations: [] })),
     mediaStatus: vi.fn().mockReturnValue(result)
   } as LinuxShellBridge;
 }

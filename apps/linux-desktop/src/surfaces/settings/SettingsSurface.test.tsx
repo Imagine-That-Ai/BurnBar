@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureConfigSnapshot } from '../../daemonFixture.js';
+import { useIntegrationsStore } from '../../state/integrationsStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
 import { SettingsSurface } from './SettingsSurface.js';
@@ -21,6 +22,11 @@ function resetStores(): void {
     db: null,
     projects: null,
     memory: null,
+    loading: false,
+    error: null
+  });
+  useIntegrationsStore.setState({
+    status: null,
     loading: false,
     error: null
   });
