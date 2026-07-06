@@ -9,6 +9,8 @@ use gst::prelude::*;
 
 pub type CaptureFrameCallback =
     extern "C" fn(payload: *const u8, len: usize, pts_ms: u64, flags: u8, user_data: *mut c_void);
+pub type CaptureStoppedCallback =
+    extern "C" fn(user_data: *mut c_void, reason: *const u8, reason_len: usize);
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +34,8 @@ impl CaptureCodec {
 #[cfg(feature = "gstreamer")]
 pub struct CapturePipeline {
     pipeline: gst::Pipeline,
+    stop_requested: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    bus_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 #[cfg(feature = "gstreamer")]
@@ -42,10 +46,18 @@ impl CapturePipeline {
         target_bitrate_bps: u32,
         codec: CaptureCodec,
         on_frame: CaptureFrameCallback,
+        on_stopped: Option<CaptureStoppedCallback>,
         user_data: *mut c_void,
     ) -> Result<Self> {
         let source = format!("pipewiresrc fd={pw_fd} path={pw_node_id}");
-        Self::start_video_from_source(&source, target_bitrate_bps, codec, on_frame, user_data)
+        Self::start_video_from_source(
+            &source,
+            target_bitrate_bps,
+            codec,
+            on_frame,
+            on_stopped,
+            user_data,
+        )
     }
 
     pub fn start_test_video(
@@ -53,33 +65,43 @@ impl CapturePipeline {
         target_bitrate_bps: u32,
         codec: CaptureCodec,
         on_frame: CaptureFrameCallback,
+        on_stopped: Option<CaptureStoppedCallback>,
         user_data: *mut c_void,
     ) -> Result<Self> {
         let source = format!(
             "videotestsrc num-buffers={num_buffers} is-live=false ! video/x-raw,width=320,height=240,framerate=30/1"
         );
-        Self::start_video_from_source(&source, target_bitrate_bps, codec, on_frame, user_data)
+        Self::start_video_from_source(
+            &source,
+            target_bitrate_bps,
+            codec,
+            on_frame,
+            on_stopped,
+            user_data,
+        )
     }
 
     pub fn start_pipewire_audio(
         pw_fd: i32,
         pw_node_id: u32,
         on_frame: CaptureFrameCallback,
+        on_stopped: Option<CaptureStoppedCallback>,
         user_data: *mut c_void,
     ) -> Result<Self> {
         let source = format!("pipewiresrc fd={pw_fd} path={pw_node_id}");
-        Self::start_audio_from_source(&source, on_frame, user_data)
+        Self::start_audio_from_source(&source, on_frame, on_stopped, user_data)
     }
 
     pub fn start_test_audio(
         num_buffers: u32,
         on_frame: CaptureFrameCallback,
+        on_stopped: Option<CaptureStoppedCallback>,
         user_data: *mut c_void,
     ) -> Result<Self> {
         let source = format!(
             "audiotestsrc num-buffers={num_buffers} is-live=false ! audio/x-raw,rate=48000,channels=1"
         );
-        Self::start_audio_from_source(&source, on_frame, user_data)
+        Self::start_audio_from_source(&source, on_frame, on_stopped, user_data)
     }
 
     pub fn set_bitrate(&self, target_bitrate_bps: u32) -> Result<()> {
@@ -99,10 +121,15 @@ impl CapturePipeline {
         }
     }
 
-    pub fn stop(&self) -> Result<()> {
+    pub fn stop(&mut self) -> Result<()> {
+        self.stop_requested
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         self.pipeline
             .set_state(gst::State::Null)
             .map_err(|error| MediaError::state_change(format!("{error:?}")))?;
+        if let Some(thread) = self.bus_thread.take() {
+            let _ = thread.join();
+        }
         Ok(())
     }
 
@@ -111,6 +138,7 @@ impl CapturePipeline {
         target_bitrate_bps: u32,
         codec: CaptureCodec,
         on_frame: CaptureFrameCallback,
+        on_stopped: Option<CaptureStoppedCallback>,
         user_data: *mut c_void,
     ) -> Result<Self> {
         crate::gst_runtime::ensure()?;
@@ -125,24 +153,26 @@ impl CapturePipeline {
         let description = format!(
             "{source} ! videoconvert ! {encoder} ! appsink name=sink emit-signals=true sync=false max-buffers=8 drop=true"
         );
-        Self::start_from_description(&description, on_frame, user_data)
+        Self::start_from_description(&description, on_frame, on_stopped, user_data)
     }
 
     fn start_audio_from_source(
         source: &str,
         on_frame: CaptureFrameCallback,
+        on_stopped: Option<CaptureStoppedCallback>,
         user_data: *mut c_void,
     ) -> Result<Self> {
         crate::gst_runtime::ensure()?;
         let description = format!(
             "{source} ! audioconvert ! opusenc name=encoder bitrate=64000 ! appsink name=sink emit-signals=true sync=false max-buffers=8 drop=true"
         );
-        Self::start_from_description(&description, on_frame, user_data)
+        Self::start_from_description(&description, on_frame, on_stopped, user_data)
     }
 
     fn start_from_description(
         description: &str,
         on_frame: CaptureFrameCallback,
+        on_stopped: Option<CaptureStoppedCallback>,
         user_data: *mut c_void,
     ) -> Result<Self> {
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -189,17 +219,65 @@ impl CapturePipeline {
                 .build(),
         );
 
+        let stop_requested = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let bus_thread = if let Some(on_stopped) = on_stopped {
+            let bus = pipeline
+                .bus()
+                .ok_or_else(|| MediaError::pipeline("capture pipeline missing bus"))?;
+            let bus_stop_requested = stop_requested.clone();
+            let stopped_user_data = user_data as usize;
+            Some(
+                std::thread::Builder::new()
+                    .name("openburnbar-media-capture-bus".to_string())
+                    .spawn(move || loop {
+                        if bus_stop_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                            return;
+                        }
+                        let message = bus.timed_pop_filtered(
+                            gst::ClockTime::from_mseconds(200),
+                            &[gst::MessageType::Eos, gst::MessageType::Error],
+                        );
+                        let Some(message) = message else {
+                            continue;
+                        };
+                        if bus_stop_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                            return;
+                        }
+                        let reason = match message.view() {
+                            gst::MessageView::Error(error) => {
+                                format!("capture_pipeline_error:{}", error.error())
+                            }
+                            gst::MessageView::Eos(_) => "capture_pipeline_eos".to_string(),
+                            _ => "capture_pipeline_ended".to_string(),
+                        };
+                        on_stopped(
+                            stopped_user_data as *mut c_void,
+                            reason.as_ptr(),
+                            reason.len(),
+                        );
+                        return;
+                    })
+                    .map_err(|error| MediaError::pipeline(error.to_string()))?,
+            )
+        } else {
+            None
+        };
+
         pipeline
             .set_state(gst::State::Playing)
             .map_err(|error| MediaError::state_change(format!("{error:?}")))?;
-        Ok(Self { pipeline })
+        Ok(Self {
+            pipeline,
+            stop_requested,
+            bus_thread,
+        })
     }
 }
 
 #[cfg(feature = "gstreamer")]
 impl Drop for CapturePipeline {
     fn drop(&mut self) {
-        let _ = self.pipeline.set_state(gst::State::Null);
+        let _ = self.stop();
     }
 }
 
@@ -214,6 +292,7 @@ impl CapturePipeline {
         _target_bitrate_bps: u32,
         _codec: CaptureCodec,
         _on_frame: CaptureFrameCallback,
+        _on_stopped: Option<CaptureStoppedCallback>,
         _user_data: *mut c_void,
     ) -> Result<Self> {
         Err(MediaError::unavailable(
@@ -226,6 +305,7 @@ impl CapturePipeline {
         _target_bitrate_bps: u32,
         _codec: CaptureCodec,
         _on_frame: CaptureFrameCallback,
+        _on_stopped: Option<CaptureStoppedCallback>,
         _user_data: *mut c_void,
     ) -> Result<Self> {
         Err(MediaError::unavailable(
@@ -237,6 +317,7 @@ impl CapturePipeline {
         _pw_fd: i32,
         _pw_node_id: u32,
         _on_frame: CaptureFrameCallback,
+        _on_stopped: Option<CaptureStoppedCallback>,
         _user_data: *mut c_void,
     ) -> Result<Self> {
         Err(MediaError::unavailable(
@@ -247,6 +328,7 @@ impl CapturePipeline {
     pub fn start_test_audio(
         _num_buffers: u32,
         _on_frame: CaptureFrameCallback,
+        _on_stopped: Option<CaptureStoppedCallback>,
         _user_data: *mut c_void,
     ) -> Result<Self> {
         Err(MediaError::unavailable(
@@ -260,7 +342,7 @@ impl CapturePipeline {
         ))
     }
 
-    pub fn stop(&self) -> Result<()> {
+    pub fn stop(&mut self) -> Result<()> {
         Ok(())
     }
 }
@@ -272,6 +354,7 @@ pub extern "C" fn media_capture_start(
     target_bitrate_bps: u32,
     codec: u8,
     on_frame: Option<CaptureFrameCallback>,
+    on_stopped: Option<CaptureStoppedCallback>,
     user_data: *mut c_void,
 ) -> *mut CapturePipeline {
     let Some(on_frame) = on_frame else {
@@ -286,6 +369,35 @@ pub extern "C" fn media_capture_start(
         target_bitrate_bps,
         codec,
         on_frame,
+        on_stopped,
+        user_data,
+    ) {
+        Ok(pipeline) => Box::into_raw(Box::new(pipeline)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn media_capture_start_test(
+    num_buffers: u32,
+    target_bitrate_bps: u32,
+    codec: u8,
+    on_frame: Option<CaptureFrameCallback>,
+    on_stopped: Option<CaptureStoppedCallback>,
+    user_data: *mut c_void,
+) -> *mut CapturePipeline {
+    let Some(on_frame) = on_frame else {
+        return std::ptr::null_mut();
+    };
+    let Ok(codec) = CaptureCodec::from_u8(codec) else {
+        return std::ptr::null_mut();
+    };
+    match CapturePipeline::start_test_video(
+        num_buffers,
+        target_bitrate_bps,
+        codec,
+        on_frame,
+        on_stopped,
         user_data,
     ) {
         Ok(pipeline) => Box::into_raw(Box::new(pipeline)),
@@ -298,12 +410,14 @@ pub extern "C" fn media_audio_capture_start(
     pw_fd: i32,
     pw_node_id: u32,
     on_frame: Option<CaptureFrameCallback>,
+    on_stopped: Option<CaptureStoppedCallback>,
     user_data: *mut c_void,
 ) -> *mut CapturePipeline {
     let Some(on_frame) = on_frame else {
         return std::ptr::null_mut();
     };
-    match CapturePipeline::start_pipewire_audio(pw_fd, pw_node_id, on_frame, user_data) {
+    match CapturePipeline::start_pipewire_audio(pw_fd, pw_node_id, on_frame, on_stopped, user_data)
+    {
         Ok(pipeline) => Box::into_raw(Box::new(pipeline)),
         Err(_) => std::ptr::null_mut(),
     }
@@ -315,7 +429,7 @@ pub extern "C" fn media_capture_stop(pipeline: *mut CapturePipeline) {
         return;
     }
     unsafe {
-        let pipeline = Box::from_raw(pipeline);
+        let mut pipeline = Box::from_raw(pipeline);
         let _ = pipeline.stop();
     }
 }

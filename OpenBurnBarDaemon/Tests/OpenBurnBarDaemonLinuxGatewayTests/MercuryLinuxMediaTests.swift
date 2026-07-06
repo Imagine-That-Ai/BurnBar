@@ -38,7 +38,13 @@ final class MercuryLinuxMediaTests: XCTestCase {
             socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
             maxQueuedFrames: 4
         )
-        let controller = MercuryLinuxMediaSessionController(channel: channel)
+        let captureAdapter = RecordingCaptureAdapter()
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: captureAdapter,
+            sealKeyOpener: StaticSealKeyOpener(key: sealKey)
+        )
         try await controller.start()
         defer { channel.stop() }
 
@@ -59,6 +65,7 @@ final class MercuryLinuxMediaTests: XCTestCase {
         snapshot = await controller.sessionSnapshot()
         XCTAssertEqual(snapshot.phase, .streaming)
         XCTAssertEqual(snapshot.sessionID, "session-1")
+        XCTAssertEqual(captureAdapter.startCount, 1)
 
         let sent = await replies.frames
         XCTAssertEqual(sent.count, 1)
@@ -78,7 +85,13 @@ final class MercuryLinuxMediaTests: XCTestCase {
             socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
             maxQueuedFrames: 4
         )
-        let controller = MercuryLinuxMediaSessionController(channel: channel)
+        let captureAdapter = RecordingCaptureAdapter()
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: captureAdapter,
+            sealKeyOpener: StaticSealKeyOpener(key: sealKey)
+        )
         try await controller.start()
         defer { channel.stop() }
 
@@ -88,6 +101,7 @@ final class MercuryLinuxMediaTests: XCTestCase {
         }
         let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
         XCTAssertTrue(accept.accepted)
+        await controller.setMediaFrameSealKey(nil)
 
         await controller.ingestCapturedFrame(MediaFrame(
             kind: .videoNAL,
@@ -112,7 +126,13 @@ final class MercuryLinuxMediaTests: XCTestCase {
             socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
             maxQueuedFrames: 4
         )
-        let controller = MercuryLinuxMediaSessionController(channel: channel)
+        let captureAdapter = RecordingCaptureAdapter()
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: captureAdapter,
+            sealKeyOpener: StaticSealKeyOpener(key: sealKey)
+        )
         try await controller.start()
         defer { channel.stop() }
 
@@ -122,9 +142,6 @@ final class MercuryLinuxMediaTests: XCTestCase {
         }
         let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
         XCTAssertTrue(accept.accepted)
-
-        let sealKey = PlatformSymmetricKey(size: .bits256)
-        await controller.setMediaFrameSealKey(sealKey)
 
         let payload = Data([0xAB, 0xCD, 0xEF])
         await controller.ingestCapturedFrame(MediaFrame(
@@ -164,6 +181,177 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(decoded.frameIndex, 0)
         XCTAssertEqual(decoded.presentationTimestampMillis, 777)
         XCTAssertEqual(decoded.payload, payload)
+        await controller.stop()
+    }
+
+    func testAcceptWithoutSealKeyFailsClosedBeforeCaptureStarts() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let captureAdapter = RecordingCaptureAdapter()
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: captureAdapter,
+            sealKeyOpener: FailingSealKeyOpener()
+        )
+        try await controller.start()
+        defer { channel.stop() }
+
+        let replies = RecordingMercuryReplies()
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node") { frame in
+            await replies.append(frame)
+        }
+
+        let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
+        XCTAssertFalse(accept.accepted)
+        XCTAssertEqual(captureAdapter.startCount, 0)
+        let sent = await replies.frames
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?.type, .mediaMirrorAck)
+        XCTAssertEqual(sent.first?.media?.mirrorAck?.decision, .denied)
+        let snapshot = await controller.sessionSnapshot()
+        XCTAssertEqual(snapshot.phase, .cooldown)
+    }
+
+    func testPortalAdapterStartsCaptureFromLivePortalGrant() async throws {
+        let grant = MercuryLinuxScreenCastGrant(
+            pipeWireFD: 42,
+            pipeWireNodeID: 41,
+            sessionHandle: "/org/freedesktop/portal/desktop/session/test",
+            isLive: true
+        )
+        let portal = ScriptedPortalClient(result: .success(grant))
+        let engine = RecordingCaptureEngine()
+        let adapter = MercuryLinuxCaptureAdapter(portalClient: portal, captureEngine: engine)
+
+        try await adapter.startOutboundCapture(
+            targetBitrateBps: 1_000_000,
+            codec: .vp9,
+            onFrame: { _ in },
+            onStopped: { _ in }
+        )
+
+        let acquireCount = await portal.acquireCount
+        XCTAssertEqual(acquireCount, 1)
+        XCTAssertEqual(engine.startCount, 1)
+        guard case .portal(let recordedGrant)? = engine.lastRequest?.source else {
+            XCTFail("Expected portal-backed capture request")
+            return
+        }
+        XCTAssertEqual(recordedGrant, grant)
+    }
+
+    func testPortalAdapterRejectsNonLiveGrantBeforeCapture() async throws {
+        let grant = MercuryLinuxScreenCastGrant(
+            pipeWireFD: 42,
+            pipeWireNodeID: 41,
+            sessionHandle: "/org/freedesktop/portal/desktop/session/test",
+            isLive: false
+        )
+        let portal = ScriptedPortalClient(result: .success(grant))
+        let engine = RecordingCaptureEngine()
+        let adapter = MercuryLinuxCaptureAdapter(portalClient: portal, captureEngine: engine)
+
+        do {
+            try await adapter.startOutboundCapture(
+                targetBitrateBps: 1_000_000,
+                codec: .vp9,
+                onFrame: { _ in },
+                onStopped: { _ in }
+            )
+            XCTFail("Expected non-live portal grant to fail closed")
+        } catch MercuryLinuxCaptureError.portalConsentNotLive {
+            XCTAssertEqual(engine.startCount, 0)
+            let closeCount = await portal.closeCount
+            XCTAssertEqual(closeCount, 1)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testCapturePipelineEndedTransitionsToCooldown() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let captureAdapter = RecordingCaptureAdapter()
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: captureAdapter,
+            sealKeyOpener: StaticSealKeyOpener(key: PlatformSymmetricKey(size: .bits256))
+        )
+        try await controller.start()
+        defer { channel.stop() }
+
+        let replies = RecordingMercuryReplies()
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node") { frame in
+            await replies.append(frame)
+        }
+        let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
+        XCTAssertTrue(accept.accepted)
+
+        captureAdapter.emitStopped("capture_pipeline_eos")
+        try await eventually {
+            await controller.sessionSnapshot().phase == .cooldown
+        }
+    }
+
+    func testCaptureFrameHandoffIsBoundedAndOrdered() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        let captureAdapter = RecordingCaptureAdapter()
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: captureAdapter,
+            sealKeyOpener: StaticSealKeyOpener(key: sealKey)
+        )
+        try await controller.start()
+        defer { channel.stop() }
+
+        let replies = RecordingMercuryReplies()
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node") { frame in
+            await replies.append(frame)
+        }
+        let accept = await controller.accept(DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-1"))
+        XCTAssertTrue(accept.accepted)
+
+        for index in 0..<5 {
+            captureAdapter.emitFrame(MediaFrame(
+                kind: .videoNAL,
+                flags: index == 0 ? [.keyframe] : [],
+                presentationTimestampMillis: UInt64(index * 33),
+                payload: Data([UInt8(index)])
+            ))
+        }
+
+        try await eventually {
+            await replies.frames.filter { $0.type == .mediaStreamFrame }.count == 5
+        }
+        let streamFrames = await replies.frames.filter { $0.type == .mediaStreamFrame }
+        let positions = streamFrames.compactMap { $0.media?.sealedFramePosition }
+        XCTAssertEqual(positions.map(\.gopId), [1, 1, 1, 1, 1])
+        XCTAssertEqual(positions.map(\.frameIndex), [0, 1, 2, 3, 4])
+        await controller.stop()
+    }
+
+    func testCaptureFrameQueueBuffersNewestAndPreservesRetainedOrder() async throws {
+        let queue = MercuryLinuxCaptureFrameQueue(bufferingNewest: 2)
+        queue.offer(MediaFrame(kind: .videoNAL, presentationTimestampMillis: 0, payload: Data([0])))
+        queue.offer(MediaFrame(kind: .videoNAL, presentationTimestampMillis: 1, payload: Data([1])))
+        queue.offer(MediaFrame(kind: .videoNAL, presentationTimestampMillis: 2, payload: Data([2])))
+        queue.finish()
+
+        var retainedPayloads: [UInt8] = []
+        for await frame in queue.stream {
+            if let first = frame.payload.first {
+                retainedPayloads.append(first)
+            }
+        }
+        XCTAssertEqual(retainedPayloads, [1, 2])
     }
 
     func testRPCDecodeAndDispatchForMediaMethods() async throws {
@@ -245,18 +433,35 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(endResponse.result?.session.phase, .cooldown)
     }
 
-    func testCapabilityProbeReportsConservativeDefaults() {
+    func testCapabilityProbeReportsMediaBackendTruth() {
         let capability = MercuryLinuxCapabilityProbe.snapshot(mediaSocketPath: "/run/user/501/openburnbar-media.sock")
+        let media = MercuryLinuxCaptureEngine.mediaCapabilities()
         XCTAssertTrue(capability.available)
         XCTAssertEqual(capability.mediaSocketPath, "/run/user/501/openburnbar-media.sock")
         XCTAssertTrue(capability.supportsDaemonToShellFrames)
         XCTAssertFalse(capability.supportsShellToDaemonControl)
-        XCTAssertTrue(capability.codecsKnown)
+        XCTAssertEqual(capability.codecsKnown, media.capabilitiesKnown)
         XCTAssertNotNil(capability.codecs["vp9"])
         XCTAssertNotNil(capability.codecs["opus"])
         XCTAssertEqual(capability.codecs["h264"], false)
         XCTAssertNotNil(capability.codecs["av1"])
         XCTAssertEqual(capability.source, "COpenBurnBarMediaCapture.media_capability_probe")
+    }
+
+    func testCapabilityModelRepresentsUnknownWhenMediaBackendUnavailable() {
+        let media = MercuryLinuxMediaCapabilities(
+            capabilitiesKnown: false,
+            vp9Encode: false,
+            vp9Decode: false,
+            av1Encode: false,
+            av1Decode: false,
+            opusEncode: false,
+            opusDecode: false,
+            pipeWireSource: false
+        )
+        XCTAssertFalse(media.capabilitiesKnown)
+        XCTAssertEqual(media.daemonCodecMap["vp9"], false)
+        XCTAssertEqual(media.daemonCodecMap["opus"], false)
     }
 
     private func invoke<Response: Decodable>(
@@ -364,5 +569,157 @@ private actor RecordingMercuryReplies {
     func append(_ frame: HermesRealtimeRelayFrame) {
         stored.append(frame)
     }
+}
+
+private struct StaticSealKeyOpener: MercuryLinuxMediaSealKeyOpening {
+    let key: PlatformSymmetricKey
+
+    func openMediaFrameSealKey(
+        for request: HermesRealtimeRelayMirrorRequest,
+        frame: HermesRealtimeRelayFrame
+    ) async throws -> PlatformSymmetricKey {
+        _ = request
+        _ = frame
+        return key
+    }
+}
+
+private struct FailingSealKeyOpener: MercuryLinuxMediaSealKeyOpening {
+    func openMediaFrameSealKey(
+        for request: HermesRealtimeRelayMirrorRequest,
+        frame: HermesRealtimeRelayFrame
+    ) async throws -> PlatformSymmetricKey {
+        _ = request
+        _ = frame
+        throw MercuryLinuxMediaSealKeyOpenError.missingSealKey
+    }
+}
+
+private final class RecordingCaptureAdapter: MercuryLinuxCaptureAdapterProtocol, @unchecked Sendable {
+    private struct State: Sendable {
+        var startCount = 0
+        var bitrates: [UInt32] = []
+        var onFrame: (@Sendable (MediaFrame) -> Void)?
+        var onStopped: (@Sendable (String) -> Void)?
+    }
+
+    private let state = Locked(State())
+
+    var startCount: Int {
+        state.withLock { $0.startCount }
+    }
+
+    var bitrates: [UInt32] {
+        state.withLock { $0.bitrates }
+    }
+
+    func startOutboundCapture(
+        targetBitrateBps: UInt32,
+        codec: MercuryLinuxCaptureCodec,
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void
+    ) async throws {
+        _ = targetBitrateBps
+        _ = codec
+        state.withLock { state in
+            state.startCount += 1
+            state.onFrame = onFrame
+            state.onStopped = onStopped
+        }
+    }
+
+    func stopOutboundCapture() {}
+
+    func setOutboundCaptureBitrate(_ targetBitrateBps: UInt32) throws {
+        state.withLock { $0.bitrates.append(targetBitrateBps) }
+    }
+
+    func emitFrame(_ frame: MediaFrame) {
+        let callback = state.withLock { $0.onFrame }
+        callback?(frame)
+    }
+
+    func emitStopped(_ reason: String) {
+        let callback = state.withLock { $0.onStopped }
+        callback?(reason)
+    }
+}
+
+private actor ScriptedPortalClient: MercuryLinuxScreenCastPortalClient {
+    private let result: Result<MercuryLinuxScreenCastGrant, Error>
+    private var acquired = 0
+    private var closed = 0
+
+    init(result: Result<MercuryLinuxScreenCastGrant, Error>) {
+        self.result = result
+    }
+
+    var acquireCount: Int { acquired }
+    var closeCount: Int { closed }
+
+    func acquireScreenCastConsent() async throws -> MercuryLinuxScreenCastGrant {
+        acquired += 1
+        return try result.get()
+    }
+
+    func closeScreenCastSession(_ grant: MercuryLinuxScreenCastGrant) async {
+        _ = grant
+        closed += 1
+    }
+}
+
+private final class RecordingCaptureEngine: MercuryLinuxCaptureEngineProtocol, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedStartCount = 0
+    private var storedLastRequest: MercuryLinuxCaptureRequest?
+
+    var startCount: Int {
+        lock.lock()
+        let count = storedStartCount
+        lock.unlock()
+        return count
+    }
+
+    var lastRequest: MercuryLinuxCaptureRequest? {
+        lock.lock()
+        let request = storedLastRequest
+        lock.unlock()
+        return request
+    }
+
+    func start(
+        _ request: MercuryLinuxCaptureRequest,
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void
+    ) throws {
+        _ = onFrame
+        _ = onStopped
+        lock.lock()
+        storedStartCount += 1
+        storedLastRequest = request
+        lock.unlock()
+    }
+
+    func stop() {}
+
+    func setBitrate(_ targetBitrateBps: UInt32) throws {
+        _ = targetBitrateBps
+    }
+}
+
+private func eventually(
+    timeoutSeconds: TimeInterval = 2,
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ predicate: @escaping () async -> Bool
+) async throws {
+    let deadline = Date().addingTimeInterval(timeoutSeconds)
+    while Date() < deadline {
+        if await predicate() {
+            return
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+    }
+    XCTFail("Timed out waiting for condition", file: file, line: line)
 }
 #endif

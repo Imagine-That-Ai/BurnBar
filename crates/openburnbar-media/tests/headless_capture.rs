@@ -22,9 +22,15 @@ fn videotest_capture_delivers_monotonic_vp9_frames() {
         ..CaptureState::default()
     }));
     let user_data = Arc::into_raw(state.clone()) as *mut c_void;
-    let pipeline =
-        CapturePipeline::start_test_video(30, 600_000, CaptureCodec::Vp9, on_frame, user_data)
-            .expect("capture pipeline");
+    let mut pipeline = CapturePipeline::start_test_video(
+        30,
+        600_000,
+        CaptureCodec::Vp9,
+        on_frame,
+        None,
+        user_data,
+    )
+    .expect("capture pipeline");
 
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
