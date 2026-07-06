@@ -308,9 +308,11 @@ def test_release_workflow_bounds_sqlcipher_release_codec_gate():
     step_end = body.index("  release-mobile-gate:")
     sqlcipher_step = body[step_start:step_end]
 
-    # 75 minutes: the gate legitimately ran 55.9 of its previous 60-minute cap
-    # on a cold runner (v1.0.29); the cap is a hang guard, not a quality gate.
-    assert "timeout-minutes: 75" in sqlcipher_step
+    # 130 minutes: the gate legitimately ran 55.9 of its previous 60-minute cap
+    # on a cold runner (v1.0.29) and later overran 75 as well; the cap is a
+    # hang guard, not a quality gate (bumped alongside release.yml in the
+    # SQLCipher gate-timeout extension).
+    assert "timeout-minutes: 130" in sqlcipher_step
     assert "OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh" in sqlcipher_step
 
 
