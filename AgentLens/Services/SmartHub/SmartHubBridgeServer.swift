@@ -65,6 +65,7 @@ final class SmartHubBridgeServer {
     private(set) var voiceRefreshVersion: UInt64 = 0
     private(set) var lastVoiceRefreshAt: Date?
     private(set) var lastVoiceRefreshMessage: String = ""
+    private static let voiceRefreshDuplicateWindowSeconds: TimeInterval = 5
 
     struct VoiceRefreshEvent: Equatable, Sendable {
         let eventId: UInt64
@@ -412,9 +413,24 @@ final class SmartHubBridgeServer {
     /// Queues a voice event for the currently-rendering Hub page. The page polls
     /// `/state.json`, sees the monotonic event id, and speaks the message locally.
     func queueVoiceRefresh() -> VoiceRefreshEvent {
-        voiceRefreshVersion &+= 1
         let requestedAt = Date()
         let message = voiceAnnouncementMessage()
+
+        if voiceRefreshVersion > 0,
+           message == lastVoiceRefreshMessage,
+           let lastVoiceRefreshAt,
+           requestedAt.timeIntervalSince(lastVoiceRefreshAt) < Self.voiceRefreshDuplicateWindowSeconds {
+            return VoiceRefreshEvent(
+                eventId: voiceRefreshVersion,
+                target: "bridge-page",
+                status: "coalesced",
+                message: lastVoiceRefreshMessage,
+                requestedAt: lastVoiceRefreshAt,
+                dashboardVersion: refreshVersion
+            )
+        }
+
+        voiceRefreshVersion &+= 1
         lastVoiceRefreshAt = requestedAt
         lastVoiceRefreshMessage = message
 
@@ -433,7 +449,7 @@ final class SmartHubBridgeServer {
         let requestedAt = ISO8601DateFormatter().string(from: event.requestedAt)
 
         return """
-        {"ok":true,"voice":"\(event.status)","target":"\(event.target)","eventId":\(event.eventId),"version":\(event.dashboardVersion),"message":"\(escape(event.message))","requestedAt":"\(requestedAt)"}
+        {"ok":true,"voice":"\(event.status)","target":"\(event.target)","eventId":\(event.eventId),"version":\(event.dashboardVersion),"message":"\(escape(event.message))","queuedAt":"\(requestedAt)","requestedAt":"\(requestedAt)"}
         """
     }
 
@@ -650,6 +666,7 @@ final class SmartHubBridgeServer {
           "eventId": \(voiceRefreshVersion),
           "status": "\(voiceRefreshVersion == 0 ? "idle" : "queued")",
           "message": "\(escape(lastVoiceRefreshMessage))",
+          "queuedAt": "\(voiceRequestedAt)",
           "requestedAt": "\(voiceRequestedAt)"
         }
         """

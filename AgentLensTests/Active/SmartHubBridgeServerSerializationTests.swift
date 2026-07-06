@@ -70,8 +70,18 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
     func test_renderPageConsumesQueuedVoiceEvents() throws {
         XCTAssertTrue(SmartHubBridgePage.html.contains("function handleVoiceEvent(voice)"))
         XCTAssertTrue(SmartHubBridgePage.html.contains("handleVoiceEvent(state.voice)"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("const pageLoadedAt = Date.now()"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("voice.queuedAt || voice.requestedAt"))
         XCTAssertTrue(SmartHubBridgePage.html.contains("new SpeechSynthesisUtterance(message)"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("utterance.onerror = () =>"))
         XCTAssertTrue(SmartHubBridgePage.html.contains("stageEl.classList.add('voice-pulse')"))
+    }
+
+    func test_renderPagePostsIdentifyVoiceOnlyOnRefreshCompletion() throws {
+        XCTAssertTrue(SmartHubBridgePage.html.contains("let lastRefreshingState = false"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("function triggerIdentifyVoice()"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("if (identifyOnRefresh && lastRefreshingState && !isRefreshing)"))
+        XCTAssertTrue(SmartHubBridgePage.html.contains("let identifyVoiceInFlight = false"))
     }
 
     func test_bridgeSecuredURLCarriesRuntimeAccessTokenWithoutDroppingExistingQuery() throws {
@@ -197,9 +207,12 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertTrue(response.contains(#""target":"bridge-page""#))
         XCTAssertTrue(response.contains(#""eventId":1"#))
         XCTAssertTrue(response.contains(#""message":"OpenBurnBar last 5 hours."#))
+        XCTAssertTrue(response.contains(#""queuedAt":"#))
         XCTAssertTrue(response.contains(#""requestedAt":"#))
         XCTAssertTrue(json.contains(#""voice": {"#))
         XCTAssertTrue(json.contains(#""eventId": 1"#))
+        XCTAssertTrue(json.contains(#""queuedAt": "#))
+        XCTAssertTrue(json.contains(#""queuedAt": ""#) == false)
         XCTAssertTrue(json.contains("OpenBurnBar last 5 hours."))
         XCTAssertTrue(json.contains("Claude Code is at 42%. Resets in 2h"))
     }
@@ -224,6 +237,27 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertTrue(event.message.contains("OpenBurnBar is waiting for provider quota data."))
         XCTAssertEqual(SmartHubBridgeServer.shared.lastVoiceRefreshMessage, event.message)
         XCTAssertEqual(SmartHubBridgeServer.shared.lastVoiceRefreshAt, Optional(event.requestedAt))
+    }
+
+    func test_voiceRefreshCoalescesDuplicateAnnouncementWithinDebounceWindow() throws {
+        SmartHubBridgeServer.shared.updateSnapshot(
+            SmartHubBridgeSnapshot(
+                totalSpend: "$0",
+                headline: "Showing last 5 hours",
+                subheadline: "Updated now",
+                providers: []
+            )
+        )
+
+        let first = SmartHubBridgeServer.shared.queueVoiceRefresh()
+        let duplicate = SmartHubBridgeServer.shared.queueVoiceRefresh()
+
+        XCTAssertEqual(first.status, "queued")
+        XCTAssertEqual(duplicate.status, "coalesced")
+        XCTAssertEqual(duplicate.eventId, first.eventId)
+        XCTAssertEqual(duplicate.message, first.message)
+        XCTAssertEqual(duplicate.requestedAt, first.requestedAt)
+        XCTAssertEqual(SmartHubBridgeServer.shared.voiceRefreshVersion, 1)
     }
 
     func test_voiceRefreshDoesNotBumpDashboardVersion() throws {

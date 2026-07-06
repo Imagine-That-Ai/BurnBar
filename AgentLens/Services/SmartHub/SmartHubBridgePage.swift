@@ -977,7 +977,12 @@ enum SmartHubBridgePage {
         let identifyOnRefresh = false;
         let audioContext = null;
         let displayMode = localStorage.getItem('obb_displayMode') || 'currency';
+        const pageLoadedAt = Date.now();
+        const PAGE_LOAD_VOICE_GRACE_MS = 1500;
+        const VOICE_EVENT_MAX_AGE_MS = 2 * 60 * 1000;
         let lastVoiceEventId = Number(sessionStorage.getItem('obb_lastVoiceEventId') || '0');
+        let lastRefreshingState = false;
+        let identifyVoiceInFlight = false;
         const bridgeToken = new URLSearchParams(window.location.search).get('bridgeToken') || '';
 
         function bridgePath(path) {
@@ -1094,12 +1099,15 @@ enum SmartHubBridgePage {
           subEl.textContent = state.subheadline || '';
           handleVoiceEvent(state.voice);
 
-          if (lastVersion >= 0 && state.version !== lastVersion) {
+          const isVersionChange = lastVersion >= 0 && state.version !== lastVersion;
+          const isRefreshing = !!state.isRefreshing;
+          if (isVersionChange) {
             if (state.display && state.display.audibleCue) playChime();
-            if (identifyOnRefresh) {
-              fetch(bridgePath('/voice-refresh'), { method: 'POST' }).catch(() => {});
+            if (identifyOnRefresh && lastRefreshingState && !isRefreshing) {
+              triggerIdentifyVoice();
             }
           }
+          lastRefreshingState = isRefreshing;
 
           if (!state.providers || state.providers.length === 0) {
             providersEl.innerHTML = '<div class="empty">No provider quota data yet</div>';
@@ -1745,14 +1753,31 @@ enum SmartHubBridgePage {
           } catch (e) { /* no audio permission yet */ }
         }
 
+        function triggerIdentifyVoice() {
+          if (identifyVoiceInFlight) return;
+          identifyVoiceInFlight = true;
+          fetch(bridgePath('/voice-refresh'), { method: 'POST' })
+            .catch(() => {})
+            .finally(() => { identifyVoiceInFlight = false; });
+        }
+
         function handleVoiceEvent(voice) {
           if (!voice) return;
           const eventId = Number(voice.eventId || 0);
           const message = String(voice.message || '').trim();
           if (!eventId || eventId <= lastVoiceEventId || !message) return;
 
-          lastVoiceEventId = eventId;
-          try { sessionStorage.setItem('obb_lastVoiceEventId', String(eventId)); } catch (_) {}
+          const queuedAt = Date.parse(String(voice.queuedAt || voice.requestedAt || ''));
+          if (Number.isFinite(queuedAt)) {
+            const predatesPage = queuedAt < pageLoadedAt - PAGE_LOAD_VOICE_GRACE_MS;
+            const expired = Date.now() - queuedAt > VOICE_EVENT_MAX_AGE_MS;
+            if (predatesPage || expired) {
+              markVoiceEventConsumed(eventId);
+              return;
+            }
+          }
+
+          markVoiceEventConsumed(eventId);
           subEl.textContent = message;
 
           stageEl.classList.remove('voice-pulse');
@@ -1760,7 +1785,15 @@ enum SmartHubBridgePage {
           stageEl.classList.add('voice-pulse');
           window.setTimeout(() => stageEl.classList.remove('voice-pulse'), 1300);
 
-          let spoke = false;
+          speakVoiceMessage(message);
+        }
+
+        function markVoiceEventConsumed(eventId) {
+          lastVoiceEventId = Math.max(lastVoiceEventId, eventId);
+          try { sessionStorage.setItem('obb_lastVoiceEventId', String(lastVoiceEventId)); } catch (_) {}
+        }
+
+        function speakVoiceMessage(message) {
           try {
             if ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window) {
               window.speechSynthesis.cancel();
@@ -1768,13 +1801,34 @@ enum SmartHubBridgePage {
               utterance.rate = 0.95;
               utterance.pitch = 1.0;
               utterance.volume = 1.0;
+              let started = false;
+              let fallbackPlayed = false;
+              const playFallback = () => {
+                if (fallbackPlayed) return;
+                fallbackPlayed = true;
+                playChime();
+              };
+              const fallbackTimer = window.setTimeout(() => {
+                if (!started) playFallback();
+              }, 1200);
+              utterance.onstart = () => {
+                started = true;
+                window.clearTimeout(fallbackTimer);
+              };
+              utterance.onerror = () => {
+                window.clearTimeout(fallbackTimer);
+                playFallback();
+              };
+              utterance.onend = () => {
+                window.clearTimeout(fallbackTimer);
+              };
               window.speechSynthesis.speak(utterance);
-              spoke = true;
+              return;
             }
           } catch (_) {
-            spoke = false;
+            // Fall through to chime fallback.
           }
-          if (!spoke) playChime();
+          playChime();
         }
 
         function renderPeriodPicker(state) {
