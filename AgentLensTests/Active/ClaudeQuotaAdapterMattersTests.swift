@@ -1,7 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
-@testable import OpenBurnBarCore
 
 /// Behavior tests for the cross-account statusline-reuse gate in
 /// `ClaudeQuotaAdapter`.
