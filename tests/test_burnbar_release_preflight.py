@@ -176,10 +176,13 @@ def test_release_build_and_release_job_has_packaging_headroom():
     build_end = body.index("  smoke-test:")
     build_job = body[build_start:build_end]
 
-    assert "timeout-minutes: 360" in build_job
-    assert "v1.0.16 proved those gates can legitimately run past 180 minutes" in build_job
+    assert "timeout-minutes: 300" in build_job
+    assert "Cold-runner worst case stays well under five hours" in build_job
     assert "Build signed Android release bundle" in build_job
     assert "Notarize and staple DMG" in build_job
+    # Codex P1 on PR #1281: the fail-hard signing-secret check must live in the
+    # environment-bound packaging job, where environment-scoped secrets resolve.
+    assert "Validate strict release secrets" in build_job
 
 
 def test_release_workflow_keeps_quiet_xcode_build_alive():
@@ -229,19 +232,40 @@ def test_release_workflow_guards_owner_approved_validation_bypass():
     build_end = body.index("  smoke-test:")
     build_job = body[build_start:build_end]
 
-    for step_name in (
-        "- name: Run Swift tests",
-        "- name: Run OpenBurnBar release-critical app tests",
-        "- name: Verify SQLCipher codec in Release configuration",
-        "- name: Run retrieval replay evals",
-        "- name: Run Android unit tests",
+    # The slow validation gates run in parallel lane jobs; every gated step
+    # still honors the owner-approved bypass input, and none of them remain in
+    # the packaging job.
+    for job_header, next_job_header, step_name in (
+        ("  release-swift-gate:", "  release-app-gate:", "- name: Run Swift tests"),
+        (
+            "  release-swift-gate:",
+            "  release-app-gate:",
+            "- name: Run retrieval replay evals",
+        ),
+        (
+            "  release-app-gate:",
+            "  release-sqlcipher-gate:",
+            "- name: Run OpenBurnBar release-critical app tests",
+        ),
+        (
+            "  release-sqlcipher-gate:",
+            "  release-mobile-gate:",
+            "- name: Verify SQLCipher codec in Release configuration",
+        ),
+        (
+            "  release-android-gate:",
+            "  build-and-release:",
+            "- name: Run Android unit tests",
+        ),
     ):
-        step_start = build_job.index(step_name)
-        step_end = build_job.find("\n      - name:", step_start + 1)
+        gate_job = body[body.index(job_header) : body.index(next_job_header)]
+        step_start = gate_job.index(step_name)
+        step_end = gate_job.find("\n      - name:", step_start + 1)
         if step_end == -1:
-            step_end = len(build_job)
-        step = build_job[step_start:step_end]
+            step_end = len(gate_job)
+        step = gate_job[step_start:step_end]
         assert "inputs.run_release_validation_gates" in step
+        assert step_name not in build_job
 
     packaging_start = build_job.index("- name: Build signed Android release bundle")
     packaging_step_end = build_job.find("\n      - name:", packaging_start + 1)
@@ -254,7 +278,7 @@ def test_release_workflow_uses_bounded_release_critical_mobile_gate():
     filters = (ROOT / "scripts/lib/openburnbar-release-mobile-test-filters.sh").read_text(encoding="utf-8")
 
     step_start = body.index("- name: Run OpenBurnBar mobile unit tests")
-    step_end = body.index("- name: Record owner-approved mobile unit test bypass")
+    step_end = body.index("  release-android-gate:")
     mobile_step = body[step_start:step_end]
 
     assert "timeout-minutes: 75" in mobile_step
@@ -281,10 +305,12 @@ def test_release_workflow_bounds_sqlcipher_release_codec_gate():
     body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
     step_start = body.index("- name: Verify SQLCipher codec in Release configuration")
-    step_end = body.index("- name: Run OpenBurnBar mobile unit tests")
+    step_end = body.index("  release-mobile-gate:")
     sqlcipher_step = body[step_start:step_end]
 
-    assert "timeout-minutes: 60" in sqlcipher_step
+    # 75 minutes: the gate legitimately ran 55.9 of its previous 60-minute cap
+    # on a cold runner (v1.0.29); the cap is a hang guard, not a quality gate.
+    assert "timeout-minutes: 75" in sqlcipher_step
     assert "OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh" in sqlcipher_step
 
 
@@ -323,13 +349,33 @@ def test_release_workflow_parallelizes_independent_publish_gates():
     assert "Inject extension Sentry DSN" in build_job
     assert "Build extension" in build_job
 
+    for lane_job in (
+        "  release-preflight:",
+        "  release-swift-gate:",
+        "  release-app-gate:",
+        "  release-sqlcipher-gate:",
+        "  release-mobile-gate:",
+        "  release-android-gate:",
+    ):
+        assert lane_job in body
+
     publish_start = body.index("  publish:")
     verify_start = body.index("  verify-live-update-feed:")
     publish_job = body[publish_start:verify_start]
-    assert (
-        "needs: [build-and-release, smoke-test, release-functions-gate, "
-        "release-extension-gate, release-supply-chain-gate]"
-    ) in publish_job
+    for lane in (
+        "release-preflight",
+        "release-swift-gate",
+        "release-app-gate",
+        "release-sqlcipher-gate",
+        "release-mobile-gate",
+        "release-android-gate",
+        "release-functions-gate",
+        "release-extension-gate",
+        "release-supply-chain-gate",
+        "build-and-release",
+        "smoke-test",
+    ):
+        assert f"      - {lane}\n" in publish_job
 
 
 def test_app_test_wrapper_supports_multiple_normalized_filters():
@@ -409,7 +455,10 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     assert 'git merge-base --is-ancestor "$release_commit" origin/main' in body
     assert 'git checkout --detach "$RELEASE_COMMIT"' in body
     assert 'echo "release_commit=$release_commit"' in body
-    assert "RELEASE_REF: ${{ steps.version.outputs.tag_ref }}" in body
+    assert "RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}" in body
+    assert (
+        "RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}" in body
+    )
     assert '"tag": os.environ["RELEASE_TAG"]' in body
     assert '"commit": release_commit' in body
     assert '"ref": os.environ["RELEASE_REF"]' in body

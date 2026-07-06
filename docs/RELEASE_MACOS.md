@@ -223,10 +223,12 @@ release job and blocks `publish` through `needs`:
 
 - `release-preflight` resolves and validates the tag once (SemVer grammar,
   dispatch-ref binding, origin/main reachability), scans the publishable tree
-  for secrets, runs the BurnBar provenance/product preflights, validates any
-  bypass reasons, and checks strict secret presence. Every other lane consumes
-  its `tag_name`/`tag_ref`/`release_commit`/`version`/`is_prerelease` outputs
-  and re-proves `HEAD == release_commit` after its own checkout.
+  for secrets, runs the BurnBar provenance/product preflights, and validates
+  any bypass reasons. Every other lane consumes its
+  `tag_name`/`tag_ref`/`release_commit`/`version`/`is_prerelease` outputs
+  and re-proves `HEAD == release_commit` after its own checkout. The strict
+  signing-secret presence check runs inside `build-and-release` instead,
+  because environment-scoped secrets only resolve in environment-bound jobs.
 - `release-swift-gate` (Swift package tests + retrieval replay evals),
   `release-app-gate` (release-critical app XCTest slice), `release-sqlcipher-gate`
   (Release-configuration codec proof), `release-mobile-gate` (iOS simulator
