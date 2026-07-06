@@ -138,19 +138,60 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   # changes that repeatedly broke fixed-coordinate sidebar clicks (the old
   # x=120 fallback clicked an empty content area after the TopTabbar
   # migration, which is why packaged runs had no route.navigation samples).
-  xdotool windowactivate "$window_id"
-  sleep 0.5
+  xdotool windowactivate --sync "$window_id" 2>/dev/null || xdotool windowactivate "$window_id"
+  xdotool windowfocus --sync "$window_id" 2>/dev/null || true
+  sleep 2
+
+  samples_file="$out_dir/runtime-perf-samples.jsonl"
+  has_route_sample() {
+    [[ -f "$samples_file" ]] && grep -q "packaged-ui-route:${1}" "$samples_file"
+  }
+  palette_navigate() {
+    local label="$1"
+    xdotool key --clearmodifiers ctrl+k
+    sleep 0.6
+    xdotool type --clearmodifiers --delay 40 "$label"
+    sleep 0.5
+    xdotool key --clearmodifiers Return
+    sleep 0.7
+  }
+
+  # Keyboard-focus bootstrap: WebKitGTK may not deliver synthetic key events
+  # to the page until the webview has received a pointer event, so probe the
+  # first route and escalate focus strategies until its route.navigation
+  # sample lands in the runtime perf JSONL.
+  eval "$(xdotool getwindowgeometry --shell "$window_id")"
+  for strategy in none corner center; do
+    case "$strategy" in
+      corner)
+        xdotool mousemove --window "$window_id" 8 $((HEIGHT - 8)) click 1
+        sleep 0.4
+        ;;
+      center)
+        xdotool mousemove --window "$window_id" $((WIDTH / 2)) $((HEIGHT / 2)) click 1
+        sleep 0.4
+        xdotool key --clearmodifiers Escape
+        sleep 0.3
+        ;;
+    esac
+    palette_navigate "${route_labels[0]}"
+    if has_route_sample "${route_names[0]}"; then
+      echo "palette focus strategy: $strategy"
+      break
+    fi
+  done
+  if ! has_route_sample "${route_names[0]}"; then
+    scrot "$out_dir/palette-focus-failure.png"
+    echo "palette navigation never produced a route.navigation sample (see palette-focus-failure.png)" >&2
+    exit 1
+  fi
+
   for index in "${!route_names[@]}"; do
     route="${route_names[$index]}"
     label="${route_labels[$index]}"
     nav_method="palette"
 
-    xdotool key --clearmodifiers ctrl+k
-    sleep 0.5
-    xdotool type --clearmodifiers --delay 40 "$label"
-    sleep 0.5
-    xdotool key --clearmodifiers Return
-    sleep 0.6
+    palette_navigate "$label"
 
     screenshot="$out_dir/screenshot-route-${route}.png"
     xwininfo_route="$out_dir/window-route-${route}-xwininfo.txt"

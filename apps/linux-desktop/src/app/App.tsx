@@ -23,22 +23,28 @@ export function App() {
     return () => window.removeEventListener('hashchange', syncRouteFromHash);
   }, [syncRouteFromHash]);
 
+  // Window-level so the shortcut keeps working after the palette closes and
+  // focus falls back to document.body (a React onKeyDown on .shell only sees
+  // events dispatched from descendants). Same idiom as
+  // usePrimarySectionShortcuts (ctrl/cmd+1..7).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== 'k') return;
+      event.preventDefault();
+      setCommandPaletteOpen(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(() => {
     document.documentElement.dataset.skin = skin;
     document.documentElement.style.setProperty('--ds-skin', skin);
   }, [skin]);
 
   return (
-    <div
-      className="shell"
-      onKeyDown={(event) => {
-        const isModK =
-          (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k';
-        if (!isModK) return;
-        event.preventDefault();
-        setCommandPaletteOpen(true);
-      }}
-    >
+    <div className="shell">
       <div className="shell-key-capture" tabIndex={0} aria-hidden="true" />
       <a
         className="skip-link"
