@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
@@ -24,6 +24,10 @@ export function ChatSurface() {
   const backend = useChatStore((s) => s.backend);
   const modelLabel = useChatStore((s) => s.modelLabel);
   const streaming = useChatStore((s) => s.streaming);
+  const streamPhase = useChatStore((s) => s.streamPhase);
+  const streamError = useChatStore((s) => s.streamError);
+  const gatewayStatus = useChatStore((s) => s.gatewayStatus);
+  const gatewayBaseURL = useChatStore((s) => s.gatewayBaseURL);
   const warnings = useChatStore((s) => s.warnings);
   const sharedFeaturesAvailable = useChatStore((s) => s.sharedFeaturesAvailable);
   const load = useChatStore((s) => s.load);
@@ -32,16 +36,35 @@ export function ChatSurface() {
   const loadMoreThreads = useChatStore((s) => s.loadMoreThreads);
   const setBackend = useChatStore((s) => s.setBackend);
   const startNewChat = useChatStore((s) => s.startNewChat);
+  const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
+  const [streamAnnouncement, setStreamAnnouncement] = useState({ text: '', count: 0 });
 
   useLaneLoad(load);
+
+  useEffect(() => {
+    if (streamPhase === 'done') {
+      setStreamAnnouncement((previous) => ({ text: 'Response complete.', count: previous.count + 1 }));
+    } else if (streamPhase === 'aborted') {
+      setStreamAnnouncement((previous) => ({ text: 'Stream stopped.', count: previous.count + 1 }));
+    }
+  }, [streamPhase]);
 
   const offline = !fixtureMode && !bridge;
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
   const visibleThreads = threads.slice(0, visibleThreadCount);
   const hasMoreThreads = threads.length > visibleThreadCount;
   const selectedThread = threads.find((t) => t.id === selectedThreadId) ?? null;
-  const gatewayHint = config?.paths.socketPath ? `gateway ${config.paths.socketPath}` : null;
+  const gatewayHint = gatewayBaseURL ? `gateway ${gatewayBaseURL}` : null;
+  const liveComposerDisabled = !fixtureMode && gatewayStatus !== 'reachable';
+  const liveComposerDisabledReason =
+    gatewayStatus === 'disabled'
+      ? 'Gateway chat is disabled in daemon health.'
+      : gatewayStatus === 'unreachable'
+        ? 'Gateway health check failed.'
+        : gatewayStatus === 'unknown'
+          ? 'Checking gateway health…'
+          : '';
 
   const panelProps = {
     threads: visibleThreads,
@@ -63,6 +86,8 @@ export function ChatSurface() {
     warnings,
     sharedFeaturesAvailable,
     streaming,
+    streamError,
+    onSendMessage: (text: string) => void sendMessage(text),
     onStopStreaming: stopStreaming
   };
 
@@ -125,9 +150,9 @@ export function ChatSurface() {
         selectedId={null}
         hasMore={false}
         selectedThread={null}
-        messages={[]}
-        composerDisabled
-        composerDisabledReason="Select or start a thread to compose."
+        messages={messages}
+        composerDisabled={liveComposerDisabled}
+        composerDisabledReason={liveComposerDisabledReason}
         mainFallback={<p className="chat-empty">No conversations match &lsquo;{query.trim()}&rsquo;.</p>}
       />
     );
@@ -139,9 +164,9 @@ export function ChatSurface() {
         selectedId={null}
         hasMore={false}
         selectedThread={null}
-        messages={[]}
-        composerDisabled
-        composerDisabledReason="Start a conversation when Hermes dispatch is available."
+        messages={messages}
+        composerDisabled={liveComposerDisabled}
+        composerDisabledReason={liveComposerDisabledReason}
         mainFallback={<p className="chat-empty">No conversations yet</p>}
       />
     );
@@ -149,8 +174,8 @@ export function ChatSurface() {
     body = (
       <ChatWorkspacePanel
         {...panelProps}
-        composerDisabled
-        composerDisabledReason="Live send and streaming are not wired on Linux v1 — browse indexed sessions."
+        composerDisabled={liveComposerDisabled}
+        composerDisabledReason={liveComposerDisabledReason}
         mainFallback={<p className="chat-empty">Select a thread from the rail.</p>}
       />
     );
@@ -161,6 +186,9 @@ export function ChatSurface() {
       <p className="muted chat-provenance">Source: {provenance}</p>
       <p className="sr-only" aria-live="polite">
         {loading ? 'Loading threads' : `${threads.length} thread${threads.length === 1 ? '' : 's'}`}
+      </p>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {streamAnnouncement.text ? `${streamAnnouncement.text} ${streamAnnouncement.count}` : ''}
       </p>
       {body}
     </div>

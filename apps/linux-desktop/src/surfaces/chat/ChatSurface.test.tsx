@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
 import type { LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
 import { useChatStore } from '../../state/chatStore.js';
@@ -30,6 +30,7 @@ function mockBridge(handlers: {
     usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
     missionList: async () => ({ missions: [], pendingApprovals: [] }),
     missionApprovalDecision: async () => {},
+    missionCreate: async () => null,
     configSnapshot: async () => ({
       paths: {
         supportDir: '/tmp',
@@ -44,6 +45,33 @@ function mockBridge(handlers: {
     dbStatus: async () => ({ sqlcipherOk: true, migrationVersion: 0, sizeBytes: 0, walMode: true }),
     projectList: async () => [],
     memoryBoundaries: async () => [],
+    memoryReviewInbox: async () => ({ items: [], auditEvents: [] }),
+    memoryReviewDecision: async () => {},
+    databaseWorkspaceStatus: async () => ({
+      sourceLabel: 'test',
+      projectID: 'test',
+      artifactCount: 0,
+      chunkCount: 0,
+      symbolCount: 0,
+      referenceCount: 0,
+      callEdgeCount: 0,
+      rejectedCount: 0,
+      storageByteCount: 0,
+      storageBudgetBytes: 0,
+      storageWithinBudget: true,
+      productionReady: false,
+      productionReadinessReasons: [],
+      parserAvailable: false,
+      databaseEncrypted: false,
+      hostedCodeToolsEnabled: false,
+      semanticAvailable: false,
+      files: [],
+      languages: [],
+      diagnostics: [],
+      degradedReasons: []
+    }),
+    databaseIndexProject: async () => ({ projectID: 'test', projectRoot: '/tmp', indexedFiles: 0 }),
+    databaseWatchProject: async () => ({ projectID: 'test', projectRoot: '/tmp', indexedFiles: 0 }),
     accountStatus: async () => ({ signedIn: false, trustClass: 'linux-lower-trust', syncState: 'local-only' }),
     appVersionInfo: async () => ({
       shellVersion: '0',
@@ -52,7 +80,10 @@ function mockBridge(handlers: {
       updateCheck: 'skipped'
     }),
     exportDiagnostics: async () => ({ path: '/tmp/diag.zip' }),
-    sessionEnv: async () => ({})
+    sessionEnv: async () => ({}),
+    gatewayAuthToken: async () => null,
+    mediaStatus: async () => ({ capabilityAvailable: false, pairedDevices: [] }),
+    integrationsStatus: async () => ({ integrations: [] })
   };
   return bridge;
 }
@@ -70,8 +101,13 @@ const resetChatStore = () => {
     query: '',
     visibleThreadCount: 40,
     backend: 'hermes',
-    modelLabel: 'hermes-gateway',
+    modelLabel: 'hermes',
     streaming: false,
+    streamPhase: 'idle',
+    streamError: null,
+    gatewayStatus: 'unknown',
+    gatewayBaseURL: null,
+    activeAbortController: null,
     warnings: [],
     sharedFeaturesAvailable: true
   });
@@ -79,8 +115,9 @@ const resetChatStore = () => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   resetChatStore();
-  useShellStore.setState({ bridge: null, bridgeReady: true, fixtureMode: false });
+  useShellStore.setState({ bridge: null, bridgeReady: true, fixtureMode: false, health: null });
 });
 
 describe('ChatSurface', () => {
@@ -158,6 +195,36 @@ describe('ChatSurface', () => {
     expect(screen.getByRole('button', { name: /Stop generating/i })).toBeTruthy();
   });
 
+  it('announces stream completion and abort transitions politely', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null, bridgeReady: true });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+
+    act(() => {
+      useChatStore.setState({ streamPhase: 'streaming' });
+    });
+    act(() => {
+      useChatStore.setState({ streamPhase: 'done' });
+    });
+    await waitFor(() => expect(screen.getByText('Response complete. 1')).toBeTruthy());
+
+    act(() => {
+      useChatStore.setState({ streamPhase: 'streaming' });
+    });
+    act(() => {
+      useChatStore.setState({ streamPhase: 'done' });
+    });
+    await waitFor(() => expect(screen.getByText('Response complete. 2')).toBeTruthy());
+
+    act(() => {
+      useChatStore.setState({ streamPhase: 'streaming' });
+    });
+    act(() => {
+      useChatStore.setState({ streamPhase: 'aborted' });
+    });
+    await waitFor(() => expect(screen.getByText('Stream stopped. 3')).toBeTruthy());
+  });
+
   it('uses backend-specific composer placeholder for Codex', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({
@@ -172,6 +239,70 @@ describe('ChatSurface', () => {
     });
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/Ask Codex/i)).toBeTruthy();
+    });
+  });
+
+
+  it('streams a scripted fixture response from the composer', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null, bridgeReady: true });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/Message composer/i), { target: { value: 'hello fixture' } });
+    fireEvent.keyDown(screen.getByLabelText(/Message composer/i), { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByText(/Fixture stream online/i)).toBeTruthy();
+    });
+    // The tool_call frame arrives one fixture-stream tick after the first
+    // delta, so it must be awaited too or the assertion races the stream.
+    await waitFor(() => {
+      expect(screen.getByText(/workspace.read/i)).toBeTruthy();
+      expect(screen.getAllByTitle(/Approval flows ride agent runs/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('disables composer when gateway health is unreachable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('connection refused');
+      })
+    );
+    useShellStore.setState({
+      bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) }),
+      fixtureMode: false,
+      bridgeReady: true,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByText(/Gateway health check failed/i)).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Send message/i })).toHaveProperty('disabled', true);
+  });
+
+  it('renders the Linux 503 unimplemented gateway state honestly', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+        .mockResolvedValueOnce(new Response('{"error":{"message":"chat completions unimplemented"}}', { status: 503 }))
+    );
+    useShellStore.setState({
+      bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) }),
+      fixtureMode: false,
+      bridgeReady: true,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByLabelText(/Message composer/i)).toBeTruthy());
+    const composer = screen.getByLabelText(/Message composer/i);
+    fireEvent.change(composer, { target: { value: 'hello live gateway' } });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Send message/i })).toHaveProperty('disabled', false);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Send message/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Gateway chat is not available in this Linux daemon build yet/i)).toBeTruthy();
     });
   });
 });

@@ -57,10 +57,10 @@ function ToolCard({ message }: { message: ChatMessage }) {
       <p className="muted chat-tool-card-body">{message.text}</p>
       {state === 'proposed' ? (
         <div className="chat-tool-card-actions">
-          <button type="button" className="primary" disabled title="Tool approval RPC not wired on Linux v1">
+          <button type="button" className="primary" disabled title="Approval flows ride agent runs, not gateway chat.">
             Approve
           </button>
-          <button type="button" className="ghost" disabled>
+          <button type="button" className="ghost" disabled title="Approval flows ride agent runs, not gateway chat.">
             Deny
           </button>
         </div>
@@ -83,9 +83,10 @@ type MessageStreamProps = {
   loading: boolean;
   warnings: ChatWarningBanner[];
   sharedFeaturesAvailable: boolean;
+  streamError: string | null;
 };
 
-export function MessageStream({ messages, loading, warnings, sharedFeaturesAvailable }: MessageStreamProps) {
+export function MessageStream({ messages, loading, warnings, sharedFeaturesAvailable, streamError }: MessageStreamProps) {
   if (loading) {
     return (
       <div className="chat-stream-loading" aria-busy="true">
@@ -98,6 +99,17 @@ export function MessageStream({ messages, loading, warnings, sharedFeaturesAvail
     <div className="chat-stream" role="log" aria-live="polite" aria-relevant="additions">
       <div className="chat-stream-column">
         <WarningBanners warnings={warnings} sharedFeaturesAvailable={sharedFeaturesAvailable} />
+        {streamError ? (
+          <div className="chat-warning-banner" role="alert">
+            <span className="chat-warning-icon" aria-hidden="true">
+              !
+            </span>
+            <div>
+              <p className="chat-warning-title">Chat stream stopped</p>
+              <p className="chat-warning-message">{streamError}</p>
+            </div>
+          </div>
+        ) : null}
         {messages.map((m) => {
           if (m.role === 'tool') return <ToolCard key={m.id} message={m} />;
           if (m.role === 'thinking') return <ThinkingBlock key={m.id} message={m} />;

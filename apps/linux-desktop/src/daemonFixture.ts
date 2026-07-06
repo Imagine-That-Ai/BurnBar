@@ -9,8 +9,18 @@ import type {
   DbStatus,
   ProjectEntry,
   MemoryBoundary,
-  AccountStatus
+  AccountStatus,
+  MercuryMediaStatus,
+  IntegrationsStatus,
+  NotificationConfig,
+  NotificationHealth,
+  ProxyRouteLogEntry,
+  MemoryReviewInbox,
+  DatabaseWorkspaceStatus,
+  DatabaseIndexActionResult,
+  MembershipStatus
 } from './tauriBridge.js';
+import { ENTITLEMENT_DOC_IDS } from '@openburnbar/entitlements';
 
 export type DaemonRouteFixture = {
   route: string;
@@ -54,6 +64,61 @@ export function fixtureDaemonHealth(socketPath: string): DaemonHealth {
   };
 }
 
+export function fixtureIntegrationsStatus(): IntegrationsStatus {
+  const kinds = [
+    {
+      kind: 'smart_hub_bridge' as const,
+      label: 'SmartHub Bridge',
+      dependency: 'Linux SmartHub bridge on loopback HTTP',
+      configLocation: 'Configure via openburnbar-cli devices iot smarthub status'
+    },
+    {
+      kind: 'google_cast' as const,
+      label: 'Google Cast',
+      dependency: 'avahi-daemon + avahi-utils for _googlecast._tcp discovery',
+      configLocation: 'Configure via openburnbar-cli devices iot cast status'
+    },
+    {
+      kind: 'home_assistant' as const,
+      label: 'Home Assistant',
+      dependency: 'OPENBURNBAR_HOME_ASSISTANT_URL and daemon-held Home Assistant token',
+      configLocation: 'Configure via openburnbar-cli devices iot homeassistant status'
+    },
+    {
+      kind: 'pixel_clock' as const,
+      label: 'PixelClock',
+      dependency: 'AWTRIX HTTP endpoint, runtime agent, or _http._tcp mDNS',
+      configLocation: 'Configure via openburnbar-cli devices pixel-clock ...'
+    },
+    {
+      kind: 'awtrix_http' as const,
+      label: 'AWTRIX HTTP',
+      dependency: 'avahi-daemon + avahi-utils for _http._tcp discovery',
+      configLocation: 'Configure via openburnbar-cli devices discover awtrix'
+    }
+  ];
+  const stateDetails = {
+    connected: 'Live control path is reachable and the daemon has current evidence.',
+    configured: 'Discovery or configuration exists, but live control is not proven in this snapshot.',
+    unavailable: 'Install avahi-utils for mDNS browse or provide the daemon-side endpoint before control.',
+    disabled: 'Integration is intentionally disabled by daemon config.'
+  } as const;
+  return {
+    integrations: kinds.flatMap((kind) =>
+      (['connected', 'configured', 'unavailable', 'disabled'] as const).map((state) => ({
+        ...kind,
+        label: `${kind.label} ${state}`,
+        state,
+        detail:
+          state === 'unavailable' && kind.kind === 'home_assistant'
+            ? 'Set OPENBURNBAR_HOME_ASSISTANT_URL for authenticated control.'
+            : stateDetails[state],
+        docsHref: 'docs/SMART_DISPLAY_DEVICE_QA.md'
+      }))
+    )
+  };
+}
+
 export function isDaemonFixtureMode(): boolean {
   if (typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
@@ -63,6 +128,36 @@ export function isDaemonFixtureMode(): boolean {
   } catch {
     return false;
   }
+}
+
+export function fixtureMercuryMediaStatus(): MercuryMediaStatus {
+  const now = Date.now();
+  return {
+    capabilityAvailable: true,
+    pairedDevices: [
+      {
+        id: 'macbook-pro-relay',
+        name: 'Alberto MacBook Pro',
+        platform: 'macos',
+        isOnline: true,
+        lastSeenAt: new Date(now - 45_000).toISOString(),
+        capabilities: ['mirror.host', 'file.send', 'file.receive', 'call.receive']
+      },
+      {
+        id: 'studio-mac-relay',
+        name: 'Studio Mac',
+        platform: 'macos',
+        isOnline: false,
+        lastSeenAt: new Date(now - 12 * 60_000).toISOString(),
+        capabilities: ['mirror.host', 'file.send', 'file.receive', 'call.receive']
+      }
+    ],
+    activeSession: {
+      kind: 'screen-share',
+      state: 'active',
+      peer: 'Alberto MacBook Pro'
+    }
+  };
 }
 
 export function setDaemonFixtureMode(enabled: boolean): void {
@@ -261,6 +356,113 @@ export function fixtureProviderCatalog(): ProviderCatalog {
   ] as ProviderCatalog;
 }
 
+export function fixtureMemoryReviewInbox(): MemoryReviewInbox {
+  return {
+    items: [
+      {
+        id: 'mem-review-1',
+        body: 'Prefer Rust for daemon IPC handlers; keep Swift types as the contract source of truth.',
+        kind: 'preference',
+        confidence: 0.86,
+        sourceLabel: 'Chat / Hermes / 2h ago',
+        status: 'pending',
+        canApprove: true
+      },
+      {
+        id: 'mem-review-2',
+        body: 'BurnBar Linux shell uses AF_UNIX to the packaged daemon; never mock live quota data in routes.',
+        kind: 'fact',
+        confidence: 0.92,
+        sourceLabel: 'Chat / Codex / Yesterday',
+        status: 'pending',
+        canApprove: true
+      },
+      {
+        id: 'mem-review-3',
+        body: 'Design tokens live in tokens.css; lane CSS stays component-local on Linux.',
+        kind: 'fact',
+        confidence: 0.78,
+        sourceLabel: 'Chat / Hermes / 3d ago',
+        status: 'approved',
+        canApprove: true
+      }
+    ],
+    auditEvents: [
+      {
+        id: 'audit-fixture-1',
+        action: 'remember',
+        actor: 'fixture',
+        at: new Date(Date.now() - 3_600_000).toISOString(),
+        subjectId: 'mem-review-3'
+      }
+    ]
+  };
+}
+
+export function fixtureDatabaseWorkspaceStatus(): DatabaseWorkspaceStatus {
+  return {
+    sourceLabel: 'fixture transcript',
+    projectID: 'fixture-project',
+    projectRoot: '/home/alberto/BurnBar',
+    indexedAt: new Date(Date.now() - 600_000).toISOString(),
+    artifactCount: 42,
+    chunkCount: 128,
+    symbolCount: 314,
+    referenceCount: 271,
+    callEdgeCount: 89,
+    rejectedCount: 2,
+    storageByteCount: 4_200_000,
+    storageBudgetBytes: 250_000_000,
+    storageWithinBudget: true,
+    productionReady: true,
+    productionReadinessReasons: [],
+    parserAvailable: true,
+    databaseEncrypted: true,
+    hostedCodeToolsEnabled: false,
+    semanticAvailable: false,
+    files: [
+      { id: 'AgentLens/App.swift', filePath: 'AgentLens/App.swift', lang: 'swift', symbolCount: 12 },
+      { id: 'apps/linux-desktop/src/app/App.tsx', filePath: 'apps/linux-desktop/src/app/App.tsx', lang: 'tsx', symbolCount: 8 }
+    ],
+    languages: [
+      { id: 'swift', lang: 'swift', fileCount: 21, byteCount: 2_100_000 },
+      { id: 'tsx', lang: 'tsx', fileCount: 14, byteCount: 620_000 }
+    ],
+    diagnostics: [
+      {
+        id: 'diag-fixture-1',
+        filePath: 'apps/linux-desktop/src/app/App.tsx',
+        tool: 'tsc',
+        cachedAt: new Date(Date.now() - 300_000).toISOString()
+      }
+    ],
+    ops: {
+      schemaVersion: 54,
+      databaseFileBytes: 12_000_000,
+      totalArtifactCount: 42,
+      totalSymbolCount: 314,
+      totalStorageByteCount: 4_200_000,
+      agentMemoryCount: 3,
+      pendingCloudForgetCount: 0,
+      projectCount: 1
+    },
+    degradedReasons: []
+  };
+}
+
+export function fixtureDatabaseIndexAction(kind: 'index' | 'watch'): DatabaseIndexActionResult {
+  return {
+    projectID: 'fixture-project',
+    projectRoot: '/home/alberto/BurnBar',
+    indexedFiles: 42,
+    chunkCount: kind === 'index' ? 128 : undefined,
+    symbolCount: kind === 'index' ? 314 : undefined,
+    watching: kind === 'watch' ? true : undefined,
+    pollIntervalSeconds: kind === 'watch' ? 2 : undefined,
+    auditHash: `fixture-${kind}-audit`
+  };
+}
+
 // ─────────────────────────── P03: session list fixture ────────────────────────────
 
 export function fixtureSessionList(): SessionListResult {
@@ -340,7 +542,64 @@ export function fixtureConfigSnapshot(): ConfigSnapshot {
     },
     secretServiceStatus: 'locked',
     telemetryEnabled: false,
-    privacyOptIn: false
+    privacyOptIn: false,
+    routerMode: 'providerFamilyFailover',
+    providers: [
+      {
+        providerID: 'anthropic',
+        isEnabled: true,
+        baseURL: 'https://api.anthropic.com',
+        preferredModelIDs: ['claude-opus-4-8', 'claude-sonnet-4-6'],
+        disabledAdvertisedModelIDs: [],
+        preferredCredentialSlotID: 'anthropic-team',
+        credentialSlots: [
+          {
+            slotID: 'anthropic-team',
+            label: 'Team workspace',
+            isEnabled: true,
+            status: 'ready',
+            lastQuotaRemainingPercent: 72,
+            authMethodID: 'api_key',
+            updatedAt: new Date(Date.now() - 600_000).toISOString()
+          }
+        ],
+        modelVariants: [
+          {
+            variantID: 'claude-opus-4-8-xhigh',
+            label: 'XHigh',
+            baseModelID: 'claude-opus-4-8',
+            thinkingLevel: 'xhigh',
+            maxOutputTokens: 8192
+          }
+        ],
+        modelAliases: [
+          {
+            aliasID: 'openburnbar/primary',
+            baseModelID: 'claude-opus-4-8',
+            displayName: 'Primary reasoning',
+            hidesBaseModel: false
+          }
+        ],
+        modelDisplayOverrides: [
+          { modelID: 'claude-opus-4-8', displayName: 'Claude Opus routed' }
+        ],
+        customModels: [
+          { modelID: 'claude-latest-preview', displayName: 'Claude latest preview' }
+        ]
+      },
+      {
+        providerID: 'openai',
+        isEnabled: false,
+        baseURL: 'https://api.openai.com/v1',
+        preferredModelIDs: ['gpt-5'],
+        disabledAdvertisedModelIDs: ['gpt-4.1'],
+        credentialSlots: [],
+        modelVariants: [],
+        modelAliases: [],
+        modelDisplayOverrides: [],
+        customModels: []
+      }
+    ]
   };
 }
 
@@ -374,4 +633,103 @@ export function fixtureAccountStatus(): AccountStatus {
     syncState: 'active',
     lastSyncAt: new Date(Date.now() - 1_800_000).toISOString()
   };
+}
+
+export function fixtureProxyRouteLog(): ProxyRouteLogEntry[] {
+  return [
+    {
+      id: 'fx-route-1',
+      occurredAt: new Date(Date.now() - 300_000).toISOString(),
+      endpoint: '/v1/messages',
+      clientModelSlug: 'openburnbar/primary',
+      routingModelSlug: 'claude-opus-4-8',
+      upstreamModelSlug: 'claude-opus-4-8',
+      providerName: 'Anthropic',
+      accountLabel: 'Team workspace',
+      finalStatus: 'exact',
+      rewriteKind: 'model_alias',
+      exactModelInvariant: 'passed',
+      streamed: true,
+      httpStatus: 200
+    }
+  ];
+}
+
+export function fixtureNotificationConfig(): NotificationConfig {
+  return {
+    defaultSnoozeMinutes: 30,
+    nudgeHoursLocal: [9, 13, 17],
+    local: { isEnabled: true, quietHoursStart: 22, quietHoursEnd: 7 },
+    telegram: {
+      isEnabled: true,
+      botTokenConfigured: true,
+      botToken: null,
+      botTokenHint: '••••7391',
+      chatID: '123456',
+      supportedCommands: ['help', 'pending', 'followups', 'latest', 'status']
+    },
+    calendar: { isEnabled: false, defaultDurationMinutes: 30, defaultCalendarName: 'OpenBurnBar' }
+  };
+}
+
+export function fixtureNotificationHealth(): NotificationHealth {
+  const checkedAt = new Date().toISOString();
+  return {
+    checkedAt,
+    channels: [
+      { channel: 'local', status: 'healthy', detail: null, checkedAt },
+      { channel: 'telegram', status: 'healthy', detail: 'Bot token configured', checkedAt },
+      { channel: 'calendar', status: 'disabled', detail: 'Calendar export is off', checkedAt }
+    ]
+  };
+}
+
+// ─────────────────────────── P10: membership fixtures ────────────────────────────
+
+const MEMBERSHIP_CACHE_EVENT = 'membership.entitlement_cache.updated';
+const MEMBERSHIP_CHECKOUT_URL = 'https://checkout.stripe.test/session/cs_test_openburnbar';
+
+export type MembershipFixtureState = 'active' | 'cancelled' | 'paymentFailed' | 'offline';
+
+export function fixtureMembershipStatus(state: MembershipFixtureState = 'active'): MembershipStatus {
+  switch (state) {
+    case 'active':
+      return {
+        tier: 'pro',
+        entitlements: [ENTITLEMENT_DOC_IDS.pro, ENTITLEMENT_DOC_IDS.hostedQuotaSync],
+        renewsAt: new Date(Date.now() + 86_400_000 * 21).toISOString(),
+        restoreAvailable: true,
+        state: 'active',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'cancelled':
+      return {
+        tier: 'free',
+        entitlements: [],
+        renewsAt: undefined,
+        restoreAvailable: true,
+        state: 'cancelled',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'paymentFailed':
+      return {
+        tier: 'free',
+        entitlements: [],
+        restoreAvailable: true,
+        state: 'paymentFailed',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'offline':
+      return {
+        tier: 'free',
+        entitlements: [],
+        restoreAvailable: false,
+        state: 'offline',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+  }
+}
+
+export function fixtureMembershipCheckoutUrl(): string {
+  return MEMBERSHIP_CHECKOUT_URL;
 }

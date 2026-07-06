@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { useMissionsStore } from '../../state/missionsStore.js';
 import type { ProjectEntry } from '../../tauriBridge.js';
 import { RunwayInsignia } from './RunwayInsignia.js';
-
-const DISPATCH_UNAVAILABLE =
-  'Mission authoring RPC is not wired in the Linux shell yet. Use a paired macOS controller or daemon CLI to file missions until daemon.mission.create lands.';
 
 export function NewMissionSheet({
   open,
@@ -22,8 +20,10 @@ export function NewMissionSheet({
   const [projectSlug, setProjectSlug] = useState('');
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const submitting = useMissionsStore((s) => s.creating);
+  const createError = useMissionsStore((s) => s.createError);
+  const createMission = useMissionsStore((s) => s.create);
 
   useEffect(() => {
     if (!open) return;
@@ -44,15 +44,21 @@ export function NewMissionSheet({
     summary.trim().length > 0 &&
     !submitting;
   const onSubmit = useCallback(
-    (e: FormEvent) => {
+    async (e: FormEvent) => {
       e.preventDefault();
       if (!canSubmit) return;
-      setSubmitting(true);
-      setNotice(DISPATCH_UNAVAILABLE);
-      setSubmitting(false);
-      onSubmitted?.();
+      const ok = await createMission({
+        projectSlug: projectSlug.trim(),
+        title: title.trim(),
+        summary: summary.trim()
+      });
+      if (ok) {
+        setNotice('Mission filed through the daemon.');
+        onSubmitted?.();
+        onClose();
+      }
     },
-    [canSubmit, onSubmitted]
+    [canSubmit, createMission, onClose, onSubmitted, projectSlug, summary, title]
   );
 
   if (!open) return null;
@@ -74,8 +80,8 @@ export function NewMissionSheet({
               File new mission
             </h2>
             <p className="muted missions-sheet-lead">
-              Project slug, title, and summary mirror the macOS authoring sheet. Submit stores intent locally
-              until create RPC is available.
+              Project slug, title, and summary mirror the macOS authoring sheet. Submit files the mission through
+              the local daemon.
             </p>
           </div>
           <button type="button" className="missions-sheet-close" onClick={onClose} aria-label="Close">
@@ -151,6 +157,11 @@ export function NewMissionSheet({
           {notice ? (
             <p className="missions-sheet-notice" role="status">
               {notice}
+            </p>
+          ) : null}
+          {createError ? (
+            <p className="missions-sheet-notice" role="alert">
+              {createError}
             </p>
           ) : null}
 

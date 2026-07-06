@@ -34,7 +34,12 @@ export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: To
   return (
     <div className="top-chrome">
       <header className="command-deck top-toolbar" role="banner">
-        <div className="deck-brand">
+        <button
+          type="button"
+          className="deck-brand"
+          onClick={() => setRoute('overview')}
+          aria-label="Go to dashboard overview"
+        >
           <span className="deck-brand-mark" aria-hidden="true">
             <svg viewBox="0 0 16 16" focusable="false">
               <path d="M8 2c1.8 1.2 3.2 3 3.8 5.2.5 1.8.4 3.6-.2 5.3-.4 1.1-1.1 2-2 2.7-.3.2-.7.3-1.1.3-.8 0-1.5-.5-1.9-1.2C5.8 13 5 11.2 5 9.2 5 6.4 6.2 4 8 2Z" />
@@ -43,7 +48,7 @@ export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: To
           <span className="deck-wordmark">
             Open<span className="deck-wordmark-accent">BurnBar</span>
           </span>
-        </div>
+        </button>
 
         <button
           type="button"
