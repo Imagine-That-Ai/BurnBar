@@ -1,0 +1,170 @@
+/* Stat cards + metric pills (Castle Great Hall density port) */
+
+.stat-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stat-card {
+  min-height: 80px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--stat-card-tint, var(--color-glass-line)) 28%, var(--color-glass-line));
+  background: color-mix(in srgb, var(--color-glass-bg) 68%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--color-frost-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: relative;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--stat-card-tint, var(--color-brass-core)) 8%, transparent);
+  pointer-events: none;
+}
+
+.stat-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.stat-card-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+.stat-card-value {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--color-text-bright);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-card-value--gradient {
+  background: var(--ds-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.stat-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-height: 0;
+}
+
+.stat-card-footer {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+}
+
+.stat-card-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: auto;
+}
+
+.stat-card-sparkline {
+  display: block;
+  line-height: 0;
+}
+
+.stat-card-sparkline .sparkline-line {
+  stroke: var(--stat-card-tint, var(--color-brass-core));
+}
+
+.stat-card-sparkline .sparkline-end-dot {
+  fill: var(--stat-card-tint, var(--color-brass-core));
+}
+
+.stat-card--skeleton {
+  pointer-events: none;
+}
+
+.stat-card-skeleton-line,
+.stat-card-skeleton-block {
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-glass-line) 55%, transparent);
+}
+
+.stat-card-skeleton-line {
+  height: 0.65rem;
+  width: 42%;
+}
+
+.stat-card-skeleton-block {
+  height: 1.35rem;
+  width: 58%;
+}
+
+.metric-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--metric-pill-tint, var(--color-brass-core));
+  background: color-mix(in srgb, var(--metric-pill-tint, var(--color-brass-core)) 10%, transparent);
+  white-space: nowrap;
+}
+
+.metric-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 1em;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--font-mono);
+}
+
+.metric-pill-icon svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
+
+.metric-pill-value {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-pill-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+body.reduced-motion .stat-card {
+  transition: none;
+}

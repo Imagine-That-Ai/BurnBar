@@ -1,0 +1,177 @@
+// @vitest-environment jsdom
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { fixtureSessionList } from '../../daemonFixture.js';
+import type { LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
+import { useChatStore } from '../../state/chatStore.js';
+import { useShellStore } from '../../state/shellStore.js';
+import { ChatSurface } from './ChatSurface.js';
+
+function mockBridge(handlers: {
+  sessionList?: () => Promise<SessionListResult>;
+  sessionSearch?: (query: string) => Promise<SessionListResult>;
+}): LinuxShellBridge {
+  const emptyList = async (): Promise<SessionListResult> => ({ sessions: [], nextCursor: null });
+  const bridge: LinuxShellBridge = {
+    daemonHealth: async () => ({ ok: true }),
+    openDashboard: async () => {},
+    quitApp: async () => {},
+    trayDegraded: async () => false,
+    measurePerfOperation: async (name) => ({ name, ok: true, ms: 1, source: 'test' }),
+    usageSummary: async () => ({
+      todayTokens: 0,
+      todayCostUsd: 0,
+      sevenDay: [0, 0, 0, 0, 0, 0, 0],
+      recentEvents: []
+    }),
+    providerCatalog: async () => [],
+    sessionList: handlers.sessionList ?? emptyList,
+    sessionSearch: handlers.sessionSearch ?? emptyList,
+    usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
+    missionList: async () => ({ missions: [], pendingApprovals: [] }),
+    missionApprovalDecision: async () => {},
+    configSnapshot: async () => ({
+      paths: {
+        supportDir: '/tmp',
+        socketPath: '/tmp/sock',
+        configDir: '/tmp/cfg',
+        providerLogPaths: []
+      },
+      secretServiceStatus: 'unavailable',
+      telemetryEnabled: false,
+      privacyOptIn: false
+    }),
+    dbStatus: async () => ({ sqlcipherOk: true, migrationVersion: 0, sizeBytes: 0, walMode: true }),
+    projectList: async () => [],
+    memoryBoundaries: async () => [],
+    accountStatus: async () => ({ signedIn: false, trustClass: 'linux-lower-trust', syncState: 'local-only' }),
+    appVersionInfo: async () => ({
+      shellVersion: '0',
+      daemonVersion: '0',
+      packageChannel: 'unknown',
+      updateCheck: 'skipped'
+    }),
+    exportDiagnostics: async () => ({ path: '/tmp/diag.zip' }),
+    sessionEnv: async () => ({})
+  };
+  return bridge;
+}
+
+const resetChatStore = () => {
+  useChatStore.setState({
+    threads: [],
+    nextCursor: null,
+    selectedThreadId: null,
+    messages: [],
+    messagesLoading: false,
+    config: null,
+    loading: false,
+    error: null,
+    query: '',
+    visibleThreadCount: 40,
+    backend: 'hermes',
+    modelLabel: 'hermes-gateway',
+    streaming: false,
+    warnings: [],
+    sharedFeaturesAvailable: true
+  });
+};
+
+afterEach(() => {
+  cleanup();
+  resetChatStore();
+  useShellStore.setState({ bridge: null, bridgeReady: true, fixtureMode: false });
+});
+
+describe('ChatSurface', () => {
+  it('shows offline notice without bridge', async () => {
+    useShellStore.setState({ bridge: null, fixtureMode: false, bridgeReady: true });
+    render(<ChatSurface />);
+    expect(screen.getByText(/packaged shell/i)).toBeTruthy();
+  });
+
+  it('shows empty state when no threads', async () => {
+    useShellStore.setState({
+      bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) }),
+      fixtureMode: false,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => {
+      expect(screen.getByText(/No conversations yet/i)).toBeTruthy();
+    });
+  });
+
+  it('renders thread rail and messages from fixture sessions', async () => {
+    const list = fixtureSessionList();
+    useShellStore.setState({
+      bridge: mockBridge({ sessionList: async () => list }),
+      fixtureMode: false,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => {
+      expect(screen.getByRole('log')).toBeTruthy();
+    });
+    expect(screen.getAllByText(list.sessions[0].title).length).toBeGreaterThan(0);
+  });
+
+  it('shows error banner on fetch failure', async () => {
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => {
+          throw new Error('daemon down');
+        }
+      }),
+      fixtureMode: false,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+    });
+    expect(screen.getByText(/daemon down/i)).toBeTruthy();
+  });
+
+  it('shows fixture warning banners and via Hermes badge', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null, bridgeReady: true });
+    render(<ChatSurface />);
+    await waitFor(() => {
+      expect(screen.getByText(/Index stale/i)).toBeTruthy();
+    });
+    expect(screen.getByText(/Cloud \/ shared unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/via Hermes/i)).toBeTruthy();
+  });
+
+  it('shows streaming stop control when streaming flag is set', async () => {
+    const list = fixtureSessionList();
+    useShellStore.setState({
+      bridge: mockBridge({ sessionList: async () => list }),
+      fixtureMode: true,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+    act(() => {
+      useChatStore.setState({ streaming: true });
+    });
+    expect(screen.getByRole('button', { name: /Stop generating/i })).toBeTruthy();
+  });
+
+  it('uses backend-specific composer placeholder for Codex', async () => {
+    const list = fixtureSessionList();
+    useShellStore.setState({
+      bridge: mockBridge({ sessionList: async () => list }),
+      fixtureMode: true,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+    act(() => {
+      useChatStore.setState({ backend: 'codex' });
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Ask Codex/i)).toBeTruthy();
+    });
+  });
+});

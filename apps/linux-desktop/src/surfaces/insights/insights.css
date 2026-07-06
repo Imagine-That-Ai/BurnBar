@@ -1,0 +1,230 @@
+.insights-observatory {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.insights-panel {
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  background: var(--color-mercury-wash);
+  min-height: 0;
+}
+
+.insights-panel--chart {
+  min-height: 240px;
+}
+
+.insights-panel--stats {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.insights-empty {
+  margin: var(--space-4) 0 0;
+}
+
+.stat-callout {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.stat-value-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stat-tier-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-brass-core) 45%, transparent);
+}
+
+.stat-number {
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  line-height: 1.1;
+  color: var(--color-text-bright);
+  letter-spacing: -0.02em;
+}
+
+.stat-caption {
+  font-size: 0.85rem;
+  color: var(--color-text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-delta {
+  font-size: 0.9rem;
+  color: var(--color-text-base);
+  font-family: var(--font-mono);
+}
+
+.insights-trend,
+.insights-mix {
+  margin: 0;
+}
+
+.insights-trend-title,
+.insights-mix-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-2);
+}
+
+.insights-trend-svg {
+  display: block;
+  height: 200px;
+  max-width: 100%;
+}
+
+.insights-trend-end-dot {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--color-brass-core) 80%, transparent));
+}
+
+.insights-axis-label {
+  fill: var(--color-text-dim);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.insights-mix-glass {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-glass-line);
+  background: color-mix(in srgb, var(--color-glass-bg-elevated) 30%, transparent);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  box-shadow: inset 0 1px 0 var(--color-frost-line);
+}
+
+.insights-mix-glass .insights-mix-title {
+  margin-bottom: var(--space-3);
+}
+
+.insights-mix-bar {
+  display: flex;
+  width: 100%;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  border: 1px solid var(--color-glass-line);
+}
+
+.insights-mix-segment {
+  min-width: 2px;
+  height: 100%;
+}
+
+.insights-mix-legend {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.insights-mix-glass .insights-mix-legend {
+  margin-top: var(--space-2);
+  gap: var(--space-1);
+}
+
+.insights-mix-legend li {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: 0.88rem;
+}
+
+.insights-mix-glass .insights-mix-legend li {
+  font-size: 0.72rem;
+  color: var(--color-text-mute);
+}
+
+.insights-mix-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--color-glass-line);
+}
+
+.insights-mix-glass .insights-mix-label {
+  color: var(--color-text-base);
+  letter-spacing: 0.01em;
+}
+
+.insights-mix-pct {
+  font-family: var(--font-mono);
+  color: var(--color-text-mute);
+}
+
+.insights-mix-glass .insights-mix-pct {
+  font-size: 0.68rem;
+  color: var(--color-text-dim);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.insights-skeleton-chart {
+  min-height: 240px;
+  background: linear-gradient(
+    90deg,
+    var(--color-glass-line) 0%,
+    var(--color-frost-veil) 50%,
+    var(--color-glass-line) 100%
+  );
+  background-size: 200% 100%;
+  animation: insights-shimmer 1.4s var(--motion-ease-standard) infinite;
+}
+
+.insights-skeleton-stats {
+  min-height: 160px;
+}
+
+.insights-skeleton-mix {
+  min-height: 140px;
+}
+
+.insights-skeleton-stats,
+.insights-skeleton-mix {
+  background: var(--color-glass-line);
+  opacity: 0.35;
+}
+
+@keyframes insights-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+body.reduced-motion .insights-skeleton-chart {
+  animation: none;
+}

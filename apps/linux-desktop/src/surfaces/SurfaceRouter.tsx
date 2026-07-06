@@ -1,6 +1,5 @@
 import type { ComponentType } from 'react';
 import { ROUTES, type ShellRoute } from '../routes.js';
-import { SurfaceCard } from '../components/SurfaceCard.js';
 import { AccountSurface } from './AccountSurface.js';
 import { DaemonDataSection } from './DaemonDataSection.js';
 import { OnboardingSurface } from './OnboardingSurface.js';
@@ -11,6 +10,13 @@ import { SettingsSurface } from './SettingsSurface.js';
 import { SupportSurface } from './SupportSurface.js';
 import { TextExpansionSurface } from './TextExpansionSurface.js';
 import { UpdatesSurface } from './UpdatesSurface.js';
+import { ActivitySurface } from './activity/ActivitySurface.js';
+import { DatabaseSurface } from './database/DatabaseSurface.js';
+import { InsightsSurface } from './insights/InsightsSurface.js';
+import { MemorySurface } from './memory/MemorySurface.js';
+import { ChatSurface } from './chat/ChatSurface.js';
+import { MissionsSurface } from './missions/MissionsSurface.js';
+import { ProjectsSurface } from './projects/ProjectsSurface.js';
 
 /**
  * Route → surface registry. Task-packet lanes extend this map by REPLACING a
@@ -26,14 +32,14 @@ function makeDaemonSurface(route: ShellRoute, label: string): ComponentType {
 
 const SURFACES: Record<ShellRoute, ComponentType> = {
   overview: OverviewSurface,
-  insights: makeDaemonSurface('insights', 'Insights'),
-  database: makeDaemonSurface('database', 'Database'),
+  insights: InsightsSurface,
+  database: DatabaseSurface,
   providers: ProvidersSurface,
-  projects: makeDaemonSurface('projects', 'Projects'),
-  missions: makeDaemonSurface('missions', 'Missions'),
-  activity: makeDaemonSurface('activity', 'Activity & logs'),
-  chat: makeDaemonSurface('chat', 'Chat / Hermes'),
-  memory: makeDaemonSurface('memory', 'Memory'),
+  projects: ProjectsSurface,
+  missions: MissionsSurface,
+  activity: ActivitySurface,
+  chat: ChatSurface,
+  memory: MemorySurface,
   settings: SettingsSurface,
   account: AccountSurface,
   updates: UpdatesSurface,
@@ -47,8 +53,11 @@ export function SurfaceRouter({ route }: { route: ShellRoute }) {
   const meta = ROUTES.find((r) => r.id === route);
   const Surface = SURFACES[route];
   return (
-    <SurfaceCard title={meta?.label ?? route} description={meta?.description ?? ''}>
+    <div className="surface-bleed">
+      <h2 id="route-title" className="sr-only">
+        {meta?.label ?? route}
+      </h2>
       <Surface />
-    </SurfaceCard>
+    </div>
   );
 }

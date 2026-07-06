@@ -315,6 +315,236 @@ fn measure_perf_operation(name: String) -> Result<PerfOperationResult, String> {
     }
 }
 
+/// Generic AF_UNIX socket RPC call for arbitrary daemon methods.
+/// Follows the same newline-framed JSON envelope pattern as
+/// `probe_daemon_health` and `call_daemon_perf_measure`, but accepts any
+/// method + params pair. Wire strings must match `BurnBarRPCMethod` in
+/// OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift exactly.
+fn call_daemon_method(
+    method: &str,
+    params: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let socket_path = linux_socket_path();
+    let mut stream = UnixStream::connect(&socket_path).map_err(|e| e.to_string())?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut envelope = serde_json::json!({
+        "protocolVersion": 1,
+        "id": format!("rpc-{stamp}"),
+        "method": method,
+        "traceId": format!("trace-{stamp}"),
+    });
+    if let Some(p) = params {
+        envelope["params"] = p;
+    }
+    if let Some(token) = read_auth_token() {
+        envelope["authToken"] = serde_json::Value::String(token);
+    }
+    stream
+        .write_all(format!("{envelope}\n").as_bytes())
+        .map_err(|e| e.to_string())?;
+
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).map_err(|e| e.to_string())?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(line.trim()).map_err(|e| e.to_string())?;
+    if let Some(err) = parsed
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(|m| m.as_str())
+    {
+        return Err(err.to_string());
+    }
+    parsed
+        .get("result")
+        .cloned()
+        .ok_or_else(|| "RPC response missing result".to_string())
+}
+
+// ───────────────── P01: usage summary ─────────────────
+// Wire: daemon.usage.recent (BurnBarRPCMethod.usageRecent)
+#[tauri::command]
+fn usage_summary() -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.usage.recent",
+        Some(serde_json::json!({"limit": 50})),
+    )
+}
+
+// ───────────────── P02: provider catalog ─────────────────
+// Wire: daemon.config.get (BurnBarRPCMethod.configGet)
+#[tauri::command]
+fn provider_catalog() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.config.get", None)
+}
+
+// ───────────────── P03: session list ─────────────────
+// Wire: daemon.usage.recent (BurnBarRPCMethod.usageRecent)
+// BurnBarRecentUsageRequest has ONLY `limit` — no offset field exists.
+// Fetch a large batch; the TS store paginates client-side (page size 50).
+#[tauri::command]
+fn session_list() -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.usage.recent",
+        Some(serde_json::json!({"limit": 500})),
+    )
+}
+
+// ───────────────── P03: session search ─────────────────
+// Wire: daemon.search.query (BurnBarRPCMethod.searchQuery)
+#[tauri::command]
+fn session_search(query: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.search.query",
+        Some(serde_json::json!({"query": query})),
+    )
+}
+
+// ───────────────── P05: usage insights ─────────────────
+// Wire: daemon.usage.recent (aggregated client-side in the TS bridge)
+#[tauri::command]
+fn usage_insights() -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.usage.recent",
+        Some(serde_json::json!({"limit": 200})),
+    )
+}
+
+// ───────────────── P06: mission list ─────────────────
+// Wire: daemon.mission.list (BurnBarRPCMethod.missionsList)
+#[tauri::command]
+fn mission_list() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.mission.list", None)
+}
+
+// ───────────────── P06: mission approval decision ─────────────────
+// Wire: daemon.mission.approve / daemon.mission.cancel
+// (BurnBarRPCMethod.missionApprove / .missionCancel)
+// BurnBarMissionApproveRequest/CancelRequest require `missionID` (capital ID —
+// matches the Swift property name verbatim, no CodingKeys remap) and a
+// non-optional `actor: String`. Missing either → Swift Codable decode throws.
+#[tauri::command]
+fn mission_approval_decision(id: String, decision: String) -> Result<serde_json::Value, String> {
+    let method = if decision == "deny" {
+        "daemon.mission.cancel"
+    } else {
+        "daemon.mission.approve"
+    };
+    call_daemon_method(
+        method,
+        Some(serde_json::json!({"missionID": id, "actor": "linux-shell"})),
+    )
+}
+
+// ───────────────── P07: config snapshot ─────────────────
+// Wire: daemon.config.get (BurnBarRPCMethod.configGet)
+#[tauri::command]
+fn config_snapshot() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.config.get", None)
+}
+
+// ───────────────── P07: db status ─────────────────
+// Derived from daemon.config.get — no dedicated db RPC exists in the enum.
+#[tauri::command]
+fn db_status() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.config.get", None)
+}
+
+// ───────────────── P07: project list ─────────────────
+// Wire: daemon.controller.project.list (BurnBarRPCMethod.controllerProjectsList)
+#[tauri::command]
+fn project_list() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.controller.project.list", None)
+}
+
+// ───────────────── P07: memory boundaries ─────────────────
+// Wire: daemon.memory.analytics (BurnBarRPCMethod.memoryAnalytics)
+#[tauri::command]
+fn memory_boundaries() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.memory.analytics", None)
+}
+
+// ───────────────── P08: account status ─────────────────
+// Derived from daemon.config.get (cloud/sync subtree) — no daemon.account.* RPC.
+#[tauri::command]
+fn account_status() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.config.get", None)
+}
+
+// ───────────────── P09: app version info ─────────────────
+// Local: shell version from compile-time env, daemon version from health probe.
+#[tauri::command]
+fn app_version_info() -> Result<serde_json::Value, String> {
+    let shell_version = env!("CARGO_PKG_VERSION");
+    let daemon_version = probe_daemon_health()
+        .daemon_version
+        .unwrap_or_else(|| "unknown".to_string());
+    let package_channel =
+        std::env::var("OPENBURNBAR_PACKAGE_CHANNEL").unwrap_or_else(|_| "unknown".to_string());
+    Ok(serde_json::json!({
+        "shellVersion": shell_version,
+        "daemonVersion": daemon_version,
+        "packageChannel": package_channel,
+        "updateCheck": "unavailable-in-shell"
+    }))
+}
+
+// ───────────────── P09: redacted diagnostics export ─────────────────
+// Writes a JSON bundle to the support dir. Redaction is structural: this
+// command only persists shell/health metadata — it never reads provider
+// payloads, tokens, or socket auth material.
+#[tauri::command]
+fn export_diagnostics() -> Result<serde_json::Value, String> {
+    let dir = linux_support_dir();
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = dir.join(format!("diagnostics-{stamp}.json"));
+    let health = probe_daemon_health();
+    let bundle = serde_json::json!({
+        "exportedAt": stamp,
+        "shellVersion": env!("CARGO_PKG_VERSION"),
+        "daemonHealth": {
+            "ok": health.ok,
+            "daemonVersion": health.daemon_version,
+            "protocolVersion": health.protocol_version,
+            "socketPath": health.socket_path,
+        },
+        "included": [
+            "shell version",
+            "daemon health (ok, version, protocol, socket path)",
+            "perf sample names and durations"
+        ],
+        "excluded": [
+            "provider API keys and credentials",
+            "socket auth tokens",
+            "provider response payloads",
+            "user session content"
+        ]
+    });
+    let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
+    fs::write(&path, json).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "path": path.display().to_string() }))
+}
+
+// ───────────────── P11: session env ─────────────────
+// Reads XDG env vars for real pet-tier detection (not hardcoded).
+#[tauri::command]
+fn session_env() -> serde_json::Value {
+    serde_json::json!({
+        "xdg_session_type": std::env::var("XDG_SESSION_TYPE").ok(),
+        "xdg_current_desktop": std::env::var("XDG_CURRENT_DESKTOP").ok(),
+    })
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open_i = MenuItemBuilder::with_id("open", "Open dashboard").build(app)?;
     let health_i = MenuItemBuilder::with_id("health", "Reconnect daemon").build(app)?;
@@ -362,7 +592,22 @@ pub fn run() {
             quit_app,
             tray_degraded,
             record_perf_sample,
-            measure_perf_operation
+            measure_perf_operation,
+            usage_summary,
+            provider_catalog,
+            session_list,
+            session_search,
+            usage_insights,
+            mission_list,
+            mission_approval_decision,
+            config_snapshot,
+            db_status,
+            project_list,
+            memory_boundaries,
+            account_status,
+            app_version_info,
+            export_diagnostics,
+            session_env
         ])
         .setup(|app| {
             if let Err(e) = build_tray(app.handle()) {

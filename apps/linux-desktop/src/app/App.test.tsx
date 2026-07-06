@@ -3,11 +3,15 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from './App.js';
 import { ROUTES } from '../routes.js';
+import { fixtureUsageSummary } from '../daemonFixture.js';
+import { DaemonDataSection } from '../surfaces/DaemonDataSection.js';
+import { useOverviewStore } from '../state/overviewStore.js';
 import { useShellStore } from '../state/shellStore.js';
 
 function resetShell(): void {
   localStorage.clear();
   location.hash = '';
+  useOverviewStore.setState({ summary: null, loading: false, error: null, cacheHitRatePct: null, lastRefreshedAt: null });
   useShellStore.setState({
     route: 'overview',
     health: null,
@@ -34,15 +38,34 @@ describe('App shell', () => {
     expect(container.querySelector('.status-pill[role="status"]')).not.toBeNull();
   });
 
-  it('exposes exactly one aria-current=page nav button per route', () => {
+  it('exposes exactly one aria-current=page tab for primary sections', () => {
     const { container } = render(<App />);
-    for (const route of ROUTES) {
-      act(() => useShellStore.getState().setRoute(route.id));
+    const primary = ['chat', 'providers', 'database', 'projects', 'missions', 'activity', 'memory'] as const;
+    for (const id of primary) {
+      act(() => useShellStore.getState().setRoute(id));
       const active = container.querySelectorAll('button.nav-link[aria-current="page"]');
       expect(active).toHaveLength(1);
-      expect(active[0]?.textContent).toBe(route.label);
-      expect(location.hash).toBe(`#/${route.id}`);
+      expect(location.hash).toBe(`#/${id}`);
     }
+    act(() => useShellStore.getState().setRoute('overview'));
+    expect(container.querySelectorAll('button.nav-link[aria-current="page"]')).toHaveLength(0);
+  });
+
+  it('switches routes from the top tabbar', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('tab', { name: /Quota/i }));
+    expect(useShellStore.getState().route).toBe('providers');
+    fireEvent.click(screen.getByRole('tab', { name: /Session Logs/i }));
+    expect(useShellStore.getState().route).toBe('activity');
+  });
+
+  it('renders BURN telemetry in the toolbar', async () => {
+    act(() => {
+      useShellStore.setState({ fixtureMode: true, bridgeReady: true });
+      useOverviewStore.setState({ summary: fixtureUsageSummary(), loading: false, error: null });
+    });
+    render(<App />);
+    expect(await screen.findByLabelText(/BURN .+ Open range and unit controls/i)).toBeTruthy();
   });
 
   it('renders every route surface without crashing and titles the route card', () => {
@@ -52,10 +75,8 @@ describe('App shell', () => {
       expect(container.querySelector('#route-title')?.textContent).toBe(route.label);
     }
   });
-
   it('shows honest offline notice on daemon-backed routes without a bridge', () => {
-    const { container } = render(<App />);
-    act(() => useShellStore.getState().setRoute('activity'));
+    const { container } = render(<DaemonDataSection route="database" label="Database" />);
     const notice = container.querySelector('.offline-notice[role="status"]');
     expect(notice).not.toBeNull();
     expect(notice?.textContent).toContain('needs the local daemon');
@@ -70,8 +91,7 @@ describe('App shell', () => {
         protocolVersion: 1
       }
     });
-    const { container } = render(<App />);
-    act(() => useShellStore.getState().setRoute('missions'));
+    const { container } = render(<DaemonDataSection route="database" label="Database" />);
     expect(container.querySelector('.fixture-table')).not.toBeNull();
     expect(screen.getByText('Data source: fixture transcript')).toBeTruthy();
   });
@@ -86,27 +106,28 @@ describe('App shell', () => {
         gatewayEnabled: false
       }
     });
-    const { container } = render(<App />);
-    act(() => useShellStore.getState().setRoute('insights'));
-    expect(screen.getByText('Data source: live daemon health for Insights')).toBeTruthy();
+    const { container } = render(<DaemonDataSection route="database" label="Database" />);
+    expect(screen.getByText('Data source: live daemon health for Database')).toBeTruthy();
     expect(within(container.querySelector('tbody') as HTMLElement).getByText('1.2.3')).toBeTruthy();
   });
 
-  it('renders provider glyph chips with data-provider hooks', () => {
+  it('renders quota constellation orbs on providers route', async () => {
+    useShellStore.setState({ fixtureMode: true });
     const { container } = render(<App />);
     act(() => useShellStore.getState().setRoute('providers'));
-    const chips = container.querySelectorAll('.glyph-chip[data-provider]');
-    expect(chips.length).toBeGreaterThanOrEqual(8);
-    expect(container.querySelector('.glyph-chip[data-provider="anthropic"]')).not.toBeNull();
+    await screen.findByText(/SUBSCRIPTION VAULT/i);
+    const orbs = container.querySelectorAll('.quota-orb');
+    expect(orbs.length).toBeGreaterThanOrEqual(4);
+    expect(container.querySelector('.quota-hero')).not.toBeNull();
   });
 
-  it('toggles skin and persists the choice', () => {
+  it('toggles skin from deck overflow and persists the choice', () => {
     render(<App />);
-    const toggle = screen.getByRole('button', { name: 'Skin: editorial' });
-    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Aurora' }));
     expect(document.documentElement.dataset.skin).toBe('aurora');
     expect(localStorage.getItem('openburnbar.linux.skin.v1')).toBe('aurora');
-    expect(screen.getByRole('button', { name: 'Skin: aurora' })).toBeTruthy();
+    expect(screen.getByRole('menuitemradio', { name: 'Aurora' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('walks the onboarding wizard with skip and completion persistence', () => {
