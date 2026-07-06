@@ -1,6 +1,7 @@
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MediaCapabilities {
+    pub backend_available: u8,
     pub vp9enc: u8,
     pub vp9dec: u8,
     pub av1enc: u8,
@@ -12,8 +13,11 @@ pub struct MediaCapabilities {
 
 #[cfg(feature = "gstreamer")]
 pub fn probe() -> MediaCapabilities {
-    let _ = crate::gst_runtime::ensure();
+    if crate::gst_runtime::ensure().is_err() {
+        return MediaCapabilities::default();
+    }
     MediaCapabilities {
+        backend_available: 1,
         vp9enc: has_factory("vp9enc"),
         vp9dec: has_factory("vp9dec"),
         av1enc: has_factory("av1enc"),

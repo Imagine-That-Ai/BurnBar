@@ -17,9 +17,59 @@ var daemonTargetDependencies: [Target.Dependency] = [
     .product(name: "OpenBurnBarLinuxSecurity", package: "OpenBurnBarCore")
 ]
 var daemonLinkerSettings: [LinkerSetting] = []
+var daemonSwiftSettings: [SwiftSetting] = []
 var daemonExecutableDependencies: [Target.Dependency] = ["OpenBurnBarDaemon"]
 var daemonExcludes: [String] = []
-var linuxMediaSystemTargets: [Target] = []
+var linuxSupportTargets: [Target] = []
+
+#if os(Linux)
+struct LinuxMediaCaptureLibrary {
+    let directory: String
+    let staticLibrary: String?
+    let dynamicLibrary: String?
+}
+
+func linuxMediaCaptureLibraryIfPresent() -> LinuxMediaCaptureLibrary? {
+    let environment = ProcessInfo.processInfo.environment
+    if let configured = environment["OPENBURNBAR_MEDIA_CAPTURE_LIBRARY_DIR"],
+       configured.isEmpty == false {
+        let directory = URL(fileURLWithPath: configured).standardizedFileURL
+        let staticLibrary = directory.appendingPathComponent("libopenburnbar_media.a")
+        let dynamicLibrary = directory.appendingPathComponent("libopenburnbar_media.so")
+        let staticPath = FileManager.default.fileExists(atPath: staticLibrary.path) ? staticLibrary.path : nil
+        let dynamicPath = FileManager.default.fileExists(atPath: dynamicLibrary.path) ? dynamicLibrary.path : nil
+        if staticPath != nil || dynamicPath != nil {
+            return LinuxMediaCaptureLibrary(
+                directory: directory.path,
+                staticLibrary: staticPath,
+                dynamicLibrary: dynamicPath
+            )
+        }
+    }
+
+    let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    let repoRoot = packageRoot.deletingLastPathComponent()
+    let releaseBuild = environment["OPENBURNBAR_MEDIA_CAPTURE_RELEASE"] == "1"
+    let targetSubdir = releaseBuild ? "release" : "debug"
+    let libraryDirectory = repoRoot
+        .appendingPathComponent("crates/openburnbar-media")
+        .appendingPathComponent("target/\(targetSubdir)")
+        .standardizedFileURL
+    let staticLibrary = libraryDirectory.appendingPathComponent("libopenburnbar_media.a")
+    let dynamicLibrary = libraryDirectory.appendingPathComponent("libopenburnbar_media.so")
+
+    let staticPath = FileManager.default.fileExists(atPath: staticLibrary.path) ? staticLibrary.path : nil
+    let dynamicPath = FileManager.default.fileExists(atPath: dynamicLibrary.path) ? dynamicLibrary.path : nil
+    if staticPath != nil || dynamicPath != nil {
+        return LinuxMediaCaptureLibrary(
+            directory: libraryDirectory.path,
+            staticLibrary: staticPath,
+            dynamicLibrary: dynamicPath
+        )
+    }
+    return nil
+}
+#endif
 
 #if os(macOS)
 if !buildForLinuxBoundary {
@@ -42,10 +92,53 @@ if !buildForLinuxBoundary {
 packageDependencies.append(.package(path: "../Vendor/GRDB-SQLCipher"))
 daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
 daemonTargetDependencies.append("COpenBurnBarMediaCapture")
-linuxMediaSystemTargets.append(
+daemonTargetDependencies.append("COpenBurnBarPortal")
+daemonLinkerSettings.append(contentsOf: [
+    .linkedLibrary("gio-2.0"),
+    .linkedLibrary("gobject-2.0"),
+    .linkedLibrary("glib-2.0")
+])
+if let mediaLibrary = linuxMediaCaptureLibraryIfPresent() {
+    daemonLinkerSettings.append(.unsafeFlags(["-L", mediaLibrary.directory]))
+    if let staticLibrary = mediaLibrary.staticLibrary {
+        daemonLinkerSettings.append(.unsafeFlags([staticLibrary]))
+    } else if mediaLibrary.dynamicLibrary != nil {
+        daemonLinkerSettings.append(contentsOf: [
+            .linkedLibrary("openburnbar_media"),
+            .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", mediaLibrary.directory])
+        ])
+    }
+    daemonLinkerSettings.append(contentsOf: [
+        .linkedLibrary("gstreamer-1.0"),
+        .linkedLibrary("gstbase-1.0"),
+        .linkedLibrary("gstapp-1.0"),
+        .linkedLibrary("gstvideo-1.0"),
+        .linkedLibrary("gobject-2.0"),
+        .linkedLibrary("glib-2.0")
+    ])
+    daemonSwiftSettings.append(.define("OPENBURNBAR_MEDIA_CAPTURE_LINKED"))
+} else {
+    daemonSwiftSettings.append(.define("OPENBURNBAR_MEDIA_CAPTURE_UNAVAILABLE"))
+}
+linuxSupportTargets.append(
     .systemLibrary(
         name: "COpenBurnBarMediaCapture",
         path: "Sources/COpenBurnBarMediaCapture"
+    )
+)
+linuxSupportTargets.append(
+    .target(
+        name: "COpenBurnBarPortal",
+        path: "Sources/COpenBurnBarPortal",
+        publicHeadersPath: ".",
+        cSettings: [
+            .unsafeFlags([
+                "-I/usr/include/glib-2.0",
+                "-I/usr/include/gio-unix-2.0",
+                "-I/usr/lib/aarch64-linux-gnu/glib-2.0/include",
+                "-I/usr/lib/x86_64-linux-gnu/glib-2.0/include"
+            ])
+        ]
     )
 )
 #endif
@@ -96,6 +189,7 @@ var packageTargets: [Target] = [
         cSettings: [
             .define("SQLITE_HAS_CODEC")
         ],
+        swiftSettings: daemonSwiftSettings,
         linkerSettings: daemonLinkerSettings
     ),
     .executableTarget(
@@ -119,7 +213,7 @@ var packageTargets: [Target] = [
         // region-isolation noise around POSIX buffers in XCTest helpers.
         swiftSettings: [.swiftLanguageMode(.v5)]
     )
-] + linuxMediaSystemTargets
+] + linuxSupportTargets
 
 #if os(macOS)
 packageProducts.append(contentsOf: [
