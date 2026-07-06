@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
+import { open as openExternal } from '@tauri-apps/plugin-shell';
 import type { DaemonHealth } from './daemonClient.js';
+import { ENTITLEMENT_DOC_IDS, evaluateEntitlement } from '@openburnbar/entitlements';
 
 // ─────────────────────────── P01: usage summary ───────────────────────────
 
@@ -106,6 +108,18 @@ export type AccountStatus = {
   lastSyncAt?: string;
 };
 
+// ─────────────────────────── P10: membership ──────────────────────────────
+
+export type MembershipTier = 'free' | 'pro';
+export type MembershipStatus = {
+  tier: MembershipTier;
+  entitlements: string[];
+  renewsAt?: string;
+  restoreAvailable: boolean;
+  state?: 'active' | 'cancelled' | 'paymentFailed' | 'offline';
+  cacheEvent?: string;
+};
+
 // ─────────────────────────── P09: version / diagnostics ───────────────────
 
 export type AppVersionInfo = {
@@ -144,6 +158,10 @@ export interface LinuxShellBridge {
   projectList(): Promise<ProjectEntry[]>;
   memoryBoundaries(): Promise<MemoryBoundary[]>;
   accountStatus(): Promise<AccountStatus>;
+  membershipStatus?(): Promise<MembershipStatus>;
+  membershipCheckoutUrl?(): Promise<string>;
+  openExternalUrl?(url: string): Promise<void>;
+  membershipRestore?(): Promise<void>;
   appVersionInfo(): Promise<AppVersionInfo>;
   exportDiagnostics(): Promise<DiagnosticsExport>;
   sessionEnv(): Promise<SessionEnv>;
@@ -458,6 +476,76 @@ function mapAccountStatus(raw: RawJsonValue): AccountStatus {
   };
 }
 
+function mapMembershipStatus(raw: RawJsonValue): MembershipStatus {
+  const membership = pick(raw, 'membership', 'subscription', 'cloudMembership', 'cloud') ?? raw;
+  const entitlementDocs = pick(membership, 'entitlementDocs', 'entitlementsByID', 'entitlements');
+  const proDoc = pick(entitlementDocs, ENTITLEMENT_DOC_IDS.pro);
+  const proMaxDoc = pick(entitlementDocs, ENTITLEMENT_DOC_IDS.proMax);
+  const ultraDoc = pick(entitlementDocs, ENTITLEMENT_DOC_IDS.ultra);
+  const hostedQuotaDoc = pick(entitlementDocs, ENTITLEMENT_DOC_IDS.hostedQuotaSync);
+  const activeDocs = [
+    [ENTITLEMENT_DOC_IDS.pro, proDoc, 'premium'],
+    [ENTITLEMENT_DOC_IDS.proMax, proMaxDoc, 'cloudPro'],
+    [ENTITLEMENT_DOC_IDS.ultra, ultraDoc, 'ultra'],
+    [ENTITLEMENT_DOC_IDS.hostedQuotaSync, hostedQuotaDoc, 'hostedQuota']
+  ] as const;
+  const canonicalActive = activeDocs
+    .filter(([, doc, feature]) =>
+      evaluateEntitlement(doc as Record<string, unknown> | undefined, feature).active
+    )
+    .map(([id]) => id);
+  const rawEntitlements = arr(pick(membership, 'entitlementIds', 'activeEntitlements'))
+    .map((e) => str(e))
+    .filter(Boolean);
+  const proGrantIDs = new Set<string>([
+    ENTITLEMENT_DOC_IDS.pro,
+    ENTITLEMENT_DOC_IDS.proMax,
+    ENTITLEMENT_DOC_IDS.ultra,
+    ENTITLEMENT_DOC_IDS.hostedQuotaSync
+  ]);
+  const tierRaw = str(pick(membership, 'tier', 'cloudTier', 'plan', 'planTier', 'state'), 'free').toLowerCase();
+  const tier: MembershipTier =
+    tierRaw.includes('pro') ||
+    canonicalActive.some((e) => proGrantIDs.has(e)) ||
+    rawEntitlements.some((e) => proGrantIDs.has(e))
+      ? 'pro'
+      : 'free';
+  const entitlements =
+    canonicalActive.length > 0
+      ? canonicalActive
+      : rawEntitlements.length > 0
+        ? rawEntitlements
+      : tier === 'pro'
+        ? [ENTITLEMENT_DOC_IDS.pro, ENTITLEMENT_DOC_IDS.hostedQuotaSync]
+        : [];
+  return {
+    tier,
+    entitlements,
+    renewsAt: str(pick(membership, 'renewsAt', 'expiresAt', 'currentPeriodEnd')) || undefined,
+    restoreAvailable: Boolean(pick(membership, 'restoreAvailable', 'canRestore', 'signedIn')),
+    state: normalizeMembershipState(str(pick(membership, 'state', 'status'))),
+    cacheEvent: str(pick(membership, 'cacheEvent', 'shellCacheEvent')) || undefined
+  };
+}
+
+function normalizeMembershipState(value: string): MembershipStatus['state'] | undefined {
+  switch (value) {
+    case 'active':
+    case 'cancelled':
+    case 'paymentFailed':
+    case 'offline':
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function mapMembershipCheckoutUrl(raw: RawJsonValue): string {
+  const value = str(pick(raw, 'url', 'checkoutUrl', 'checkout_url'));
+  if (!value) throw new Error('Daemon did not return a Stripe checkout URL.');
+  return value;
+}
+
 function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {
   return {
     shellVersion: str(pick(raw, 'shellVersion', 'shell_version')),
@@ -552,6 +640,21 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     accountStatus: async () => {
       const raw = await invoke<RawJsonValue>('account_status');
       return mapAccountStatus(raw);
+    },
+    // P10 — daemon-owned membership data; fail closed if absent.
+    membershipStatus: async () => {
+      const raw = await invoke<RawJsonValue>('membership_status');
+      return mapMembershipStatus(raw);
+    },
+    // P10 — daemon-minted URL only; opened externally by membershipStore.
+    membershipCheckoutUrl: async () => {
+      const raw = await invoke<RawJsonValue>('membership_checkout_url');
+      return mapMembershipCheckoutUrl(raw);
+    },
+    openExternalUrl: (url) => openExternal(url),
+    // P10 — daemon-side restore hook; callers re-fetch status afterwards.
+    membershipRestore: async () => {
+      await invoke<RawJsonValue>('membership_restore');
     },
     // P09 — local version info
     appVersionInfo: async () => {

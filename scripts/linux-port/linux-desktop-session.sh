@@ -595,11 +595,12 @@ if [[ "${OB_REUSE_EXISTING_DEB:-0}" == "1" ]]; then
   echo "reusing_deb=$deb"
 else
   cp -R "$root/apps/linux-desktop" "$work_dir/app"
-  # The Vite alias resolves @openburnbar/gl-engine to ../../packages/gl-engine/src
-  # relative to apps/linux-desktop/vite.config.ts, so the package must live two
+  # Vite aliases resolve shared packages to ../../packages/*/src relative to
+  # apps/linux-desktop/vite.config.ts, so those packages must live two
   # directories above the copied app (same relative position as in the repo).
   parent_dir="$(dirname "$work_dir")"
   mkdir -p "$parent_dir/packages"
+  cp -R "$root/packages/entitlements" "$parent_dir/packages/entitlements"
   cp -R "$root/packages/gl-engine" "$parent_dir/packages/gl-engine"
   cd "$work_dir/app"
   npm ci --no-audit --no-fund

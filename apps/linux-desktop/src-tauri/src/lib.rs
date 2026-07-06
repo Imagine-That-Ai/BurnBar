@@ -477,6 +477,36 @@ fn account_status() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.config.get", None)
 }
 
+// ───────────────── P10: membership status ─────────────────
+// Proposed wire: daemon.membership.status. Older daemons reject it; the TS
+// store treats unknown-method errors as capability-absent, not fatal UI spam.
+#[tauri::command]
+fn membership_status() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.membership.status", None)
+}
+
+// ───────────────── P10: membership checkout URL ─────────────────
+// Proposed wire: daemon.membership.checkoutUrl. Tier-C StoreKit substitute:
+// the daemon mints the Stripe URL; the React layer opens it externally.
+#[tauri::command]
+fn membership_checkout_url() -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.membership.checkoutUrl",
+        Some(serde_json::json!({
+            "success_url": "openburnbar://membership/success",
+            "cancel_url": "openburnbar://membership/cancel"
+        })),
+    )
+}
+
+// ───────────────── P10: membership restore ─────────────────
+// Proposed wire: daemon.membership.restore. Older daemons reject it; the UI
+// presents the membership capability as absent and keeps fixture mode usable.
+#[tauri::command]
+fn membership_restore() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.membership.restore", None)
+}
+
 // ───────────────── P09: app version info ─────────────────
 // Local: shell version from compile-time env, daemon version from health probe.
 #[tauri::command]
@@ -605,6 +635,9 @@ pub fn run() {
             project_list,
             memory_boundaries,
             account_status,
+            membership_status,
+            membership_checkout_url,
+            membership_restore,
             app_version_info,
             export_diagnostics,
             session_env

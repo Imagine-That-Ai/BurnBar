@@ -9,8 +9,10 @@ import type {
   DbStatus,
   ProjectEntry,
   MemoryBoundary,
-  AccountStatus
+  AccountStatus,
+  MembershipStatus
 } from './tauriBridge.js';
+import { ENTITLEMENT_DOC_IDS } from '@openburnbar/entitlements';
 
 export type DaemonRouteFixture = {
   route: string;
@@ -374,4 +376,54 @@ export function fixtureAccountStatus(): AccountStatus {
     syncState: 'active',
     lastSyncAt: new Date(Date.now() - 1_800_000).toISOString()
   };
+}
+
+// ─────────────────────────── P10: membership fixtures ────────────────────────────
+
+const MEMBERSHIP_CACHE_EVENT = 'membership.entitlement_cache.updated';
+const MEMBERSHIP_CHECKOUT_URL = 'https://checkout.stripe.test/session/cs_test_openburnbar';
+
+export type MembershipFixtureState = 'active' | 'cancelled' | 'paymentFailed' | 'offline';
+
+export function fixtureMembershipStatus(state: MembershipFixtureState = 'active'): MembershipStatus {
+  switch (state) {
+    case 'active':
+      return {
+        tier: 'pro',
+        entitlements: [ENTITLEMENT_DOC_IDS.pro, ENTITLEMENT_DOC_IDS.hostedQuotaSync],
+        renewsAt: new Date(Date.now() + 86_400_000 * 21).toISOString(),
+        restoreAvailable: true,
+        state: 'active',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'cancelled':
+      return {
+        tier: 'free',
+        entitlements: [],
+        renewsAt: undefined,
+        restoreAvailable: true,
+        state: 'cancelled',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'paymentFailed':
+      return {
+        tier: 'free',
+        entitlements: [],
+        restoreAvailable: true,
+        state: 'paymentFailed',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+    case 'offline':
+      return {
+        tier: 'free',
+        entitlements: [],
+        restoreAvailable: false,
+        state: 'offline',
+        cacheEvent: MEMBERSHIP_CACHE_EVENT
+      };
+  }
+}
+
+export function fixtureMembershipCheckoutUrl(): string {
+  return MEMBERSHIP_CHECKOUT_URL;
 }
