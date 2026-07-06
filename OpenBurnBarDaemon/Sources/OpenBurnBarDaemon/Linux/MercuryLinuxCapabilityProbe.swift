@@ -13,10 +13,12 @@ public enum MercuryLinuxCapabilityProbe {
             mediaSocketPath: mediaSocketPath,
             supportsDaemonToShellFrames: true,
             supportsShellToDaemonControl: false,
-            codecsKnown: true,
+            codecsKnown: media.capabilitiesKnown,
             codecs: media.daemonCodecMap,
             source: "COpenBurnBarMediaCapture.media_capability_probe",
-            detail: "Daemon-owned capture uses the media C FFI. The shell media socket is daemon-to-shell only; PipeWire fds must be opened by the daemon or transferred with SCM_RIGHTS."
+            detail: media.capabilitiesKnown
+                ? "Daemon-owned capture uses the media C FFI. The shell media socket is daemon-to-shell only; PipeWire fds must be opened by the daemon through xdg-desktop-portal."
+                : "Linux media capture crate is not linked or its GStreamer backend is unavailable; codec availability is unknown."
         )
     }
 }
