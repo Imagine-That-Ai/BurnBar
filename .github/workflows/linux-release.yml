@@ -56,6 +56,7 @@ jobs:
           -w /workspace
           openburnbar-linux-toolchain:mission-001
           node scripts/linux-port/build-linux-release.mjs
+          --version "${{ inputs.version }}"
 
       - name: Package install/uninstall/update smoke
         run: >
@@ -71,7 +72,7 @@ jobs:
       - name: Attest Linux release sidecars and packages
         run: |
           set -euo pipefail
-          mapfile -t files < <(find docs/linux-port/evidence/mission-001-release -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*provenance-predicate.json' \) | sort)
+          mapfile -t files < <(find docs/linux-port/evidence/mission-001-release -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*provenance-predicate.json' \) | sort)
           if [[ "${#files[@]}" -eq 0 ]]; then
             echo "::error::No Linux release files found for attestation"
             exit 1

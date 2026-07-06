@@ -4,7 +4,7 @@
   "appId": "dev.openburnbar.OpenBurnBar",
   "linuxDesktopPackage": "apps/linux-desktop",
   "primaryArtifact": "appimage",
-  "requiredArtifacts": ["appimage", "deb", "rpm"],
+  "requiredArtifacts": ["appimage", "deb", "rpm", "daemon"],
   "tailMetadata": {
     "aur": "packaging/linux/aur/PKGBUILD",
     "flatpak": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",

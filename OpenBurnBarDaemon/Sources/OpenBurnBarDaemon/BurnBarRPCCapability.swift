@@ -180,6 +180,7 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .codeWatchProject,
         .codeSearch,
         .codeIndexStatus,
+        .runCreate,
         .runResume
     ])
 

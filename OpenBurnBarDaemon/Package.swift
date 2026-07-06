@@ -11,7 +11,8 @@ var packageDependencies: [Package.Dependency] = [
 let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD"] == "1"
 var daemonTargetDependencies: [Target.Dependency] = [
     .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
-    .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+    .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
+    .product(name: "OpenBurnBarLinuxSecurity", package: "OpenBurnBarCore")
 ]
 var daemonLinkerSettings: [LinkerSetting] = []
 var daemonExecutableDependencies: [Target.Dependency] = ["OpenBurnBarDaemon"]

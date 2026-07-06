@@ -245,29 +245,33 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
             throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
         }
 
-        let executableName = URL(fileURLWithPath: credential.executablePath).lastPathComponent
+        let executablePath = URL(fileURLWithPath: credential.executablePath).standardizedFileURL.path
+        let executableName = URL(fileURLWithPath: executablePath).lastPathComponent
         let identity: BurnBarDaemonPeerIdentity
         switch executableName {
         case "OpenBurnBarCLI", "openburnbar-cli", "openburnbar":
             identity = .cli
         case "OpenBurnBarDaemon", "OpenBurnBarDaemonExecutable", "openburnbar-daemon":
             identity = .daemon
-        case "OpenBurnBar", "OpenBurnBarApp":
+        case "OpenBurnBar", "OpenBurnBarApp", "openburnbar-linux-desktop":
             identity = .app
         default:
             throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
         }
 
         let allowedRoots = linuxAllowedPeerRoots(environment: environment)
+        let pins = linuxPeerHashPins(environment: environment)
+        let expectedHash = pins[executablePath] ?? pins[credential.executablePath] ?? pins[executableName]
+        guard !allowedRoots.isEmpty || expectedHash?.isEmpty == false else {
+            throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
+        }
         if !allowedRoots.isEmpty {
-            let standardized = URL(fileURLWithPath: credential.executablePath).standardizedFileURL.path
-            guard allowedRoots.contains(where: { standardized.hasPrefix($0) }) else {
+            guard allowedRoots.contains(where: { executablePath.hasPrefix($0) }) else {
                 throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
             }
         }
 
-        let pins = linuxPeerHashPins(environment: environment)
-        if let expected = pins[credential.executablePath] ?? pins[executableName], !expected.isEmpty {
+        if let expected = expectedHash, !expected.isEmpty {
             guard constantTimeTokensEqual(credential.executableSHA256.lowercased(), expected.lowercased()) else {
                 throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
             }

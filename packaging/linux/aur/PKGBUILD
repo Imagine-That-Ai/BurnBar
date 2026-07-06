@@ -7,11 +7,22 @@ arch=("x86_64" "aarch64")
 url="https://github.com/Imagine-That-Ai/BurnBar"
 license=("AGPL-3.0-only")
 depends=("webkit2gtk" "gtk3" "libayatana-appindicator")
-source=("OpenBurnBar-${pkgver}.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/v${pkgver}/OpenBurnBar-${pkgver}-linux-${CARCH}.AppImage")
-sha256sums=("REPLACE_WITH_RELEASE_SHA256")
+source=(
+  "OpenBurnBar-${pkgver}.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/v${pkgver}/OpenBurnBar-${pkgver}-linux-${CARCH}.AppImage"
+  "openburnbar-daemon-${pkgver}-${CARCH}::https://github.com/Imagine-That-Ai/BurnBar/releases/download/v${pkgver}/openburnbar-daemon-${pkgver}-linux-${CARCH}"
+  "openburnbar.desktop"
+  "openburnbar-daemon.service"
+)
+sha256sums=(
+  "REPLACE_WITH_APPIMAGE_SHA256"
+  "REPLACE_WITH_DAEMON_SHA256"
+  "REPLACE_WITH_DESKTOP_SHA256"
+  "REPLACE_WITH_SERVICE_SHA256"
+)
 
 package() {
   install -Dm755 "${srcdir}/OpenBurnBar-${pkgver}.AppImage" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
-  install -Dm644 "${srcdir}/../openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
-  install -Dm644 "${srcdir}/../openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
+  install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
+  install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+  install -Dm644 "${srcdir}/openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
 }
