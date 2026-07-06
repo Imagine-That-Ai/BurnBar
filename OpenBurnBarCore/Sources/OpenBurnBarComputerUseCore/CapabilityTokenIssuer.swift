@@ -1,9 +1,5 @@
 import Foundation
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-@preconcurrency import Crypto
-#endif
+import OpenBurnBarCore
 
 /// Mints short-lived, domain-tagged capability tokens for privileged input leaves.
 public struct CapabilityTokenIssuer: Sendable {
@@ -23,7 +19,7 @@ public struct CapabilityTokenIssuer: Sendable {
     public init() {}
 
     public func mintRemoteUnlockToken(
-        privateKey: Curve25519.Signing.PrivateKey,
+        privateKey: PlatformEd25519SigningMaterial,
         scopeHash: String,
         actionKind: String,
         boundEscrowDeviceId: String? = nil,
@@ -50,7 +46,7 @@ public struct CapabilityTokenIssuer: Sendable {
     }
 
     public func mintComputerUseToken(
-        privateKey: Curve25519.Signing.PrivateKey,
+        privateKey: PlatformEd25519SigningMaterial,
         scopeHash: String,
         allowedActionKinds: [String],
         actionBudget: Int,

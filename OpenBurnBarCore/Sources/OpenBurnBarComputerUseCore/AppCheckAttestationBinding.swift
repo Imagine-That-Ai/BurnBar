@@ -1,9 +1,5 @@
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-@preconcurrency import Crypto
-#endif
 import Foundation
+import OpenBurnBarCore
 
 /// Canonical App Check attestation digest shared by Mac, iOS, and Cloud Functions (WS2/WS4).
 /// Wire field `attestationHashBlake3` carries the **controller app's** SHA-256 hex digest (name is historical).
@@ -25,8 +21,7 @@ public enum AppCheckAttestationBinding {
 
     public static func digestHex(appId: String, boundAtMillis: Int64) -> String {
         let payload = "\(canonicalPrefix)|\(appId)|\(boundAtMillis)"
-        let hash = SHA256.hash(data: Data(payload.utf8))
-        return hash.map { String(format: "%02x", $0) }.joined()
+        return PlatformCrypto.sha256Hex(Data(payload.utf8))
     }
 
     public static func digestHex(for claim: Claim) -> String {

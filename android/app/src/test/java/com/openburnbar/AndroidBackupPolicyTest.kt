@@ -68,8 +68,7 @@ class AndroidBackupPolicyTest {
     private fun Element.elements(name: String): List<Element> {
         val nodes = getElementsByTagName(name)
         return (0 until nodes.length).mapNotNull { index ->
-            val node = nodes.item(index)
-            if (node is Element) node else null
+            nodes.item(index) as? Element
         }
     }
 }

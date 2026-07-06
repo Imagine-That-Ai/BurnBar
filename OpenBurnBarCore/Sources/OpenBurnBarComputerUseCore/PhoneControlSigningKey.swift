@@ -1,9 +1,4 @@
 import Foundation
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-@preconcurrency import Crypto
-#endif
 import OpenBurnBarCore
 
 /// F2 — hardware-bind the phone-control signing key.
@@ -18,8 +13,8 @@ import OpenBurnBarCore
 /// `OpenBurnBarComputerUseCore` lets the Mac validator, the iOS/Android signers,
 /// and the cross-language known-answer test all share one verification path.
 public enum PhoneControlVerifyingKey: Sendable {
-    case ed25519(Curve25519.Signing.PublicKey)
-    case secureEnclaveP256(P256.Signing.PublicKey)
+    case ed25519(PlatformEd25519PublicKey)
+    case secureEnclaveP256(PlatformP256SigningPublicKey)
 
     public var kind: PhoneControlSigningKeyKind {
         switch self {
@@ -49,22 +44,14 @@ public enum PhoneControlVerifyingKey: Sendable {
     public init(kind: PhoneControlSigningKeyKind, publicKeyRepresentation: Data) throws {
         switch kind {
         case .ed25519:
-            self = .ed25519(try Curve25519.Signing.PublicKey(rawRepresentation: publicKeyRepresentation))
+            self = .ed25519(try PlatformCrypto.ed25519PublicKey(rawRepresentation: publicKeyRepresentation))
         case .secureEnclaveP256:
             self = .secureEnclaveP256(try Self.p256PublicKey(from: publicKeyRepresentation))
         }
     }
 
-    private static func p256PublicKey(from data: Data) throws -> P256.Signing.PublicKey {
-        switch data.count {
-        case 65:
-            return try P256.Signing.PublicKey(x963Representation: data)
-        case 64:
-            return try P256.Signing.PublicKey(rawRepresentation: data)
-        default:
-            // DER/SPKI fallback so a caller that stored an encoded key still verifies.
-            return try P256.Signing.PublicKey(derRepresentation: data)
-        }
+    private static func p256PublicKey(from data: Data) throws -> PlatformP256SigningPublicKey {
+        try PlatformCrypto.p256SigningPublicKey(from: data)
     }
 
     /// Verify a detached signature over `payload`.
@@ -77,17 +64,9 @@ public enum PhoneControlVerifyingKey: Sendable {
     public func isValidSignature(_ signature: Data, for payload: Data) -> Bool {
         switch self {
         case .ed25519(let key):
-            return key.isValidSignature(signature, for: payload)
+            return (try? PlatformCrypto.verifyEd25519Signature(signature, message: payload, publicKey: key)) == true
         case .secureEnclaveP256(let key):
-            if let raw = try? P256.Signing.ECDSASignature(rawRepresentation: signature),
-               key.isValidSignature(raw, for: payload) {
-                return true
-            }
-            if let der = try? P256.Signing.ECDSASignature(derRepresentation: signature),
-               key.isValidSignature(der, for: payload) {
-                return true
-            }
-            return false
+            return PlatformCrypto.verifyP256SigningSignature(signature, message: payload, publicKey: key)
         }
     }
 }
@@ -127,14 +106,11 @@ public enum PhoneControlPeerNodeIdDerivation {
         case (.ed25519, .iOS):
             return "ios-phone-" + hex(Data(publicKeyRepresentation.prefix(12)))
         case (.ed25519, .android):
-            let digest = SHA256.hash(data: publicKeyRepresentation)
-            return "android-phone-" + String(hex(Data(digest)).prefix(24))
+            return "android-phone-" + String(PlatformCrypto.sha256Hex(publicKeyRepresentation).prefix(24))
         case (.secureEnclaveP256, .iOS):
-            let digest = SHA256.hash(data: publicKeyRepresentation)
-            return "ios-se-" + String(hex(Data(digest)).prefix(24))
+            return "ios-se-" + String(PlatformCrypto.sha256Hex(publicKeyRepresentation).prefix(24))
         case (.secureEnclaveP256, .android):
-            let digest = SHA256.hash(data: publicKeyRepresentation)
-            return "android-se-" + String(hex(Data(digest)).prefix(24))
+            return "android-se-" + String(PlatformCrypto.sha256Hex(publicKeyRepresentation).prefix(24))
         }
     }
 }
@@ -170,10 +146,10 @@ extension ComputerUsePhoneControlSigner {
         intentHashHex: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: P256.Signing.PrivateKey
+        privateKey: PlatformP256SigningMaterial
     ) throws -> String {
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
-        return signature.rawRepresentation.base64EncodedString()
+        return try PlatformCrypto.p256SigningRawSignature(message: payload, privateKey: privateKey)
+            .base64EncodedString()
     }
 }

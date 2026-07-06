@@ -1,8 +1,3 @@
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-@preconcurrency import Crypto
-#endif
 import Foundation
 import OpenBurnBarCore
 #if canImport(Security)
@@ -266,7 +261,7 @@ public struct ControllerKeyPinStore: Sendable {
     }
 
     /// Validate that `advertised` decodes to a genuine 32-byte Ed25519 public key
-    /// and return its canonical base64, or `nil`. Importing through CryptoKit
+    /// and return its canonical base64, or `nil`. importing through PlatformCrypto
     /// rejects wrong-length / off-curve keys so a malformed key fails closed
     /// rather than being pinned.
     static func normalizedEd25519KeyBase64(_ advertised: String) -> String? {
@@ -274,7 +269,7 @@ public struct ControllerKeyPinStore: Sendable {
         guard !trimmed.isEmpty,
               let raw = Data(base64Encoded: trimmed),
               raw.count == 32,
-              (try? Curve25519.Signing.PublicKey(rawRepresentation: raw)) != nil else {
+              (try? PlatformCrypto.ed25519PublicKey(rawRepresentation: raw)) != nil else {
             return nil
         }
         return raw.base64EncodedString()

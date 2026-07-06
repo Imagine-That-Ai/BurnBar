@@ -1,9 +1,5 @@
 import Foundation
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-@preconcurrency import Crypto
-#endif
+import OpenBurnBarCore
 
 /// F7 — per-frame AEAD for media/screen frames (defense-in-depth beyond the iroh
 /// QUIC transport seal).
@@ -50,13 +46,19 @@ public struct MediaFrameAEAD: Sendable {
         sharedSecret: Data,
         salt: Data,
         info: String = "OpenBurnBar-MediaFrameAEAD-v1"
-    ) -> SymmetricKey {
-        HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: sharedSecret),
-            salt: salt,
-            info: Data(info.utf8),
-            outputByteCount: 32
-        )
+    ) -> PlatformSymmetricKey {
+        // Prior callers already pass a paired-session secret; preserve the
+        // non-throwing API while routing the primitive through the platform seam.
+        do {
+            return try PlatformCrypto.deriveHKDFSHA256Key(
+                inputKeyMaterial: sharedSecret,
+                salt: salt,
+                info: Data(info.utf8),
+                outputByteCount: 32
+            )
+        } catch {
+            preconditionFailure("Media frame HKDF derivation failed: \(error)")
+        }
     }
 
     /// Domain-separated AAD binding the frame's identity so a sealed frame is
@@ -90,15 +92,23 @@ public struct MediaFrameAEAD: Sendable {
     /// `magic ‖ version ‖ AES-GCM combined(nonce ‖ ciphertext ‖ tag)`.
     public func seal(
         plaintext: Data,
-        key: SymmetricKey,
+        key: PlatformSymmetricKey,
         streamClass: String,
         kind: UInt8,
         gopID: UInt32,
         frameIndex: UInt32
     ) throws -> Data {
         let authenticatedData = Self.aad(streamClass: streamClass, kind: kind, gopID: gopID, frameIndex: frameIndex)
-        let sealedBox = try AES.GCM.seal(plaintext, using: key, authenticating: authenticatedData)
-        guard let combined = sealedBox.combined else { throw SealError.openFailed }
+        let combined: Data
+        do {
+            combined = try PlatformCrypto.sealAESGCM(
+                plaintext: plaintext,
+                key: key,
+                authenticating: authenticatedData
+            )
+        } catch {
+            throw SealError.openFailed
+        }
         var envelope = Data()
         envelope.append(contentsOf: Self.magic)
         envelope.append(Self.version)
@@ -111,7 +121,7 @@ public struct MediaFrameAEAD: Sendable {
     /// tampered ciphertext throws.
     public func open(
         envelope: Data,
-        key: SymmetricKey,
+        key: PlatformSymmetricKey,
         streamClass: String,
         kind: UInt8,
         gopID: UInt32,
@@ -128,8 +138,11 @@ public struct MediaFrameAEAD: Sendable {
         let combined = envelope.suffix(from: envelope.startIndex + Self.headerByteCount)
         let authenticatedData = Self.aad(streamClass: streamClass, kind: kind, gopID: gopID, frameIndex: frameIndex)
         do {
-            let box = try AES.GCM.SealedBox(combined: combined)
-            return try AES.GCM.open(box, using: key, authenticating: authenticatedData)
+            return try PlatformCrypto.openAESGCM(
+                combined: Data(combined),
+                key: key,
+                authenticating: authenticatedData
+            )
         } catch {
             throw SealError.openFailed
         }

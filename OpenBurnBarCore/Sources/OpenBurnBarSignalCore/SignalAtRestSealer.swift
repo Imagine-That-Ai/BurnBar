@@ -112,7 +112,7 @@ public enum OpenBurnBarSignalAtRest {
             out.append(contentsOf: bytes)
         }
         var message = Data()
-        frame(CloudVaultCrypto.signalAtRestSenderAuthDomain, into: &message)
+        frame(CloudVaultSignalEnvelopeContract.signalAtRestSenderAuthDomain, into: &message)
         frame(info, into: &message)
         frame(payloadCiphertextB64, into: &message)
         let sorted = wraps.sorted {
@@ -207,11 +207,11 @@ public enum OpenBurnBarSignalAtRest {
         expectedBinding: CloudVaultSignalBinding,
         trustedSenderPublicKeys: [String: Data]
     ) throws -> Data {
-        guard envelope.signalEnvelopeFormatVersion == CloudVaultCrypto.signalEnvelopeFormatVersion,
-              envelope.mode == CloudVaultCrypto.signalAtRestMode,
-              envelope.relayEncryption == CloudVaultCrypto.signalAtRestEncryption,
-              envelope.keyDelivery.scheme == CloudVaultCrypto.signalAtRestEncryption,
-              envelope.keyDelivery.contentKeyLength == CloudVaultCrypto.signalAtRestContentKeyLength,
+        guard envelope.signalEnvelopeFormatVersion == CloudVaultSignalEnvelopeContract.signalEnvelopeFormatVersion,
+              envelope.mode == CloudVaultSignalEnvelopeContract.signalAtRestMode,
+              envelope.relayEncryption == CloudVaultSignalEnvelopeContract.signalAtRestEncryption,
+              envelope.keyDelivery.scheme == CloudVaultSignalEnvelopeContract.signalAtRestEncryption,
+              envelope.keyDelivery.contentKeyLength == CloudVaultSignalEnvelopeContract.signalAtRestContentKeyLength,
               envelope.ciphertextLayer.schemaVersion == payloadCiphertextSchemaVersion else {
             throw OpenBurnBarSignalCoreError.invalidEnvelope
         }
@@ -256,7 +256,7 @@ public enum OpenBurnBarSignalAtRest {
 
         let aad = try canonicalAAD(for: expectedBinding.aadBinding)
         let contentKey = try privateKey.open(sealedContentKey, info: aad.info, associatedData: aad.associatedData)
-        guard contentKey.count == CloudVaultCrypto.signalAtRestContentKeyLength else {
+        guard contentKey.count == CloudVaultSignalEnvelopeContract.signalAtRestContentKeyLength else {
             throw OpenBurnBarSignalCoreError.invalidContentKey
         }
         let box = try AES.GCM.SealedBox(combined: payload)
