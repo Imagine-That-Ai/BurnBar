@@ -362,6 +362,74 @@ export type MercuryMediaCapability = {
   canViewScreenShare: boolean;
   reason?: string;
 };
+export type MercuryFileTransferDirection = 'inbound' | 'outbound';
+export type MercuryFileTransferPhase =
+  | 'pendingAccept'
+  | 'downloading'
+  | 'sending'
+  | 'offered'
+  | 'completed'
+  | 'declined'
+  | 'failed';
+export type MercuryFileTransferErrorCode =
+  | 'capabilityAbsent'
+  | 'invalidRequest'
+  | 'transferNotFound'
+  | 'localFileMissing'
+  | 'noControlRoute'
+  | 'publishFailed'
+  | 'fetchFailed'
+  | 'ioFailed'
+  | 'peerRejected';
+export type MercuryFileTransferProgress = {
+  bytesTransferred: number;
+  bytesTotal: number;
+  fraction: number;
+};
+export type MercuryFilePeer = {
+  id: string;
+  name: string;
+  isOnline: boolean;
+  lastSeenAt: string;
+  capabilities: string[];
+};
+export type MercuryFileTransfer = {
+  transferID: string;
+  manifestID: string;
+  direction: MercuryFileTransferDirection;
+  phase: MercuryFileTransferPhase;
+  filename: string;
+  mime: string;
+  size: number;
+  peer?: MercuryFilePeer;
+  progress: MercuryFileTransferProgress;
+  localPath?: string;
+  errorCode?: MercuryFileTransferErrorCode;
+  detail?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+export type MercuryFileOfferListResponse = {
+  capabilityAvailable: boolean;
+  downloadDirectory?: string;
+  transfers: MercuryFileTransfer[];
+  detail?: string;
+};
+export type MercuryFileTransferActionRequest = {
+  transferID?: string;
+  manifestID?: string;
+};
+export type MercuryFileTransferSendRequest = {
+  path: string;
+  peerID?: string;
+};
+export type MercuryFileTransferActionResponse = {
+  accepted: boolean;
+  transfer?: MercuryFileTransfer;
+  errorCode?: MercuryFileTransferErrorCode;
+  detail?: string;
+};
 // ─────────────────────────── P13: integrations status ─────────────────────
 
 export type IntegrationKind =
@@ -451,6 +519,12 @@ export interface LinuxShellBridge {
   mediaDeclineCall(requestId: string): Promise<MercuryMediaSessionState>;
   mediaEndCall(): Promise<MercuryMediaSessionState>;
   mediaCapabilityGet(): Promise<MercuryMediaCapability>;
+  mediaFileOfferList(): Promise<MercuryFileOfferListResponse>;
+  mediaFileAccept(request: MercuryFileTransferActionRequest): Promise<MercuryFileTransferActionResponse>;
+  mediaFileDecline(
+    request: MercuryFileTransferActionRequest & { reason?: string }
+  ): Promise<MercuryFileTransferActionResponse>;
+  mediaFileSend(request: MercuryFileTransferSendRequest): Promise<MercuryFileTransferActionResponse>;
   integrationsStatus(): Promise<IntegrationsStatus>;
 }
 
@@ -1348,6 +1422,109 @@ function mapMercuryCapability(raw: RawJsonValue): MercuryMediaCapability {
   };
 }
 
+function normalizeFileDirection(raw: string): MercuryFileTransferDirection {
+  return raw.toLowerCase().includes('out') ? 'outbound' : 'inbound';
+}
+
+function normalizeFilePhase(raw: string): MercuryFileTransferPhase {
+  const compact = raw.replace(/[_\-\s]/g, '').toLowerCase();
+  if (compact.includes('pending') || compact.includes('offer') && !compact.includes('offered')) return 'pendingAccept';
+  if (compact.includes('download') || compact.includes('fetch')) return 'downloading';
+  if (compact.includes('send') || compact.includes('publish')) return 'sending';
+  if (compact.includes('offered') || compact.includes('advertised')) return 'offered';
+  if (compact.includes('complete') || compact.includes('done') || compact.includes('success')) return 'completed';
+  if (compact.includes('decline') || compact.includes('reject')) return 'declined';
+  if (compact.includes('fail') || compact.includes('error')) return 'failed';
+  return 'pendingAccept';
+}
+
+function normalizeFileErrorCode(raw: RawJsonValue): MercuryFileTransferErrorCode | undefined {
+  const compact = str(raw).replace(/[_\-\s]/g, '').toLowerCase();
+  const codes: MercuryFileTransferErrorCode[] = [
+    'capabilityAbsent',
+    'invalidRequest',
+    'transferNotFound',
+    'localFileMissing',
+    'noControlRoute',
+    'publishFailed',
+    'fetchFailed',
+    'ioFailed',
+    'peerRejected'
+  ];
+  return codes.find((code) => code.toLowerCase() === compact);
+}
+
+function mapMercuryFilePeer(raw: RawJsonValue): MercuryFilePeer | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  return {
+    id: str(pick(raw, 'connectionID', 'connectionId', 'peerID', 'peerId', 'id'), 'peer'),
+    name: str(pick(raw, 'displayName', 'display_name', 'name', 'peerName', 'peer_name'), 'Paired device'),
+    isOnline: Boolean(pick(raw, 'isOnline', 'is_online', 'online')),
+    lastSeenAt: str(pick(raw, 'lastSeenAt', 'last_seen_at', 'updatedAt'), new Date(0).toISOString()),
+    capabilities: arr(pick(raw, 'capabilities', 'features')).map((capability) => str(capability)).filter(Boolean)
+  };
+}
+
+function mapMercuryFileProgress(raw: RawJsonValue, size: number): MercuryFileTransferProgress {
+  const bytesTransferred = num(pick(raw, 'bytesTransferred', 'bytes_transferred'));
+  const bytesTotal = num(pick(raw, 'bytesTotal', 'bytes_total'), size);
+  const fractionRaw = pick(raw, 'fraction');
+  const fallbackFraction = bytesTotal > 0 ? bytesTransferred / bytesTotal : 0;
+  return {
+    bytesTransferred,
+    bytesTotal,
+    fraction: Math.max(0, Math.min(1, num(fractionRaw, fallbackFraction)))
+  };
+}
+
+function mapMercuryFileTransfer(raw: RawJsonValue, index = 0): MercuryFileTransfer {
+  const size = num(pick(raw, 'size', 'byteCount', 'bytesTotal', 'bytes_total'));
+  const progressRaw = pick(raw, 'progress') ?? {};
+  const now = new Date().toISOString();
+  return {
+    transferID: str(pick(raw, 'transferID', 'transferId', 'transfer_id'), `transfer-${index}`),
+    manifestID: str(pick(raw, 'manifestID', 'manifestId', 'manifest_id'), `manifest-${index}`),
+    direction: normalizeFileDirection(str(pick(raw, 'direction'), 'inbound')),
+    phase: normalizeFilePhase(str(pick(raw, 'phase', 'state', 'status'), 'pendingAccept')),
+    filename: str(pick(raw, 'filename', 'fileName', 'name'), 'untitled'),
+    mime: str(pick(raw, 'mime', 'contentType', 'content_type'), 'application/octet-stream'),
+    size,
+    peer: mapMercuryFilePeer(pick(raw, 'peer')),
+    progress: mapMercuryFileProgress(progressRaw, size),
+    localPath: str(pick(raw, 'localPath', 'local_path', 'path')) || undefined,
+    errorCode: normalizeFileErrorCode(pick(raw, 'errorCode', 'error_code')),
+    detail: str(pick(raw, 'detail', 'reason', 'error')) || undefined,
+    createdAt: str(pick(raw, 'createdAt', 'created_at'), now),
+    updatedAt: str(pick(raw, 'updatedAt', 'updated_at'), now),
+    completedAt: str(pick(raw, 'completedAt', 'completed_at')) || undefined
+  };
+}
+
+function mapMercuryFileOfferList(raw: RawJsonValue): MercuryFileOfferListResponse {
+  const source = pick(raw, 'result') ?? raw;
+  const absent = Boolean(pick(source, 'capabilityAbsent', 'capability_absent'));
+  const availableRaw = pick(source, 'capabilityAvailable', 'capability_available', 'available');
+  return {
+    capabilityAvailable: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    downloadDirectory: str(pick(source, 'downloadDirectory', 'download_directory')) || undefined,
+    transfers: arr(pick(source, 'transfers', 'offers', 'files')).map((transfer, index) =>
+      mapMercuryFileTransfer(transfer, index)
+    ),
+    detail: str(pick(source, 'detail', 'reason', 'error')) || undefined
+  };
+}
+
+function mapMercuryFileAction(raw: RawJsonValue): MercuryFileTransferActionResponse {
+  const source = pick(raw, 'result') ?? raw;
+  const transferRaw = pick(source, 'transfer', 'fileTransfer', 'file_transfer');
+  return {
+    accepted: Boolean(pick(source, 'accepted', 'ok')),
+    transfer: transferRaw && typeof transferRaw === 'object' ? mapMercuryFileTransfer(transferRaw) : undefined,
+    errorCode: normalizeFileErrorCode(pick(source, 'errorCode', 'error_code')),
+    detail: str(pick(source, 'detail', 'reason', 'error')) || undefined
+  };
+}
+
 // ─────────────────────────── Bridge loader ────────────────────────────────
 
 export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
@@ -1628,6 +1805,70 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
             canReceiveCalls: false,
             canViewScreenShare: false,
             reason: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    mediaFileOfferList: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_file_offer_list');
+        return mapMercuryFileOfferList(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            capabilityAvailable: false,
+            transfers: [],
+            detail: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    mediaFileAccept: async ({ transferID, manifestID }) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_file_accept', { transferId: transferID, manifestId: manifestID });
+        return mapMercuryFileAction(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            accepted: false,
+            errorCode: 'capabilityAbsent',
+            detail: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    mediaFileDecline: async ({ transferID, manifestID, reason }) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_file_decline', {
+          transferId: transferID,
+          manifestId: manifestID,
+          reason
+        });
+        return mapMercuryFileAction(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            accepted: false,
+            errorCode: 'capabilityAbsent',
+            detail: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    mediaFileSend: async ({ path, peerID }) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_file_send', { path, peerId: peerID });
+        return mapMercuryFileAction(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            accepted: false,
+            errorCode: 'capabilityAbsent',
+            detail: e instanceof Error ? e.message : String(e)
           };
         }
         throw e;
