@@ -17,8 +17,11 @@ public sealed partial class InsightsPage : Page
     {
         // Install before InitializeComponent(): the XAML tree constructs TemplateGalleryView,
         // and its constructor materializes InsightsBuiltInTemplates.All immediately.
+        // The composed provider prefers local SQLCipher token_usage, then the signed-in
+        // cloud usage feed (users/{uid}/usage), so KPI tiles show live cloud aggregates
+        // when the local DB is empty but a session exists — the payoff of the #1304 gate.
         var dashboardSummary = new Lazy<DashboardUsageSummary>(
-            OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary);
+            OpenBurnBar.App.Dashboard.DashboardUsageProvider.Load);
         InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
             kind == InsightWidgetKind.KpiTile
                 ? CloudSyncInsightSource.ResolveKpi(kind, seed, dashboardSummary.Value)
