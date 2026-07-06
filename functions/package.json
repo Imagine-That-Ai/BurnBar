@@ -75,7 +75,7 @@
     "@openburnbar/entitlements": "file:vendor/openburnbar/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:vendor/openburnbar/signal-envelope-contracts",
     "@sentry/core": "10.58.0",
-    "@sentry/node": "10.58.0",
+    "@sentry/node": "10.63.0",
     "@simplewebauthn/server": "13.3.0",
     "cockatiel": "3.2.1",
     "express": "5.2.1",
