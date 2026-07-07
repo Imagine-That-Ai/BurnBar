@@ -11,14 +11,14 @@ import OpenBurnBarCore
 /// sealed with the per-user Cloud Vault key (`sealedProjectName`) instead of
 /// being written in plaintext. An opaque keyed `projectKeyHash` is also written
 /// so on-device readers can group usage by project without decrypting every row.
-extension Notification.Name {
-    /// Posted by UsageAggregator.recountAll after the local usage table has
-    /// been cleared and re-parsed, so the next usage sync reconciles
-    /// now-orphaned cloud docs exactly once.
-    static let usageRecountDidRebuildLocalRows = Notification.Name("OpenBurnBarUsageRecountDidRebuildLocalRows")
-}
-
 final class UsageSyncService: CloudSyncDomain, Sendable {
+    /// Durable one-shot flag: recountAll sets it, the next sync reads-and-clears
+    /// it. UserDefaults (not an in-memory observer) because uploadPending()
+    /// constructs a fresh, short-lived UsageSyncService per call — an instance
+    /// observer would register only AFTER recountAll already posted, so the
+    /// request would never be seen. The flag survives across those instances
+    /// and across a relaunch between recount and the next sync.
+    static let orphanReconciliationDefaultsKey = "OpenBurnBarUsageOrphanReconciliationRequested"
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
@@ -28,29 +28,18 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
 
-    /// Set when a Recount (or other full local rebuild) requests one-shot
-    /// cloud reconciliation. Orphan cleanup is O(total same-device history)
-    /// in Firestore reads, so it must not run on every incremental sync.
-    private let orphanReconciliationRequested = Locked(false)
-
     init(
         context: CloudSyncContext,
         vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
     ) {
         self.context = context
         self.vaultKeyProvider = vaultKeyProvider
-        NotificationCenter.default.addObserver(
-            forName: .usageRecountDidRebuildLocalRows,
-            object: nil,
-            queue: nil
-        ) { [orphanReconciliationRequested] _ in
-            orphanReconciliationRequested.withLock { $0 = true }
-        }
     }
 
     /// Request a one-shot orphaned-cloud-doc reconciliation on the next sync.
-    func requestOrphanReconciliation() {
-        orphanReconciliationRequested.withLock { $0 = true }
+    /// Durable across the ephemeral per-sync UsageSyncService instances.
+    static func requestOrphanReconciliation() {
+        UserDefaults.standard.set(true, forKey: orphanReconciliationDefaultsKey)
     }
 
     /// Upload all unsynced local usage rows to Firestore.
@@ -114,7 +103,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             // full-history scan to recount events, not every incremental
             // sync), and never against an empty local table (a failed recount
             // persist must not delete the device's entire cloud history).
-            if orphanReconciliationRequested.read() {
+            if UserDefaults.standard.bool(forKey: Self.orphanReconciliationDefaultsKey) {
                 let keeping = Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
                 if keeping.isEmpty {
                     AppLogger.sync.error(
@@ -127,7 +116,9 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                         deviceId: deviceId,
                         keeping: keeping
                     )
-                    orphanReconciliationRequested.withLock { $0 = false }
+                    // Clear only after a successful cleanup so a failed sync
+                    // retries reconciliation next time.
+                    UserDefaults.standard.set(false, forKey: Self.orphanReconciliationDefaultsKey)
                 }
             }
 

@@ -333,15 +333,14 @@ public final class GrokParser: LogParser, Sendable {
             .map(String.init) ?? encoded
     }
 
-    private func parseISO8601(_ raw: String?) -> Date? {
+    func parseISO8601(_ raw: String?) -> Date? {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: trimmed) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: trimmed)
+        // Shared lock-guarded formatter pair (fractional then basic) — same
+        // acceptance as the per-call formatters this replaced, without the
+        // per-timestamp allocation cost on the log-ingestion path.
+        return ThreadSafeISO8601DateFormatter.parse(trimmed)
     }
 
     private func appendText(_ full: inout String, _ chunk: String) {

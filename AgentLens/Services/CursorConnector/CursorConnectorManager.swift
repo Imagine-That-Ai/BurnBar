@@ -156,7 +156,7 @@ final class CursorConnectorManager {
             // Generate a fresh rotation token for each session to invalidate any
             // tokens that may have been exposed in previous sessions.
             try generateRotationToken()
-            try startSecretBroker()
+            try await startSecretBroker()
             try writeProxyScript()
             try writeProxyConfig()
             try await startProxy()
@@ -513,7 +513,7 @@ final class CursorConnectorManager {
         }
     }
 
-    private func startSecretBroker() throws {
+    private func startSecretBroker() async throws {
         stopSecretBroker()
         var modelRouteIDs: [String: String] = [:]
         var routeAccounts: [String: String] = [:]
@@ -531,7 +531,7 @@ final class CursorConnectorManager {
             keychain: keychain,
             routeAccounts: routeAccounts
         )
-        try broker.start()
+        try await broker.start()
         secretBroker = broker
         secretBrokerRoutes = modelRouteIDs
     }

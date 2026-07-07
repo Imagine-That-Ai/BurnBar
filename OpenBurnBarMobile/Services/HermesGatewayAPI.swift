@@ -1874,6 +1874,8 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
                 data: body
             )
         } catch {
+            // Sealed for another device (or tampered) — nil drives the calm
+            // re-pair state documented above, so no logging here.
             return nil
         }
     }
