@@ -287,9 +287,11 @@ final class UsageAggregator {
         }
         await refreshAll()
         // Tell the usage sync domain to reconcile now-orphaned cloud docs on
-        // its next pass. Posted only after refreshAll so an aborted recount
-        // never triggers cloud deletion against an empty local table.
-        NotificationCenter.default.post(name: .usageRecountDidRebuildLocalRows, object: nil)
+        // its next pass. A durable flag (not a notification) because the sync
+        // service is constructed fresh per upload and would miss an in-memory
+        // signal; set only after refreshAll so an aborted recount never
+        // triggers cloud deletion against an empty local table.
+        UsageSyncService.requestOrphanReconciliation()
     }
 
     // MARK: - Refresh Single Provider

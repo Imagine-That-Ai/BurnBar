@@ -659,6 +659,7 @@ private struct MobileChatHistoryIndex: Codable {
 /// limited to routing/count/list metadata.
 @MainActor
 final class MobileChatFirestoreStore: MobileChatCloudMirroring {
+    private static let decodeLogger = Logger(subsystem: "com.openburnbar.mobile", category: "MobileChatFirestoreStore")
     private let firestoreProvider: @Sendable () -> Firestore
     private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "MobileChatFirestoreStore")
 
@@ -979,6 +980,9 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
                 let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
                 return try cloudPayloadDecoder.decode(MobileChatThread.self, from: payload)
             } catch {
+                // The thread is silently dropped from the list — log so a vault-key
+                // mismatch or payload schema drift is diagnosable.
+                Self.decodeLogger.warning("Failed to open sealed chat thread \(documentID, privacy: .public): \(String(describing: error), privacy: .public)")
                 return nil
             }
         }
@@ -1213,6 +1217,7 @@ final class MobileChatHistoryStore {
         do {
             remote = try await cloud.fetchAll()
         } catch FirestoreError.notAuthenticated, FirestoreError.firebaseUnavailable {
+            // Signed out / Firebase not configured — nothing to sync yet.
             return
         } catch {
             lastSyncError = error.localizedDescription
@@ -1247,6 +1252,7 @@ final class MobileChatHistoryStore {
                     try await cloud.delete(threadID: threadID)
                     self?.tombstoneCleared(threadID)
                 } catch FirestoreError.notAuthenticated, FirestoreError.firebaseUnavailable {
+                    // Signed out / unavailable — tombstone stays for the next retry.
                     return
                 } catch {
                     self?.logger.warning("Tombstone retry failed for \(threadID, privacy: .public): \(String(describing: error), privacy: .public)")
@@ -1372,6 +1378,7 @@ final class MobileChatHistoryStore {
                 try await cloud.upsert(thread)
                 await MainActor.run { self?.pendingMirrorTasks[thread.id] = nil }
             } catch FirestoreError.notAuthenticated, FirestoreError.firebaseUnavailable {
+                // Signed out / unavailable — the next refreshFromCloud re-mirrors.
                 return
             } catch {
                 await MainActor.run { self?.lastSyncError = error.localizedDescription }

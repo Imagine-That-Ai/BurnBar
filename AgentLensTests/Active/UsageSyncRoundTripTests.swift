@@ -266,7 +266,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         ], at: "users/test-uid-1/usage/remote-device-2_22222222-2222-4222-8222-222222222222")
         try await dataStore.insert(usage)
 
-        usageSync.requestOrphanReconciliation()
+        UsageSyncService.requestOrphanReconciliation()
         await usageSync.sync()
 
         let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
@@ -301,6 +301,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
 
         // No requestOrphanReconciliation(): an ordinary incremental sync must
         // not run the O(total-history) orphan scan, so the stale doc survives.
+        UserDefaults.standard.set(false, forKey: UsageSyncService.orphanReconciliationDefaultsKey)
         await usageSync.sync()
 
         let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
@@ -324,7 +325,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         // Recount requested reconciliation but persistence failed: the local
         // table is empty. Cleanup must refuse rather than delete the device's
         // entire cloud history.
-        usageSync.requestOrphanReconciliation()
+        UsageSyncService.requestOrphanReconciliation()
         await usageSync.sync()
 
         let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
@@ -363,7 +364,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
             code: FirestoreErrorCode.unavailable.rawValue,
             userInfo: [NSLocalizedDescriptionKey: "unavailable"]
         )
-        usageSync.requestOrphanReconciliation()
+        UsageSyncService.requestOrphanReconciliation()
         await usageSync.sync()
         fakeGateway.nextError = nil
 

@@ -184,6 +184,9 @@ private enum CLIAgentMissionCloudSealer {
             let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
             return try decoder.decode(CLIAgentMissionPrivatePayload.self, from: payload)
         } catch {
+            // Undecryptable/undecodable mission payload is dropped — log so a key
+            // mismatch or schema drift doesn't silently blank the mission feed.
+            cliMissionSignalLogger.warning("mission payload open failed doc=\(documentID ?? "?", privacy: .public): \(String(describing: error), privacy: .public)")
             return nil
         }
     }
@@ -208,6 +211,9 @@ private enum CLIAgentMissionCloudSealer {
             let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
             return try decoder.decode(CLIAgentMissionEventPrivatePayload.self, from: payload)
         } catch {
+            // Undecryptable/undecodable mission event is dropped — log so a key
+            // mismatch or schema drift doesn't silently hide mission progress.
+            cliMissionSignalLogger.warning("mission event open failed request=\(requestID ?? "?", privacy: .public) event=\(eventID ?? "?", privacy: .public): \(String(describing: error), privacy: .public)")
             return nil
         }
     }

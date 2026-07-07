@@ -25,13 +25,19 @@ final class EmberBackdropTests: XCTestCase {
     func testHapticsHelperExists_smokeNoCrash() {
         // Smoke test by intent: UIKit haptic generators expose no stable state;
         // this pins the helper entry points to no-op safely in the test host.
-        Haptics.light()
-        Haptics.medium()
-        Haptics.rigid()
-        Haptics.success()
-        Haptics.warning()
-        Haptics.error()
-        Haptics.selection()
+        let entryPoints: [(name: String, fire: () -> Void)] = [
+            ("light", Haptics.light),
+            ("medium", Haptics.medium),
+            ("rigid", Haptics.rigid),
+            ("success", Haptics.success),
+            ("warning", Haptics.warning),
+            ("error", Haptics.error),
+            ("selection", Haptics.selection)
+        ]
+        for entry in entryPoints {
+            entry.fire()
+        }
+        XCTAssertEqual(entryPoints.count, 7, "Compile-guard: every Haptics entry point stays referable and invocable")
     }
 
     @MainActor

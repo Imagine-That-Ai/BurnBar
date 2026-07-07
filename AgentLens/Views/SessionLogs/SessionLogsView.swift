@@ -276,15 +276,15 @@ struct SessionLogsView: View {
             // fileModifiedAt beats indexedAt for "last known log activity" when times are missing.
             let date = log.startTime ?? log.endTime ?? log.fileModifiedAt ?? log.indexedAt
             if date >= startOfToday {
-                buckets["today"]!.append(log)
+                buckets["today", default: []].append(log)
             } else if date >= startOfYesterday {
-                buckets["yesterday"]!.append(log)
+                buckets["yesterday", default: []].append(log)
             } else if date >= startOfWeek {
-                buckets["week"]!.append(log)
+                buckets["week", default: []].append(log)
             } else if date >= startOfMonth {
-                buckets["month"]!.append(log)
+                buckets["month", default: []].append(log)
             } else {
-                buckets["older"]!.append(log)
+                buckets["older", default: []].append(log)
             }
         }
 
