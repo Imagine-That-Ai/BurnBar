@@ -86,10 +86,16 @@ sha256_stdin() {
 }
 
 pair_hash() {
-  local mac_path="$1" ios_path="$2" diff_out
-  # diff exits 1 when the sides differ — the normal case for a fork; only >=2 is trouble.
-  diff_out=$(diff <(normalize "$mac_path") <(normalize "$ios_path") || [[ $? -eq 1 ]])
-  printf '%s\n' "$diff_out" | sha256_stdin | awk '{print $1}'
+  local mac_path="$1" ios_path="$2"
+  # Hash the two normalized sides directly instead of hashing `diff` output:
+  # BSD diff (macOS, where baselines are regenerated) and GNU diff (ubuntu
+  # runners) group hunks differently for the same inputs, so a diff-output
+  # hash is platform-dependent and fails CI on baselines made locally.
+  {
+    normalize "$mac_path"
+    printf '\n--- openburnbar-budget-fork-pair-separator ---\n'
+    normalize "$ios_path"
+  } | sha256_stdin | awk '{print $1}'
 }
 
 check_pair() {
