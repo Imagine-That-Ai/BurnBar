@@ -35,6 +35,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libsecret-1-dev \
         libglib2.0-bin \
         libreadline-dev \
+        librsvg2-dev \
         libsqlite3-dev \
         libssl-dev \
         libwebkit2gtk-4.1-dev \
