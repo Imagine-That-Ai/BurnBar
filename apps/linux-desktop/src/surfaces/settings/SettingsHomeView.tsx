@@ -1,6 +1,7 @@
 import type { ConfigSnapshot } from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { readOnboarding } from '../../onboardingStore.js';
+import { GlassAlert, GlassAlertStack, type GlassAlertSeverity } from '../../components/GlassAlert.js';
 import type { SettingsTabId } from './settingsTabs.js';
 import { SettingsIconTile } from './SettingsDrillRow.js';
 
@@ -12,6 +13,11 @@ type AttentionItem = {
   tint: string;
   tab: SettingsTabId;
 };
+
+function attentionSeverity(id: string): GlassAlertSeverity {
+  if (id === 'secret-store') return 'error';
+  return 'warning';
+}
 
 function buildAttentionItems(config: ConfigSnapshot | null, status: DaemonStatusCopy): AttentionItem[] {
   const items: AttentionItem[] = [];
@@ -83,20 +89,24 @@ export function SettingsHomeView({
           <h3 id="settings-attention-heading" className="settings-home-kicker settings-home-kicker--warn">
             Needs your attention
           </h3>
-          <ul className="settings-attention-list">
-            {attention.map((item) => (
-              <li key={item.id}>
-                <button type="button" className="settings-attention-card" onClick={() => onSelectTab(item.tab)}>
-                  <SettingsIconTile glyph={item.iconGlyph} tint={item.tint} size="sm" />
-                  <span className="settings-attention-copy">
-                    <span className="settings-attention-title">{item.title}</span>
-                    <span className="settings-attention-detail">{item.detail}</span>
-                  </span>
-                  <span className="settings-attention-fix">Fix</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <GlassAlertStack>
+            <ul className="settings-attention-list" style={{ display: 'contents', listStyle: 'none', margin: 0, padding: 0 }}>
+              {attention.map((item) => (
+                <li key={item.id}>
+                  <GlassAlert
+                    as="button"
+                    severity={attentionSeverity(item.id)}
+                    title={item.title}
+                    description={item.detail}
+                    iconGlyph={item.iconGlyph}
+                    actionLabel="Fix"
+                    role="status"
+                    onClick={() => onSelectTab(item.tab)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </GlassAlertStack>
         </section>
       ) : null}
 

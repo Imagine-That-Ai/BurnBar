@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../state/chatStore.js';
+import { GlassAlert, GlassAlertStack } from '../../components/GlassAlert.js';
 import type { ChatWarningBanner } from './chatTypes.js';
 
 function WarningBanners({ warnings, sharedFeaturesAvailable }: { warnings: ChatWarningBanner[]; sharedFeaturesAvailable: boolean }) {
@@ -6,30 +7,25 @@ function WarningBanners({ warnings, sharedFeaturesAvailable }: { warnings: ChatW
     !sharedFeaturesAvailable && !warnings.some((w) => w.id === 'cloud-shared');
   if (warnings.length === 0 && !showSharedFallback) return null;
   return (
-    <div className="chat-warning-stack" role="status">
+    <GlassAlertStack inline className="chat-warning-stack">
       {warnings.map((w) => (
-        <div key={w.id} className="chat-warning-banner">
-          <span className="chat-warning-icon" aria-hidden="true">
-            ⚠
-          </span>
-          <div>
-            <p className="chat-warning-title">{w.title}</p>
-            <p className="chat-warning-message">{w.message}</p>
-          </div>
-        </div>
+        <GlassAlert
+          key={w.id}
+          severity="warning"
+          title={w.title}
+          description={w.message}
+          role="status"
+        />
       ))}
       {showSharedFallback ? (
-        <div className="chat-warning-banner">
-          <span className="chat-warning-icon" aria-hidden="true">
-            ⚠
-          </span>
-          <div>
-            <p className="chat-warning-title">Cloud / shared unavailable</p>
-            <p className="chat-warning-message">Shared memory and cross-device sync are degraded in this shell session.</p>
-          </div>
-        </div>
+        <GlassAlert
+          severity="warning"
+          title="Cloud / shared unavailable"
+          description="Shared memory and cross-device sync are degraded in this shell session."
+          role="status"
+        />
       ) : null}
-    </div>
+    </GlassAlertStack>
   );
 }
 

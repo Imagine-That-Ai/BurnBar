@@ -5,7 +5,13 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
-  server: { port: 1420, strictPort: true },
+  server: {
+    port: 1420,
+    strictPort: true,
+    // Aliased workspace sources (@openburnbar/entitlements, @openburnbar/gl-engine)
+    // live outside the app root; allow only the packages tree, not the whole repo.
+    fs: { allow: ['.', '../../packages'] }
+  },
   envPrefix: ['VITE_', 'TAURI_'],
   resolve: {
     alias: {

@@ -13,11 +13,11 @@
   min-height: 80px;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--stat-card-tint, var(--color-glass-line)) 28%, var(--color-glass-line));
-  background: color-mix(in srgb, var(--color-glass-bg) 68%, transparent);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  box-shadow: inset 0 1px 0 var(--color-frost-line);
+  border: 1px solid color-mix(in srgb, var(--stat-card-tint, var(--color-glass-line)) 22%, var(--color-glass-line));
+  background: color-mix(in srgb, var(--color-glass-bg) 62%, transparent);
+  backdrop-filter: blur(30px) saturate(175%);
+  -webkit-backdrop-filter: blur(30px) saturate(175%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-frost-line) 88%, transparent);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -132,7 +132,8 @@
   line-height: 1;
   color: var(--metric-pill-tint, var(--color-brass-core));
   background: color-mix(in srgb, var(--metric-pill-tint, var(--color-brass-core)) 10%, transparent);
-  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--metric-pill-tint, var(--color-brass-core)) 18%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-frost-line) 55%, transparent);
 }
 
 .metric-pill-icon {

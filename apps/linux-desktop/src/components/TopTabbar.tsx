@@ -12,7 +12,7 @@ export function TopTabbar() {
   const setRoute = useShellStore((s) => s.setRoute);
 
   return (
-    <nav className="top-tabbar" role="tablist" aria-label="Primary">
+    <nav className="top-tabbar glass-pill" role="tablist" aria-label="Primary">
       {DECK_PRIMARY_ROUTES.map((section) => {
         const meta = topTabMetaFor(section);
         const selected = route === section;
@@ -23,7 +23,7 @@ export function TopTabbar() {
             key={section}
             type="button"
             role="tab"
-            className="top-tab nav-link"
+            className="top-tab nav-link glass-focus"
             aria-selected={selected}
             aria-current={selected ? 'page' : undefined}
             onClick={() => setRoute(section)}

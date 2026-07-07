@@ -11,7 +11,7 @@ type Props = {
  */
 export function SidebarSegmentedPicker({ mode, onModeChange }: Props) {
   return (
-    <div className="sidebar-segmented" role="group" aria-label="Sidebar view mode">
+    <div className="sidebar-segmented glass-pill" role="group" aria-label="Sidebar view mode">
       <button
         type="button"
         className="sidebar-segmented-item"
