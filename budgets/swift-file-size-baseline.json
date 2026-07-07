@@ -1,10 +1,5 @@
 {
   "target": 2000,
-  "total": 1,
-  "files": [
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase.swift",
-      "lines": 2089
-    }
-  ]
+  "total": 0,
+  "files": []
 }
