@@ -1,0 +1,8 @@
+FAIL: budget fork pair 'BudgetEnforcement' drifted from its reviewed baseline.
+  macOS: AgentLens/Services/DataStore/BudgetEnforcement.swift
+  iOS:   OpenBurnBarMobile/Models/BudgetEnforcement.swift
+  This pair is intentionally forked but expected to stay near-parallel; new one-sided edits are usually parity bugs.
+  Inspect the pair drift (does the change belong on BOTH platforms, or in
+  OpenBurnBarCore?), then regenerate the baseline in the same PR:
+    bash scripts/ci/check-budget-fork-drift.sh --update
+exit=1
