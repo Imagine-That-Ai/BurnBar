@@ -1,5 +1,8 @@
 import Foundation
 import OpenBurnBarCore
+import os
+
+private let budgetGateLogger = Logger(subsystem: "com.openburnbar.mobile", category: "BudgetGate")
 
 // MARK: - Errors
 
@@ -75,6 +78,11 @@ final class BudgetGate {
                     reference: reference
                 )
             } catch {
+                // FAIL CLOSED — spend is unknown, so the rule is treated as at-limit.
+                // Mirror the macOS gate's observability so a dead spend source is visible.
+                budgetGateLogger.error(
+                    "budget_gate_ledger_read_failed scope=\(rule.scope.rawValue, privacy: .public) behavior=\(rule.behavior.rawValue, privacy: .public) error=\(String(describing: type(of: error)), privacy: .public)"
+                )
                 decision = await failClosedDecision(
                     for: rule,
                     estimatedCost: estimatedCost,
@@ -297,6 +305,9 @@ final class BudgetGate {
                     return false
                 }
             } catch {
+                budgetGateLogger.error(
+                    "budget_gate_fallback_ledger_read_failed scope=\(rule.scope.rawValue, privacy: .public) behavior=\(rule.behavior.rawValue, privacy: .public) error=\(String(describing: type(of: error)), privacy: .public)"
+                )
                 return false
             }
         }
