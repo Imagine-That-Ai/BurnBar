@@ -1,10 +1,5 @@
 {
   "target": 2000,
-  "total": 1,
-  "files": [
-    {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderRouter.swift",
-      "lines": 2007
-    }
-  ]
+  "total": 0,
+  "files": []
 }
