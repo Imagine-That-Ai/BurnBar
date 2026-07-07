@@ -1,14 +1,10 @@
 {
   "target": 2000,
-  "total": 2,
+  "total": 1,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase.swift",
       "lines": 2089
-    },
-    {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderRouter.swift",
-      "lines": 2007
     }
   ]
 }
