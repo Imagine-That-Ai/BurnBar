@@ -6,6 +6,9 @@ import FirebaseFirestore
 import OpenBurnBarAnalytics
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+import os.log
+
+private let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
 
 // MARK: - Hermes Chat Message
 
@@ -726,11 +729,14 @@ final class HermesService {
         capturedFusionSpend = nil
 
         #if DEBUG
-        print("OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
+        let line = "OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable)"
+            + " suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)"
+        hermesE2ELogger.info("\(line, privacy: .public)")
         #endif
         preferSuggestedRelayWhenLocalHostIsOffline()
         #if DEBUG
-        print("OpenBurnBarMobile Hermes E2E sendMessage afterPrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
+        let line = "OpenBurnBarMobile Hermes E2E sendMessage afterPrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)"
+        hermesE2ELogger.info("\(line, privacy: .public)")
         #endif
 
         // Mint a local session id for brand-new chats so we can mirror the
