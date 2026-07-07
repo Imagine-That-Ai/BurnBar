@@ -575,6 +575,7 @@ final class HermesService {
                 messages = loaded
             }
         } catch {
+            hermesE2ELogger.error("hermes_service_resume_session_failed sessionID=\(session.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
             messages = []
             runtimeErrorText = "Could not load the selected Hermes transcript: \(error.localizedDescription)"
         }

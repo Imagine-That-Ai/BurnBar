@@ -539,6 +539,7 @@ final class HermesTransportSelector {
             }
         } catch {
             guard generation == coordinator.runtimeGeneration else { return }
+            hermesE2ELogger.error("transport_selector_load_models_failed: \(error.localizedDescription, privacy: .public)")
             coordinator.modelOptions = []
         }
     }
@@ -605,6 +606,7 @@ final class HermesTransportSelector {
             coordinator.sessions = HermesWireValueParsing.parseSessions(from: data)
         } catch {
             guard generation == coordinator.runtimeGeneration else { return }
+            hermesE2ELogger.error("transport_selector_load_sessions_failed: \(error.localizedDescription, privacy: .public)")
             coordinator.sessions = []
         }
     }
@@ -627,6 +629,7 @@ final class HermesTransportSelector {
             coordinator.profiles = HermesWireValueParsing.parseProfiles(from: data)
         } catch {
             guard generation == coordinator.runtimeGeneration else { return }
+            hermesE2ELogger.error("transport_selector_load_profiles_failed: \(error.localizedDescription, privacy: .public)")
             coordinator.profiles = []
         }
     }
@@ -649,6 +652,7 @@ final class HermesTransportSelector {
             coordinator.jobs = HermesWireValueParsing.parseJobs(from: data)
         } catch {
             guard generation == coordinator.runtimeGeneration else { return }
+            hermesE2ELogger.error("transport_selector_load_jobs_failed: \(error.localizedDescription, privacy: .public)")
             coordinator.jobs = []
         }
     }

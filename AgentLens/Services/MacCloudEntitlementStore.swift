@@ -157,6 +157,10 @@ final class MacStoreKitAppAccountTokenBindingStore: MacStoreKitAppAccountTokenBi
         do {
             return try JSONDecoder().decode([String: Binding].self, from: data)
         } catch {
+            AppLogger.sync.error(
+                "mac_storekit_token_binding_load_failed",
+                metadata: ["error": error.localizedDescription]
+            )
             return [:]
         }
     }
@@ -166,6 +170,10 @@ final class MacStoreKitAppAccountTokenBindingStore: MacStoreKitAppAccountTokenBi
             let data = try JSONEncoder().encode(bindings)
             defaults.set(data, forKey: storageKey)
         } catch {
+            AppLogger.sync.error(
+                "mac_storekit_token_binding_save_failed",
+                metadata: ["error": error.localizedDescription]
+            )
             return
         }
     }
@@ -197,6 +205,12 @@ struct StoreKitMacEntitlementProvider: MacStoreKitEntitlementProviding {
                     )
                 )
             } catch {
+                // Unverified transactions are semi-expected (e.g. jailbreak
+                // tampering, refunds mid-flight) — trace, don't alarm.
+                AppLogger.sync.notice(
+                    "mac_storekit_current_entitlement_unverified",
+                    metadata: ["error": error.localizedDescription]
+                )
                 continue
             }
         }
@@ -214,6 +228,13 @@ struct StoreKitMacEntitlementProvider: MacStoreKitEntitlementProviding {
                         }
                         continuation.yield(())
                     } catch {
+                        // Unverified transaction updates are semi-expected —
+                        // trace at notice level so a persistent verification
+                        // failure is still observable without spamming.
+                        AppLogger.sync.notice(
+                            "mac_storekit_transaction_update_unverified",
+                            metadata: ["error": error.localizedDescription]
+                        )
                         continue
                     }
                 }
