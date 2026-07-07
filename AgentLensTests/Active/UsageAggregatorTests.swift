@@ -457,6 +457,9 @@ final class UsageAggregatorTests: XCTestCase {
         mockParser.parseResult = ParseResult(usages: [], conversations: [])
 
         let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
+        // recountAll arms the durable (UserDefaults) reconciliation state;
+        // never leak an armed state to other suites.
+        defer { UsageSyncService.orphanReconciliationState = .idle }
         await aggregator.recountAll()
 
         // After recount, usages should be from parser (empty in this case)
@@ -465,35 +468,24 @@ final class UsageAggregatorTests: XCTestCase {
         XCTAssertTrue(dataStore.usages.isEmpty)
     }
 
-    func test_recountAll_postsLifecycleNotifications_whenRebuildCommits() async throws {
+    func test_recountAll_armsDurableReconciliation_whenRebuildCommits() async throws {
         let dataStore = try makeTestDataStore()
         let mockParser = MockParser(provider: .factory)
         mockParser.parseResult = ParseResult(usages: [], conversations: [])
         let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
 
-        let events = Locked<[String]>([])
-        let willObserver = NotificationCenter.default.addObserver(
-            forName: .usageRecountWillRebuildLocalRows,
-            object: nil,
-            queue: nil
-        ) { _ in events.withLock { $0.append("will") } }
-        let didObserver = NotificationCenter.default.addObserver(
-            forName: .usageRecountDidRebuildLocalRows,
-            object: nil,
-            queue: nil
-        ) { _ in events.withLock { $0.append("did") } }
-        defer {
-            NotificationCenter.default.removeObserver(willObserver)
-            NotificationCenter.default.removeObserver(didObserver)
-        }
+        // The lifecycle state is durable (UserDefaults.standard); pin the
+        // starting point and never leak an armed state to other suites.
+        UsageSyncService.orphanReconciliationState = .idle
+        defer { UsageSyncService.orphanReconciliationState = .idle }
 
         await aggregator.recountAll()
 
         XCTAssertNil(aggregator.typedPersistenceError)
         XCTAssertEqual(
-            events.read(),
-            ["will", "did"],
-            "a committed rebuild must demote first, then arm reconciliation only after the persist committed"
+            UsageSyncService.orphanReconciliationState,
+            .readyForReconciliation,
+            "a committed rebuild must durably arm one-shot reconciliation"
         )
     }
 

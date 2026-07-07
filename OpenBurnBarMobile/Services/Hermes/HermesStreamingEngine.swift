@@ -1,5 +1,8 @@
 import Foundation
+import os.log
 import OpenBurnBarCore
+
+private let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
 
 /// Coordinator surface the streaming orchestration needs from
 /// `HermesService`. The engine drives the full send pipeline (request
@@ -639,7 +642,8 @@ final class HermesStreamingEngine {
             await coordinator.refreshRelayDiscoveryBeforeLocalSendIfNeeded()
         }
         #if DEBUG
-        print("OpenBurnBarMobile Hermes E2E streamCompletion selected=\(coordinator.selectedConnection.id) mode=\(coordinator.selectedConnection.mode.rawValue) requestedModel=\(coordinator.activeRequestedModelID ?? "nil") modelOptions=\(coordinator.modelOptions.count)")
+        let line = "OpenBurnBarMobile Hermes E2E streamCompletion selected=\(coordinator.selectedConnection.id) mode=\(coordinator.selectedConnection.mode.rawValue) requestedModel=\(coordinator.activeRequestedModelID ?? "nil") modelOptions=\(coordinator.modelOptions.count)"
+        hermesE2ELogger.info("\(line, privacy: .public)")
         #endif
         if coordinator.selectedConnection.mode == .relayLink {
             try await streamRelayCompletion(coordinator: coordinator, context: context, iteration: iteration)
@@ -883,7 +887,7 @@ final class HermesStreamingEngine {
         }
         let body = try completionRequestBody(coordinator: coordinator, context: context)
         #if DEBUG
-        print("OpenBurnBarMobile Hermes E2E streamRelayCompletion start connection=\(coordinator.selectedConnection.id) requestedModel=\(coordinator.activeRequestedModelID ?? "nil") bodyBytes=\(body.count)")
+        hermesE2ELogger.info("OpenBurnBarMobile Hermes E2E streamRelayCompletion start connection=\(coordinator.selectedConnection.id, privacy: .public) requestedModel=\(coordinator.activeRequestedModelID ?? "nil", privacy: .public) bodyBytes=\(body.count, privacy: .public)")
         #endif
         coordinator.isReachable = true
 
@@ -915,7 +919,7 @@ final class HermesStreamingEngine {
             throw error
         }
         #if DEBUG
-        print("OpenBurnBarMobile Hermes E2E streamRelayCompletion finished connection=\(coordinator.selectedConnection.id)")
+        hermesE2ELogger.info("OpenBurnBarMobile Hermes E2E streamRelayCompletion finished connection=\(coordinator.selectedConnection.id, privacy: .public)")
         #endif
 
         assistantMessage.isStreaming = false
@@ -1096,7 +1100,9 @@ final class HermesStreamingEngine {
         }
 
         #if DEBUG
-        print("OpenBurnBarMobile Hermes E2E streamError selected=\(coordinator.selectedConnection.id) mode=\(coordinator.selectedConnection.mode.rawValue) error=\(error.localizedDescription) display=\(displayText)")
+        let line = "OpenBurnBarMobile Hermes E2E streamError selected=\(coordinator.selectedConnection.id) mode=\(coordinator.selectedConnection.mode.rawValue)"
+            + " error=\(error.localizedDescription) display=\(displayText)"
+        hermesE2ELogger.error("\(line, privacy: .public)")
         #endif
 
         let errorMessage = HermesChatMessage(

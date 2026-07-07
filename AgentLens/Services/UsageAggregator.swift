@@ -266,8 +266,9 @@ final class UsageAggregator {
         // Demote any already-armed cloud reconciliation before touching the
         // table: from here until the rebuild verifiably commits, the local
         // usage table may be partially populated, and orphan cleanup must
-        // never run against it.
-        NotificationCenter.default.post(name: .usageRecountWillRebuildLocalRows, object: nil)
+        // never run against it. Durable, so an app death mid-recount keeps
+        // cleanup blocked after relaunch.
+        UsageSyncService.beginOrphanReconciliationRecount()
         var clearSucceeded = true
         do {
             try await dataStore.deleteAll()
@@ -295,7 +296,9 @@ final class UsageAggregator {
         let recountStartedAt = Date()
         await refreshAll()
         // Tell the usage sync domain to reconcile now-orphaned cloud docs on
-        // its next pass — but ONLY when this rebuild verifiably committed:
+        // its next pass — a durable state (not a notification) because the
+        // sync service is constructed fresh per upload and would miss an
+        // in-memory signal — but ONLY when this rebuild verifiably committed:
         // the clear succeeded, the refresh actually applied its results
         // (`lastRefresh` advanced; a cancelled or short-circuited refresh
         // leaves it stale), and persistence reported no error. A recount whose
@@ -309,7 +312,7 @@ final class UsageAggregator {
             refreshApplied: refreshApplied,
             typedPersistenceError: typedPersistenceError
         ) {
-            NotificationCenter.default.post(name: .usageRecountDidRebuildLocalRows, object: nil)
+            UsageSyncService.requestOrphanReconciliation()
         }
     }
 

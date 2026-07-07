@@ -1,6 +1,7 @@
 @preconcurrency import ActivityKit
 import Foundation
 import OpenBurnBarCore
+import os.log
 
 /// Manages the BurnBar Live Activity lifecycle.
 /// Available on iOS 16.1+.
@@ -9,6 +10,7 @@ import OpenBurnBarCore
 @MainActor
 final class LiveActivityManager {
     static let shared = LiveActivityManager()
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "LiveActivityManager")
 
     private let backend: any BurnBarLiveActivityBackend
     private var activity: (any BurnBarLiveActivityHandle)?
@@ -40,7 +42,10 @@ final class LiveActivityManager {
             activity = try backend.request(attributes: attributes, state: state)
             lastSentState = state
         } catch {
-            // Live Activity failures are non-critical; do not surface to user.
+            // Live Activity failures are non-critical; do not surface to user —
+            // but log (e.g. activity budget exhausted, authorization revoked
+            // mid-flight) so missing Dynamic Island sessions are diagnosable.
+            Self.log.warning("startActivity: Live Activity request failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

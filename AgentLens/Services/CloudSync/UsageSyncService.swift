@@ -3,29 +3,6 @@ import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 
-/// Sync domain for uploading local TokenUsage rows to Firestore.
-///
-/// Firestore layout: `users/{uid}/usage/{deviceId}_{usageId}`
-///
-/// Project names are private text BurnBar must not be able to read. They are
-/// sealed with the per-user Cloud Vault key (`sealedProjectName`) instead of
-/// being written in plaintext. An opaque keyed `projectKeyHash` is also written
-/// so on-device readers can group usage by project without decrypting every row.
-extension Notification.Name {
-    /// Posted by UsageAggregator.recountAll just before it clears and rebuilds
-    /// the local usage table. Demotes any already-armed reconciliation so
-    /// orphan cleanup can never run against a mid-rebuild (partially
-    /// populated) table.
-    static let usageRecountWillRebuildLocalRows = Notification.Name("OpenBurnBarUsageRecountWillRebuildLocalRows")
-    /// Posted by UsageAggregator.recountAll only after the local usage table
-    /// has been cleared, re-parsed, AND the persist verifiably committed, so
-    /// the next usage sync reconciles now-orphaned cloud docs exactly once.
-    /// A recount whose persist failed partway never posts this: the request
-    /// stays pending (`awaitingRecountCompletion`) until a successful retry
-    /// re-arms it.
-    static let usageRecountDidRebuildLocalRows = Notification.Name("OpenBurnBarUsageRecountDidRebuildLocalRows")
-}
-
 /// Lifecycle of a one-shot orphaned-cloud-doc reconciliation request.
 ///
 /// Cleanup deletes every same-device cloud doc whose usage ID is missing from
@@ -33,7 +10,10 @@ extension Notification.Name {
 /// table. A recount that is mid-persist (or failed partway) leaves the table
 /// non-empty but incomplete — reconciling against it would destroy cloud
 /// history for rows not yet persisted.
-enum UsageOrphanReconciliationState: Sendable, Equatable {
+///
+/// `String`-raw so the state persists durably in UserDefaults (see
+/// `UsageSyncService.orphanReconciliationState`).
+enum UsageOrphanReconciliationState: String, Sendable, Equatable {
     /// No reconciliation pending.
     case idle
     /// A recount started rebuilding the local table but its persist has not
@@ -44,7 +24,29 @@ enum UsageOrphanReconciliationState: Sendable, Equatable {
     case readyForReconciliation
 }
 
+/// Sync domain for uploading local TokenUsage rows to Firestore.
+///
+/// Firestore layout: `users/{uid}/usage/{deviceId}_{usageId}`
+///
+/// Project names are private text BurnBar must not be able to read. They are
+/// sealed with the per-user Cloud Vault key (`sealedProjectName`) instead of
+/// being written in plaintext. An opaque keyed `projectKeyHash` is also written
+/// so on-device readers can group usage by project without decrypting every row.
 final class UsageSyncService: CloudSyncDomain, Sendable {
+    /// Durable one-shot reconciliation state: recountAll drives it, the next
+    /// sync consumes it. UserDefaults (not in-memory state) because
+    /// uploadPending() constructs a fresh, short-lived UsageSyncService per
+    /// call — instance state would be created only AFTER recountAll already
+    /// signalled, so the request would never be seen. It also survives a
+    /// relaunch between recount and the next sync — including an app death
+    /// while a recount was mid-persist, where the state stays
+    /// `awaitingRecountCompletion` and cleanup remains blocked until a recount
+    /// verifiably commits.
+    static let orphanReconciliationStateDefaultsKey = "OpenBurnBarUsageOrphanReconciliationState"
+    /// Legacy Bool key from the pre-tri-state durable flag ("a recount
+    /// completed and requested reconciliation"). Read for migration only;
+    /// cleared on the first state transition.
+    static let orphanReconciliationDefaultsKey = "OpenBurnBarUsageOrphanReconciliationRequested"
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
@@ -54,39 +56,52 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
 
-    /// Tracks a Recount (or other full local rebuild) requesting one-shot
-    /// cloud reconciliation. Orphan cleanup is O(total same-device history)
-    /// in Firestore reads, so it must not run on every incremental sync — and
-    /// it only runs in `.readyForReconciliation`, i.e. after the rebuild's
-    /// local persist verifiably committed.
-    private let orphanReconciliationState = Locked(UsageOrphanReconciliationState.idle)
-
     init(
         context: CloudSyncContext,
         vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
     ) {
         self.context = context
         self.vaultKeyProvider = vaultKeyProvider
-        NotificationCenter.default.addObserver(
-            forName: .usageRecountWillRebuildLocalRows,
-            object: nil,
-            queue: nil
-        ) { [orphanReconciliationState] _ in
-            orphanReconciliationState.withLock { $0 = .awaitingRecountCompletion }
+    }
+
+    /// The durable reconciliation lifecycle state. Orphan cleanup is O(total
+    /// same-device history) in Firestore reads, so it must not run on every
+    /// incremental sync — and it only runs in `.readyForReconciliation`,
+    /// i.e. after the rebuild's local persist verifiably committed.
+    static var orphanReconciliationState: UsageOrphanReconciliationState {
+        get {
+            let defaults = UserDefaults.standard
+            if let raw = defaults.string(forKey: orphanReconciliationStateDefaultsKey),
+               let decoded = UsageOrphanReconciliationState(rawValue: raw) {
+                return decoded
+            }
+            // Migration: the legacy durable flag was a Bool meaning "a recount
+            // completed and requested reconciliation".
+            return defaults.bool(forKey: orphanReconciliationDefaultsKey)
+                ? .readyForReconciliation
+                : .idle
         }
-        NotificationCenter.default.addObserver(
-            forName: .usageRecountDidRebuildLocalRows,
-            object: nil,
-            queue: nil
-        ) { [orphanReconciliationState] _ in
-            orphanReconciliationState.withLock { $0 = .readyForReconciliation }
+        set {
+            let defaults = UserDefaults.standard
+            defaults.set(newValue.rawValue, forKey: orphanReconciliationStateDefaultsKey)
+            defaults.removeObject(forKey: orphanReconciliationDefaultsKey)
         }
     }
 
+    /// A recount is about to clear and rebuild the local usage table: demote
+    /// any armed reconciliation so orphan cleanup can never run against a
+    /// mid-rebuild (partially populated) table. Durable — an app death between
+    /// here and the verified commit keeps cleanup blocked after relaunch, and
+    /// the pending request is re-armed by the next recount that fully commits.
+    static func beginOrphanReconciliationRecount() {
+        orphanReconciliationState = .awaitingRecountCompletion
+    }
+
     /// Request a one-shot orphaned-cloud-doc reconciliation on the next sync.
+    /// Durable across the ephemeral per-sync UsageSyncService instances.
     /// Callers assert the local table is fully persisted and authoritative.
-    func requestOrphanReconciliation() {
-        orphanReconciliationState.withLock { $0 = .readyForReconciliation }
+    static func requestOrphanReconciliation() {
+        orphanReconciliationState = .readyForReconciliation
     }
 
     /// Upload all unsynced local usage rows to Firestore.
@@ -153,7 +168,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             // cloud docs for rows not yet persisted), and never against an
             // empty local table (a fully failed recount persist must not
             // delete the device's entire cloud history).
-            if orphanReconciliationState.read() == .readyForReconciliation {
+            if Self.orphanReconciliationState == .readyForReconciliation {
                 let keeping = Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
                 if keeping.isEmpty {
                     AppLogger.sync.error(
@@ -167,13 +182,12 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                         keeping: keeping
                     )
                     // Clear the one-shot request only after cleanup verifiably
-                    // completed, and only while still armed: if a new recount
+                    // completed (a failed sync retries reconciliation next
+                    // time), and only while still armed: if a new recount
                     // started meanwhile (`.awaitingRecountCompletion`), keep
                     // its state instead of stomping it.
-                    if completed {
-                        orphanReconciliationState.withLock {
-                            if $0 == .readyForReconciliation { $0 = .idle }
-                        }
+                    if completed, Self.orphanReconciliationState == .readyForReconciliation {
+                        Self.orphanReconciliationState = .idle
                     }
                 }
             }
@@ -221,9 +235,9 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
         for batchStart in stride(from: 0, to: orphanDocIds.count, by: 400) {
             // Re-check the reconciliation state before every delete commit: a
-            // recount posting `usageRecountWillRebuildLocalRows` demotes the
-            // state, and deletion must stop before touching another doc.
-            guard orphanReconciliationState.read() == .readyForReconciliation else {
+            // recount starting (`beginOrphanReconciliationRecount`) demotes
+            // the state, and deletion must stop before touching another doc.
+            guard Self.orphanReconciliationState == .readyForReconciliation else {
                 AppLogger.sync.notice(
                     "usage_orphan_cleanup_aborted_recount_started",
                     metadata: ["deletedSoFar": "\(batchStart)", "planned": "\(orphanDocIds.count)"]
