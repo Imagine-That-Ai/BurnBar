@@ -736,8 +736,8 @@ final class HermesService {
         #endif
         preferSuggestedRelayWhenLocalHostIsOffline()
         #if DEBUG
-        let line = "OpenBurnBarMobile Hermes E2E sendMessage afterPrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)"
-        hermesE2ELogger.info("\(line, privacy: .public)")
+        let afterPreferLine = "OpenBurnBarMobile Hermes E2E sendMessage afterPrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)"
+        hermesE2ELogger.info("\(afterPreferLine, privacy: .public)")
         #endif
 
         // Mint a local session id for brand-new chats so we can mirror the
