@@ -1,0 +1,1852 @@
+import CryptoKit
+import Foundation
+import os
+import OSLog
+#if canImport(Darwin)
+import Darwin
+#endif
+import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
+
+struct AgentToolExecutionPayload {
+    let content: String
+    let detail: String?
+}
+
+final class AgentToolBroker: Sendable {
+    let grant: AgentCapabilityGrant
+    let workspaceURL: URL
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    private struct WeakController {
+        weak var value: ComputerUseRuntimeController?
+    }
+
+    // Set-once-at-init weak link to the @MainActor runtime controller; the lock
+    // mediates the (weak) slot so the broker stays plainly Sendable.
+    private let computerUseRuntimeControllerBox = OSAllocatedUnfairLock(uncheckedState: WeakController())
+    var computerUseRuntimeController: ComputerUseRuntimeController? {
+        get { computerUseRuntimeControllerBox.withLockUnchecked { $0.value } }
+        set { computerUseRuntimeControllerBox.withLockUnchecked { $0.value = newValue } }
+    }
+    #endif
+    private let grantStillActive: (@Sendable () async -> Bool)?
+
+    /// Human-in-the-loop gate invoked before a **privileged** broker tool
+    /// (shell / workspace write / desktop export) runs.
+    /// Returns `true` to allow. When `nil`, privileged tools FAIL CLOSED — there
+    /// is no silent privileged execution under an active grant (finding A1).
+    typealias PrivilegedActionApprover = @Sendable (_ toolName: String, _ summary: String) async -> Bool
+    private let privilegedActionApprover: PrivilegedActionApprover?
+
+    /// T-TOOL-02(b) / T-AI-07: fresh local-auth re-authorization for the
+    /// unrestricted (YOLO) shell path. Returns `true` when the operator re-proved
+    /// presence (Touch ID / device-owner auth). When `nil` the unrestricted shell
+    /// FAILS CLOSED at every re-auth checkpoint — an obeyed prompt injection
+    /// cannot run unbounded shell because it can never satisfy the gate.
+    typealias UnrestrictedShellReauthorizer = @Sendable (_ summary: String) async -> Bool
+    private let unrestrictedShellReauthorizer: UnrestrictedShellReauthorizer?
+
+    /// How many unrestricted-shell actions may run between re-auth proofs.
+    static let unrestrictedShellReauthInterval = 5
+
+    /// Cadence tracker for the unrestricted-shell re-auth window. Stored in a
+    /// `Locked` box so the broker stays plainly `Sendable` (matching the rest of
+    /// this broker's lock-mediated mutable state) and the tool loop can dispatch
+    /// concurrently without data races.
+    private let unrestrictedShellCadenceBox = Locked<AgentReauthCadence>(
+        AgentReauthCadence(interval: AgentToolBroker.unrestrictedShellReauthInterval)
+    )
+
+    /// Broker tools that perform privileged side effects (shell exec, writes,
+    /// exfiltration-capable export). Each requires explicit per-action approval.
+    /// Trust mode scopes which tools may be offered; it never replaces the
+    /// concrete action gate.
+    static let approvalGatedTools: Set<String> = [
+        "shell_run", "shell_run_unrestricted", "workspace_write_file", "desktop_export_file"
+    ]
+
+    /// F3: forensic audit log for unsandboxed unrestricted-shell execution.
+    static let unrestrictedShellAudit = Logger(
+        subsystem: "com.openburnbar.AgentLens",
+        category: "agent.shell.unrestricted"
+    )
+
+    /// Short, non-reversible digest of an executed command for the audit trail.
+    /// We log the hash (not the plaintext) so the trail cannot itself leak secrets
+    /// embedded in a command line.
+    static func commandAuditDigest(_ command: String) -> String {
+        let digest = SHA256.hash(data: Data(command.utf8))
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private let browserSessionIDBox = Locked<String?>(nil)
+
+    private enum WorkspaceAccessMode {
+        case read
+        case write
+    }
+
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    init(
+        grant: AgentCapabilityGrant,
+        workspaceURL: URL,
+        computerUseRuntimeController: ComputerUseRuntimeController? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil
+    ) {
+        self.grant = grant
+        self.workspaceURL = Self.canonicalFileURL(workspaceURL)
+        self.grantStillActive = grantStillActive
+        self.privilegedActionApprover = nil
+        self.unrestrictedShellReauthorizer = nil
+        self.computerUseRuntimeController = computerUseRuntimeController
+    }
+
+    init(
+        grant: AgentCapabilityGrant,
+        workspaceURL: URL,
+        computerUseRuntimeController: ComputerUseRuntimeController? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        privilegedActionApprover: PrivilegedActionApprover?,
+        unrestrictedShellReauthorizer: UnrestrictedShellReauthorizer? = nil
+    ) {
+        self.grant = grant
+        self.workspaceURL = Self.canonicalFileURL(workspaceURL)
+        self.grantStillActive = grantStillActive
+        self.privilegedActionApprover = privilegedActionApprover
+        self.unrestrictedShellReauthorizer = unrestrictedShellReauthorizer
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        self.computerUseRuntimeController = computerUseRuntimeController
+        #endif
+    }
+    #else
+    init(
+        grant: AgentCapabilityGrant,
+        workspaceURL: URL,
+        grantStillActive: (@Sendable () async -> Bool)? = nil
+    ) {
+        self.grant = grant
+        self.workspaceURL = Self.canonicalFileURL(workspaceURL)
+        self.grantStillActive = grantStillActive
+        self.privilegedActionApprover = nil
+        self.unrestrictedShellReauthorizer = nil
+    }
+
+    init(
+        grant: AgentCapabilityGrant,
+        workspaceURL: URL,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        privilegedActionApprover: PrivilegedActionApprover?,
+        unrestrictedShellReauthorizer: UnrestrictedShellReauthorizer? = nil
+    ) {
+        self.grant = grant
+        self.workspaceURL = Self.canonicalFileURL(workspaceURL)
+        self.grantStillActive = grantStillActive
+        self.privilegedActionApprover = privilegedActionApprover
+        self.unrestrictedShellReauthorizer = unrestrictedShellReauthorizer
+    }
+    #endif
+
+    /// T-TOOL-02(b): whether the next unrestricted-shell action needs a fresh
+    /// local-auth re-authorization right now (exposed for testing the cadence).
+    var unrestrictedShellRequiresReauthNow: Bool {
+        unrestrictedShellCadenceBox.read().requiresReauthBeforeNextAction
+    }
+
+    var openAITools: [[String: Any]] {
+        AgentDesktopToolDefinitions.openAITools(for: grant)
+    }
+
+    var isActive: Bool {
+        grant.isActive()
+    }
+
+    func invokeOpenAITool(
+        name: String,
+        arguments: String,
+        callID: String,
+        runID: String
+    ) async -> AgentToolExecutionPayload {
+        guard grant.isActive() else {
+            return denied(name: name, reason: "desktop grant is not active")
+        }
+        if let grantStillActive {
+            let stillActive = await grantStillActive()
+            guard stillActive else {
+                return denied(name: name, reason: "desktop grant was revoked")
+            }
+        }
+        guard let definition = AgentDesktopToolDefinitions.tool(named: name),
+              grant.supportsAll(definition.requiredCapabilities) else {
+            return denied(name: name, reason: "tool is outside the active grant")
+        }
+
+        if let toolKind = AgentDesktopToolDefinitions.computerUseToolKind(named: name) {
+            return await invokeComputerUseTool(
+                toolKind,
+                arguments: arguments,
+                callID: callID,
+                runID: runID
+            )
+        }
+
+        do {
+            let object = try Self.jsonObject(fromArguments: arguments)
+            // A1: privileged broker tools require explicit per-action approval.
+            // Fail closed when no approver is wired — never execute a privileged
+            // tool silently under an ambient or trusted grant.
+            if Self.approvalGatedTools.contains(name) {
+                let summary = Self.approvalSummary(tool: name, arguments: object)
+                guard let approver = privilegedActionApprover else {
+                    return denied(name: name, reason: "privileged action requires approval but no approver is available")
+                }
+                let approved = await approver(name, summary)
+                guard approved else {
+                    return denied(name: name, reason: "user declined this action")
+                }
+            }
+            switch name {
+            case "workspace_read_file":
+                return try readWorkspaceFile(arguments: object)
+            case "workspace_list_files":
+                return try listWorkspaceFiles(arguments: object)
+            case "workspace_write_file":
+                return try writeWorkspaceFile(arguments: object)
+            case "desktop_export_file":
+                return try exportDesktopFile(arguments: object)
+            case "shell_run":
+                return try await runShell(arguments: object)
+            case "shell_run_unrestricted":
+                return try await runShellUnrestricted(arguments: object)
+            default:
+                return denied(name: name, reason: "unknown tool")
+            }
+        } catch {
+            return errorPayload(name: name, error: String(describing: error))
+        }
+    }
+
+    private func invokeComputerUseTool(
+        _ toolKind: BurnBarToolKind,
+        arguments: String,
+        callID: String,
+        runID: String
+    ) async -> AgentToolExecutionPayload {
+        let invocationArguments: BurnBarJSONValue
+        do {
+            invocationArguments = try Self.burnBarJSONValue(fromArguments: arguments)
+        } catch {
+            return errorPayload(name: toolKind.rawValue, error: "invalid JSON arguments: \(String(describing: error))")
+        }
+
+        let invocation = BurnBarToolInvocation(
+            callID: callID.isEmpty ? UUID().uuidString : callID,
+            runID: BurnBarRunID(rawValue: runID.isEmpty ? "agent-\(grant.grantID)" : runID),
+            tool: toolKind,
+            arguments: invocationArguments,
+            requestedBy: BurnBarClientID(rawValue: "agent-\(grant.runtimeID.rawValue)"),
+            requestedAt: Date()
+        )
+
+        if toolKind.isBrowserComputerUse {
+            return await invokeDaemonBrowserTool(invocation)
+        }
+
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        guard let controller = computerUseRuntimeController else {
+            return denied(name: toolKind.rawValue, reason: "Mac Computer Use runtime is not attached")
+        }
+        do {
+            _ = try await controller.ensureSession(mode: .system, trustMode: grant.trustMode)
+            let response = await controller.coordinator.invoke(invocation)
+            return Self.payload(name: toolKind.rawValue, response: response)
+        } catch {
+            return errorPayload(name: toolKind.rawValue, error: String(describing: error))
+        }
+        #else
+        return denied(name: toolKind.rawValue, reason: "Mac system Computer Use is unavailable in this build")
+        #endif
+    }
+
+    private func invokeDaemonBrowserTool(_ invocation: BurnBarToolInvocation) async -> AgentToolExecutionPayload {
+        do {
+            let sessionID: String
+            if let existing = browserSessionIDBox.read() {
+                sessionID = existing
+            } else {
+                let response = try await OpenBurnBarDaemonManager.shared.startComputerUseSession(
+                    ComputerUseSessionStartRequest(
+                        mode: ComputerUseMode.browser.rawValue,
+                        trustMode: grant.trustMode.rawValue,
+                        scopeRuleIds: grant.scopeRuleIDs,
+                        macHostNodeId: grant.sourceDeviceID,
+                        actionCap: ComputerUseBudgetEnvelope.initialNormal.activeActionsPerRun,
+                        sessionTimeoutSeconds: 1800,
+                        clientID: BurnBarClientID(rawValue: "agent-\(grant.runtimeID.rawValue)"),
+                        runID: invocation.runID,
+                        localAuthProof: grant.localAuthProof,
+                        sourceDeviceId: grant.sourceDeviceID,
+                        intentHashHex: grant.localAuthIntentHashHex,
+                        localAuthGrantBinding: grant.localAuthGrantBinding
+                    )
+                )
+                // Publish atomically: if a concurrent first-call already created a
+                // session while we awaited, prefer the stored id and let our
+                // just-created session lapse via the daemon's idle-timeout GC. Keeps
+                // the cached id deterministic under the rare concurrent-init race.
+                sessionID = browserSessionIDBox.withLock { stored in
+                    if let stored { return stored }
+                    stored = response.sessionId
+                    return response.sessionId
+                }
+            }
+            let response = try await OpenBurnBarDaemonManager.shared.invokeComputerUse(
+                ComputerUseInvokeRequest(
+                    sessionId: sessionID,
+                    invocation: invocation,
+                    localAuthProof: grant.localAuthProof,
+                    sourceDeviceId: grant.sourceDeviceID,
+                    intentHashHex: grant.localAuthIntentHashHex,
+                    localAuthGrantBinding: grant.localAuthGrantBinding
+                )
+            )
+            return Self.payload(name: invocation.tool.rawValue, response: response)
+        } catch {
+            return errorPayload(name: invocation.tool.rawValue, error: String(describing: error))
+        }
+    }
+
+    private func readWorkspaceFile(arguments: [String: Any]) throws -> AgentToolExecutionPayload {
+        let path = try requiredString("path", in: arguments)
+        let url = try workspaceFileURL(path, mode: .read)
+        let data = try Data(contentsOf: url)
+        let text = String(decoding: data.prefix(200_000), as: UTF8.self)
+        return jsonPayload([
+            "ok": true,
+            "path": path,
+            "truncated": data.count > 200_000,
+            "content": text
+        ], detail: path)
+    }
+
+    private func listWorkspaceFiles(arguments: [String: Any]) throws -> AgentToolExecutionPayload {
+        let path = (arguments["path"] as? String) ?? "."
+        let limit = max(1, min((arguments["limit"] as? Int) ?? 200, 500))
+        let root = try workspaceFileURL(path, mode: .read)
+        var rows: [[String: Any]] = []
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey]
+        if let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: Array(keys)) {
+            for case let fileURL as URL in enumerator {
+                let values = try? fileURL.resourceValues(forKeys: keys) // try?-ok(metadata skip fallback)
+                rows.append([
+                    "path": relativeWorkspacePath(for: fileURL),
+                    "isDirectory": values?.isDirectory ?? false,
+                    "sizeBytes": values?.fileSize ?? 0
+                ])
+                if rows.count >= limit { break }
+            }
+        }
+        return jsonPayload(["ok": true, "root": path, "files": rows], detail: "\(rows.count) files")
+    }
+
+    private func writeWorkspaceFile(arguments: [String: Any]) throws -> AgentToolExecutionPayload {
+        let path = try requiredString("path", in: arguments)
+        guard let content = arguments["content"] as? String else {
+            throw NSError(domain: "AgentToolBroker", code: 3, userInfo: [NSLocalizedDescriptionKey: "Missing required string: content"])
+        }
+        let append = (arguments["append"] as? Bool) ?? false
+        let url = try workspaceFileURL(path, mode: .write)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let data = Data(content.utf8)
+        if append, FileManager.default.fileExists(atPath: url.path) {
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() } // try?-ok(handle teardown)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+        } else {
+            try data.write(to: url, options: [.atomic])
+        }
+        return jsonPayload(["ok": true, "path": path, "bytesWritten": data.count], detail: path)
+    }
+
+    private func exportDesktopFile(arguments: [String: Any]) throws -> AgentToolExecutionPayload {
+        let sourcePath = try requiredString("sourcePath", in: arguments)
+        let sourceURL = try workspaceFileURL(sourcePath, mode: .read)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else {
+            throw NSError(domain: "AgentToolBroker", code: 6, userInfo: [NSLocalizedDescriptionKey: "Source file does not exist or is a directory"])
+        }
+
+        let requestedName = (arguments["targetName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filename = Self.safeDesktopFilename(requestedName?.nonEmpty ?? sourceURL.lastPathComponent)
+        let safeThread = Self.safeDesktopFilename(grant.threadID)
+        let dropDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop", isDirectory: true)
+            .appendingPathComponent("OpenBurnBar Agent Drops", isDirectory: true)
+            .appendingPathComponent(safeThread, isDirectory: true)
+        try FileManager.default.createDirectory(at: dropDirectory, withIntermediateDirectories: true)
+        let destinationURL = dropDirectory.appendingPathComponent(filename, isDirectory: false)
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        return jsonPayload([
+            "ok": true,
+            "sourcePath": sourcePath,
+            "desktopPath": destinationURL.path,
+            "bytesCopied": (try? destinationURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 // try?-ok(byte count fallback)
+        ], detail: destinationURL.path)
+    }
+
+    private func runShell(arguments: [String: Any]) async throws -> AgentToolExecutionPayload {
+        let command = try requiredString("command", in: arguments)
+        let requestedTimeout = (arguments["timeoutSeconds"] as? Int) ?? 30
+        let timeout = max(1, min(requestedTimeout, 60))
+        let invocation = try Self.workspaceSandboxedShellInvocation(
+            command: command,
+            workspaceURL: workspaceURL
+        )
+        let result = try await Self.runProcess(
+            executable: invocation.executable,
+            arguments: invocation.arguments,
+            workingDirectory: workspaceURL,
+            timeoutSeconds: timeout,
+            environment: invocation.environment
+        )
+        return jsonPayload([
+            "ok": result.exitCode == 0,
+            "exitCode": result.exitCode,
+            "stdout": String(result.stdout.prefix(20_000)),
+            "stderr": String(result.stderr.prefix(20_000)),
+            "timedOut": result.timedOut
+        ], detail: command)
+    }
+
+    private func needsUnrestrictedShellReauth() -> Bool {
+        unrestrictedShellCadenceBox.read().requiresReauthBeforeNextAction
+    }
+
+    private func recordUnrestrictedShellReauth() {
+        unrestrictedShellCadenceBox.withLock { $0.recordReauth() }
+    }
+
+    private func recordUnrestrictedShellAction() {
+        unrestrictedShellCadenceBox.withLock { $0.recordAction() }
+    }
+
+    private func runShellUnrestricted(arguments: [String: Any]) async throws -> AgentToolExecutionPayload {
+        guard grant.trustMode == .trusted, grant.capabilities.contains(.shellUnrestricted) else {
+            return denied(name: "shell_run_unrestricted", reason: "unrestricted shell requires YOLO trusted mode")
+        }
+        let command = try requiredString("command", in: arguments)
+        let requestedTimeout = (arguments["timeoutSeconds"] as? Int) ?? 30
+        let timeout = max(1, min(requestedTimeout, 120))
+
+        // T-TOOL-02(b) / T-AI-07: per-N-action re-authorization. Even under YOLO,
+        // the unrestricted shell may only run `unrestrictedShellReauthInterval`
+        // commands before the operator must re-prove presence with a fresh local
+        // auth. This bounds an obeyed prompt injection: it cannot run unbounded
+        // shell because each re-auth checkpoint requires a human. We fail CLOSED
+        // when no re-authorizer is wired or the proof is declined.
+        if needsUnrestrictedShellReauth() {
+            guard let reauthorizer = unrestrictedShellReauthorizer else {
+                return denied(
+                    name: "shell_run_unrestricted",
+                    reason: "unrestricted shell requires periodic re-authorization but no local-auth is available"
+                )
+            }
+            let summary = "Re-authorize unrestricted shell (YOLO) — next command: \(command.prefix(120))"
+            let proven = await reauthorizer(String(summary))
+            guard proven else {
+                return denied(name: "shell_run_unrestricted", reason: "re-authorization declined")
+            }
+            recordUnrestrictedShellReauth()
+        }
+        recordUnrestrictedShellAction()
+
+        // F3: unrestricted shell under YOLO runs unsandboxed at full user privilege.
+        // It is the single highest agent-execution risk surface (a prompt injection
+        // the model obeys can run arbitrary commands). The per-N-action re-auth gate
+        // above bounds the blast radius; we ALSO ALWAYS leave a forensic record: a
+        // command hash (never the plaintext, which may contain secrets), grant id,
+        // and runtime, for post-incident attribution.
+        let auditLine = "shell_run_unrestricted dispatched"
+            + " grant=\(self.grant.grantID)"
+            + " runtime=\(self.grant.runtimeID.rawValue)"
+            + " cmd_sha256=\(Self.commandAuditDigest(command))"
+            + " cmd_len=\(command.count)"
+        Self.unrestrictedShellAudit.warning("\(auditLine, privacy: .public)")
+        let result = try await Self.runProcess(
+            executable: "/bin/zsh",
+            arguments: ["-f", "-lc", command],
+            workingDirectory: workspaceURL,
+            timeoutSeconds: timeout
+        )
+        return jsonPayload([
+            "ok": result.exitCode == 0,
+            "exitCode": result.exitCode,
+            "stdout": String(result.stdout.prefix(20_000)),
+            "stderr": String(result.stderr.prefix(20_000)),
+            "timedOut": result.timedOut
+        ], detail: command)
+    }
+
+    private func workspaceFileURL(_ relativePath: String, mode: WorkspaceAccessMode) throws -> URL {
+        let trimmed = relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("/") else {
+            throw NSError(domain: "AgentToolBroker", code: 1, userInfo: [NSLocalizedDescriptionKey: "Path must be workspace-relative"])
+        }
+        let candidate = workspaceURL.appendingPathComponent(trimmed).standardizedFileURL
+        guard isInsideWorkspace(candidate) else {
+            throw NSError(domain: "AgentToolBroker", code: 2, userInfo: [NSLocalizedDescriptionKey: "Path escapes the chat workspace"])
+        }
+        switch mode {
+        case .read:
+            let resolved = Self.canonicalFileURL(candidate)
+            guard isInsideWorkspace(resolved) else {
+                throw NSError(domain: "AgentToolBroker", code: 2, userInfo: [NSLocalizedDescriptionKey: "Path escapes the chat workspace"])
+            }
+            return resolved
+        case .write:
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                let resolved = Self.canonicalFileURL(candidate)
+                guard isInsideWorkspace(resolved) else {
+                    throw NSError(domain: "AgentToolBroker", code: 2, userInfo: [NSLocalizedDescriptionKey: "Path escapes the chat workspace"])
+                }
+                return resolved
+            }
+
+            let nearestAncestor = nearestExistingAncestor(for: candidate.deletingLastPathComponent())
+            let resolvedAncestor = Self.canonicalFileURL(nearestAncestor)
+            guard isInsideWorkspace(resolvedAncestor) else {
+                throw NSError(domain: "AgentToolBroker", code: 2, userInfo: [NSLocalizedDescriptionKey: "Path escapes the chat workspace"])
+            }
+            return candidate
+        }
+    }
+
+    private func relativeWorkspacePath(for url: URL) -> String {
+        let root = workspaceURL.path.hasSuffix("/") ? workspaceURL.path : workspaceURL.path + "/"
+        guard url.path.hasPrefix(root) else { return url.lastPathComponent }
+        return String(url.path.dropFirst(root.count))
+    }
+
+    private func isInsideWorkspace(_ url: URL) -> Bool {
+        let rootPath = workspaceURL.path.hasSuffix("/") ? workspaceURL.path : workspaceURL.path + "/"
+        return url.path == workspaceURL.path || url.path.hasPrefix(rootPath)
+    }
+
+    private func nearestExistingAncestor(for url: URL) -> URL {
+        var current = url.standardizedFileURL
+        while !FileManager.default.fileExists(atPath: current.path) {
+            let parent = current.deletingLastPathComponent()
+            if parent.path == current.path {
+                return workspaceURL
+            }
+            current = parent
+        }
+        return current
+    }
+
+    private func requiredString(_ key: String, in object: [String: Any]) throws -> String {
+        guard let value = object[key] as? String, !value.isEmpty else {
+            throw NSError(domain: "AgentToolBroker", code: 3, userInfo: [NSLocalizedDescriptionKey: "Missing required string: \(key)"])
+        }
+        return value
+    }
+
+    /// Human-readable, one-line description of a privileged tool call, shown to
+    /// the operator in the approval prompt so consent is informed (not blind).
+    static func approvalSummary(tool: String, arguments: [String: Any]) -> String {
+        switch tool {
+        case "shell_run":
+            let command = (arguments["command"] as? String) ?? "(missing command)"
+            return "Run shell command: \(command)"
+        case "workspace_write_file":
+            let path = (arguments["path"] as? String) ?? "(missing path)"
+            let append = (arguments["append"] as? Bool) ?? false
+            return "\(append ? "Append to" : "Write") workspace file: \(path)"
+        case "desktop_export_file":
+            let source = (arguments["sourcePath"] as? String) ?? "(missing source)"
+            return "Export \(source) to your Desktop"
+        default:
+            return tool
+        }
+    }
+
+    private func denied(name: String, reason: String) -> AgentToolExecutionPayload {
+        jsonPayload(["ok": false, "tool": name, "status": "denied", "reason": reason], detail: reason)
+    }
+
+    private func errorPayload(name: String, error: String) -> AgentToolExecutionPayload {
+        jsonPayload(["ok": false, "tool": name, "status": "error", "error": error], detail: error)
+    }
+
+    private func jsonPayload(_ object: [String: Any], detail: String?) -> AgentToolExecutionPayload {
+        let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) // try?-ok(JSON encode fallback)
+            ?? Data("{}".utf8)
+        return AgentToolExecutionPayload(content: String(decoding: data, as: UTF8.self), detail: detail)
+    }
+
+    static func payload(name: String, response: ComputerUseInvokeResponse) -> AgentToolExecutionPayload {
+        var object: [String: Any] = [
+            "ok": response.status == .executed,
+            "tool": name,
+            "status": response.status.rawValue,
+            "sessionId": response.sessionId
+        ]
+        if let approvalId = response.approvalId { object["approvalId"] = approvalId }
+        if let denyReason = response.denyReason { object["denyReason"] = denyReason }
+        if let auditEntryIndex = response.auditEntryIndex { object["auditEntryIndex"] = auditEntryIndex }
+        if let auditHeadHashHex = response.auditHeadHashHex { object["auditHeadHashHex"] = auditHeadHashHex }
+        if let result = response.result {
+            let jsonResult = jsonObject(from: result.output)
+            object["result"] = shouldWrapUntrustedComputerUseResult(toolName: name)
+                ? wrappedUntrustedComputerUseResult(jsonResult, toolName: name)
+                : jsonResult
+            object["succeeded"] = result.succeeded
+            object["errorMessage"] = result.errorMessage
+        }
+        let data: Data
+        do {
+            data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        } catch {
+            data = Data("{}".utf8)
+        }
+        let detail = response.denyReason ?? response.status.rawValue
+        return AgentToolExecutionPayload(content: String(decoding: data, as: UTF8.self), detail: detail)
+    }
+
+    private static func shouldWrapUntrustedComputerUseResult(toolName: String) -> Bool {
+        // T-AI-01: default-deny. Every content-returning computer-use result is
+        // wrapped unless the tool is on the tiny control-only allow-list. This
+        // replaces the prior 2-tool allowlist (browser extract + AX inspect),
+        // which failed open for any new content-returning tool (screenshot OCR,
+        // clipboard, file reads, shell stdout/stderr).
+        UntrustedToolOutputPolicy.shouldWrap(toolName: toolName)
+    }
+
+    private static func wrappedUntrustedComputerUseResult(_ result: Any, toolName: String) -> [String: Any] {
+        [
+            "contentFormat": "json",
+            "provenance": "computer_use_tool_result:\(toolName)",
+            "untrustedContent": LLMSafeContent.wrapUntrusted(
+                jsonString(from: result),
+                provenance: "computer_use_tool_result:\(toolName)"
+            )
+        ]
+    }
+
+    private static func jsonString(from value: Any) -> String {
+        if JSONSerialization.isValidJSONObject(value) {
+            do {
+                let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+                return String(decoding: data, as: UTF8.self)
+            } catch {
+                return String(describing: value)
+            }
+        }
+        if value is NSNull {
+            return "null"
+        }
+        if let string = value as? String {
+            return string
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return String(describing: value)
+    }
+
+    private static func jsonObject(from value: BurnBarJSONValue?) -> Any {
+        guard let value else { return NSNull() }
+        switch value {
+        case .string(let string): return string
+        case .number(let double): return double
+        case .object(let object): return object.mapValues { jsonObject(from: $0) }
+        case .array(let array): return array.map { jsonObject(from: $0) }
+        case .bool(let bool): return bool
+        case .null: return NSNull()
+        }
+    }
+
+    private static func jsonObject(fromArguments arguments: String) throws -> [String: Any] {
+        let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [:] }
+        let data = Data(trimmed.utf8)
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    private static func burnBarJSONValue(fromArguments arguments: String) throws -> BurnBarJSONValue {
+        let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .object([:]) }
+        return try jsonValue(from: JSONSerialization.jsonObject(with: Data(trimmed.utf8)))
+    }
+
+    private static func jsonValue(from any: Any) throws -> BurnBarJSONValue {
+        switch any {
+        case let object as [String: Any]:
+            var mapped: [String: BurnBarJSONValue] = [:]
+            for (key, value) in object {
+                mapped[key] = try jsonValue(from: value)
+            }
+            return .object(mapped)
+        case let array as [Any]:
+            return .array(try array.map { try jsonValue(from: $0) })
+        case let string as String:
+            return .string(string)
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return .bool(number.boolValue)
+            }
+            return .number(number.doubleValue)
+        case _ as NSNull:
+            return .null
+        default:
+            throw NSError(domain: "AgentToolBroker", code: 4, userInfo: [NSLocalizedDescriptionKey: "Unsupported JSON value"])
+        }
+    }
+
+    private struct ProcessResult {
+        let exitCode: Int
+        let stdout: String
+        let stderr: String
+        let timedOut: Bool
+    }
+
+    private struct ShellInvocation {
+        let executable: String
+        let arguments: [String]
+        let environment: [String: String]?
+    }
+
+    private static func workspaceSandboxedShellInvocation(
+        command: String,
+        workspaceURL: URL
+    ) throws -> ShellInvocation {
+        let sandboxExecutable = "/usr/bin/sandbox-exec"
+        guard FileManager.default.isExecutableFile(atPath: sandboxExecutable) else {
+            throw NSError(domain: "AgentToolBroker", code: 5, userInfo: [NSLocalizedDescriptionKey: "Shell sandbox is unavailable"])
+        }
+
+        let workspacePath = canonicalFileURL(workspaceURL).path
+        let profile = restrictedShellSandboxProfile(workspacePath: workspacePath)
+        return ShellInvocation(
+            executable: sandboxExecutable,
+            arguments: ["-p", profile, "/bin/zsh", "-f", "-lc", command],
+            environment: restrictedShellEnvironment(workspacePath: workspacePath)
+        )
+    }
+
+    /// Home-relative read roots dev tooling needs (toolchains, language version
+    /// managers, package caches). Everything else under home is denied unless it
+    /// is the active workspace.
+    static let restrictedShellHomeReadAllowlistSubpaths: [String] = [
+        "/.rustup", "/.cargo/bin", "/.cargo/registry", "/.rbenv",
+        "/.pyenv", "/.nvm", "/.nodenv", "/.asdf", "/.local/share/mise",
+        "/.swiftpm", "/.cache", "/Library/Developer", "/.gradle/caches",
+        "/.m2/repository", "/.npm", "/.bun/bin", "/.deno", "/go/pkg",
+        "/.zshenv", "/.zprofile", "/.zshrc", "/.profile", "/.bashrc", "/.bash_profile"
+    ]
+
+    /// Home-relative state and credential directories that stay explicitly denied
+    /// even though the broader T-TOOL-10 profile denies home file data by default.
+    static let restrictedShellHomeReadDenySubpaths: [String] = [
+        "/Library/Application Support/com.openburnbar.AgentLens",
+        "/.openburnbar",
+        "/.config/openburnbar",
+        "/.terraform.d",
+        "/.cloudflared",
+        "/.config/git",
+        "/Library/Application Support/Slack"
+    ]
+
+    /// Home-relative credential files that should never be exposed to restricted
+    /// shell reads, including when future tooling allowlists expand.
+    static let restrictedShellHomeReadDenyLiterals: [String] = [
+        "/.env",
+        "/.envrc",
+        "/.cargo/credentials",
+        "/.cargo/credentials.toml",
+        "/.gem/credentials",
+        "/.config/configstore/firebase-tools.json"
+    ]
+
+    /// Absolute system/toolchain read roots needed for restricted-shell startup
+    /// and common developer CLIs. The restricted shell must not use a broad
+    /// "read any non-home path" rule because that exposes arbitrary files from
+    /// `/private`, removable volumes, sibling repos, and host-local state.
+    static let restrictedShellSystemReadAllowlistSubpaths: [String] = [
+        "/bin",
+        "/sbin",
+        "/usr/bin",
+        "/usr/sbin",
+        "/usr/lib",
+        "/usr/libexec",
+        "/usr/share",
+        "/System",
+        "/Library/Apple",
+        "/Library/Developer",
+        "/Library/Frameworks",
+        "/Applications/Xcode.app",
+        "/Applications/Xcode-beta.app",
+        "/Applications/Xcode-26.6.0-Release.Candidate.app",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/opt/homebrew/Cellar",
+        "/opt/homebrew/Library/Homebrew",
+        "/opt/homebrew/lib",
+        "/opt/homebrew/opt",
+        "/opt/homebrew/share",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        "/usr/local/Cellar",
+        "/usr/local/Homebrew",
+        "/usr/local/lib",
+        "/usr/local/opt",
+        "/usr/local/share"
+    ]
+
+    /// zsh reads `/etc/zshenv` before user rc files. Allow only that system
+    /// literal rather than opening the whole `/private/etc` tree.
+    static let restrictedShellSystemReadAllowlistLiterals: [String] = [
+        "/private/etc/zshenv"
+    ]
+
+    /// Non-system roots where the restricted shell should not read arbitrary
+    /// file data. Each deny is emitted with explicit exceptions for the active
+    /// workspace and the allowlisted system/home toolchain roots.
+    static let restrictedShellNonHomeReadDenyRegexes: [String] = [
+        "^/Applications/",
+        "^/Library/",
+        "^/Users/",
+        "^/Volumes/",
+        "^/cores/",
+        "^/etc/",
+        "^/home/",
+        "^/opt/",
+        "^/private/",
+        "^/tmp/",
+        "^/usr/local/",
+        "^/var/"
+    ]
+
+    /// Clean environment for the restricted shell. `Process` inherits the parent
+    /// environment by default, which can expose API tokens even when Seatbelt
+    /// blocks home-directory file reads. Keep only deterministic execution basics.
+    static func restrictedShellEnvironment(
+        workspacePath: String,
+        homePath: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) -> [String: String] {
+        let workspace = canonicalSandboxPath(workspacePath)
+        let home = canonicalSandboxPath(homePath)
+        let pathEntries = [
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+            "/usr/local/bin",
+            "/opt/homebrew/bin",
+            "\(home)/.homebrew/bin",
+            "\(home)/.local/bin",
+            "\(home)/.cargo/bin",
+            "\(home)/.bun/bin",
+            "\(home)/.deno/bin"
+        ]
+        return [
+            "PATH": pathEntries.joined(separator: ":"),
+            "HOME": home,
+            "PWD": workspace,
+            "SHELL": "/bin/zsh",
+            "TMPDIR": workspace,
+            "LANG": "en_US.UTF-8",
+            "LC_ALL": "en_US.UTF-8",
+            "TERM": "dumb"
+        ]
+    }
+
+    /// Seatbelt profile for the **restricted** agent shell (`shell_run`).
+    ///
+    /// Hardening layers (T-TOOL-10 + prior F3/F9):
+    ///   * default-deny operations, then explicitly allow only process/IPC/sysctl
+    ///     operations needed to launch local developer tools.
+    ///   * no network operation family is allowed, so ordinary exfiltration paths
+    ///     fail before connecting.
+    ///   * writes stay confined to the workspace.
+    ///   * file data keeps the broad macOS launch grant required by dyld and
+    ///     system tooling, then regex deny rules carve user/writable/non-system
+    ///     roots back down to the active workspace plus explicit system/home
+    ///     toolchain roots.
+    static func restrictedShellSandboxProfile(
+        workspacePath: String,
+        homePath: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) -> String {
+        let canonicalWorkspacePath = canonicalSandboxPath(workspacePath)
+        let canonicalHomePath = canonicalSandboxPath(homePath)
+        let ws = escapeSandboxProfileString(canonicalWorkspacePath)
+        let home = escapeSandboxProfileString(canonicalHomePath)
+
+        var lines: [String] = [
+            "(version 1)",
+            "(deny default)",
+            "(deny network*)",
+            "(allow process*)",
+            "(allow mach*)",
+            "(allow sysctl*)",
+            "(allow ipc*)",
+            "(allow file-read-metadata)",
+            "(allow file-map-executable)",
+            "(allow file-read-data (require-not (subpath \"\(home)\")))",
+            "(allow file-read* (subpath \"\(ws)\"))",
+            "(allow file-write* (subpath \"\(ws)\"))"
+        ]
+        var nonHomeReadDenyAllowedSubpaths = [canonicalWorkspacePath]
+        for subpath in restrictedShellSystemReadAllowlistSubpaths {
+            let canonicalSubpath = canonicalSandboxPath(subpath)
+            nonHomeReadDenyAllowedSubpaths.append(canonicalSubpath)
+            lines.append("(allow file-read* (subpath \"\(escapeSandboxProfileString(canonicalSubpath))\"))")
+        }
+        for subpath in restrictedShellHomeReadAllowlistSubpaths {
+            nonHomeReadDenyAllowedSubpaths.append(canonicalHomePath + subpath)
+        }
+        var nonHomeReadDenyAllowedLiterals: [String] = []
+        for literal in restrictedShellSystemReadAllowlistLiterals {
+            let canonicalLiteral = canonicalSandboxPath(literal)
+            nonHomeReadDenyAllowedLiterals.append(canonicalLiteral)
+            lines.append("(allow file-read* (literal \"\(escapeSandboxProfileString(canonicalLiteral))\"))")
+        }
+        for regex in restrictedShellNonHomeReadDenyRegexes {
+            lines.append(restrictedShellReadDenyRule(
+                regex: regex,
+                allowedSubpaths: nonHomeReadDenyAllowedSubpaths,
+                allowedLiterals: nonHomeReadDenyAllowedLiterals
+            ))
+        }
+        for subpath in restrictedShellHomeReadDenySubpaths {
+            let homeSubpath = canonicalHomePath + subpath
+            lines.append("(deny file-read* (subpath \"\(escapeSandboxProfileString(homeSubpath))\"))")
+        }
+        for literal in restrictedShellHomeReadDenyLiterals {
+            let homeLiteral = canonicalHomePath + literal
+            lines.append("(deny file-read* (literal \"\(escapeSandboxProfileString(homeLiteral))\"))")
+        }
+        // Re-allow only the null/stdio device nodes so ordinary redirects keep
+        // working (`… 2>/dev/null`). Writes otherwise stay strictly confined to
+        // the workspace — the anti-persistence guarantee that blocks ~/.ssh,
+        // LaunchAgents, and shell rc files. Temp dirs are intentionally NOT
+        // re-allowed (that would broaden writes and defeat confinement); tools
+        // can use the workspace as scratch.
+        for device in ["/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"] {
+            lines.append("(allow file-write* (literal \"\(device)\"))")
+        }
+        lines.append("(allow file-write* (subpath \"/dev/fd\"))")
+
+        for subpath in restrictedShellHomeReadAllowlistSubpaths {
+            let homeSubpath = canonicalHomePath + subpath
+            lines.append("(allow file-read* (subpath \"\(escapeSandboxProfileString(homeSubpath))\"))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func restrictedShellReadDenyRule(
+        regex: String,
+        allowedSubpaths: [String],
+        allowedLiterals: [String]
+    ) -> String {
+        var clauses = ["(regex \"\(escapeSandboxProfileString(regex))\")"]
+        clauses += allowedSubpaths.map {
+            "(require-not (subpath \"\(escapeSandboxProfileString($0))\"))"
+        }
+        clauses += allowedLiterals.map {
+            "(require-not (literal \"\(escapeSandboxProfileString($0))\"))"
+        }
+        return "(deny file-read-data (require-all \(clauses.joined(separator: " "))))"
+    }
+
+    private static func canonicalSandboxPath(_ path: String) -> String {
+        let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
+        #if canImport(Darwin)
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        if realpath(standardized, &buffer) != nil {
+            return String(cString: buffer)
+        }
+        #endif
+        return URL(fileURLWithPath: standardized).resolvingSymlinksInPath().path
+    }
+
+    private static func escapeSandboxProfileString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private static func canonicalFileURL(_ url: URL) -> URL {
+        let path = url.standardizedFileURL.path
+        #if canImport(Darwin)
+        if let resolved = path.withCString({ realpath($0, nil) }) {
+            defer { free(resolved) }
+            return URL(fileURLWithPath: String(cString: resolved), isDirectory: url.hasDirectoryPath)
+        }
+        #endif
+        return url.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    private static func safeDesktopFilename(_ value: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/:\\").union(.newlines)
+        let components = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: invalid)
+            .filter { !$0.isEmpty }
+        let joined = components.joined(separator: "-")
+        let clipped = String(joined.prefix(96)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clipped.nonEmpty ?? "agent-file"
+    }
+
+    private static func runProcess(
+        executable: String,
+        arguments: [String],
+        workingDirectory: URL,
+        timeoutSeconds: Int,
+        environment: [String: String]? = nil
+    ) async throws -> ProcessResult {
+        try await withCheckedThrowingContinuation { continuation in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            process.currentDirectoryURL = workingDirectory
+            // M-040: do NOT inherit the full ambient parent environment. Both
+            // broker shells routed here — the restricted sandbox-exec shell
+            // (`shell_run`) and the unrestricted YOLO `/bin/zsh -f -lc`
+            // (`shell_run_unrestricted`) must never inherit every app/daemon-held
+            // secret from the parent process. Restricted sandbox invocations pass a
+            // tighter deterministic environment; unrestricted invocations default
+            // to the shared allowlisted baseline.
+            process.environment = environment ?? AgentChildProcessEnvironment.allowlistedBaseline()
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+            final class Box: Sendable {
+                private struct State {
+                    var resumed = false
+                    var timedOut = false
+                    var stdoutData = Data()
+                    var stderrData = Data()
+                }
+
+                private let captureLimit = 200_000
+                private let state = Locked(State())
+
+                func append(_ data: Data, toStdout: Bool) {
+                    guard !data.isEmpty else { return }
+                    state.withLock { state in
+                        if toStdout {
+                            appendBounded(data, to: &state.stdoutData)
+                        } else {
+                            appendBounded(data, to: &state.stderrData)
+                        }
+                    }
+                }
+
+                private func appendBounded(_ data: Data, to target: inout Data) {
+                    guard target.count < captureLimit else { return }
+                    let remaining = captureLimit - target.count
+                    target.append(data.prefix(remaining))
+                }
+
+                func markTimedOutIfStillRunning(_ process: Process) -> Bool {
+                    state.withLock { state in
+                        let shouldTerminate = !state.resumed && process.isRunning
+                        if shouldTerminate {
+                            state.timedOut = true
+                        }
+                        return shouldTerminate
+                    }
+                }
+
+                /// Atomically marks the process result consumed (returns nil if a
+                /// prior caller already resumed) and returns the captured output.
+                func completeIfNotYetResumed() -> (timedOut: Bool, stdout: Data, stderr: Data)? {
+                    state.withLock { state in
+                        guard !state.resumed else { return nil }
+                        state.resumed = true
+                        return (state.timedOut, state.stdoutData, state.stderrData)
+                    }
+                }
+            }
+            let box = Box()
+            stdout.fileHandleForReading.readabilityHandler = { handle in
+                box.append(handle.availableData, toStdout: true)
+            }
+            stderr.fileHandleForReading.readabilityHandler = { handle in
+                box.append(handle.availableData, toStdout: false)
+            }
+            process.terminationHandler = { process in
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
+                box.append(stdout.fileHandleForReading.readDataToEndOfFile(), toStdout: true)
+                box.append(stderr.fileHandleForReading.readDataToEndOfFile(), toStdout: false)
+                guard let completion = box.completeIfNotYetResumed() else {
+                    return
+                }
+                continuation.resume(returning: ProcessResult(
+                    exitCode: Int(process.terminationStatus),
+                    stdout: String(decoding: completion.stdout, as: UTF8.self),
+                    stderr: String(decoding: completion.stderr, as: UTF8.self),
+                    timedOut: completion.timedOut
+                ))
+            }
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: error)
+                return
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(timeoutSeconds)) // try?-ok(cancellation only)
+                if box.markTimedOutIfStillRunning(process) {
+                    process.terminate()
+                }
+            }
+        }
+    }
+}
+
+/// Result of an OpenAI-compatible `/v1/models` probe. `available` and
+/// `authRejected` are mutually exclusive: `available` means the catalog was
+/// readable, while `authRejected` means a 401/403 answer proved a gateway is
+/// up but rejected the presented key.
+struct OpenAICompatibleModelProbeResult: Sendable {
+    var available: Bool
+    var authRejected: Bool = false
+    var modelName: String?
+    var hermesModels: [HermesAdvertisedModel] = []
+    var models: [OpenAICompatibleAdvertisedModel] = []
+}
+
+enum OpenAICompatibleModelProbe {
+    static func modelsURL(baseURL: URL) -> URL? {
+        URL(string: "v1/models", relativeTo: baseURL)?.absoluteURL
+    }
+
+    static func modelsRequest(baseURL: URL, bearerToken: String?, timeout: TimeInterval = 2) -> URLRequest? {
+        guard let url = modelsURL(baseURL: baseURL) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "GET"
+        if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    static func probe(baseURL: URL, bearerToken: String?, timeout: TimeInterval = 2, session: URLSession = .shared) async -> Bool {
+        await probeWithModel(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session).available
+    }
+
+    /// `/health` endpoint for the gateway, derived by replacing the path (mirrors
+    /// `ChatSessionController.hermesHealthReachable`). A gateway that just cold-
+    /// started answers this immediately, even while its `/v1/models` catalog is
+    /// still warming up from upstream providers.
+    static func healthURL(baseURL: URL) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { return nil }
+        components.path = "/health"
+        components.query = nil
+        return components.url
+    }
+
+    /// Lightweight liveness probe: GET `/health`. This is the truth source for
+    /// "is the gateway up?" independent of whether its model catalog can be read
+    /// yet — so a slow/transient `/v1/models` never makes a running gateway look
+    /// offline.
+    static func healthReachable(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 3,
+        session: URLSession = .shared
+    ) async -> Bool {
+        guard let url = healthURL(baseURL: baseURL) else { return false }
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "GET"
+        if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return (200...299).contains(http.statusCode)
+        } catch {
+            return false
+        }
+    }
+
+    static func probeWithModel(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
+    ) async -> (available: Bool, modelName: String?) {
+        let result = await probeWithModels(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session)
+        return (result.available, result.modelName)
+    }
+
+    /// `probeWithModel` plus the auth verdict, for callers that must distinguish
+    /// "gateway down" from "gateway up but the key was rejected" (a 401/403
+    /// proves a server is answering, so relaunching it would fork a duplicate).
+    static func probeWithModelAuth(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
+    ) async -> (available: Bool, authRejected: Bool, modelName: String?) {
+        let result = await probeWithModels(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session)
+        return (result.available, result.authRejected, result.modelName)
+    }
+
+    /// hermes-agent (≥0.17) answers 401 `invalid_api_key` when `API_SERVER_KEY`
+    /// is required and the bearer is missing/stale; generic gateways use 403 too.
+    static func isAuthRejectedStatus(_ statusCode: Int) -> Bool {
+        statusCode == 401 || statusCode == 403
+    }
+
+    static func probeWithModels(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
+    ) async -> OpenAICompatibleModelProbeResult {
+        guard let request = modelsRequest(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout) else {
+            return OpenAICompatibleModelProbeResult(available: false)
+        }
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return OpenAICompatibleModelProbeResult(available: false)
+            }
+            guard (200...299).contains(http.statusCode) else {
+                return OpenAICompatibleModelProbeResult(
+                    available: false,
+                    authRejected: isAuthRejectedStatus(http.statusCode)
+                )
+            }
+            return OpenAICompatibleModelProbeResult(
+                available: true,
+                modelName: OpenAICompatibleModelListParser.modelName(from: data),
+                hermesModels: OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data),
+                models: OpenAICompatibleModelListParser.advertisedModels(from: data)
+            )
+        } catch {
+            return OpenAICompatibleModelProbeResult(available: false)
+        }
+    }
+}
+
+struct OpenAICompatibleChatGatewayClient: Sendable {
+    let runtime: CLIBridgeStreamRuntimeCoordinator
+
+    /// Shared SSE path for Hermes gateway API and OpenClaw gateway (OpenAI-compatible).
+    func runStream(
+        baseURL: URL,
+        model: String,
+        systemPrompt: String,
+        history: [ChatMessageRecord],
+        bearerToken: String?,
+        unavailableError: CLIBridgeError,
+        missingModelError: CLIBridgeError,
+        disallowedModelError: CLIBridgeError? = nil,
+        httpStreamID: UInt64,
+        allowedModels: ModelAllowlist? = nil,
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil,
+        toolBroker: AgentToolBroker? = nil,
+        plugins: [[String: any Sendable]]? = nil,
+        additionalHeaders: [String: String] = [:],
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        defer {
+            Task { [runtime] in
+                await runtime.clearHTTPStreamTask(streamID: httpStreamID)
+            }
+        }
+
+        guard let url = URL(string: "v1/chat/completions", relativeTo: baseURL)?.absoluteURL else {
+            continuation.finish(throwing: unavailableError)
+            return
+        }
+
+        let selectedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selectedModel.isEmpty else {
+            continuation.finish(throwing: missingModelError)
+            return
+        }
+        if let allowedModels, !allowedModels.allows(model) {
+            continuation.finish(throwing: disallowedModelError ?? CLIBridgeError.disallowedModel(backend: "OpenAI-compatible gateway", model: model))
+            return
+        }
+
+        let messages = Self.buildMessages(
+            systemPrompt: systemPrompt,
+            history: history,
+            attachmentBytes: attachmentBytes,
+            capabilities: capabilities,
+            workspaceURL: workspaceURL
+        )
+
+        // Phase 4 — AgentLens-plane budget gate. Subscription credentials short-circuit
+        // inside BudgetGate so flat-rate plans never get blocked here. Gate runs before
+        // the URLRequest leaves the host so a blocked call never reaches the upstream.
+        let credential = AgentLensCredentialIdentity.make(
+            providerHint: baseURL.host?.lowercased() ?? "agentlens_gateway",
+            bearerToken: bearerToken,
+            displayLabel: baseURL.host ?? selectedModel
+        )
+        let estimatedInputChars = messages.reduce(0) { acc, msg in
+            acc + (msg["content"] as? String ?? "").count
+        }
+        let estimatedCost = await MainActor.run {
+            BudgetEnforcement.estimateCost(
+                model: selectedModel,
+                inputCharacters: estimatedInputChars + systemPrompt.count
+            )
+        }
+        let decision = await BudgetEnforcement.shared.evaluate(
+            credential: credential,
+            estimatedCost: estimatedCost
+        )
+        switch decision {
+        case .block(let rule, let used, let limit, let fallback):
+            continuation.finish(throwing: BudgetBlockedError(
+                rule: rule,
+                used: used,
+                limit: limit,
+                fallback: fallback,
+                resetAt: rule.period.nextReset()
+            ))
+            return
+        case .allow, .warn, .paused:
+            break
+        }
+
+        if let toolBroker, toolBroker.isActive, !toolBroker.openAITools.isEmpty {
+            await Self.runToolEnabledLoop(
+                url: url,
+                messages: messages,
+                model: selectedModel,
+                session: URLSession(configuration: .default),
+                bearerToken: bearerToken,
+                toolBroker: toolBroker,
+                continuation: continuation,
+                plugins: plugins,
+                additionalHeaders: additionalHeaders
+            )
+            return
+        }
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 0
+        config.timeoutIntervalForResource = 0
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+
+        var streamedAnyContent = false
+        var parser = OpenAICompatibleSSEParser()
+        do {
+            var body: [String: Any] = [
+                "model": selectedModel,
+                "stream": true,
+                "messages": messages,
+                "stream_options": ["include_usage": true]
+            ]
+            if let plugins, !plugins.isEmpty {
+                body["plugins"] = plugins
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            Self.applyNoRetentionHeaders(to: &request)
+            Self.applyAdditionalHeaders(additionalHeaders, to: &request)
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+            let (bytes, response) = try await session.bytes(for: request)
+
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                let detail = try await Self.errorDetail(
+                    statusCode: http.statusCode,
+                    lines: bytes.lines
+                )
+                continuation.finish(throwing: CLIBridgeError.hermesSSEError(detail))
+                return
+            }
+
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+
+                let result = parser.events(fromLine: line)
+                for event in result.events {
+                    continuation.yield(event)
+                }
+                if result.streamedText {
+                    streamedAnyContent = true
+                }
+                if result.done {
+                    break
+                }
+            }
+        } catch is CancellationError {
+            continuation.finish()
+            return
+        } catch {
+            continuation.finish(throwing: error)
+            return
+        }
+
+        if !streamedAnyContent {
+            do {
+                try Task.checkCancellation()
+                let content = try await Self.nonStreamingFallback(
+                    url: url,
+                    messages: messages,
+                    model: selectedModel,
+                    session: session,
+                    bearerToken: bearerToken,
+                    plugins: plugins,
+                    additionalHeaders: additionalHeaders
+                )
+                if !content.content.isEmpty {
+                    continuation.yield(.text(content.content))
+                }
+                if let usage = content.usage {
+                    continuation.yield(.usage(usage))
+                }
+            } catch is CancellationError {
+                // Stream cancellation is a normal user action.
+            } catch {
+                continuation.finish(throwing: error)
+                return
+            }
+        }
+
+        continuation.finish()
+    }
+
+    struct OpenAIToolCall: Equatable {
+        let id: String
+        let name: String
+        let arguments: String
+    }
+
+    /// T-AI-08: fail-closed model allowlist. The gateway advertises which
+    /// models it is willing to serve via `/v1/models`; callers pass that
+    /// catalog here so a poisoned or attacker-chosen model id cannot be
+    /// forwarded upstream. An empty allowlist disables enforcement.
+    struct ModelAllowlist: Sendable {
+        let modelIDs: Set<String>
+
+        init(modelIDs: [String]) {
+            self.modelIDs = Set(modelIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        }
+
+        /// Normalize provider-scoped ids (`anthropic/claude-sonnet-4-6`) and
+        /// bare ids against the allowed set.
+        func allows(_ modelID: String) -> Bool {
+            let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return false }
+            guard trimmed == modelID else { return false }
+            if modelIDs.isEmpty { return true }
+            let lower = trimmed.lowercased()
+            for allowed in modelIDs {
+                if allowed.lowercased() == lower { return true }
+                let scoped = allowed.split(separator: "/").map(String.init)
+                if scoped.count > 1, scoped.last?.lowercased() == lower { return true }
+            }
+            return false
+        }
+    }
+
+    static func runToolEnabledLoop(
+        url: URL,
+        messages originalMessages: [[String: Any]],
+        model: String,
+        session: URLSession,
+        bearerToken: String?,
+        toolBroker: AgentToolBroker,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
+        plugins: [[String: any Sendable]]? = nil,
+        additionalHeaders: [String: String] = [:],
+        maxToolCalls: Int = 24
+    ) async {
+        defer { session.invalidateAndCancel() }
+        var messages = originalMessages
+        var totalToolCalls = 0
+
+        do {
+            while true {
+                try Task.checkCancellation()
+                var body: [String: Any] = [
+                    "model": model,
+                    "stream": false,
+                    "messages": messages
+                ]
+                if let plugins, !plugins.isEmpty {
+                    body["plugins"] = plugins
+                }
+                if totalToolCalls < maxToolCalls {
+                    body["tools"] = toolBroker.openAITools
+                    body["tool_choice"] = "auto"
+                }
+
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                }
+                Self.applyNoRetentionHeaders(to: &request)
+                Self.applyAdditionalHeaders(additionalHeaders, to: &request)
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    continuation.finish(throwing: CLIBridgeError.hermesSSEError(Self.errorDetail(statusCode: http.statusCode, data: data)))
+                    return
+                }
+
+                let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:] // try?-ok(JSON parse fallback)
+                if let usage = OpenAICompatibleUsageParser.usage(from: obj) {
+                    continuation.yield(.usage(usage))
+                }
+
+                let toolCalls = extractOpenAIToolCalls(from: obj)
+                if toolCalls.isEmpty {
+                    if let content = extractAssistantContent(from: obj), !content.isEmpty {
+                        continuation.yield(.text(content))
+                    }
+                    continuation.finish()
+                    return
+                }
+
+                messages.append(buildOpenAIAssistantMessage(from: obj))
+
+                for call in toolCalls {
+                    guard totalToolCalls < maxToolCalls else { break }
+                    totalToolCalls += 1
+                    let detail = summarizeToolArguments(call.arguments)
+                    continuation.yield(.toolUse(name: call.name, detail: detail))
+                    let result = await toolBroker.invokeOpenAITool(
+                        name: call.name,
+                        arguments: call.arguments,
+                        callID: call.id,
+                        runID: "chat-tools-\(UUID().uuidString)"
+                    )
+                    continuation.yield(.toolResult(name: call.name, detail: result.detail))
+                    messages.append([
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": wrappedToolResultContent(toolName: call.name, content: result.content)
+                    ])
+                }
+
+                if totalToolCalls >= maxToolCalls {
+                    messages.append([
+                        "role": "system",
+                        "content": "The desktop tool-call budget for this response is exhausted. Finish with the information already gathered."
+                    ])
+                }
+            }
+        } catch is CancellationError {
+            continuation.finish()
+        } catch {
+            continuation.finish(throwing: error)
+        }
+    }
+
+    static func extractOpenAIToolCalls(from obj: [String: Any]) -> [OpenAIToolCall] {
+        guard let choices = obj["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let toolCalls = message["tool_calls"] as? [[String: Any]] else {
+            return []
+        }
+        return toolCalls.compactMap { raw in
+            guard let function = raw["function"] as? [String: Any],
+                  let name = function["name"] as? String,
+                  !name.isEmpty else {
+                return nil
+            }
+            let id = (raw["id"] as? String) ?? "tool-\(UUID().uuidString)"
+            let arguments: String
+            if let string = function["arguments"] as? String {
+                arguments = string
+            } else if let object = function["arguments"] {
+                let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8) // try?-ok(JSON encode fallback)
+                arguments = String(decoding: data, as: UTF8.self)
+            } else {
+                arguments = "{}"
+            }
+            return OpenAIToolCall(id: id, name: name, arguments: arguments)
+        }
+    }
+
+    static func buildOpenAIAssistantMessage(from obj: [String: Any]) -> [String: Any] {
+        guard let choices = obj["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any] else {
+            return ["role": "assistant", "content": ""]
+        }
+        var assistant: [String: Any] = [
+            "role": "assistant",
+            "content": message["content"] ?? NSNull()
+        ]
+        if let toolCalls = message["tool_calls"] {
+            assistant["tool_calls"] = toolCalls
+        }
+        return assistant
+    }
+
+    static func extractAssistantContent(from obj: [String: Any]) -> String? {
+        guard let choices = obj["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any] else {
+            return nil
+        }
+        return message["content"] as? String
+    }
+
+    /// T-AI-01 + T-AI-06: every tool result re-entering the model context is
+    /// default-deny wrapped as untrusted data and secret-scrubbed first. This is
+    /// the single chokepoint for the in-process tool loop, so file reads, shell
+    /// stdout/stderr, clipboard, browser screenshot OCR — and any unknown future
+    /// tool — are all treated as data, never instructions, and never leak a
+    /// credential value back to the provider.
+    static func wrappedToolResultContent(toolName: String, content: String) -> String {
+        let scrubbed = AgentSecretScrubber.scrub(content)
+        guard UntrustedToolOutputPolicy.shouldWrap(toolName: toolName) else {
+            return scrubbed
+        }
+        return LLMSafeContent.wrapUntrusted(
+            scrubbed,
+            provenance: "tool_result:\(toolName)"
+        )
+    }
+
+    private static func summarizeToolArguments(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let data = trimmed.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(summary parse fallback)
+            for key in ["path", "command", "url", "selector", "text", "key", "value"] {
+                if let value = obj[key] as? String, !value.isEmpty {
+                    return String(value.prefix(160))
+                }
+            }
+        }
+        return String(trimmed.prefix(160))
+    }
+
+    static func nonStreamingFallback(
+        url: URL,
+        messages: [[String: Any]],
+        model: String,
+        session: URLSession,
+        bearerToken: String?,
+        plugins: [[String: any Sendable]]? = nil,
+        additionalHeaders: [String: String] = [:]
+    ) async throws -> (content: String, usage: CLIUsageSnapshot?) {
+        var body: [String: Any] = ["model": model, "stream": false, "messages": messages]
+        if let plugins, !plugins.isEmpty {
+            body["plugins"] = plugins
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        Self.applyNoRetentionHeaders(to: &request)
+        Self.applyAdditionalHeaders(additionalHeaders, to: &request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw CLIBridgeError.hermesSSEError(Self.errorDetail(statusCode: http.statusCode, data: data))
+        }
+
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(JSON parse fallback)
+              let choices = obj["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String
+        else {
+            let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:] // try?-ok(JSON parse fallback)
+            return ("", OpenAICompatibleUsageParser.usage(from: obj))
+        }
+
+        return (content, OpenAICompatibleUsageParser.usage(from: obj))
+    }
+
+    private static func errorDetail<Lines: AsyncSequence>(
+        statusCode: Int,
+        lines: Lines
+    ) async throws -> String where Lines.Element == String {
+        var chunks: [String] = []
+        for try await line in lines {
+            let trimmed = line.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            chunks.append(trimmed)
+            if chunks.joined(separator: "\n").count > 4096 { break }
+        }
+        let text = chunks.joined(separator: "\n")
+        guard !text.isEmpty else {
+            return appendingAuthGuidanceIfNeeded("HTTP \(statusCode)", statusCode: statusCode)
+        }
+        if let data = text.data(using: .utf8) {
+            return errorDetail(statusCode: statusCode, data: data)
+        }
+        return appendingAuthGuidanceIfNeeded("HTTP \(statusCode): \(text)", statusCode: statusCode)
+    }
+
+    private static func errorDetail(statusCode: Int, data: Data) -> String {
+        let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let detail: String
+        if let parsed = parsedErrorMessage(from: data)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !parsed.isEmpty {
+            if parsed.localizedCaseInsensitiveContains("HTTP \(statusCode)") {
+                detail = parsed
+            } else {
+                detail = "HTTP \(statusCode): \(parsed)"
+            }
+        } else if text.isEmpty {
+            detail = "HTTP \(statusCode)"
+        } else {
+            detail = "HTTP \(statusCode): \(text)"
+        }
+        return appendingAuthGuidanceIfNeeded(detail, statusCode: statusCode)
+    }
+
+    /// A 401/403 from any OpenAI-compatible gateway is a configuration problem
+    /// the user can fix — say where, instead of leaving the raw gateway JSON as
+    /// a dead end. This client serves Hermes, OpenClaw, and Pi alike, so the
+    /// guidance stays backend-neutral; the Hermes pre-send gate delivers the
+    /// Hermes-specific remedies (`hermesAuthRejectedMessage`).
+    static func appendingAuthGuidanceIfNeeded(_ detail: String, statusCode: Int) -> String {
+        guard OpenAICompatibleModelProbe.isAuthRejectedStatus(statusCode) else { return detail }
+        return detail + " — the gateway rejected this app's API key. "
+            + "Update this backend's Bearer Token under Settings → Chat Gateway, then send again."
+    }
+
+    private static func parsedErrorMessage(from data: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON parse fallback)
+            return nil
+        }
+        if let error = obj["error"] as? String {
+            return error
+        }
+        if let error = obj["error"] as? [String: Any] {
+            return (error["message"] as? String)
+                ?? (error["detail"] as? String)
+                ?? (error["code"] as? String)
+        }
+        if let message = obj["message"] as? String {
+            return message
+        }
+        if let detail = obj["detail"] as? String {
+            return detail
+        }
+        if let hermes = obj["hermes"] as? [String: Any],
+           let error = hermes["error"] as? String {
+            return error
+        }
+        return nil
+    }
+
+    /// Builds the OpenAI-compatible `messages` array. When attachments are
+    /// present anywhere in the history, the user-message bodies switch to the
+    /// multimodal `content: [parts]` shape. Pure-text histories keep the
+    /// legacy `{role, content: String}` form so older relays don't choke on
+    /// unknown content types.
+    static func buildMessages(
+        systemPrompt: String,
+        history: [ChatMessageRecord],
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil
+    ) -> [[String: Any]] {
+        let encoderMessages = history.compactMap { msg -> HermesAttachmentEncoder.Message? in
+            let role: HermesAttachmentEncoder.Message.Role
+            switch msg.role {
+            case .user: role = .user
+            case .assistant: role = .assistant
+            case .system: return nil
+            }
+            // Pull this message's worth of attachment bytes from the caller-
+            // supplied map (only the latest user message normally provides
+            // bytes; persisted history attaches by metadata only).
+            var msgBytes: [String: Data] = [:]
+            for att in msg.attachments {
+                if let data = attachmentBytes[att.id] {
+                    msgBytes[att.id] = data
+                }
+            }
+            return HermesAttachmentEncoder.Message(
+                role: role,
+                text: msg.content,
+                attachments: msg.attachments,
+                attachmentBytes: msgBytes
+            )
+        }
+        let encoded = HermesAttachmentEncoder.encodeMessages(
+            systemPrompt: systemPrompt,
+            messages: encoderMessages,
+            capabilities: capabilities,
+            workspaceAbsolutePath: { att in
+                guard let workspaceURL else { return att.workspaceRelativePath }
+                return workspaceURL.appendingPathComponent(att.workspaceRelativePath).path
+            }
+        )
+        // T-AI-06: content-level secret scrubbing before any prompt reaches a model
+        // provider. Redacts high-confidence credential shapes (API keys, AWS keys,
+        // GitHub tokens, PEM private keys, bearer/JWT) from outbound message text.
+        return encoded.map { scrubMessageContent($0) }
+    }
+
+    /// T-AI-06: redacts secrets from a single OpenAI-compatible message's textual
+    /// content, including the multimodal `content: [parts]` `text` parts. Non-text
+    /// parts (image data) are left untouched.
+    static func scrubMessageContent(_ message: [String: Any]) -> [String: Any] {
+        var scrubbed = message
+        if let text = message["content"] as? String {
+            scrubbed["content"] = AgentSecretScrubber.scrub(text)
+        } else if let parts = message["content"] as? [[String: Any]] {
+            scrubbed["content"] = parts.map { part -> [String: Any] in
+                var p = part
+                if let text = part["text"] as? String {
+                    p["text"] = AgentSecretScrubber.scrub(text)
+                }
+                return p
+            }
+        }
+        return scrubbed
+    }
+
+    /// T-AI-06: asserts no-retention / no-train intent to cooperating providers.
+    /// Unknown headers are ignored harmlessly by non-cooperating gateways.
+    static func applyNoRetentionHeaders(to request: inout URLRequest) {
+        for (key, value) in AgentProviderRetentionPolicy.noRetentionHeaders {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+    }
+
+    static func applyAdditionalHeaders(_ headers: [String: String], to request: inout URLRequest) {
+        for (key, value) in headers {
+            let field = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !field.isEmpty, !trimmedValue.isEmpty else { continue }
+            guard field.caseInsensitiveCompare("Authorization") != .orderedSame else { continue }
+            request.setValue(trimmedValue, forHTTPHeaderField: field)
+        }
+    }
+}
