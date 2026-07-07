@@ -93,9 +93,38 @@ actor BudgetLedger {
                 break
             case .organization:
                 if let identifier = rule.identifier, !identifier.isEmpty {
-                    clauses.append("(providerAccountLabel = ? OR providerAccountID = ?)")
+                    var matchingAccountSubqueryClauses = [
+                        "providerAccountLabel = ?",
+                        "providerAccountID IS NOT NULL",
+                        "providerAccountID != ''"
+                    ]
+                    if windowStart != nil {
+                        matchingAccountSubqueryClauses.append("startTime >= ?")
+                    }
+                    matchingAccountSubqueryClauses.append("startTime <= ?")
+
+                    clauses.append("""
+                        (
+                            providerAccountLabel = ?
+                            OR providerAccountID = ?
+                            OR (
+                                providerAccountID IS NOT NULL
+                                AND providerAccountID != ''
+                                AND providerAccountID IN (
+                                    SELECT DISTINCT providerAccountID
+                                    FROM token_usage
+                                    WHERE \(matchingAccountSubqueryClauses.joined(separator: " AND "))
+                                )
+                            )
+                        )
+                        """)
                     args.append(identifier)
                     args.append(identifier)
+                    args.append(identifier)
+                    if let windowStart {
+                        args.append(windowStart)
+                    }
+                    args.append(reference)
                 }
             }
 

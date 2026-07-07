@@ -146,7 +146,7 @@ extension ComputerUsePhoneControlSigner {
         intentHashHex: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformP256SigningPrivateKey
+        privateKey: PlatformP256SigningMaterial
     ) throws -> String {
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
         return try PlatformCrypto.p256SigningRawSignature(message: payload, privateKey: privateKey)

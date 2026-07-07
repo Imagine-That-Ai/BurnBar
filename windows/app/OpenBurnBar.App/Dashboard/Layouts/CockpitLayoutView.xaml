@@ -28,23 +28,23 @@
         <!-- Spend-share provider rail. -->
         <components:UnifiedGlassCard Grid.Row="0" Grid.RowSpan="2" Grid.Column="0">
             <StackPanel Spacing="10">
-                <TextBlock Text="Spend share" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
-                <TextBlock Text="Anthropic  48%" FontSize="14" />
-                <TextBlock Text="OpenAI     34%" FontSize="14" />
-                <TextBlock Text="Google     11%" FontSize="14" />
-                <TextBlock Text="xAI         7%" FontSize="14" />
+                <TextBlock Text="Data source" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
+                <TextBlock x:Name="ProviderStatusText"
+                           Text="No SQLCipher database connected"
+                           TextWrapping="Wrap"
+                           FontSize="14" />
             </StackPanel>
         </components:UnifiedGlassCard>
 
         <!-- Four KPI tiles. -->
         <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile Value="$42.8" Caption="Burn / day"
+            <layouts:ConceptStatTile x:Name="BurnTile" Value="—" Caption="Burn / day"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-            <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile Value="342" Caption="Sessions"
+            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
-            <layouts:ConceptStatTile Value="63%" Caption="Cache hit"
+            <layouts:ConceptStatTile x:Name="CacheTile" Value="—" Caption="Cache hit"
                                      AccentBrush="{StaticResource PensieveColorTierEndToEndBrush}" />
         </StackPanel>
 
@@ -53,7 +53,7 @@
                 CornerRadius="{StaticResource PensieveRadiusLgCorner}"
                 BorderThickness="1"
                 BorderBrush="{StaticResource OBBStrokeBrush}">
-            <TextBlock Text="Routing · 128 TPS"
+            <TextBlock x:Name="RoutingStatusText" Text="Routing idle until live sessions are connected"
                        Margin="14"
                        VerticalAlignment="Top"
                        Opacity="0.6"
@@ -69,7 +69,7 @@
             <components:UnifiedGlassCard Grid.Column="0">
                 <StackPanel Spacing="4">
                     <TextBlock Text="Cost curve" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
-                    <TextBlock Text="30-day trend — steady" FontSize="13" Opacity="0.7" />
+                    <TextBlock x:Name="CostCurveText" Text="Connect a usage database for live trend data" FontSize="13" Opacity="0.7" />
                 </StackPanel>
             </components:UnifiedGlassCard>
             <Button Grid.Column="1"

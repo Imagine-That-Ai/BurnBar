@@ -3,7 +3,7 @@ import Foundation
 #if canImport(CryptoKit)
 import CryptoKit
 #else
-import Crypto
+@preconcurrency import Crypto
 #endif
 
 #if canImport(Security)
@@ -16,27 +16,30 @@ import OSLog
 
 public typealias PlatformSymmetricKey = SymmetricKey
 public typealias PlatformSharedSecret = SharedSecret
-public typealias PlatformEd25519PrivateKey = Curve25519.Signing.PrivateKey
+public typealias PlatformEd25519SigningMaterial =
+    Curve25519.Signing.PrivateKey
 public typealias PlatformEd25519PublicKey = Curve25519.Signing.PublicKey
-public typealias PlatformP256SigningPrivateKey = P256.Signing.PrivateKey
+public typealias PlatformP256SigningMaterial =
+    P256.Signing.PrivateKey
 public typealias PlatformP256SigningPublicKey = P256.Signing.PublicKey
 public typealias PlatformP256SigningSignature = P256.Signing.ECDSASignature
 public typealias PlatformP256KeyAgreementPrivateKey = P256.KeyAgreement.PrivateKey
 public typealias PlatformP256KeyAgreementPublicKey = P256.KeyAgreement.PublicKey
-public typealias PlatformCurve25519KeyAgreementPrivateKey = Curve25519.KeyAgreement.PrivateKey
+public typealias PlatformCurve25519AgreementMaterial =
+    Curve25519.KeyAgreement.PrivateKey
 public typealias PlatformCurve25519KeyAgreementPublicKey = Curve25519.KeyAgreement.PublicKey
 
 #if os(Linux) || os(Windows)
-extension SymmetricKey: @retroactive @unchecked Sendable {}
-extension SharedSecret: @retroactive @unchecked Sendable {}
-extension Curve25519.Signing.PrivateKey: @retroactive @unchecked Sendable {}
-extension Curve25519.Signing.PublicKey: @retroactive @unchecked Sendable {}
-extension Curve25519.KeyAgreement.PrivateKey: @retroactive @unchecked Sendable {}
-extension Curve25519.KeyAgreement.PublicKey: @retroactive @unchecked Sendable {}
-extension P256.Signing.PrivateKey: @retroactive @unchecked Sendable {}
-extension P256.Signing.PublicKey: @retroactive @unchecked Sendable {}
-extension P256.KeyAgreement.PrivateKey: @retroactive @unchecked Sendable {}
-extension P256.KeyAgreement.PublicKey: @retroactive @unchecked Sendable {}
+extension SymmetricKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension SharedSecret: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension Curve25519.Signing.PrivateKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension Curve25519.Signing.PublicKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension Curve25519.KeyAgreement.PrivateKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension Curve25519.KeyAgreement.PublicKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension P256.Signing.PrivateKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension P256.Signing.PublicKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension P256.KeyAgreement.PrivateKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
+extension P256.KeyAgreement.PublicKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
 #endif
 
 internal enum PlatformCryptoError: Error {
@@ -290,7 +293,7 @@ public enum PlatformCrypto {
         return try AES.GCM.open(sealedBox, using: key)
     }
 
-    public static func ed25519PrivateKey(rawRepresentation: Data) throws -> PlatformEd25519PrivateKey {
+    public static func ed25519PrivateKey(rawRepresentation: Data) throws -> PlatformEd25519SigningMaterial {
         guard rawRepresentation.count == 32 else { throw PlatformCryptoError.invalidSigningKey }
         do {
             return try Curve25519.Signing.PrivateKey(rawRepresentation: rawRepresentation)
@@ -299,7 +302,7 @@ public enum PlatformCrypto {
         }
     }
 
-    public static func ed25519PrivateKey() -> PlatformEd25519PrivateKey {
+    public static func ed25519PrivateKey() -> PlatformEd25519SigningMaterial {
         Curve25519.Signing.PrivateKey()
     }
 
@@ -327,7 +330,7 @@ public enum PlatformCrypto {
 
     public static func ed25519Signature(
         message: Data,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> Data {
         do {
             return try privateKey.signature(for: message)
@@ -370,7 +373,7 @@ public enum PlatformCrypto {
 
     public static func p256SigningRawSignature(
         message: Data,
-        privateKey: PlatformP256SigningPrivateKey
+        privateKey: PlatformP256SigningMaterial
     ) throws -> Data {
         try privateKey.signature(for: message).rawRepresentation
     }
@@ -411,7 +414,7 @@ public enum PlatformCrypto {
 
     public static func hpkeOpenCurve25519SHA256ChaPoly(
         ciphertext: Data,
-        recipientPrivateKey: PlatformCurve25519KeyAgreementPrivateKey,
+        recipientPrivateKey: PlatformCurve25519AgreementMaterial,
         info: Data,
         encapsulatedKey: Data
     ) throws -> Data {
@@ -426,7 +429,7 @@ public enum PlatformCrypto {
 
     public static func hpkeOpenCurve25519SHA256ChaChaPoly(
         ciphertext: Data,
-        recipientPrivateKey: PlatformCurve25519KeyAgreementPrivateKey,
+        recipientPrivateKey: PlatformCurve25519AgreementMaterial,
         info: Data,
         encapsulatedKey: Data
     ) throws -> Data {

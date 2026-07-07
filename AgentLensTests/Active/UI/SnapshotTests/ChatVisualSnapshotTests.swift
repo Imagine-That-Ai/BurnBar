@@ -16,7 +16,7 @@ final class ChatVisualSnapshotTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 400, height: 80),
             named: "chatVisual.userMessage"
@@ -35,7 +35,7 @@ final class ChatVisualSnapshotTests: XCTestCase {
             showViaBadge: true,
             isHermes: true
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 400, height: 120),
             named: "chatVisual.hermesBadge"
@@ -44,7 +44,7 @@ final class ChatVisualSnapshotTests: XCTestCase {
 
     func test_chatFAB_withInsights() {
         let view = ChatFAB(hasNewInsights: true, action: {})
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 80, height: 80),
             named: SnapshotName.chatFAB
@@ -53,7 +53,7 @@ final class ChatVisualSnapshotTests: XCTestCase {
 
     func test_chatFAB_withoutInsights() {
         let view = ChatFAB(hasNewInsights: false, action: {})
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 80, height: 80),
             named: "chatFAB.noInsights"

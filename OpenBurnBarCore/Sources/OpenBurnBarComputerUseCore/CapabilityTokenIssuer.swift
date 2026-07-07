@@ -19,7 +19,7 @@ public struct CapabilityTokenIssuer: Sendable {
     public init() {}
 
     public func mintRemoteUnlockToken(
-        privateKey: PlatformEd25519PrivateKey,
+        privateKey: PlatformEd25519SigningMaterial,
         scopeHash: String,
         actionKind: String,
         boundEscrowDeviceId: String? = nil,
@@ -46,7 +46,7 @@ public struct CapabilityTokenIssuer: Sendable {
     }
 
     public func mintComputerUseToken(
-        privateKey: PlatformEd25519PrivateKey,
+        privateKey: PlatformEd25519SigningMaterial,
         scopeHash: String,
         allowedActionKinds: [String],
         actionBudget: Int,

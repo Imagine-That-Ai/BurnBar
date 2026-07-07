@@ -316,9 +316,9 @@ enum MacCloudPricingTier: String, CaseIterable, Identifiable {
     var monthlyProductID: String? {
         switch self {
         case .local: return nil
-        case .cloud:  return "com.openburnbar.pro.monthly"
-        case .pro:    return "com.openburnbar.proMax.v2.monthly"
-        case .ultra:  return "com.openburnbar.ultra.monthly"
+        case .cloud:  return MacCloudStoreKitProductCatalog.cloudMonthlyProductID
+        case .pro:    return MacCloudStoreKitProductCatalog.cloudProMonthlyProductID
+        case .ultra:  return MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID
         }
     }
 
@@ -335,7 +335,7 @@ enum MacCloudPricingTier: String, CaseIterable, Identifiable {
 
 @MainActor
 final class MacHostedQuotaPurchaseStore: ObservableObject {
-    static let productID = "com.openburnbar.pro.monthly"
+    static let productID = MacCloudStoreKitProductCatalog.cloudMonthlyProductID
 
     /// The monthly subscription product for each paid tier. Live prices are
     /// fetched from StoreKit; the documented fallback amount renders only when
@@ -361,20 +361,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         .ultra: "$599"
     ]
 
-    static let entitlementProductIDs: Set<String> = [
-        "com.openburnbar.hostedQuotaSync.cloud.monthly",
-        "com.openburnbar.hostedQuotaSync.monthly",
-        "com.openburnbar.computerUse.monthly",
-        "com.openburnbar.proMax.bundle.monthly",
-        "com.openburnbar.hostedComputerUseSync.monthly",
-        "com.openburnbar.proMax.monthly",
-        "com.openburnbar.proMax.v2.monthly",
-        "com.openburnbar.proMax.annual",
-        "com.openburnbar.pro.monthly",
-        "com.openburnbar.pro.annual",
-        "com.openburnbar.ultra.monthly",
-        "com.openburnbar.ultra.annual.v2"
-    ]
+    static let entitlementProductIDs = MacCloudStoreKitProductCatalog.entitlementProductIDs
 
     /// The primary (Cloud) product, kept for the legacy single-tier call sites.
     @Published private(set) var product: Product?
@@ -435,11 +422,17 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             }
 
             let signedInUser = Auth.auth().currentUser.flatMap { $0.isAnonymous ? nil : $0 }
-            guard signedInUser != nil else {
+            guard let signedInUser else {
                 throw MacHostedQuotaPurchaseError.signedOutSubscriptionPurchase
             }
+            let appAccountToken = try await mintAppAccountToken(productID: productID)
+            MacStoreKitAppAccountTokenBindingStore.shared.record(
+                appAccountToken: appAccountToken,
+                uid: signedInUser.uid,
+                productID: productID
+            )
             let purchaseOptions: Set<Product.PurchaseOption> = [
-                .appAccountToken(try await mintAppAccountToken(productID: productID))
+                .appAccountToken(appAccountToken)
             ]
 
             let result = try await purchaseTarget.purchase(options: purchaseOptions)

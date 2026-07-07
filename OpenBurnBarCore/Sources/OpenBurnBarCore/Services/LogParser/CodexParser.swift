@@ -23,7 +23,7 @@ public final class CodexParser: LogParser, Sendable {
     public init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
-        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+        homeDirectoryURL: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths

@@ -101,7 +101,7 @@ public struct RemoteUnlockSessionContextSnapshotSigner: Sendable {
 
     public func sign(
         snapshot: RemoteUnlockSessionContextSnapshot,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> RemoteUnlockSessionContextSnapshot {
         var signed = snapshot
         let payload = try canonicalSignableBytes(snapshot: snapshot)

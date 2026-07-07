@@ -92,4 +92,36 @@ public sealed class HardeningPolicyTests
         Assert.Equal(HardeningPolicy.RecommendedDefaultDllDirectories, result.AppliedFlags);
         Assert.NotEmpty(result.Detail);
     }
+
+    [Fact]
+    public void ApplyWinUICompatible_OnNonWindowsHost_IsADocumentedNoOp()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // Covered by ApplyWinUICompatible_OnWindowsHost_LeavesDefaultDirectoryFlagsUnset on Windows.
+            return;
+        }
+
+        var result = DllSearchHardening.ApplyWinUICompatible();
+        Assert.False(result.OnWindows);
+        Assert.False(result.Applied);
+        Assert.Equal(0, result.AppliedFlags);
+        Assert.Contains("No-op", result.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ApplyWinUICompatible_OnWindowsHost_LeavesDefaultDirectoryFlagsUnset()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            // Covered by ApplyWinUICompatible_OnNonWindowsHost_IsADocumentedNoOp off Windows.
+            return;
+        }
+
+        var result = DllSearchHardening.ApplyWinUICompatible();
+        Assert.True(result.OnWindows);
+        Assert.True(result.Applied);
+        Assert.Equal(0, result.AppliedFlags);
+        Assert.Contains("WinUI resource compatibility", result.Detail);
+    }
 }

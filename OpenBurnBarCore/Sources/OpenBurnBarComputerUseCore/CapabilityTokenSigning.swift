@@ -53,7 +53,7 @@ public struct CapabilityTokenSigner: Sendable {
 
     public func sign(
         token: CapabilityToken,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> CapabilityToken {
         var signed = token
         let payload = try canonicalSignableBytes(token: token)

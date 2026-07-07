@@ -90,8 +90,11 @@ function workflowOnBlock(source) {
 }
 
 function workflowJobBlock(source, jobName) {
+  // Blank lines must consume their newline (`^[ \t]*\n`) rather than match
+  // zero-width (`^\s*$`), or the capture stops at the first empty line inside
+  // a job and silently truncates the block.
   const pattern = new RegExp(
-    `^  ${jobName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}:\\n(?<body>(?:^ {4}[^\\n]*\\n?|^\\s*$)+)`,
+    `^  ${jobName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}:\\n(?<body>(?:^ {4}[^\\n]*\\n?|^[ \\t]*\\n)+)`,
     "mu",
   );
   return pattern.exec(source)?.groups?.body ?? "";
@@ -817,14 +820,90 @@ function verifyReleaseWorkflow() {
   requireIncludes(
     file,
     releaseAttestationStep,
-    "RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}",
+    "RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}",
     "Sigstore predicate step must receive the resolved release commit",
   );
   requireIncludes(
     file,
     releaseAttestationStep,
-    "RELEASE_REF: ${{ steps.version.outputs.tag_ref }}",
+    "RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}",
     "Sigstore predicate step must receive the resolved release tag ref",
+  );
+
+  // Parallel-lane shape invariants: the resolve/scan/preflight steps live in
+  // the release-preflight job, packaging consumes its outputs through `needs`,
+  // and publish gates on every validation lane. These keep the split job
+  // graph from silently dropping a gate or resolving the tag twice.
+  const releasePreflightJob = workflowJobBlock(source, "release-preflight");
+  if (!releasePreflightJob) {
+    fail(file, "release workflow must define the release-preflight job");
+  }
+  for (const requiredStep of [
+    "- name: Resolve release tag and version",
+    "- name: Check out release tag",
+    "- name: BurnBar product release preflight",
+    "- name: Scan publishable tree for secrets",
+  ]) {
+    requireIncludes(
+      file,
+      releasePreflightJob,
+      requiredStep,
+      `release-preflight job must own the protected step "${requiredStep.replace("- name: ", "")}"`,
+    );
+  }
+
+  const packagingJob = workflowJobBlock(source, "build-and-release");
+  requireIncludes(
+    file,
+    packagingJob,
+    "needs: release-preflight",
+    "packaging job must consume the resolved release tag from release-preflight",
+  );
+  requireStepFailClosedMode(
+    file,
+    source,
+    "Check out release tag for packaging",
+    "release packaging checkout step",
+  );
+  requireExecutableShellLine(
+    file,
+    source,
+    "Check out release tag for packaging",
+    'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
+    "release packaging checkout must prove HEAD equals the resolved release commit",
+  );
+
+  const publishJob = workflowJobBlock(source, "publish");
+  if (!publishJob) {
+    fail(file, "release workflow must define the publish job");
+  }
+  for (const requiredNeed of [
+    "release-preflight",
+    "release-swift-gate",
+    "release-app-gate",
+    "release-sqlcipher-gate",
+    "release-mobile-gate",
+    "release-android-gate",
+    "release-functions-gate",
+    "release-extension-gate",
+    "release-supply-chain-gate",
+    "build-and-release",
+    "smoke-test",
+  ]) {
+    requirePattern(
+      file,
+      publishJob,
+      new RegExp(`^      - ${requiredNeed}$`, "mu"),
+      `publish must gate on ${requiredNeed} via needs`,
+    );
+  }
+  // Job-level `if:` sits at 4-space indent; step-level cleanup ifs (8-space)
+  // such as `if: always()` on config cleanup are fine.
+  requireNoPattern(
+    file,
+    publishJob,
+    /^    if\s*:.*always\(\)/mu,
+    "publish must not use always() to bypass failed release lanes",
   );
   requireIncludes(
     file,

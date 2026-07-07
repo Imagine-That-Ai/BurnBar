@@ -55,6 +55,7 @@ final class DashboardLayoutSettingsTests: XCTestCase {
         let expectation = XCTNSNotificationExpectation(name: .dashboardLayoutDidChange)
         settings.dashboardLayout = .constellation
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(settings.dashboardLayout, .constellation)
     }
 
     // MARK: Component smoke tests

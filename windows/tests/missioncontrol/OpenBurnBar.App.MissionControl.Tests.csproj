@@ -13,6 +13,7 @@
     <IsTestProject>true</IsTestProject>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>OpenBurnBar.App.MissionControl.Tests</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,12 +23,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../../app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
     <ProjectReference Include="../../cloudsync/OpenBurnBar.CloudSync/OpenBurnBar.CloudSync.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="../../app/OpenBurnBar.App/MissionControl/FirestoreMissionDispatchHost.cs" Link="FirestoreMissionDispatchHost.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/MissionControl/MissionDispatchHostFactory.cs" Link="MissionDispatchHostFactory.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/MissionControl/EmptyMissionDispatchHost.cs" Link="EmptyMissionDispatchHost.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/MissionControl/MissionDispatchDemoHost.cs" Link="MissionDispatchDemoHost.cs" />
+    <Compile Include="FirestoreMissionDispatchHostTests.cs" />
+    <Compile Include="MissionDispatchHostFactoryRuntimeTests.cs" />
   </ItemGroup>
 
 </Project>

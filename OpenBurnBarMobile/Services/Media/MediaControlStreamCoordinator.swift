@@ -160,6 +160,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// mirror acks. Mirror surfaces install this so failed taps/scrolls
     /// produce an actionable status instead of looking like dead tools.
     var controlDeniedHandler: ((HermesRealtimeRelayControlDenied) async -> Void)?
+    /// Mercury call signaling response from the Mac. iOS initiates with
+    /// `media.call.invite`; the Mac replies on the same live control stream.
+    var callAckHandler: ((HermesRealtimeRelayCallAck) async -> Void)?
 
     /// Explicit remote-clipboard responses from the Mac. Mirror surfaces
     /// match request IDs here before reading or writing the phone pasteboard.
@@ -380,6 +383,34 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 connectionId: connectionID,
                 requestId: requestId,
                 media: HermesRealtimeRelayMediaPayload(mirrorStop: stop)
+            ),
+            timeout: timeout
+        )
+    }
+
+    func sendCallInvite(
+        requestId: String,
+        uid: String,
+        requesterDisplayName: String,
+        callKind: String = "video",
+        timeout: TimeInterval = 8
+    ) async throws {
+        guard activeUID == uid, let connectionID = activeConnectionID else {
+            throw ControlStreamError.notLive
+        }
+        let invite = HermesRealtimeRelayCallInvite(
+            requestId: requestId,
+            requestedAt: Date(),
+            requesterDisplayName: requesterDisplayName,
+            callKind: callKind
+        )
+        try await send(
+            frame: HermesRealtimeRelayFrame(
+                type: .mediaCallInvite,
+                uid: uid,
+                connectionId: connectionID,
+                requestId: requestId,
+                media: HermesRealtimeRelayMediaPayload(callInvite: invite)
             ),
             timeout: timeout
         )
@@ -646,6 +677,16 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     }
                 case .mediaMirrorRequest:
                     // iOS is the requester, not the receiver.
+                    continue
+                case .mediaCallAck:
+                    if let ack = frame.media?.callAck,
+                       let handler = callAckHandler {
+                        await handler(ack)
+                    }
+                    continue
+                case .mediaCallInvite:
+                    // iOS originates phone -> Mac invites; Mac-originated
+                    // wake goes through PushKit/CallKit instead.
                     continue
                 case .mediaPresenceHeartbeat:
                     if let pendingHeartbeatSentAt {

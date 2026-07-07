@@ -106,7 +106,7 @@ public enum IrohPairingSignature {
         directAddresses: [String] = [],
         publishedAtMillis: Int64,
         protocolVersion: Int = IrohRelayProtocol.frameProtocolVersion,
-        with signingKey: PlatformEd25519PrivateKey
+        with signingKey: PlatformEd25519SigningMaterial
     ) throws -> IrohPairingRecord {
         let payload = canonicalPayload(
             uid: uid,
@@ -171,12 +171,12 @@ public enum IrohPairingSignature {
 /// Convenience wrapper for tests and dev tooling that keeps the keypair
 /// material in memory. Production callers go through `IrohRelayKeyStore`
 /// which lives in `AgentLens/Services/IrohRelay/` and persists in Keychain.
-public struct IrohPairingKeypair: @unchecked Sendable {
-    public let signingKey: PlatformEd25519PrivateKey
+public struct IrohPairingKeypair: @unchecked Sendable { // AUDIT sendable-allowlist: swift-crypto-key-material
+    public let signingKey: PlatformEd25519SigningMaterial
     public var publicKeyRaw: Data { signingKey.publicKey.rawRepresentation }
     public var publicKeyBase64: String { publicKeyRaw.base64EncodedString() }
 
-    public init(signingKey: PlatformEd25519PrivateKey = PlatformCrypto.ed25519PrivateKey()) {
+    public init(signingKey: PlatformEd25519SigningMaterial = PlatformCrypto.ed25519PrivateKey()) {
         self.signingKey = signingKey
     }
 }

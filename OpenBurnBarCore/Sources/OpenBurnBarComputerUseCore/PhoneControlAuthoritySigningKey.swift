@@ -14,7 +14,7 @@ public protocol PhoneControlP256AuthoritySigning: Sendable {
     func signature(for data: Data) throws -> PlatformP256SigningSignature
 }
 
-extension PlatformP256SigningPrivateKey: PhoneControlP256AuthoritySigning {}
+extension PlatformP256SigningMaterial: PhoneControlP256AuthoritySigning {}
 #if canImport(CryptoKit)
 extension SecureEnclave.P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
 #endif
@@ -33,7 +33,7 @@ public enum PhoneControlSecureEnclaveKeyPolicy {
 /// Ed25519 vs. Secure-Enclave/StrongBox P-256) is a property of the stored
 /// identity rather than of each call site.
 public enum PhoneControlAuthoritySigningKey: Sendable {
-    case ed25519(PlatformEd25519PrivateKey)
+    case ed25519(PlatformEd25519SigningMaterial)
     /// A NIST P-256 key — `P256.Signing.PrivateKey` in tests / software
     /// fallback, `SecureEnclave.P256.Signing.PrivateKey` on device.
     case secureEnclaveP256(any PhoneControlP256AuthoritySigning)

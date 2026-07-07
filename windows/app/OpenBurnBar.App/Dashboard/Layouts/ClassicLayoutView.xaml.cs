@@ -11,39 +11,21 @@ public sealed partial class ClassicLayoutView : UserControl
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
-        ApplyUsageSummary(OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary());
+        ApplyUsageSummary(await DashboardUsageProvider.LoadAsync());
     }
 
     internal void ApplyUsageSummary(OpenBurnBar.App.Presentation.Dashboard.DashboardUsageSummary summary)
     {
-        if (!summary.HasData)
-        {
-            SpendTile.Value = "—";
-            TokensTile.Value = "—";
-            SessionsTile.Value = "—";
-            return;
-        }
-
-        SpendTile.Value = $"${summary.SpendThisMonthUsd:0.##}";
-        TokensTile.Value = FormatTokenCount(summary.TotalTokens);
-        SessionsTile.Value = summary.SessionCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        SpendTile.Value = DashboardUsageSummaryFormatter.Spend(summary);
+        TokensTile.Value = DashboardUsageSummaryFormatter.Tokens(summary);
+        SessionsTile.Value = DashboardUsageSummaryFormatter.Sessions(summary);
+        string detail = DashboardUsageSummaryFormatter.Detail(summary, "SQLCipher usage database");
+        CostCurveText.Text = detail;
+        ProviderStatusText.Text = detail;
+        ModelsStatusText.Text = summary.HasData ? "Live SQLCipher model rankings." : detail;
     }
 
-    private static string FormatTokenCount(long tokens)
-    {
-        if (tokens >= 1_000_000)
-        {
-            return $"{tokens / 1_000_000.0:0.#}M";
-        }
-
-        if (tokens >= 1_000)
-        {
-            return $"{tokens / 1_000.0:0.#}K";
-        }
-
-        return tokens.ToString(System.Globalization.CultureInfo.InvariantCulture);
-    }
 }

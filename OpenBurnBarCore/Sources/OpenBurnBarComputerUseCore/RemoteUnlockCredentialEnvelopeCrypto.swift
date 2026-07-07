@@ -81,7 +81,7 @@ public enum RemoteUnlockCredentialEnvelopeCrypto {
 
     public static func open(
         envelope: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
-        recipientPrivateKey: PlatformCurve25519KeyAgreementPrivateKey
+        recipientPrivateKey: PlatformCurve25519AgreementMaterial
     ) throws -> String {
         guard envelope.algorithm == Self.algorithm else {
             throw CryptoError.unsupportedAlgorithm(envelope.algorithm)

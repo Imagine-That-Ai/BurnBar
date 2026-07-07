@@ -1,7 +1,7 @@
 import Foundation
-@testable import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+@testable import OpenBurnBarCore
 
 /// Focused coverage for the `readCache()` hardening: a missing cache must
 /// stay silent and fall through, a *present-but-corrupt* cache must degrade

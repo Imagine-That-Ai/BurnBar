@@ -1,8 +1,10 @@
 using System;
 using Microsoft.UI.Xaml;
+using System.Threading.Tasks;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.CloudSync;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Tray;
 
 namespace OpenBurnBar.App;
@@ -32,6 +34,7 @@ public partial class App : Application
 
     public App()
     {
+        AppDiagnostics.Install(this);
         InitializeComponent();
     }
 
@@ -40,8 +43,17 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
         _theme = new ThemeService(_state);
+
+        if ((RouteSmokeOptions.Parse(args.Arguments) ?? RouteSmokeOptions.Parse(Environment.CommandLine)) is { } smoke)
+        {
+            AppDiagnostics.LogEvent("route-smoke.start", $"{smoke.RouteKey} -> {smoke.OutputDirectory}");
+            StartRouteSmoke(smoke);
+            return;
+        }
 
         // Windows are created eagerly but stay hidden — the tray owns visibility, exactly like
         // NSStatusItem owning the menu-bar popover on macOS.
@@ -57,6 +69,15 @@ public partial class App : Application
             onOpenMainWindow: ShowMainWindow,
             onExit: ExitApp);
         _tray.Show();
+    }
+
+    private void StartRouteSmoke(RouteSmokeOptions smoke)
+    {
+        _mainWindow = new MainWindow(_theme!);
+        _mainWindow.Shell.CommandPaletteRequested += (_, _) => OpenCommandPalette();
+        _mainWindow.Activate();
+        _mainWindow.Shell.Navigate(smoke.RouteKey);
+        _ = RouteSmokeHost.CaptureAndExitAsync(_mainWindow, smoke);
     }
 
     /// <summary>Open the full main window from the flyout's "Open full window" action.</summary>
@@ -84,24 +105,31 @@ public partial class App : Application
     /// <summary>Show the Command Palette over the main window (header button or Ctrl+K hotkey).</summary>
     private async void OpenCommandPalette()
     {
-        // The palette is a ContentDialog and needs a live XamlRoot, so ensure the main window is up.
-        ShowMainWindow();
-        if (_mainWindow?.Content is not FrameworkElement root)
+        try
         {
-            return;
+            // The palette is a ContentDialog and needs a live XamlRoot, so ensure the main window is up.
+            ShowMainWindow();
+            if (_mainWindow?.Content is not FrameworkElement root)
+            {
+                return;
+            }
+
+            var palette = new CommandPalette
+            {
+                XamlRoot = root.XamlRoot,
+                RequestedTheme = root.RequestedTheme,
+            };
+
+            await palette.ShowAsync();
+
+            if (palette.ChosenDestinationKey is { } key)
+            {
+                _mainWindow.Shell.Navigate(key);
+            }
         }
-
-        var palette = new CommandPalette
+        catch (Exception ex)
         {
-            XamlRoot = root.XamlRoot,
-            RequestedTheme = root.RequestedTheme,
-        };
-
-        await palette.ShowAsync();
-
-        if (palette.ChosenDestinationKey is { } key)
-        {
-            _mainWindow.Shell.Navigate(key);
+            AppDiagnostics.LogException("command-palette", ex);
         }
     }
 

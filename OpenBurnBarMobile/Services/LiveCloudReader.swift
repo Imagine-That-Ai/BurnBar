@@ -358,6 +358,7 @@ final class LiveCloudReader: CloudReader {
 
 @MainActor
 final class LiveDeviceTrustGateway: DeviceTrustGateway {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "LiveDeviceTrustGateway")
     private var db: Firestore { Firestore.firestore() }
     private var uid: String? {
         guard FirebaseApp.app() != nil else { return nil }

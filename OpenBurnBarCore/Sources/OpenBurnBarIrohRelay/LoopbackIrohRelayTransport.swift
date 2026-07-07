@@ -21,7 +21,7 @@ public final class LoopbackIrohRelayRendezvous: Sendable {
         var pendingByPeer: [String: [PendingConnect]] = [:]
     }
 
-    private final class LockedState: @unchecked Sendable {
+    private final class LockedState: @unchecked Sendable { // AUDIT sendable-allowlist: nslock-protected-storage
         private let lock = NSLock()
         private var state = State()
 

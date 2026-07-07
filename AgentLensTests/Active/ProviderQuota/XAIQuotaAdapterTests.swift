@@ -1,4 +1,5 @@
 import XCTest
+import Security
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
@@ -28,9 +29,9 @@ final class XAIQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage?.contains("Pick a Grok plan") ?? false)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Pick a Grok plan"), true)
     }
 
     // MARK: - Branch 1: GrokBuild credit balance
@@ -71,7 +72,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
         XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
-        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
 
         guard let balanceBucket = snapshot.buckets.first(where: { $0.key == "xai-prepaid-credit-balance" }) else {
             XCTFail("Missing prepaid credit balance bucket"); return
@@ -108,7 +109,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
         XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
-        XCTAssertEqual(snapshot.confidence, .estimated)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.estimated)
 
         guard let bucket = snapshot.buckets.first(where: { $0.key == "xai-supergrok-2h-rolling" }) else {
             XCTFail("Missing rolling 2h bucket"); return
@@ -125,7 +126,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
         XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
-        XCTAssertEqual(snapshot.confidence, .estimated)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.estimated)
         XCTAssertEqual(snapshot.buckets.count, 1)
         let bucket = snapshot.buckets[0]
         XCTAssertEqual(bucket.usedValue, 0)
@@ -133,15 +134,68 @@ final class XAIQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(bucket.remainingValue ?? -1, 400, accuracy: 0.0001)
     }
 
-    // MARK: - Credential read: fault is observable, absent stays nil
+    // MARK: - Credential read: adapter probes secret store, absent stays nil
 
-    /// A genuinely broken Keychain (locked / unavailable) must NOT be
-    /// silently misread as "no management key configured" by a swallowing
-    /// `try?`. The fault path now routes through
-    /// `KeychainStore.credentialIfPresent`, which logs via `AppLogger` and
-    /// returns nil — so the read reaches the backend, the fault is caught,
-    /// and the adapter degrades to the "add a key" unavailable snapshot
-    /// without throwing or crashing.
+    /// A genuinely missing Cursor-connector secret must still be observed by
+    /// the adapter instead of being skipped. The cross-platform quota seam now
+    /// reads through `ProviderQuotaAdapterContext.secretStore`; when that store
+    /// resolves nil, the adapter degrades to the "add a key" unavailable
+    /// snapshot without throwing or crashing.
+    func testCursorConnectorKeyRead_missingSecret_isObservedAndDegradesGracefully() async throws {
+        let secretStore = CountingXAISecretStore(value: nil)
+        let adapter = XAIQuotaAdapter()
+        // No resolved key, no env override: the Cursor-connector secret-store
+        // fallback is the only source the adapter can read.
+        let context = try makeContext(plan: .grokBuild, mgmtKey: nil, secretStore: secretStore)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        // The read actually reached the injected store; it was not skipped or
+        // short-circuited before trying the Cursor-connector fallback.
+        XCTAssertGreaterThanOrEqual(
+            secretStore.readCallCount,
+            1,
+            "Expected the management-key secret read to reach the injected store"
+        )
+        XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Management Key"), true)
+    }
+
+    /// When the Cursor-connector secret is present, it should satisfy the
+    /// management-key requirement and let the adapter hit the management API.
+    func testCursorConnectorKeyRead_presentSecret_usesManagementAPI() async throws {
+        let secretStore = CountingXAISecretStore(value: "xai-mgmt-from-secret-store")
+        let teamsJSON = #"{ "teams": [ { "id": "team_42", "name": "Acme" } ] }"#
+        let balanceJSON = #"{ "total": { "val": "-250" } }"#
+        let usageJSON = #"{ "timeSeries": [] }"#
+        XAIMockURLProtocol.responder = { request in
+            let url = request.url?.absoluteString ?? ""
+            switch url {
+            case "https://api.x.ai/v1/teams":
+                return Self.respond(json: teamsJSON, for: request)
+            case "https://api.x.ai/v1/billing/teams/team_42/prepaid/balance":
+                return Self.respond(json: balanceJSON, for: request)
+            case "https://api.x.ai/v1/billing/teams/team_42/usage":
+                return Self.respond(json: usageJSON, for: request)
+            default:
+                return Self.respond(status: 404, json: "{}", for: request)
+            }
+        }
+
+        let adapter = XAIQuotaAdapter()
+        let context = try makeContext(plan: .grokBuild, mgmtKey: nil, secretStore: secretStore)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        XCTAssertGreaterThanOrEqual(
+            secretStore.readCallCount,
+            1,
+            "Expected the management-key secret read to reach the injected store"
+        )
+        XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.exact)
+    }
 
     /// Direct proof at the accessor seam: a faulting backend yields nil
     /// (caught + logged) without propagating the error. Uses an isolated
@@ -181,14 +235,15 @@ final class XAIQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
         XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
     }
 
     // MARK: - Helpers
 
     private func makeContext(
         plan: XAIQuotaPlanTier,
-        mgmtKey: String?
+        mgmtKey: String?,
+        secretStore: any SecretStore = NoOpSecretStore()
     ) throws -> ProviderQuotaAdapterContext {
         // Use a temp-scoped app-support root so the resolved-team-id scratch
         // cache is isolated per test and never short-circuits the mocked
@@ -227,7 +282,8 @@ final class XAIQuotaAdapterTests: XCTestCase {
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
-            resolvedAPIKeys: resolvedKeys
+            resolvedAPIKeys: resolvedKeys,
+            secretStore: secretStore
         )
     }
 
@@ -262,6 +318,30 @@ final class XAIQuotaAdapterTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.string(from: date)
+    }
+}
+
+/// Secret-store seam used by XAI adapter tests to prove the Cursor-connector
+/// management-key fallback was actually reached.
+private final class CountingXAISecretStore: SecretStore, @unchecked Sendable {
+    private let value: String?
+    private let lock = NSLock()
+    private var _readCallCount = 0
+
+    var readCallCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _readCallCount
+    }
+
+    init(value: String?) {
+        self.value = value
+    }
+
+    func string(for account: String, service: String) -> String? {
+        lock.lock()
+        _readCallCount += 1
+        lock.unlock()
+        return value
     }
 }
 

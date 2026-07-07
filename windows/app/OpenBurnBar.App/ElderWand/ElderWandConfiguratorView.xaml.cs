@@ -29,6 +29,7 @@ public sealed partial class ElderWandConfiguratorView : UserControl
     public ElderWandConfiguratorView()
     {
         InitializeComponent();
+        ConfigureBudgetSlider();
         Editor = new ElderWandConfiguratorModel();
         Editor.PropertyChanged += OnEditorPropertyChanged;
         Unloaded += OnUnloaded;
@@ -78,6 +79,20 @@ public sealed partial class ElderWandConfiguratorView : UserControl
     /// <summary>x:Bind function: the tool-call budget as a display string.</summary>
     public string BudgetLabel(int value) => value.ToString(CultureInfo.InvariantCulture);
 
+    private void ConfigureBudgetSlider()
+    {
+        // WinUI's unpackaged XAML loader fails on RangeBase numeric attributes on ARM64.
+        // Apply the same range in managed code after the control is constructed.
+        _syncingBudget = true;
+        BudgetSlider.Value = 1;
+        BudgetSlider.Minimum = 1;
+        BudgetSlider.Maximum = 16;
+        BudgetSlider.StepFrequency = 1;
+        BudgetSlider.SmallChange = 1;
+        BudgetSlider.LargeChange = 1;
+        _syncingBudget = false;
+    }
+
     private void OnBudgetChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_syncingBudget)
@@ -85,7 +100,7 @@ public sealed partial class ElderWandConfiguratorView : UserControl
             return;
         }
 
-        Editor.MaxToolCalls = (int)Math.Round(e.NewValue);
+        Editor.MaxToolCalls = Math.Max(1, (int)Math.Round(e.NewValue));
     }
 
     private void OnEditorPropertyChanged(object? sender, PropertyChangedEventArgs e)

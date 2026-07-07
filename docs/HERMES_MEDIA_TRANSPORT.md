@@ -100,6 +100,8 @@ All media rides the same iroh QUIC mesh and the same `openburnbar/1` ALPN as Her
 | `media.mirror.ack` | 1 per request | Mac → iOS | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 | `media.mirror.stop` | 1 per ended mirror | iOS/Android → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 | `media.mirror.display.select` | 0..n per mirror session | iOS/Android → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.call.invite` | 1 per phone-originated call | iOS/Android → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.call.ack` | 1 per phone-originated call | Mac → iOS/Android | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 | `media.presence.heartbeat` | 1 per 2.5s during active mirrors; 1 per 60s otherwise | Bidirectional | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 | `media.ltr.ack` | 0..n per mirror session | Receiver → encoder | Reliable, on existing control stream (JSON envelope) | Gated streaming substrate |
 
@@ -234,6 +236,52 @@ Computer Use `control.denied` when the action cannot execute; mobile clients
 surface those denials directly, including the Accessibility-permission case for
 Mac input.
 
+### `media.call.invite` / `media.call.ack` (iOS/Android -> Mac)
+
+Phone-originated calls use the already-live paired-Mac `media.control` stream.
+They do not use `triggerVoIPCall`: that Cloud Function is only for the reverse
+Mac -> phone wake path where PushKit/APNs or Android FCM must wake a suspended
+mobile device.
+
+```json
+{
+  "type": "media.call.invite",
+  "uid": "u1",
+  "connectionId": "c1",
+  "requestId": "call_abc",
+  "media": {
+    "callInvite": {
+      "requestId": "call_abc",
+      "requestedAt": "2026-05-20T23:31:00.000Z",
+      "requesterDisplayName": "Alberto's iPhone",
+      "callKind": "video"
+    }
+  }
+}
+```
+
+The Mac `MercuryRouter` only accepts this while the paired media control stream
+is live and the Mac is advertising `call.receive` in presence. It enters
+`.callRinging`, shows the retained Mercury incoming-call panel, and replies:
+
+```json
+{
+  "type": "media.call.ack",
+  "uid": "u1",
+  "connectionId": "c1",
+  "requestId": "call_abc",
+  "media": {
+    "callAck": {
+      "requestId": "call_abc",
+      "decision": "accepted",
+      "detail": "Mac accepted the call invite"
+    }
+  }
+}
+```
+
+Decision enum: `accepted`, `denied`, `unsupported`, `busy`.
+
 ### `media.mirror.stop` (iOS/Android → Mac)
 
 The phone sends this when the accepted mirror viewer closes, including explicit
@@ -337,7 +385,8 @@ reference token carried in that frame's metadata:
 
 ### Ordering rules
 
-- Mirror request and ack are **synchronous request-response**: the phone waits for the ack before presenting the viewer.
+- Mirror request/ack and call invite/ack are **synchronous request-response**:
+  the phone waits for the Mac's decision before presenting the next surface.
 - Mirror stop is **terminal and non-cooldown**: a normal viewer hangup clears
   the Mac's active session immediately and does not block the next request.
 - Cooldown is **server-authoritative**: the Mac rejects requests during cooldown; iOS never pre-emptively enforces it.
@@ -345,7 +394,8 @@ reference token carried in that frame's metadata:
   and Mac-originated mirror health heartbeats continue during visually idle
   desktops so receivers do not mistake "no changed pixels" for a stalled video
   stream.
-- All three ride the same reliable stream as file-transfer traffic. Ordering within stream is preserved.
+- These control frames ride the same reliable stream as file-transfer traffic.
+  Ordering within stream is preserved.
 
 ## Mercury streaming capability handshake
 

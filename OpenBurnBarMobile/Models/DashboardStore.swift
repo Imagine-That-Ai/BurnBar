@@ -206,22 +206,27 @@ final class DashboardStore {
         listener = firestore.listenToRollups { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
-                switch result {
-                case .success(let rollups):
-                    if rollups.isEmpty {
-                        await self.refresh()
-                        return
-                    }
-                    if await self.hasUsageNewerThanRollups(rollups) {
-                        await self.refresh()
-                        return
-                    }
-                    self.applyRollups(rollups)
-                    self.error = nil
-                case .failure(let err):
-                    self.error = err.localizedDescription
-                }
+                await self.handleRollupListenerResult(result)
             }
+        }
+    }
+
+    func handleRollupListenerResult(_ result: Result<[UsageRollupDoc], Error>) async {
+        switch result {
+        case .success(let rollups):
+            if rollups.isEmpty {
+                await refresh()
+                return
+            }
+            if await hasUsageNewerThanRollups(rollups) {
+                await refresh()
+                return
+            }
+            applyRollups(rollups)
+            error = nil
+            hasLoadedOnce = true
+        case .failure(let err):
+            error = err.localizedDescription
         }
     }
 
@@ -349,4 +354,6 @@ final class DashboardStore {
     }
 }
 
-extension DashboardStore: BudgetSpendDataSource {}
+extension DashboardStore: BudgetSpendDataSource {
+    var budgetSpendSnapshotIsReadable: Bool { hasLoadedOnce }
+}

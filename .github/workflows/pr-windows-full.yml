@@ -34,10 +34,20 @@ on:
     branches: [main]
     paths:
       - "windows/**"
+      # The sln's native-shim projects reference the committed uniffi C# bindings
+      # that live crate-side (decision 0001), so binding changes must run the
+      # full suite too.
+      - "crates/burnbar-remote/bindings/csharp/**"
+      - "crates/openburnbar-iroh/bindings/csharp/**"
       - ".github/workflows/pr-windows-full.yml"
   pull_request:
     paths:
       - "windows/**"
+      # The sln's native-shim projects reference the committed uniffi C# bindings
+      # that live crate-side (decision 0001), so binding changes must run the
+      # full suite too.
+      - "crates/burnbar-remote/bindings/csharp/**"
+      - "crates/openburnbar-iroh/bindings/csharp/**"
       - ".github/workflows/pr-windows-full.yml"
 
 concurrency:

@@ -394,7 +394,7 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(snapshot.provider, AgentProvider.claudeCode.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertFalse(snapshot.statusMessage?.contains("Context window") ?? false)
+        XCTAssertNotEqual(snapshot.statusMessage?.contains("Context window"), true)
     }
 
     func test_claudeRefresh_staleContextWindowOnlySnapshotDoesNotRenderAsQuota() async throws {
@@ -410,7 +410,7 @@ extension ProviderQuotaServiceTests {
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertFalse(snapshot.statusMessage?.contains("context window") ?? false)
+        XCTAssertNotEqual(snapshot.statusMessage?.contains("context window"), true)
     }
 
     func test_claudeRefresh_statuslineRateLimitsWinEvenWhenContextWindowIsPresent() async throws {

@@ -131,7 +131,7 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
         )
     }
 
-    private func loadOrCreateKey() throws -> PlatformEd25519PrivateKey {
+    private func loadOrCreateKey() throws -> PlatformEd25519SigningMaterial {
         if let data = try keyStore.data(service: service, account: account) {
             return try decodeKey(data)
         }
@@ -145,7 +145,7 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
         return fresh
     }
 
-    private func migrateLegacyRawKeyIfPresent() throws -> PlatformEd25519PrivateKey? {
+    private func migrateLegacyRawKeyIfPresent() throws -> PlatformEd25519SigningMaterial? {
         guard let legacyRawKeyURL,
               fileSystem.fileExists(atPath: legacyRawKeyURL.path) else {
             return nil
@@ -157,7 +157,7 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
         return key
     }
 
-    private func decodeKey(_ data: Data) throws -> PlatformEd25519PrivateKey {
+    private func decodeKey(_ data: Data) throws -> PlatformEd25519SigningMaterial {
         guard data.count == 32 else {
             throw ComputerUseAuditExportSignerStoreError.invalidStoredKey
         }

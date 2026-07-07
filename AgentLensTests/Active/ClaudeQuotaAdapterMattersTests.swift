@@ -1,4 +1,5 @@
 import XCTest
+@testable import OpenBurnBarCore
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 

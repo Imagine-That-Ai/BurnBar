@@ -358,7 +358,11 @@ let openBurnBarCoreExcludes = [
     // uses _putenv_s); App Check is not part of the Engine subset.
     "AppCheckDebugTokenEnvironment.swift",
     // Contracts referencing types defined in excluded files:
+    //   BurnBarRunContracts   -> BurnBarAgentLoopState (OpenBurnBarAgentContracts)
     //   MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views)
+    "Contracts/BurnBarRunContracts.swift",
+    // Consumes BurnBarRunStateSnapshot (defined in the excluded BurnBarRunContracts).
+    "Contracts/BurnBarEventContracts.swift",
     "Contracts/MissionGroupContracts.swift",
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
@@ -383,7 +387,7 @@ let openBurnBarCoreExcludes = [
     "SharedModels/CloudVaultDeviceKeypair.swift",
     "SharedModels/EscrowDeviceSafetyCode.swift",
     "SharedModels/HermesRatchetCrypto.swift",
-    // Uses HermesRelayCrypto for relay-envelope open/seal.
+    // Uses HermesRelayCrypto plus authenticated-request trust/runtime types outside the Engine subset.
     "SharedModels/HermesRelayAuthenticatedRequest.swift",
     "SharedModels/Insights",
     "SharedModels/InsightVerdictWidgetSnapshot.swift",

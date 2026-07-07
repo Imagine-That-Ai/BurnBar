@@ -12,6 +12,13 @@ import OpenBurnBarCore
 /// being written in plaintext. An opaque keyed `projectKeyHash` is also written
 /// so on-device readers can group usage by project without decrypting every row.
 final class UsageSyncService: CloudSyncDomain, Sendable {
+    /// Durable one-shot flag: recountAll sets it, the next sync reads-and-clears
+    /// it. UserDefaults (not an in-memory observer) because uploadPending()
+    /// constructs a fresh, short-lived UsageSyncService per call — an instance
+    /// observer would register only AFTER recountAll already posted, so the
+    /// request would never be seen. The flag survives across those instances
+    /// and across a relaunch between recount and the next sync.
+    static let orphanReconciliationDefaultsKey = "OpenBurnBarUsageOrphanReconciliationRequested"
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
@@ -29,6 +36,12 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         self.vaultKeyProvider = vaultKeyProvider
     }
 
+    /// Request a one-shot orphaned-cloud-doc reconciliation on the next sync.
+    /// Durable across the ephemeral per-sync UsageSyncService instances.
+    static func requestOrphanReconciliation() {
+        UserDefaults.standard.set(true, forKey: orphanReconciliationDefaultsKey)
+    }
+
     /// Upload all unsynced local usage rows to Firestore.
     /// Call after UsageAggregator.refreshAll().
     func sync() async {
@@ -42,7 +55,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         guard state.beginSyncingIfIdle() else { return }
         let deviceId = gate.account.deviceId
         let syncStartTime = Date()
-        var lastBatchCount = 0
+        var syncedItemCount = 0
 
         defer { state.endSyncing() }
 
@@ -55,7 +68,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             while true {
                 let unsynced = try await context.dataStore.fetchUnsynced()
                 guard !unsynced.isEmpty else { break }
-                lastBatchCount = unsynced.count
+                syncedItemCount += unsynced.count
 
                 let batch = context.firestoreGateway.batch()
 
@@ -84,12 +97,37 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 try await context.dataStore.markSynced(ids: syncedIds)
             }
 
+            // Orphan cleanup runs only AFTER the replacement upload committed
+            // (never leaves the cloud with neither old nor new docs), only when
+            // a recount explicitly requested reconciliation (bounds the
+            // full-history scan to recount events, not every incremental
+            // sync), and never against an empty local table (a failed recount
+            // persist must not delete the device's entire cloud history).
+            if UserDefaults.standard.bool(forKey: Self.orphanReconciliationDefaultsKey) {
+                let keeping = Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
+                if keeping.isEmpty {
+                    AppLogger.sync.error(
+                        "usage_orphan_cleanup_refused_empty_local_table",
+                        metadata: ["reason": "failed recount persist would delete entire cloud history"]
+                    )
+                } else {
+                    try await deleteOrphanedUsageDocs(
+                        collectionRef: collectionRef,
+                        deviceId: deviceId,
+                        keeping: keeping
+                    )
+                    // Clear only after a successful cleanup so a failed sync
+                    // retries reconciliation next time.
+                    UserDefaults.standard.set(false, forKey: Self.orphanReconciliationDefaultsKey)
+                }
+            }
+
             state.withLock {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = nil
             }
             let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
-            let itemCountBucket = AnalyticsBuckets.count(lastBatchCount)
+            let itemCountBucket = AnalyticsBuckets.count(syncedItemCount)
             Task { @MainActor in
                 Analytics.shared.track(.cloudsyncCompleted, [
                     "domain": "usage",
@@ -100,7 +138,37 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             }
             try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
-            await recordSyncError(error)
+            await recordSyncError(error, uid: uid, deviceId: deviceId)
+        }
+    }
+
+    private func deleteOrphanedUsageDocs(
+        collectionRef: CloudSyncCollectionGateway,
+        deviceId: String,
+        keeping currentUsageIds: Set<String>
+    ) async throws {
+        let prefix = "\(deviceId)_"
+        let snapshot = try await collectionRef.whereField("deviceId", isEqualTo: deviceId).getDocuments()
+        let orphanDocIds = snapshot.documents.compactMap { document -> String? in
+            let documentID = document.documentID
+            guard documentID.hasPrefix(prefix) else { return nil }
+            let usageID = String(documentID.dropFirst(prefix.count))
+            return currentUsageIds.contains(usageID) ? nil : documentID
+        }
+        guard !orphanDocIds.isEmpty else { return }
+
+        for batchStart in stride(from: 0, to: orphanDocIds.count, by: 400) {
+            let batch = context.firestoreGateway.batch()
+            for docId in orphanDocIds[batchStart..<min(batchStart + 400, orphanDocIds.count)] {
+                batch.deleteDocument(collectionRef.document(docId))
+            }
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "usage"
+            ) {
+                try await batch.commit()
+            }
         }
     }
 
@@ -125,8 +193,28 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 "isOnline": true,
                 "lastSyncAt": Timestamp(date: now),
                 "collectionsInSync": collectionsInSync,
+                "lastErrorCode": FieldValue.delete(),
                 "updatedAt": Timestamp(date: now)
             ], merge: true)
+    }
+
+    private func publishSyncFailureStatus(uid: String, deviceId: String, error: Error) async {
+        let now = Date()
+        do {
+            try await context.firestoreGateway.collection("users").document(uid)
+                .collection("sync_status").document(deviceId).setData([
+                    "deviceId": deviceId,
+                    "isOnline": true,
+                    "lastAttemptAt": Timestamp(date: now),
+                    "lastErrorCode": Self.syncBlockedCode(for: error),
+                    "updatedAt": Timestamp(date: now)
+                ], merge: true)
+        } catch {
+            AppLogger.sync.error(
+                "usage_sync_failure_status_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     private func publishDeviceHeartbeat(uid: String, deviceId: String, at now: Date) async throws {
@@ -143,8 +231,41 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         ], merge: true)
     }
 
-    private func recordSyncError(_ error: Error) async {
+    static func syncBlockedCode(for error: Error) -> String {
+        if let cloudVaultError = error as? CloudVaultAccessError {
+            switch cloudVaultError {
+            case .vaultKeyUnavailable:
+                return "vault_key_unavailable"
+            case .vaultKeyMismatch:
+                return "vault_key_mismatch"
+            case .invalidWrappedKey:
+                return "vault_key_invalid"
+            }
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == FirestoreErrorDomain,
+           let code = FirestoreErrorCode.Code(rawValue: nsError.code) {
+            switch code {
+            case .permissionDenied:
+                return "permission_denied"
+            case .unauthenticated:
+                return "unauthenticated"
+            default:
+                break
+            }
+        }
+
+        if nsError.domain == NSURLErrorDomain {
+            return "network_unavailable"
+        }
+
+        return "other"
+    }
+
+    private func recordSyncError(_ error: Error, uid: String, deviceId: String) async {
         state.withLock { $0.lastSyncError = error.localizedDescription }
+        await publishSyncFailureStatus(uid: uid, deviceId: deviceId, error: error)
 
         let nsError = error as NSError
         let errorType = String(describing: type(of: error))

@@ -680,8 +680,8 @@ final class ICloudSessionMirrorService {
     }
 
     private var stateFileURL: URL {
-        // try?-ok(best-effort support dir)
         let base: URL
+        // try?-ok(best-effort support dir)
         if let prepared = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager) {
             base = prepared
         } else {

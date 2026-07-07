@@ -82,7 +82,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         signedIntentHash: String,
         authenticatedAt: Date,
         expiresAt: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> HermesRealtimeRelayAgentGrantLocalAuthProof {
         let payload = localAuthProofSignablePayload(
             proofId: proofId,
@@ -453,7 +453,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalIntentHashHex(intent: intent)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
@@ -472,7 +472,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalInputIntentHashHex(intent: intent)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
@@ -491,7 +491,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalAgentGrantRequestHashHex(request: request)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
@@ -510,7 +510,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalApprovalResponseHashHex(response: response)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
@@ -529,7 +529,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalClipboardRequestHashHex(request: request)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
@@ -548,7 +548,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalRemoteUnlockSessionHashHex(session: session)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
@@ -567,7 +567,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalRemoteUnlockCredentialHashHex(credential: credential)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
@@ -586,7 +586,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalAgentContextTargetHashHex(target: target)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
@@ -605,7 +605,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: PlatformEd25519PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalSystemPermissionRequestHashHex(request: request)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)

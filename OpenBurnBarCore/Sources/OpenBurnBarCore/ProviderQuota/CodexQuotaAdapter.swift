@@ -347,7 +347,7 @@ private enum CodexOAuthQuotaFetcher {
 
     /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func nudgeCodexAuthRefresh(context: ProviderQuotaAdapterContext, configURL: URL) async {
-        #if !canImport(Darwin)
+        #if !os(macOS)
         return
         #else
         let environment = context.environment

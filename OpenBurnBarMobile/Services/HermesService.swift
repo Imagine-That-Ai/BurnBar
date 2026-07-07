@@ -575,6 +575,7 @@ final class HermesService {
                 messages = loaded
             }
         } catch {
+            hermesE2ELogger.error("hermes_service_resume_session_failed sessionID=\(session.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
             messages = []
             runtimeErrorText = "Could not load the selected Hermes transcript: \(error.localizedDescription)"
         }
@@ -729,11 +730,14 @@ final class HermesService {
         capturedFusionSpend = nil
 
         #if DEBUG
-        hermesE2ELogger.info("OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id, privacy: .public) mode=\(selectedConnection.mode.rawValue, privacy: .public) reachable=\(isReachable, privacy: .public) suggested=\(suggestedRelayConnection?.id ?? "none", privacy: .public) selectedModel=\(selectedModelID ?? "nil", privacy: .public) explicit=\(selectedModelWasExplicit, privacy: .public)")
+        let line = "OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable)"
+            + " suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)"
+        hermesE2ELogger.info("\(line, privacy: .public)")
         #endif
         preferSuggestedRelayWhenLocalHostIsOffline()
         #if DEBUG
-        hermesE2ELogger.info("OpenBurnBarMobile Hermes E2E sendMessage afterPrefer selected=\(selectedConnection.id, privacy: .public) mode=\(selectedConnection.mode.rawValue, privacy: .public) reachable=\(isReachable, privacy: .public) selectedModel=\(selectedModelID ?? "nil", privacy: .public) explicit=\(selectedModelWasExplicit, privacy: .public)")
+        let line = "OpenBurnBarMobile Hermes E2E sendMessage afterPrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)"
+        hermesE2ELogger.info("\(line, privacy: .public)")
         #endif
 
         // Mint a local session id for brand-new chats so we can mirror the

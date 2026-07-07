@@ -136,7 +136,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(snapshot.sourceKind, .unavailable)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage?.contains("not found") ?? false)
+        XCTAssertEqual(snapshot.statusMessage?.contains("not found"), true)
     }
 
     func testFetch_whenHistoryExists_producesPerModelBuckets() async throws {
@@ -208,7 +208,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         }
 
         // --- Status message mentions active model ---
-        XCTAssertTrue(snapshot.statusMessage?.contains("Claude Opus 4.6 (Thinking)") ?? false)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Claude Opus 4.6 (Thinking)"), true)
     }
 
     func testFetch_whenSettingsMissing_defaultsToClaudeOpus() async throws {
@@ -251,7 +251,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             XCTAssertNil(sonnet.resetsAt)
         }
 
-        XCTAssertTrue(snapshot.statusMessage?.contains("Claude Opus 4.6 (Thinking)") ?? false)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Claude Opus 4.6 (Thinking)"), true)
     }
 
     func testFetch_whenDifferentModelSelected_thatModelIsActive() async throws {
@@ -293,6 +293,6 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             XCTAssertNil(opus.resetsAt)
         }
 
-        XCTAssertTrue(snapshot.statusMessage?.contains("Gemini 3.5 Flash (Medium)") ?? false)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Gemini 3.5 Flash (Medium)"), true)
     }
 }

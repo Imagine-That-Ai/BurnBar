@@ -685,7 +685,7 @@ public struct ComputerUseAuditExportSignerReadback: Codable, Hashable, Sendable 
 public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning {
     public static let algorithmName = "ed25519"
 
-    public let privateKey: PlatformEd25519PrivateKey
+    public let privateKey: PlatformEd25519SigningMaterial
     public let signerIdentifier: String
     public let signerKind: String?
     public let trustRoot: String?
@@ -699,7 +699,7 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
     }
 
     public init(
-        privateKey: PlatformEd25519PrivateKey,
+        privateKey: PlatformEd25519SigningMaterial,
         signerIdentifier: String,
         signerKind: String? = "openburnbar_trusted_device",
         trustRoot: String? = "openburnbar-device-local-ed25519-v1"

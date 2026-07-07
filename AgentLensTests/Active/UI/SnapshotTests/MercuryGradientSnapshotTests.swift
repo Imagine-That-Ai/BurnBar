@@ -16,7 +16,7 @@ final class MercuryGradientSnapshotTests: XCTestCase {
             detail: nil,
             isRunning: false
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 320, height: 50),
             named: SnapshotName.hermesToolCardCompleted
@@ -32,7 +32,7 @@ final class MercuryGradientSnapshotTests: XCTestCase {
             detail: "search_pattern = 'func test'",
             isRunning: false
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 320, height: 60),
             named: SnapshotName.hermesToolCardExpanded
@@ -42,7 +42,7 @@ final class MercuryGradientSnapshotTests: XCTestCase {
     func test_hermesThinkingView() {
         let view = HermesThinkingView()
         // Lower precision because droplet animation depends on onAppear timing
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 200, height: 60),
             named: SnapshotName.hermesThinkingView,
@@ -62,7 +62,7 @@ final class MercuryGradientSnapshotTests: XCTestCase {
             showViaBadge: true,
             isHermes: true
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 400, height: 120),
             named: SnapshotName.chatMessageHermes
@@ -76,7 +76,7 @@ final class MercuryGradientSnapshotTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 400, height: 80),
             named: SnapshotName.chatMessageUser
@@ -91,7 +91,7 @@ final class MercuryGradientSnapshotTests: XCTestCase {
             showViaBadge: false
         )
         // Lower precision because streaming caret blinks
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 400, height: 80),
             named: SnapshotName.chatMessageStreaming,

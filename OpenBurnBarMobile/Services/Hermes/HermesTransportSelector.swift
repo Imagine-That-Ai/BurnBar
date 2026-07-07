@@ -192,7 +192,9 @@ final class HermesTransportSelector {
             guard generation == nil || generation == coordinator.runtimeGeneration else { return }
             coordinator.connections = [HermesConnectionRecord.localDefault] + remoteConnections
             #if DEBUG
-            hermesE2ELogger.info("OpenBurnBarMobile Hermes E2E connections loaded total=\(coordinator.connections.count, privacy: .public) relayUsable=\(relayConnections.count, privacy: .public) selected=\(coordinator.selectedConnection.id, privacy: .public) selectedMode=\(coordinator.selectedConnection.mode.rawValue, privacy: .public)")
+            let line = "OpenBurnBarMobile Hermes E2E connections loaded total=\(coordinator.connections.count) relayUsable=\(relayConnections.count)"
+                + " selected=\(coordinator.selectedConnection.id) selectedMode=\(coordinator.selectedConnection.mode.rawValue)"
+            hermesE2ELogger.info("\(line, privacy: .public)")
             #endif
             let persistedID = coordinator.defaults.string(forKey: HermesRuntimeStore.selectedConnectionDefaultsKey)
             let rawTargetID = coordinator.selectedConnection.id == HermesConnectionRecord.localDefault.id ? persistedID : coordinator.selectedConnection.id
@@ -537,6 +539,7 @@ final class HermesTransportSelector {
             }
         } catch {
             guard generation == coordinator.runtimeGeneration else { return }
+            hermesE2ELogger.error("transport_selector_load_models_failed: \(error.localizedDescription, privacy: .public)")
             coordinator.modelOptions = []
         }
     }
@@ -603,6 +606,7 @@ final class HermesTransportSelector {
             coordinator.sessions = HermesWireValueParsing.parseSessions(from: data)
         } catch {
             guard generation == coordinator.runtimeGeneration else { return }
+            hermesE2ELogger.error("transport_selector_load_sessions_failed: \(error.localizedDescription, privacy: .public)")
             coordinator.sessions = []
         }
     }
@@ -625,6 +629,7 @@ final class HermesTransportSelector {
             coordinator.profiles = HermesWireValueParsing.parseProfiles(from: data)
         } catch {
             guard generation == coordinator.runtimeGeneration else { return }
+            hermesE2ELogger.error("transport_selector_load_profiles_failed: \(error.localizedDescription, privacy: .public)")
             coordinator.profiles = []
         }
     }
@@ -647,6 +652,7 @@ final class HermesTransportSelector {
             coordinator.jobs = HermesWireValueParsing.parseJobs(from: data)
         } catch {
             guard generation == coordinator.runtimeGeneration else { return }
+            hermesE2ELogger.error("transport_selector_load_jobs_failed: \(error.localizedDescription, privacy: .public)")
             coordinator.jobs = []
         }
     }

@@ -12,8 +12,8 @@ namespace OpenBurnBar.App.Chat;
 // ChatStreamEvent values. On Windows the real driver adapts CLIBridge /
 // gateway streams into this seam (the Codex/Claude/Hermes chat*Stream paths in
 // AgentLens/Views/Chat/ChatSessionController+Search.swift). Until that native
-// bridge lands, the shell ships a scripted driver so the surface animates the
-// full idle→streaming→tool_use→tool_result→done walk end-to-end.
+// bridge lands, production uses an explicit unavailable driver; the scripted driver
+// is opt-in sample mode only.
 
 /// Produces the backend event stream for one assistant turn (peer of the
 /// `AsyncThrowingStream<CLIChatStreamEvent, Error>` the controller awaits).
@@ -25,10 +25,24 @@ public interface IChatStreamDriver
         CancellationToken cancellationToken);
 }
 
-/// A deterministic scripted driver that replays a representative turn: a brief
-/// think pause, streamed prose (including a burnbar atom + inline code), a tool
-/// call that resolves, and a closing line. Used by the WinUI surface for a live
-/// demo before the CLIBridge driver is wired; also handy for manual QA.
+/// Production-default driver when no local/remote chat backend is configured. It is explicit and
+/// actionable, not a scripted fake response. The scripted demo driver remains available through
+/// <c>OPENBURNBAR_SAMPLE_MODE=1</c>.
+public sealed class UnavailableChatStreamDriver : IChatStreamDriver
+{
+    public async IAsyncEnumerable<ChatStreamEvent> StreamAsync(
+        string userText,
+        IReadOnlyList<ChatMessageRecord> history,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return new ChatStreamEvent.Text("Chat backend is not configured on this Windows build. Connect the Hermes/CLI bridge in Settings → Data Sources, or launch with OPENBURNBAR_SAMPLE_MODE=1 for a labeled scripted demo.");
+    }
+}
+
+/// A deterministic scripted driver that replays a representative turn. Used only when sample mode
+/// is explicitly enabled, and in tests that inject it directly.
 public sealed class ScriptedChatStreamDriver : IChatStreamDriver
 {
     private readonly int _tokenDelayMs;

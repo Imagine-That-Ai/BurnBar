@@ -2,7 +2,6 @@ import Foundation
 import Network
 import OpenBurnBarCore
 import Security
-import os
 
 // MARK: - Smart Hub Bridge Server
 //
@@ -17,9 +16,8 @@ import os
 //   GET  /state.json        → {version, lastRefreshedAt, providers: [...]}
 //   POST /refresh           → bumps the version counter; Nest Hub polls /state.json
 //                              and re-renders when the version changes
-//   POST /voice-refresh     → no-op for now; logs the request and replies
-//                              {"ok":true,"voice":"unsupported"} so a future
-//                              Google Routine can be hooked up
+//   POST /voice-refresh     → queues a voice event in /state.json; the
+//                              rendered Hub page speaks it on its next poll
 //
 // The Nest Hub's cast surface caches the page aggressively, so we use a
 // `<meta http-equiv="refresh">` based on a 5s polling cycle of /state.json
@@ -27,8 +25,6 @@ import os
 
 @MainActor
 final class SmartHubBridgeServer {
-
-    private static let log = Logger(subsystem: "com.openburnbar.app", category: "SmartHubBridgeServer")
 
     static let shared = SmartHubBridgeServer()
 
@@ -61,6 +57,24 @@ final class SmartHubBridgeServer {
     /// The bridge HTML reads this on every poll and re-applies CSS / behavior
     /// without forcing a full reload.
     private(set) var displayConfig: SmartHubDisplayConfig = .default
+
+    /// Last voice announcement requested through POST /voice-refresh.
+    /// This intentionally does not bump `refreshVersion`; otherwise
+    /// identify-on-refresh would see its own voice event as another refresh
+    /// and loop forever.
+    private(set) var voiceRefreshVersion: UInt64 = 0
+    private(set) var lastVoiceRefreshAt: Date?
+    private(set) var lastVoiceRefreshMessage: String = ""
+    private static let voiceRefreshDuplicateWindowSeconds: TimeInterval = 5
+
+    struct VoiceRefreshEvent: Equatable, Sendable {
+        let eventId: UInt64
+        let target: String
+        let status: String
+        let message: String
+        let requestedAt: Date
+        let dashboardVersion: UInt64
+    }
 
     /// Async refresh hook injected by `SmartHubBridgeController`. POST /refresh
     /// awaits this so the device sees fresh data after the request completes —
@@ -323,13 +337,7 @@ final class SmartHubBridgeServer {
                 sendStatus(401, on: connection)
                 return
             }
-            // Voice routine hook — not implemented yet. Ack receipt so
-            // callers (the bridge page's fire-and-forget fetch, or a
-            // Google Routine curl) get a clean response, but report the
-            // honest state instead of pretending anything was queued.
-            // No client parses the "voice" field today.
-            Self.log.notice("POST /voice-refresh received — voice routine hook not implemented; replying voice=unsupported")
-            sendJSON("{\"ok\":true,\"voice\":\"unsupported\"}", on: connection)
+            sendJSON(queueVoiceRefreshResponseJSON(), on: connection)
         default:
             sendStatus(404, on: connection)
         }
@@ -398,6 +406,93 @@ final class SmartHubBridgeServer {
                 on: connection
             )
         }
+    }
+
+    // MARK: - Voice refresh handler
+
+    /// Queues a voice event for the currently-rendering Hub page. The page polls
+    /// `/state.json`, sees the monotonic event id, and speaks the message locally.
+    func queueVoiceRefresh() -> VoiceRefreshEvent {
+        let requestedAt = Date()
+        let message = voiceAnnouncementMessage()
+
+        if voiceRefreshVersion > 0,
+           message == lastVoiceRefreshMessage,
+           let lastVoiceRefreshAt,
+           requestedAt.timeIntervalSince(lastVoiceRefreshAt) < Self.voiceRefreshDuplicateWindowSeconds {
+            return VoiceRefreshEvent(
+                eventId: voiceRefreshVersion,
+                target: "bridge-page",
+                status: "coalesced",
+                message: lastVoiceRefreshMessage,
+                requestedAt: lastVoiceRefreshAt,
+                dashboardVersion: refreshVersion
+            )
+        }
+
+        voiceRefreshVersion &+= 1
+        lastVoiceRefreshAt = requestedAt
+        lastVoiceRefreshMessage = message
+
+        return VoiceRefreshEvent(
+            eventId: voiceRefreshVersion,
+            target: "bridge-page",
+            status: "queued",
+            message: message,
+            requestedAt: requestedAt,
+            dashboardVersion: refreshVersion
+        )
+    }
+
+    private func queueVoiceRefreshResponseJSON() -> String {
+        let event = queueVoiceRefresh()
+        let requestedAt = ISO8601DateFormatter().string(from: event.requestedAt)
+
+        return """
+        {"ok":true,"voice":"\(event.status)","target":"\(event.target)","eventId":\(event.eventId),"version":\(event.dashboardVersion),"message":"\(escape(event.message))","queuedAt":"\(requestedAt)","requestedAt":"\(requestedAt)"}
+        """
+    }
+
+    private func voiceAnnouncementMessage() -> String {
+        let providers = visibleProviders()
+        guard !providers.isEmpty else {
+            return "OpenBurnBar is waiting for provider quota data. \(snapshot.subheadline)"
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var pieces = ["OpenBurnBar \(timePeriod.displayName.lowercased())."]
+        if !snapshot.totalSpend.isEmpty, snapshot.totalSpend != "—" {
+            pieces.append("Total spend \(snapshot.totalSpend).")
+        } else if !snapshot.totalTokens.isEmpty {
+            pieces.append("Total tokens \(snapshot.totalTokens).")
+        }
+
+        pieces.append(contentsOf: providers.prefix(3).map(Self.providerVoiceLine))
+        if providers.count > 3 {
+            pieces.append("And \(providers.count - 3) more providers on the display.")
+        }
+        if !snapshot.subheadline.isEmpty {
+            pieces.append(snapshot.subheadline)
+        }
+        return pieces.joined(separator: " ")
+    }
+
+    private static func providerVoiceLine(_ provider: SmartHubBridgeSnapshot.Provider) -> String {
+        if provider.hasQuotaData {
+            let bucket = provider.buckets.first
+            let headline: String
+            if let bucket, !bucket.headlineValue.isEmpty {
+                headline = bucket.headlineValue
+            } else {
+                headline = "\(provider.percent)%"
+            }
+            let reset = bucket.flatMap { $0.resetsLabel.isEmpty ? nil : " \($0.resetsLabel)" } ?? ""
+            return "\(provider.name) is at \(headline).\(reset)"
+        }
+
+        let tokenText = provider.tokenTotal.isEmpty ? "no token total yet" : "\(provider.tokenTotal) tokens"
+        let costText = provider.costLabel.isEmpty ? "" : ", \(provider.costLabel)"
+        return "\(provider.name) shows \(tokenText)\(costText)."
     }
 
     /// Extracts the body bytes from a raw HTTP/1.1 request blob. We split
@@ -516,6 +611,16 @@ final class SmartHubBridgeServer {
         stateJSON()
     }
 
+    func queueVoiceRefreshForTesting() -> String {
+        queueVoiceRefreshResponseJSON()
+    }
+
+    func resetVoiceRefreshForTesting() {
+        voiceRefreshVersion = 0
+        lastVoiceRefreshAt = nil
+        lastVoiceRefreshMessage = ""
+    }
+
     func isAuthorizedBridgeRequestForTesting(path: String, authorizationHeader: String? = nil) -> Bool {
         isAuthorizedBridgeRequest(rawPath: path, authorizationHeader: authorizationHeader)
     }
@@ -527,16 +632,7 @@ final class SmartHubBridgeServer {
     private func stateJSON() -> String {
         let formatter = ISO8601DateFormatter()
 
-        // Provider filter: honor displayConfig.providerIDs (case-insensitive,
-        // empty == "all"). Names align with `AgentProvider.persistedToken`,
-        // but `SmartHubBridgeSnapshot.Provider.name` is the display name —
-        // so we match on either to stay backward compatible.
-        let allowedSet = Set(displayConfig.providerIDs.map { $0.lowercased() })
-        let providers = snapshot.providers.filter { provider in
-            if allowedSet.isEmpty { return true }
-            return allowedSet.contains(provider.name.lowercased())
-                || allowedSet.contains(persistedTokenForName(provider.name))
-        }
+        let providers = visibleProviders()
 
         let providersJSON = providers.map(Self.providerJSON).joined(separator: ",")
 
@@ -564,6 +660,17 @@ final class SmartHubBridgeServer {
         }
         """
 
+        let voiceRequestedAt = lastVoiceRefreshAt.map(formatter.string(from:)) ?? ""
+        let voiceJSON = """
+        {
+          "eventId": \(voiceRefreshVersion),
+          "status": "\(voiceRefreshVersion == 0 ? "idle" : "queued")",
+          "message": "\(escape(lastVoiceRefreshMessage))",
+          "queuedAt": "\(voiceRequestedAt)",
+          "requestedAt": "\(voiceRequestedAt)"
+        }
+        """
+
         return """
         {
           "version": \(refreshVersion),
@@ -579,9 +686,23 @@ final class SmartHubBridgeServer {
           "headerTimestamp": "\(escape(snapshot.headerTimestamp))",
           "headerStatus": "\(escape(snapshot.headerStatus))",
           "providers": [\(providersJSON)],
-          "display": \(displayJSON)
+          "display": \(displayJSON),
+          "voice": \(voiceJSON)
         }
         """
+    }
+
+    private func visibleProviders() -> [SmartHubBridgeSnapshot.Provider] {
+        // Provider filter: honor displayConfig.providerIDs (case-insensitive,
+        // empty == "all"). Names align with `AgentProvider.persistedToken`,
+        // but `SmartHubBridgeSnapshot.Provider.name` is the display name —
+        // so we match on either to stay backward compatible.
+        let allowedSet = Set(displayConfig.providerIDs.map { $0.lowercased() })
+        return snapshot.providers.filter { provider in
+            if allowedSet.isEmpty { return true }
+            return allowedSet.contains(provider.name.lowercased())
+                || allowedSet.contains(persistedTokenForName(provider.name))
+        }
     }
 
     /// Encodes one provider card. Splits into its own function (vs an
