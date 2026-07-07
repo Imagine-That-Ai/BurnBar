@@ -17,7 +17,8 @@ final class BurnBarProjectCodeMemoryStoreLinuxInotifyTests: XCTestCase {
                 event.signal()
             }
         ) else {
-            return XCTFail("expected Linux inotify stream to install at least one watch")
+            XCTFail("expected Linux inotify stream to install at least one watch")
+            return
         }
         addTeardownBlock {
             BurnBarProjectCodeMemoryStore._testOnlyCancelLinuxFileSystemEventStream(stream)
@@ -47,7 +48,8 @@ final class BurnBarProjectCodeMemoryStoreLinuxInotifyTests: XCTestCase {
                 events.signal()
             }
         ) else {
-            return XCTFail("expected Linux inotify stream to install at least one watch")
+            XCTFail("expected Linux inotify stream to install at least one watch")
+            return
         }
         addTeardownBlock {
             BurnBarProjectCodeMemoryStore._testOnlyCancelLinuxFileSystemEventStream(stream)
@@ -75,7 +77,8 @@ final class BurnBarProjectCodeMemoryStoreLinuxInotifyTests: XCTestCase {
                 queue: queue,
                 onEvent: {}
             ) else {
-                return XCTFail("expected Linux inotify stream to install at least one watch")
+                XCTFail("expected Linux inotify stream to install at least one watch")
+                return
             }
             BurnBarProjectCodeMemoryStore._testOnlyCancelLinuxFileSystemEventStream(stream)
         }
@@ -102,7 +105,8 @@ final class BurnBarProjectCodeMemoryStoreLinuxInotifyTests: XCTestCase {
                 rebuilds.increment()
             }
         ) else {
-            return XCTFail("expected Linux inotify stream to install at least one watch")
+            XCTFail("expected Linux inotify stream to install at least one watch")
+            return
         }
         addTeardownBlock {
             BurnBarProjectCodeMemoryStore._testOnlyCancelLinuxFileSystemEventStream(stream)
@@ -143,7 +147,8 @@ final class BurnBarProjectCodeMemoryStoreLinuxInotifyTests: XCTestCase {
                 rebuilds.increment()
             }
         ) else {
-            return XCTFail("expected Linux inotify stream to install at least one watch")
+            XCTFail("expected Linux inotify stream to install at least one watch")
+            return
         }
         addTeardownBlock {
             BurnBarProjectCodeMemoryStore._testOnlyCancelLinuxFileSystemEventStream(stream)

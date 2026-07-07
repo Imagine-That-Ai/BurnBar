@@ -440,20 +440,24 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
                 return
             }
             Glibc.usleep(50_000)
-            let usageChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"
+            let usageChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"#
+                + #""usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"
             _ = try? LinuxSocketSupport.sendAll(Data(usageChunk.utf8), to: clientFD)
             _ = try? LinuxSocketSupport.sendAll(Data("data: [DONE]\n\n".utf8), to: clientFD)
         case .openAIResponsesJSON:
             sendJSON(
                 """
-                {"id":"resp_linux","object":"response","created_at":1783200000,"status":"completed","model":"glm-5-turbo","output":[{"id":"msg_linux","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"response from linux","annotations":[]}]}],"output_text":"response from linux","usage":{"input_tokens":13,"output_tokens":7,"total_tokens":20}}
+                {"id":"resp_linux","object":"response","created_at":1783200000,"status":"completed","model":"glm-5-turbo",\
+                "output":[{"id":"msg_linux","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"response from linux","annotations":[]}]}],\
+                "output_text":"response from linux","usage":{"input_tokens":13,"output_tokens":7,"total_tokens":20}}
                 """,
                 to: clientFD
             )
         case .anthropicMessagesJSON:
             sendJSON(
                 """
-                {"id":"msg_linux","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"anthropic linux"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":17,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}
+                {"id":"msg_linux","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"anthropic linux"}],\
+                "stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":17,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}
                 """,
                 to: clientFD
             )

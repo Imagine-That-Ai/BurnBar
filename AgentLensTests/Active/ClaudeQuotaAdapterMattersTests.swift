@@ -1,22 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
-@testable import OpenBurnBarCore
-
-/// Behavior tests for the cross-account statusline-reuse gate in
-/// `ClaudeQuotaAdapter`.
-///
-/// `scopedClaudeProfileMatchesDefaultLogin` decides whether a scoped switcher
-/// profile may reuse the *global* local Claude statusline session. A wrong
-/// `true` would surface another Claude account's live quota on this account's
-/// card (cross-account leakage), so the gate must FAIL CLOSED: any inability to
-/// read or parse either `.claude.json` identity file denies reuse (`false`).
-///
-/// Previously the two reads used `try?`, which collapsed an absent file and a
-/// genuine read/parse fault into the same silent `false`. The fault path now
-/// still fails closed but is logged (observable). These tests pin both the
-/// security decision and the absent-vs-fault distinction using real files on
-/// disk through a real `ProviderQuotaSnapshotStore`.
 final class ClaudeQuotaAdapterMattersTests: XCTestCase {
 
     private var tempRoot: URL!

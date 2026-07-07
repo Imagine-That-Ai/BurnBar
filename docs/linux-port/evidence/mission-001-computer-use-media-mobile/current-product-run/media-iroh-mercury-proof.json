@@ -36,7 +36,7 @@
   },
   "mobileInteropBinding": {
     "artifact": "preserved-qemu-portal-mobile/mobile-live-surface-probe.json",
-    "iosSimulatorDescription": "iPhone 17 Pro Max (86D94309-3501-40E7-A460-753102E554F5), iOS 27.0 runtime",
+    "iosSimulatorDescription": "iPhone 17 Pro Max (<IOS_DEVICE_ID>), iOS 27.0 runtime",
     "linuxPeerDescription": "openburnbar-linux-toolchain:mission-001 container 14a0e2c36585 (obb-mobile-peer-cu002-1783168383984), :8766->8766, host peer linux-peer-regenerated-cu002",
     "mediaControlViewerFramesObserved": true,
     "exchangeCount": 12

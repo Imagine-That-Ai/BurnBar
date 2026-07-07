@@ -487,7 +487,8 @@ private enum BurnBarObservabilityError: Error, LocalizedError {
 #endif
 
 // All stored properties are let; DispatchSourceSignal sources are immutable after init.
-// Formally Sendable because no mutable state exists post-init.
+// Formally Sendable because no mutable state exists post-init; Dispatch types are
+// simply not Sendable-annotated in the SDK. sendable-allowlist: foundation-sdk-shim
 private final class BurnBarSignalMonitor: @unchecked Sendable {
     private let queue: DispatchQueue
     private let continuation: AsyncStream<Int32>.Continuation

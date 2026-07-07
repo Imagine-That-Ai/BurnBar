@@ -2,10 +2,10 @@
   "adapter" : "at-spi2",
   "archiveTamper" : {
     "firstInvalidReason" : "verificationFailed(\"signature archive hash mismatch\")",
-    "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
+    "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz.sig.json",
     "tamperedRejected" : true
   },
-  "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+  "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
   "audit" : {
     "archiveEntryCount" : 4,
     "chainValid" : true,
@@ -28,15 +28,15 @@
   },
   "auditCliSessions" : [
     {
-      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
       "path" : "input-adapter",
-      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
-      "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
-      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
-      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered-archive\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
-      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-head-tampered",
-      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-manifest-tampered",
-      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered"
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B",
+      "sessionId" : "linux-evidence-input-adapter-IOS-DEVICE-B",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz.sig.json",
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered-archive\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered"
     }
   ],
   "dispatchRows" : [
@@ -46,7 +46,7 @@
       "displayX" : 220,
       "displayY" : 160,
       "kind" : "click",
-      "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+      "sessionId" : "linux-evidence-input-adapter-IOS-DEVICE-B",
       "text" : null,
       "visibleTarget" : "OpenBurnBar AT-SPI2 evidence target"
     }
@@ -108,19 +108,19 @@
       "status" : "denied"
     }
   ],
-  "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
-  "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
-  "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
+  "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B",
+  "sessionId" : "linux-evidence-input-adapter-IOS-DEVICE-B",
+  "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz.sig.json",
   "source" : "ComputerUseRunCoordinator product gate and audit chain",
   "tamper" : {
     "chainValidAfterTamper" : false,
     "firstInvalidReason" : "parent_hash_mismatch",
     "fullyVerifiedAfterTamper" : false
   },
-  "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered-archive\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
-  "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-head-tampered",
-  "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-manifest-tampered",
-  "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered",
+  "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered-archive\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
+  "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered",
+  "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered",
+  "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered",
   "target" : "VAL-CU-002",
   "trustMode" : {
     "afterDowngrade" : "step",

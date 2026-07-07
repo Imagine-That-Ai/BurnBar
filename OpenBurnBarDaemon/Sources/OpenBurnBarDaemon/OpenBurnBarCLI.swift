@@ -1432,7 +1432,7 @@ public struct BurnBarCLIRunner {
                 return try Self.jsonString(from: [
                     "service_type": BurnBarLinuxLocalPeerDiscovery.serviceType,
                     "instance": BurnBarLinuxLocalPeerDiscovery.resolveInstanceName(hostName: host, suffix: nil),
-                    "txt": sample,
+                    "txt": sample
                 ])
             }
             return sample.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: "\n")

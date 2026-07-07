@@ -123,7 +123,7 @@
   "productAuditBinding": {
     "artifact": "product-input-adapter-audit.json",
     "passed": true,
-    "sessionDirectory": "/evidence/product-audit/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+    "sessionDirectory": "/evidence/product-audit/linux-evidence-input-adapter-IOS-DEVICE-B",
     "auditFullyVerified": true,
     "requiredCases": [
       "approved action",

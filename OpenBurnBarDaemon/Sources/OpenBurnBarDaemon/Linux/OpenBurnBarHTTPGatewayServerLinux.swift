@@ -943,7 +943,7 @@ private struct LinuxHTTPRequest {
     var method: String = "GET"
     var path: String = "/"
     var headers: [String: String] = [:]
-    var body: Data = Data()
+    var body = Data()
 }
 
 private func readHTTPRequest(from fileDescriptor: Int32, maxBytes: Int = 1_048_576) throws -> Data {

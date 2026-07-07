@@ -11,7 +11,7 @@
   "trustDowngradeObserved": true,
   "mediaControlViewerFramesObserved": true,
   "backwardCompatibleWireDiffObserved": true,
-  "iosSimulatorUsed": "iPhone 17 Pro Max (86D94309-3501-40E7-A460-753102E554F5), iOS 27.0 runtime",
+  "iosSimulatorUsed": "iPhone 17 Pro Max (<IOS_DEVICE_ID>), iOS 27.0 runtime",
   "linuxPeerStarted": "openburnbar-linux-toolchain:mission-001 container 14a0e2c36585 (obb-mobile-peer-cu002-1783168383984), :8766->8766, host peer linux-peer-regenerated-cu002",
   "wireProtocol": "HermesRealtimeRelayFrame (openburnbar/1) JSON envelope over HTTP transport stand-in",
   "transportProof": "All exchanges used iOS simulator Safari User-Agent(s): Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1; remoteAddress values observed by Docker peer: 192.168.65.1",

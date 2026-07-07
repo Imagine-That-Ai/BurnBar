@@ -87,7 +87,7 @@ public enum BurnBarLinuxLocalPeerDiscovery {
             "daemon_version": daemonVersion,
             "protocol_version": protocolVersion,
             "platform": "linux",
-            "pairing": "mdns",
+            "pairing": "mdns"
         ]
     }
 
@@ -138,7 +138,7 @@ public enum BurnBarLinuxLocalPeerDiscovery {
         process.arguments = [
             instance,
             serviceType,
-            String(configuration.port),
+            String(configuration.port)
         ] + txtArguments
         process.standardOutput = Pipe()
         process.standardError = Pipe()
@@ -186,7 +186,7 @@ public enum BurnBarLinuxLocalPeerDiscovery {
         process.executableURL = URL(fileURLWithPath: browsePath)
         process.arguments = [
             "-rtp",
-            "\(serviceType)",
+            "\(serviceType)"
         ]
         let outputPipe = Pipe()
         process.standardOutput = outputPipe

@@ -33,6 +33,7 @@ allowed_reason_ids=(
   "locked-formatter-cache"
   "nslock-blocking-outcome"
   "nslock-protected-storage"
+  "serial-queue-confined-watcher"
 )
 
 live_report="$(mktemp "${TMPDIR:-/tmp}/unchecked-sendable-live.XXXXXX")"

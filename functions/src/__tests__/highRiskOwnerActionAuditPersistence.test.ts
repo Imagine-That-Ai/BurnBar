@@ -40,8 +40,10 @@ const { localStore, dbMock } = vi.hoisted(() => {
         get: async (query: { __query: { path: string; field: string; direction: "asc" | "desc"; limit: number } }) => {
           const { path, field, direction, limit } = query.__query;
           const sorted = directChildren(path).sort((a, b) => {
-            const av = typeof a.data()[field] === "number" ? (a.data()[field] as number) : -1;
-            const bv = typeof b.data()[field] === "number" ? (b.data()[field] as number) : -1;
+            const aRaw = a.data()[field];
+            const bRaw = b.data()[field];
+            const av = typeof aRaw === "number" ? aRaw : -1;
+            const bv = typeof bRaw === "number" ? bRaw : -1;
             return direction === "desc" ? bv - av : av - bv;
           });
           return { docs: sorted.slice(0, limit) };

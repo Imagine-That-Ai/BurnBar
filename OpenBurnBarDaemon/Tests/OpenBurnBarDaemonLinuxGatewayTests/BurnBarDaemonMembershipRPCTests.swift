@@ -6,12 +6,12 @@ final class BurnBarDaemonMembershipRPCTests: XCTestCase {
     private let proProductID = "com.openburnbar.pro.monthly"
     private let hostedQuotaProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
 
-    func testMembershipRPCMethodStringsMatchLinuxShellWire() {
+    func testMembershipRPCMethodStringsMatchLinuxShellWire() throws {
         XCTAssertEqual(BurnBarRPCMethod.membershipStatus.rawValue, "daemon.membership.status")
         XCTAssertEqual(BurnBarRPCMethod.membershipCheckoutURL.rawValue, "daemon.membership.checkoutUrl")
         XCTAssertEqual(BurnBarRPCMethod.membershipRestore.rawValue, "daemon.membership.restore")
 
-        let checkout = try! JSONDecoder().decode(
+        let checkout = try JSONDecoder().decode(
             BurnBarRPCRequestEnvelopeWithParams<BurnBarMembershipCheckoutURLRequest>.self,
             from: Data("""
             {

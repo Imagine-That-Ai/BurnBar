@@ -187,7 +187,7 @@ public enum BurnBarLinuxDeviceAdapters {
                 "control_probe": endpoint.map { "\($0.baseURL)/setup/eureka_info" } ?? "",
                 "control_response": String((probe ?? "").prefix(240)),
                 "blocker": probe == nil ? (discovery.instances.isEmpty ? discovery.rawTranscript : "Discovered Cast endpoint did not answer /setup/eureka_info.") : "",
-                "bridge_default_port": "8787",
+                "bridge_default_port": "8787"
             ]
         case "homeassistant", "home-assistant":
             payload = homeAssistantStatus()
@@ -348,7 +348,7 @@ public enum BurnBarLinuxDeviceAdapters {
             "dbus_send_path": which("dbus-send") ?? "missing",
             "udevadm_path": which("udevadm") ?? "missing",
             "firmware_image": ProcessInfo.processInfo.environment["OPENBURNBAR_PIXELCLOCK_FIRMWARE_IMAGE"] ?? "missing",
-            "serial_devices": serialDevices().joined(separator: ","),
+            "serial_devices": serialDevices().joined(separator: ",")
         ]
 
         if which("busctl") != nil || which("dbus-send") != nil {
@@ -394,7 +394,7 @@ public enum BurnBarLinuxDeviceAdapters {
                 "Get",
                 "ss",
                 "org.freedesktop.NetworkManager",
-                "Connectivity",
+                "Connectivity"
             ]
         }
         return [
@@ -403,7 +403,7 @@ public enum BurnBarLinuxDeviceAdapters {
             "/org/freedesktop/NetworkManager",
             "org.freedesktop.DBus.Properties.Get",
             "string:org.freedesktop.NetworkManager",
-            "string:Connectivity",
+            "string:Connectivity"
         ]
     }
 
@@ -432,7 +432,7 @@ public enum BurnBarLinuxDeviceAdapters {
                 "accepted_commands": "discover,agents,firmware-lane,control",
                 "stats_response": String((stats ?? "").prefix(240)),
                 "control_response": String((control ?? "").prefix(240)),
-                "blocker": "",
+                "blocker": ""
             ]
         }
         return [
@@ -444,7 +444,7 @@ public enum BurnBarLinuxDeviceAdapters {
             "accepted_commands": "discover,agents,firmware-lane,control",
             "blocker": agents.isEmpty
                 ? "No pixel_clock/awtrix runtime process or OPENBURNBAR_PIXELCLOCK_URL endpoint detected; attach device, start agent, or run accepted simulator before runtime control."
-                : "",
+                : ""
         ]
     }
 
@@ -454,7 +454,7 @@ public enum BurnBarLinuxDeviceAdapters {
             "-fsS",
             "--max-time",
             "2",
-            "http://127.0.0.1:\(port)/health",
+            "http://127.0.0.1:\(port)/health"
         ])
         let control = runCommand(path: which("curl") ?? "/usr/bin/curl", arguments: [
             "-fsS",
@@ -466,7 +466,7 @@ public enum BurnBarLinuxDeviceAdapters {
             "Content-Type: application/json",
             "--data",
             #"{"surface":"mission-001","message":"Linux SmartHub simulator control"}"#,
-            "http://127.0.0.1:\(port)/api/display",
+            "http://127.0.0.1:\(port)/api/display"
         ])
         return [
             "adapter": AdapterID.smartHubBridge.rawValue,
@@ -479,7 +479,7 @@ public enum BurnBarLinuxDeviceAdapters {
             "control_probe": "curl -fsS --max-time 2 -X POST http://127.0.0.1:\(port)/api/display",
             "control_response": String((control ?? "").prefix(240)),
             "blocker": probe == nil || control == nil ? "Start the Linux SmartHub bridge on 127.0.0.1:\(port) or provide a live bridge URL with /health and /api/display." : "",
-            "note": "Linux shell exposes bridge status via CLI; AWTRIX via _http._tcp awtrix_* instances.",
+            "note": "Linux shell exposes bridge status via CLI; AWTRIX via _http._tcp awtrix_* instances."
         ]
     }
 
@@ -493,14 +493,14 @@ public enum BurnBarLinuxDeviceAdapters {
                 "status": "blocked_missing_home_assistant_url",
                 "discovery": "_home-assistant._tcp",
                 "control": "http_api",
-                "blocker": "Set OPENBURNBAR_HOME_ASSISTANT_URL for authenticated control when instance is discovered.",
+                "blocker": "Set OPENBURNBAR_HOME_ASSISTANT_URL for authenticated control when instance is discovered."
             ]
         }
         let probe = runCommand(path: which("curl") ?? "/usr/bin/curl", arguments: [
             "-fsS",
             "--max-time",
             "2",
-            "\(url.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/",
+            "\(url.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/"
         ])
         let control = runCommand(path: which("curl") ?? "/usr/bin/curl", arguments: [
             "-fsS",
@@ -512,7 +512,7 @@ public enum BurnBarLinuxDeviceAdapters {
             "Content-Type: application/json",
             "--data",
             #"{"entity_id":"light.openburnbar_simulator"}"#,
-            "\(url.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/services/light/turn_on",
+            "\(url.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/services/light/turn_on"
         ])
         return [
             "adapter": AdapterID.homeAssistant.rawValue,
@@ -522,7 +522,7 @@ public enum BurnBarLinuxDeviceAdapters {
             "control_probe": "curl -fsS --max-time 2 \(url)/api/",
             "control_response": String((probe ?? "").prefix(240)),
             "service_call_response": String((control ?? "").prefix(240)),
-            "blocker": probe == nil || control == nil ? "Home Assistant URL configured/discovered but /api/ or service call was not reachable." : "",
+            "blocker": probe == nil || control == nil ? "Home Assistant URL configured/discovered but /api/ or service call was not reachable." : ""
         ]
     }
 
@@ -567,7 +567,7 @@ public enum BurnBarLinuxDeviceAdapters {
                 discoveryMethod: "_http._tcp",
                 blocker: avahi ? nil : "Install avahi-utils.",
                 evidence: "CLI devices discover awtrix"
-            ),
+            )
         ]
     }
 
@@ -606,14 +606,14 @@ public enum BurnBarLinuxDeviceAdapters {
             "--max-time",
             "2",
             "-X",
-            method,
+            method
         ]
         if let body {
             arguments.append(contentsOf: [
                 "-H",
                 "Content-Type: application/json",
                 "--data",
-                body,
+                body
             ])
         }
         arguments.append(url)

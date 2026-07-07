@@ -1,13 +1,13 @@
 {
   "auditCliInputs" : {
     "sessionDirectories" : [
-      "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE",
-      "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733",
-      "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626"
+      "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A",
+      "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C",
+      "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B"
     ],
     "tamperedSessionDirectories" : [
-      "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-tampered",
-      "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-tampered"
+      "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered",
+      "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered"
     ]
   },
   "generatedAt" : "2026-07-04T14:26:18.096Z",
@@ -15,10 +15,10 @@
     "adapter" : "at-spi2",
     "archiveTamper" : {
       "firstInvalidReason" : "verificationFailed(\"signature archive hash mismatch\")",
-      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz.sig.json",
       "tamperedRejected" : true
     },
-    "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+    "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
     "audit" : {
       "archiveEntryCount" : 4,
       "chainValid" : true,
@@ -41,15 +41,15 @@
     },
     "auditCliSessions" : [
       {
-        "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
+        "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
         "path" : "input-adapter",
-        "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
-        "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
-        "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
-        "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered-archive\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
-        "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-head-tampered",
-        "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-manifest-tampered",
-        "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered"
+        "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B",
+        "sessionId" : "linux-evidence-input-adapter-IOS-DEVICE-B",
+        "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz.sig.json",
+        "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered-archive\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
+        "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered",
+        "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered",
+        "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered"
       }
     ],
     "dispatchRows" : [
@@ -59,7 +59,7 @@
         "displayX" : 220,
         "displayY" : 160,
         "kind" : "click",
-        "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
+        "sessionId" : "linux-evidence-input-adapter-IOS-DEVICE-B",
         "text" : null,
         "visibleTarget" : "OpenBurnBar AT-SPI2 evidence target"
       }
@@ -121,19 +121,19 @@
         "status" : "denied"
       }
     ],
-    "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
-    "sessionId" : "linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626",
-    "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz.sig.json",
+    "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B",
+    "sessionId" : "linux-evidence-input-adapter-IOS-DEVICE-B",
+    "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz.sig.json",
     "source" : "ComputerUseRunCoordinator product gate and audit chain",
     "tamper" : {
       "chainValidAfterTamper" : false,
       "firstInvalidReason" : "parent_hash_mismatch",
       "fullyVerifiedAfterTamper" : false
     },
-    "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered-archive\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626.tar.gz",
-    "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-head-tampered",
-    "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-manifest-tampered",
-    "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-15C54570-6D06-4728-9A7B-710CAF861626-tampered",
+    "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered-archive\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
+    "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered",
+    "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered",
+    "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered",
     "target" : "VAL-CU-002",
     "trustMode" : {
       "afterDowngrade" : "step",
@@ -221,10 +221,10 @@
       "archiveSHA256Hex" : "80776fe1414c713c6be16406e3b4be39653500b4c7ede168832808d5c95180e4",
       "archiveTamper" : {
         "firstInvalidReason" : "verificationFailed(\"signature archive hash mismatch\")",
-        "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE.tar.gz.sig.json",
+        "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz.sig.json",
         "tamperedRejected" : true
       },
-      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE.tar.gz",
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz",
       "audit" : {
         "chainValid" : true,
         "entryCount" : 1,
@@ -243,7 +243,7 @@
           "macAppVersion" : "linux-port-mission-001",
           "parentEntryHashHex" : "96712e6781acf27942eec2ac718f0fbec13fd255fd27fb10de938f27cc8fd0e4",
           "schemaVersion" : 1,
-          "sessionId" : "linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE",
+          "sessionId" : "linux-evidence-daemon-coordinator-IOS-DEVICE-A",
           "timestamp" : 1783175177984
         },
         "signedHeadHashHex" : "bae16d446d65fa2f93ee4672eff44f035d179ec5e486d9d04047093d3a566ab8"
@@ -274,10 +274,10 @@
         "tamperedHeadFailsAfterRestart" : true,
         "tamperedManifestFailsAfterRestart" : true
       },
-      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE",
-      "sessionId" : "linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A",
+      "sessionId" : "linux-evidence-daemon-coordinator-IOS-DEVICE-A",
       "sessionStillActiveAfterHalt" : false,
-      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE.tar.gz.sig.json",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz.sig.json",
       "source" : "hotkey",
       "status" : "pass",
       "tamper" : {
@@ -285,20 +285,20 @@
         "firstInvalidReason" : "head_hash_mismatch",
         "fullyVerifiedAfterTamper" : false
       },
-      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-tampered-archive\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE.tar.gz",
-      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-head-tampered",
-      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-manifest-tampered",
-      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-2A010368-594D-4C69-879F-FA63264242BE-tampered"
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered-archive\/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered"
     },
     {
       "archiveEntryCount" : 4,
       "archiveSHA256Hex" : "69a234770b7d0421ad25cb4a7e1067ae792d8442f7c5acf2c7c2e73b3aa75fb3",
       "archiveTamper" : {
         "firstInvalidReason" : "verificationFailed(\"signature archive hash mismatch\")",
-        "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733.tar.gz.sig.json",
+        "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz.sig.json",
         "tamperedRejected" : true
       },
-      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733.tar.gz",
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz",
       "audit" : {
         "chainValid" : true,
         "entryCount" : 1,
@@ -317,7 +317,7 @@
           "macAppVersion" : "linux-port-mission-001",
           "parentEntryHashHex" : "333b864e52d30f245853ec56ce3ef1a7288b4cc2cdfe1ec8fde98e96f7ba190e",
           "schemaVersion" : 1,
-          "sessionId" : "linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733",
+          "sessionId" : "linux-evidence-mobile-remote-IOS-DEVICE-C",
           "timestamp" : 1783175178024
         },
         "signedHeadHashHex" : "019617dc7a599eb6b61da9811655161ae0c0fb1e86d60f76df6a397f78298fc6"
@@ -348,10 +348,10 @@
         "tamperedHeadFailsAfterRestart" : true,
         "tamperedManifestFailsAfterRestart" : true
       },
-      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733",
-      "sessionId" : "linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C",
+      "sessionId" : "linux-evidence-mobile-remote-IOS-DEVICE-C",
       "sessionStillActiveAfterHalt" : false,
-      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733.tar.gz.sig.json",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz.sig.json",
       "source" : "phone_gesture",
       "status" : "pass",
       "tamper" : {
@@ -359,10 +359,10 @@
         "firstInvalidReason" : "head_hash_mismatch",
         "fullyVerifiedAfterTamper" : false
       },
-      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-tampered-archive\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733.tar.gz",
-      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-head-tampered",
-      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-manifest-tampered",
-      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-8BA97264-0FA0-497F-AAC2-23BDDFD77733-tampered"
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered-archive\/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered"
     }
   ],
   "platform" : "linux",

@@ -236,6 +236,9 @@ public enum BurnBarProxyStreaming {
 }
 
 #if os(Linux)
+// All mutable state (continuations, buffered result, termination handler) is guarded
+// by the NSLock below; the NSObject/URLSessionDataDelegate constraint rules out an
+// actor. sendable-allowlist: nslock-protected-storage
 private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     struct ResponseHead {
         let statusCode: Int

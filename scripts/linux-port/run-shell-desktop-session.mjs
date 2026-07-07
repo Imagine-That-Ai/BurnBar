@@ -20,10 +20,15 @@ function normalizeTranscript(text) {
 }
 
 function normalizeTranscriptFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return;
+  let current;
+  try {
+    current = fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return;
+    }
+    throw error;
   }
-  const current = fs.readFileSync(filePath, 'utf8');
   fs.writeFileSync(filePath, normalizeTranscript(current));
 }
 
