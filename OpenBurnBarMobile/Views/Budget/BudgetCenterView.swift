@@ -102,7 +102,7 @@ struct BudgetCenterView: View {
 
         // Query spend and forecast for all rules
         for rule in budgetSettings.rules {
-            let spend = await ledger.currentSpend(forRule: rule)
+            let spend = (try? await ledger.currentSpend(forRule: rule)) ?? rule.amountUSD
             newSpend[rule.id] = spend
 
             if rule.isEnabled {

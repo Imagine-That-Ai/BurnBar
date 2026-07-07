@@ -62,16 +62,26 @@ final class BudgetGate {
                 }
                 continue
             }
-            let used = await ledger.currentSpend(forRule: rule, reference: reference)
-            let projected = used + max(0, estimatedCost)
-            let decision = await classify(
-                rule: rule,
-                used: used,
-                projected: projected,
-                estimatedCost: max(0, estimatedCost),
-                projectName: projectName,
-                reference: reference
-            )
+            let decision: BudgetGateDecision
+            do {
+                let used = try await ledger.currentSpend(forRule: rule, reference: reference)
+                let projected = used + max(0, estimatedCost)
+                decision = await classify(
+                    rule: rule,
+                    used: used,
+                    projected: projected,
+                    estimatedCost: max(0, estimatedCost),
+                    projectName: projectName,
+                    reference: reference
+                )
+            } catch {
+                decision = await failClosedDecision(
+                    for: rule,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                )
+            }
             worst = pickMoreRestrictive(worst, decision)
         }
         return worst
@@ -120,6 +130,35 @@ final class BudgetGate {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The decision to return when current spend cannot be read. Block-capable rules fail
+    /// closed at the limit; warn-only rules remain non-blocking but surface the unknown state.
+    private func failClosedDecision(
+        for rule: BudgetRule,
+        estimatedCost: Double,
+        projectName: String?,
+        reference: Date
+    ) async -> BudgetGateDecision {
+        let limit = rule.amountUSD
+        switch rule.behavior {
+        case .warnOnly:
+            return .warn(rule: rule, usedPercent: 1.0, used: limit, limit: limit)
+        case .warnThenBlock, .hardBlock:
+            return .block(rule: rule, used: limit, limit: limit, fallback: nil)
+        case .hardBlockWithFallback:
+            return .block(
+                rule: rule,
+                used: limit,
+                limit: limit,
+                fallback: await resolveFallback(
+                    for: rule,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                )
+            )
+        }
     }
 
     private func classify(
@@ -252,8 +291,12 @@ final class BudgetGate {
                 continue
             }
 
-            let used = await ledger.currentSpend(forRule: rule, reference: reference)
-            if fallbackRuleWouldBlock(rule, used: used, estimatedCost: estimatedCost) {
+            do {
+                let used = try await ledger.currentSpend(forRule: rule, reference: reference)
+                if fallbackRuleWouldBlock(rule, used: used, estimatedCost: estimatedCost) {
+                    return false
+                }
+            } catch {
                 return false
             }
         }
@@ -288,7 +331,7 @@ final class BudgetGate {
     /// Exposes the ledger's current spend for a rule — wrapped so callers don't have to
     /// hold a separate `BudgetLedger` reference.
     func ledgerSpend(forRule rule: BudgetRule, reference: Date = Date()) async throws -> Double {
-        await ledger.currentSpend(forRule: rule, reference: reference)
+        try await ledger.currentSpend(forRule: rule, reference: reference)
     }
 
     /// Orders decisions by strictness: paused < allow < warn < block.
