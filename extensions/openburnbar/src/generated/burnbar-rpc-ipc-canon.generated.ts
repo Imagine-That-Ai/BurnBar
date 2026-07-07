@@ -442,6 +442,36 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.membership.checkoutUrl",
+    "caseName": "membershipCheckoutURL",
+    "domain": "membership",
+    "capability": "membership",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.membership.checkoutUrl",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.membership.restore",
+    "caseName": "membershipRestore",
+    "domain": "membership",
+    "capability": "membership",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.membership.restore",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.membership.status",
+    "caseName": "membershipStatus",
+    "domain": "membership",
+    "capability": "membership",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.membership.status",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.memory.analytics",
     "caseName": "memoryAnalytics",
     "domain": "memory",
