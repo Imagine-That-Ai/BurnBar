@@ -1,4 +1,5 @@
 import UIKit
+import os.log
 import FirebaseAuth
 import FirebaseCore
 import FirebaseAppCheck
@@ -12,6 +13,8 @@ import Sentry
 #endif
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "AppDelegate")
+
     /// Retained iOS file-transfer service so its `@Published` state
     /// survives the lifetime of the app and any inbound
     /// `media.blob.advertise` frames have a live receiver.
@@ -116,7 +119,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         #if DEBUG
-        print("Remote notification registration failed: \(error.localizedDescription)")
+        Self.log.error("Remote notification registration failed: \(error.localizedDescription, privacy: .public)")
         #endif
     }
 
@@ -205,17 +208,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ///   token from `firebase.console -> App Check -> iOS app` is accepted.
     private func configureFirebase() {
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") else {
-            print("warning: GoogleService-Info.plist not found; Firebase remains unconfigured.")
+            Self.log.warning("GoogleService-Info.plist not found; Firebase remains unconfigured.")
             return
         }
         guard Self.googleServiceInfoLooksConfigured(at: path) else {
-            print("warning: GoogleService-Info.plist is a placeholder or invalid; Firebase remains unconfigured.")
+            Self.log.warning("GoogleService-Info.plist is a placeholder or invalid; Firebase remains unconfigured.")
             return
         }
 
         let appCheckProvider = Self.installAppCheckProviderFactory(firebasePlistPath: path)
         #if DEBUG
-        print("OpenBurnBarMobile App Check provider: \(appCheckProvider)")
+        Self.log.info("OpenBurnBarMobile App Check provider: \(appCheckProvider, privacy: .public)")
         #endif
 
         FirebaseApp.configure()
@@ -262,9 +265,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Firestore.firestore().disableNetwork { error in
             #if DEBUG
             if let error {
-                print("warning: failed to disable Firestore network via kill switch: \(error.localizedDescription)")
+                Self.log.error("failed to disable Firestore network via kill switch: \(error.localizedDescription, privacy: .public)")
             } else {
-                print("OpenBurnBarMobile disabled Firestore network via the emergency kill switch.")
+                Self.log.notice("OpenBurnBarMobile disabled Firestore network via the emergency kill switch.")
             }
             #endif
         }
@@ -319,7 +322,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     @MainActor
     private static func postAppCheckWarning(_ message: String) {
-        print("App Check validation warning: \(message)")
+        Self.log.warning("App Check validation warning: \(message, privacy: .public)")
         NotificationCenter.default.post(
             name: .openBurnBarMobileAppCheckValidationFailed,
             object: nil,
@@ -331,7 +334,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         guard let clientID = FirebaseApp.app()?.options.clientID
             ?? googleServiceInfoValue("CLIENT_ID")
         else {
-            print("warning: Google sign-in client ID is missing; Google auth remains disabled.")
+            Self.log.warning("Google sign-in client ID is missing; Google auth remains disabled.")
             return
         }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
@@ -444,7 +447,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         case "devicecheck", "devicecheckprovider":
             return .deviceCheck
         default:
-            print("warning: Unknown OPENBURNBAR_APP_CHECK_PROVIDER '\(raw)'; falling back to the build default.")
+            Self.log.warning("Unknown OPENBURNBAR_APP_CHECK_PROVIDER '\(raw, privacy: .public)'; falling back to the build default.")
             return nil
         }
     }
@@ -483,10 +486,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 } else {
                     return
                 }
-                print("OpenBurnBarMobile E2E Firebase sign-in active for uid \(result.user.uid).")
+                Self.log.info("OpenBurnBarMobile E2E Firebase sign-in active for uid \(result.user.uid, privacy: .public).")
                 await launchE2EMissionIfRequested(environment: environment)
             } catch {
-                print("warning: OpenBurnBarMobile E2E Firebase sign-in failed: \(error.localizedDescription)")
+                Self.log.warning("OpenBurnBarMobile E2E Firebase sign-in failed: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -513,9 +516,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 commandsAllowed: false,
                 fileEditsAllowed: false
             )
-            print("OpenBurnBarMobile E2E mission dispatched: \(requestID)")
+            Self.log.info("OpenBurnBarMobile E2E mission dispatched: \(requestID, privacy: .public)")
         } catch {
-            print("warning: OpenBurnBarMobile E2E mission dispatch failed: \(error.localizedDescription)")
+            Self.log.warning("OpenBurnBarMobile E2E mission dispatch failed: \(error.localizedDescription, privacy: .public)")
         }
     }
     #endif

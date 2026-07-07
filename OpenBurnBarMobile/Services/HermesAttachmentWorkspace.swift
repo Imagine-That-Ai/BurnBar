@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import os.log
 
 // MARK: - Hermes Attachment Workspace (iOS / iPadOS)
 
@@ -8,6 +9,8 @@ import OpenBurnBarCore
 /// can browse the bytes via the Files app if they want, and so iCloud
 /// document backups carry attachments along with the rest of the app's data.
 enum HermesAttachmentWorkspace {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "HermesAttachmentWorkspace")
+
     /// Default thread folder name used while we don't yet have multi-thread
     /// chats on mobile. Stable across launches so subsequent sends stay in
     /// the same workspace.
@@ -31,6 +34,9 @@ enum HermesAttachmentWorkspace {
         do {
             try FileManager.default.createDirectory(at: attachments, withIntermediateDirectories: true)
         } catch {
+            // nil makes the caller skip attachment persistence entirely — log it,
+            // a full disk / protected-data failure here is otherwise invisible.
+            log.error("Failed to create attachments dir for thread \(threadID, privacy: .public): \(String(describing: error), privacy: .public)")
             return nil
         }
         return root // workspace root, attachments live under attachments/

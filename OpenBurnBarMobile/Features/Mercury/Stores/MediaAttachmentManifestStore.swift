@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import os.log
 
 /// Firestore writer-of-record for `users/{uid}/media_attachment_manifests/{id}`.
 ///
@@ -28,6 +29,7 @@ import OpenBurnBarCore
 /// to the deprecated `filename` field for any in-flight / pre-migration doc.
 @MainActor
 enum MediaAttachmentManifestStore {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "MediaAttachmentManifestStore")
 
     // MARK: - Public sink
 
@@ -55,7 +57,7 @@ enum MediaAttachmentManifestStore {
                 .setData(document, merge: false)
         } catch {
             #if DEBUG
-            print("MediaAttachmentManifestStore.persistManifest skipped: \(error.localizedDescription)")
+            log.error("MediaAttachmentManifestStore.persistManifest skipped: \(error.localizedDescription, privacy: .public)")
             #endif
         }
     }
