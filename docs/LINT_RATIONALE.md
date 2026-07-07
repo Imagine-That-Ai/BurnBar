@@ -141,7 +141,6 @@ AgentLens/Services/Chat/HermesAttachmentLoader.swift | OpenBurnBarMobile/Service
 AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | transport
 AgentLens/Services/DataStore/BudgetEnforcement.swift | OpenBurnBarMobile/Models/BudgetEnforcement.swift | storage-backend-divergence
 AgentLens/Services/DataStore/BudgetForecast.swift | OpenBurnBarMobile/Models/BudgetForecast.swift | storage-backend-divergence
-AgentLens/Services/DataStore/BudgetGate.swift | OpenBurnBarMobile/Models/BudgetGate.swift | storage-backend-divergence
 AgentLens/Services/DataStore/BudgetLedger.swift | OpenBurnBarMobile/Models/BudgetLedger.swift | storage-backend-divergence
 AgentLens/Services/DataStore/BudgetNotificationCenter.swift | OpenBurnBarMobile/Services/BudgetNotificationCenter.swift | storage-backend-divergence
 AgentLens/Services/DataStore/BudgetRulesStore.swift | OpenBurnBarMobile/Models/BudgetRulesStore.swift | storage-backend-divergence

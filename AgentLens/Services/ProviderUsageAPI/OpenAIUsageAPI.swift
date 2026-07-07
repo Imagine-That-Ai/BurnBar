@@ -21,7 +21,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
     func validate() async throws -> Bool {
         let now = Date()
         let oneDayAgo = now.addingTimeInterval(-86400)
-        let url = buildURL(startTime: oneDayAgo, endTime: now, granularity: "1d")
+        let url = try buildURL(startTime: oneDayAgo, endTime: now, granularity: "1d")
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
@@ -32,7 +32,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
 
     func fetchUsage(since: Date) async throws -> [ProviderUsageRecord] {
         let now = Date()
-        let url = buildURL(startTime: since, endTime: now, granularity: "1d", groupBy: "model")
+        let url = try buildURL(startTime: since, endTime: now, granularity: "1d", groupBy: "model")
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -66,7 +66,9 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
             // Pagination
             if let hasMore = json["has_more"] as? Bool, hasMore,
                let nextPage = json["next_page"] as? String {
-                var nextComponents = URLComponents(string: "\(baseURL)/usage/completions")!
+                guard var nextComponents = URLComponents(string: "\(baseURL)/usage/completions") else {
+                    throw ProviderUsageAPIError.invalidResponse
+                }
                 nextComponents.queryItems = [URLQueryItem(name: "page", value: nextPage)]
                 currentURL = nextComponents.url
             } else {
@@ -82,8 +84,10 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
         endTime: Date,
         granularity: String,
         groupBy: String? = nil
-    ) -> URL {
-        var components = URLComponents(string: "\(baseURL)/usage/completions")!
+    ) throws -> URL {
+        guard var components = URLComponents(string: "\(baseURL)/usage/completions") else {
+            throw ProviderUsageAPIError.invalidResponse
+        }
         // OpenAI uses Unix timestamps
         var items: [URLQueryItem] = [
             URLQueryItem(name: "start_time", value: String(Int(startTime.timeIntervalSince1970))),
@@ -94,8 +98,10 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
             items.append(URLQueryItem(name: "group_by[]", value: groupBy))
         }
         components.queryItems = items
-        // URLComponents.url is guaranteed non-nil here — scheme, host, and path are hardcoded
-        return components.url ?? URL(string: "\(baseURL)/organization/costs")!
+        guard let url = components.url else {
+            throw ProviderUsageAPIError.invalidResponse
+        }
+        return url
     }
 
     private func parseBucket(_ bucket: [String: Any]) -> [ProviderUsageRecord]? {

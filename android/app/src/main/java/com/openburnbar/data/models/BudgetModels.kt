@@ -117,6 +117,8 @@ data class BudgetCredentialIdentity(
     val slotID: String,
     val displayLabel: String,
     val billingMode: BudgetBillingMode,
+    val providerAccountID: String? = null,
+    val providerAccountLabel: String? = null,
 )
 
 data class OrgRollupRow(

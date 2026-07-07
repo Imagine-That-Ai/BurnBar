@@ -785,9 +785,14 @@ enum ComputerUseSecurityCallableClient {
 
     /// Sanitizes provider account ids the same way `accountIDFor` does server-side.
     static func providerAccountSubjectId(provider: String, accountID: String?) -> String {
-        let raw = accountID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? accountID!
-            : "\(provider)_default"
+        let raw: String
+        if let accountID, !accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Preserve the ORIGINAL (untrimmed) account id; the sanitizer below
+            // collapses and edge-trims the whitespace-derived hyphens.
+            raw = accountID
+        } else {
+            raw = "\(provider)_default"
+        }
         let sanitized = sanitizedProviderAccountSubjectFragment(raw)
         let fallback = sanitizedProviderAccountSubjectFragment("\(provider)_default")
         return sanitized.isEmpty ? fallback : sanitized

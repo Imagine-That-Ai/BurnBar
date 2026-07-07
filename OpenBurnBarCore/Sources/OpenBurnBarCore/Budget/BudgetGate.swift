@@ -1,46 +1,110 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import Foundation
-import OpenBurnBarCore
+#if canImport(os)
+import os
+#endif
 
 // MARK: - Errors
 
-/// Thrown by the mobile budget gate when a rule blocks an outbound request.
-/// The budgeting UI catches this and renders a blocked state with raise / override /
-/// settings actions.
-struct BudgetBlockedError: Error, LocalizedError, Sendable {
-    let rule: BudgetRule
-    let used: Double
-    let limit: Double
-    let fallback: BudgetCredentialIdentity?
-    let resetAt: Date?
+/// Thrown by a platform budget gate call site when a rule blocks an outbound request.
+/// On macOS the AgentLens-plane gate (`OpenAICompatibleChatGatewayClient`) throws this and
+/// `ChatSessionController` renders a `BudgetBlockedCard` with raise / override / settings
+/// actions; the mobile budgeting UI renders the equivalent blocked state.
+public struct BudgetBlockedError: Error, LocalizedError, Sendable {
+    public let rule: BudgetRule
+    public let used: Double
+    public let limit: Double
+    public let fallback: BudgetCredentialIdentity?
+    public let resetAt: Date?
 
-    var errorDescription: String? {
+    public init(
+        rule: BudgetRule,
+        used: Double,
+        limit: Double,
+        fallback: BudgetCredentialIdentity?,
+        resetAt: Date?
+    ) {
+        self.rule = rule
+        self.used = used
+        self.limit = limit
+        self.fallback = fallback
+        self.resetAt = resetAt
+    }
+
+    public var errorDescription: String? {
         "Budget limit reached on \(rule.displayLabel): $\(String(format: "%.2f", used)) of $\(String(format: "%.2f", limit))."
     }
 }
 
+// MARK: - Collaborator seams
+
+/// The slice of `BudgetSettings` that `BudgetGate` reads. Extracted to a protocol so the
+/// gate can be exercised against in-memory fakes (and so a future provider can back the
+/// rules with something other than SQLite) without dragging in `BudgetRulesStore`.
+@MainActor
+public protocol BudgetRuleProviding: AnyObject {
+    var rules: [BudgetRule] { get }
+    var globalRules: [BudgetRule] { get }
+    var organizationRules: [BudgetRule] { get }
+    func rules(forCredential providerID: String, accountID: String?) -> [BudgetRule]
+    func rules(forProject projectName: String) -> [BudgetRule]
+}
+
+/// The single ledger read `BudgetGate` performs per rule. Extracted to a protocol so tests
+/// can inject a ledger that throws on demand — the failure path is the whole point of the
+/// budget gate (a swallowed read used to fail OPEN, letting an over-budget request through).
+public protocol BudgetLedgerReading: Sendable {
+    func currentSpend(forRule rule: BudgetRule, reference: Date) async throws -> Double
+}
+
 // MARK: - BudgetGate
 
-/// Pure gate decisioning over `BudgetSettings` + `BudgetLedger`. Stateless apart from a
-/// reference to its two collaborators — both the Hermes chat path and any daemon-proxied
-/// gateway reach `evaluate` and translate the returned `BudgetGateDecision` into
-/// protocol-specific responses (e.g. thrown `BudgetBlockedError` on the mobile client).
+/// Pure gate decisioning over a rule provider + spend ledger. Stateless apart from a
+/// reference to its two collaborators — every platform plane (the daemon plane, the
+/// AgentLens plane, the mobile Hermes chat path) calls `evaluate` and translates the
+/// returned `BudgetGateDecision` into protocol-specific responses (HTTP 402 with
+/// `BurnBar-Budget-Limit` header on the daemon; thrown `BudgetBlockedError` on the clients).
+///
+/// Each app owns its log pipeline: inject `onLedgerReadFailure` to route ledger read
+/// failures through the platform logger (AppLogger on macOS, `os.Logger` on iOS). When no
+/// handler is injected the gate logs through a Core-scoped logger so failures are never
+/// silent.
 @MainActor
-final class BudgetGate {
-    private let settings: BudgetSettings
-    private let ledger: BudgetLedger
-    private let warningThreshold: Double
+public final class BudgetGate {
+    /// Called when a ledger read fails and the gate falls closed. Parameters: the rule
+    /// whose spend could not be read, the thrown error, and whether the failure happened
+    /// on the fallback-resolution path (`true`) or the primary evaluate path (`false`).
+    public typealias LedgerReadFailureHandler = @MainActor (
+        _ rule: BudgetRule,
+        _ error: any Error,
+        _ isFallbackPath: Bool
+    ) -> Void
 
-    init(settings: BudgetSettings, ledger: BudgetLedger, warningThreshold: Double = 0.8) {
-        self.settings = settings
+    private let settings: any BudgetRuleProviding
+    private let ledger: any BudgetLedgerReading
+    private let warningThreshold: Double
+    private let onLedgerReadFailure: LedgerReadFailureHandler?
+
+    /// Designated initializer (also the test seam). Lets callers inject in-memory rule
+    /// providers and a ledger that can fail, so the fail-closed path below is reachable
+    /// without a live SQLite queue.
+    public init(
+        ruleProvider: any BudgetRuleProviding,
+        ledger: any BudgetLedgerReading,
+        warningThreshold: Double = 0.8,
+        onLedgerReadFailure: LedgerReadFailureHandler? = nil
+    ) {
+        self.settings = ruleProvider
         self.ledger = ledger
         self.warningThreshold = warningThreshold
+        self.onLedgerReadFailure = onLedgerReadFailure
     }
 
     /// Returns the most restrictive decision across every rule matching the credential
     /// (credential-scope rules + project-scope rules visible from the call site +
     /// global rules). Subscription credentials short-circuit to `.allow` before any
     /// query runs so a Claude Pro OAuth key never gets gated by this code.
-    func evaluate(
+    public func evaluate(
         credential: BudgetCredentialIdentity,
         projectName: String? = nil,
         estimatedCost: Double,
@@ -62,16 +126,33 @@ final class BudgetGate {
                 }
                 continue
             }
-            let used = await ledger.currentSpend(forRule: rule, reference: reference)
-            let projected = used + max(0, estimatedCost)
-            let decision = await classify(
-                rule: rule,
-                used: used,
-                projected: projected,
-                estimatedCost: max(0, estimatedCost),
-                projectName: projectName,
-                reference: reference
-            )
+            let decision: BudgetGateDecision
+            do {
+                let used = try await ledger.currentSpend(forRule: rule, reference: reference)
+                let projected = used + max(0, estimatedCost)
+                decision = await classify(
+                    rule: rule,
+                    used: used,
+                    projected: projected,
+                    estimatedCost: max(0, estimatedCost),
+                    projectName: projectName,
+                    reference: reference
+                )
+            } catch {
+                // FAIL CLOSED. A failed ledger read means current spend is UNKNOWN. The
+                // previous `(try?...) ?? 0` coerced the unknown to 0, so a rule that was
+                // actually at/over its limit evaluated as well under budget and let the
+                // request through — a silent fail-open on the budget-enforcement decision.
+                // Reject (or, for warn-only rules, surface a warning) instead of allowing a
+                // possibly-over-budget request, and make the read failure observable.
+                reportLedgerReadFailure(rule: rule, error: error, isFallbackPath: false)
+                decision = await failClosedDecision(
+                    for: rule,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                )
+            }
             worst = pickMoreRestrictive(worst, decision)
         }
         return worst
@@ -109,11 +190,46 @@ final class BudgetGate {
             return true
         }
 
-        // Older relay call sites only know the runtime/display label before dispatch; the
-        // durable provider-account label lives in the ledger rows. Do not drop org rules
-        // before the ledger can match `providerAccountLabel` / `providerAccountID`.
+        // OpenAI-compatible gateway requests often only know the host label before the
+        // request is routed, while org spend is keyed by provider-account label in
+        // `token_usage`. Keep org rules in play so the ledger can match the recorded
+        // providerAccountLabel/providerAccountID instead of failing open at the prefilter.
         return nonEmpty(credential.providerAccountID) == nil
             && nonEmpty(credential.providerAccountLabel) == nil
+    }
+
+    /// The decision to return when the ledger read fails and current spend is unknown.
+    ///
+    /// Block-capable behaviors fail closed to `.block` (the same path a known over-limit
+    /// rule takes), so an unreadable ledger can never let an over-budget request through.
+    /// `.warnOnly` is contractually non-blocking — it must always let the request through —
+    /// so it cannot fail closed to `.block`; instead it fails to `.warn` so the failed read
+    /// is still surfaced to the user rather than silently allowed.
+    private func failClosedDecision(
+        for rule: BudgetRule,
+        estimatedCost: Double,
+        projectName: String?,
+        reference: Date
+    ) async -> BudgetGateDecision {
+        let limit = rule.amountUSD
+        switch rule.behavior {
+        case .warnOnly:
+            return .warn(rule: rule, usedPercent: 1.0, used: limit, limit: limit)
+        case .warnThenBlock, .hardBlock:
+            return .block(rule: rule, used: limit, limit: limit, fallback: nil)
+        case .hardBlockWithFallback:
+            return .block(
+                rule: rule,
+                used: limit,
+                limit: limit,
+                fallback: await resolveFallback(
+                    for: rule,
+                    estimatedCost: estimatedCost,
+                    projectName: projectName,
+                    reference: reference
+                )
+            )
+        }
     }
 
     private static func nonEmpty(_ value: String?) -> String? {
@@ -252,8 +368,13 @@ final class BudgetGate {
                 continue
             }
 
-            let used = await ledger.currentSpend(forRule: rule, reference: reference)
-            if fallbackRuleWouldBlock(rule, used: used, estimatedCost: estimatedCost) {
+            do {
+                let used = try await ledger.currentSpend(forRule: rule, reference: reference)
+                if fallbackRuleWouldBlock(rule, used: used, estimatedCost: estimatedCost) {
+                    return false
+                }
+            } catch {
+                reportLedgerReadFailure(rule: rule, error: error, isFallbackPath: true)
                 return false
             }
         }
@@ -281,14 +402,14 @@ final class BudgetGate {
 
     /// Exposes all active rules (credential + project + global) for the Hermes context
     /// builder. Does not query the ledger — callers fetch spend separately.
-    func rulesForContext() -> [BudgetRule] {
+    public func rulesForContext() -> [BudgetRule] {
         settings.rules.filter { $0.isEnabled && $0.amountUSD > 0 }
     }
 
     /// Exposes the ledger's current spend for a rule — wrapped so callers don't have to
     /// hold a separate `BudgetLedger` reference.
-    func ledgerSpend(forRule rule: BudgetRule, reference: Date = Date()) async throws -> Double {
-        await ledger.currentSpend(forRule: rule, reference: reference)
+    public func ledgerSpend(forRule rule: BudgetRule, reference: Date = Date()) async throws -> Double {
+        try await ledger.currentSpend(forRule: rule, reference: reference)
     }
 
     /// Orders decisions by strictness: paused < allow < warn < block.
@@ -304,4 +425,32 @@ final class BudgetGate {
         case .block: return 3
         }
     }
+
+    // MARK: - Ledger read failure reporting
+
+    /// Routes ledger read failures through the injected platform handler; when no handler
+    /// is injected, logs through the Core-scoped logger so failures are never silent.
+    private func reportLedgerReadFailure(rule: BudgetRule, error: any Error, isFallbackPath: Bool) {
+        if let onLedgerReadFailure {
+            onLedgerReadFailure(rule, error, isFallbackPath)
+            return
+        }
+        let event = isFallbackPath
+            ? "budget_gate_fallback_ledger_read_failed"
+            : "budget_gate_ledger_read_failed"
+        let errorClass = String(describing: type(of: error))
+#if canImport(os)
+        Self.coreLogger.error(
+            "\(event, privacy: .public) scope=\(rule.scope.rawValue, privacy: .public) behavior=\(rule.behavior.rawValue, privacy: .public) error=\(errorClass, privacy: .public)"
+        )
+#else
+        FileHandle.standardError.write(
+            Data("[BudgetGate] \(event) scope=\(rule.scope.rawValue) behavior=\(rule.behavior.rawValue) error=\(errorClass)\n".utf8)
+        )
+#endif
+    }
+
+#if canImport(os)
+    private static let coreLogger = Logger(subsystem: "com.openburnbar.core", category: "BudgetGate")
+#endif
 }

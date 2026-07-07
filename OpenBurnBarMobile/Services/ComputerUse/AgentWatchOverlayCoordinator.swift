@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import os.log
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarIrohRelay
@@ -12,6 +13,8 @@ import OpenBurnBarMedia
 /// and expose a send path for phone approval/input frames.
 @MainActor
 final class AgentWatchOverlayCoordinator: ObservableObject {
+    private static let computerUseE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "ComputerUseE2E")
+
     typealias StreamDialer = @MainActor (
         _ uid: String,
         _ connectionID: String,
@@ -272,7 +275,7 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
     private func computerUseE2EProofLog(_ message: String) {
         guard ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_COMPUTER_USE_PROOF"] == "1" else { return }
         let line = "OpenBurnBarMobile ComputerUseE2E \(message)"
-        print(line)
+        Self.computerUseE2ELogger.info("\(line, privacy: .public)")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("computer-use-e2e-proof.jsonl")
         let payload: [String: String] = [
             "event": message,

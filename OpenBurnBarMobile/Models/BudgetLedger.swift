@@ -9,6 +9,28 @@ import OpenBurnBarCore
 protocol BudgetSpendDataSource: AnyObject, Sendable {
     /// The current set of usage rollup documents keyed by window (today, 7d, 30d, etc.).
     var rollupsByWindow: [RollupWindowKey: UsageRollupDoc] { get }
+
+    /// Whether `rollupsByWindow` is a readable snapshot. A live but empty snapshot means
+    /// "definitely zero"; an unreadable snapshot means spend is unknown and gates must fail closed.
+    var budgetSpendSnapshotIsReadable: Bool { get }
+}
+
+extension BudgetSpendDataSource {
+    var budgetSpendSnapshotIsReadable: Bool { true }
+}
+
+enum BudgetLedgerReadError: Error, LocalizedError, Equatable, Sendable {
+    case spendSnapshotUnavailable
+    case projectScopeUnsupported
+
+    var errorDescription: String? {
+        switch self {
+        case .spendSnapshotUnavailable:
+            "Budget spend snapshot is not readable."
+        case .projectScopeUnsupported:
+            "Project-scope spend cannot be computed on iOS (rollups carry no per-project breakdown)."
+        }
+    }
 }
 
 // MARK: - BudgetLedger
@@ -50,7 +72,7 @@ actor BudgetLedger {
     }
 
     /// The data source providing rollup snapshots. Accessed on `@MainActor` when reading.
-    private weak var dataSource: (any BudgetSpendDataSource)?
+    private let dataSource: any BudgetSpendDataSource
 
     /// Per-session cost accumulator keyed by `(providerID, accountID)`. Captures spend
     /// that hasn't yet been reflected in the server-computed rollup (which only updates
@@ -67,18 +89,19 @@ actor BudgetLedger {
 
     /// Current accumulated spend (USD) attributed to the rule's scope within the rule's
     /// current period. Used by `BudgetGate.evaluate`.
-    func currentSpend(forRule rule: BudgetRule, reference: Date = Date()) async -> Double {
-        let rollupSpend = await rollupSpend(forRule: rule)
+    func currentSpend(forRule rule: BudgetRule, reference: Date = Date()) async throws -> Double {
+        let rollupSpend = try await rollupSpend(forRule: rule)
         let session = sessionSpendForRule(rule, matchedAccountKeys: rollupSpend.matchedAccountKeys)
         return rollupSpend.total + session
     }
 
     /// Batch version — runs `currentSpend` for each rule and returns a dictionary keyed by
-    /// rule ID. The caller picks how to combine with `estimatedCost`.
+    /// rule ID. A successful read is present even when the value is `0`; a failed read is
+    /// omitted so callers can distinguish "definitely zero" from "unknown, fail closed".
     func snapshot(forRules rules: [BudgetRule], reference: Date = Date()) async -> [String: Double] {
         var result: [String: Double] = [:]
         for rule in rules {
-            result[rule.id] = await currentSpend(forRule: rule, reference: reference)
+            result[rule.id] = try? await currentSpend(forRule: rule, reference: reference)
         }
         return result
     }
@@ -116,14 +139,21 @@ actor BudgetLedger {
 
     /// Maps `BudgetPeriod` to the appropriate `RollupWindowKey` and extracts cost from the
     /// matching rollup document, filtered by the rule's scope.
-    private func rollupSpend(forRule rule: BudgetRule) async -> RollupSpend {
-        guard let source = self.dataSource else { return RollupSpend(total: 0) }
-
+    private func rollupSpend(forRule rule: BudgetRule) async throws -> RollupSpend {
         let windowKey = rollupWindowKey(for: rule.period)
-        let rollupsByWindow = await MainActor.run {
-            source.rollupsByWindow
+        let snapshot = await MainActor.run {
+            (
+                isReadable: dataSource.budgetSpendSnapshotIsReadable,
+                rollupsByWindow: dataSource.rollupsByWindow
+            )
         }
-        guard let rollup = rollupsByWindow[windowKey] else { return RollupSpend(total: 0) }
+        guard snapshot.isReadable else {
+            throw BudgetLedgerReadError.spendSnapshotUnavailable
+        }
+        let rollupsByWindow = snapshot.rollupsByWindow
+        guard let rollup = rollupsByWindow[windowKey] else {
+            return RollupSpend(total: 0)
+        }
 
         switch rule.scope {
         case .global:
@@ -144,12 +174,20 @@ actor BudgetLedger {
             return RollupSpend(total: total)
 
         case .project:
-            // Rollups don't currently have per-project breakdowns — future enhancement.
-            return RollupSpend(total: 0)
+            // Rollups carry no per-project breakdown, so project spend is UNKNOWABLE here —
+            // not zero. Returning 0 made project rules silently enforce nothing; throwing
+            // routes the gate through its fail-closed path instead (audit wave 4, item 3).
+            throw BudgetLedgerReadError.projectScopeUnsupported
 
         case .organization:
             guard let identifier = Self.nonEmpty(rule.identifier) else { return RollupSpend(total: 0) }
-            let matches = rollup.accountSummaries.filter { Self.matchesOrganization($0, identifier: identifier) }
+            let memberAccountIDs = Self.organizationMemberAccountIDs(
+                identifier: identifier,
+                rollupsByWindow: rollupsByWindow
+            )
+            let matches = rollup.accountSummaries.filter {
+                Self.matchesOrganization($0, identifier: identifier, memberAccountIDs: memberAccountIDs)
+            }
             let total = matches.compactMap(\.totalCost).reduce(0, +)
             let keys = Set(matches.map { sessionKey(providerID: $0.providerID.rawValue, accountID: $0.accountID) })
             return RollupSpend(total: total, matchedAccountKeys: keys)
@@ -195,8 +233,34 @@ actor BudgetLedger {
         SessionSpendKey(providerID: providerID, accountID: accountID)
     }
 
-    private nonisolated static func matchesOrganization(_ summary: RollupProviderAccountSummary, identifier: String) -> Bool {
-        summary.accountLabel == identifier || summary.accountID == identifier
+    /// Rollup equivalent of the macOS ledger's recursive `providerAccountID` subquery: an
+    /// account whose label matched the organization in ANY rollup window is an org member,
+    /// so its spend still counts in windows where the summary carries a renamed label.
+    private nonisolated static func organizationMemberAccountIDs(
+        identifier: String,
+        rollupsByWindow: [RollupWindowKey: UsageRollupDoc]
+    ) -> Set<String> {
+        var members: Set<String> = []
+        for rollup in rollupsByWindow.values {
+            for summary in rollup.accountSummaries where summary.accountLabel == identifier {
+                if let accountID = nonEmpty(summary.accountID) {
+                    members.insert(accountID)
+                }
+            }
+        }
+        return members
+    }
+
+    private nonisolated static func matchesOrganization(
+        _ summary: RollupProviderAccountSummary,
+        identifier: String,
+        memberAccountIDs: Set<String>
+    ) -> Bool {
+        if summary.accountLabel == identifier || summary.accountID == identifier {
+            return true
+        }
+        guard let accountID = nonEmpty(summary.accountID) else { return false }
+        return memberAccountIDs.contains(accountID)
     }
 
     private nonisolated static func nonEmpty(_ value: String?) -> String? {

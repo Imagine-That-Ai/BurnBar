@@ -43,50 +43,34 @@ final class CursorConnectorSecretBroker: Sendable {
         self.bearerToken = Self.randomToken()
     }
 
-    func start() throws {
+    func start() async throws {
         var lastError: Error?
         for _ in 0..<20 {
             let candidate = UInt16.random(in: 49152...65535)
+            guard let loopback = IPv4Address("127.0.0.1"),
+                  let candidatePort = NWEndpoint.Port(rawValue: candidate) else {
+                lastError = NSError(
+                    domain: "CursorConnectorSecretBroker",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not form loopback endpoint for port \(candidate)."]
+                )
+                continue
+            }
             do {
-                let ready = DispatchSemaphore(value: 0)
-                let stateError = Locked<String?>(nil)
                 let parameters = NWParameters.tcp
                 parameters.requiredLocalEndpoint = .hostPort(
-                    host: .ipv4(IPv4Address("127.0.0.1")!),
-                    port: NWEndpoint.Port(rawValue: candidate)!
+                    host: .ipv4(loopback),
+                    port: candidatePort
                 )
-                let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: candidate)!)
-                listener.stateUpdateHandler = { state in
-                    switch state {
-                    case .ready:
-                        ready.signal()
-                    case .failed(let error):
-                        stateError.write(error.localizedDescription)
-                        ready.signal()
-                    default:
-                        break
-                    }
-                }
+                let listener = try NWListener(using: parameters, on: candidatePort)
                 listener.newConnectionHandler = { [weak self] connection in
                     self?.handle(connection)
                 }
-                listener.start(queue: queue)
-                guard ready.wait(timeout: .now() + 2) == .success else {
+                do {
+                    try await waitUntilReady(listener)
+                } catch {
                     listener.cancel()
-                    lastError = NSError(
-                        domain: "CursorConnectorSecretBroker",
-                        code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "Secret broker did not become ready."]
-                    )
-                    continue
-                }
-                if let stateError = stateError.read() {
-                    listener.cancel()
-                    lastError = NSError(
-                        domain: "CursorConnectorSecretBroker",
-                        code: 3,
-                        userInfo: [NSLocalizedDescriptionKey: stateError]
-                    )
+                    lastError = error
                     continue
                 }
                 brokerState.withLockUnchecked { state in
@@ -103,6 +87,55 @@ final class CursorConnectorSecretBroker: Sendable {
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: "Could not start connector secret broker."]
         )
+    }
+
+    /// Bridges `NWListener`'s callback-based state machine into async/await.
+    ///
+    /// The state handler can fire more than once (`.ready` followed later by
+    /// `.failed`/`.cancelled`) and the 2-second readiness deadline races the
+    /// callback, so the continuation is guarded by a `Locked` flag that
+    /// guarantees it resumes exactly once.
+    private func waitUntilReady(_ listener: NWListener, timeout: TimeInterval = 2) async throws {
+        let resumed = Locked(false)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let resumeOnce: @Sendable (Result<Void, Error>) -> Void = { result in
+                let shouldResume = resumed.withLock { (alreadyResumed: inout Bool) -> Bool in
+                    if alreadyResumed { return false }
+                    alreadyResumed = true
+                    return true
+                }
+                guard shouldResume else { return }
+                continuation.resume(with: result)
+            }
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    resumeOnce(.success(()))
+                case .failed(let error):
+                    resumeOnce(.failure(NSError(
+                        domain: "CursorConnectorSecretBroker",
+                        code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: error.localizedDescription]
+                    )))
+                case .cancelled:
+                    resumeOnce(.failure(NSError(
+                        domain: "CursorConnectorSecretBroker",
+                        code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "Secret broker listener was cancelled before becoming ready."]
+                    )))
+                default:
+                    break
+                }
+            }
+            listener.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + timeout) {
+                resumeOnce(.failure(NSError(
+                    domain: "CursorConnectorSecretBroker",
+                    code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Secret broker did not become ready."]
+                )))
+            }
+        }
     }
 
     func stop() {

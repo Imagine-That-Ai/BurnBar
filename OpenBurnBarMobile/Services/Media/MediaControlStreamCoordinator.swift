@@ -560,6 +560,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 // exponential backoff kicks in.
                 attempt = max(0, attempt - 1)
             } catch is CancellationError {
+                // Supervisor cancelled — exit the dial loop quietly.
                 break
             } catch {
                 guard isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) else {
@@ -669,6 +670,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
                             await handler(decoded)
                         }
                     } catch {
+                        // Undecodable frame — drop it and keep the stream alive.
+                        // Per-frame hot path: debug trace only, no release logging.
+                        Self.debugTrace("media_frame_decode_failed error=\(error.localizedDescription)")
                         continue
                     }
                 case .mediaMirrorRequest:

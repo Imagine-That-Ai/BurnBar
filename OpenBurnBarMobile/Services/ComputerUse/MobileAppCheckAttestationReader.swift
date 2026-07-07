@@ -5,6 +5,8 @@ import OpenBurnBarComputerUseCore
 import os
 
 enum MobileAppCheckAttestationReader {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "MobileAppCheckAttestationReader")
+
     /// Last digest produced by `currentAttestationDigestForEnvelope()`. Kept so
     /// the synchronous `sign(remoteUnlockSession:)` path can attach the digest
     /// (pre-F2 it omitted the field entirely); every async send refreshes it.
@@ -23,6 +25,9 @@ enum MobileAppCheckAttestationReader {
             cachedDigest.withLock { $0 = digest }
             return digest
         } catch {
+            // Best-effort by design: the envelope ships without a digest (pre-F2
+            // wire shape). Log the token-read failure so it stays diagnosable.
+            log.warning("ID token read for attestation digest failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }

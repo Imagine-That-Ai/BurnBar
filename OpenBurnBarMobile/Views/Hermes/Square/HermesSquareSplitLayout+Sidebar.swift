@@ -1,7 +1,10 @@
 import SwiftUI
+import os.log
 import OpenBurnBarCore
 import OpenBurnBarMedia
 import FirebaseAuth
+
+private let hermesSquareSidebarLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSquare")
 
 // Resize handle, thread routing, pinned route, runtime-history sidebar, coordinator selection.
 // Extracted from HermesSquareSplitLayout.swift (god-file decomposition) — same module, verbatim.
@@ -277,7 +280,7 @@ struct HermesSquareRuntimeHistorySidebar: View {
                     )
                     await inbox.refresh()
                 } catch {
-                    print("Error updating CLI session metadata: \(error)")
+                    hermesSquareSidebarLogger.error("Error updating CLI session metadata: \(String(describing: error), privacy: .public)")
                 }
             }
         } else if prefix == "hermes" || prefix == "pi" || prefix == "cliMirror" {
