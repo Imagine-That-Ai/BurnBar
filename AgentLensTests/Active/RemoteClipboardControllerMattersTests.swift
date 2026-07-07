@@ -120,7 +120,8 @@ final class RemoteClipboardControllerMattersTests: XCTestCase {
     func testDefaultControllerConstructs_smokeNoCrash() {
         // Smoke test by intent: construction wires private framework-backed
         // clipboard dependencies and only exposes success by not trapping.
-        _ = RemoteUnlockCredentialController()
+        let controller = RemoteUnlockCredentialController()
+        XCTAssertNotNil(controller, "Default (production) init must yield a usable controller")
     }
 
     func testRemoteUnlockCredentialRequiresActiveSessionAttestationBeforeDecrypting() async throws {
