@@ -53,7 +53,11 @@ const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() ||
 const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
 const packageBuildEnv = {
   ...process.env,
-  CARGO_BUILD_JOBS: cargoBuildJobs
+  CARGO_BUILD_JOBS: cargoBuildJobs,
+  // linuxdeploy (Tauri's AppImage bundler) is itself an AppImage and needs FUSE
+  // to self-mount; container builds (local toolchain + CI docker) have no FUSE,
+  // so tell it to self-extract instead. Harmless outside containers.
+  APPIMAGE_EXTRACT_AND_RUN: '1'
 };
 
 function writeLog(name, steps) {
