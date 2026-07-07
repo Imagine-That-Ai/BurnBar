@@ -50,16 +50,55 @@
 **Priority:** P3
 **Depends on:** Stable daemon-native coding agent core and provider-routing test coverage
 
-## In-code deferrals (audited 2026-07-06)
+## In-code deferrals (audited 2026-07-07, post wave-4 remediation)
 
-Known deferred items living in code comments, tracked here so they don't get lost:
+Known deferred items living in code comments, each verified against the code on the date
+above. Everything previously listed here that no longer exists in code has moved to
+"Resolved" below — this file lists only what is still deferred.
 
-- **SmartHub voice routine hook is a no-op** — `POST /voice-refresh` logs and replies `voice:"unsupported"`; no routine is wired. `AgentLens/Services/SmartHub/SmartHubBridgeServer.swift`
-- **BudgetGate Phase 4B fallback resolution deferred** — in BOTH `AgentLens/Services/DataStore/BudgetGate.swift` and `OpenBurnBarMobile/Models/BudgetGate.swift`
-- **MacCloudEntitlementStore reads "free"** pending macOS StoreKit integration. `AgentLens/Services/MacCloudEntitlementStore.swift`
-- **iPhone→Mac calling not implemented.** `OpenBurnBarMobile/Views/Media/MercuryLiveSheet+MirrorControl.swift`
-- **MissionGroupObserver Phase B+ synthesis not implemented.** `OpenBurnBarMobile/Services/MissionGroupObserver.swift`
-- **Org-scope budget aggregation approximated.** `OpenBurnBarMobile/Models/BudgetLedger.swift`
-- **FTS rebuild TODO(C10) page reclamation.** `AgentLens/Services/DataStore/OpenBurnBarDatabase.swift`
+- **iOS project-scope budget spend is not measurable** — `UsageRollupDoc` carries no
+  per-project breakdown, so `OpenBurnBarMobile/Models/BudgetLedger.swift` (`rollupSpend`,
+  `.project` case, ~line 173) throws `projectScopeUnsupported` and the gate fails closed
+  (block / warn-only warn) instead of silently enforcing nothing. Real measurement needs
+  per-project summaries added to the Cloud Functions rollup pipeline and the rollup schema.
+  *Owner note: budget lane; requires functions/ rollup schema work, then delete the throw
+  and the Budget Center "not measurable on iOS" copy.*
+- **iOS budget periods approximate rollup windows** — `rollupWindowKey(for:)` in
+  `OpenBurnBarMobile/Models/BudgetLedger.swift` (~line 238) maps week→7d and month→30d
+  because rollups don't align with calendar periods. Conservative but inexact near period
+  boundaries. *Owner note: budget lane; needs calendar-aligned rollup windows server-side.*
+- **BudgetLedger backend fork is architectural** — macOS sums raw `token_usage` SQL
+  (`AgentLens/Services/DataStore/BudgetLedger.swift`); iOS sums Firestore rollups
+  (`OpenBurnBarMobile/Models/BudgetLedger.swift`). Intentional (no raw SQL on mobile), and
+  guarded: `scripts/ci/check-budget-fork-drift.sh` fails CI when either side of the pair
+  (or BudgetEnforcement/BudgetSettings) drifts without a reviewed baseline update. The gate
+  itself is no longer forked (single `BudgetGate` in
+  `OpenBurnBarCore/Sources/OpenBurnBarCore/Budget/BudgetGate.swift`). *Owner note:
+  intentional; revisit only if mobile ever gets a local usage table.*
+- **FTS rebuild TODO(C10) page reclamation** — the conversations FTS one-shot repair
+  rebuilds rows but does not reclaim freed pages;
+  `AgentLens/Services/DataStore/OpenBurnBarDatabase.swift:1528` (after PR #1353's split:
+  `OpenBurnBarDatabase+MigrationsV41toV51.swift`). *Owner note: datastore lane; needs an
+  incremental-vacuum pass gated on idle.*
+- **Diverged Core database twin** —
+  `OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase.swift` (~2089 lines) is a
+  Linux/SQLCipher-ordered near-copy of the AgentLens migrator and was intentionally left
+  untouched by the wave-4 decomposition (PR #1353). *Owner note: linux lane; reconcile or
+  drift-gate it the same way the budget forks are gated.*
 
-## Completed
+## Resolved (removed from deferrals after verification)
+
+- ~~SmartHub voice routine hook is a no-op~~ — `POST /voice-refresh` now queues a real
+  voice event (`SmartHubBridgeServer.swift`; `voice:"unsupported"` reply is gone).
+- ~~BudgetGate Phase 4B fallback resolution deferred~~ — fallback resolution landed
+  (`d27db38235`, `faf030625e`) and the gate is now a single Core implementation with
+  regression locks on the self-exclusion normalization (wave-4 PRs #1351/#1356).
+- ~~MacCloudEntitlementStore reads "free" pending macOS StoreKit~~ — StoreKit entitlement
+  reading is integrated; local StoreKit now also outranks a lapsed cloud doc (PR #1346).
+- ~~iPhone→Mac calling not implemented~~ — wired over the Mercury control stream
+  (`2357e37983`, hardened in `b133d1bf53`).
+- ~~MissionGroupObserver Phase B+ synthesis not implemented~~ — synthesis dispatch and
+  summary plumbing exist in `MissionGroupObserver.swift`.
+- ~~Org-scope budget aggregation approximated (renamed-account gap)~~ — iOS org rules now
+  discover member accounts across rollup windows, mirroring the macOS subquery (PR #1351).
+  The remaining window-alignment approximation is tracked above.
