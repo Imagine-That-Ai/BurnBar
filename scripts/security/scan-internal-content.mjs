@@ -120,8 +120,17 @@ function repoRoot() {
   }).trim();
 }
 
+// Node's default execFileSync maxBuffer is 1 MiB; the tracked tree's NUL-joined
+// path list outgrew it (spawnSync git ENOBUFS took the guard down on every
+// branch). 64 MiB is orders of magnitude above any plausible repo listing.
+const GIT_LIST_MAX_BUFFER = 64 * 1024 * 1024;
+
 function trackedFiles(root) {
-  return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" })
+  return execFileSync("git", ["ls-files", "-z"], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: GIT_LIST_MAX_BUFFER,
+  })
     .split("\0")
     .filter(Boolean);
 }
@@ -130,7 +139,7 @@ function stagedFiles(root) {
   return execFileSync(
     "git",
     ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
-    { cwd: root, encoding: "utf8" },
+    { cwd: root, encoding: "utf8", maxBuffer: GIT_LIST_MAX_BUFFER },
   )
     .split("\0")
     .filter(Boolean);
@@ -140,7 +149,7 @@ function publishableFiles(root) {
   return execFileSync(
     "git",
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    { cwd: root, encoding: "utf8" },
+    { cwd: root, encoding: "utf8", maxBuffer: GIT_LIST_MAX_BUFFER },
   )
     .split("\0")
     .filter(Boolean);
