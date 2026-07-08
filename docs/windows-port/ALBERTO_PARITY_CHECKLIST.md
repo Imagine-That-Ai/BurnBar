@@ -125,10 +125,10 @@ Blocks: Microsoft Store submission. (winget needs **no** account — agents PR
 
 ## F. Daemon strategy is already decided
 
-WPD-0006 already chose **port** via Swift-on-Windows. No new Alberto decision is
-needed here; agents should continue the Wave 4 daemon-port lane and use Tier-C
-substitution only as a documented temporary fallback for individual blocked
-capabilities.
+WPD-0006 already chose **per-capability Tier-C substitution** (no monolithic
+daemon port for v1). No new Alberto decision is needed here; agents should
+continue executing the WPD-0006 substitution matrix and the remaining Wave 4
+items.
 
 ---
 
@@ -140,6 +140,6 @@ capabilities.
 | B (cert) + C (Partner Center) | Signed MSIX in CI, Store/winget/choco submissions, update round-trip → **G5** |
 | D (OAuth client) | Real Windows sign-in end-to-end, retire dev-token flow |
 | E (4 switches) | Green `main`, Windows CI blocking, factory lanes restored |
-| F (already decided: port) | Wave 4 daemon execution continues |
+| F (already decided: Tier-C substitution) | Wave 4 daemon execution continues |
 
 Everything else on the road to 100% is agent-executable once these land.
