@@ -1,0 +1,165 @@
+/* Sidebar glass — consumes liquid-glass-tokens + utility classes from NavRail/SidebarSegmentedPicker */
+
+.shell-nav {
+  background: var(--glass-tint-base);
+  border-right-color: var(--glass-stroke);
+  backdrop-filter: var(--glass-toolbar-blur);
+  -webkit-backdrop-filter: var(--glass-toolbar-blur);
+}
+
+.sidebar-segmented.glass-pill {
+  border-radius: var(--glass-radius-sm);
+}
+
+.sidebar-segmented-item[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-brass-core) 22%, var(--glass-pill-stroke));
+  box-shadow: var(--glass-pill-shadow), 0 0 12px color-mix(in srgb, var(--color-brass-glow) 12%, transparent);
+}
+
+.sidebar-glass-card.glass-card {
+  border-radius: var(--glass-radius-sm);
+}
+
+/* Partition B — sidebar chrome (FixerB). Do not edit app.css. */
+
+.nav-link.sidebar-item {
+  --sidebar-item-accent: var(--color-brass-core);
+}
+
+/* Partition E — sidebar item fidelity (overrides app.css brass-core with per-route accent) */
+
+.nav-link.sidebar-item {
+  animation: sidebar-item-entrance 420ms var(--motion-ease-standard) both;
+  animation-delay: var(--sidebar-item-entrance-delay, 0ms);
+}
+
+@keyframes sidebar-item-entrance {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nav-link.sidebar-item .sidebar-item-glyph-ring {
+  background: var(--glass-tint-sunken);
+  border-color: var(--glass-pill-stroke);
+}
+
+.sidebar-item--selected .sidebar-item-glyph-ring,
+.nav-link.sidebar-item[aria-current='page'] .sidebar-item-glyph-ring {
+  background: color-mix(in srgb, var(--sidebar-item-accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--sidebar-item-accent) 30%, transparent);
+}
+
+.nav-link.sidebar-item:hover:not([aria-current='page']),
+.nav-link.sidebar-item:focus-visible:not([aria-current='page']) {
+  border-color: color-mix(in srgb, var(--sidebar-item-accent) 22%, var(--glass-stroke-bright));
+  background: var(--glass-tint-elevated);
+}
+
+.sidebar-item-grid-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--color-text-mute);
+}
+
+.sidebar-item--selected .sidebar-item-grid-icon,
+.nav-link.sidebar-item[aria-current='page'] .sidebar-item-grid-icon {
+  color: var(--color-text-bright);
+}
+
+.sidebar-item--selected .sidebar-item-metric,
+.nav-link.sidebar-item[aria-current='page'] .sidebar-item-metric {
+  color: var(--sidebar-item-accent);
+}
+
+.sidebar-item--selected .sidebar-item-chevron,
+.nav-link.sidebar-item[aria-current='page'] .sidebar-item-chevron {
+  color: color-mix(in srgb, var(--sidebar-item-accent) 80%, transparent);
+}
+
+
+.nav-link.sidebar-item[aria-current='page'] {
+  background: color-mix(in srgb, var(--sidebar-item-accent) 8%, var(--glass-tint-clear));
+  border-color: color-mix(in srgb, var(--sidebar-item-accent) 30%, var(--glass-pill-stroke));
+}
+
+
+.sidebar-glass-card--cursor {
+  gap: var(--space-2);
+}
+
+.sidebar-cursor-cta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-cursor-cta:hover,
+.sidebar-cursor-cta:focus-visible {
+  outline: none;
+  background: var(--glass-tint-clear);
+}
+
+.sidebar-cursor-cta-glyph {
+  flex-shrink: 0;
+}
+
+.sidebar-cursor-cta-ring {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-pill-stroke);
+  background: var(--glass-tint-sunken);
+}
+
+.sidebar-cursor-cta-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px color-mix(in srgb, currentColor 35%, transparent);
+}
+
+.sidebar-cursor-cta-copy {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-cursor-cta-title {
+  font-size: 0.82rem;
+  color: var(--color-text-bright);
+  line-height: 1.25;
+}
+
+.sidebar-cursor-cta-detail {
+  font-size: 0.62rem;
+  color: var(--color-text-dim);
+  line-height: 1.2;
+}
+
+.sidebar-cursor-cta-arrow {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--color-text-mute);
+}

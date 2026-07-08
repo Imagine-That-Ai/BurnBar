@@ -1,6 +1,10 @@
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 public actor BurnBarDaemonServer {
@@ -42,6 +46,7 @@ public actor BurnBarDaemonServer {
     let toolingProxy: BurnBarToolingProxyService
     let computerUseService: ComputerUseService
     let missionControlService: any BurnBarMissionControlServing
+    let membershipService: any BurnBarMembershipServing
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
     let resumeService: BurnBarResumeService?
@@ -62,6 +67,7 @@ public actor BurnBarDaemonServer {
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
+        membershipService: (any BurnBarMembershipServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
@@ -173,6 +179,7 @@ public actor BurnBarDaemonServer {
             },
             executionReadinessGate: executionReadinessGate
         )
+        self.membershipService = membershipService ?? BurnBarMembershipService()
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false,
@@ -400,7 +407,7 @@ public actor BurnBarDaemonServer {
         acceptLoopTask = nil
         acceptTask?.cancel()
 
-        shutdown(listenerFileDescriptor, SHUT_RDWR)
+        shutdown(listenerFileDescriptor, Int32(SHUT_RDWR))
         close(listenerFileDescriptor)
         _ = await acceptTask?.result
 
@@ -569,7 +576,13 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .proxyRouteLogRecent, .proxyRouteLogClear:
+            case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
+                return try await handleMembershipRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .proxyRouteLogRecent, .proxyRouteLogClear, .perfMeasure:
                 return try await handleObservabilityRPC(
                     method: method,
                     decoder: decoder,
@@ -612,6 +625,7 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .runCreate, .runList, .runGet, .runPoll, .runCancel, .runRetry, .runResume,
+                 .subscriptionStart, .subscriptionResume,
                  .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
                 return try await handleRunWorkspaceApprovalRPC(
                     method: method,
@@ -689,10 +703,14 @@ public actor BurnBarDaemonServer {
     }
 
     private static func peerPID(for clientFileDescriptor: Int32) -> pid_t? {
+        #if canImport(Darwin)
         var pid: pid_t = 0
         var pidSize = socklen_t(MemoryLayout<pid_t>.size)
         let result = getsockopt(clientFileDescriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidSize)
         return result == 0 ? pid : nil
+        #else
+        return nil
+        #endif
     }
 
     private static func handleClientConnection(
@@ -791,7 +809,12 @@ private enum BurnBarUnixDomainSocket {
     }
 
     static func makeListeningSocket(at socketPath: String) throws -> Int32 {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        #if canImport(Glibc)
+        let socketType = Int32(SOCK_STREAM.rawValue)
+        #else
+        let socketType = SOCK_STREAM
+        #endif
+        let fileDescriptor = socket(AF_UNIX, socketType, 0)
         guard fileDescriptor != -1 else {
             throw BurnBarDaemonError.failedToCreateSocket(
                 code: errno,
@@ -909,6 +932,7 @@ private enum BurnBarUnixDomainSocket {
     }
 
     static func configureNoSigPipe(for fileDescriptor: Int32) {
+        #if canImport(Darwin)
         var value: Int32 = 1
         setsockopt(
             fileDescriptor,
@@ -917,6 +941,9 @@ private enum BurnBarUnixDomainSocket {
             &value,
             socklen_t(MemoryLayout<Int32>.size)
         )
+        #else
+        _ = fileDescriptor
+        #endif
     }
 
     static func configureIOTimeouts(for fileDescriptor: Int32, seconds: Int = 30) {

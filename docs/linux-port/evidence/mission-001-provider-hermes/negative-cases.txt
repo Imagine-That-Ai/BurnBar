@@ -1,0 +1,12 @@
+### socket auth rejects wrong token
+Unauthorized OpenBurnBar RPC request.
+exit_code=1
+
+### peer trust rejects non-first-party executable name
+The operation could not be completed. Connection reset by peer
+exit_code=1
+
+### cli capability profile denies config credential write during mock-provider seed
+The operation could not be completed. Connection reset by peer
+exit_code=1
+

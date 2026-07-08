@@ -1,6 +1,6 @@
 import XCTest
 import FirebaseFirestore
-import OpenBurnBarCore
+@testable import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// The "Mac last seen: never" regression class: the devices-registry presence

@@ -3,15 +3,21 @@ import OpenBurnBarLinuxSecurity
 
 struct Evidence: Codable {
     var secretBackends: [String]
+    var secretSetupStatuses: [String]
     var secretNegativeCases: [String]
     var refusedPlaintextFallback: Bool
     var auth: [String: String]
+    var authProtocol: [String]
     var membershipStates: [String]
     var membershipArtifacts: [String]
+    var membershipCacheUpdates: [String]
     var telemetry: [String: String]
     var telemetryCapture: [String: [String]]
+    var telemetryControls: [String: String]
+    var redactionSurfaces: [String]
     var cloudSync: [String: String]
     var cloudSyncTrace: [String]
+    var cloudSyncLocalStaging: [String]
 }
 
 struct AuthTranscript: Codable {
@@ -27,6 +33,14 @@ struct AuthTranscript: Codable {
     var inaccessibleBrowserState: String
 }
 
+struct AuthProtocolTranscript: Codable {
+    var browserLaunch: [String: String]
+    var firebaseSignInWithIdp: LinuxProtocolExchange
+    var firebaseRevocation: LinuxProtocolExchange
+    var stateMismatchRejected: Bool
+    var tokenCustodyMetadata: LinuxSecretMetadata
+}
+
 struct MembershipTranscript: Codable {
     var uid: String
     var state: String
@@ -34,6 +48,13 @@ struct MembershipTranscript: Codable {
     var source: String
     var checkoutSurface: String
     var visualArtifact: String
+}
+
+struct MembershipProtocolTranscript: Codable {
+    var checkout: LinuxProtocolExchange
+    var portal: LinuxProtocolExchange
+    var restores: [MembershipTranscript]
+    var cacheUpdates: [LinuxMembershipEntitlementCacheUpdate]
 }
 
 struct TelemetryTranscript: Codable {
@@ -92,6 +113,23 @@ func writeString(_ value: String, named name: String, in directory: URL?) throws
     let url = directory.appendingPathComponent(name)
     try value.data(using: .utf8)!.write(to: url, options: [.atomic])
     return url.path
+}
+
+func executablePath(_ name: String) -> String? {
+    let paths = (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/local/bin")
+        .split(separator: ":")
+        .map(String.init)
+    for path in paths {
+        let candidate = URL(fileURLWithPath: path).appendingPathComponent(name).path
+        if FileManager.default.isExecutableFile(atPath: candidate) {
+            return candidate
+        }
+    }
+    return nil
+}
+
+func fileExists(_ path: String) -> Bool {
+    FileManager.default.fileExists(atPath: path)
 }
 
 func membershipSVG(state: LinuxMembershipState, entitlementID: String?) -> String {
@@ -193,6 +231,14 @@ struct LinuxSecurityEvidenceMain {
             .requireHighValueSecret(id: "cloud-vault-key", secretClass: .cloudVaultKey)
         let audit = try LinuxSecretCustodian(backends: [headless])
             .requireHighValueSecret(id: "audit-key", secretClass: .auditSigningKey)
+        let secretSetupRows = LinuxSecretStoreSetupProbeBuilder.rows(
+            secretToolPath: executablePath("secret-tool"),
+            hasSessionBus: ProcessInfo.processInfo.environment["DBUS_SESSION_BUS_ADDRESS"]?.isEmpty == false,
+            tpm2ToolPath: executablePath("tpm2_getcap"),
+            hasTPMDevice: fileExists("/dev/tpm0") || fileExists("/dev/tpmrm0")
+        )
+        _ = try writeJSON(secretSetupRows, named: "secret-store-setup-proof.json", in: evidenceDirectory)
+
         var secretNegativeCases: [String] = []
         for secretClass in LinuxHighValueSecretClass.allCases {
             expectThrows("plaintext fallback must be refused for \(secretClass.rawValue)") {
@@ -242,6 +288,20 @@ struct LinuxSecurityEvidenceMain {
             inaccessibleBrowserState: "external_browser_unavailable_error_surface"
         )
         _ = try writeJSON(authTranscript, named: "auth-pkce-signout-transcript.json", in: evidenceDirectory)
+        let authProtocolTranscript = AuthProtocolTranscript(
+            browserLaunch: LinuxAuthProtocolEvidence.browserLaunch(flow: authFlow),
+            firebaseSignInWithIdp: LinuxAuthProtocolEvidence.signInWithIdpExchange(
+                apiKey: "firebase-api-key-fixture",
+                providerID: "google.com"
+            ),
+            firebaseRevocation: LinuxAuthProtocolEvidence.revokeRefreshTokenExchange(
+                apiKey: "firebase-api-key-fixture",
+                metadata: tokenMetadata
+            ),
+            stateMismatchRejected: true,
+            tokenCustodyMetadata: tokenMetadata
+        )
+        _ = try writeJSON(authProtocolTranscript, named: "auth-protocol-fixture.json", in: evidenceDirectory)
 
         let membershipFixtures: [String: LinuxMembershipRestoreResult] = [
             "active": LinuxMembershipRestoreResult(state: .active, entitlementID: "ent_linux_active", source: "stripe_checkout"),
@@ -255,6 +315,8 @@ struct LinuxSecurityEvidenceMain {
         var restoredStates: [String] = []
         var membershipArtifacts: [String] = []
         var membershipTranscript: [MembershipTranscript] = []
+        var membershipCache = LinuxMembershipEntitlementCache()
+        var membershipCacheUpdates: [LinuxMembershipEntitlementCacheUpdate] = []
         for uid in ["active", "cancelled", "paymentFailed", "offline"] {
             let restored = try await membership.restoreEntitlement(uid: uid)
             check(restored.source == "stripe_checkout", "Linux membership restore must use Stripe checkout source")
@@ -266,6 +328,14 @@ struct LinuxSecurityEvidenceMain {
                 in: evidenceDirectory
             )
             membershipArtifacts.append(artifactName)
+            let screenshotName = "membership-ui-screenshot-\(restored.state.rawValue).svg"
+            _ = try writeString(
+                membershipSVG(state: restored.state, entitlementID: restored.entitlementID),
+                named: screenshotName,
+                in: evidenceDirectory
+            )
+            membershipArtifacts.append(screenshotName)
+            membershipCacheUpdates.append(membershipCache.apply(uid: uid, result: restored))
             membershipTranscript.append(MembershipTranscript(
                 uid: uid,
                 state: restored.state.rawValue,
@@ -276,6 +346,17 @@ struct LinuxSecurityEvidenceMain {
             ))
         }
         _ = try writeJSON(membershipTranscript, named: "membership-stripe-restore-transcript.json", in: evidenceDirectory)
+        let membershipProtocolTranscript = MembershipProtocolTranscript(
+            checkout: LinuxMembershipProtocolEvidence.checkoutSession(uid: "active"),
+            portal: LinuxMembershipProtocolEvidence.portalSession(uid: "active"),
+            restores: membershipTranscript,
+            cacheUpdates: membershipCacheUpdates
+        )
+        _ = try writeJSON(
+            membershipProtocolTranscript,
+            named: "membership-stripe-protocol-cache-ui-transcript.json",
+            in: evidenceDirectory
+        )
 
         let telemetryEvents = EventBox()
         LinuxTelemetryRecorder(consent: .declined) { _, properties in telemetryEvents.append(properties) }
@@ -321,6 +402,58 @@ struct LinuxSecurityEvidenceMain {
             )
         ]
         _ = try writeJSON(telemetryCapture, named: "telemetry-local-capture.json", in: evidenceDirectory)
+        var telemetryControls = LinuxTelemetryControlStore()
+        telemetryControls.record(
+            event: "linux_auth",
+            consent: .declined,
+            properties: ["token": apiToken, "prompt": "prompt=private operator request"]
+        )
+        check(telemetryControls.captured.isEmpty, "telemetry controls must honor declined consent")
+        telemetryControls.record(
+            event: "linux_auth",
+            consent: .granted,
+            properties: [
+                "token": "refreshToken=\(refreshSecret)",
+                "email": emailAddress,
+                "path": configPath,
+                "prompt": "prompt=private operator request",
+                "cookie": "cookie=sessionid"
+            ]
+        )
+        let capturedBeforeDisable = telemetryControls.captured
+        let exportedTelemetry = telemetryControls.export()
+        telemetryControls.disable()
+        telemetryControls.record(
+            event: "linux_auth_after_disable",
+            consent: .granted,
+            properties: ["token": apiToken]
+        )
+        let capturedAfterDisable = telemetryControls.captured
+        telemetryControls.deleteAll()
+        let telemetryControlTranscript = LinuxTelemetryControlTranscript(
+            bridgeConfig: telemetryControls.bridgeConfig,
+            capturedBeforeDisable: capturedBeforeDisable,
+            exportedEvents: exportedTelemetry,
+            capturedAfterDisable: capturedAfterDisable,
+            countAfterDelete: telemetryControls.export().count
+        )
+        _ = try writeJSON(
+            telemetryControlTranscript,
+            named: "telemetry-controls-transcript.json",
+            in: evidenceDirectory
+        )
+
+        let redactionSeed = "apiKey=\(apiToken) refreshToken=\(refreshSecret) email=\(emailAddress) path=\(configPath) cookie=sessionid prompt=private operator request"
+        let redactionProofs = LinuxRedactionSurfaceEvidence.proofs(seed: redactionSeed)
+        check(redactionProofs.allSatisfy { $0.rawMarkerFound == false }, "all seeded redaction surfaces must be clean")
+        for proof in redactionProofs {
+            _ = try writeString(
+                proof.redactedOutput,
+                named: "redaction-\(proof.surface).txt",
+                in: evidenceDirectory
+            )
+        }
+        _ = try writeJSON(redactionProofs, named: "redaction-surface-negative-scan.json", in: evidenceDirectory)
 
         let guardrail = LinuxCloudSyncPrivacyGuard(uid: "uid-123")
         try guardrail.validateUpload(
@@ -385,6 +518,13 @@ struct LinuxSecurityEvidenceMain {
             watermark: watermark
         ))
         _ = try writeJSON(cloudTrace, named: "cloud-sync-request-response-trace.json", in: evidenceDirectory)
+        var localStaging = LinuxCloudSyncLocalStagingSimulator(uid: "uid-123")
+        let localStagingRows = try localStaging.run()
+        _ = try writeJSON(
+            localStagingRows,
+            named: "cloud-sync-local-staging-transcript.json",
+            in: evidenceDirectory
+        )
 
         let evidence = Evidence(
             secretBackends: [
@@ -394,6 +534,7 @@ struct LinuxSecurityEvidenceMain {
                 audit.metadata.backend + ":" + audit.metadata.trustLevel.rawValue,
                 tokenMetadata.backend + ":" + tokenMetadata.trustLevel.rawValue
             ],
+            secretSetupStatuses: secretSetupRows.map { "\($0.backend):\($0.status)" },
             secretNegativeCases: secretNegativeCases,
             refusedPlaintextFallback: true,
             auth: [
@@ -404,8 +545,14 @@ struct LinuxSecurityEvidenceMain {
                 "signOutRevoked": String(signOut.remoteRevocationAttempted),
                 "localSessionCleared": String(signOut.localSessionCleared)
             ],
+            authProtocol: [
+                authProtocolTranscript.browserLaunch["launcher"] ?? "",
+                authProtocolTranscript.firebaseSignInWithIdp.name,
+                authProtocolTranscript.firebaseRevocation.name
+            ],
             membershipStates: restoredStates,
             membershipArtifacts: membershipArtifacts,
+            membershipCacheUpdates: membershipCacheUpdates.map { "\($0.uid):\($0.state.rawValue):\($0.shellCacheEvent)" },
             telemetry: [
                 "consentDeclinedEventCount": "0",
                 "grantedToken": redactedTelemetry["token"] ?? "",
@@ -417,19 +564,29 @@ struct LinuxSecurityEvidenceMain {
                 "destinations": telemetryCapture.map(\.destination),
                 "events": telemetryCapture.flatMap(\.eventNames)
             ],
+            telemetryControls: [
+                "disabledNoNewEvents": String(capturedAfterDisable.count == capturedBeforeDisable.count),
+                "exportedEvents": String(exportedTelemetry.count),
+                "countAfterDelete": String(telemetryControlTranscript.countAfterDelete)
+            ],
+            redactionSurfaces: redactionProofs.map(\.surface),
             cloudSync: [
                 "allowedPath": "users/uid-123/provider_accounts/provider-1",
                 "bolaDenied": "true",
                 "plaintextDenied": "true",
                 "watermarkAfterCommit": String(watermark ?? -1)
             ],
-            cloudSyncTrace: cloudTrace.map(\.step)
+            cloudSyncTrace: cloudTrace.map(\.step),
+            cloudSyncLocalStaging: localStagingRows.map(\.step)
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let encoded = try encoder.encode(evidence)
         if let evidenceDirectory {
-            try encoded.write(to: evidenceDirectory.appendingPathComponent("linux-security-evidence.json"), options: [.atomic])
+            try encoded.write(
+                to: evidenceDirectory.appendingPathComponent("linux-security-evidence.json"),
+                options: Data.WritingOptions.atomic
+            )
         }
         print(String(data: encoded, encoding: .utf8)!)
     }

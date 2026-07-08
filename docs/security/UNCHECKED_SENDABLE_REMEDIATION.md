@@ -28,6 +28,7 @@ actor, a real `Sendable` payload, or a lock-guarded owned value whenever that is
 | `locked-formatter-cache` | Non-thread-safe formatter caches (ISO8601DateFormatter) | Every cache read/write runs under an NSLock; formatters never escape the lock scope. |
 | `nslock-blocking-outcome` | NSLock-protected generic result boxes | Outcome is set once under lock and read under lock; no concurrent mutation. |
 | `nslock-protected-storage` | NSLock-protected generic mutable storage | All reads and writes run through the lock; no unsynchronized access path. |
+| `serial-queue-confined-watcher` | File-system watcher state confined to one serial DispatchQueue | Every read/write of the watch maps and cancellation flag executes on the owning serial queue (event handler, cancel handler, and rebuild all dispatch there); a lock would misleadingly suggest a sanctioned cross-queue access path. First user: `BurnBarProjectCodeMemoryStore.LinuxFileSystemEventStream` (Linux inotify). |
 | `swift-crypto-key-material` | Swift Crypto / CryptoKit key-material value wrappers | The values are immutable key-material handles passed across module/actor boundaries; OpenBurnBar exposes no shared mutable mutation path and uses them only through deterministic crypto operations. |
 
 ## Current Handoff 2 Additions
