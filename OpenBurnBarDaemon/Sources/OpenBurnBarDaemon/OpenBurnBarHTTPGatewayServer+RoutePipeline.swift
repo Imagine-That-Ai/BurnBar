@@ -480,7 +480,10 @@ extension BurnBarHTTPGatewayServer {
 
                 if let lastError,
                    shouldFailOverProviderError(lastError) {
-                    let returnProviderFailure = shouldReturnFinalProviderFailure(lastError)
+                    let returnProviderFailure = shouldReturnFinalProviderFailure(
+                        lastError,
+                        requestedModel: requestedModel
+                    )
                     if let attemptDegrade = descriptor.attemptDegrade,
                        let degraded = await attemptDegrade(
                            degradeRequest(requestedCanonicalModelID: requiredCanonicalModelID)
@@ -617,7 +620,8 @@ extension BurnBarHTTPGatewayServer {
         return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
     }
 
-    func shouldReturnFinalProviderFailure(_ error: Error) -> Bool {
+    func shouldReturnFinalProviderFailure(_ error: Error, requestedModel: GatewayRequestedModel) -> Bool {
+        guard requestedModel.accountID != nil else { return false }
         guard let providerError = error as? BurnBarProviderExecutorError else { return false }
         return providerError.upstreamStatusAndBody != nil
     }
