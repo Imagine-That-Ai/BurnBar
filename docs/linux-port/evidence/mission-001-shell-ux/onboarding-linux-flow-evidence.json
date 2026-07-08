@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T04:23:40.998Z",
+  "generatedAt": "2026-07-06T03:15:04.104Z",
   "method": "onboardingStore-state-machine-plus-copy-review",
   "linuxPermissionPathPrivacyCopy": {
     "daemonServiceSetup": "AF_UNIX daemon/socket path copy plus openburnbar-cli service foreground guidance.",

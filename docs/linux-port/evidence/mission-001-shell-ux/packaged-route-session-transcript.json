@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T04:23:35.238Z",
+  "generatedAt": "2026-07-06T03:14:58.025Z",
   "mode": "packaged-desktop-route-navigation",
   "surface": "installed-tauri-deb-xvfb-xfce",
   "routeCount": 16,
@@ -13,7 +13,7 @@
     "text-expansion"
   ],
   "daemonOracle": {
-    "generatedAt": "2026-07-06T04:22:51.025Z",
+    "generatedAt": "2026-07-06T03:14:43.094Z",
     "lane": "W06ShellEvidenceRepair",
     "mode": "openburnbar-daemon-af-unix",
     "status": "ready",
@@ -32,11 +32,11 @@
       "screenshot": "screenshot-route-overview.png",
       "xwininfo": "window-route-overview-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"overview\"",
+      "action": "xdotool click visible nav at x=120 y=256 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 1,
@@ -44,11 +44,11 @@
       "screenshot": "screenshot-route-insights.png",
       "xwininfo": "window-route-insights-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"insights\"",
+      "action": "xdotool click visible nav at x=120 y=293 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 2,
@@ -56,11 +56,11 @@
       "screenshot": "screenshot-route-database.png",
       "xwininfo": "window-route-database-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"database\"",
+      "action": "xdotool click visible nav at x=120 y=330 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 3,
@@ -68,11 +68,11 @@
       "screenshot": "screenshot-route-providers.png",
       "xwininfo": "window-route-providers-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"providers\"",
+      "action": "xdotool click visible nav at x=120 y=367 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 4,
@@ -80,11 +80,11 @@
       "screenshot": "screenshot-route-projects.png",
       "xwininfo": "window-route-projects-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"projects\"",
+      "action": "xdotool click visible nav at x=120 y=404 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 5,
@@ -92,11 +92,11 @@
       "screenshot": "screenshot-route-missions.png",
       "xwininfo": "window-route-missions-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"missions\"",
+      "action": "xdotool click visible nav at x=120 y=441 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 6,
@@ -104,11 +104,11 @@
       "screenshot": "screenshot-route-activity.png",
       "xwininfo": "window-route-activity-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"activity\"",
+      "action": "xdotool click visible nav at x=120 y=478 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 7,
@@ -116,11 +116,11 @@
       "screenshot": "screenshot-route-chat.png",
       "xwininfo": "window-route-chat-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"chat\"",
+      "action": "xdotool click visible nav at x=120 y=515 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 8,
@@ -128,11 +128,11 @@
       "screenshot": "screenshot-route-memory.png",
       "xwininfo": "window-route-memory-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"memory\"",
+      "action": "xdotool click visible nav at x=120 y=552 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": false,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 9,
@@ -140,11 +140,11 @@
       "screenshot": "screenshot-route-settings.png",
       "xwininfo": "window-route-settings-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"settings\"",
+      "action": "xdotool click visible nav at x=120 y=618 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": true,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 10,
@@ -152,11 +152,11 @@
       "screenshot": "screenshot-route-account.png",
       "xwininfo": "window-route-account-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"account\"",
+      "action": "xdotool click visible nav at x=120 y=655 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": true,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 11,
@@ -164,11 +164,11 @@
       "screenshot": "screenshot-route-updates.png",
       "xwininfo": "window-route-updates-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"updates\"",
+      "action": "xdotool click visible nav at x=120 y=692 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": true,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 12,
@@ -176,11 +176,11 @@
       "screenshot": "screenshot-route-support.png",
       "xwininfo": "window-route-support-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"support\"",
+      "action": "xdotool click visible nav at x=120 y=729 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": true,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 13,
@@ -188,11 +188,11 @@
       "screenshot": "screenshot-route-onboarding.png",
       "xwininfo": "window-route-onboarding-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"onboarding\"",
+      "action": "xdotool click visible nav at x=120 y=766 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": true,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 14,
@@ -200,11 +200,11 @@
       "screenshot": "screenshot-route-pet.png",
       "xwininfo": "window-route-pet-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"pet\"",
+      "action": "xdotool click visible nav at x=120 y=803 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": true,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     },
     {
       "index": 15,
@@ -212,11 +212,11 @@
       "screenshot": "screenshot-route-text-expansion.png",
       "xwininfo": "window-route-text-expansion-xwininfo.txt",
       "windowId": "10485763",
-      "action": "command palette (ctrl+k) keyboard navigation to \"text-expansion\"",
+      "action": "xdotool click visible nav at x=120 y=840 (fallback)",
       "surface": "installed-tauri-deb-xvfb-xfce",
       "targetScenario": true,
       "daemonOracleMode": "openburnbar-daemon-af-unix",
-      "navMethod": "palette"
+      "coordSource": "fallback"
     }
   ]
 }

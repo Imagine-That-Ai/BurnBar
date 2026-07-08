@@ -14,8 +14,18 @@ import './support.css';
 function usePerfSamples() {
   return useSyncExternalStore(
     (notify) => {
-      const timer = setInterval(notify, 1000);
-      return () => clearInterval(timer);
+      // 5s cadence, gated on visibility: a 1s ungated interval re-rendered
+      // this surface (and re-serialized every perf sample) 60×/min even with
+      // the window hidden — for a diagnostics readout nobody was looking at.
+      const tick = () => {
+        if (!document.hidden) notify();
+      };
+      const timer = setInterval(tick, 5000);
+      document.addEventListener('visibilitychange', tick);
+      return () => {
+        clearInterval(timer);
+        document.removeEventListener('visibilitychange', tick);
+      };
     },
     () => JSON.stringify(listPerfSamples())
   );
