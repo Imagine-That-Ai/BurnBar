@@ -66,7 +66,7 @@ struct DaemonCredentialSlotAccountProjection {
     }
 }
 
-private final class ProviderQuotaAutomaticRefreshLifecycle: Sendable {
+final class ProviderQuotaAutomaticRefreshLifecycle: Sendable {
     private struct State {
         var refreshTask: Task<Void, Never>?
         var apiKeyObserver: NSObjectProtocol?
