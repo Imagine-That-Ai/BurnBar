@@ -1626,9 +1626,20 @@ extension ProviderQuotaService {
     private func displaySnapshotsIncludingCurrentCLI(for provider: AgentProvider) -> [ProviderQuotaSnapshot] {
         let accountSnapshots = snapshots(for: provider)
         guard let currentCLIType = Self.currentCLIType(for: provider),
-              accountSnapshots.contains(where: \.hasDisplayableQuotaSignal),
+              !accountSnapshots.isEmpty,
               let providerSnapshot = snapshot(for: provider),
               providerSnapshot.hasDisplayableQuotaSignal else {
+            return accountSnapshots
+        }
+
+        // A dead scoped profile (expired auth clone, no local sessions) must
+        // not hide the healthy default CLI login's live quota. But the
+        // reverse guard still holds: when no account has a displayable signal,
+        // only a *fresh* provider snapshot earns the synthetic current-login
+        // card — a stale rollup must not resurrect over account cards that
+        // are intentionally bucketless.
+        let anyAccountHasSignal = accountSnapshots.contains(where: \.hasDisplayableQuotaSignal)
+        guard anyAccountHasSignal || !providerSnapshot.isStale() else {
             return accountSnapshots
         }
 

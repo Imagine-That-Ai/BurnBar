@@ -159,6 +159,40 @@ public extension ProviderQuotaAdapterContext {
         )
     }
 
+    /// Replace the Codex rollout scan cache and its write-back. Scoped
+    /// account fetches (e.g. a switcher profile with its own `CODEX_HOME`)
+    /// scan a different directory tree than the default `~/.codex` login;
+    /// letting them write back to the shared cache prunes every entry the
+    /// default scan cached (the default's paths look "stale" from the
+    /// profile's perspective) and persists an empty cache to disk.
+    func withCodexRolloutScanCache(
+        _ cache: CodexRolloutScanCache,
+        update: @Sendable @escaping (CodexRolloutScanCache, Bool) -> Void
+    ) -> ProviderQuotaAdapterContext {
+        ProviderQuotaAdapterContext(
+            appPaths: appPaths,
+            fileManager: fileManager,
+            session: session,
+            environment: environment,
+            homeDirectoryURL: homeDirectoryURL,
+            snapshotStore: snapshotStore,
+            bridgeManager: bridgeManager,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
+            codexRolloutScanCache: cache,
+            updateCodexRolloutScanCache: update,
+            claudeCredentialsReader: claudeCredentialsReader,
+            resolvedAPIKeys: resolvedAPIKeys,
+            secretStore: secretStore,
+            cliExecutor: cliExecutor,
+            quotaLogger: quotaLogger
+        )
+    }
+
     func withClaudeCredentialsReader(_ reader: any ClaudeCredentialsReading) -> ProviderQuotaAdapterContext {
         ProviderQuotaAdapterContext(
             appPaths: appPaths,
