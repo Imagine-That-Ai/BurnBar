@@ -1,4 +1,4 @@
 +;eth0;IPv4;AWTRIX\032PixelClock;Web Site;local
 +;lo;IPv4;AWTRIX\032PixelClock;Web Site;local
-=;eth0;IPv4;AWTRIX\032PixelClock;Web Site;local;88701c21477b.local;172.17.0.3;18081;"openburnbar=1" "model=awtrix-light" "id=awtrix-sim"
-=;lo;IPv4;AWTRIX\032PixelClock;Web Site;local;88701c21477b.local;127.0.0.1;18081;"openburnbar=1" "model=awtrix-light" "id=awtrix-sim"
+=;eth0;IPv4;AWTRIX\032PixelClock;Web Site;local;4434109eb686.local;172.17.0.2;18081;"openburnbar=1" "model=awtrix-light" "id=awtrix-sim"
+=;lo;IPv4;AWTRIX\032PixelClock;Web Site;local;4434109eb686.local;127.0.0.1;18081;"openburnbar=1" "model=awtrix-light" "id=awtrix-sim"

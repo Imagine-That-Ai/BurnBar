@@ -1,11 +1,11 @@
 ### health
 command=openburnbar-cli health
-Daemon evidence-daemon | protocol 1 | socket /tmp/tmp.8X0tzUzqRv/socket/openburnbar.sock | ok=true
+Daemon evidence-daemon | protocol 1 | socket /tmp/tmp.nBByttkozi/socket/openburnbar.sock | ok=true
 exit_code=0
 
 ### health json
 command=openburnbar-cli health --json
-Daemon evidence-daemon | protocol 1 | socket /tmp/tmp.8X0tzUzqRv/socket/openburnbar.sock | ok=true
+Daemon evidence-daemon | protocol 1 | socket /tmp/tmp.nBByttkozi/socket/openburnbar.sock | ok=true
 exit_code=0
 
 ### service status
@@ -13,7 +13,7 @@ command=openburnbar-cli service status
 service=running
 daemon_version=evidence-daemon
 protocol=1
-socket=/tmp/tmp.8X0tzUzqRv/socket/openburnbar.sock
+socket=/tmp/tmp.nBByttkozi/socket/openburnbar.sock
 gateway=enabled
 exit_code=0
 
@@ -22,7 +22,7 @@ command=openburnbar-cli service foreground
 service=foreground
 daemon_version=evidence-daemon
 protocol=1
-socket=/tmp/tmp.8X0tzUzqRv/socket/openburnbar.sock
+socket=/tmp/tmp.nBByttkozi/socket/openburnbar.sock
 gateway=enabled
 exit_code=0
 
@@ -53,13 +53,13 @@ command=openburnbar-cli capabilities --json
 exit_code=0
 
 ### diagnostics bundle
-command=openburnbar-cli diagnostics --output /tmp/tmp.8X0tzUzqRv/diagnostics
-diagnostics=/tmp/tmp.8X0tzUzqRv/diagnostics/diagnostics.json
+command=openburnbar-cli diagnostics --output /tmp/tmp.nBByttkozi/diagnostics
+diagnostics=/tmp/tmp.nBByttkozi/diagnostics/diagnostics.json
 exit_code=0
 
 ### subscribe health
 command=openburnbar-cli subscribe health
-subscription_id=cli-health-A5A6F839-C1A2-414F-8C7C-888AEFA207AA
+subscription_id=cli-health-0596C72F-89BC-4713-A88B-3F71B8A5F3D3
 topic=health
 seq=1
 cursor=1
@@ -74,8 +74,8 @@ event_seq=1 event_kind=health.snapshot terminal=true
 exit_code=0
 
 ### subscription resume health
-command=openburnbar-cli subscription-resume cli-health-A5A6F839-C1A2-414F-8C7C-888AEFA207AA --topic health --after-seq 1
-subscription_id=cli-health-A5A6F839-C1A2-414F-8C7C-888AEFA207AA
+command=openburnbar-cli subscription-resume cli-health-0596C72F-89BC-4713-A88B-3F71B8A5F3D3 --topic health --after-seq 1
+subscription_id=cli-health-0596C72F-89BC-4713-A88B-3F71B8A5F3D3
 topic=health
 seq=2
 cursor=2
@@ -90,8 +90,8 @@ event_seq=2 event_kind=health.resume_snapshot terminal=true
 exit_code=0
 
 ### subscription resume health after daemon restart
-command=openburnbar-cli subscription-resume cli-health-A5A6F839-C1A2-414F-8C7C-888AEFA207AA --topic health --after-seq 1
-subscription_id=cli-health-A5A6F839-C1A2-414F-8C7C-888AEFA207AA
+command=openburnbar-cli subscription-resume cli-health-0596C72F-89BC-4713-A88B-3F71B8A5F3D3 --topic health --after-seq 1
+subscription_id=cli-health-0596C72F-89BC-4713-A88B-3F71B8A5F3D3
 topic=health
 seq=2
 cursor=2
@@ -107,7 +107,7 @@ exit_code=0
 
 ### run create mock provider
 command=openburnbar-cli run create --prompt linux evidence run --model gpt-5.5 --mock-provider
-run_id=F27F3EFD-591C-4BE1-B382-698A1B6B7C36
+run_id=058A091A-B227-4C4A-90CB-A43BECC56AE0
 phase=completed
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
@@ -115,12 +115,12 @@ exit_code=0
 
 ### run list
 command=openburnbar-cli run list
-run_id=F27F3EFD-591C-4BE1-B382-698A1B6B7C36 phase=completed session_id=openburnbar-cli-session model=gpt-5.5
+run_id=058A091A-B227-4C4A-90CB-A43BECC56AE0 phase=completed session_id=openburnbar-cli-session model=gpt-5.5
 exit_code=0
 
 ### run get
-command=openburnbar-cli run get F27F3EFD-591C-4BE1-B382-698A1B6B7C36
-run_id=F27F3EFD-591C-4BE1-B382-698A1B6B7C36
+command=openburnbar-cli run get 058A091A-B227-4C4A-90CB-A43BECC56AE0
+run_id=058A091A-B227-4C4A-90CB-A43BECC56AE0
 phase=completed
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
@@ -128,13 +128,13 @@ model=gpt-5.5
 exit_code=0
 
 ### run poll
-command=openburnbar-cli run poll F27F3EFD-591C-4BE1-B382-698A1B6B7C36
-run_id=F27F3EFD-591C-4BE1-B382-698A1B6B7C36 phase=completed session_id=openburnbar-cli-session
+command=openburnbar-cli run poll 058A091A-B227-4C4A-90CB-A43BECC56AE0
+run_id=058A091A-B227-4C4A-90CB-A43BECC56AE0 phase=completed session_id=openburnbar-cli-session
 exit_code=0
 
 ### subscribe run
-command=openburnbar-cli subscribe run F27F3EFD-591C-4BE1-B382-698A1B6B7C36
-subscription_id=cli-run-91ECEB2F-8B2A-4852-9793-F1C09F5A5D03
+command=openburnbar-cli subscribe run 058A091A-B227-4C4A-90CB-A43BECC56AE0
+subscription_id=cli-run-FC714FAF-CB04-4526-A9C1-CA048221D3BB
 topic=run
 seq=1
 cursor=1
