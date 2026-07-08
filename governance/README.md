@@ -81,6 +81,7 @@ These were read from `.github/workflows/*` on 2026-06-30:
 | `Daemon Swift tests (proxy + router + quota)` | `daemon-pr-gate.yml` | `daemon-swift` | |
 | `Release build (debug-only escape hatches compiled out)` | `daemon-pr-gate.yml` | `release-build-verification` | |
 | `Android ktlint` | `android-ktlint.yml` | `android-ktlint` | |
+| `diff-coverage (PR)` | `fast-feedback.yml` | `diff-coverage-ts` | **Pending-required** (in `_pending_required_status_checks`, not yet in the required set). Emitted on every PR as of 2026-07-08; real changed-line TS coverage. Standalone context — intentionally **not** in the `fast-feedback-gate` aggregate so it can be promoted independently. See § "The `diff-coverage (PR)` placeholder". |
 
 `"PR Security Gate"` is a **workflow name** (`security-pr.yml`), not a check-run — GitHub cannot
 require a workflow, only its jobs — so it expands into the thirteen `security-pr.yml` job contexts
@@ -88,13 +89,34 @@ above (which include `Firestore Security Rules Tests`).
 
 ### The `diff-coverage (PR)` placeholder
 
-`_pending_required_status_checks` holds `diff-coverage (PR)` — the re-armed diff-coverage gate. It is
-**segregated on purpose**: no workflow emits it yet, and a required context that is never reported
-leaves every PR pending forever. Keep it here as declared intent, and promote it into
-`required_status_checks.contexts` (and the live ruleset) in the *same* change that lands its emitting
-workflow — never before. Context: the previous diff-coverage gate was gamed with presence-based
-carve-outs on the privileged-input files and then dropped from CI (`DILIGENCE_REPORT_2026-06-11.md`),
-so re-arming it is future-required work, not something to fake-require today.
+`_pending_required_status_checks` holds `diff-coverage (PR)` — the re-armed diff-coverage gate.
+
+**As of 2026-07-08 an emitting workflow exists.** The `diff-coverage-ts` job in
+[`fast-feedback.yml`](../.github/workflows/fast-feedback.yml) reports the `diff-coverage (PR)`
+check-run on every `pull_request`. It computes *real* per-line coverage for the changed TypeScript
+surface (functions + extension) from the v8/istanbul `coverage-final.json` and intersects it with the
+added runtime lines of `git diff origin/main HEAD`, failing below 80%
+([`scripts/diff-coverage-ts.sh`](../scripts/diff-coverage-ts.sh)). It has **no presence-based
+fallback** — the exact anti-pattern that let PR #303 flip a 3.2% red check green
+(`DILIGENCE_REPORT_2026-06-11.md` §5.1, finding CG-1): the script fails closed with
+`method: istanbul_evidence_missing` when a changed runtime file has no per-line coverage evidence.
+When no functions/extension TypeScript changed, the job reports a fast pass, so the context still
+resolves on every PR (required-safe) at near-zero cost.
+
+The context stays in `_pending_required_status_checks` (**not** yet in `required_status_checks.contexts`)
+**on purpose**: making it *required* is an operator-only branch-protection / ruleset change, and it
+should be flipped only after the context is observed reporting green on a real PR. **Activation
+(operator):** move `diff-coverage (PR)` from `_pending_required_status_checks` into
+`required_status_checks.contexts` in this file **and** add it to the live org ruleset, in the same
+change — never before it is observed reporting.
+
+**Scope / follow-on.** This gate covers the **TypeScript surface only** (functions + extension), where
+vitest + `@vitest/coverage-v8` already run cheaply. Swift/native diff-coverage
+([`scripts/diff-coverage.sh`](../scripts/diff-coverage.sh)) runs post-merge/nightly inside
+[`openburnbar-pr-harness.yml`](../.github/workflows/openburnbar-pr-harness.yml), which is **not** a
+`pull_request` gate — so Swift changed-line coverage is not yet enforced on PRs. Enforcing it on PRs
+needs a PR-triggered macOS lane that runs `xcodebuild`/`swift test` with coverage (expensive); that is
+tracked as a deliberate follow-on, not faked here.
 
 ### Application nuances (read before wiring live)
 
