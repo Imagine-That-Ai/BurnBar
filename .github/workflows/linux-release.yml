@@ -66,6 +66,13 @@ jobs:
           openburnbar-linux-toolchain:mission-001
           node scripts/linux-port/smoke-linux-packages.mjs
 
+      - name: Restore SPM resolved files mutated by the Linux build
+        # The container Linux build deterministically re-resolves and drops the
+        # macOS-only sqlcipher.swift pin, mutating the tracked Package.resolved.
+        # Restore it so the strict verifier's clean-worktree check binds to the
+        # committed release commit rather than failing on expected Linux drift.
+        run: git checkout -- OpenBurnBarCore/Package.resolved OpenBurnBarDaemon/Package.resolved
+
       - name: Strict Linux release verification
         run: node scripts/linux-port/verify-linux-release.mjs
 
