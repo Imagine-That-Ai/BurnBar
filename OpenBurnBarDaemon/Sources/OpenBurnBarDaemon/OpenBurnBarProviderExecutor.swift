@@ -1,7 +1,14 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
+#if canImport(Security)
 import Security
+#endif
 
 public struct BurnBarProviderExecutionResult: Sendable {
     public let outputText: String
@@ -113,7 +120,9 @@ public enum BurnBarProxyStreaming {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 300
         configuration.timeoutIntervalForResource = 86_400
+        #if !os(Linux)
         configuration.waitsForConnectivity = true
+        #endif
         configuration.httpShouldUsePipelining = false
         return URLSession(configuration: configuration)
     }()
@@ -126,6 +135,29 @@ public enum BurnBarProxyStreaming {
         request: URLRequest,
         defaultContentType: String
     ) async throws -> BurnBarProviderProxyStream {
+        #if os(Linux)
+        let delegate = LinuxURLSessionByteStreamDelegate(defaultContentType: defaultContentType)
+        let stream = delegate.makeStream()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 300
+        configuration.timeoutIntervalForResource = 86_400
+        configuration.httpShouldUsePipelining = false
+        let streamingSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        let task = streamingSession.dataTask(with: request)
+        delegate.setTerminationHandler {
+            task.cancel()
+            streamingSession.invalidateAndCancel()
+        }
+        task.resume()
+
+        let response = try await delegate.awaitHTTPResponse()
+
+        return BurnBarProviderProxyStream(
+            statusCode: response.statusCode,
+            contentType: response.contentType,
+            chunks: stream
+        )
+        #else
         let (bytes, response) = try await session.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw BurnBarProviderExecutorError.invalidResponse
@@ -186,6 +218,7 @@ public enum BurnBarProxyStreaming {
             contentType: contentType,
             chunks: stream
         )
+        #endif
     }
 
     static func appendBytePreservingStreamFraming(_ byte: UInt8, to buffer: inout Data) -> Data? {
@@ -201,6 +234,157 @@ public enum BurnBarProxyStreaming {
         return chunk
     }
 }
+
+#if os(Linux)
+// All mutable state (continuations, buffered result, termination handler) is guarded
+// by the NSLock below; the NSObject/URLSessionDataDelegate constraint rules out an
+// actor. sendable-allowlist: nslock-protected-storage
+private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    struct ResponseHead {
+        let statusCode: Int
+        let contentType: String
+    }
+
+    private let lock = NSLock()
+    private let defaultContentType: String
+    private var responseContinuation: CheckedContinuation<ResponseHead, Error>?
+    private var responseResult: Result<ResponseHead, Error>?
+    private var streamContinuation: AsyncThrowingStream<Data, Error>.Continuation?
+    private var terminationHandler: (() -> Void)?
+    private var successStatusCode: Int?
+    private var upstreamErrorStatusCode: Int?
+    private var upstreamErrorData = Data()
+    private var finished = false
+
+    init(defaultContentType: String) {
+        self.defaultContentType = defaultContentType
+    }
+
+    func makeStream() -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { continuation in
+            lock.lock()
+            streamContinuation = continuation
+            lock.unlock()
+
+            continuation.onTermination = { [weak self] _ in
+                self?.lock.lock()
+                let handler = self?.terminationHandler
+                self?.lock.unlock()
+                handler?()
+            }
+        }
+    }
+
+    func setTerminationHandler(_ handler: @escaping () -> Void) {
+        lock.lock()
+        terminationHandler = handler
+        lock.unlock()
+    }
+
+    func awaitHTTPResponse() async throws -> ResponseHead {
+        try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
+            if let responseResult {
+                lock.unlock()
+                continuation.resume(with: responseResult)
+            } else {
+                responseContinuation = continuation
+                lock.unlock()
+            }
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            completeResponse(.failure(BurnBarProviderExecutorError.invalidResponse))
+            completionHandler(.cancel)
+            return
+        }
+
+        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? defaultContentType
+        if (200..<300).contains(httpResponse.statusCode) {
+            lock.lock()
+            successStatusCode = httpResponse.statusCode
+            lock.unlock()
+            completeResponse(.success(ResponseHead(statusCode: httpResponse.statusCode, contentType: contentType)))
+        } else {
+            lock.lock()
+            upstreamErrorStatusCode = httpResponse.statusCode
+            lock.unlock()
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        let isSuccess = successStatusCode != nil
+        let continuation = streamContinuation
+        if !isSuccess, upstreamErrorData.count < 64 * 1024 {
+            upstreamErrorData.append(data.prefix(max(0, 64 * 1024 - upstreamErrorData.count)))
+        }
+        lock.unlock()
+
+        if isSuccess, !data.isEmpty {
+            continuation?.yield(data)
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        let continuation = streamContinuation
+        let upstreamStatus = upstreamErrorStatusCode
+        let upstreamBody = String(data: upstreamErrorData, encoding: .utf8) ?? ""
+        let sawSuccess = successStatusCode != nil
+        lock.unlock()
+
+        defer { session.finishTasksAndInvalidate() }
+
+        if let error {
+            completeResponse(.failure(error))
+            continuation?.finish(throwing: error)
+            return
+        }
+
+        if let upstreamStatus {
+            let upstreamError = BurnBarProviderExecutorError.upstreamError(upstreamStatus, upstreamBody)
+            completeResponse(.failure(upstreamError))
+            continuation?.finish(throwing: upstreamError)
+            return
+        }
+
+        if sawSuccess {
+            continuation?.finish()
+        } else {
+            let invalid = BurnBarProviderExecutorError.invalidResponse
+            completeResponse(.failure(invalid))
+            continuation?.finish(throwing: invalid)
+        }
+    }
+
+    private func completeResponse(_ result: Result<ResponseHead, Error>) {
+        lock.lock()
+        if responseResult == nil {
+            responseResult = result
+            let continuation = responseContinuation
+            responseContinuation = nil
+            lock.unlock()
+            continuation?.resume(with: result)
+        } else {
+            lock.unlock()
+        }
+    }
+}
+#endif
 
 public struct BurnBarStructuredPromptRequest: Sendable {
     public let systemPrompt: String?
@@ -1046,9 +1230,15 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             let newRefreshToken = (json["refresh_token"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .nilIfEmpty ?? refreshToken
-            let expiresIn = (json["expires_in"] as? Double)
-                ?? (json["expires_in"] as? Int).map(Double.init)
-                ?? 8 * 60 * 60
+            let expiresValue = json["expires_in"]
+            let expiresIn: Double
+            if let seconds = expiresValue as? Double {
+                expiresIn = seconds
+            } else if let seconds = expiresValue as? Int {
+                expiresIn = Double(seconds)
+            } else {
+                expiresIn = 8 * 60 * 60
+            }
             return credential.refreshed(
                 accessToken: newAccessToken,
                 refreshToken: newRefreshToken,
@@ -1060,6 +1250,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     }
 
     private func secret(forService service: String, account: String) throws -> String? {
+#if canImport(Security) && canImport(LocalAuthentication)
         let context = LAContext()
         context.interactionNotAllowed = true
         let query: [String: Any] = [
@@ -1090,6 +1281,9 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded?.isEmpty == false ? decoded : nil
+#else
+        return nil
+#endif
     }
 
     public func setSecret(_ secret: String?, for providerID: String) async throws {
@@ -1098,6 +1292,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             return
         }
 
+#if canImport(Security) && canImport(LocalAuthentication)
         let account = "provider.\(providerID).apiKey"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -1142,6 +1337,13 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
         }
+#else
+        throw NSError(
+            domain: "BurnBarProviderKeychainSecretStore",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Provider keychain secrets are unavailable on this platform."]
+        )
+#endif
     }
 
     private func hermesCredentialPoolSecret(for providerID: String) -> String? {

@@ -1,0 +1,40 @@
+{
+  "keyKind" : "ed25519",
+  "limits" : {
+    "deviceOrSimulatorAttached" : false,
+    "note" : "No mobile simulator\/device is attached in this Linux evidence container; this artifact is the accepted signed replay rig path."
+  },
+  "pairingAuth" : {
+    "capabilities" : [
+      "computer_use",
+      "panic_halt"
+    ],
+    "localAuthProofId" : "linux-mobile-local-auth-proof",
+    "localAuthProofSignatureValid" : true,
+    "localAuthSignedIntentHash" : "7b17ffe8cea6aca937baaa78791948b1fd9bf523726ffa9189290c4d52be06c2",
+    "trustMode" : "manual"
+  },
+  "panicAuthority" : {
+    "counter" : 1,
+    "intentHashHex" : "6d22410993af0b23cabba242ac4485dbd4509d8c6e4aebaaf137f9f1cc6df7ac",
+    "signatureValid" : true,
+    "verifiedBySharedSigner" : true,
+    "wireFrameType" : "controlPanicHalt"
+  },
+  "peerNodeId" : "ios-phone-73246b7ec2e595a80f1b8a4a",
+  "publicKeySHA256Hex" : "13b049e472af1159710ae05056ed921eb4118db808caddbcf1eaf0f68042fc72",
+  "rig" : "signed protocol replay",
+  "target" : "VAL-MOBILE-001",
+  "wireCompatibility" : {
+    "compatible" : true,
+    "linuxAdditions" : [
+      "linuxCapabilityMetadata"
+    ],
+    "removedFields" : [
+
+    ],
+    "renamedFields" : [
+
+    ]
+  }
+}

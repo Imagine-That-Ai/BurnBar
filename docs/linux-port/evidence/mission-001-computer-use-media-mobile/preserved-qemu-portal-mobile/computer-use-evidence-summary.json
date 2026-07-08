@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-07-04T14:33:09.465Z",
+  "targetIds": [
+    "VAL-CU-001",
+    "VAL-CU-002",
+    "VAL-CU-003",
+    "VAL-MEDIA-001",
+    "VAL-MOBILE-001",
+    "VAL-SEC-003"
+  ],
+  "modelTest": {
+    "command": "npm test -- computerUseLinux",
+    "exitCode": 0,
+    "durationMs": 2122
+  },
+  "audit": "audit-signing-verification.json",
+  "halt": "panic-halt-benchmarks.json",
+  "media": {
+    "irohLoopbackCommand": "docker inner Linux iroh loopback",
+    "exitCode": 0,
+    "durationMs": 123874,
+    "timing": "media-lan-stage-timing.json",
+    "codecTrace": "computer-use-media-codec-trace.json"
+  },
+  "portal": {
+    "lifecycleAttempt": "portal-consent-lifecycle-attempt.json",
+    "commandLog": "portal-consent-lifecycle-command.log",
+    "exitCode": 0,
+    "passed": true
+  },
+  "mobile": {
+    "replay": "computer-use-mobile-protocol-replay.json",
+    "pairingAuth": "mobile-pairing-auth-evidence.json"
+  },
+  "productEvidence": {
+    "swift": "product-computer-use-evidence.json",
+    "audit": "product-audit-evidence.json",
+    "cliAuditVerify": "audit-signing-verification.json"
+  },
+  "inputAdapter": {
+    "selected": "at-spi2",
+    "passed": true,
+    "proof": "wayland-atspi-input-adapter-proof.json",
+    "decision": "input-adapter-decision-proof.json",
+    "productAudit": "product-input-adapter-audit.json"
+  },
+  "targetStatus": "computer-use-target-status.json",
+  "platform": {
+    "dockerProbe": {
+      "skipped": false,
+      "exitCode": 0,
+      "durationMs": 123874,
+      "cargoCache": "/var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/openburnbar-cu-cargo-cache"
+    },
+    "waylandProvisioning": {
+      "status": "skipped",
+      "enabled": false,
+      "summary": null,
+      "missingCapabilities": []
+    },
+    "portalLog": "portal-capture-log.txt",
+    "waylandProfile": "wayland-desktop-session-profile.json",
+    "waylandProvisioningAttempt": "wayland-provisioning-attempt.json",
+    "waylandInputAdapterDecision": "wayland-input-adapter-decision.json",
+    "x11Input": "x11-input-transcript.json",
+    "limitations": "platform-limitation-matrix.json"
+  },
+  "mobileLive": {
+    "available": true,
+    "probe": "mobile-live-surface-probe.json",
+    "linuxPeerTranscript": "linux-peer-mobile-control-transcript.json",
+    "focusedTests": null,
+    "replayOracle": "mobile-replay-oracle.md"
+  }
+}

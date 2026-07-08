@@ -1,7 +1,15 @@
 import OpenBurnBarCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 private let resumeSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
