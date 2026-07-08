@@ -224,6 +224,7 @@ struct HermesSquareRoot: View {
             squareContent
         }
         .navigationTitle("Agents")
+        .accessibilityIdentifier("screen.agents")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .task {
