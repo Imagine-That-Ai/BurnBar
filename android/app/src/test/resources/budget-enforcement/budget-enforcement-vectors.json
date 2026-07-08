@@ -1,0 +1,483 @@
+{
+  "schemaVersion": 1,
+  "description": "Cross-platform budget-enforcement contract vectors. Expected decisions are derived from the reference implementation: OpenBurnBarCore/Sources/OpenBurnBarCore/Budget/BudgetGate.swift (warningThreshold 0.8, projected = spend + max(0, estimatedCost), projectedPercent thresholds: warn >= 0.8, block >= 1.0). A rule id listed in ledger.unreadable, or absent from ledger.spend, throws on read (fail-closed path). See tests/fixtures/budget-enforcement/README.md for the schema and coverage matrix.",
+  "vectors": [
+    {
+      "id": "credential-hardblock-at-limit-blocks",
+      "description": "credential-scope hardBlock rule blocks when projected spend reaches 100% of the limit",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 99.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 99.0, "limit": 100.0 }
+    },
+    {
+      "id": "credential-hardblock-below-limit-allows-without-warn",
+      "description": "hardBlock has no warn band: 91% projected spend still allows",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 90.0 }, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null }
+    },
+    {
+      "id": "project-scope-blocks-at-limit",
+      "description": "project-scope rule matched by request projectName blocks at 100%",
+      "rules": [
+        { "id": "r1", "scope": "project", "identifier": null, "providerID": null, "accountID": null, "projectName": "burnbar", "label": "BurnBar project cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": "burnbar", "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "project-rule-ignored-without-project-name",
+      "description": "a project rule is invisible to a request that carries no projectName; its ledger is never read",
+      "rules": [
+        { "id": "r1", "scope": "project", "identifier": null, "providerID": null, "accountID": null, "projectName": "burnbar", "label": "BurnBar project cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null, "noLedgerReads": true }
+    },
+    {
+      "id": "global-warnthenblock-warn-band-warns",
+      "description": "global-scope warnThenBlock rule warns in the 80-100% band",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "warnThenBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 85.0 }, "unreadable": [] },
+      "expected": { "decision": "warn", "ruleID": "r1", "fallbackCredentialID": null, "used": 85.0, "limit": 100.0, "usedPercent": 0.85 }
+    },
+    {
+      "id": "warnonly-under-threshold-allows",
+      "description": "warnOnly rule under the 80% warning threshold allows",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Observability cap", "amountUSD": 100, "period": "month", "behavior": "warnOnly", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 70.0 }, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null }
+    },
+    {
+      "id": "warnonly-at-warning-threshold-warns",
+      "description": "warnOnly warns when projected spend hits exactly 80% (threshold is inclusive); reported usedPercent reflects used, not projected",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Observability cap", "amountUSD": 100, "period": "month", "behavior": "warnOnly", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 79.0 }, "unreadable": [] },
+      "expected": { "decision": "warn", "ruleID": "r1", "fallbackCredentialID": null, "used": 79.0, "limit": 100.0, "usedPercent": 0.79 }
+    },
+    {
+      "id": "warnonly-over-limit-warns-never-blocks",
+      "description": "warnOnly is contractually non-blocking: 150% spend still only warns",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Observability cap", "amountUSD": 100, "period": "month", "behavior": "warnOnly", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 150.0 }, "unreadable": [] },
+      "expected": { "decision": "warn", "ruleID": "r1", "fallbackCredentialID": null, "used": 150.0, "limit": 100.0, "usedPercent": 1.5 }
+    },
+    {
+      "id": "warnthenblock-under-threshold-allows",
+      "description": "warnThenBlock allows under the 80% warning threshold",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "warnThenBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 50.0 }, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null }
+    },
+    {
+      "id": "warnthenblock-blocks-at-limit-without-prior-warn",
+      "description": "warnThenBlock blocks the moment projected spend reaches 100%, with no prior warn required",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "warnThenBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 99.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 99.0, "limit": 100.0 }
+    },
+    {
+      "id": "hardblockwithfallback-under-threshold-allows",
+      "description": "hardBlockWithFallback under the warning threshold allows; the fallback candidate is never consulted",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 10.0, "rf": 0.0 }, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null }
+    },
+    {
+      "id": "hardblockwithfallback-warn-band-warns",
+      "description": "hardBlockWithFallback warns in the 80-100% band; no fallback attaches to a warn",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 85.0, "rf": 0.0 }, "unreadable": [] },
+      "expected": { "decision": "warn", "ruleID": "r1", "fallbackCredentialID": null, "used": 85.0, "limit": 100.0, "usedPercent": 0.85 }
+    },
+    {
+      "id": "unreadable-spend-hardblock-fails-closed",
+      "description": "unreadable ledger fails CLOSED for hardBlock: block with used treated as at-limit",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 50, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": ["r1"] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 50.0, "limit": 50.0 }
+    },
+    {
+      "id": "unreadable-spend-warnthenblock-fails-closed",
+      "description": "unreadable ledger fails CLOSED for warnThenBlock: block with used treated as at-limit",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 50, "period": "month", "behavior": "warnThenBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": ["r1"] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 50.0, "limit": 50.0 }
+    },
+    {
+      "id": "unreadable-spend-warnonly-fails-to-warn",
+      "description": "warnOnly cannot block, so an unreadable ledger surfaces a warn at 100% instead of silently allowing",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Observability cap", "amountUSD": 50, "period": "month", "behavior": "warnOnly", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": ["r1"] },
+      "expected": { "decision": "warn", "ruleID": "r1", "fallbackCredentialID": null, "used": 50.0, "limit": 50.0, "usedPercent": 1.0 }
+    },
+    {
+      "id": "unreadable-spend-hardblockwithfallback-fails-closed-resolves-fallback",
+      "description": "unreadable ledger fails CLOSED for hardBlockWithFallback and still resolves a healthy fallback candidate",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "rf": 0.0 }, "unreadable": ["r1"] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": "rf", "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "org-identifier-matches-slot-id-blocks",
+      "description": "org rule identifier matching the request slotID passes the prefilter and blocks at limit",
+      "rules": [
+        { "id": "r1", "scope": "organization", "identifier": "acme-org", "providerID": null, "accountID": null, "projectName": null, "label": "Acme org cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "acme-org", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "org-identifier-matches-display-label-blocks",
+      "description": "org rule identifier matching the request displayLabel passes the prefilter and blocks at limit",
+      "rules": [
+        { "id": "r1", "scope": "organization", "identifier": "acme-org", "providerID": null, "accountID": null, "projectName": null, "label": "Acme org cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "acme-org", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "org-identifier-matches-provider-account-id-blocks",
+      "description": "org rule identifier matching the request providerAccountID passes the prefilter and blocks at limit",
+      "rules": [
+        { "id": "r1", "scope": "organization", "identifier": "acme-org", "providerID": null, "accountID": null, "projectName": null, "label": "Acme org cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": "acme-org", "providerAccountLabel": "Acme Corp", "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "org-identifier-matches-provider-account-label-blocks",
+      "description": "org rule identifier matching the request providerAccountLabel passes the prefilter and blocks at limit",
+      "rules": [
+        { "id": "r1", "scope": "organization", "identifier": "acme-org", "providerID": null, "accountID": null, "projectName": null, "label": "Acme org cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": "acct-77", "providerAccountLabel": "acme-org", "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "org-identity-less-gateway-credential-passes-prefilter",
+      "description": "a gateway credential with no provider-account identity keeps org rules in play (the ledger, not the prefilter, decides)",
+      "rules": [
+        { "id": "r1", "scope": "organization", "identifier": "acme-org", "providerID": null, "accountID": null, "projectName": null, "label": "Acme org cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openai-compatible", "slotID": "gw-host", "displayLabel": "gateway", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "org-non-matching-rule-ignored",
+      "description": "an org rule whose identifier matches none of the four identity fields of an identity-carrying credential is ignored without a ledger read",
+      "rules": [
+        { "id": "r1", "scope": "organization", "identifier": "acme-org", "providerID": null, "accountID": null, "projectName": null, "label": "Acme org cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": "other-org", "providerAccountLabel": "Other org", "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null, "noLedgerReads": true }
+    },
+    {
+      "id": "org-blank-account-fields-treated-as-missing",
+      "description": "blank-string providerAccountID/providerAccountLabel are treated as missing, so the credential counts as identity-less and org rules stay in play",
+      "rules": [
+        { "id": "r1", "scope": "organization", "identifier": "acme-org", "providerID": null, "accountID": null, "projectName": null, "label": "Acme org cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openai-compatible", "slotID": "gw-host", "displayLabel": "gateway", "providerAccountID": "", "providerAccountLabel": "   ", "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "org-blank-identifier-rule-ignored",
+      "description": "an org rule with a blank identifier can never match and is ignored without a ledger read",
+      "rules": [
+        { "id": "r1", "scope": "organization", "identifier": "   ", "providerID": null, "accountID": null, "projectName": null, "label": "Broken org cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null, "noLedgerReads": true }
+    },
+    {
+      "id": "fallback-resolved-happy-path",
+      "description": "hardBlockWithFallback at limit resolves the configured healthy fallback credential",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0, "rf": 10.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": "rf", "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-identity-billing-mode-unknown",
+      "description": "a hardBlockWithFallback credential blocker resolves its fallback to the configured credential (whose identity the gate always stamps billingMode=unknown). A global blocker cannot be used here: a global cap applies to the fallback candidate too and would correctly disqualify it.",
+      "rules": [
+        { "id": "rg", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "Primary cap", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "rg": 100.0, "rf": 0.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "rg", "fallbackCredentialID": "rf", "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-disqualified-by-own-cap",
+      "description": "a fallback candidate whose own rule would block the same estimated request is disqualified",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0, "rf": 199.5 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-disqualified-by-global-rule",
+      "description": "a fallback candidate is disqualified when a global rule at its limit would block the promoted request",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null },
+        { "id": "rg", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 50, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0, "rf": 0.0, "rg": 50.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-disqualified-by-unreadable-spend",
+      "description": "a fallback candidate whose own spend is unreadable is disqualified (fail-closed on the fallback path)",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": ["rf"] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-unknown-id-resolves-null",
+      "description": "a fallback id that references no known rule resolves to no fallback",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["ghost"], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-same-slot-as-blocker-ignored",
+      "description": "a fallback candidate pointing at the same provider+slot as the blocking rule is never offered as its own fallback",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter duplicate", "amountUSD": 500, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0, "rf": 0.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-ordered-list-skips-disqualified-candidate",
+      "description": "fallback resolution walks the ordered id list and promotes the first candidate that can accept the request",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rfA", "rfB"], "pausedUntil": null },
+        { "id": "rfA", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-8", "projectName": null, "label": "Anthropic backup A", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null },
+        { "id": "rfB", "scope": "credential", "identifier": null, "providerID": "openai", "accountID": "slot-9", "projectName": null, "label": "OpenAI backup B", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0, "rfA": 100.0, "rfB": 0.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": "rfB", "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-non-credential-scope-candidate-ignored",
+      "description": "only credential-scope rules can be fallback candidates; a project-scope id resolves to no fallback",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rp"], "pausedUntil": null },
+        { "id": "rp", "scope": "project", "identifier": null, "providerID": null, "accountID": null, "projectName": "ops", "label": "Ops project cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "fallback-disabled-candidate-ignored",
+      "description": "a disabled fallback candidate is never promoted",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlockWithFallback", "isEnabled": true, "fallbackCredentialIDs": ["rf"], "pausedUntil": null },
+        { "id": "rf", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-9", "projectName": null, "label": "Anthropic backup", "amountUSD": 200, "period": "month", "behavior": "hardBlock", "isEnabled": false, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0, "rf": 0.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "paused-rule-reports-paused",
+      "description": "a paused rule reports paused (with its resume time) and never reads the ledger",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": "2026-06-15T13:00:00Z" }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "paused", "ruleID": "r1", "fallbackCredentialID": null, "resumeAt": "2026-06-15T13:00:00Z", "noLedgerReads": true }
+    },
+    {
+      "id": "paused-rule-does-not-mask-active-block",
+      "description": "a paused rule cannot mask an active blocking rule: block is more restrictive than paused",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null },
+        { "id": "r2", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": "2026-06-15T13:00:00Z" }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "pause-expired-rule-enforces-again",
+      "description": "a pausedUntil timestamp in the past no longer pauses: the rule enforces again",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": "2026-06-15T11:00:00Z" }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "subscription-credential-short-circuits-to-allow",
+      "description": "a subscription credential short-circuits to allow before any rule query or ledger read",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 1, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "anthropic", "slotID": "slot-1", "displayLabel": "Claude Pro OAuth", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "subscription", "projectName": null, "estimatedCost": 10000.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null, "noLedgerReads": true }
+    },
+    {
+      "id": "most-restrictive-wins-block-over-warn",
+      "description": "with a warning rule and a blocking rule both matched, the block wins",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Observability cap", "amountUSD": 100, "period": "month", "behavior": "warnOnly", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null },
+        { "id": "r2", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 90.0, "r2": 100.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r2", "fallbackCredentialID": null, "used": 100.0, "limit": 100.0 }
+    },
+    {
+      "id": "most-restrictive-wins-warn-over-allow",
+      "description": "with an allowing rule and a warning rule both matched, the warn wins",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-1", "projectName": null, "label": "OpenRouter work key", "amountUSD": 100, "period": "month", "behavior": "warnOnly", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null },
+        { "id": "r2", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "warnThenBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 10.0, "r2": 85.0 }, "unreadable": [] },
+      "expected": { "decision": "warn", "ruleID": "r2", "fallbackCredentialID": null, "used": 85.0, "limit": 100.0, "usedPercent": 0.85 }
+    },
+    {
+      "id": "disabled-rule-ignored",
+      "description": "a disabled rule is never evaluated, even when over its limit",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": false, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null, "noLedgerReads": true }
+    },
+    {
+      "id": "zero-amount-rule-ignored",
+      "description": "a rule with a zero limit is never evaluated (amountUSD must be > 0 to enforce)",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Zero cap", "amountUSD": 0, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null, "noLedgerReads": true }
+    },
+    {
+      "id": "negative-estimated-cost-clamped-to-zero",
+      "description": "a negative estimated cost is clamped to zero: projected equals used (spend 80 of 100 with cost -50 warns at exactly the threshold; an unclamped implementation would allow)",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "warnThenBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": -50.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 80.0 }, "unreadable": [] },
+      "expected": { "decision": "warn", "ruleID": "r1", "fallbackCredentialID": null, "used": 80.0, "limit": 100.0, "usedPercent": 0.8 }
+    },
+    {
+      "id": "credential-rule-other-slot-not-matched",
+      "description": "a credential rule for a different account slot never matches; its ledger is never read",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "openrouter", "accountID": "slot-2", "projectName": null, "label": "OpenRouter other key", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null, "noLedgerReads": true }
+    },
+    {
+      "id": "credential-rule-other-provider-not-matched",
+      "description": "a credential rule for a different provider never matches; its ledger is never read",
+      "rules": [
+        { "id": "r1", "scope": "credential", "identifier": null, "providerID": "anthropic", "accountID": "slot-1", "projectName": null, "label": "Anthropic key", "amountUSD": 100, "period": "month", "behavior": "hardBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 1.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": {}, "unreadable": [] },
+      "expected": { "decision": "allow", "ruleID": null, "fallbackCredentialID": null, "noLedgerReads": true }
+    },
+    {
+      "id": "warnthenblock-projected-cost-crosses-limit-blocks",
+      "description": "the estimated request cost is part of the projection: spend 50 plus cost 60 crosses a 100 limit and blocks",
+      "rules": [
+        { "id": "r1", "scope": "global", "identifier": null, "providerID": null, "accountID": null, "projectName": null, "label": "Global cap", "amountUSD": 100, "period": "month", "behavior": "warnThenBlock", "isEnabled": true, "fallbackCredentialIDs": [], "pausedUntil": null }
+      ],
+      "request": { "providerID": "openrouter", "slotID": "slot-1", "displayLabel": "Work key", "providerAccountID": null, "providerAccountLabel": null, "billingMode": "perUsage", "projectName": null, "estimatedCost": 60.0 },
+      "ledger": { "reference": "2026-06-15T12:00:00Z", "spend": { "r1": 50.0 }, "unreadable": [] },
+      "expected": { "decision": "block", "ruleID": "r1", "fallbackCredentialID": null, "used": 50.0, "limit": 100.0 }
+    }
+  ]
+}
