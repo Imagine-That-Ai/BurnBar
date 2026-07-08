@@ -345,6 +345,10 @@ struct AuroraTabItem: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(showsActive ? [.isSelected, .isButton] : .isButton)
+        // Stable UI-test hook for the floating nav tray. Inert in production:
+        // an accessibility identifier changes no behavior, only exposes each
+        // tab to XCUITest so the scrub-gesture destination can be tapped.
+        .accessibilityIdentifier("auroraTab.\(destination.id)")
     }
 
     @ViewBuilder
