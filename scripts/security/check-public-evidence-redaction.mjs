@@ -119,14 +119,16 @@ function pathMatches(path, patterns) {
   return patterns.some((pattern) => pattern.test(path));
 }
 
+// The tracked-file list is >1MB of NUL-separated paths; node's default 1MB
+// spawnSync maxBuffer kills `git ls-files` with ENOBUFS once the tree grows
+// past it, failing the guard on every branch regardless of content.
+const GIT_LIST_MAX_BUFFER = 256 * 1024 * 1024;
+
 function trackedFiles(root) {
-  // Node's default execFileSync maxBuffer is 1 MiB; the tracked tree's
-  // NUL-joined path list outgrew it (spawnSync git ENOBUFS). 64 MiB is orders
-  // of magnitude above any plausible repo listing.
   return execFileSync("git", ["ls-files", "-z"], {
     cwd: root,
     encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
+    maxBuffer: GIT_LIST_MAX_BUFFER,
   })
     .split("\0")
     .filter(Boolean);

@@ -117,6 +117,17 @@ export const SITE = {
   macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.26",
   macUpdateBaseUrl: "",
   macMin: "macOS 14 Sonoma",
+  // Public Linux download. First release ships aarch64/ARM64 artifacts from the
+  // ubuntu-24.04-arm release lane; served from GitHub Releases under the Linux-only
+  // `linux-v*` tag (does not trigger the macOS/iOS `v*` pipeline).
+  linuxReleaseLatest: "0.1.0",
+  linuxReleaseFile: "OpenBurnBar_0.1.0_aarch64.AppImage",
+  linuxDebFile: "OpenBurnBar_0.1.0_arm64.deb",
+  linuxRpmFile: "OpenBurnBar-0.1.0-1.aarch64.rpm",
+  linuxPubKeyFile: "openburnbar-linux-ed25519.pub.pem",
+  linuxDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v0.1.0",
+  linuxArch: "aarch64 (ARM64)",
+  linuxStatus: "preview · signed prerelease",
   iosMin: "iOS 17",
   iosStatus: "in App Store review",
   androidStatus: "feature-complete, Play Store pending",
