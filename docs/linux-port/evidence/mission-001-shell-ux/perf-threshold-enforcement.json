@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T04:23:42.125Z",
+  "generatedAt": "2026-07-08T08:56:36.761Z",
   "runner": "linux-desktop-packaged-runtime-perf-v3",
   "baselinePolicy": {
     "name": "current-threshold-enforced-until-baseline",
@@ -9,7 +9,7 @@
   "rows": [
     {
       "name": "app.start",
-      "currentMs": 314,
+      "currentMs": 336,
       "thresholdMs": 2500,
       "sampleCount": 1,
       "source": "packaged-tauri-deb-xvfb-window-visible",
@@ -27,7 +27,7 @@
     },
     {
       "name": "ipc.health.roundtrip",
-      "currentMs": 6,
+      "currentMs": 7,
       "thresholdMs": 800,
       "sampleCount": 1,
       "source": "packaged-tray-reconnect-to-af-unix-daemon-log",
@@ -36,7 +36,7 @@
     },
     {
       "name": "tray.click.open",
-      "currentMs": 45,
+      "currentMs": 52,
       "thresholdMs": 400,
       "sampleCount": 1,
       "source": "appindicator-dbusmenu-open-to-visible-window",
@@ -45,7 +45,7 @@
     },
     {
       "name": "chat.firstToken.progress",
-      "currentMs": 6.142875,
+      "currentMs": 6.7442079999999995,
       "thresholdMs": 2500,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-chat-hermes-daemon-measurement;packaged-af-unix-perf.measure:hermes-chat-stream-progress-operation",
@@ -54,7 +54,7 @@
     },
     {
       "name": "db.migration.open.query",
-      "currentMs": 2.49875,
+      "currentMs": 1.5430419999999998,
       "thresholdMs": 1200,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-db-daemon-measurement;packaged-af-unix-perf.measure:sqlite3-db-fts5-operation",
@@ -63,7 +63,7 @@
     },
     {
       "name": "parser.incremental.run",
-      "currentMs": 0.929417,
+      "currentMs": 0.866,
       "thresholdMs": 900,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-parser-daemon-measurement;packaged-af-unix-perf.measure:provider-jsonl-incremental-parser-operation",
@@ -72,7 +72,7 @@
     },
     {
       "name": "memory.search",
-      "currentMs": 0.521833,
+      "currentMs": 0.7518330000000001,
       "thresholdMs": 650,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-memory-daemon-measurement;packaged-af-unix-perf.measure:memory-search-index-operation",
@@ -81,7 +81,7 @@
     },
     {
       "name": "media.control.stage",
-      "currentMs": 0.901833,
+      "currentMs": 0.986333,
       "thresholdMs": 500,
       "sampleCount": 1,
       "source": "packaged-tauri-runtime-samples:packaged-startup-media-control-daemon-measurement;packaged-af-unix-perf.measure:media-control-stage-loopback-operation",

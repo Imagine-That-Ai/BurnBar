@@ -4,7 +4,6 @@ import { DeckBrandMark } from './DeckBrandMark.js';
 import { DeckOverflowMenu } from './DeckOverflowMenu.js';
 import { KernelSwitcher } from './KernelSwitcher.js';
 import { StatusPill } from './StatusPill.js';
-import { TopTabbar } from './TopTabbar.js';
 import { WorkspaceContextPill } from './WorkspaceContextPill.js';
 import { useLaneLoad } from '../state/useLaneLoad.js';
 import { useOverviewStore } from '../state/overviewStore.js';
@@ -20,7 +19,7 @@ type TopChromeProps = {
 };
 
 /**
- * macOS Command Deck + primary tab strip (`BurnBarTopRail` + `DashboardMainRoute`).
+ * macOS Command Deck toolbar (`BurnBarTopRail` controls over the Linux side rail).
  */
 export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: TopChromeProps) {
   const status = useDaemonStatusCopy();
@@ -87,7 +86,6 @@ export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: To
 
         <DeckOverflowMenu recountDisabled />
       </header>
-      <TopTabbar />
     </div>
   );
 }

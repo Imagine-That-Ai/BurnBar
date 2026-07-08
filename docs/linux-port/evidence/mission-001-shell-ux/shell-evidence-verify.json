@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-06T04:23:42.171Z",
+  "generatedAt": "2026-07-08T08:56:36.849Z",
   "mode": "full",
-  "evidenceDir": "/Users/albertonunez/Documents/Developer/BurnBar-parity-integration/docs/linux-port/evidence/mission-001-shell-ux",
+  "evidenceDir": "/private/tmp/burnbar-pr1399-repair/docs/linux-port/evidence/mission-001-shell-ux",
   "targetStatus": {
     "VAL-SHELL-005": {
       "pass": true,

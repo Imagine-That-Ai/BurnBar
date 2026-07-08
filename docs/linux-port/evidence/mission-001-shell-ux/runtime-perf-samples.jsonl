@@ -1,10 +1,10 @@
-{"name":"ipc.health.roundtrip","ms":75.0,"at":"2026-07-06T04:22:53.891Z","source":"linux-shell-render"}
-{"name":"chat.firstToken.progress","ms":6.142875,"at":"2026-07-06T04:22:54.005Z","source":"packaged-startup-chat-hermes-daemon-measurement;packaged-af-unix-perf.measure:hermes-chat-stream-progress-operation"}
-{"name":"db.migration.open.query","ms":2.49875,"at":"2026-07-06T04:22:54.038Z","source":"packaged-startup-db-daemon-measurement;packaged-af-unix-perf.measure:sqlite3-db-fts5-operation"}
-{"name":"parser.incremental.run","ms":0.929417,"at":"2026-07-06T04:22:54.063Z","source":"packaged-startup-parser-daemon-measurement;packaged-af-unix-perf.measure:provider-jsonl-incremental-parser-operation"}
-{"name":"memory.search","ms":0.521833,"at":"2026-07-06T04:22:54.085Z","source":"packaged-startup-memory-daemon-measurement;packaged-af-unix-perf.measure:memory-search-index-operation"}
-{"name":"media.control.stage","ms":0.901833,"at":"2026-07-06T04:22:54.110Z","source":"packaged-startup-media-control-daemon-measurement;packaged-af-unix-perf.measure:media-control-stage-loopback-operation"}
-{"name":"app.start","ms":325.0,"at":"2026-07-06T04:22:54.110Z","source":"linux-shell-render"}
+{"name":"ipc.health.roundtrip","ms":96.0,"at":"2026-07-06T03:14:46.230Z","source":"linux-shell-render"}
+{"name":"chat.firstToken.progress","ms":6.7442079999999995,"at":"2026-07-06T03:14:46.341Z","source":"packaged-startup-chat-hermes-daemon-measurement;packaged-af-unix-perf.measure:hermes-chat-stream-progress-operation"}
+{"name":"db.migration.open.query","ms":1.5430419999999998,"at":"2026-07-06T03:14:46.367Z","source":"packaged-startup-db-daemon-measurement;packaged-af-unix-perf.measure:sqlite3-db-fts5-operation"}
+{"name":"parser.incremental.run","ms":0.866,"at":"2026-07-06T03:14:46.384Z","source":"packaged-startup-parser-daemon-measurement;packaged-af-unix-perf.measure:provider-jsonl-incremental-parser-operation"}
+{"name":"memory.search","ms":0.7518330000000001,"at":"2026-07-06T03:14:46.400Z","source":"packaged-startup-memory-daemon-measurement;packaged-af-unix-perf.measure:memory-search-index-operation"}
+{"name":"media.control.stage","ms":0.986333,"at":"2026-07-06T03:14:46.418Z","source":"packaged-startup-media-control-daemon-measurement;packaged-af-unix-perf.measure:media-control-stage-loopback-operation"}
+{"name":"app.start","ms":306.0,"at":"2026-07-06T03:14:46.418Z","source":"linux-shell-render"}
 {"name":"route.navigation","ms":0.0,"at":"2026-07-06T04:22:57.011Z","source":"packaged-ui-route:overview"}
 {"name":"route.navigation","ms":1.0,"at":"2026-07-06T04:22:57.012Z","source":"packaged-ui-route:overview"}
 {"name":"route.navigation","ms":0.0,"at":"2026-07-06T04:22:59.135Z","source":"packaged-ui-route:overview"}
@@ -39,3 +39,5 @@
 {"name":"route.navigation","ms":0.0,"at":"2026-07-06T04:23:31.980Z","source":"packaged-ui-route:pet"}
 {"name":"route.navigation","ms":1.000000000007276,"at":"2026-07-06T04:23:34.435Z","source":"packaged-ui-route:text-expansion"}
 {"name":"route.navigation","ms":0.0,"at":"2026-07-06T04:23:34.436Z","source":"packaged-ui-route:text-expansion"}
+{"name":"ipc.health.roundtrip","ms":17.999999999999886,"at":"2026-07-06T03:14:46.606Z","source":"linux-shell-render"}
+{"name":"ipc.health.roundtrip","ms":21.0,"at":"2026-07-06T03:14:47.960Z","source":"linux-shell-render"}
