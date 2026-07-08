@@ -14,32 +14,42 @@ if [[ -z "$REPO" ]]; then
 fi
 
 BRANCH="${OPENBURNBAR_GOVERNANCE_BRANCH:-main}"
-DEFAULT_REQUIRED_CHECKS=$'Fast Feedback Gate\nguard\nBurnBar AGPL product posture\nSecret Detection (gitleaks)\nDependency Review (CVE check)\nnpm Audit (Node package locks)\nRemote Installer Policy\nVendored Agent Provenance\nSignal Activation Parity (fail-closed default)\nBrowser Target Policy (SSRF / DNS-rebinding)\nOSV Scanner (open source vulnerabilities)\nHosted MCP Security Smoke\nHosted MCP Isolation Proofs (local, deterministic)\nFirestore Security Rules Tests\nAndroid ktlint\nAnalyze (javascript-typescript)\nAnalyze (python)'
-REQUIRED_CHECKS="${OPENBURNBAR_REQUIRED_BRANCH_CHECKS:-$DEFAULT_REQUIRED_CHECKS}"
+# The required-status-check set and review/admin invariants are NOT hand-maintained
+# here. They are read from the governance source of truth
+# (governance/branch-protection.main.json) by the drift check below — the previous
+# DEFAULT_REQUIRED_CHECKS constant had already drifted (it omitted the native, app,
+# and daemon gates entirely; governance/README.md §Consumers). Sourcing from the
+# JSON makes it the single source of truth and can only strengthen the bar.
 REQUIRED_ENVIRONMENTS="${OPENBURNBAR_REQUIRED_ENVIRONMENTS:-release,production}"
-export BRANCH REQUIRED_CHECKS REQUIRED_ENVIRONMENTS
+BRANCH_PROTECTION_SOURCE="${OPENBURNBAR_BRANCH_PROTECTION_SOURCE:-governance/branch-protection.main.json}"
+export BRANCH REQUIRED_ENVIRONMENTS
+export OPENBURNBAR_GOVERNANCE_REPO="$REPO"
+export OPENBURNBAR_GOVERNANCE_BRANCH="$BRANCH"
 
-PROTECTION_JSON="$(mktemp)"
+# 1. Branch-protection drift: live protection (ruleset endpoints first, classic
+#    additionally) vs governance/branch-protection.main.json. Fails CLOSED on any
+#    divergence — reviews wiped, admins un-enforced, force-push/deletion enabled,
+#    review count/code-owner/last-push/conversation drift, any bypass actor, or a
+#    required-check set difference in either direction (governance/README.md §Drift).
+echo "==> branch-protection drift (live vs governance/branch-protection.main.json)"
+OPENBURNBAR_BRANCH_PROTECTION_SOURCE="$BRANCH_PROTECTION_SOURCE" \
+  node scripts/ops/check-branch-protection-drift.mjs
+
+# 2. Deployment-environment protection (release/production) still verified directly
+#    against the live GitHub API — this is environment state, not encoded in the
+#    branch-protection file.
 ENVIRONMENTS_JSON="$(mktemp)"
-trap 'rm -f "$PROTECTION_JSON" "$ENVIRONMENTS_JSON"' EXIT
-
-gh api \
-  -H "Accept: application/vnd.github+json" \
-  "/repos/${REPO}/branches/${BRANCH}/protection" >"$PROTECTION_JSON"
+trap 'rm -f "$ENVIRONMENTS_JSON"' EXIT
 
 gh api \
   -H "Accept: application/vnd.github+json" \
   "/repos/${REPO}/environments" >"$ENVIRONMENTS_JSON"
 
-node - "$PROTECTION_JSON" "$ENVIRONMENTS_JSON" <<'NODE'
+echo "==> deployment-environment protection (${REQUIRED_ENVIRONMENTS})"
+node - "$ENVIRONMENTS_JSON" <<'NODE'
 const fs = require("fs");
 
-const protection = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const environmentsPayload = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
-const requiredChecks = (process.env.REQUIRED_CHECKS || "")
-  .split(/\r?\n|,(?=(?:[^()]*\([^()]*\))*[^()]*$)/)
-  .map((value) => value.trim())
-  .filter(Boolean);
+const environmentsPayload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const requiredEnvironments = (process.env.REQUIRED_ENVIRONMENTS || "")
   .split(",")
   .map((value) => value.trim())
@@ -48,52 +58,6 @@ const failures = [];
 
 function fail(message) {
   failures.push(message);
-}
-
-const contexts = new Set([
-  ...(protection.required_status_checks?.contexts || []),
-  ...((protection.required_status_checks?.checks || []).map((check) => check.context).filter(Boolean)),
-]);
-
-if (protection.enforce_admins?.enabled !== true) {
-  fail("main branch protection must enforce admins.");
-}
-if (protection.allow_force_pushes?.enabled === true) {
-  fail("main branch protection must disable force pushes.");
-}
-if (protection.allow_deletions?.enabled === true) {
-  fail("main branch protection must disable deletions.");
-}
-const reviewCount = protection.required_pull_request_reviews?.required_approving_review_count || 0;
-if (reviewCount !== 1) {
-  fail("main branch protection must require exactly one approving review.");
-}
-if (protection.required_pull_request_reviews?.require_code_owner_reviews !== true) {
-  fail("main branch protection must require code owner reviews.");
-}
-if (protection.required_pull_request_reviews?.dismiss_stale_reviews !== true) {
-  fail("main branch protection must dismiss stale pull request reviews.");
-}
-if (protection.required_pull_request_reviews?.require_last_push_approval !== true) {
-  fail("main branch protection must require approval of the latest push.");
-}
-if (protection.required_conversation_resolution?.enabled !== true) {
-  fail("main branch protection must require conversation resolution.");
-}
-
-const bypass = protection.required_pull_request_reviews?.bypass_pull_request_allowances || {};
-const bypassUsers = (bypass.users || []).map((user) => user.login).filter(Boolean);
-const bypassTeams = bypass.teams || [];
-const bypassApps = bypass.apps || [];
-const bypassCount = bypassUsers.length + bypassTeams.length + bypassApps.length;
-if (bypassCount > 0) {
-  fail("main branch protection must not configure PR review bypass users, teams, or apps.");
-}
-
-for (const check of requiredChecks) {
-  if (!contexts.has(check)) {
-    fail(`main branch protection is missing required status check: ${check}`);
-  }
 }
 
 const environments = new Map((environmentsPayload.environments || []).map((env) => [env.name, env]));
@@ -114,18 +78,6 @@ for (const name of requiredEnvironments) {
 }
 
 const summary = {
-  branch: process.env.BRANCH || "main",
-  adminsEnforced: protection.enforce_admins?.enabled === true,
-  reviewCount,
-  codeOwnerReviewsRequired: protection.required_pull_request_reviews?.require_code_owner_reviews === true,
-  staleReviewsDismissed: protection.required_pull_request_reviews?.dismiss_stale_reviews === true,
-  latestPushApprovalRequired: protection.required_pull_request_reviews?.require_last_push_approval === true,
-  bypassAllowanceCount: bypassCount,
-  reviewBypassUsers: bypassUsers,
-  reviewBypassTeams: bypassTeams.map((team) => team.slug || team.name).filter(Boolean),
-  reviewBypassApps: bypassApps.map((app) => app.slug || app.name).filter(Boolean),
-  requiredChecksPresent: requiredChecks.filter((check) => contexts.has(check)),
-  requiredChecksMissing: requiredChecks.filter((check) => !contexts.has(check)),
   environments: requiredEnvironments.map((name) => {
     const env = environments.get(name);
     return {
@@ -145,3 +97,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 NODE
+
+echo "PASS: GitHub governance verification (branch-protection drift + environment protection)"
