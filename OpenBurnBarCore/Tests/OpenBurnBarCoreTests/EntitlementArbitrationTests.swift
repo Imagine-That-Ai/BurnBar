@@ -167,10 +167,51 @@ final class EntitlementArbitrationTests: XCTestCase {
         XCTAssertEqual(result.cloud.expiry, farFuture, "the later of two same-tier expiries must win")
     }
 
-    func testDatedExpiryBeatsUndatedForSameTier() {
-        // An undated (perpetual-looking) grant should not erase a concrete expiry;
-        // preferred(over:) keeps the dated one. Order-independent: dated is second here.
+    func testMergeKeepsExistingDatedExpiryWhenCandidateExpiresSooner() {
         let cloud = [
+            EntitlementArbitration.CloudDocState(
+                key: "hosted_quota_sync", active: true, expiry: farFuture, fallbackTier: .cloud
+            ),
+            EntitlementArbitration.CloudDocState(
+                key: "hosted_quota_sync", active: true, expiry: future, fallbackTier: .cloud
+            )
+        ]
+
+        let result = EntitlementArbitration.effectiveTier(cloud: cloud, storeKit: [], now: now)
+
+        XCTAssertEqual(result.cloud.expiry, farFuture, "a shorter candidate expiry must not downgrade the tier grant")
+    }
+
+    func testMergeKeepsExistingGrantWhenDatedExpiriesTie() {
+        let existingPurchase = now.addingTimeInterval(-7_200)
+        let candidatePurchase = now.addingTimeInterval(-3_600)
+        let cloud = [
+            EntitlementArbitration.CloudDocState(
+                key: "hosted_quota_sync",
+                active: true,
+                expiry: future,
+                purchase: existingPurchase,
+                fallbackTier: .cloud
+            ),
+            EntitlementArbitration.CloudDocState(
+                key: "hosted_quota_sync",
+                active: true,
+                expiry: future,
+                purchase: candidatePurchase,
+                fallbackTier: .cloud
+            )
+        ]
+
+        let result = EntitlementArbitration.effectiveTier(cloud: cloud, storeKit: [], now: now)
+
+        XCTAssertEqual(result.cloud.expiry, future)
+        XCTAssertEqual(result.cloud.purchase, existingPurchase, "dated-expiry ties match the macOS store and keep existing")
+    }
+
+    func testDatedExpiryBeatsUndatedForSameTierInBothOrders() {
+        // An undated (perpetual-looking) grant should not erase a concrete expiry;
+        // preferred(over:) keeps the dated one in either input order.
+        let undatedFirst = [
             EntitlementArbitration.CloudDocState(
                 key: "hosted_quota_sync", active: true, expiry: nil, fallbackTier: .cloud
             ),
@@ -178,9 +219,48 @@ final class EntitlementArbitrationTests: XCTestCase {
                 key: "hosted_quota_sync", active: true, expiry: future, fallbackTier: .cloud
             )
         ]
+        let datedFirst = [
+            EntitlementArbitration.CloudDocState(
+                key: "hosted_quota_sync", active: true, expiry: future, fallbackTier: .cloud
+            ),
+            EntitlementArbitration.CloudDocState(
+                key: "hosted_quota_sync", active: true, expiry: nil, fallbackTier: .cloud
+            )
+        ]
+
+        let undatedFirstResult = EntitlementArbitration.effectiveTier(cloud: undatedFirst, storeKit: [], now: now)
+        let datedFirstResult = EntitlementArbitration.effectiveTier(cloud: datedFirst, storeKit: [], now: now)
+
+        XCTAssertTrue(undatedFirstResult.cloud.isActive)
+        XCTAssertEqual(undatedFirstResult.cloud.expiry, future)
+        XCTAssertEqual(datedFirstResult.cloud.expiry, future)
+    }
+
+    func testBothUndatedSameTierKeepsLatestCandidate() {
+        let firstPurchase = now.addingTimeInterval(-7_200)
+        let secondPurchase = now.addingTimeInterval(-3_600)
+        let cloud = [
+            EntitlementArbitration.CloudDocState(
+                key: "hosted_quota_sync",
+                active: true,
+                expiry: nil,
+                purchase: firstPurchase,
+                fallbackTier: .cloud
+            ),
+            EntitlementArbitration.CloudDocState(
+                key: "hosted_quota_sync",
+                active: true,
+                expiry: nil,
+                purchase: secondPurchase,
+                fallbackTier: .cloud
+            )
+        ]
+
         let result = EntitlementArbitration.effectiveTier(cloud: cloud, storeKit: [], now: now)
+
         XCTAssertTrue(result.cloud.isActive)
-        XCTAssertEqual(result.cloud.expiry, future)
+        XCTAssertNil(result.cloud.expiry)
+        XCTAssertEqual(result.cloud.purchase, secondPurchase, "both-undated ties keep the candidate grant")
     }
 
     // MARK: - Ultra ⇒ Pro ⇒ Cloud implication (invariant 5)

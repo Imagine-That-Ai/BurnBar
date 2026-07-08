@@ -172,8 +172,8 @@ public enum EntitlementArbitration {
 
         /// Port of `MacEntitlementActiveState.preferred(over:)`: an active
         /// grant beats an inactive one; between two active grants the later
-        /// expiry wins, a dated expiry beats an undated one, and ties keep
-        /// the candidate.
+        /// expiry wins, a dated expiry beats an undated one, and dated ties
+        /// keep the existing grant.
         func preferred(over existing: TierGrant) -> TierGrant {
             guard isActive else { return existing }
             guard existing.isActive else { return self }
