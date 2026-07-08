@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Junie Parser
 
@@ -156,7 +157,7 @@ final class JunieParser: LogParser, Sendable {
         var projects: [String: String] = [:]
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(bad index line skipped)
+                  let json = Self.decodeJSONObject(from: data) else { // try?-ok(bad index line skipped)
                 continue
             }
             guard let sessionId = firstString(in: json, keys: ["sessionId", "session_id", "id"]) else { continue }
@@ -199,7 +200,7 @@ final class JunieParser: LogParser, Sendable {
         // project path defensively. Some env values inside are encrypted
         // (EnvEncryptionService) — those are opaque strings we never touch.
         if let data = try? Data(contentsOf: stateFile), // try?-ok(missing state skipped)
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed state skipped)
+           let json = Self.decodeJSONObject(from: data) { // try?-ok(malformed state skipped)
             if let model = firstString(in: json, keys: ["model", "modelId", "model_id", "modelForLaunch", "selectedModel", "llmModel"]) {
                 tokenData.model = TokenExtractionUtility.normalizeModelName(model)
             }
@@ -226,7 +227,7 @@ final class JunieParser: LogParser, Sendable {
             defer { try? handle.close() } // try?-ok(handle teardown)
             for line in handle.readAllUTF8Lines() {
                 guard let data = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(bad log line skipped)
+                      let json = Self.decodeJSONObject(from: data) else { // try?-ok(bad log line skipped)
                     continue
                 }
 
@@ -294,10 +295,10 @@ final class JunieParser: LogParser, Sendable {
                 if let role, role == "user" || role == "assistant" || role == "agent" || role == "model" {
                     let canonicalRole = role == "user" ? "user" : "assistant"
                     var normalizedMessage = message
-                    normalizedMessage["role"] = canonicalRole
-                    var normalized: [String: Any] = [
-                        "type": canonicalRole,
-                        "message": normalizedMessage
+                    normalizedMessage["role"] = .string(canonicalRole)
+                    var normalized: [String: BurnBarJSONValue] = [
+                        "type": .string(canonicalRole),
+                        "message": .object(normalizedMessage)
                     ]
                     for key in ["timestamp", "created_at", "createdAt"] {
                         if let value = json[key] ?? payload[key] {
@@ -405,18 +406,22 @@ final class JunieParser: LogParser, Sendable {
         return projectPath
     }
 
-    private func firstString(in dictionary: [String: Any], keys: [String]) -> String? {
+    private static func decodeJSONObject(from data: Data) -> [String: BurnBarJSONValue]? {
+        try? JSONDecoder().decode([String: BurnBarJSONValue].self, from: data)
+    }
+
+    private func firstString(in dictionary: [String: BurnBarJSONValue], keys: [String]) -> String? {
         for key in keys {
-            if let value = dictionary[key] as? String, !value.isEmpty {
+            if case .string(let value)? = dictionary[key], !value.isEmpty {
                 return value
             }
         }
         return nil
     }
 
-    private func firstDictionary(in dictionary: [String: Any], keys: [String]) -> [String: Any]? {
+    private func firstDictionary(in dictionary: [String: BurnBarJSONValue], keys: [String]) -> [String: BurnBarJSONValue]? {
         for key in keys {
-            if let value = dictionary[key] as? [String: Any], !value.isEmpty {
+            if case .object(let value)? = dictionary[key], !value.isEmpty {
                 return value
             }
         }
