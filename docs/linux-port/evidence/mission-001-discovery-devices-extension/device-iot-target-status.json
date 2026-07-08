@@ -1,0 +1,31 @@
+{
+  "fixtureRowsAcceptedAsPass": false,
+  "generatedAt": "live-simulator",
+  "statuses": [
+    {
+      "blocker": null,
+      "evidence": [
+        "live-simulator/product-devices-discover-all.json",
+        "live-simulator/product-pixelclock-control.json",
+        "live-simulator/device-endpoint-log.jsonl",
+        "live-simulator/product-parity-ledger.json"
+      ],
+      "passClaim": true,
+      "status": "pass",
+      "target": "VAL-DEVICE-001"
+    },
+    {
+      "blocker": null,
+      "evidence": [
+        "live-simulator/product-cast-status.json",
+        "live-simulator/product-smarthub-status.json",
+        "live-simulator/product-homeassistant-status.json",
+        "live-simulator/device-endpoint-log.jsonl",
+        "live-simulator/product-parity-ledger.json"
+      ],
+      "passClaim": true,
+      "status": "pass",
+      "target": "VAL-IOT-001"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+/* Self-hosted variable fonts — sourced from burnbar.ai's optimized woff2
+   bundles (Geist, Fraunces, JetBrains Mono) and Google Fonts (Outfit).
+   These are the SAME fonts the macOS tokens canon declares. No network
+   required — the packaged Tauri app renders identically offline. */
+
+/* Outfit (display font — headings, brand, telemetry) — weight 100-900 */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/outfit.woff2') format('woff2');
+}
+
+/* Geist Variable (body font) — weight 100-900 */
+@font-face {
+  font-family: 'Geist Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/geist.woff2') format('woff2');
+}
+
+/* Fraunces Variable (arcane font — hero/basin labels only) — opsz + weight */
+@font-face {
+  font-family: 'Fraunces Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/fraunces.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Fraunces Variable';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/fraunces-italic.woff2') format('woff2');
+}
+
+/* JetBrains Mono Variable (monospace) — weight 100-900 */
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('/fonts/jetbrains-mono.woff2') format('woff2');
+}

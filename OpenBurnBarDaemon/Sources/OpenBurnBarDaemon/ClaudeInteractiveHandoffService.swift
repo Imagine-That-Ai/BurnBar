@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import OpenBurnBarCore
 
@@ -400,7 +404,11 @@ extension ClaudeInteractiveHandoffService {
         for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {
             return URL(fileURLWithPath: candidate)
         }
-        throw PTYInteractiveSessionError.executableNotFound("claude (not found on PATH or common install locations)")
+        throw NSError(
+            domain: "ClaudeInteractiveHandoffService",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "claude not found on PATH or common install locations"]
+        )
     }
 
     static func claudeExecutableCandidatePaths(

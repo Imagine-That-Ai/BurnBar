@@ -1,0 +1,162 @@
+{
+  "evidenceDirectory": "/workspace/docs/linux-port/evidence/mission-001-provider-hermes",
+  "policy": "Rows marked canonical_pass require every referenced current bundle artifact to exist and be non-empty. VAL-HERMES-001 observations must come from product artifacts, not the source fixture.",
+  "rows": {
+    "VAL-DATA-000": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "data-direct-xctest-transcript.txt",
+        "full-data-direct-xctest-transcript.txt",
+        "source-scan.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-DATA-001": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "data-direct-xctest-transcript.txt",
+        "full-data-direct-xctest-transcript.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-DATA-002": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "data-direct-xctest-transcript.txt",
+        "full-data-direct-xctest-transcript.txt",
+        "sqlite-schema-doc-verifier.txt",
+        "macos-schema-oracle-transcript.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-DATA-003": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "data-direct-xctest-transcript.txt",
+        "full-data-direct-xctest-transcript.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-DATA-004": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "parser-canonical-oracle-accepted.md",
+        "provider-parser-product-replay-linux.json",
+        "provider-parser-corpus-diff-linux.json",
+        "usage-row-reconciliation-diff-linux.json",
+        "provider-parser-product-replay-macos.json",
+        "usage-row-reconciliation-diff-macos.json"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-DATA-005": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "data-direct-xctest-transcript.txt",
+        "full-data-direct-xctest-transcript.txt",
+        "cli-hermes-transcript.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-DATA-006": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "retrieval-golden-source-oracle-linux.json",
+        "retrieval-golden-diff-linux.json",
+        "retrieval-golden-source-oracle-macos.json",
+        "retrieval-golden-diff-macos.json",
+        "packaged-browser-memory-dom-transcript.json",
+        "cli-hermes-transcript.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-DATA-007": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "data-direct-xctest-transcript.txt",
+        "full-data-direct-xctest-transcript.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-HERMES-001": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "hermes-event-order-source-oracle-linux.json",
+        "hermes-event-order-diff-linux.json",
+        "hermes-event-order-raw-events-linux.json",
+        "hermes-event-order-normalized-observed-linux.json",
+        "hermes-run-journal.jsonl",
+        "hermes-run-checkpoints/",
+        "cli-hermes-transcript.txt",
+        "packaged-browser-hermes-dom-transcript.json"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-HERMES-002": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "retrieval-golden-source-oracle-linux.json",
+        "retrieval-golden-diff-linux.json",
+        "packaged-browser-memory-dom-transcript.json",
+        "cli-hermes-transcript.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-HERMES-003": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "prompt-wrapper-direct-xctest-transcript.txt",
+        "llmsafe-content-linux-fixture.json",
+        "packaged-browser-hermes-dom-transcript.json",
+        "hermes-event-order-diff-linux.json"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-PROVIDER-001": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "provider-log-path-matrix.json",
+        "provider-discovery-edge-fixture.json",
+        "provider-discovery-direct-xctest-transcript.txt"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-PROVIDER-002": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "parser-canonical-oracle-accepted.md",
+        "canonical-provider-parser-oracle-linux.json",
+        "provider-parser-product-replay-linux.json",
+        "provider-parser-corpus-diff-linux.json",
+        "canonical-provider-parser-oracle-macos.json",
+        "provider-parser-product-replay-macos.json",
+        "provider-parser-corpus-diff-macos.json"
+      ],
+      "missingArtifacts": []
+    },
+    "VAL-PROVIDER-003": {
+      "canonicalPass": true,
+      "classification": "canonical_pass",
+      "evidence": [
+        "cli-hermes-transcript.txt",
+        "packaged-browser-hermes-dom-transcript.json",
+        "daemon-session-oracle.json"
+      ],
+      "missingArtifacts": []
+    }
+  },
+  "schema": "openburnbar-linux-provider-hermes-evidence-classification-v2"
+}

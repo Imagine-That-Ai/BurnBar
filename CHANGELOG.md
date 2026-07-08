@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
+  `POST /v1/chat/completions` through the shared provider router, relays
+  OpenAI-compatible SSE streams, and records gateway usage events with cache
+  read/creation token fields when providers report them.
 - **Mission fan-out synthesis now launches Phase B second-stage missions** —
   tapping Synthesize on a completed fan-out group queues a sealed, read-only
   Hermes synthesizer mission with the child results as input, then records the
