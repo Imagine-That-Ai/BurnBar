@@ -1,0 +1,16 @@
+{
+  "canonicalOracleAvailable": false,
+  "canonicalOutputChecksumSHA256": "f7d541544244f6dfa4275047a5db7c0646a6b7725aa591d7f5b6204beda6151a",
+  "caseCount": 5,
+  "coveredProviders": [
+    "claudeCode",
+    "codex",
+    "xAI"
+  ],
+  "fixture": "/workspace/docs/linux-port/fixtures/provider-parser-replacement-oracle.json",
+  "outputRowCount": 4,
+  "schema": "openburnbar-linux-provider-parser-replacement-verification-v1",
+  "status": "replacement_oracle_verified",
+  "validatorGuidance": "Validates deterministic replacement rows only; do not mark VAL-PROVIDER-002 or VAL-DATA-004 passed without the accepted macOS corpus/oracle.",
+  "warningCount": 1
+}

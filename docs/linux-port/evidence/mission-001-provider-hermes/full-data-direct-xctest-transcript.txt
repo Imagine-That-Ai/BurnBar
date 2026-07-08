@@ -1,0 +1,90 @@
+test_count=9
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testCanonicalProviderCorpusParserUsesCorpusInputAndDBObservedRows
+Test Suite 'Selected tests' started at 2026-07-04 18:02:23.743
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:23.744
+Test Case 'OpenBurnBarDataLinuxTests.testCanonicalProviderCorpusParserUsesCorpusInputAndDBObservedRows' started at 2026-07-04 18:02:23.744
+Test Case 'OpenBurnBarDataLinuxTests.testCanonicalProviderCorpusParserUsesCorpusInputAndDBObservedRows' passed (0.204 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:23.948
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.204 (0.204) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:23.948
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.204 (0.204) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testEncryptedFileBackedOpenFailsClosedForSecretAndCodecFailures
+Test Suite 'Selected tests' started at 2026-07-04 18:02:23.967
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:23.968
+Test Case 'OpenBurnBarDataLinuxTests.testEncryptedFileBackedOpenFailsClosedForSecretAndCodecFailures' started at 2026-07-04 18:02:23.968
+Test Case 'OpenBurnBarDataLinuxTests.testEncryptedFileBackedOpenFailsClosedForSecretAndCodecFailures' passed (0.266 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:24.234
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.266 (0.266) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:24.234
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.266 (0.266) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testHeadlessSecretStoreReadsEnvironmentAndSystemdCredentialFile
+Test Suite 'Selected tests' started at 2026-07-04 18:02:24.254
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:24.256
+Test Case 'OpenBurnBarDataLinuxTests.testHeadlessSecretStoreReadsEnvironmentAndSystemdCredentialFile' started at 2026-07-04 18:02:24.256
+Test Case 'OpenBurnBarDataLinuxTests.testHeadlessSecretStoreReadsEnvironmentAndSystemdCredentialFile' passed (0.374 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:24.630
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.374 (0.374) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:24.630
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.374 (0.374) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testMigrationListSchemaHashAndDocsMirrorCurrentHead
+Test Suite 'Selected tests' started at 2026-07-04 18:02:24.648
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:24.649
+Test Case 'OpenBurnBarDataLinuxTests.testMigrationListSchemaHashAndDocsMirrorCurrentHead' started at 2026-07-04 18:02:24.649
+Test Case 'OpenBurnBarDataLinuxTests.testMigrationListSchemaHashAndDocsMirrorCurrentHead' passed (0.197 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:24.846
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.197 (0.197) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:24.846
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.197 (0.197) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderAccountQuotaAndUsageRowsAreDurableAndRedacted
+Test Suite 'Selected tests' started at 2026-07-04 18:02:24.864
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:24.864
+Test Case 'OpenBurnBarDataLinuxTests.testProviderAccountQuotaAndUsageRowsAreDurableAndRedacted' started at 2026-07-04 18:02:24.864
+Test Case 'OpenBurnBarDataLinuxTests.testProviderAccountQuotaAndUsageRowsAreDurableAndRedacted' passed (0.343 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:25.207
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.343 (0.343) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:25.207
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.343 (0.343) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderParserFailureInjectionRollsBackUsageAndCursorState
+Test Suite 'Selected tests' started at 2026-07-04 18:02:25.231
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:25.232
+Test Case 'OpenBurnBarDataLinuxTests.testProviderParserFailureInjectionRollsBackUsageAndCursorState' started at 2026-07-04 18:02:25.232
+Test Case 'OpenBurnBarDataLinuxTests.testProviderParserFailureInjectionRollsBackUsageAndCursorState' passed (0.222 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:25.455
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.222 (0.222) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:25.455
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.222 (0.222) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderParserIngestionPreservesProvenanceCheckpointsAndWatermarks
+Test Suite 'Selected tests' started at 2026-07-04 18:02:25.477
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:25.477
+Test Case 'OpenBurnBarDataLinuxTests.testProviderParserIngestionPreservesProvenanceCheckpointsAndWatermarks' started at 2026-07-04 18:02:25.477
+Test Case 'OpenBurnBarDataLinuxTests.testProviderParserIngestionPreservesProvenanceCheckpointsAndWatermarks' passed (0.213 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:25.690
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.213 (0.213) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:25.690
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.213 (0.213) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testSearchFTSVectorFixtureParity
+Test Suite 'Selected tests' started at 2026-07-04 18:02:25.716
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:25.718
+Test Case 'OpenBurnBarDataLinuxTests.testSearchFTSVectorFixtureParity' started at 2026-07-04 18:02:25.718
+Test Case 'OpenBurnBarDataLinuxTests.testSearchFTSVectorFixtureParity' passed (0.249 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:25.967
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.249 (0.249) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:25.967
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.249 (0.249) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testWALBackupRestoreFailureInjectionAndConcurrentReadWrite
+Test Suite 'Selected tests' started at 2026-07-04 18:02:25.994
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 18:02:25.995
+Test Case 'OpenBurnBarDataLinuxTests.testWALBackupRestoreFailureInjectionAndConcurrentReadWrite' started at 2026-07-04 18:02:25.995
+[OpenBurnBarData:data:info] Database backup created path=/tmp/openburnbar-data-tests-2A1733D1-0A32-4DFA-AE8E-EBC5D623BDDD/wal-restore.sqlite.backup.20260704-180226
+[OpenBurnBarData:data:info] Restored database from pre-migration backup backup_path=/tmp/openburnbar-data-tests-2A1733D1-0A32-4DFA-AE8E-EBC5D623BDDD/wal-restore.sqlite.backup.20260704-180226 database_path=/tmp/openburnbar-data-tests-2A1733D1-0A32-4DFA-AE8E-EBC5D623BDDD/wal-restore.sqlite
+[OpenBurnBarData:data:error] Database migration failed; restored pre-migration backup backup_path=/tmp/openburnbar-data-tests-2A1733D1-0A32-4DFA-AE8E-EBC5D623BDDD/wal-restore.sqlite.backup.20260704-180226 error=intentional migration failure after encrypted backup
+[OpenBurnBarData:data:info] Database backup created path=/tmp/openburnbar-data-tests-2A1733D1-0A32-4DFA-AE8E-EBC5D623BDDD/wal-restore.sqlite.backup.20260704-180226
+[OpenBurnBarData:data:info] Database backup created path=/tmp/openburnbar-data-tests-2A1733D1-0A32-4DFA-AE8E-EBC5D623BDDD/wal-restore.sqlite.backup.20260704-180226
+[OpenBurnBarData:data:info] Restored database from pre-migration backup backup_path=/tmp/openburnbar-data-tests-2A1733D1-0A32-4DFA-AE8E-EBC5D623BDDD/wal-restore.sqlite.backup.20260704-180226 database_path=/tmp/openburnbar-data-tests-2A1733D1-0A32-4DFA-AE8E-EBC5D623BDDD/wal-restore.sqlite
+Test Case 'OpenBurnBarDataLinuxTests.testWALBackupRestoreFailureInjectionAndConcurrentReadWrite' passed (1.206 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 18:02:27.201
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.206 (1.206) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 18:02:27.201
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.206 (1.206) seconds
+
+exit_code=0

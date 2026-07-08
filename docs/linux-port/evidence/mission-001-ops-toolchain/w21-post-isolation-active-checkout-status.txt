@@ -1,0 +1,15 @@
+generated_at=2026-07-05T08:24:36Z
+active_checkout=/Users/albertonunez/Documents/Developer/BurnBar
+head=1b62ec42bd752cc8a6af578f034bf776c6ec3b97
+tracked_untracked_counts
+tracked_dirty=130
+untracked=109
+mission_evidence_dirs
+docs/linux-port/evidence/mission-001-computer-use-media-mobile
+docs/linux-port/evidence/mission-001-discovery-devices-extension
+docs/linux-port/evidence/mission-001-ipc-cli-gateway
+docs/linux-port/evidence/mission-001-linux-cloud-security
+docs/linux-port/evidence/mission-001-ops-toolchain
+docs/linux-port/evidence/mission-001-provider-hermes
+docs/linux-port/evidence/mission-001-shell-surface-repair-20260704T205100Z
+docs/linux-port/evidence/mission-001-shell-ux
