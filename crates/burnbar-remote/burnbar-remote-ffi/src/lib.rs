@@ -10,6 +10,32 @@ uniffi::setup_scaffolding!();
 
 const REMOTE_PROTOCOL_VERSION: &str = "burnbar-remote/v1";
 
+/// Installs the process-wide `tracing` subscriber that gives the remote stack's
+/// `tracing::info!/warn!/debug!` a destination.
+///
+/// Before this existed, no crate, Tauri shell, or FFI host installed a
+/// subscriber, so every `tracing` event in `burnbar-remote-*` (e.g. the iroh
+/// endpoint-online / unknown-path-kind logs in `burnbar-remote-network`) was
+/// silently dropped. A UniFFI host (Swift / Kotlin / **C#**) should call this
+/// exactly once at startup; the Tauri Linux shell installs its own equivalent.
+///
+/// Idempotent and safe to call multiple times or concurrently: it uses
+/// `try_init`, so a second call (or a host that already set a global default)
+/// is a no-op rather than a panic. Verbosity is controlled by the standard
+/// `RUST_LOG` env var (e.g. `RUST_LOG=burnbar_remote=debug`); when unset it
+/// defaults to `info`.
+///
+/// Returns `true` if this call installed the subscriber, `false` if one was
+/// already present (so the host can log the outcome without treating it as an
+/// error).
+#[uniffi::export]
+pub fn init_tracing() -> bool {
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    fmt().with_env_filter(filter).with_target(true).try_init().is_ok()
+}
+
 #[derive(Debug, Error, uniffi::Error)]
 pub enum BurnBarRemoteFfiError {
     #[error("invalid dimensions {width}x{height}")]
