@@ -2,585 +2,527 @@
 warning: 'openburnbarcore': Invalid Exclude '/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/UIMode.swift': File not found.
 [0/1] Planning build
 Building for debugging...
-[0/10] Write swift-version-24593BA9C3E375BF.txt
-[1/9] Write sources
-[5/12] Compiling OpenBurnBarCore HermesRelayCrypto.swift
-[6/12] Compiling OpenBurnBarCore BurnBarRPCIPCCanon.generated.swift
-[7/183] Compiling OpenBurnBarCore AssistantQuickPrompt.swift
-[8/183] Compiling OpenBurnBarCore AssistantRuntimeID.swift
-[9/183] Compiling OpenBurnBarCore BudgetRule.swift
-[10/183] Compiling OpenBurnBarCore BurnBarProviderAuthRegistry.swift
-[11/183] Compiling OpenBurnBarCore BurnBarWidgetSnapshot.swift
-[12/183] Compiling OpenBurnBarCore CLIRuntimeModelCatalog.swift
-[13/183] Compiling OpenBurnBarCore CastleStatus.swift
-[14/183] Compiling OpenBurnBarCore ChatTilePreferences.swift
-[15/183] Compiling OpenBurnBarCore ChatViewMode.swift
-[16/183] Compiling OpenBurnBarCore ChunkReassemblyValidator.swift
-[17/193] Compiling OpenBurnBarCore SQLiteConnection.swift
-[18/193] Compiling OpenBurnBarCore SQLiteReading.swift
-[19/193] Compiling OpenBurnBarCore AgentIdentity.swift
-[20/193] Compiling OpenBurnBarCore AgentIdentityProviderBridge.swift
-[21/193] Compiling OpenBurnBarCore AgentManifest.swift
-[22/193] Compiling OpenBurnBarCore AgentPersona.swift
-[23/193] Compiling OpenBurnBarCore AgentProvider.swift
-[24/193] Compiling OpenBurnBarCore AgentProviderLogDiscovery.swift
-[25/193] Compiling OpenBurnBarCore AgentTier.swift
-[26/193] Compiling OpenBurnBarCore ApprovalPolicy.swift
-[27/193] Compiling OpenBurnBarCore OBBCAbiInsightExport.swift
-[28/193] Compiling OpenBurnBarCore OBBCAbiParseExport.swift
-[29/193] Compiling OpenBurnBarCore OpenBurnBarError.swift
-[30/193] Compiling OpenBurnBarCore HermesAtom.swift
-[31/193] Compiling OpenBurnBarCore HermesAtomParser.swift
-[32/193] Compiling OpenBurnBarCore HermesAtomURL.swift
-[33/193] Compiling OpenBurnBarCore HermesInlineMarkdown.swift
-[34/193] Compiling OpenBurnBarCore HermesSourceLinkExtractor.swift
-[35/193] Compiling OpenBurnBarCore LinuxLocalPeerDiscovery.swift
-[36/193] Compiling OpenBurnBarCore GatedFeature.swift
-[37/193] Compiling OpenBurnBarCore ClaudeQuotaAdapter.swift
-[38/193] Compiling OpenBurnBarCore ClaudeQuotaBridgeTypes.swift
-[39/193] Compiling OpenBurnBarCore CodexQuotaAdapter.swift
-[40/193] Compiling OpenBurnBarCore CodexRolloutScanner.swift
-[41/193] Compiling OpenBurnBarCore CopilotQuotaAdapter.swift
-[42/193] Compiling OpenBurnBarCore CursorQuotaAdapter.swift
-[43/193] Compiling OpenBurnBarCore FactoryCookieExtractor.swift
-[44/193] Compiling OpenBurnBarCore FactoryDashboardScraper.swift
-[45/193] Compiling OpenBurnBarCore FactoryQuotaAdapter.swift
-[46/193] Compiling OpenBurnBarCore FactorySessionClassifier.swift
-[47/193] Compiling OpenBurnBarCore HermesSkillRunTypes.swift
-[48/193] Compiling OpenBurnBarCore HermesSquareFeatureFlags.swift
-[49/193] Compiling OpenBurnBarCore HermesStreamEvent.swift
-[50/193] Compiling OpenBurnBarCore HermesSubProvider.swift
-[51/193] Compiling OpenBurnBarCore LinuxCardEnvelope.swift
-[52/193] Compiling OpenBurnBarCore ModelIOCapabilities.swift
-[53/193] Compiling OpenBurnBarCore PinnedAgentGridConfig.swift
-[54/193] Compiling OpenBurnBarCore PixelClockConfig.swift
-[55/193] Compiling OpenBurnBarCore ProviderAccountDeviceLinkTypes+Generated.swift
-[56/193] Compiling OpenBurnBarCore ProviderAccountDeviceLinkTypes.swift
-[57/193] Compiling OpenBurnBarCore ProviderQuotaModels.swift
+[0/480] Copying claude-code-project-path-fixtures.json
+[0/480] Copying openai_stream.sse
+[0/480] Copying MediaFrameAEADVector.json
+[0/480] Copying search-fixture.expected.json
+[0/480] Copying CryptoKitAtRestInteropVector.json
+[0/480] Copying SignalEnvelopeV1Vector.json
+[0/480] Copying placeholder.txt
+[0/480] Copying android-alice-to-swift-bob.json
+[0/480] Copying linux-provider-model-parity-fixture.sha256
+[0/480] Copying platform-crypto-kats.json
+[1/480] Copying llm-safe-wrap-vectors.json
+[1/480] Copying linux-provider-model-parity-fixture.json
+[1/480] Copying secret-pattern-corpus.json
+[1/480] Copying ControlFrameSealVector.json
+[1/480] Copying SignalTransportBindingAADVectors.json
+[7/480] Copying HermesGatewayWireVector.json
+[14/480] Copying SignalBindingAADVectors.json
+[14/480] Copying pretext.bundle.min.js
+[17/480] Copying HermesStreamEventVector.json
+[17/480] Copying MiningPickIcon.svg
+[17/480] Copying index.html
+[17/480] Copying BurnBarHpkeV3Vector.json
+[17/480] Copying HermesRelayWireVector.json
+[19/480] Copying MiningPickIcon-Pickaxe.svg
+[19/480] Copying MiningPickIcon-Ore.svg
+[25/480] Copying catalog.json
+[26/480] Write sources
+[55/480] Copying PrivacyInfo.xcprivacy
+[56/480] Write swift-version-24593BA9C3E375BF.txt
+[57/480] Compiling fiat_p256_adx_sqr.S
+[58/480] Compiling fiat_p256_adx_mul.S
+[59/480] Compiling fiat_curve25519_adx_square.S
+[60/480] Compiling md5-586-apple.S
+[60/480] Compiling md5-x86_64-linux.S
+[61/480] Compiling md5-x86_64-apple.S
+[61/480] Compiling fiat_curve25519_adx_mul.S
+[64/480] Compiling chacha20_poly1305_x86_64-linux.S
+[65/480] Compiling chacha20_poly1305_x86_64-apple.S
+[66/480] Compiling md5-586-linux.S
+[67/480] Compiling chacha20_poly1305_armv8-win.S
+[68/480] Compiling chacha-x86_64-linux.S
+[69/480] Compiling chacha-x86_64-apple.S
+[70/480] Compiling chacha-x86-apple.S
+[71/480] Compiling chacha-x86-linux.S
+[72/480] Compiling chacha20_poly1305_armv8-apple.S
+[73/480] Compiling chacha20_poly1305_armv8-linux.S
+[74/480] Compiling chacha-armv8-win.S
+[75/480] Compiling chacha-armv8-linux.S
+[76/480] Compiling chacha-armv8-apple.S
+[77/480] Compiling aes128gcmsiv-x86_64-linux.S
+[78/480] Compiling x86_64-mont5-linux.S
+[79/480] Compiling chacha-armv4-linux.S
+[80/480] Wrapping AST for OpenBurnBarAnalytics for debugging
+[81/480] Compiling aes128gcmsiv-x86_64-apple.S
+[82/480] Compiling x86_64-mont5-apple.S
+[83/480] Wrapping AST for OpenBurnBarFirestoreModels for debugging
+[83/480] Copying Fixtures
+[83/480] Compiling x86_64-mont-linux.S
+[86/480] Compiling x86-mont-linux.S
+[86/480] Compiling x86_64-mont-apple.S
+[86/480] Compiling _TestingInternals WillThrow.cpp
+[86/480] Compiling vpaes-x86_64-linux.S
+[86/480] Compiling vpaes-x86_64-apple.S
+[86/480] Compiling x86-mont-apple.S
+[92/480] Compiling vpaes-x86-apple.S
+[93/480] Compiling vpaes-x86-linux.S
+[94/480] Compiling vpaes-armv8-win.S
+[95/480] Wrapping AST for TestingMacros for debugging
+[96/480] Compiling vpaes-armv8-apple.S
+[97/480] Write Objects.LinkFileList
+[98/480] Compiling _TestingInternals Versions.cpp
+[99/480] Compiling sha512-x86_64-apple.S
+[99/480] Compiling sha512-x86_64-linux.S
+[101/480] Compiling vpaes-armv8-linux.S
+[102/480] Compiling sha512-armv8-win.S
+[103/480] Compiling sha512-armv4-linux.S
+[103/480] Compiling vpaes-armv7-linux.S
+[105/480] Compiling sha512-armv8-apple.S
+[105/480] Compiling err_data.cc
+[107/480] Compiling sha512-586-apple.S
+[108/480] Compiling sha512-586-linux.S
+[109/480] Compiling sha512-armv8-linux.S
+[110/480] Compiling sha256-x86_64-linux.S
+[111/480] Compiling sha256-x86_64-apple.S
+[112/480] Compiling sha256-armv4-linux.S
+[112/480] Compiling sha256-armv8-win.S
+[114/480] Compiling sha256-armv8-apple.S
+[115/480] Compiling sha256-armv8-linux.S
+[116/480] Compiling sha256-586-apple.S
+[117/480] Compiling sha256-586-linux.S
+[118/480] Compiling sha1-x86_64-apple.S
+[119/480] Compiling sha1-x86_64-linux.S
+[120/480] Compiling sha1-armv8-linux.S
+[120/480] Compiling sha1-armv8-win.S
+[120/480] Compiling sha1-armv4-large-linux.S
+[122/480] Compiling sha1-armv8-apple.S
+[124/480] Compiling sha1-586-linux.S
+[125/480] Compiling sha1-586-apple.S
+[126/480] Compiling rsaz-avx2-apple.S
+[127/480] Compiling rdrand-x86_64-linux.S
+[128/480] Compiling rsaz-avx2-linux.S
+[128/480] Compiling rdrand-x86_64-apple.S
+[130/480] Compiling p256_beeu-armv8-asm-win.S
+[131/480] Compiling p256_beeu-x86_64-asm-linux.S
+[132/480] Compiling p256-x86_64-asm-linux.S
+[133/480] Compiling p256_beeu-armv8-asm-apple.S
+[133/480] Compiling p256-armv8-asm-win.S
+[135/480] Compiling p256_beeu-armv8-asm-linux.S
+[136/480] Compiling p256-x86_64-asm-apple.S
+[137/480] Compiling p256_beeu-x86_64-asm-apple.S
+[138/480] Compiling p256-armv8-asm-apple.S
+[139/480] Compiling ghashv8-armv8-apple.S
+[139/480] Compiling p256-armv8-asm-linux.S
+[139/480] Compiling ghashv8-armv8-linux.S
+[140/480] Compiling ghashv8-armv8-win.S
+[143/480] Compiling CCryptoBoringSSLShims shims.c
+[144/480] Compiling ghashv8-armv7-linux.S
+[145/480] Compiling ghash-x86_64-linux.S
+[146/480] Compiling ghash-x86_64-apple.S
+[147/480] Compiling ghash-x86-linux.S
+[148/480] Compiling ghash-ssse3-x86_64-apple.S
+[148/480] Compiling ghash-ssse3-x86_64-linux.S
+[148/480] Compiling ghash-x86-apple.S
+[151/480] Compiling ghash-ssse3-x86-linux.S
+[152/480] Compiling ghash-ssse3-x86-apple.S
+[153/480] Compiling ghash-neon-armv8-win.S
+[154/480] Compiling ghash-neon-armv8-apple.S
+[155/480] Compiling ghash-neon-armv8-linux.S
+[155/480] Compiling co-586-linux.S
+[157/480] Compiling bsaes-armv7-linux.S
+[158/480] Compiling ghash-armv4-linux.S
+[159/480] Compiling bn-armv8-win.S
+[160/480] Compiling bn-armv8-apple.S
+[161/480] Compiling bn-586-linux.S
+[162/480] Compiling bn-armv8-linux.S
+[163/480] Compiling bn-586-apple.S
+[163/480] Compiling co-586-apple.S
+[165/480] Wrapping AST for GRDB for debugging
+[166/480] Compiling armv8-mont-win.S
+[167/480] Compiling armv8-mont-apple.S
+[167/480] Compiling armv8-mont-linux.S
+[169/480] Compiling aesv8-gcm-armv8-win.S
+[170/480] Compiling armv4-mont-linux.S
+[170/480] Compiling aesv8-armv8-win.S
+[172/480] Compiling aesv8-gcm-armv8-apple.S
+[173/480] Compiling aesv8-armv8-linux.S
+[174/480] Compiling aesni-x86-linux.S
+[174/480] Compiling aesv8-armv8-apple.S
+[176/480] Compiling _TestingInternals Discovery.cpp
+[176/480] Compiling aesv8-gcm-armv8-linux.S
+[176/480] Compiling aesv8-armv7-linux.S
+[179/480] Compiling aesni-x86_64-linux.S
+[180/480] Compiling aesni-x86_64-apple.S
+[181/480] Compiling aesni-x86-apple.S
+[182/480] Compiling aesni-gcm-x86_64-linux.S
+[183/480] Compiling aes-gcm-avx512-x86_64-apple.S
+[184/480] Compiling aesni-gcm-x86_64-apple.S
+[185/480] Compiling aes-gcm-avx512-x86_64-linux.S
+[186/480] Compiling aes-gcm-avx2-x86_64-linux.S
+[187/480] Compiling aes-gcm-avx2-x86_64-apple.S
+[188/480] Wrapping AST for OpenBurnBarData for debugging
+[189/480] Compiling xwing.cc
+[190/480] Compiling x_sig.cc
+[191/480] Compiling x_spki.cc
+[192/480] Compiling x509spki.cc
+[193/480] Compiling x_all.cc
+[194/480] Compiling x_attrib.cc
+[195/480] Compiling x_exten.cc
+[196/480] Compiling x509name.cc
+[197/480] Compiling x_crl.cc
+[197/480] Compiling x_x509a.cc
+[199/480] Compiling x_name.cc
+[200/480] Compiling x509rset.cc
+[201/480] Compiling x_req.cc
+[202/480] Compiling x_x509.cc
+[203/480] Compiling x_algor.cc
+[204/480] Compiling x_pubkey.cc
+[205/480] Linking TestingMacros-tool
+[206/480] Compiling x509cset.cc
+[207/480] Compiling x509_vpm.cc
+[208/480] Compiling x509_v3.cc
+[209/480] Compiling x509_def.cc
+[210/480] Compiling x509_txt.cc
+[211/480] Compiling x509_d2.cc
+[212/480] Compiling x509_vfy.cc
+[213/480] Compiling x509.cc
+[214/480] Compiling x509_trs.cc
+[215/480] Compiling x509_obj.cc
+[216/480] Compiling x509_req.cc
+[217/481] Compiling x509_cmp.cc
+[218/527] Compiling x509_set.cc
+[219/544] Compiling x509_lu.cc
+[220/544] Compiling x509_att.cc
+[221/544] Wrapping AST for OpenBurnBarDataTests for debugging
+[222/544] Compiling x509_ext.cc
+[223/544] Compiling v3_utl.cc
+[224/544] Compiling v3_skey.cc
+[226/544] Compiling Testing SPIAwareTrait.swift
+[227/544] Compiling Testing Tag+Macro.swift
+[228/544] Compiling Testing Tag+Predefined.swift
+[229/547] Compiling Testing KnownIssue.swift
+[230/547] Compiling Testing CustomTestArgumentEncodable.swift
+[231/547] Compiling Testing Test.Case.Generator.swift
+[232/547] Compiling Testing Test.Case.ID.swift
+[232/547] Compiling v3_prn.cc
+[234/547] Compiling Testing Test.Case.swift
+[235/547] Compiling Testing TypeInfo.swift
+[236/547] Compiling Testing Configuration+EventHandling.swift
+[237/547] Compiling Testing Configuration.TestFilter.swift
+[238/547] Compiling Testing SourceLocation+Macro.swift
+[239/547] Compiling Testing SourceLocation.swift
+[240/547] Compiling Testing ArrayAdditions.swift
+[241/547] Compiling Testing CollectionDifferenceAdditions.swift
+[242/547] Compiling Testing Confirmation.swift
+[243/547] Compiling Testing ErrorSnapshot.swift
+[244/547] Compiling Testing Issue+Recording.swift
+[245/547] Compiling Testing Issue.swift
+[246/547] Compiling Testing Runner.swift
+[247/547] Compiling Testing SkipInfo.swift
+[248/547] Compiling Testing Backtrace+Symbolication.swift
+[249/547] Compiling Testing Backtrace.swift
+[249/547] Compiling v3_pmaps.cc
+[251/547] Compiling Testing Comment+Macro.swift
+[252/547] Compiling Testing Comment.swift
+[253/547] Compiling Testing ConditionTrait+Macro.swift
+[253/547] Compiling OpenBurnBarCoreCSQLite sqlite3.c
+[254/547] Compiling v3_ncons.cc
+[255/547] Compiling v3_purp.cc
+[257/547] Compiling Testing Tag.Color+Loading.swift
+[258/547] Compiling Testing Tag.Color.swift
+[259/547] Compiling Testing Tag.List.swift
+[260/547] Compiling Testing ConditionTrait.swift
+[261/547] Compiling Testing HiddenTrait.swift
+[262/547] Compiling Testing ParallelizationTrait.swift
+[263/547] Compiling Testing Versions.swift
+[264/547] Compiling Testing Test+Discovery.swift
+[265/547] Compiling Testing Test+Macro.swift
+[266/547] Compiling Testing Test.ID.Selection.swift
+[267/547] Compiling Testing Test.ID.swift
+[268/547] Compiling Testing Test.swift
+[269/547] Compiling Testing Bug.swift
+[270/547] Emitting module Testing
+[270/547] Compiling v3_int.cc
+[272/547] Compiling Testing Graph.swift
+[273/547] Compiling Testing JSON.swift
+[274/547] Compiling Testing Locked.swift
+[275/547] Compiling Testing SystemError.swift
+[276/547] Compiling Testing CartesianProduct.swift
+[277/547] Compiling Testing Environment.swift
+[278/547] Compiling Testing FileHandle.swift
+[279/547] Compiling Testing GetSymbol.swift
+[279/547] Compiling v3_pcons.cc
+[281/547] Compiling Testing Configuration.swift
+[282/547] Compiling Testing Runner.Plan+Dumping.swift
+[283/547] Compiling Testing Runner.Plan.swift
+[284/547] Compiling Testing Runner.RuntimeState.swift
+[285/547] Compiling Testing WaitFor.swift
+[286/547] Compiling Testing Expectation+Macro.swift
+[287/547] Compiling Testing Expectation.swift
+[288/547] Compiling Testing ExpectationChecking+Macro.swift
+[289/547] Compiling Testing CustomTestStringConvertible.swift
+[290/547] Compiling Testing Expression+Macro.swift
+[291/547] Compiling Testing Expression.swift
+[292/547] Compiling Testing SourceContext.swift
+[293/547] Compiling Testing CommandLineAdditions.swift
+[294/547] Compiling Testing NumericAdditions.swift
+[295/547] Compiling Testing ResultAdditions.swift
+[296/547] Compiling Testing CError.swift
+[296/547] Compiling v3_ocsp.cc
+[297/547] Compiling v3_lib.cc
+[298/547] Compiling v3_ia5.cc
+[299/547] Compiling v3_extku.cc
+[300/547] Compiling v3_genn.cc
+[301/547] Compiling v3_enum.cc
+[303/547] Compiling Testing Tag.swift
+[304/547] Compiling Testing TimeLimitTrait.swift
+[305/547] Compiling Testing Trait.swift
+[305/547] Compiling v3_info.cc
+[306/548] Compiling v3_crld.cc
+[308/548] Compiling v3_conf.cc
+[309/548] Compiling v3_cpols.cc
+[310/548] Compiling v3_bitst.cc
+[311/548] Wrapping AST for Testing for debugging
+[312/548] Wrapping AST for OpenBurnBarAnalyticsTests for debugging
+[313/548] Compiling i2d_pr.cc
+[314/548] Compiling v3_bcons.cc
+[315/548] Compiling v3_akeya.cc
+[316/548] Compiling v3_alt.cc
+[317/548] Compiling t_req.cc
+[318/548] Compiling t_x509a.cc
+[319/548] Compiling t_x509.cc
+[320/548] Compiling t_crl.cc
+[321/548] Compiling v3_akey.cc
+[322/548] Compiling name_print.cc
+[323/548] Compiling rsa_pss.cc
+[324/548] Compiling policy.cc
+[325/548] Compiling by_file.cc
+[326/548] Compiling by_dir.cc
+[327/548] Compiling thread_win.cc
+[328/548] Compiling thread.cc
+[329/548] Compiling asn1_gen.cc
+[330/548] Compiling thread_pthread.cc
+[331/548] Compiling thread_none.cc
+[332/548] Compiling algorithm.cc
+[333/548] Compiling voprf.cc
+[334/548] Compiling stack.cc
+[335/548] Compiling slhdsa.cc
+[336/548] Compiling siphash.cc
+[337/548] Compiling a_verify.cc
+[338/548] Compiling a_digest.cc
+[339/548] Compiling pmbtoken.cc
+[340/548] Compiling sha512.cc
+[341/548] Compiling a_sign.cc
+[342/548] Compiling trust_token.cc
+[343/548] Compiling sha256.cc
+[344/548] Compiling sha1.cc
+[345/548] Compiling rsa_print.cc
+[346/548] Compiling spake2plus.cc
+[347/548] Compiling rsa_extra.cc
+[348/548] Compiling poly1305_arm_asm.S
+[349/548] Compiling rc4.cc
+[350/548] Compiling refcount.cc
+[351/548] Compiling trusty.cc
+[352/548] Compiling windows.cc
+[353/548] Compiling rand.cc
+[354/548] Compiling ios.cc
+[355/548] Compiling passive.cc
+[356/548] Compiling rsa_crypt.cc
+[356/548] Compiling getentropy.cc
+[358/548] Compiling forkunsafe.cc
+[358/548] Compiling deterministic.cc
+[360/548] Compiling urandom.cc
+[361/548] Compiling fork_detect.cc
+[362/548] Compiling poly1305_arm.cc
+[363/548] Compiling poly1305_vec.cc
+[364/548] Compiling poly1305.cc
+[365/548] Compiling pool.cc
+[366/548] Compiling rsa_asn1.cc
+[367/548] Compiling pkcs7.cc
+[368/548] Compiling mlkem.cc
+[369/548] Compiling obj_xref.cc
+[370/548] Compiling mldsa.cc
+[371/548] Compiling p5_pbev2.cc
+[372/548] Compiling pkcs8_x509.cc
+[373/548] Compiling mem.cc
+[374/548] Compiling pkcs8.cc
+[375/548] Compiling poly_rq_mul.S
+[376/548] Compiling pem_x509.cc
+[377/548] Compiling pem_xaux.cc
+[378/548] Compiling pem_pkey.cc
+[379/548] Compiling fips_shared_support.cc
+[380/548] Compiling pem_pk8.cc
+[381/548] Compiling pem_oth.cc
+[382/548] Compiling pkcs7_x509.cc
+[383/548] Compiling obj.cc
+[384/548] Compiling pem_info.cc
+[385/548] Compiling pem_all.cc
+[386/548] Compiling pem_lib.cc
+[387/548] Compiling lhash.cc
+[388/548] Compiling md5.cc
+[389/548] Compiling md4.cc
+[390/548] Compiling fuzzer_mode.cc
+[391/548] Compiling kyber.cc
+[392/548] Compiling ex_data.cc
+[393/548] Compiling hpke.cc
+[394/548] Compiling pbkdf.cc
+[395/548] Compiling scrypt.cc
+[396/548] Compiling print.cc
+[397/548] Compiling sign.cc
+[398/548] Compiling p_x25519_asn1.cc
+[399/548] Compiling p_x25519.cc
+[400/548] Compiling p_rsa_asn1.cc
+[401/548] Compiling p_hkdf.cc
+[402/548] Compiling hrss.cc
+[403/548] Compiling p_ed25519.cc
+[403/548] Compiling p_ed25519_asn1.cc
+[405/548] Compiling p_rsa.cc
+[406/548] Compiling p_ec_asn1.cc
+[407/548] Compiling p_ec.cc
+[408/548] Compiling p_dh_asn1.cc
+[409/548] Compiling err.cc
+[410/548] Compiling p_dsa_asn1.cc
+[411/548] Compiling p_dh.cc
+[412/548] Compiling evp_ctx.cc
+[413/548] Compiling engine.cc
+[414/548] Compiling ecdsa_p1363.cc
+[415/548] Compiling evp.cc
+[416/548] Compiling x25519-asm-arm.S
+[417/548] Compiling ecdh.cc
+[418/548] Compiling evp_asn1.cc
+[419/548] Compiling ec_derive.cc
+[420/548] Compiling ecdsa_asn1.cc
+[421/548] Compiling hash_to_curve.cc
+[422/548] Compiling dsa_asn1.cc
+[423/548] Compiling dsa.cc
+[424/548] Compiling ec_asn1.cc
+[425/548] Compiling curve25519_64_adx.cc
+[426/548] Compiling digest_extra.cc
+[427/548] Compiling cpu_intel.cc
+[428/548] Compiling params.cc
+[429/548] Compiling des.cc
+[430/548] Compiling dh_asn1.cc
+[431/548] Compiling cpu_arm_linux.cc
+[432/548] Compiling crypto.cc
+[433/548] Compiling curve25519.cc
+[434/548] Compiling cpu_aarch64_win.cc
+[435/548] Compiling cpu_arm_freebsd.cc
+[436/548] Compiling cpu_aarch64_openbsd.cc
+[437/548] Compiling cpu_aarch64_sysreg.cc
+[438/548] Compiling spake25519.cc
+[439/548] Compiling cpu_aarch64_linux.cc
+[440/548] Compiling cpu_aarch64_fuchsia.cc
+[441/548] Compiling cpu_aarch64_apple.cc
+[442/548] Compiling get_cipher.cc
+[443/548] Compiling tls_cbc.cc
+[444/548] Compiling conf.cc
+[445/548] Compiling e_tls.cc
+[445/548] Compiling e_rc4.cc
+[447/548] Compiling e_rc2.cc
+[448/548] Compiling e_des.cc
+[449/548] Compiling derive_key.cc
+[450/548] Compiling e_null.cc
+[451/548] Compiling e_chacha20poly1305.cc
+[452/548] Compiling e_aesgcmsiv.cc
+[453/548] Compiling e_aeseax.cc
+[454/548] Compiling unicode.cc
+[455/548] Compiling chacha.cc
+[456/548] Compiling e_aesctrhmac.cc
+[457/548] Compiling cms.cc
+[458/548] Compiling sqrt.cc
+[459/548] Compiling cbb.cc
+[460/548] Compiling buf.cc
+[461/548] Compiling ber.cc
+[462/548] Compiling cbs.cc
+[463/548] Compiling div.cc
+[464/548] Compiling asn1_compat.cc
+[465/548] Compiling exponentiation.cc
+[465/548] Compiling bn_asn1.cc
+[467/548] Compiling printf.cc
+[468/548] Compiling hexdump.cc
+[469/548] Compiling pair.cc
+[470/548] Compiling fd.cc
+[471/548] Compiling file.cc
+[472/548] Compiling convert.cc
+[473/548] Compiling blake2.cc
+[474/548] Compiling bio_mem.cc
+[475/548] Compiling errno.cc
+[476/548] Compiling base64.cc
+[477/548] Compiling bio.cc
+[477/548] Compiling tasn_typ.cc
+[479/548] Compiling tasn_fre.cc
+[480/548] Compiling f_int.cc
+[481/548] Compiling posix_time.cc
+[482/548] Compiling asn1_par.cc
+[483/548] Compiling asn_pack.cc
+[484/548] Compiling tasn_utl.cc
+[484/548] Compiling f_string.cc
+[486/548] Compiling tasn_new.cc
+[487/548] Compiling tasn_enc.cc
+[488/548] Compiling a_utctm.cc
+[489/548] Compiling tasn_dec.cc
+[490/548] Write sources
+[492/548] Compiling asn1_lib.cc
+[493/548] Compiling a_time.cc
+[494/548] Compiling a_type.cc
+[495/548] Compiling a_octet.cc
+[496/548] Wrapping AST for BurnBarRemoteEngine for debugging
+[497/548] Compiling a_i2d_fp.cc
+[498/548] Wrapping AST for BurnBarRemoteEngineTests for debugging
+[499/548] Compiling a_mbstr.cc
+[500/548] Compiling a_dup.cc
+[501/548] Compiling a_d2i_fp.cc
+[502/548] Compiling aes.cc
+[502/548] Compiling a_strnid.cc
+[503/548] Compiling a_gentm.cc
+[505/548] Compiling a_strex.cc
+[505/548] Compiling a_int.cc
+[507/548] Compiling a_object.cc
+[508/548] Compiling a_bool.cc
+[509/548] Compiling a_bitstr.cc
+[510/548] Compiling bcm.cc
+[511/548] Wrapping AST for CryptoBoringWrapper for debugging
+[512/548] Wrapping AST for Crypto for debugging
+[513/548] Wrapping AST for OpenBurnBarLinuxSecurity for debugging
+[514/548] Wrapping AST for OpenBurnBarLinuxSecurityTests for debugging
+[516/550] Compiling OpenBurnBarCore BurnBarRPCIPCCanon.generated.swift
+[517/550] Emitting module OpenBurnBarCore
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
   1 | import Foundation
   2 | import OpenBurnBarCore
     |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[58/193] Compiling OpenBurnBarCore ProviderQuotaPlanSettings.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[59/193] Compiling OpenBurnBarCore WarpAPIFetcher.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[60/193] Compiling OpenBurnBarCore WarpQuotaAdapter.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[61/193] Compiling OpenBurnBarCore XAIQuotaAdapter.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[62/193] Compiling OpenBurnBarCore ZAIQuotaAdapter.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[63/193] Compiling OpenBurnBarCore AntigravityParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[64/193] Compiling OpenBurnBarCore AugmentParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[65/193] Compiling OpenBurnBarCore BufferedLineSequence.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[66/193] Compiling OpenBurnBarCore ClaudeCodeParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude Code Parser
-[67/193] Compiling OpenBurnBarCore ProviderAccountTypes.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[68/193] Compiling OpenBurnBarCore ProviderConnectionTypes.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[69/193] Compiling OpenBurnBarCore ProviderEndpointProfileRegistry.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[70/193] Compiling OpenBurnBarCore ProviderQuotaDisplayExtensions.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[71/193] Compiling OpenBurnBarCore ProviderQuotaPacing.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[72/193] Compiling OpenBurnBarCore ProviderQuotaTypes.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[73/193] Compiling OpenBurnBarCore ProviderRouteEndpointResolver.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[74/193] Compiling OpenBurnBarCore ProviderRoutingStateBuilder.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[75/193] Compiling OpenBurnBarCore ProviderRuntimeFailoverTypes.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[76/193] Compiling OpenBurnBarCore QueuedTurn.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
-185 |     }
-186 |
-187 |     public var managementLink: URL? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-188 |         guard let managementURL else { return nil }
-189 |         return URL(string: managementURL)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
-190 |     }
-191 |
-192 |     public var primaryBucket: ProviderQuotaBucket? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
-194 |             let lhsPriority = primaryBucketPriority(for: $0)
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
-206 |     }
-207 |
-208 |     public var summaryText: String {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-209 |         guard let primaryBucket = primaryDisplayableBucket else {
-210 |             return statusMessage ?? ""
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
-731 | public extension ProviderQuotaSnapshot {
-732 |     public var quotaProvider: AgentProvider? {
-    |     `- warning: 'public' modifier is redundant for property declared in a public extension
-733 |         AgentProvider.fromProviderID(providerID)
-734 |             ?? AgentProvider.fromPersistedToken(provider)
-[77/193] Compiling OpenBurnBarCore ClaudeConversationExtractor.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[78/193] Compiling OpenBurnBarCore ClineFormatParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[79/193] Compiling OpenBurnBarCore CodexParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[80/193] Compiling OpenBurnBarCore CursorAgentParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[81/193] Compiling OpenBurnBarCore FactoryDroidParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[82/193] Compiling OpenBurnBarCore ForgeDevParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[83/193] Compiling OpenBurnBarCore GeminiCLIParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[84/193] Compiling OpenBurnBarCore GooseParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[85/193] Compiling OpenBurnBarCore GrokParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[86/193] Compiling OpenBurnBarCore HermesParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Claude-format JSONL conversation extraction
-[87/193] Compiling OpenBurnBarCore QuotaPercentageDisplayMode.swift
-[88/193] Compiling OpenBurnBarCore RGBA.swift
-[89/193] Compiling OpenBurnBarCore RuntimeConnectionPreferenceTypes.swift
-[90/193] Compiling OpenBurnBarCore SignalEnvelopeAAD.swift
-[91/193] Compiling OpenBurnBarCore SmartDisplayConfigCodec.swift
-[92/193] Compiling OpenBurnBarCore SmartDisplayKind.swift
-[93/193] Compiling OpenBurnBarCore SmartDisplayRepairStatus.swift
-[94/193] Compiling OpenBurnBarCore SmartHubConfig.swift
-[95/193] Compiling OpenBurnBarCore SmartHubDisplayConfig.swift
-[96/193] Compiling OpenBurnBarCore SubscriptionTopic.swift
-[97/193] Compiling OpenBurnBarCore OpenBurnBarSearchContracts.swift
-[98/193] Compiling OpenBurnBarCore OpenBurnBarSearchPlanner.swift
-[99/193] Compiling OpenBurnBarCore OpenBurnBarVectorKit.swift
-[100/193] Compiling OpenBurnBarCore PixelClockQuotaRenderer.swift
-[101/193] Compiling OpenBurnBarCore OpenBurnBarLinuxPaths.swift
-[102/193] Compiling OpenBurnBarCore PlatformSupport.swift
-[103/193] Compiling OpenBurnBarCore AnthropicCredentialProbe.swift
-[104/193] Compiling OpenBurnBarCore AntigravityQuotaAdapter.swift
-[105/193] Compiling OpenBurnBarCore ClaudeCredentialsReader.swift
-[106/193] Compiling OpenBurnBarCore ClaudeOAuthUsageFetcher.swift
-[107/193] Compiling OpenBurnBarCore BurnBarProviderContracts.swift
-[108/193] Compiling OpenBurnBarCore BurnBarProxyRouteLogContracts.swift
-[109/193] Compiling OpenBurnBarCore BurnBarRPCContracts.swift
-[110/193] Compiling OpenBurnBarCore BurnBarRunContracts.swift
-[111/193] Compiling OpenBurnBarCore BurnBarToolContracts.swift
-[112/193] Compiling OpenBurnBarCore CLIAgentMissionPersonaScopeApplier.swift
-[113/193] Compiling OpenBurnBarCore MiniProgramHostContracts.swift
-[114/193] Compiling OpenBurnBarCore PersonaScopeEnvelope.swift
-[115/193] Compiling OpenBurnBarCore RollbackContracts.swift
-[116/193] Compiling OpenBurnBarCore VoiceCommandContracts.swift
-[117/193] Emitting module OpenBurnBarCore
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeCodeParser.swift:2:8: warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'ClaudeCodeParser.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
+  3 | 
   4 | // MARK: - Claude Code Parser
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ClaudeConversationExtractor.swift:2:8: warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
   1 | import Foundation
   2 | import OpenBurnBarCore
     |        `- warning: file 'ClaudeConversationExtractor.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
+  3 | 
   4 | // MARK: - Claude-format JSONL conversation extraction
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
   1 | import Foundation
   2 | import OpenBurnBarCore
     |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
+  3 | 
   4 | // MARK: - Parse Result
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
+  2 | 
   3 | #if canImport(OpenBurnBarCore)
   4 | import OpenBurnBarCore
     |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
   5 | #endif
-  6 |
+  6 | 
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
   1 | import Foundation
   2 | import OpenBurnBarCore
     |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
+  3 | 
   4 | // MARK: - Shared Token Extraction Utilities
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
@@ -617,7 +559,7 @@ Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to proto
   9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
     |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
  10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
+ 11 | 
 
 Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
 1 | @available(*, unavailable)
@@ -627,7 +569,7 @@ Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to proto
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:187:5: warning: 'public' modifier is redundant for property declared in a public extension
 185 |     }
-186 |
+186 | 
 187 |     public var managementLink: URL? {
     |     `- warning: 'public' modifier is redundant for property declared in a public extension
 188 |         guard let managementURL else { return nil }
@@ -635,7 +577,7 @@ Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to proto
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:192:5: warning: 'public' modifier is redundant for property declared in a public extension
 190 |     }
-191 |
+191 | 
 192 |     public var primaryBucket: ProviderQuotaBucket? {
     |     `- warning: 'public' modifier is redundant for property declared in a public extension
 193 |         buckets.map { $0.reconcilingElapsedWindow() }.min {
@@ -643,1093 +585,75 @@ Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to proto
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaDisplayExtensions.swift:208:5: warning: 'public' modifier is redundant for property declared in a public extension
 206 |     }
-207 |
+207 | 
 208 |     public var summaryText: String {
     |     `- warning: 'public' modifier is redundant for property declared in a public extension
 209 |         guard let primaryBucket = primaryDisplayableBucket else {
 210 |             return statusMessage ?? ""
 
 /workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderQuotaTypes.swift:732:5: warning: 'public' modifier is redundant for property declared in a public extension
-730 |
+730 | 
 731 | public extension ProviderQuotaSnapshot {
 732 |     public var quotaProvider: AgentProvider? {
     |     `- warning: 'public' modifier is redundant for property declared in a public extension
 733 |         AgentProvider.fromProviderID(providerID)
 734 |             ?? AgentProvider.fromPersistedToken(provider)
-[118/193] Compiling OpenBurnBarCore BurnBarHNSWVectorIndex.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[119/193] Compiling OpenBurnBarCore BurnBarPersistentVectorIndex.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[120/193] Compiling OpenBurnBarCore BurnBarRunCreateMetadata.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[121/193] Compiling OpenBurnBarCore BurnBarSignpostVectorIndex.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[122/193] Compiling OpenBurnBarCore CLIAuthDiscovery.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[123/193] Compiling OpenBurnBarCore BurnBarApprovalContracts.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[124/193] Compiling OpenBurnBarCore BurnBarClientContracts.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[125/193] Compiling OpenBurnBarCore BurnBarComputerUseContracts.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[126/193] Compiling OpenBurnBarCore BurnBarConnectorContracts.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[127/193] Compiling OpenBurnBarCore BurnBarEventContracts.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[128/193] Compiling OpenBurnBarCore BurnBarProjectCodeMemoryContracts.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarHNSWVectorIndex.swift:248:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-246 |
-247 |         try? FileManager.default.removeItem(at: url)
-248 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-249 |         let handle = try FileHandle(forWritingTo: url)
-250 |         defer { try? handle.close() }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:269:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-267 |         bodyURL = FileManager.default.temporaryDirectory
-268 |             .appendingPathComponent("openburnbar-vector-body-\(UUID().uuidString)", isDirectory: false)
-269 |         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-270 |         handle = try FileHandle(forWritingTo: bodyURL)
-271 |     }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift:300:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-298 |         try handle.close()
-299 |         try? FileManager.default.removeItem(at: url)
-300 |         FileManager.default.createFile(atPath: url.path, contents: nil)
-    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused [#no-usage]
-301 |         let output = try FileHandle(forWritingTo: url)
-302 |         defer { try? output.close() }
-[129/193] Compiling OpenBurnBarCore SubstrateFamily.swift
-[130/193] Compiling OpenBurnBarCore SwarmColorPalette.swift
-[131/193] Compiling OpenBurnBarCore ThreadInboxItem.swift
-[132/193] Compiling OpenBurnBarCore TokenUsage.swift
-[133/193] Compiling OpenBurnBarCore UIMode.swift
-[134/193] Compiling OpenBurnBarCore UsageRollupTypes.swift
-[135/193] Compiling OpenBurnBarCore WandModelRouter.swift
-[136/193] Compiling OpenBurnBarCore SwitcherProfile.swift
-[137/193] Compiling OpenBurnBarCore TraceContext.swift
-[138/193] Compiling OpenBurnBarCore XAISuperGrokPacingLog.swift
-[139/193] Compiling OpenBurnBarCore HermesRealtimeRelayEnvelope.swift
-[140/193] Compiling OpenBurnBarCore HermesRealtimeRelayMedia.swift
-[141/193] Compiling OpenBurnBarCore HermesRealtimeRelayRemoteUnlock.swift
-[142/193] Compiling OpenBurnBarCore HermesRealtimeRelaySystemPermission.swift
-[143/193] Compiling OpenBurnBarCore HermesAttachment.swift
-[144/193] Compiling OpenBurnBarCore HermesAttachmentEncoder.swift
-[145/193] Compiling OpenBurnBarCore HermesConnectionTypes.swift
-[146/193] Compiling OpenBurnBarCore HermesInventoryModels.swift
-[147/193] Compiling OpenBurnBarCore HermesOpenAICompatibleStreamParser.swift
-[148/193] Compiling OpenBurnBarCore HermesRealtimeRelayFrameType.swift
-[149/193] Compiling OpenBurnBarCore CloudSyncModels.swift
-[150/193] Compiling OpenBurnBarCore CloudVaultCrypto.swift
-[151/193] Compiling OpenBurnBarCore CloudVaultSignalEnvelopeModels.swift
-[152/193] Compiling OpenBurnBarCore ConversationRecord.swift
-[153/193] Compiling OpenBurnBarCore DeveloperIDReleaseCapability.swift
-[154/193] Compiling OpenBurnBarCore ElderWandPreset.swift
-[155/193] Compiling OpenBurnBarCore EscrowModels.swift
-[156/193] Compiling OpenBurnBarCore Formatting.swift
-[157/193] Compiling OpenBurnBarCore FusionSessionSpend.swift
-[158/193] Compiling OpenBurnBarCore HermesRealtimeRelayControl.swift
-[159/193] Compiling OpenBurnBarCore FakeMemoryService.swift
-[160/193] Compiling OpenBurnBarCore MemorySecretPIIGate.swift
-[161/193] Compiling OpenBurnBarCore MemoryServing.swift
-[162/193] Compiling OpenBurnBarCore OpenBurnBarAgentContracts.swift
-[163/193] Compiling OpenBurnBarCore OpenBurnBarCatalog.swift
-[164/193] Compiling OpenBurnBarCore OpenBurnBarIdentifiers.swift
-[165/193] Compiling OpenBurnBarCore OpenBurnBarJSONValue.swift
-[166/193] Compiling OpenBurnBarCore OpenBurnBarMissionControlContracts.swift
-[167/193] Compiling OpenBurnBarCore OpenBurnBarMissionControlMissionsContracts.swift
-[168/193] Compiling OpenBurnBarCore OpenBurnBarMissionNextActionPlanner.swift
-[169/193] Compiling OpenBurnBarCore KimiParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[170/193] Compiling OpenBurnBarCore LogParserProtocol.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[171/193] Compiling OpenBurnBarCore ModelPricing.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[172/193] Compiling OpenBurnBarCore ParserDiskCache.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[173/193] Compiling OpenBurnBarCore TokenExtractionUtility.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[174/193] Compiling OpenBurnBarCore WarpParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[175/193] Compiling OpenBurnBarCore WindsurfParser.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[176/193] Compiling OpenBurnBarCore ClaudeCodeProjectPathCodec.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[177/193] Compiling OpenBurnBarCore LogPathPlatform.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[178/193] Compiling OpenBurnBarCore OpenBurnBarIdentity.swift
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/LogParserProtocol.swift:2:8: warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'LogParserProtocol.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Parse Result
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift:4:8: warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  2 |
-  3 | #if canImport(OpenBurnBarCore)
-  4 | import OpenBurnBarCore
-    |        `- warning: file 'ModelPricing.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  5 | #endif
-  6 |
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/TokenExtractionUtility.swift:2:8: warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  1 | import Foundation
-  2 | import OpenBurnBarCore
-    |        `- warning: file 'TokenExtractionUtility.swift' is part of module 'OpenBurnBarCore'; ignoring import
-  3 |
-  4 | // MARK: - Shared Token Extraction Utilities
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:7:48: warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  5 | // this module additionally funnels high-volume settings writes through
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                `- warning: conformance of 'FileManager' to protocol 'Sendable' was already stated in the type's module 'FoundationEssentials'
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-FoundationEssentials.FileManager:1:12: note: 'FileManager' declares conformance to protocol 'Sendable' here
- 1 | open class FileManager : @unchecked Sendable {
-   |            `- note: 'FileManager' declares conformance to protocol 'Sendable' here
- 2 |     open class var `default`: FileManager { get }
- 3 |     weak open var delegate: (any FileManagerDelegate)? { get set }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:8:49: warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  6 | // `SettingsPersistenceCoordinator`.
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'UserDefaults' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-
-Foundation.UserDefaults:2:11: note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension UserDefaults : @unchecked Sendable {
-  |           `- note: 'UserDefaults' declares conformance to protocol 'Sendable' here
-3 | }
-
-/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ParserDiskCache.swift:9:49: warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
-  7 | extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  8 | extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-  9 | extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
-    |                                                 `- warning: conformance of 'NSDictionary' to protocol 'Sendable' was already stated in the type's module 'Foundation'
- 10 | extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
- 11 |
-
-Foundation.NSDictionary:2:11: note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-1 | @available(*, unavailable)
-2 | extension NSDictionary : @unchecked Sendable {
-  |           `- note: 'NSDictionary' declares conformance to protocol 'Sendable' here
-3 | }
-[179/193] Compiling OpenBurnBarCore FlexibleQuotaBucketNormalizer.swift
-[180/193] Compiling OpenBurnBarCore ForgeQuotaAdapter.swift
-[181/193] Compiling OpenBurnBarCore KiloCodeQuotaAdapter.swift
-[182/193] Compiling OpenBurnBarCore KimiQuotaAdapter.swift
-[183/193] Compiling OpenBurnBarCore MimoQuotaAdapter.swift
-[184/193] Compiling OpenBurnBarCore MiniMaxQuotaAdapter.swift
-[185/193] Compiling OpenBurnBarCore OMPQuotaAdapter.swift
-[186/193] Compiling OpenBurnBarCore OllamaCloudScraper.swift
-[187/193] Compiling OpenBurnBarCore OllamaQuotaAdapter.swift
-[188/193] Compiling OpenBurnBarCore OpenBurnBarQuotaAdapters.swift
-[189/242] Wrapping AST for OpenBurnBarCore for debugging
-[190/243] Write Objects.LinkFileList
-[192/243] Compiling OpenBurnBarWindowsParserPathParity resource_bundle_accessor.swift
-[193/243] Compiling OpenBurnBarG2ParserParity resource_bundle_accessor.swift
-[194/243] Compiling OpenBurnBarWalkingSkeleton resource_bundle_accessor.swift
-[195/243] Compiling OpenBurnBarWindowsParserPathParity WindowsParserPathParity.swift
-[196/243] Emitting module OpenBurnBarWindowsParserPathParity
-[197/244] Compiling OpenBurnBarIrohRelay IrohPairingReplayGuard.swift
-[198/244] Compiling OpenBurnBarIrohRelay IrohRelayTransport.swift
-[199/244] Compiling OpenBurnBarWalkingSkeleton WalkingSkeleton.swift
-[201/244] Emitting module OpenBurnBarWalkingSkeleton
-[202/245] Compiling OpenBurnBarIrohRelay IrohPairingDirectory.swift
-[202/244] Write Objects.LinkFileList
-[205/244] Compiling OpenBurnBarIrohRelay IrohXcframeworkBackend.swift
-[206/244] Compiling OpenBurnBarIrohRelay IrohTransportAudit.swift
-[207/244] Compiling OpenBurnBarIrohRelay IrohXcframeworkTransport.swift
-[208/244] Compiling OpenBurnBarIrohRelay LoopbackIrohRelayTransport.swift
-[209/244] Compiling OpenBurnBarIrohRelay IrohRelayProtocol.swift
-[210/244] Compiling OpenBurnBarIrohRelay IrohRelayFrameCodec.swift
-[211/244] Compiling OpenBurnBarIrohRelay IrohRelayPairing.swift
-[212/244] Emitting module OpenBurnBarSignalCore
-[213/244] Compiling OpenBurnBarSignalCore OpenBurnBarSignalCoreUnavailable.swift
-[213/243] Write Objects.LinkFileList
-[215/244] Compiling OpenBurnBarIrohRelay IrohInboundPeerPolicy.swift
-[216/244] Compiling OpenBurnBarIrohRelay IrohBlobBackend.swift
-[217/244] Compiling OpenBurnBarIrohRelay HermesIrohEcho.swift
-[218/244] Emitting module OpenBurnBarIrohRelay
-[220/243] Wrapping AST for OpenBurnBarIrohRelay for debugging
-[222/242] Emitting module OpenBurnBarG2ParserParity
-[223/242] Compiling OpenBurnBarG2ParserParity G2ParserParity.swift
-[224/241] Write Objects.LinkFileList
-[226/259] Compiling OpenBurnBarMedia MediaFrameAEAD.swift
-[227/260] Compiling OpenBurnBarMedia MediaFileTransferService.swift
-[228/260] Compiling OpenBurnBarMedia MediaCapabilityGate.swift
-[229/260] Compiling OpenBurnBarMedia MediaPacketCodec.swift
-[230/260] Compiling OpenBurnBarMedia MediaServeTaskTeardownRegistry.swift
-[231/260] Compiling OpenBurnBarMedia MediaSessionMetadata.swift
-[232/260] Compiling OpenBurnBarMedia MediaStreamClass.swift
-[233/260] Compiling OpenBurnBarMedia BitrateController.swift
-[234/260] Compiling OpenBurnBarMedia MediaAnalyticsEvent.swift
-[235/260] Compiling OpenBurnBarMedia MediaBudgetEnvelope.swift
-[236/260] Emitting module OpenBurnBarMedia
-[237/260] Compiling OpenBurnBarMedia MercuryPeer.swift
-[238/260] Compiling OpenBurnBarMedia MercuryStreamingCapabilities.swift
-[239/260] Compiling OpenBurnBarMedia MercuryStreamingStats.swift
-[240/260] Compiling OpenBurnBarMedia MercuryStreamingPolicy.swift
-[241/260] Compiling OpenBurnBarMedia MediaControlStreamRegistry.swift
-[242/260] Compiling OpenBurnBarMedia MediaFrameSealSession.swift
-[243/260] Compiling OpenBurnBarMedia MediaFrameV2.swift
-[244/260] Compiling OpenBurnBarMedia MediaFrame.swift
-[245/260] Compiling OpenBurnBarMedia VideoDecoderConfigurationPayload.swift
-[246/261] Wrapping AST for OpenBurnBarMedia for debugging
-[248/307] Compiling OpenBurnBarComputerUseCore RemoteUnlockPolicy.swift
-[249/307] Compiling OpenBurnBarComputerUseCore RemoteUnlockSessionContextSnapshot.swift
-[250/309] Compiling OpenBurnBarComputerUseCore ComputerUseAuditSignedHead.swift
-[251/309] Compiling OpenBurnBarComputerUseCore ComputerUseAuditVerifier.swift
-[252/309] Compiling OpenBurnBarComputerUseCore ComputerUseBudgetEnvelope.swift
-[253/309] Compiling OpenBurnBarComputerUseCore ComputerUseCapabilityGate.swift
-[254/309] Compiling OpenBurnBarComputerUseCore ComputerUseDenyRegistry.swift
-[255/309] Compiling OpenBurnBarComputerUseCore ComputerUseOpenTimestampsClient.swift
-[256/309] Compiling OpenBurnBarComputerUseCore PhoneControlAttestationPolicy.swift
-[257/309] Compiling OpenBurnBarComputerUseCore PhoneControlAuthoritySigningKey.swift
-[258/309] Compiling OpenBurnBarComputerUseCore PhoneControlSigningKey.swift
-[259/309] Compiling OpenBurnBarComputerUseCore RemoteUnlockCertificationReport.swift
-[260/309] Compiling OpenBurnBarComputerUseCore RemoteUnlockCredentialEnvelopeCrypto.swift
-[261/309] Compiling OpenBurnBarComputerUseCore PrivilegedInputXPCConstants.swift
-[262/309] Compiling OpenBurnBarComputerUseCore RemoteUnlockBlockerPresentation.swift
-[263/309] Compiling OpenBurnBarComputerUseCore RemoteUnlockSetupProbe.swift
-[264/309] Compiling OpenBurnBarComputerUseCore SystemPermissionItem.swift
-[265/309] Compiling OpenBurnBarComputerUseCore PhoneControlStepUpPolicy.swift
-[266/309] Compiling OpenBurnBarComputerUseCore PrivilegedInputDispatchContract.swift
-[267/309] Compiling OpenBurnBarComputerUseCore ComputerUseScopeLibrary.swift
-[268/309] Compiling OpenBurnBarComputerUseCore ComputerUseScopeRule.swift
-[269/309] Compiling OpenBurnBarComputerUseCore ComputerUseSessionMetadata.swift
-[270/309] Compiling OpenBurnBarComputerUseCore CapabilityTokenIssuerTrustMaterial.swift
-[271/309] Compiling OpenBurnBarComputerUseCore CapabilityTokenSigning.swift
-[272/309] Compiling OpenBurnBarComputerUseCore CapabilityTokenVerifier.swift
-[273/309] Compiling OpenBurnBarComputerUseCore ControlFrameSeal.swift
-[274/309] Compiling OpenBurnBarComputerUseCore ControlFrameSealSession.swift
-[275/309] Compiling OpenBurnBarComputerUseCore ControllerKeyPinStore.swift
-[276/309] Compiling OpenBurnBarComputerUseCore ControllerKeySafetyCode.swift
-[277/309] Compiling OpenBurnBarComputerUseCore IrohHostKeyPinStore.swift
-[278/309] Compiling OpenBurnBarComputerUseCore MacInputCore.swift
-[279/309] Compiling OpenBurnBarComputerUseCore ComputerUseOpenTimestampsProofVerifier.swift
-[280/309] Compiling OpenBurnBarComputerUseCore ComputerUsePhoneControlSigner.swift
-[281/309] Compiling OpenBurnBarComputerUseCore ComputerUseSafetyInvariantHarness.swift
-[282/309] Compiling OpenBurnBarComputerUseCore ComputerUseAuditExportWriter.swift
-[283/309] Compiling OpenBurnBarComputerUseCore ComputerUseAuditHeadFinalizer.swift
-[284/309] Compiling OpenBurnBarComputerUseCore ComputerUseAuditLogger.swift
-[285/309] Compiling OpenBurnBarComputerUseCore AppCheckAttestationBinding.swift
-[286/309] Compiling OpenBurnBarComputerUseCore CapabilityToken.swift
-[287/309] Compiling OpenBurnBarComputerUseCore CapabilityTokenIssuer.swift
-[288/309] Compiling OpenBurnBarComputerUseCore AgentCapabilityGrant.swift
-[289/309] Compiling OpenBurnBarComputerUseCore AgentCapabilityGrantWire.swift
-[290/309] Compiling OpenBurnBarComputerUseCore AgentDesktopToolDefinitions.swift
-[291/309] Compiling OpenBurnBarComputerUseCore ComputerUseActionDescriptor.swift
-[292/309] Compiling OpenBurnBarComputerUseCore ComputerUseAuditChain.swift
-[293/309] Compiling OpenBurnBarComputerUseCore ComputerUseAuditExportSignerProvider.swift
-[294/309] Emitting module OpenBurnBarComputerUseCore
-[295/309] Compiling OpenBurnBarComputerUseCore SystemPermissionKind.swift
-[296/309] Compiling OpenBurnBarComputerUseCore SystemPermissionToolFailureClassifier.swift
-[297/313] Linking OpenBurnBarWindowsParserPathParity
-[298/313] Linking libOpenBurnBarCoreCAbi.so
-[300/313] Compiling OpenBurnBarLinuxCoreFoundationTests resource_bundle_accessor.swift
-[301/313] Emitting module OpenBurnBarLinuxCoreFoundationTests
-[302/313] Compiling OpenBurnBarLinuxCoreFoundationTests LinuxCoreFoundationTests.swift
-[303/313] Compiling OpenBurnBarLinuxCoreFoundationTests AgentProviderLogDiscoveryLinuxTests.swift
-[304/313] Compiling OpenBurnBarLinuxCoreFoundationTests LinuxLocalPeerDiscoveryTests.swift
-[305/309] Linking OpenBurnBarWalkingSkeleton
-[306/309] Write Objects.LinkFileList
-[307/309] Linking OpenBurnBarG2ParserParity
-[308/309] Linking OpenBurnBarCorePackageTests.xctest
-Build complete! (16.91s)
-Test Suite 'Selected tests' started at 2026-07-05 12:14:06.740
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-05 12:14:06.741
-Test Case 'AgentProviderLogDiscoveryLinuxTests.testResolveLogSourceUsesLinuxXDGStylePathsForVSCodeProviders' started at 2026-07-05 12:14:06.741
+[518/551] Wrapping AST for OpenBurnBarCoreTests for debugging
+[519/551] Wrapping AST for OpenBurnBarCore for debugging
+[520/551] Wrapping AST for OpenBurnBarWalkingSkeleton for debugging
+[521/551] Write Objects.LinkFileList
+[522/551] Wrapping AST for OpenBurnBarWindowsParserPathParity for debugging
+[523/551] Write Objects.LinkFileList
+[524/551] Wrapping AST for OpenBurnBarCoreCAbi for debugging
+[525/551] Write Objects.LinkFileList
+[526/551] Wrapping AST for OpenBurnBarSignalCore for debugging
+[527/551] Wrapping AST for OpenBurnBarG2ParserParity for debugging
+[528/551] Write Objects.LinkFileList
+[529/551] Wrapping AST for OpenBurnBarIrohRelay for debugging
+[530/551] Wrapping AST for OpenBurnBarSignalCoreTests for debugging
+[531/551] Wrapping AST for OpenBurnBarIrohRelayTests for debugging
+[532/551] Wrapping AST for OpenBurnBarSignalSessionTransport for debugging
+[533/551] Wrapping AST for OpenBurnBarSignalSessionTransportTests for debugging
+[534/551] Wrapping AST for OpenBurnBarMedia for debugging
+[535/551] Wrapping AST for OpenBurnBarMediaTests for debugging
+[536/551] Wrapping AST for OpenBurnBarComputerUseCore for debugging
+[537/551] Wrapping AST for OpenBurnBarComputerUseCoreTests for debugging
+[538/551] Wrapping AST for OpenBurnBarLinuxCoreFoundationTests for debugging
+[539/551] /workspace/OpenBurnBarCore/.build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageDiscoveredTests.derived/all-discovered-tests.swift
+[540/551] Write sources
+[542/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarLinuxSecurityTests.swift
+[543/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarComputerUseCoreTests.swift
+[544/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarCoreTests.swift
+[545/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarAnalyticsTests.swift
+[546/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarSignalSessionTransportTests.swift
+[547/564] Compiling OpenBurnBarCorePackageDiscoveredTests BurnBarRemoteEngineTests.swift
+[548/564] Emitting module OpenBurnBarCorePackageDiscoveredTests
+[549/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarSignalCoreTests.swift
+[550/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarLinuxCoreFoundationTests.swift
+[551/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarMediaTests.swift
+[552/564] Compiling OpenBurnBarCorePackageDiscoveredTests all-discovered-tests.swift
+[553/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarDataTests.swift
+[554/564] Compiling OpenBurnBarCorePackageDiscoveredTests OpenBurnBarIrohRelayTests.swift
+[555/565] /workspace/OpenBurnBarCore/.build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.derived/runner.swift
+[556/565] Write sources
+[557/565] Wrapping AST for OpenBurnBarCorePackageDiscoveredTests for debugging
+[558/565] Linking OpenBurnBarWindowsParserPathParity
+[559/567] Linking OpenBurnBarG2ParserParity
+[560/567] Linking OpenBurnBarWalkingSkeleton
+[561/567] Linking libOpenBurnBarCoreCAbi.so
+[563/567] Emitting module OpenBurnBarCorePackageTests
+[564/567] Compiling OpenBurnBarCorePackageTests runner.swift
+[565/568] Wrapping AST for OpenBurnBarCorePackageTests for debugging
+[566/568] Write Objects.LinkFileList
+[567/568] Linking OpenBurnBarCorePackageTests.xctest
+Build complete! (16.59s)
+Test Suite 'Selected tests' started at 2026-07-07 13:35:01.738
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-07 13:35:01.738
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testResolveLogSourceUsesLinuxXDGStylePathsForVSCodeProviders' started at 2026-07-07 13:35:01.738
 Test Case 'AgentProviderLogDiscoveryLinuxTests.testResolveLogSourceUsesLinuxXDGStylePathsForVSCodeProviders' passed (0.002 seconds)
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-05 12:14:06.743
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-07 13:35:01.740
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
-Test Suite 'Selected tests' passed at 2026-07-05 12:14:06.743
+Test Suite 'Selected tests' passed at 2026-07-07 13:35:01.740
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
 ◇ Test run started.
 ↳ Testing Library Version: 0.99.0
@@ -1739,13 +663,13 @@ exit_code[OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTest
 Building for debugging...
 [0/7] Write swift-version-24593BA9C3E375BF.txt
 Build complete! (0.33s)
-Test Suite 'Selected tests' started at 2026-07-05 12:14:07.275
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-05 12:14:07.275
-Test Case 'AgentProviderLogDiscoveryLinuxTests.testResolveLogSourceUsesInjectedHomeForHeadlessLinuxFixtures' started at 2026-07-05 12:14:07.275
+Test Suite 'Selected tests' started at 2026-07-07 13:35:02.241
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-07 13:35:02.242
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testResolveLogSourceUsesInjectedHomeForHeadlessLinuxFixtures' started at 2026-07-07 13:35:02.242
 Test Case 'AgentProviderLogDiscoveryLinuxTests.testResolveLogSourceUsesInjectedHomeForHeadlessLinuxFixtures' passed (0.002 seconds)
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-05 12:14:07.277
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-07 13:35:02.244
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
-Test Suite 'Selected tests' passed at 2026-07-05 12:14:07.277
+Test Suite 'Selected tests' passed at 2026-07-07 13:35:02.244
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
 ◇ Test run started.
 ↳ Testing Library Version: 0.99.0
@@ -1755,14 +679,14 @@ exit_code[OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTest
 Building for debugging...
 [0/7] Write swift-version-24593BA9C3E375BF.txt
 Build complete! (0.33s)
-Test Suite 'Selected tests' started at 2026-07-05 12:14:07.817
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-05 12:14:07.818
-Test Case 'AgentProviderLogDiscoveryLinuxTests.testSessionIdentityKeyUsesProviderAndStandardizedResolvedDirectory' started at 2026-07-05 12:14:07.818
-Test Case 'AgentProviderLogDiscoveryLinuxTests.testSessionIdentityKeyUsesProviderAndStandardizedResolvedDirectory' passed (0.001 seconds)
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-05 12:14:07.818
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
-Test Suite 'Selected tests' passed at 2026-07-05 12:14:07.818
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'Selected tests' started at 2026-07-07 13:35:02.773
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-07 13:35:02.774
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testSessionIdentityKeyUsesProviderAndStandardizedResolvedDirectory' started at 2026-07-07 13:35:02.774
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testSessionIdentityKeyUsesProviderAndStandardizedResolvedDirectory' passed (0.002 seconds)
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-07 13:35:02.775
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'Selected tests' passed at 2026-07-07 13:35:02.775
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
 ◇ Test run started.
 ↳ Testing Library Version: 0.99.0
 ✔ Test run with 0 tests passed after 0.001 seconds.
@@ -1770,14 +694,14 @@ exit_code[OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTest
 ### swift test OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests.testSymlinkedHomeExpansionDoesNotSilentlyRewriteSessionKeyWithoutRealpath
 Building for debugging...
 [0/7] Write swift-version-24593BA9C3E375BF.txt
-Build complete! (0.38s)
-Test Suite 'Selected tests' started at 2026-07-05 12:14:08.408
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-05 12:14:08.409
-Test Case 'AgentProviderLogDiscoveryLinuxTests.testSymlinkedHomeExpansionDoesNotSilentlyRewriteSessionKeyWithoutRealpath' started at 2026-07-05 12:14:08.409
+Build complete! (0.34s)
+Test Suite 'Selected tests' started at 2026-07-07 13:35:03.297
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-07 13:35:03.298
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testSymlinkedHomeExpansionDoesNotSilentlyRewriteSessionKeyWithoutRealpath' started at 2026-07-07 13:35:03.298
 Test Case 'AgentProviderLogDiscoveryLinuxTests.testSymlinkedHomeExpansionDoesNotSilentlyRewriteSessionKeyWithoutRealpath' passed (0.002 seconds)
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-05 12:14:08.411
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-07 13:35:03.300
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
-Test Suite 'Selected tests' passed at 2026-07-05 12:14:08.411
+Test Suite 'Selected tests' passed at 2026-07-07 13:35:03.300
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
 ◇ Test run started.
 ↳ Testing Library Version: 0.99.0
@@ -1786,15 +710,15 @@ exit_code[OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTest
 ### swift test OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests.testPartialLogFilePatternDocumentsCodexSessionJsonl
 Building for debugging...
 [0/7] Write swift-version-24593BA9C3E375BF.txt
-Build complete! (0.35s)
-Test Suite 'Selected tests' started at 2026-07-05 12:14:08.969
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-05 12:14:08.970
-Test Case 'AgentProviderLogDiscoveryLinuxTests.testPartialLogFilePatternDocumentsCodexSessionJsonl' started at 2026-07-05 12:14:08.970
-Test Case 'AgentProviderLogDiscoveryLinuxTests.testPartialLogFilePatternDocumentsCodexSessionJsonl' passed (0.001 seconds)
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-05 12:14:08.971
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
-Test Suite 'Selected tests' passed at 2026-07-05 12:14:08.971
-	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Build complete! (0.33s)
+Test Suite 'Selected tests' started at 2026-07-07 13:35:03.811
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-07 13:35:03.812
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testPartialLogFilePatternDocumentsCodexSessionJsonl' started at 2026-07-07 13:35:03.812
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testPartialLogFilePatternDocumentsCodexSessionJsonl' passed (0.003 seconds)
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-07 13:35:03.815
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'Selected tests' passed at 2026-07-07 13:35:03.815
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
 ◇ Test run started.
 ↳ Testing Library Version: 0.99.0
 ✔ Test run with 0 tests passed after 0.001 seconds.
@@ -1802,14 +726,14 @@ exit_code[OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTest
 ### swift test OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests.testRotationScenarioKeepsDirectoryScopedIdentity
 Building for debugging...
 [0/7] Write swift-version-24593BA9C3E375BF.txt
-Build complete! (0.31s)
-Test Suite 'Selected tests' started at 2026-07-05 12:14:09.488
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-05 12:14:09.489
-Test Case 'AgentProviderLogDiscoveryLinuxTests.testRotationScenarioKeepsDirectoryScopedIdentity' started at 2026-07-05 12:14:09.489
+Build complete! (0.32s)
+Test Suite 'Selected tests' started at 2026-07-07 13:35:04.305
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-07 13:35:04.306
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testRotationScenarioKeepsDirectoryScopedIdentity' started at 2026-07-07 13:35:04.306
 Test Case 'AgentProviderLogDiscoveryLinuxTests.testRotationScenarioKeepsDirectoryScopedIdentity' passed (0.001 seconds)
-Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-05 12:14:09.489
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-07 13:35:04.307
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
-Test Suite 'Selected tests' passed at 2026-07-05 12:14:09.490
+Test Suite 'Selected tests' passed at 2026-07-07 13:35:04.307
 	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
 ◇ Test run started.
 ↳ Testing Library Version: 0.99.0

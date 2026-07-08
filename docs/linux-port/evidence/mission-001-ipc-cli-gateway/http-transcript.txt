@@ -1,35 +1,50 @@
 ### GET /health without auth
 HTTP/1.1 401 Unauthorized
-Content-Length: 36
 Connection: close
+Content-Length: 36
+Access-Control-Allow-Origin: *
 Content-Type: application/json
+Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Key
+Access-Control-Allow-Methods: GET, POST, OPTIONS
 
 {"error":{"message":"unauthorized"}}
 ### GET /health wrong bearer
 HTTP/1.1 401 Unauthorized
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+Content-Type: application/json
+Access-Control-Allow-Origin: *
 Content-Length: 36
 Connection: close
-Content-Type: application/json
+Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Key
 
 {"error":{"message":"unauthorized"}}
 ### GET /health correct bearer
 HTTP/1.1 200 OK
-Content-Length: 54
-Connection: close
 Content-Type: application/json
+Connection: close
+Content-Length: 54
+Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Key
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, OPTIONS
 
 {"ok":true,"gateway":"openburnbar","platform":"linux"}
 ### GET /v1/models correct bearer
 HTTP/1.1 200 OK
 Content-Length: 27
 Connection: close
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Key
 Content-Type: application/json
+Access-Control-Allow-Methods: GET, POST, OPTIONS
 
 {"object":"list","data":[]}
 ### POST /v1/chat/completions correct bearer
 HTTP/1.1 503 Service Unavailable
 Content-Type: application/json
-Content-Length: 117
 Connection: close
+Content-Length: 122
+Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Key
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, OPTIONS
 
-{"error":{"message":"No Linux gateway provider route is configured for this request.","type":"openburnbar_no_route"}}
+{"error":"No eligible route for glm-5 on /v1/chat/completions. Add or enable an account/provider that serves this model."}

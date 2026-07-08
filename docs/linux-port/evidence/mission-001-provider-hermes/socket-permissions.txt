@@ -1,3 +1,3 @@
 ### socket and parent permissions
-socket path=/tmp/tmp.lVj7XHldVm/socket/openburnbar.sock mode=600 type=socket
-parent path=/tmp/tmp.lVj7XHldVm/socket mode=700 type=directory
+socket path=/tmp/tmp.Lv1lzQnA9W/socket/openburnbar.sock mode=600 type=socket
+parent path=/tmp/tmp.Lv1lzQnA9W/socket mode=700 type=directory

@@ -1,6 +1,6 @@
 ### generator
 generator_source=tools/ipc/generate-burnbarrpc-canon.mjs
-Generated BurnBarRPC IPC canon for 95 methods.
+Generated BurnBarRPC IPC canon for 98 methods.
 generator_exit_code=0
 generated_swift=OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCIPCCanon.generated.swift
 generated_typescript=extensions/openburnbar/src/generated/burnbar-rpc-ipc-canon.generated.ts
@@ -50,6 +50,9 @@ daemon.followup.done	case=followupDone	domain=mission_control	capability=mission
 daemon.followup.list	case=followupsList	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.followup	error=BurnBarRPCError
 daemon.followup.snooze	case=followupSnooze	domain=mission_control	capability=mission_control	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.followup.snooze	error=BurnBarRPCError
 daemon.health	case=health	domain=lifecycle	capability=lifecycle	params=BurnBarRPCRequestEnvelope	result=BurnBarHealthResponse	error=BurnBarRPCError
+daemon.membership.checkoutUrl	case=membershipCheckoutURL	domain=membership	capability=membership	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.membership.checkoutUrl	error=BurnBarRPCError
+daemon.membership.restore	case=membershipRestore	domain=membership	capability=membership	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.membership.restore	error=BurnBarRPCError
+daemon.membership.status	case=membershipStatus	domain=membership	capability=membership	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.membership.status	error=BurnBarRPCError
 daemon.memory.analytics	case=memoryAnalytics	domain=memory	capability=memory_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.memory.analytics	error=BurnBarRPCError
 daemon.memory.audit_trail	case=memoryAuditTrail	domain=memory	capability=memory_read	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.memory.audit_trail	error=BurnBarRPCError
 daemon.memory.forget	case=memoryForget	domain=memory	capability=memory_write	params=BurnBarRPCRequestEnvelopeWithParams<Codable request>	result=Codable response for daemon.memory.forget	error=BurnBarRPCError
@@ -111,6 +114,9 @@ fixture_path=docs/linux-port/fixtures/burnbarrpc-canon-missing-subscription.fixt
 {
   "ok": false,
   "missing": [
+    "daemon.membership.checkoutUrl",
+    "daemon.membership.restore",
+    "daemon.membership.status",
     "subscription.resume"
   ],
   "extra": []

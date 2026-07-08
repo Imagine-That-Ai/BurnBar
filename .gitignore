@@ -277,3 +277,4 @@ node_modules/
 # Dotnet build output directories (C# / WinUI)
 **/bin/
 **/obj/
+.lane-logs/

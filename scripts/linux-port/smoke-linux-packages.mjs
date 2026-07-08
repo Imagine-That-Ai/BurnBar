@@ -30,7 +30,9 @@ for (const artifact of closure.artifacts ?? []) {
   } else if (artifact.type === 'appimage') {
     fs.chmodSync(full, 0o755);
     steps.push(runStep(full, ['--appimage-extract']));
-    steps.push(runStep(full, ['--version']));
+    // Container smoke has no FUSE (self-extract) and no display (xvfb-run):
+    // Tauri initializes GTK before argument parsing, so --version needs both.
+    steps.push(runStep('xvfb-run', ['-a', full, '--appimage-extract-and-run', '--version']));
   }
 }
 

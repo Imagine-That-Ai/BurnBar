@@ -1,101 +1,101 @@
 daemon_bin=/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
 cli_bin=/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI
-project_dir=/tmp/tmp.H30YQ8808i/sample-project
-index_db=/tmp/tmp.H30YQ8808i/index.sqlite
-support_dir=/tmp/tmp.H30YQ8808i/support
+project_dir=/tmp/tmp.ERBOY4WRz5/sample-project
+index_db=/tmp/tmp.ERBOY4WRz5/index.sqlite
+support_dir=/tmp/tmp.ERBOY4WRz5/support
 ### daemon initial
-support_dir=/tmp/tmp.H30YQ8808i/support
-socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock
-2026-07-05 12:14:10 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734 vault_uid_present=false
-2026-07-05 12:14:10 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=w04-hermes-evidence-initial protocol_version=1 socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_defaults_loaded file_path=/tmp/tmp.H30YQ8808i/support/provider-config.json trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=default_model_variants_seeded marker_path=/tmp/tmp.H30YQ8808i/support/model-variants-seed.v1 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=w04-hermes-evidence-initial socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=first_controller_attached session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=first_controller_attached trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=zai trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=minimax trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=anthropic trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=openai trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=factory trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=true provider_id=codex trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=opencode trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=google trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=mimo trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=xai trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=deepseek trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=mistral trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=meta trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=cohere trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=amazon trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=alibaba trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=moonshot trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=misc trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=mlx trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=ollama trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=true provider_id=ollama-local trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=warning subsystem=com.openburnbar.daemon category=run-service event=silent_failure.score_and_rank_routes error=credentialsUnavailable(providerID: "codex", reason: "configured credential slots are not ready.") trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=run:B99D43DB-14C9-494A-BD88-7D6E4B004325:attempt:1 model_id=gpt-5.5 provider_id=codex trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=completed run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_created client_id=openburnbar-cli phase=completed run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+support_dir=/tmp/tmp.ERBOY4WRz5/support
+socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock
+2026-07-07 13:35:04 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=593DB650-F281-467F-847D-15B3C71D1B56 vault_uid_present=false
+2026-07-07 13:35:04 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=w04-hermes-evidence-initial protocol_version=1 socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_defaults_loaded file_path=/tmp/tmp.ERBOY4WRz5/support/provider-config.json trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=default_model_variants_seeded marker_path=/tmp/tmp.ERBOY4WRz5/support/model-variants-seed.v1 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=w04-hermes-evidence-initial socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=first_controller_attached session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=first_controller_attached trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=zai trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=minimax trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=anthropic trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=openai trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=factory trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=true provider_id=codex trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=opencode trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=google trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=mimo trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=xai trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=deepseek trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=mistral trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=meta trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=cohere trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=amazon trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=alibaba trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=moonshot trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=misc trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=mlx trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=false provider_id=ollama trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=provider_config_updated enabled=true provider_id=ollama-local trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=warning subsystem=com.openburnbar.daemon category=run-service event=silent_failure.score_and_rank_routes error=credentialsUnavailable(providerID: "codex", reason: "configured credential slots are not ready.") trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=run:B167CE41-0015-4DFF-BAD1-42B3691968CA:attempt:1 model_id=gpt-5.5 provider_id=codex trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=completed run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_created client_id=openburnbar-cli phase=completed run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run create mock provider
 command=openburnbar-cli run create --prompt w04 persistence probe --mock-provider
-run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325
+run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA
 phase=completed
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=272 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=272 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run list after create
 command=openburnbar-cli run list
-run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325 phase=completed session_id=openburnbar-cli-session model=gpt-5.5
+run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA phase=completed session_id=openburnbar-cli-session model=gpt-5.5
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=417 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=417 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run get
-command=openburnbar-cli run get B99D43DB-14C9-494A-BD88-7D6E4B004325
-run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325
+command=openburnbar-cli run get B167CE41-0015-4DFF-BAD1-42B3691968CA
+run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA
 phase=completed
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
 model=gpt-5.5
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=430 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=430 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run poll
-command=openburnbar-cli run poll B99D43DB-14C9-494A-BD88-7D6E4B004325 --json
+command=openburnbar-cli run poll B167CE41-0015-4DFF-BAD1-42B3691968CA --json
 {
   "approvals" : [
 
@@ -106,7 +106,7 @@ command=openburnbar-cli run poll B99D43DB-14C9-494A-BD88-7D6E4B004325 --json
       "openburnbar-cli"
     ]
   },
-  "emittedAt" : "2026-07-05T12:14:10Z",
+  "emittedAt" : "2026-07-07T13:35:04Z",
   "pendingToolCalls" : [
 
   ],
@@ -115,55 +115,55 @@ command=openburnbar-cli run poll B99D43DB-14C9-494A-BD88-7D6E4B004325 --json
       "clientID" : "openburnbar-cli",
       "modelID" : "gpt-5.5",
       "phase" : "completed",
-      "runID" : "B99D43DB-14C9-494A-BD88-7D6E4B004325",
+      "runID" : "B167CE41-0015-4DFF-BAD1-42B3691968CA",
       "sessionID" : "openburnbar-cli-session",
-      "updatedAt" : "2026-07-05T12:14:10Z"
+      "updatedAt" : "2026-07-07T13:35:04Z"
     }
   ]
 }
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=approval_requested run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=awaiting_approval run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_created client_id=openburnbar-cli phase=awaiting_approval run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=152 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=approval_requested run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=awaiting_approval run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_created client_id=openburnbar-cli phase=awaiting_approval run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=152 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run create requires approval
 command=openburnbar-cli run create --prompt w04 approval probe --mock-provider --requires-approval
-run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E
+run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B
 phase=awaiting_approval
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=755 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=755 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run poll approval json
-command=openburnbar-cli run poll 1A03B00E-9A27-494E-82B7-AEE6B75F793E --json
+command=openburnbar-cli run poll 4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B --json
 {
   "approvals" : [
     {
-      "approvalID" : "D1B81B9C-4B4E-4786-8B57-94C0B862E149",
+      "approvalID" : "89DFBFA2-7F93-494C-AE3D-42319D9DB03F",
       "message" : "OpenBurnBar needs approval before continuing this tool step.",
-      "requestedAt" : "2026-07-05T12:14:10Z",
-      "runID" : "1A03B00E-9A27-494E-82B7-AEE6B75F793E",
+      "requestedAt" : "2026-07-07T13:35:04Z",
+      "runID" : "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
       "title" : "Approve burnbar_action",
       "tool" : "apply_patch"
     }
@@ -174,54 +174,54 @@ command=openburnbar-cli run poll 1A03B00E-9A27-494E-82B7-AEE6B75F793E --json
       "openburnbar-cli"
     ]
   },
-  "emittedAt" : "2026-07-05T12:14:10Z",
+  "emittedAt" : "2026-07-07T13:35:04Z",
   "pendingToolCalls" : [
 
   ],
   "runs" : [
     {
-      "activeApprovalID" : "D1B81B9C-4B4E-4786-8B57-94C0B862E149",
+      "activeApprovalID" : "89DFBFA2-7F93-494C-AE3D-42319D9DB03F",
       "clientID" : "openburnbar-cli",
       "modelID" : "gpt-5.5",
       "phase" : "awaiting_approval",
-      "runID" : "1A03B00E-9A27-494E-82B7-AEE6B75F793E",
+      "runID" : "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
       "sessionID" : "openburnbar-cli-session",
-      "updatedAt" : "2026-07-05T12:14:10Z"
+      "updatedAt" : "2026-07-07T13:35:04Z"
     }
   ]
 }
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=approval_responded run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=warning subsystem=com.openburnbar.daemon category=run-service event=silent_failure.score_and_rank_routes error=credentialsUnavailable(providerID: "codex", reason: "configured credential slots are not ready.") trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=run:1A03B00E-9A27-494E-82B7-AEE6B75F793E:attempt:1 model_id=gpt-5.5 provider_id=codex trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=completed run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=approval_responded approval_id=D1B81B9C-4B4E-4786-8B57-94C0B862E149 decision=approve run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=417 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=approval_responded run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=warning subsystem=com.openburnbar.daemon category=run-service event=silent_failure.score_and_rank_routes error=credentialsUnavailable(providerID: "codex", reason: "configured credential slots are not ready.") trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=run:4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B:attempt:1 model_id=gpt-5.5 provider_id=codex trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=completed run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=approval_responded approval_id=89DFBFA2-7F93-494C-AE3D-42319D9DB03F decision=approve run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=417 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run approval approve
-command=openburnbar-cli run approval D1B81B9C-4B4E-4786-8B57-94C0B862E149 --decision approve --note approved by linux evidence harness
-approval_id=D1B81B9C-4B4E-4786-8B57-94C0B862E149
+command=openburnbar-cli run approval 89DFBFA2-7F93-494C-AE3D-42319D9DB03F --decision approve --note approved by linux evidence harness
+approval_id=89DFBFA2-7F93-494C-AE3D-42319D9DB03F
 decision=approve
-run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E
+run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B
 phase=completed
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
 model=gpt-5.5
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=430 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=430 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run poll after approval
-command=openburnbar-cli run poll 1A03B00E-9A27-494E-82B7-AEE6B75F793E --json
+command=openburnbar-cli run poll 4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B --json
 {
   "approvals" : [
 
@@ -232,7 +232,7 @@ command=openburnbar-cli run poll 1A03B00E-9A27-494E-82B7-AEE6B75F793E --json
       "openburnbar-cli"
     ]
   },
-  "emittedAt" : "2026-07-05T12:14:10Z",
+  "emittedAt" : "2026-07-07T13:35:04Z",
   "pendingToolCalls" : [
 
   ],
@@ -241,52 +241,52 @@ command=openburnbar-cli run poll 1A03B00E-9A27-494E-82B7-AEE6B75F793E --json
       "clientID" : "openburnbar-cli",
       "modelID" : "gpt-5.5",
       "phase" : "completed",
-      "runID" : "1A03B00E-9A27-494E-82B7-AEE6B75F793E",
+      "runID" : "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
       "sessionID" : "openburnbar-cli-session",
-      "updatedAt" : "2026-07-05T12:14:10Z"
+      "updatedAt" : "2026-07-07T13:35:04Z"
     }
   ]
 }
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=approval_requested run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=awaiting_approval run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_created client_id=openburnbar-cli phase=awaiting_approval run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=152 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:04 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=approval_requested run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=awaiting_approval run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_created client_id=openburnbar-cli phase=awaiting_approval run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=152 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run create cancellable
 command=openburnbar-cli run create --prompt w04 cancellation probe --mock-provider --requires-approval
-run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54
+run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD
 phase=awaiting_approval
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_cancelled run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=cancelled run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_cancelled client_id=openburnbar-cli run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=462 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_cancelled run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=cancelled run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_cancelled client_id=openburnbar-cli run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=460 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run cancel
-command=openburnbar-cli run cancel EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 --reason linux evidence cancellation
-run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54
+command=openburnbar-cli run cancel FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD --reason linux evidence cancellation
+run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD
 phase=cancelled
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
@@ -294,64 +294,64 @@ model=gpt-5.5
 error=linux evidence cancellation
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_failed run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=failed run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=failed run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_created client_id=openburnbar-cli phase=failed run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=141 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_failed run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=failed run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=failed run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_created client_id=openburnbar-cli phase=failed run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=141 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run create retry failure
 command=openburnbar-cli run create --prompt w04 retry probe --mock-provider --fail-until-attempt 1
-run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE
+run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92
 phase=failed
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=warning subsystem=com.openburnbar.daemon category=run-service event=silent_failure.score_and_rank_routes error=credentialsUnavailable(providerID: "codex", reason: "configured credential slots are not ready.") trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=run:CE7D8AE4-87C8-4C56-B12C-D313A1A975DE:attempt:2 model_id=gpt-5.5 provider_id=codex trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=completed run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_retried attempt=2 run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=416 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=run_created run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_event_appended kind=plan_generated run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=warning subsystem=com.openburnbar.daemon category=run-service event=silent_failure.score_and_rank_routes error=credentialsUnavailable(providerID: "codex", reason: "configured credential slots are not ready.") trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=usage-recorder event=usage_record_inserted idempotency_key=run:966DC09E-FC36-4373-A01E-CA58EDB5BE92:attempt:2 model_id=gpt-5.5 provider_id=codex trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=run-journal event=run_journal_checkpoint_written phase=completed run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=run-service event=run_retried attempt=2 run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=417 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run retry
-command=openburnbar-cli run retry CE7D8AE4-87C8-4C56-B12C-D313A1A975DE
-run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE
+command=openburnbar-cli run retry 966DC09E-FC36-4373-A01E-CA58EDB5BE92
+run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92
 phase=completed
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
 model=gpt-5.5
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=429 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=430 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### run poll after retry
-command=openburnbar-cli run poll CE7D8AE4-87C8-4C56-B12C-D313A1A975DE --json
+command=openburnbar-cli run poll 966DC09E-FC36-4373-A01E-CA58EDB5BE92 --json
 {
   "approvals" : [
 
@@ -362,7 +362,7 @@ command=openburnbar-cli run poll CE7D8AE4-87C8-4C56-B12C-D313A1A975DE --json
       "openburnbar-cli"
     ]
   },
-  "emittedAt" : "2026-07-05T12:14:10Z",
+  "emittedAt" : "2026-07-07T13:35:05Z",
   "pendingToolCalls" : [
 
   ],
@@ -371,91 +371,91 @@ command=openburnbar-cli run poll CE7D8AE4-87C8-4C56-B12C-D313A1A975DE --json
       "clientID" : "openburnbar-cli",
       "modelID" : "gpt-5.5",
       "phase" : "completed",
-      "runID" : "CE7D8AE4-87C8-4C56-B12C-D313A1A975DE",
+      "runID" : "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
       "sessionID" : "openburnbar-cli-session",
-      "updatedAt" : "2026-07-05T12:14:10Z"
+      "updatedAt" : "2026-07-07T13:35:05Z"
     }
   ]
 }
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### index sample project
-command=openburnbar-cli index /tmp/tmp.H30YQ8808i/sample-project --max-files 20 --max-file-bytes 65536
+command=openburnbar-cli index /tmp/tmp.ERBOY4WRz5/sample-project --max-files 20 --max-file-bytes 65536
 Project code memory is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon.
 exit_code=1
 
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### search sample project
-command=openburnbar-cli search linuxEvidenceToken --cwd /tmp/tmp.H30YQ8808i/sample-project --limit 5
+command=openburnbar-cli search linuxEvidenceToken --cwd /tmp/tmp.ERBOY4WRz5/sample-project --limit 5
 Project code memory is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon.
 exit_code=1
 
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=183 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=183 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### recall sample project
-command=openburnbar-cli recall linux evidence --cwd /tmp/tmp.H30YQ8808i/sample-project --limit 5
+command=openburnbar-cli recall linux evidence --cwd /tmp/tmp.ERBOY4WRz5/sample-project --limit 5
 Project memory is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon.
 exit_code=1
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_signal_received signal=15 trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=info subsystem=com.openburnbar.daemon category=process event=shutdown_starting socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=accept_loop_stopped trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_complete socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=5A8E2BBD-CCE0-49E7-BB80-835FD17C2734
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_signal_received signal=15 trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=info subsystem=com.openburnbar.daemon category=process event=shutdown_starting socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=accept_loop_stopped trace_id=593DB650-F281-467F-847D-15B3C71D1B56
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_complete socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=593DB650-F281-467F-847D-15B3C71D1B56
 ### daemon restart-persistence
-support_dir=/tmp/tmp.H30YQ8808i/support
-socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock
-2026-07-05 12:14:10 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE vault_uid_present=false
-2026-07-05 12:14:10 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=w04-hermes-evidence-restart-persistence protocol_version=1 socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=w04-hermes-evidence-restart-persistence socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=first_controller_attached session_id=openburnbar-cli-session trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=first_controller_attached trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_loaded file_path=/tmp/tmp.H30YQ8808i/support/provider-config.json provider_count=21 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=874 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
+support_dir=/tmp/tmp.ERBOY4WRz5/support
+socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock
+2026-07-07 13:35:05 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE vault_uid_present=false
+2026-07-07 13:35:05 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=w04-hermes-evidence-restart-persistence protocol_version=1 socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=w04-hermes-evidence-restart-persistence socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=first_controller_attached session_id=openburnbar-cli-session trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=first_controller_attached trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_loaded file_path=/tmp/tmp.ERBOY4WRz5/support/provider-config.json provider_count=21 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=provider-router event=route_selected provider_id=codex requested_model=gpt-5.5 resolved_model_id=gpt-5.5 slot_id=default trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=873 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
 ### run list persistence tail
 command=openburnbar-cli run list
-run_id=CE7D8AE4-87C8-4C56-B12C-D313A1A975DE phase=completed session_id=openburnbar-cli-session model=gpt-5.5
-run_id=EBB52D1E-F2D3-4A51-B732-CFD997B6AA54 phase=cancelled session_id=openburnbar-cli-session model=gpt-5.5 error=linux evidence cancellation
-run_id=1A03B00E-9A27-494E-82B7-AEE6B75F793E phase=completed session_id=openburnbar-cli-session model=gpt-5.5
-run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325 phase=completed session_id=openburnbar-cli-session model=gpt-5.5
+run_id=966DC09E-FC36-4373-A01E-CA58EDB5BE92 phase=completed session_id=openburnbar-cli-session model=gpt-5.5
+run_id=FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD phase=cancelled session_id=openburnbar-cli-session model=gpt-5.5 error=linux evidence cancellation
+run_id=4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B phase=completed session_id=openburnbar-cli-session model=gpt-5.5
+run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA phase=completed session_id=openburnbar-cli-session model=gpt-5.5
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=417 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=417 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
 ### run get persistence readback
-command=openburnbar-cli run get B99D43DB-14C9-494A-BD88-7D6E4B004325
-run_id=B99D43DB-14C9-494A-BD88-7D6E4B004325
+command=openburnbar-cli run get B167CE41-0015-4DFF-BAD1-42B3691968CA
+run_id=B167CE41-0015-4DFF-BAD1-42B3691968CA
 phase=completed
 client_id=openburnbar-cli
 session_id=openburnbar-cli-session
 model=gpt-5.5
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=430 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_attached client_id=openburnbar-cli reason=controller_reconnected session_id=openburnbar-cli-session trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=client_arbitration_updated active_client_id=openburnbar-cli reason=controller_reconnected trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=144 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=client-registry event=client_control_claimed client_id=openburnbar-cli reason=controller_already_active trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=189 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=430 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
 ### run poll persistence readback
-command=openburnbar-cli run poll B99D43DB-14C9-494A-BD88-7D6E4B004325 --json
+command=openburnbar-cli run poll B167CE41-0015-4DFF-BAD1-42B3691968CA --json
 {
   "approvals" : [
 
@@ -466,7 +466,7 @@ command=openburnbar-cli run poll B99D43DB-14C9-494A-BD88-7D6E4B004325 --json
       "openburnbar-cli"
     ]
   },
-  "emittedAt" : "2026-07-05T12:14:10Z",
+  "emittedAt" : "2026-07-07T13:35:05Z",
   "pendingToolCalls" : [
 
   ],
@@ -475,15 +475,15 @@ command=openburnbar-cli run poll B99D43DB-14C9-494A-BD88-7D6E4B004325 --json
       "clientID" : "openburnbar-cli",
       "modelID" : "gpt-5.5",
       "phase" : "completed",
-      "runID" : "B99D43DB-14C9-494A-BD88-7D6E4B004325",
+      "runID" : "B167CE41-0015-4DFF-BAD1-42B3691968CA",
       "sessionID" : "openburnbar-cli-session",
-      "updatedAt" : "2026-07-05T12:14:10Z"
+      "updatedAt" : "2026-07-07T13:35:04Z"
     }
   ]
 }
 exit_code=0
 
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_signal_received signal=15 trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=info subsystem=com.openburnbar.daemon category=process event=shutdown_starting socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=accept_loop_stopped trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
-2026-07-05 12:14:10 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_complete socket_path=/tmp/tmp.H30YQ8808i/socket/openburnbar.sock trace_id=671ACD00-F57F-4F82-A7FE-2FB553169EBE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_signal_received signal=15 trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=info subsystem=com.openburnbar.daemon category=process event=shutdown_starting socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=accept_loop_stopped trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
+2026-07-07 13:35:05 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=shutdown_complete socket_path=/tmp/tmp.ERBOY4WRz5/socket/openburnbar.sock trace_id=0A24D027-C7E7-44C5-87D1-DAF76232F9BE
