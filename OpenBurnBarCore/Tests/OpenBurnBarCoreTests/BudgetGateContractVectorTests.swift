@@ -239,10 +239,12 @@ final class BudgetGateContractVectorTests: XCTestCase {
                 // The fixture names the fallback by its RULE id; the gate returns a credential
                 // identity, so match on the candidate rule's providerID (+ slot).
                 guard let fallback else {
-                    return XCTFail("\(ctx) expected fallback \(expectedFallbackRuleID) but decision carried none")
+                    XCTFail("\(ctx) expected fallback \(expectedFallbackRuleID) but decision carried none")
+                    return
                 }
                 guard let candidate = rules.first(where: { $0.id == expectedFallbackRuleID }) else {
-                    return XCTFail("\(ctx) fixture names fallback rule \(expectedFallbackRuleID) that isn't in rules[]")
+                    XCTFail("\(ctx) fixture names fallback rule \(expectedFallbackRuleID) that isn't in rules[]")
+                    return
                 }
                 XCTAssertEqual(fallback.providerID, candidate.providerID, "\(ctx) fallback providerID")
                 XCTAssertEqual(fallback.slotID, candidate.accountID ?? "default", "\(ctx) fallback slotID")
