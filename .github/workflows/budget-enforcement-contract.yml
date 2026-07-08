@@ -1,0 +1,44 @@
+name: Budget Enforcement Contract
+
+# Wave-5 WS3 — cheap, fail-closed drift + coverage tripwire for the platform-neutral
+# budget-enforcement contract vectors. Pins every committed copy (canonical + Apple Core
+# test bundle + Android test resources) byte-identical, structurally validates the vectors,
+# and asserts the coverage matrix so a platform can never silently drop a scope, a behavior,
+# or a fail-closed case. The behavioral OPEN runs in the platform suites
+# (BudgetGateContractVectorTests on Apple; Android JUnit in a follow-up).
+#
+# Authored as its own workflow (not appended to fast-feedback.yml, which is on the AGPL
+# Rule-0 avoid-list).
+
+on:
+  pull_request:
+    paths:
+      - "tests/fixtures/budget-enforcement/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/budget-enforcement-vectors.json"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/entitlement-vectors.json"
+      - "android/app/src/test/resources/budget-enforcement/**"
+      - "scripts/ci/check-budget-enforcement-fixture.mjs"
+      - ".github/workflows/budget-enforcement-contract.yml"
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: budget-enforcement-contract-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fixture-gate:
+    name: Budget enforcement fixture gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+      - name: Byte-identity + structure + coverage matrix
+        run: node scripts/ci/check-budget-enforcement-fixture.mjs
+      - name: Pin-script self-test
+        run: node --test scripts/ci/__tests__/check-budget-enforcement-fixture.test.mjs
