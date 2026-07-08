@@ -15,7 +15,7 @@ Ordering is by urgency (lead time), not effort.
 Blocks: Wave 5 entirely — without it there is no installable Windows app (W0).
 
 **Recommended: Azure Trusted Signing** (~$9.99/mo, no key custody, signs from
-GitHub Actions via OIDC — same keyless pattern as our cosign provenance):
+GitHub Actions using the repository's approved release-workflow auth path):
 
 1. portal.azure.com → search **Trusted Signing Accounts** → Create (Basic SKU,
    East US or West Europe).
@@ -23,8 +23,9 @@ GitHub Actions via OIDC — same keyless pattern as our cosign provenance):
    (Imagine That AI legal details). Validation takes ~1–5 business days —
    this is the long pole, start it first.
 3. When validation completes → **Certificate profiles** → New → Public Trust.
-4. Tell the agents — they wire `openburnbar-release-windows.yml` to
-   `azure/trusted-signing-action` with OIDC. No private key ever exists locally.
+4. Tell the agents the account/profile names after validation. They wire
+   `openburnbar-release-windows.yml` to `azure/trusted-signing-action` using
+   the current workflow credential model; no private key ever exists locally.
 
 Fallback if Azure identity validation fails: OV Authenticode from SSL.com with
 eSigner cloud signing (~$300/yr). EV (~$500/yr) buys instant SmartScreen
@@ -57,13 +58,15 @@ Your part is only steps 1–4; agents drive everything after over SSH.
    # then in a new terminal, with a GitHub PAT or gh auth login:
    git clone https://github.com/Imagine-That-Ai/BurnBar C:\src\BurnBar
    ```
-4. Hand the agent the VM IP + username/password (or install an SSH public key).
-   Test from the Mac: `ssh <user>@<vm-ip>` must land in a prompt.
+4. Install an SSH public key for agent access, then share only the VM IP and
+   username. Use a temporary password only for your own bootstrap if needed, and
+   remove password auth once key login works. Test from the Mac:
+   `ssh <user>@<vm-ip>` must land in a prompt.
 
-Agents then (no action from you): install .NET 8 SDK / VS Build Tools / Rust /
+Agents then (no action from you): install .NET 10 SDK / VS Build Tools / Rust /
 Swift over SSH, run
 `pwsh scripts/windows-port/vm-validate.ps1 -RepoRoot C:\src\BurnBar`,
-and drive the C2–C6 evidence lanes (TPM mint, Win2D 60fps, SendInput/UIA loop,
+and drive the C2–C6 evidence lanes (TPM/App Check evidence, Win2D 60fps, SendInput/UIA loop,
 E2EE seal→open vs the Mac, FFI msvc loopback), committing evidence to
 `docs/windows-port/evidence/`.
 
@@ -73,9 +76,11 @@ E2EE seal→open vs the Mac, FFI msvc loopback), committing evidence to
 
 ## E. Four GitHub/infra switches (minutes each; two are "say go" for an agent)
 
-1. **WS-A2 — make `PR Windows Full Gate` a required check on `main`.**
-   Settings → Branches → main → require status checks → add
-   `PR Windows Full Gate`. *(An agent can do this via `gh api` on your word.)*
+1. **WS-A2 — make the required-safe Windows aggregate required on `main`.**
+   First land the workflow change that publishes `PR Windows Full Gate` on every
+   PR, including non-Windows path-filtered PRs. Then Settings → Branches →
+   main → require status checks → add `PR Windows Full Gate`. *(An agent can do
+   this via `gh api` on your word after the gate is required-safe.)*
 2. **Issue #1277 — production environment rejects `v*` tags.**
    Settings → Environments → `production` → Deployment branches and tags →
    add rule allowing `v*` tags. *(Also agent-doable on your word.)*
@@ -101,8 +106,9 @@ Blocks: real (non-dev-token) Firebase sign-in on Windows
 2. Application type: **Desktop app**. Name: `OpenBurnBar Windows`.
    (Desktop type auto-allows the `http://localhost` loopback redirect — no
    extra config.)
-3. Hand the agents the client ID + secret (or add them as repo secrets);
-   they wire configuration + CI naming.
+3. Add the client ID, client secret, and Firebase Web API key as repo or
+   environment secrets. Do not paste OAuth secrets into chat or agent prompts;
+   agents wire configuration + CI naming from secret names only.
 
 ---
 
@@ -117,17 +123,12 @@ Blocks: Microsoft Store submission. (winget needs **no** account — agents PR
 
 ---
 
-## F. One decision: daemon strategy (one word)
+## F. Daemon strategy is already decided
 
-Wave 4's largest open scope item: the macOS daemon (~54K LOC: HTTP gateway,
-provider router, Mission Control DAG, Pensieve) needs a Windows answer.
-
-**Recommendation: "port"** via Swift-on-Windows — the engine lane already
-compiles Swift on Windows, and WPD-0006 landed the daemon foundation, so the
-beachhead exists. The alternative (formal Tier-C substitution per capability)
-permanently caps Windows below full parity.
-
-Reply "port" or "substitute" and the agents scope Wave 4 accordingly.
+WPD-0006 already chose **port** via Swift-on-Windows. No new Alberto decision is
+needed here; agents should continue the Wave 4 daemon-port lane and use Tier-C
+substitution only as a documented temporary fallback for individual blocked
+capabilities.
 
 ---
 
@@ -139,6 +140,6 @@ Reply "port" or "substitute" and the agents scope Wave 4 accordingly.
 | B (cert) + C (Partner Center) | Signed MSIX in CI, Store/winget/choco submissions, update round-trip → **G5** |
 | D (OAuth client) | Real Windows sign-in end-to-end, retire dev-token flow |
 | E (4 switches) | Green `main`, Windows CI blocking, factory lanes restored |
-| F ("port") | Wave 4 daemon scoping + execution |
+| F (already decided: port) | Wave 4 daemon execution continues |
 
 Everything else on the road to 100% is agent-executable once these land.
