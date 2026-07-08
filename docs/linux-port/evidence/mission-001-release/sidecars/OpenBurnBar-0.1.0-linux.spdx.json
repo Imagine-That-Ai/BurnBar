@@ -5,10 +5,10 @@
   "name": "OpenBurnBar v0.1.0",
   "documentNamespace": "https://github.com/Ajnunezg/BurnBar/sbom/v0.1.0",
   "creationInfo": {
-    "created": "2026-07-06T10:52:43Z",
+    "created": "2026-07-07T13:31:46Z",
     "creators": [
       "Tool: generate-sbom.py",
-      "Tool: git+ce1b6abdf3f6"
+      "Tool: git+a4a854c6569a"
     ]
   },
   "packages": [
@@ -32,9 +32,9 @@
     },
     {
       "SPDXID": "SPDXRef-Package-dep-0001",
-      "name": "abseil-cpp-binary",
-      "versionInfo": "1.2024072200.0",
-      "downloadLocation": "https://github.com/google/abseil-cpp-binary.git",
+      "name": "abseil-cpp-swiftpm",
+      "versionInfo": "0.20240722.2",
+      "downloadLocation": "https://github.com/firebase/abseil-cpp-SwiftPM.git",
       "filesAnalyzed": false,
       "copyrightText": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
@@ -43,7 +43,7 @@
         {
           "referenceCategory": "PACKAGE_MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:swift/abseil-cpp-binary@1.2024072200.0"
+          "referenceLocator": "pkg:swift/abseil-cpp-swiftpm@0.20240722.2"
         }
       ]
     },
@@ -134,6 +134,23 @@
     },
     {
       "SPDXID": "SPDXRef-Package-dep-0007",
+      "name": "boringssl-swiftpm",
+      "versionInfo": "0.32.1",
+      "downloadLocation": "https://github.com/firebase/boringssl-SwiftPM.git",
+      "filesAnalyzed": false,
+      "copyrightText": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE_MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:swift/boringssl-swiftpm@0.32.1"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-dep-0008",
       "name": "dracoswift",
       "versionInfo": "1.5.7",
       "downloadLocation": "https://github.com/warrenm/DracoSwift",
@@ -150,7 +167,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0008",
+      "SPDXID": "SPDXRef-Package-dep-0009",
       "name": "firebase-ios-sdk",
       "versionInfo": "12.15.0",
       "downloadLocation": "https://github.com/firebase/firebase-ios-sdk",
@@ -167,7 +184,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0009",
+      "SPDXID": "SPDXRef-Package-dep-0010",
       "name": "gltfkit2",
       "versionInfo": "0.5.15",
       "downloadLocation": "https://github.com/warrenm/GLTFKit2",
@@ -184,7 +201,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0010",
+      "SPDXID": "SPDXRef-Package-dep-0011",
       "name": "google-ads-on-device-conversion-ios-sdk",
       "versionInfo": "3.6.1",
       "downloadLocation": "https://github.com/googleads/google-ads-on-device-conversion-ios-sdk",
@@ -201,7 +218,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0011",
+      "SPDXID": "SPDXRef-Package-dep-0012",
       "name": "googleappmeasurement",
       "versionInfo": "12.15.0",
       "downloadLocation": "https://github.com/google/GoogleAppMeasurement.git",
@@ -218,7 +235,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0012",
+      "SPDXID": "SPDXRef-Package-dep-0013",
       "name": "googledatatransport",
       "versionInfo": "10.1.0",
       "downloadLocation": "https://github.com/google/GoogleDataTransport.git",
@@ -235,7 +252,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0013",
+      "SPDXID": "SPDXRef-Package-dep-0014",
       "name": "googlesignin-ios",
       "versionInfo": "8.0.0",
       "downloadLocation": "https://github.com/google/GoogleSignIn-iOS",
@@ -252,7 +269,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0014",
+      "SPDXID": "SPDXRef-Package-dep-0015",
       "name": "googleutilities",
       "versionInfo": "8.1.0",
       "downloadLocation": "https://github.com/google/GoogleUtilities.git",
@@ -269,10 +286,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0015",
-      "name": "grpc-binary",
-      "versionInfo": "1.69.1",
-      "downloadLocation": "https://github.com/google/grpc-binary.git",
+      "SPDXID": "SPDXRef-Package-dep-0016",
+      "name": "grpc-ios",
+      "versionInfo": "1.69.0",
+      "downloadLocation": "https://github.com/grpc/grpc-ios.git",
       "filesAnalyzed": false,
       "copyrightText": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
@@ -281,12 +298,12 @@
         {
           "referenceCategory": "PACKAGE_MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:swift/grpc-binary@1.69.1"
+          "referenceLocator": "pkg:swift/grpc-ios@1.69.0"
         }
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0016",
+      "SPDXID": "SPDXRef-Package-dep-0017",
       "name": "gtm-session-fetcher",
       "versionInfo": "3.5.0",
       "downloadLocation": "https://github.com/google/gtm-session-fetcher.git",
@@ -303,7 +320,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0017",
+      "SPDXID": "SPDXRef-Package-dep-0018",
       "name": "gtmappauth",
       "versionInfo": "4.1.1",
       "downloadLocation": "https://github.com/google/GTMAppAuth.git",
@@ -320,7 +337,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0018",
+      "SPDXID": "SPDXRef-Package-dep-0019",
       "name": "interop-ios-for-google-sdks",
       "versionInfo": "101.0.0",
       "downloadLocation": "https://github.com/google/interop-ios-for-google-sdks.git",
@@ -337,7 +354,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0019",
+      "SPDXID": "SPDXRef-Package-dep-0020",
       "name": "leveldb",
       "versionInfo": "1.22.5",
       "downloadLocation": "https://github.com/firebase/leveldb.git",
@@ -354,7 +371,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0020",
+      "SPDXID": "SPDXRef-Package-dep-0021",
       "name": "nanopb",
       "versionInfo": "2.30910.1",
       "downloadLocation": "https://github.com/firebase/nanopb.git",
@@ -371,7 +388,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0021",
+      "SPDXID": "SPDXRef-Package-dep-0022",
       "name": "promises",
       "versionInfo": "2.4.1",
       "downloadLocation": "https://github.com/google/promises.git",
@@ -388,7 +405,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-0022",
+      "SPDXID": "SPDXRef-Package-dep-0023",
       "name": "sentry-cocoa",
       "versionInfo": "8.58.3",
       "downloadLocation": "https://github.com/getsentry/sentry-cocoa",
@@ -401,23 +418,6 @@
           "referenceCategory": "PACKAGE_MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:swift/sentry-cocoa@8.58.3"
-        }
-      ]
-    },
-    {
-      "SPDXID": "SPDXRef-Package-dep-0023",
-      "name": "sentry-cocoa",
-      "versionInfo": "9.18.0",
-      "downloadLocation": "https://github.com/getsentry/sentry-cocoa",
-      "filesAnalyzed": false,
-      "copyrightText": "NOASSERTION",
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "NOASSERTION",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE_MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:swift/sentry-cocoa@9.18.0"
         }
       ]
     },
@@ -36651,7 +36651,7 @@
     {
       "SPDXID": "SPDXRef-Package-dep-2155",
       "name": "crossbeam-epoch",
-      "versionInfo": "0.9.18",
+      "versionInfo": "0.9.20",
       "downloadLocation": "https://crates.io/crates/crossbeam-epoch",
       "filesAnalyzed": false,
       "copyrightText": "NOASSERTION",
@@ -36661,7 +36661,7 @@
         {
           "referenceCategory": "PACKAGE_MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/crossbeam-epoch@0.9.18"
+          "referenceLocator": "pkg:cargo/crossbeam-epoch@0.9.20"
         }
       ]
     },
@@ -49876,6 +49876,23 @@
     },
     {
       "SPDXID": "SPDXRef-Package-dep-2933",
+      "name": "org.jetbrains.kotlinx:kotlinx-coroutines-core",
+      "versionInfo": "1.9.0",
+      "downloadLocation": "https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-coroutines-core",
+      "filesAnalyzed": false,
+      "copyrightText": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE_MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:maven/org.jetbrains.kotlinx/kotlinx-coroutines-core@1.9.0"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-dep-2934",
       "name": "org.jetbrains.kotlinx:kotlinx-coroutines-guava",
       "versionInfo": "1.9.0",
       "downloadLocation": "https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-coroutines-guava",
@@ -49892,7 +49909,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-2934",
+      "SPDXID": "SPDXRef-Package-dep-2935",
       "name": "org.jetbrains.kotlinx:kotlinx-coroutines-play-services",
       "versionInfo": "1.9.0",
       "downloadLocation": "https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-coroutines-play-services",
@@ -49909,7 +49926,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-2935",
+      "SPDXID": "SPDXRef-Package-dep-2936",
       "name": "org.jetbrains.kotlinx:kotlinx-coroutines-test",
       "versionInfo": "1.9.0",
       "downloadLocation": "https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-coroutines-test",
@@ -49926,7 +49943,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-2936",
+      "SPDXID": "SPDXRef-Package-dep-2937",
       "name": "org.jetbrains.kotlinx:kotlinx-serialization-json",
       "versionInfo": "1.7.3",
       "downloadLocation": "https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-serialization-json",
@@ -49943,7 +49960,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-2937",
+      "SPDXID": "SPDXRef-Package-dep-2938",
       "name": "org.json:json",
       "versionInfo": "20240303",
       "downloadLocation": "https://mvnrepository.com/artifact/org.json/json",
@@ -49960,7 +49977,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-2938",
+      "SPDXID": "SPDXRef-Package-dep-2939",
       "name": "org.signal:libsignal-android",
       "versionInfo": "0.94.4",
       "downloadLocation": "https://mvnrepository.com/artifact/org.signal/libsignal-android",
@@ -49977,7 +49994,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-2939",
+      "SPDXID": "SPDXRef-Package-dep-2940",
       "name": "org.signal:libsignal-client",
       "versionInfo": "0.94.4",
       "downloadLocation": "https://mvnrepository.com/artifact/org.signal/libsignal-client",
@@ -49994,7 +50011,7 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-dep-2940",
+      "SPDXID": "SPDXRef-Package-dep-2941",
       "name": "io.sentry.android.gradle",
       "versionInfo": "6.11.0",
       "downloadLocation": "https://plugins.gradle.org/plugin/io.sentry.android.gradle",
@@ -64716,6 +64733,11 @@
       "spdxElementId": "SPDXRef-Package-openburnbar",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-dep-2940"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-openburnbar",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-dep-2941"
     }
   ]
 }
