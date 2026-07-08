@@ -163,7 +163,7 @@ enum DatabaseByteCompatVector {
     struct Vector: Codable, Equatable {
         /// Trace/label of the SQLCipher version the fixture was produced with.
         let sqlcipherPin: String
-        /// Last migration identifier reached (`v53_memory_forget_outbox`).
+        /// Last migration identifier reached (`v55_search_chunks_fts_rowid`).
         let schemaEndpoint: String
         /// Number of registered migrations (fails loudly on a schema bump).
         let migrationCount: Int
