@@ -3,8 +3,8 @@
 import * as React from "react";
 import { Check, Pencil, Plus, RotateCcw, RotateCw, Sparkles } from "lucide-react";
 
-import { KERNEL_META } from "@/lib/gl/engine/registry";
-import type { KernelId } from "@/lib/gl/engine/types";
+import { KERNEL_META } from "@openburnbar/gl-engine/engine/registry";
+import type { KernelId } from "@openburnbar/gl-engine/engine/types";
 import { USAGE_WINDOWS, type UsageWindowKey } from "@/lib/usage";
 import { Button } from "@/components/ui/button";
 import {

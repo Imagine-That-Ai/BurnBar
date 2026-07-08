@@ -2,10 +2,10 @@
 
 import * as React from "react";
 
-import { BackdropEngine } from "@/lib/gl/engine/BackdropEngine";
-import { toCss } from "@/lib/gl/engine/palette";
-import { housePalette } from "@/lib/gl/engine/palette";
-import type { KernelId } from "@/lib/gl/engine/types";
+import { BackdropEngine } from "@openburnbar/gl-engine/engine/BackdropEngine";
+import { toCss } from "@openburnbar/gl-engine/engine/palette";
+import { housePalette } from "@openburnbar/gl-engine/engine/palette";
+import type { KernelId } from "@openburnbar/gl-engine/engine/types";
 
 /**
  * The deep backdrop: the vendored imaginethat-llc BackdropEngine rendering a
