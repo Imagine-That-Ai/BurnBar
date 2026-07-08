@@ -150,6 +150,7 @@ struct PulseView: View {
         // screens); the bar itself is hidden — the tab bar already says
         // Pulse, so the big headline was pure chrome.
         .navigationTitle("Pulse")
+        .accessibilityIdentifier("screen.pulse")
         .toolbar(.hidden, for: .navigationBar)
         .task { await initialLoad() }
         .sheet(isPresented: $showCloudStore) {
