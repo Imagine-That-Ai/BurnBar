@@ -418,6 +418,12 @@ def test_firestore_deploy_uses_rest_rules_release_field_mask():
     assert "deploy-firebase-rules-releases.mjs" in body
     assert 'updateMask: "rulesetName"' in deployer
     assert "Firebase Rules PATCH updates only rulesetName" in deployer
+    assert "rulesSourceForDeploy" in deployer
+
+    drift_checker = (ROOT / "scripts/ci/check-firestore-deploy-drift.mjs").read_text(
+        encoding="utf-8"
+    )
+    assert "rulesSourceForDeploy" in drift_checker
 
 
 def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
