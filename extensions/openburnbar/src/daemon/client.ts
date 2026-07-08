@@ -55,8 +55,6 @@ import type {
   BurnBarControllerSummaryResponse
 } from '../types';
 
-const DEFAULT_BURNBAR_SUPPORT_DIR = join(homedir(), 'Library', 'Application Support', 'OpenBurnBar');
-const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(homedir(), 'Library', 'LaunchAgents', 'com.openburnbar.daemon.plist');
 const DEFAULT_MAX_IN_FLIGHT = 8;
 
 interface OpenBurnBarDaemonRuntimePathInput {
@@ -94,12 +92,12 @@ export function resolveOpenBurnBarDaemonRuntimePaths(
     };
   }
 
-  const supportDir = supportDirOverride ?? DEFAULT_BURNBAR_SUPPORT_DIR;
+  const supportDir = supportDirOverride ?? join(homeDir, 'Library', 'Application Support', 'OpenBurnBar');
   return {
     socketPath: socketPathOverride ?? join(supportDir, 'openburnbar-daemon.sock'),
     authTokenFilePath: authTokenFileOverride ?? join(supportDir, 'daemon-socket-auth-token'),
     supportDir,
-    launchAgentPlistPath: DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST
+    launchAgentPlistPath: join(homeDir, 'Library', 'LaunchAgents', 'com.openburnbar.daemon.plist')
   };
 }
 

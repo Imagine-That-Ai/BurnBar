@@ -71,6 +71,21 @@ describe('OpenBurnBarDaemonClient', () => {
     expect(paths.supportDir).toBe('/srv/openburnbar/state');
   });
 
+  it('VAL-EXT-001: resolves macOS daemon paths from the provided home directory', () => {
+    const paths = resolveOpenBurnBarDaemonRuntimePaths({
+      platform: 'darwin',
+      homeDir: '/Users/tester',
+      env: {}
+    });
+
+    expect(paths.socketPath).toBe('/Users/tester/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock');
+    expect(paths.authTokenFilePath).toBe(
+      '/Users/tester/Library/Application Support/OpenBurnBar/daemon-socket-auth-token'
+    );
+    expect(paths.supportDir).toBe('/Users/tester/Library/Application Support/OpenBurnBar');
+    expect(paths.launchAgentPlistPath).toBe('/Users/tester/Library/LaunchAgents/com.openburnbar.daemon.plist');
+  });
+
   it('requests daemon health over the unix socket', async () => {
     const socketPath = makeSocketPath('health');
     const server = createServer((socket) => {
