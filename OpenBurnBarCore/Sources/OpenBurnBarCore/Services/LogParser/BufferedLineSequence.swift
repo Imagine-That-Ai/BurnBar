@@ -73,6 +73,7 @@ extension BufferedLineSequence {
                         continue
                     }
 
+                    guard lineData.count <= maxLineBytes else { continue }
                     guard !lineData.isEmpty else { continue }
                     return Self.decode(lineData)
                 }
@@ -84,7 +85,7 @@ extension BufferedLineSequence {
                     let finalData = buffer
                     buffer.removeAll()
 
-                    if skippingOversizedLine {
+                    if skippingOversizedLine || finalData.count > maxLineBytes {
                         skippingOversizedLine = false
                         return nil // Skip the oversized final line
                     }
@@ -102,7 +103,8 @@ extension BufferedLineSequence {
                 // Round-4 perf sweep: guard against pathological single-line
                 // inputs. If the buffer exceeds maxLineBytes and no newline
                 // has been found, skip the oversized line.
-                if buffer.count > maxLineBytes {
+                if buffer.count > maxLineBytes,
+                   !buffer.contains(where: { $0 == 0x0A || $0 == 0x0D }) {
                     skippingOversizedLine = true
                     // Discard the buffer; we'll skip until the next newline.
                     buffer.removeAll()

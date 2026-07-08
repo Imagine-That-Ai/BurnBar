@@ -181,7 +181,7 @@ public final class ClaudeConversationAccumulator {
                 // and mark as capped. Subsequent calls skip the append.
                 let remaining = maxFullTextBytes - fullTextByteCount
                 if remaining > 0 {
-                    let truncated = Self.truncateToUTF8Bytes(formatted, maxBytes: remaining)
+                    let truncated = Self.truncateToUTF8Bytes(text, maxBytes: remaining)
                     fullTextParts.append(truncated)
                     fullTextByteCount += truncated.utf8.count
                 }

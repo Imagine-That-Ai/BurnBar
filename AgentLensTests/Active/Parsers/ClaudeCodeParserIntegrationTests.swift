@@ -88,12 +88,16 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
 
         let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         XCTAssertEqual(indexed.conversations.count, 1)
-        XCTAssertTrue(try String(contentsOf: cacheURL, encoding: .utf8).contains(privatePrompt))
+        XCTAssertTrue(try cache(cacheURL, containsRawString: privatePrompt))
 
         let redacted = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(redacted.usages.count, 1)
         XCTAssertTrue(redacted.conversations.isEmpty)
-        XCTAssertFalse(try String(contentsOf: cacheURL, encoding: .utf8).contains(privatePrompt))
+        XCTAssertFalse(try cache(cacheURL, containsRawString: privatePrompt))
+    }
+
+    private func cache(_ url: URL, containsRawString string: String) throws -> Bool {
+        try Data(contentsOf: url).range(of: Data(string.utf8)) != nil
     }
 
     func test_claudeCodeParser_decodesProjectPath() async throws {

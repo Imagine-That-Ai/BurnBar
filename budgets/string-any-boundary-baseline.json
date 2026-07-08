@@ -1,0 +1,7 @@
+{
+  "agentLensStringAny": 763,
+  "mobileStringAny": 464,
+  "total": 1227,
+  "generatedAt": "2026-07-08T00:00:00Z",
+  "note": "Baseline for scripts/debt/check-string-any-boundary-budget.sh. Caps growth of the untyped Swift<->Firestore boundary: String-to-Any dictionary occurrences (`[String: Any]`, whitespace variants, and `Dictionary<String, Any>`) on code lines (comment lines and .build/.derived-data/.swiftpm/Preview Content/build excluded) under AgentLens/ and OpenBurnBarMobile/. The diligence review reported 1,204 matching LINES (743 AgentLens + 461 OpenBurnBarMobile via `git grep -c`); measured as code-line OCCURRENCES (the sibling debt-budget convention, since a line may hold two boundary dicts) the counts are 763 + 464 = 1227. Shrink-only: the gate fails if any counter exceeds its baseline. As each site moves to a typed Codable model / typed accessor, run scripts/debt/check-string-any-boundary-budget.sh --print-live and lower these numbers to lock the win in."
+}

@@ -147,32 +147,32 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         let redacted = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(redacted.usages.count, 1)
         XCTAssertTrue(redacted.conversations.isEmpty)
-        let redactedCache = try String(contentsOf: cacheURL, encoding: .utf8)
-        XCTAssertFalse(redactedCache.contains(privatePrompt))
-        XCTAssertFalse(redactedCache.contains(privateAnswer))
+        let redactedCache = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(redactedCache.containsRawString(privatePrompt))
+        XCTAssertFalse(redactedCache.containsRawString(privateAnswer))
 
         let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         XCTAssertEqual(indexed.conversations.count, 1)
         XCTAssertEqual(indexed.conversations.first?.fullText.contains(privatePrompt), true)
-        let warmedCache = try String(contentsOf: cacheURL, encoding: .utf8)
-        XCTAssertTrue(warmedCache.contains(privatePrompt))
-        XCTAssertTrue(warmedCache.contains(privateAnswer))
+        let warmedCache = try Data(contentsOf: cacheURL)
+        XCTAssertTrue(warmedCache.containsRawString(privatePrompt))
+        XCTAssertTrue(warmedCache.containsRawString(privateAnswer))
 
         try harness.fileManager.removeItem(at: rolloutURL)
         let missingFileScrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(missingFileScrubbed.usages.count, 1)
         XCTAssertTrue(missingFileScrubbed.conversations.isEmpty)
-        let missingFileScrubbedCache = try String(contentsOf: cacheURL, encoding: .utf8)
-        XCTAssertFalse(missingFileScrubbedCache.contains(privatePrompt))
-        XCTAssertFalse(missingFileScrubbedCache.contains(privateAnswer))
+        let missingFileScrubbedCache = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(missingFileScrubbedCache.containsRawString(privatePrompt))
+        XCTAssertFalse(missingFileScrubbedCache.containsRawString(privateAnswer))
 
         try session.write(to: rolloutURL, atomically: true, encoding: .utf8)
         _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         let scrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertTrue(scrubbed.conversations.isEmpty)
-        let scrubbedCache = try String(contentsOf: cacheURL, encoding: .utf8)
-        XCTAssertFalse(scrubbedCache.contains(privatePrompt))
-        XCTAssertFalse(scrubbedCache.contains(privateAnswer))
+        let scrubbedCache = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(scrubbedCache.containsRawString(privatePrompt))
+        XCTAssertFalse(scrubbedCache.containsRawString(privateAnswer))
     }
 
     func testParserConversationCacheScrubberRedactsKnownParserCaches() throws {
@@ -255,5 +255,11 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         ]
         let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: cacheURL, options: .atomic)
+    }
+}
+
+private extension Data {
+    func containsRawString(_ string: String) -> Bool {
+        range(of: Data(string.utf8)) != nil
     }
 }
