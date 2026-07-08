@@ -15,6 +15,12 @@ extension UsageStore {
         }
     }
 
+    func fetchUsage(in dateRange: ClosedRange<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await dbQueue.read { db -> [TokenUsage] in
+            try Self.fetchUsageRows(db: db, dateRange: dateRange, limit: limit)
+        }
+    }
+
     func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
         let calendar = Calendar.current
         let now = Date()

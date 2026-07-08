@@ -173,10 +173,7 @@ enum ContextBuilder {
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
 
-        let allUsages = (try? await dataStore.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
-        let recentUsages = allUsages
-            .filter { $0.startTime >= weekAgo }
-            .sorted { $0.startTime > $1.startTime }
+        let recentUsages = (try? await dataStore.fetchUsage(in: weekAgo...now, limit: 200)) ?? [] // try?-ok(optional usage rollup)
 
         var lines: [String] = []
         lines.append("You are OpenBurnBar's in-app AI coding assistant with access to this developer's recent agent session history.")
@@ -202,14 +199,13 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## This week's token spend")
 
-        let weekUsages = allUsages.filter { $0.startTime >= weekAgo }
         var modelCost: [String: Double] = [:]
         var projectCost: [String: Double] = [:]
-        for u in weekUsages {
+        for u in recentUsages {
             modelCost[u.model, default: 0] += u.cost
             projectCost[u.projectName, default: 0] += u.cost
         }
-        let totalWeek = weekUsages.reduce(0.0) { $0 + $1.cost }
+        let totalWeek = recentUsages.reduce(0.0) { $0 + $1.cost }
         for (model, cost) in modelCost.sorted(by: { $0.value > $1.value }).prefix(6) {
             let pct = totalWeek > 0 ? (cost / totalWeek) * 100 : 0
             lines.append("- \(model): \(String(format: "%.0f", pct))% (\(cost.formatAsCost()))")
@@ -331,10 +327,7 @@ enum ContextBuilder {
             "High-level usage from OpenBurnBar tables—not a substitute for retrieved excerpts. Use for spend/time questions when retrieval is thin."
         )
 
-        let allUsages = (try? await dataStore.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
-        let recentUsages = allUsages
-            .filter { $0.startTime >= weekAgo }
-            .sorted { $0.startTime > $1.startTime }
+        let recentUsages = (try? await dataStore.fetchUsage(in: weekAgo...now, limit: 200)) ?? [] // try?-ok(optional usage rollup)
 
         let conversations = (try? await dataStore.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
@@ -354,7 +347,7 @@ enum ContextBuilder {
 
         rollupLines.append("")
         rollupLines.append("### This week's token spend (approximate mix)")
-        let weekUsages = allUsages.filter { $0.startTime >= weekAgo }
+        let weekUsages = recentUsages
         var modelCost: [String: Double] = [:]
         var projectCost: [String: Double] = [:]
         for u in weekUsages {

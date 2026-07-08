@@ -33,6 +33,11 @@ import { isRecord, parseModelBenchmarkSnapshotDoc, parseModelBenchmarkSourceStat
 import { logError, logWarn } from "./logging.js";
 import { setPublicJsonSecurityHeaders } from "./publicHttpSecurityHeaders.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
+import {
+  checkPublicHttpEndpointRateLimit,
+  clientIpFromHttpRequest,
+  isPublicRateLimitExceeded,
+} from "./callables/publicRateLimit.js";
 import { parseModelMeta, parseRuntimeMeta, parsePreviousRundown } from "./routerRundownTypes.js";
 import type { ModelMeta, RuntimeMeta } from "./routerRundownTypes.js";
 import { buildRouterRundown } from "./routerRundownScoring.js";
@@ -222,6 +227,17 @@ export const latestRouterRundown = onRequest(
     setPublicJsonSecurityHeaders(res);
     if (req.method !== "GET") {
       res.status(405).json({ error: "method_not_allowed" });
+      return;
+    }
+    try {
+      await checkPublicHttpEndpointRateLimit("latestRouterRundown", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      logError({ event: "router_rundown.latest_rate_limit_failed", error: String(err) });
+      res.status(500).json({ error: "internal" });
       return;
     }
     try {

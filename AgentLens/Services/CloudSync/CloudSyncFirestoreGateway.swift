@@ -17,6 +17,9 @@ protocol CloudSyncCollectionGateway: AnyObject, Sendable {
     func document(_ documentPath: String) -> CloudSyncDocumentGateway
     func whereField(_ field: String, isGreaterThan value: Any) -> CloudSyncQueryGateway
     func whereField(_ field: String, isEqualTo value: Any) -> CloudSyncQueryGateway
+    func whereDocumentID(isGreaterThan value: String) -> CloudSyncQueryGateway
+    func whereDocumentID(isLessThan value: String) -> CloudSyncQueryGateway
+    func orderByDocumentID(descending: Bool) -> CloudSyncQueryGateway
     func order(by field: String, descending: Bool) -> CloudSyncQueryGateway
     func limit(to limit: Int) -> CloudSyncQueryGateway
     func getDocuments() async throws -> CloudSyncQuerySnapshotGateway
@@ -34,6 +37,9 @@ protocol CloudSyncDocumentGateway: AnyObject, Sendable {
 protocol CloudSyncQueryGateway: AnyObject, Sendable {
     func whereField(_ field: String, isGreaterThan value: Any) -> CloudSyncQueryGateway
     func whereField(_ field: String, isEqualTo value: Any) -> CloudSyncQueryGateway
+    func whereDocumentID(isGreaterThan value: String) -> CloudSyncQueryGateway
+    func whereDocumentID(isLessThan value: String) -> CloudSyncQueryGateway
+    func orderByDocumentID(descending: Bool) -> CloudSyncQueryGateway
     func order(by field: String, descending: Bool) -> CloudSyncQueryGateway
     func limit(to limit: Int) -> CloudSyncQueryGateway
     func getDocuments() async throws -> CloudSyncQuerySnapshotGateway
@@ -126,6 +132,18 @@ final class CloudSyncCollectionLiveGateway: CloudSyncCollectionGateway, @uncheck
         CloudSyncQueryLiveGateway(query: reference.whereField(field, isEqualTo: value))
     }
 
+    func whereDocumentID(isGreaterThan value: String) -> CloudSyncQueryGateway {
+        CloudSyncQueryLiveGateway(query: reference.whereField(FieldPath.documentID(), isGreaterThan: value))
+    }
+
+    func whereDocumentID(isLessThan value: String) -> CloudSyncQueryGateway {
+        CloudSyncQueryLiveGateway(query: reference.whereField(FieldPath.documentID(), isLessThan: value))
+    }
+
+    func orderByDocumentID(descending: Bool) -> CloudSyncQueryGateway {
+        CloudSyncQueryLiveGateway(query: reference.order(by: FieldPath.documentID(), descending: descending))
+    }
+
     func order(by field: String, descending: Bool) -> CloudSyncQueryGateway {
         CloudSyncQueryLiveGateway(query: reference.order(by: field, descending: descending))
     }
@@ -181,6 +199,18 @@ final class CloudSyncQueryLiveGateway: CloudSyncQueryGateway, @unchecked Sendabl
 
     func whereField(_ field: String, isEqualTo value: Any) -> CloudSyncQueryGateway {
         CloudSyncQueryLiveGateway(query: query.whereField(field, isEqualTo: value))
+    }
+
+    func whereDocumentID(isGreaterThan value: String) -> CloudSyncQueryGateway {
+        CloudSyncQueryLiveGateway(query: query.whereField(FieldPath.documentID(), isGreaterThan: value))
+    }
+
+    func whereDocumentID(isLessThan value: String) -> CloudSyncQueryGateway {
+        CloudSyncQueryLiveGateway(query: query.whereField(FieldPath.documentID(), isLessThan: value))
+    }
+
+    func orderByDocumentID(descending: Bool) -> CloudSyncQueryGateway {
+        CloudSyncQueryLiveGateway(query: query.order(by: FieldPath.documentID(), descending: descending))
     }
 
     func order(by field: String, descending: Bool) -> CloudSyncQueryGateway {

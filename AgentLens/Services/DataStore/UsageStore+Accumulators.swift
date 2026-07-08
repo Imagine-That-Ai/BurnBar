@@ -126,7 +126,7 @@ struct ProviderSummaryAccumulator { // pure-move: was private
     }
 }
 
-private struct ModelUsageAccumulator {
+struct ModelUsageAccumulator {
     let modelName: String
     var input = 0
     var output = 0
@@ -222,7 +222,7 @@ struct ModelSummaryAccumulator { // pure-move: was private
     }
 }
 
-private struct ProviderUsageAccumulator {
+struct ProviderUsageAccumulator {
     let provider: AgentProvider
     var sessionCount = 0
     var totalTokens = 0

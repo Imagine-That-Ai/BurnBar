@@ -47,6 +47,10 @@ extension DataStore {
         try await actor.usageStore.fetchAllUsage()
     }
 
+    func fetchUsage(in dateRange: ClosedRange<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchUsage(in: dateRange, limit: limit)
+    }
+
     func checkpointTruncate() async throws {
         try await actor.usageStore.checkpointTruncate()
     }
@@ -57,6 +61,10 @@ extension DataStore {
 
     func fetchUnsynced() async throws -> [TokenUsage] {
         try await actor.usageStore.fetchUnsynced()
+    }
+
+    func fetchUsageIdStrings() async throws -> Set<String> {
+        try await actor.usageStore.fetchUsageIdStrings()
     }
 
     func markSynced(ids: [UUID]) async throws {

@@ -15,11 +15,13 @@
 # Build
 build/
 build-derived/
+.lane-modulecache/
 Vendor/OpenBurnBarIroh.xcframework/
 Vendor/OpenBurnBarSignalFfi.xcframework/
 Vendor/BurnBarRemote.xcframework/
 build_ios/
 DerivedData/
+*.pcm
 *.ipa
 *.dSYM.zip
 *.dSYM

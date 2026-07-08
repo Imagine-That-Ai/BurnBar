@@ -1360,21 +1360,25 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     exportedName: "latestRouterRundown",
-    trigger: "scheduled",
-    authMethod: "Cloud Scheduler / platform trigger",
+    trigger: "http",
+    authMethod: "public read-only JSON endpoint with product-layer IP rate limit",
     appCheck: "not-applicable",
-    tenantSource: "job-owned collection scans",
-    objectIdsFromClient: [],
-    ownershipCheck: "server-side collection filters and per-document uid fields",
+    tenantSource: "public router_rundowns/{latest|date} document; no tenant scope",
+    objectIdsFromClient: ["date"],
+    ownershipCheck:
+      "handler validates the optional date key against a plausible calendar window and reads only public router_rundowns documents",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
-        test: "platform triggers are not client-callable",
-        kind: "platform-trigger",
+        file: "functions/src/__tests__/routerRundownEndpoint.test.ts",
+        test: "maps product-layer rate-limit rejection to HTTP 429 before Firestore reads",
+        kind: "not-applicable-public",
         covers: ["latestRouterRundown"],
       },
     ],
     highRiskComputerUse: false,
+    publicJustification:
+      "Public read-only router rundown JSON for the website; no tenant objects are exposed, and every request is bounded by checkPublicHttpEndpointRateLimit plus cache/maxInstances controls.",
+    handlerModule: "routerRundown.ts",
   },
   {
     exportedName: "listEncryptedProjectMemorySnapshots",
@@ -1603,21 +1607,25 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     exportedName: "onKnowledgeRepoPush",
-    trigger: "firestore-trigger",
-    authMethod: "Firestore event trigger",
+    trigger: "provider-webhook",
+    authMethod: "GitHub x-hub-signature-256 HMAC over the raw request body",
     appCheck: "not-applicable",
-    tenantSource: "event document path",
-    objectIdsFromClient: [],
-    ownershipCheck: "server derives uid/object path from triggering document",
+    tenantSource: "GitHub-signed repository full_name plus installation id mapped server-side to knowledge_repos rows",
+    objectIdsFromClient: ["repository.full_name", "installation.id"],
+    ownershipCheck:
+      "handler verifies the GitHub HMAC before reading payload fields, then maps the signed repo and installation id through server-stored match tokens",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
-        test: "platform triggers are not client-callable",
-        kind: "platform-trigger",
+        file: "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+        test: "rejects unsigned knowledge repo webhooks",
+        kind: "not-applicable-public",
         covers: ["onKnowledgeRepoPush"],
       },
     ],
     highRiskComputerUse: false,
+    publicJustification:
+      "Public GitHub webhook ingress is authenticated by provider HMAC before any repo mapping or writes occur.",
+    handlerModule: "callables/knowledgeSync.ts",
   },
   {
     exportedName: "onMobileAssistantAgentReplyNotification",
