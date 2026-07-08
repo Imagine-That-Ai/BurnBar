@@ -1044,22 +1044,48 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         embeddingVector: [Float]?,
         now: String
     ) throws {
-        try execute(
-            """
-            INSERT INTO search_chunks
-                (id, documentID, sourceKind, sourceID, sourceVersionID, ordinal, startOffset, endOffset, sectionPath, text, contentHash, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                .text(chunkID), .text(documentID), .text(Self.codeSourceKind), .text(artifactID),
-                .int(ordinal), .int(startOffset), .int(endOffset), .text(filePath),
-                .text(text), .text(contentHash), .text(now), .text(now)
-            ]
-        )
+        // FTS row first so its rowid can be recorded on the chunk row: the FTS5
+        // key columns (`chunkID`/`documentID`) are UNINDEXED, so any later
+        // `DELETE ... WHERE documentID = ?` would full-scan the entire FTS
+        // content table (GBs of chunk text on a mature index). Recording the
+        // rowid keeps deletes O(log n). Mirrors the app-side
+        // `v55_search_chunks_fts_rowid` contract on the shared schema.
         try execute(
             "INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider) VALUES (?, ?, ?, ?, ?, ?)",
             [.text(chunkID), .text(documentID), .text(filePath), .text(text), .text(projectID), .text(Self.codeProvider)]
         )
+        if try searchChunksHasFtsRowidColumn() {
+            let ftsRowid = try queryRows("SELECT last_insert_rowid()", []).first?.int64(0)
+            try execute(
+                """
+                INSERT INTO search_chunks
+                    (id, documentID, sourceKind, sourceID, sourceVersionID, ordinal, startOffset, endOffset, sectionPath, text, contentHash, ftsRowid, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    .text(chunkID), .text(documentID), .text(Self.codeSourceKind), .text(artifactID),
+                    .int(ordinal), .int(startOffset), .int(endOffset), .text(filePath),
+                    .text(text), .text(contentHash), ftsRowid.map { SQLiteBind.int64($0) } ?? .null,
+                    .text(now), .text(now)
+                ]
+            )
+        } else {
+            // Pre-v55 database (the app's migrator hasn't added `ftsRowid`
+            // yet). Insert without the mapping; deletes fall back to the
+            // legacy scan path for these rows.
+            try execute(
+                """
+                INSERT INTO search_chunks
+                    (id, documentID, sourceKind, sourceID, sourceVersionID, ordinal, startOffset, endOffset, sectionPath, text, contentHash, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    .text(chunkID), .text(documentID), .text(Self.codeSourceKind), .text(artifactID),
+                    .int(ordinal), .int(startOffset), .int(endOffset), .text(filePath),
+                    .text(text), .text(contentHash), .text(now), .text(now)
+                ]
+            )
+        }
         // Daemon-owned semantic vector for this chunk, tagged with the embedding version
         // so search never mixes generations. Stored base64 (TEXT) to ride the existing
         // string-based row machinery. Missing/declined embeddings degrade to lexical-only.
@@ -1076,6 +1102,21 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 ]
             )
         }
+    }
+
+    /// Whether `search_chunks` carries the `ftsRowid` mapping column added by
+    /// the app-side `v55_search_chunks_fts_rowid` migration on the shared
+    /// schema. Probed once per process (the column never disappears; a
+    /// mid-run app migration is picked up on the next daemon start, and rows
+    /// written meanwhile stay correct via the NULL-rowid legacy delete path).
+    private var cachedSearchChunksHasFtsRowid: Bool?
+
+    private func searchChunksHasFtsRowidColumn() throws -> Bool {
+        if let cached = cachedSearchChunksHasFtsRowid { return cached }
+        let has = try queryRows("PRAGMA table_info(search_chunks)", [])
+            .contains { $0.string(1) == "ftsRowid" }
+        cachedSearchChunksHasFtsRowid = has
+        return has
     }
 
     private struct PreparedCodeChunk {
@@ -1111,7 +1152,30 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 try execute("DELETE FROM chunk_embeddings WHERE chunkID = ?", [.text(chunkID)])
                 try execute("DELETE FROM code_chunk_embeddings WHERE chunk_id = ?", [.text(chunkID)])
             }
-            try execute("DELETE FROM search_chunks_fts WHERE documentID = ?", [.text(docID)])
+            // Rowid-targeted FTS delete via the `ftsRowid` mapping — matching
+            // on the UNINDEXED `documentID` column scans the entire FTS
+            // content table per document. Rows written before the mapping
+            // existed carry NULL and take the scan path once, individually.
+            if try searchChunksHasFtsRowidColumn() {
+                try execute(
+                    """
+                    DELETE FROM search_chunks_fts WHERE rowid IN (
+                        SELECT ftsRowid FROM search_chunks
+                        WHERE documentID = ? AND ftsRowid IS NOT NULL
+                    )
+                    """,
+                    [.text(docID)]
+                )
+                let legacyChunkIDs = try queryRows(
+                    "SELECT id FROM search_chunks WHERE documentID = ? AND ftsRowid IS NULL",
+                    [.text(docID)]
+                ).map { $0.string(0) }
+                for chunkID in legacyChunkIDs {
+                    try execute("DELETE FROM search_chunks_fts WHERE chunkID = ?", [.text(chunkID)])
+                }
+            } else {
+                try execute("DELETE FROM search_chunks_fts WHERE documentID = ?", [.text(docID)])
+            }
             try execute("DELETE FROM search_chunks WHERE documentID = ?", [.text(docID)])
             try execute("DELETE FROM search_documents WHERE id = ?", [.text(docID)])
         }

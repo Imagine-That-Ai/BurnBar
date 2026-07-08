@@ -36,6 +36,13 @@ declare global {
     __getKernel?: () => KernelId;
     /** Import-free registry metadata for native pickers. */
     __kernels?: KernelBridgeMeta[];
+    /**
+     * Native occlusion bridge: the host calls `false` when the window is
+     * fully occluded/minimized/hidden (document.hidden never fires for mere
+     * window occlusion) and `true` when it becomes visible again. Fully
+     * stops/restarts the render loop.
+     */
+    __setBackdropActive?: (active: boolean) => void;
     /** Set once the bridge above is callable; natives poll this before driving. */
     __backdropReady?: boolean;
   }
@@ -80,6 +87,9 @@ function mount(): void {
     if (theme === "dark" || theme === "light") engine.setTheme(theme);
   };
   window.__getKernel = (): KernelId => engine.getResolvedKernel();
+  window.__setBackdropActive = (active: boolean): void => {
+    engine.setHostVisible(active === true);
+  };
   window.__kernels = KERNELS.map(
     (k): KernelBridgeMeta => ({ id: k.id, label: k.label, blurb: k.blurb, substrate: k.substrate })
   );
