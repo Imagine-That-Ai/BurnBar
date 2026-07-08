@@ -112,6 +112,133 @@ jobs:
       - name: Unit tests (vitest)
         run: npm run test --prefix extensions/openburnbar
 
+  # ── Diff coverage: changed TypeScript lines must be ≥80% covered ──────────
+  # Re-armed diff-coverage gate for the TS surface (functions + extension),
+  # where vitest + @vitest/coverage-v8 already run. It computes REAL per-line
+  # coverage from the v8/istanbul coverage-final.json and intersects it with
+  # the added runtime lines of `git diff origin/main HEAD` — NOT test-file
+  # presence. Presence-based carve-outs are exactly the anti-pattern that let
+  # PR #303 flip a 3.2% red check green (DILIGENCE_REPORT_2026-06-11 §5.1,
+  # finding CG-1); scripts/diff-coverage-ts.sh fails closed on missing per-line
+  # evidence and has no presence fallback.
+  #
+  # The check-run name is "diff-coverage (PR)" to match the parked context in
+  # governance/branch-protection.main.json (_pending_required_status_checks).
+  # This job EMITS that context on every PR; promoting it to a REQUIRED check
+  # is a separate, operator-only branch-protection change (see that file and
+  # governance/README.md § "The diff-coverage (PR) placeholder").
+  #
+  # This is a standalone context — intentionally NOT in the Fast Feedback Gate
+  # aggregate's needs: — so it can be promoted to required independently
+  # without silently gating merges through the already-required aggregate
+  # before the operator flips it on.
+  #
+  # TS changes are detected first so Swift-only / docs-only PRs report a fast
+  # pass (the parked context still resolves on every PR — required-safe — but
+  # pays no vitest cost when no functions/extension TS changed).
+  diff-coverage-ts:
+    name: diff-coverage (PR)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          # Full history so `git diff origin/main HEAD` sees the true merge base
+          # for changed-line detection (a shallow clone truncates it).
+          fetch-depth: 0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            extensions/openburnbar/package-lock.json
+
+      - name: Resolve diff base (origin/main)
+        run: git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+
+      # Positive control: prove the gate still fails on uncovered changed lines
+      # and rejects stale evidence before trusting its verdict on the real diff.
+      - name: Self-test the diff-coverage gate
+        run: bash scripts/diff-coverage-ts-self-test.sh
+
+      - name: Detect changed TypeScript surfaces
+        id: ts
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only origin/main HEAD -- \
+            'functions/src/**/*.ts' \
+            'extensions/openburnbar/src/**/*.ts' \
+            2>/dev/null || true)"
+          if [ -n "$changed" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changed TypeScript files:"
+            echo "$changed"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No functions/extension TypeScript changed — diff coverage is vacuously satisfied."
+          fi
+
+      # Only install + run vitest coverage when the surface actually changed.
+      # diff-coverage-ts.sh installs missing package deps itself, but doing it
+      # here keeps the coverage run cached and lets the functions contract build
+      # (prebuild dependency) run once, up front.
+      - name: Install functions dependencies
+        if: steps.ts.outputs.changed == 'true'
+        run: npm ci --prefix functions
+
+      - name: Install extension dependencies
+        if: steps.ts.outputs.changed == 'true'
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: Build Signal envelope contracts
+        if: steps.ts.outputs.changed == 'true'
+        run: bash scripts/build-signal-envelope-contracts.sh
+
+      - name: Build entitlements contracts
+        if: steps.ts.outputs.changed == 'true'
+        run: bash scripts/build-entitlements.sh
+
+      - name: Compute TypeScript diff coverage (≥80% of changed lines)
+        env:
+          COVERAGE_THRESHOLD: "80"
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/ts-diff-coverage.json
+        run: |
+          set -euo pipefail
+          ./scripts/diff-coverage-ts.sh origin/main
+
+      - name: Post diff-coverage summary
+        if: always()
+        run: |
+          {
+            echo "### TypeScript diff coverage"
+            echo ""
+            if [ "${{ steps.ts.outputs.changed }}" != "true" ]; then
+              echo "No functions/extension TypeScript changed — gate vacuously satisfied."
+            elif [ -f ts-diff-coverage.json ]; then
+              threshold=$(jq -r '.diffCoverage.threshold // 80' ts-diff-coverage.json)
+              percent=$(jq -r '.diffCoverage.percent // 0.0' ts-diff-coverage.json)
+              passed=$(jq -r '.diffCoverage.passed // false' ts-diff-coverage.json)
+              method=$(jq -r '.diffCoverage.method // "n/a"' ts-diff-coverage.json)
+              lines=$(jq -r '.diffCoverage.changedLines // 0' ts-diff-coverage.json)
+              echo "Diff coverage: **${percent}%** (threshold: ${threshold}%, method: ${method})"
+              echo "Changed executable lines gated: ${lines}"
+              if [ "$passed" = "true" ]; then echo "Status: passed"; else echo "Status: failed — new TypeScript below threshold"; fi
+              echo ""
+              echo "| File | Executable | Covered | % |"
+              echo "|------|-----------|---------|---|"
+              jq -r '.details[]? | "| \(.file) | \(.executableLines) | \(.coveredLines) | \(.percent) |"' ts-diff-coverage.json | head -50
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diff-coverage verdict
+        if: always() && steps.ts.outputs.changed == 'true' && !env.ACT
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ts-diff-coverage
+          path: ts-diff-coverage.json
+
   # ── Website: typecheck + lint ─────────────────────────────────────────────
   website-fast:
     name: Website (types + lint + format)
