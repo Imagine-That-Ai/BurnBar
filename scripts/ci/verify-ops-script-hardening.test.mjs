@@ -35,6 +35,10 @@ assert.match(
 );
 
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
+assert.ok(
+  firebaseRules.includes("rulesSourceForDeploy"),
+  "Firestore rules release helper must compact deploy source before creating rulesets",
+);
 assert.match(
   firebaseRules,
   /method: "PATCH",[\s\S]*body: JSON\.stringify\(\{\s*release: update,\s*updateMask: "rulesetName",\s*\}\)/,
