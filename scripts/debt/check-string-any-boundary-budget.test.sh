@@ -8,8 +8,10 @@
 #   * exact match at baseline passes,
 #   * a new site OUTSIDE baseline (in either scope) fails,
 #   * two occurrences on one line count as two,
+#   * alternate Swift spellings count (`[String:Any]`, `Dictionary<String, Any>`),
 #   * commented-out occurrences are not counted,
 #   * a decrease below baseline passes and reports the drop,
+#   * a missing counted scope fails closed,
 #   * a missing baseline fails closed,
 #   * --print-live emits a machine-readable snapshot,
 #   * the ratchet is WIRED into the debt CI job.
@@ -114,6 +116,17 @@ printf 'func h(_ x: [String: Any]) -> [String: Any] { x }\n' \
 write_baseline "${r}" 1 0 1
 assert_exit 1 "${r}" "two occurrences on one line count as two (over baseline)"
 
+# ── Valid Swift spelling variants count ───────────────────────────────────────
+r="$(new_repo)"
+{
+  printf 'let a: [String:Any] = [:]\n'
+  printf 'let b: [ String : Any ] = [:]\n'
+  printf 'let c: Dictionary<String, Any> = [:]\n'
+  printf 'let d: Dictionary < String , Any > = [:]\n'
+} >"${r}/AgentLens/Services/Foo.swift"
+write_baseline "${r}" 3 0 3
+assert_exit 1 "${r}" "alternate Swift spellings count and fail over baseline"
+
 # ── Commented-out occurrences are not counted ─────────────────────────────────
 r="$(new_repo)"
 printf '// let a: [String: Any] = [:]\n/// see [String: Any]\n * [String: Any]\n' \
@@ -128,6 +141,12 @@ printf 'let a: [String: Any] = [:]\n' >"${r}/AgentLens/Services/Foo.swift"
 write_baseline "${r}" 5 5 10
 assert_exit 0 "${r}" "a decrease below baseline passes (shrink-only)"
 assert_stdout_contains "${r}" "dropped" "reports the drop as a notice"
+
+# ── Missing counted scope fails closed ────────────────────────────────────────
+r="$(new_repo)"
+rm -rf "${r}/OpenBurnBarMobile"
+write_baseline "${r}" 0 0 0
+assert_exit 1 "${r}" "missing counted scope fails closed"
 
 # ── Missing baseline fails closed ─────────────────────────────────────────────
 r="$(new_repo)"

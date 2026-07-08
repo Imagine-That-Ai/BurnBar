@@ -11,8 +11,9 @@
 # the count is captured in budgets/string-any-boundary-baseline.json.
 #
 # This gate does NOT migrate those sites — it caps growth so the untyped boundary
-# can only SHRINK. The budget counts `[String: Any]` occurrences on code lines
-# under:
+# can only SHRINK. The budget counts untyped `String`→`Any` dictionary
+# occurrences (`[String: Any]`, `[String:Any]`, `Dictionary<String, Any>`, etc.)
+# on code lines under:
 #   * AgentLens/          (macOS app)
 #   * OpenBurnBarMobile/  (iOS app)
 #
@@ -43,12 +44,13 @@ scopes = {
     "mobileStringAny": repo_root / "OpenBurnBarMobile",
 }
 
-# Canonical spelling of the untyped boundary dict. Swift's formatter normalises to
-# a single space after the colon, so `[String: Any]` is the one on-disk form (a
-# repo-wide search finds zero `[String:Any]` / `[String : Any]` variants); the
-# ratchet keys off that canonical spelling and a normalisation drift would surface
-# as a count DROP that the reviewer can investigate.
-pattern = re.compile(r"\[String: Any\]")
+# Valid Swift spellings of the same untyped boundary. Keep this lexical and
+# conservative: it is a ratchet, not a Swift parser, but it must catch whitespace
+# variants and the standard library Dictionary spelling.
+patterns = (
+    re.compile(r"\[\s*String\s*:\s*Any\s*\]"),
+    re.compile(r"\bDictionary\s*<\s*String\s*,\s*Any\s*>"),
+)
 
 excluded_parts = {".build", ".derived-data", ".swiftpm", "Preview Content", "build"}
 
@@ -64,8 +66,6 @@ def is_code_line(line: str) -> bool:
 
 
 def iter_files(root: Path):
-    if not root.exists():
-        return
     for path in sorted(root.rglob("*.swift")):
         if any(part in excluded_parts for part in path.parts):
             continue
@@ -81,12 +81,24 @@ def count(root: Path):
         for line in path.read_text(encoding="utf-8").splitlines():
             if not is_code_line(line):
                 continue
-            file_count += len(pattern.findall(line))
+            file_count += sum(len(pattern.findall(line)) for pattern in patterns)
         if file_count:
             by_file[rel] = file_count
             total += file_count
     return total, by_file
 
+
+# A scope that was renamed/removed leaves its untyped dictionary sites counting
+# under some other path. Fail closed so the scope list and baseline are updated
+# instead of reporting a fake drop.
+missing_scopes = [(key, root) for key, root in scopes.items() if not root.exists()]
+if missing_scopes:
+    for key, root in missing_scopes:
+        print(
+            f"::error::String-any scope missing for {key}: {root} — update scripts/debt/check-string-any-boundary-budget.sh and budgets/string-any-boundary-baseline.json.",
+            file=sys.stderr,
+        )
+    sys.exit(1)
 
 live = {"details": {}}
 grand_total = 0
@@ -96,15 +108,6 @@ for key, root in scopes.items():
     live["details"].update(by_file)
     grand_total += total
 live["total"] = grand_total
-
-# A scope that was renamed/removed leaves its `[String: Any]` sites counting under
-# some other path — warn so the scope list gets updated instead of drifting.
-for key, root in scopes.items():
-    if not root.exists():
-        print(
-            f"::warning::String-any scope missing: {root} — update scripts/debt/check-string-any-boundary-budget.sh.",
-            file=sys.stderr,
-        )
 
 if mode == "--print-live":
     print(json.dumps(live, indent=2, sort_keys=True))
