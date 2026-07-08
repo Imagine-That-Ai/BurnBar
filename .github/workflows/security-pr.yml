@@ -508,6 +508,9 @@ jobs:
           export PATH="$PWD/functions/node_modules/.bin:$PATH"
           npm --prefix firestore-rules-tests run test:ci
 
+      - name: Run Storage security-rules emulator tests
+        run: bash scripts/ci/test-storage-rules.sh
+
       # session-log-backup has 3 PRE-EXISTING failures (Pro-entitlement manifest
       # accept/refresh/overwrite) that fail standalone on the base tree and are
       # unrelated to this Cure53 remediation — they were previously masked because the

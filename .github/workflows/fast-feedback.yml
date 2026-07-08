@@ -1030,6 +1030,12 @@ jobs:
         with:
           node-version: 22
 
+      - name: No committed compiler/build artifacts
+        run: ./scripts/ci/check-no-committed-build-artifacts.sh
+
+      - name: No stale failed launch evidence
+        run: ./scripts/ci/check-no-stale-launch-evidence.sh
+
       - name: try? debt budget
         run: ./scripts/debt/check-try-optional-budget.sh
 

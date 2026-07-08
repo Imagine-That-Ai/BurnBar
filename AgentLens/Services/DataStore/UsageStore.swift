@@ -6,7 +6,7 @@ import OpenBurnBarCore
 
 /// Token-usage CRUD, sync helpers, refresh reads, and provider/model summary builders.
 final class UsageStore: Sendable {
-    private let dbQueue: any DatabaseWriter
+    let dbQueue: any DatabaseWriter
 
     init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
@@ -379,6 +379,26 @@ final class UsageStore: Sendable {
         }
     }
 
+    func fetchUsage(in dateRange: ClosedRange<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await dbQueue.read { db -> [TokenUsage] in
+            try Self.fetchUsageRows(db: db, dateRange: dateRange, limit: limit)
+        }
+    }
+
+    func fetchUsageCostBreakdown(in dateRange: ClosedRange<Date>, limit: Int = 20) async throws -> UsageCostBreakdown {
+        try await dbQueue.read { db in
+            let aggregateRows = try Self.fetchUsageAggregateRows(db: db, dateRange: dateRange)
+            let totals = Self.usageTotals(from: aggregateRows)
+            return UsageCostBreakdown(
+                sessionCount: totals.sessionCount,
+                totalTokens: totals.tokens,
+                totalCost: totals.cost,
+                modelCosts: Self.costBuckets(from: aggregateRows, label: \.model, limit: limit),
+                projectCosts: try Self.fetchProjectCostBuckets(db: db, dateRange: dateRange, limit: limit)
+            )
+        }
+    }
+
     func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
         let calendar = Calendar.current
         let now = Date()
@@ -507,6 +527,13 @@ final class UsageStore: Sendable {
                 sql: "SELECT * FROM token_usage WHERE syncedAt IS NULL AND isRemote = 0 ORDER BY startTime ASC LIMIT 400"
             )
             return rows.compactMap(Self.decodeUsage)
+        }
+    }
+
+    func fetchUsageIdStrings() async throws -> Set<String> {
+        try await dbQueue.read { db -> Set<String> in
+            let ids = try String.fetchAll(db, sql: "SELECT id FROM token_usage")
+            return Set(ids)
         }
     }
 
@@ -1349,6 +1376,53 @@ final class UsageStore: Sendable {
         )
     }
 
+    private static func fetchProjectCostBuckets(
+        db: Database,
+        dateRange: ClosedRange<Date>?,
+        limit: Int
+    ) throws -> [UsageCostBucket] {
+        guard limit > 0 else { return [] }
+        let predicate = dateRangePredicate(dateRange)
+        var arguments = predicate.arguments
+        arguments += StatementArguments([limit])
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT COALESCE(NULLIF(projectName, ''), 'Unassigned') AS label,
+                       COALESCE(SUM(cost), 0) AS cost
+                FROM token_usage
+                \(predicate.whereSQL)
+                GROUP BY label
+                ORDER BY cost DESC, label ASC
+                LIMIT ?
+                """,
+            arguments: arguments
+        )
+        return rows.compactMap { row in
+            guard let label = row["label"] as? String else { return nil }
+            return UsageCostBucket(label: label, cost: doubleValue(row["cost"]))
+        }
+    }
+
+    private static func costBuckets(
+        from rows: [UsageAggregateRow],
+        label: KeyPath<UsageAggregateRow, String>,
+        limit: Int
+    ) -> [UsageCostBucket] {
+        guard limit > 0 else { return [] }
+        let totals = rows.reduce(into: [String: Double]()) { partial, row in
+            partial[row[keyPath: label], default: 0] += row.cost
+        }
+        return totals
+            .map { UsageCostBucket(label: $0.key, cost: $0.value) }
+            .sorted {
+                if $0.cost == $1.cost { return $0.label < $1.label }
+                return $0.cost > $1.cost
+            }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     private static func usageTotals(from rows: [UsageAggregateRow]) -> UsageTotals {
         rows.reduce(into: UsageTotals.empty) { totals, row in
             totals.sessionCount += row.sessionCount
@@ -1497,6 +1571,19 @@ struct ProviderRunCostTotals: Equatable, Sendable {
     let sessionCount: Int
     let totalTokens: Int
     let totalCost: Double
+}
+
+struct UsageCostBreakdown: Equatable, Sendable {
+    let sessionCount: Int
+    let totalTokens: Int
+    let totalCost: Double
+    let modelCosts: [UsageCostBucket]
+    let projectCosts: [UsageCostBucket]
+}
+
+struct UsageCostBucket: Equatable, Sendable {
+    let label: String
+    let cost: Double
 }
 
 private struct UsageTotals {

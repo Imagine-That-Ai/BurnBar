@@ -30,6 +30,7 @@ import OSLog
 @MainActor
 final class MacFileTransferService: ObservableObject {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+    private static let maxAtRestSealPlaintextBytes: Int64 = 64 * 1024 * 1024
     private static func debugTrace(_ message: String) {
         #if DEBUG
         NSLog("OpenBurnBarMercury \(message)")
@@ -445,21 +446,34 @@ final class MacFileTransferService: ObservableObject {
             return
         }
 
+        let sealKey = frameSealKeyProvider(frame.uid, frame.connectionId)
+        if sealKey != nil, manifest.size > Self.maxAtRestSealPlaintextBytes {
+            await sendDenialAck(
+                for: manifest,
+                frame: frame,
+                reason: "received file is too large for in-memory at-rest sealing (\(manifest.size) bytes > \(Self.maxAtRestSealPlaintextBytes) bytes)",
+                ackSender: ackSender
+            )
+            return
+        }
+
         incrementFileTransferCount()
         defer { decrementFileTransferCount() }
 
         var status: HermesRealtimeRelayMediaAck.Status = .received
         var reason: String?
 
+        var fetchedDestinationURL: URL?
         do {
             let result = try await service.fetch(ticketText: ticket, manifest: manifest)
+            fetchedDestinationURL = result.destinationURL
             // RR-18 — seal the received bytes at rest under the media session
             // key when one is negotiated, so the file is not plaintext in the
             // sandbox Caches inbox. No key ⇒ keep the prior quarantine-only
             // behaviour rather than failing the transfer. Seal BEFORE the
             // quarantine xattr so the marker lands on the file that survives the
             // atomic replace rather than on the discarded plaintext.
-            if let sealKey = frameSealKeyProvider(frame.uid, frame.connectionId) {
+            if let sealKey {
                 try sealReceivedFileAtRest(at: result.destinationURL, manifest: manifest, key: sealKey)
             }
             try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)
@@ -468,10 +482,16 @@ final class MacFileTransferService: ObservableObject {
             status = .rejected
             reason = String(describing: serviceError)
             lastError = .fetchFailed(reason ?? "")
+            if let fetchedDestinationURL {
+                try? FileManager.default.removeItem(at: fetchedDestinationURL)
+            }
         } catch {
             status = .rejected
             reason = error.localizedDescription
             lastError = .fetchFailed(reason ?? "")
+            if let fetchedDestinationURL {
+                try? FileManager.default.removeItem(at: fetchedDestinationURL)
+            }
         }
 
         await sendAck(
@@ -600,9 +620,15 @@ final class MacFileTransferService: ObservableObject {
         manifest: HermesRealtimeRelayAttachmentManifest,
         key: SymmetricKey
     ) throws {
-        let plaintext = try Data(contentsOf: url)
         // Already sealed (idempotent re-fetch) — leave it.
-        guard !MediaFrameAEAD.isSealedEnvelope(plaintext) else { return }
+        guard !Self.fileLooksSealedEnvelope(at: url) else { return }
+        let byteCount = try Self.fileSizeBytes(at: url)
+        guard byteCount <= Self.maxAtRestSealPlaintextBytes else {
+            throw Failure.fetchFailed(
+                "received file is too large for in-memory at-rest sealing (\(byteCount) bytes > \(Self.maxAtRestSealPlaintextBytes) bytes)"
+            )
+        }
+        let plaintext = try Data(contentsOf: url, options: .mappedIfSafe)
         let sealed = try frameSealAEAD.seal(
             plaintext: plaintext,
             key: key,
@@ -615,6 +641,28 @@ final class MacFileTransferService: ObservableObject {
             .appendingPathComponent(".\(UUID().uuidString).obmfa1-tmp")
         try sealed.write(to: tempURL, options: .atomic)
         _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+    }
+
+    private static func fileLooksSealedEnvelope(at url: URL) -> Bool {
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer {
+                do {
+                    try handle.close()
+                } catch {
+                    AppLogger.shared.debug(
+                        "file_sealed_envelope_handle_close_failed",
+                        metadata: ["path": url.path]
+                    )
+                }
+            }
+            let header = handle.readData(ofLength: MediaFrameAEAD.magic.count + 1)
+            var expected = MediaFrameAEAD.magic
+            expected.append(MediaFrameAEAD.version)
+            return header == expected
+        } catch {
+            return false
+        }
     }
 
     /// Stable 32-bit AAD discriminator derived from the manifest id so the

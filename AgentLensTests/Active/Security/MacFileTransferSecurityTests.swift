@@ -303,6 +303,97 @@ final class MacFileTransferSecurityTests: XCTestCase {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
     }
 
+    func testInboundAdvertiseRejectsOversizedFileInsteadOfInMemorySealing() async throws {
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+
+        let plaintextBytes = Int64(64 * 1024 * 1024 + 1)
+        let backend = OversizedSparseBlobBackend(byteCount: plaintextBytes)
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-file-transfer-seal-large-\(UUID().uuidString)", isDirectory: true)
+        let inboxURL = temp.appendingPathComponent("inbox", isDirectory: true)
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: inboxURL,
+                secretKeyProvider: { Data(repeating: 0x42, count: 32) }
+            )
+        )
+        let sessionKey = SymmetricKey(data: Data(repeating: 0x5A, count: 32))
+        let adapter = MacFileTransferService(
+            service: service,
+            settingsProvider: { true },
+            frameSealKeyProvider: { _, _ in sessionKey }
+        )
+        let manifest = Self.manifest(size: plaintextBytes)
+        let frame = Self.advertiseFrame(manifest: manifest)
+        var acks: [HermesRealtimeRelayFrame] = []
+
+        await adapter.handleAdvertise(frame: frame) { ack in
+            acks.append(ack)
+        }
+
+        let downloaded = inboxURL.appendingPathComponent("blob_quarantine_hash.txt")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: downloaded.path))
+        let fetchedTickets = await backend.fetchedTickets
+        XCTAssertEqual(fetchedTickets, [])
+        XCTAssertEqual(acks.first?.media?.ack?.status, .rejected)
+        XCTAssertTrue(
+            acks.first?.media?.ack?.reason?.contains("too large") == true,
+            "oversized at-rest sealing rejection should be visible to the sender"
+        )
+
+        try? FileManager.default.removeItem(at: temp)
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+    }
+
+    func testInboundAdvertiseCleansFetchedPlaintextWhenPeerUnderreportsSize() async throws {
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+
+        let plaintextBytes = Int64(64 * 1024 * 1024 + 1)
+        let backend = OversizedSparseBlobBackend(byteCount: plaintextBytes)
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-file-transfer-underreported-large-\(UUID().uuidString)", isDirectory: true)
+        let inboxURL = temp.appendingPathComponent("inbox", isDirectory: true)
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: inboxURL,
+                secretKeyProvider: { Data(repeating: 0x42, count: 32) }
+            )
+        )
+        let sessionKey = SymmetricKey(data: Data(repeating: 0x5A, count: 32))
+        let adapter = MacFileTransferService(
+            service: service,
+            settingsProvider: { true },
+            frameSealKeyProvider: { _, _ in sessionKey }
+        )
+        let underreportedManifest = Self.manifest(size: 12)
+        let frame = Self.advertiseFrame(manifest: underreportedManifest)
+        var acks: [HermesRealtimeRelayFrame] = []
+
+        await adapter.handleAdvertise(frame: frame) { ack in
+            acks.append(ack)
+        }
+
+        let downloaded = inboxURL.appendingPathComponent("blob_quarantine_hash.txt")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: downloaded.path),
+            "seal failure after fetch must not leave attacker-supplied plaintext in the inbox"
+        )
+        let fetchedTickets = await backend.fetchedTickets
+        XCTAssertEqual(fetchedTickets, ["blob1ticket"])
+        XCTAssertEqual(acks.first?.media?.ack?.status, .rejected)
+        XCTAssertTrue(
+            acks.first?.media?.ack?.reason?.contains("exceeded expected size") == true,
+            "underreported blob rejection should identify the manifest size mismatch"
+        )
+
+        try? FileManager.default.removeItem(at: temp)
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+    }
+
     func testInboundAdvertiseKeepsPlaintextWhenNoSessionKey() async throws {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
 
@@ -335,13 +426,13 @@ final class MacFileTransferSecurityTests: XCTestCase {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
     }
 
-    private static func manifest() -> HermesRealtimeRelayAttachmentManifest {
+    private static func manifest(size: Int64 = 12) -> HermesRealtimeRelayAttachmentManifest {
         HermesRealtimeRelayAttachmentManifest(
             manifestId: "att_quarantine",
             blobHash: "blob_quarantine_hash",
             filename: "payload.txt",
             mime: "text/plain",
-            size: 12,
+            size: size,
             peerDeviceId: "iphone-1",
             createdAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -378,6 +469,11 @@ final class MacFileTransferSecurityTests: XCTestCase {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func fileSize(at url: URL) throws -> Int64 {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return (attributes[.size] as? NSNumber)?.int64Value ?? 0
     }
 }
 
@@ -444,6 +540,56 @@ private actor QuarantineBlobBackend: IrohBlobBackend {
 
     func identity() async throws -> IrohEndpointIdentity {
         IrohEndpointIdentity(nodeId: "quarantine_node", rawPublicKey: Data(repeating: 0x42, count: 32))
+    }
+
+    func shutdown() async {}
+}
+
+private actor OversizedSparseBlobBackend: IrohBlobBackend {
+    let byteCount: Int64
+    private var fetchedTicketStorage: [String] = []
+
+    init(byteCount: Int64) {
+        self.byteCount = byteCount
+    }
+
+    var fetchedTickets: [String] {
+        fetchedTicketStorage
+    }
+
+    func bootstrap(
+        secret: Data,
+        storeDirectoryPath: String,
+        relayURL: String?
+    ) async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(nodeId: "oversized_node", rawPublicKey: Data(secret.prefix(32)))
+    }
+
+    func publishBlob(localPath: String) async throws -> String {
+        "blob1unused"
+    }
+
+    func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
+        fetchedTicketStorage.append(ticketText)
+        let url = URL(fileURLWithPath: destination)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        _ = FileManager.default.createFile(atPath: url.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: url)
+        handle.truncateFile(atOffset: UInt64(byteCount))
+        try? handle.close()
+        return BlobTransferStats(
+            bytesTotal: UInt64(byteCount),
+            blake3Hash: "blake3:oversized",
+            durationMillis: 5,
+            didResume: false
+        )
+    }
+
+    func identity() async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(nodeId: "oversized_node", rawPublicKey: Data(repeating: 0x42, count: 32))
     }
 
     func shutdown() async {}

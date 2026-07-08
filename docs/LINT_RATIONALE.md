@@ -196,7 +196,6 @@ AgentLens/Views/Settings/Search/SettingsSearchResultsView.swift | OpenBurnBarMob
 AgentLens/Views/Settings/SmartDisplays/NestHubSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/NestHubSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/PixelClockSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/TextExpansionSettingsView.swift | OpenBurnBarMobile/Views/You/TextExpansionSettingsView.swift | platform-ui
-AgentLens/Utilities/StringNilIfBlank.swift | OpenBurnBarMobile/Models/StringNilIfBlank.swift | platform-ui
 ```
 <!-- END:twin-basename-allowlist -->
 

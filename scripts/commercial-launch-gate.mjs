@@ -112,6 +112,10 @@ const APP_STORE_PRODUCT_READY_STATES = new Set([
   "READY_FOR_SALE",
 ]);
 const RETIRED_HERMES_REALTIME_RELAY_SERVICE = "hermes-realtime-relay";
+const REQUIRED_CLOUD_RUN_SERVICES = [
+  "openburnbar-quota-runner",
+  "openburnbar-hosted-mcp",
+];
 const RETIRED_HERMES_REALTIME_REDIS_INSTANCE =
   process.env.OPENBURNBAR_RETIRED_REDIS_INSTANCE_NAME ||
   "hermes-realtime-relay-redis-prod-secure";
@@ -1187,8 +1191,7 @@ function pickCheck(check) {
 }
 
 function checkCloudRun() {
-  const required = ["openburnbar-quota-runner"];
-  const serviceStates = required.map(describeCloudRunService);
+  const serviceStates = REQUIRED_CLOUD_RUN_SERVICES.map(describeCloudRunService);
   const retiredRelay = describeCloudRunService(
     RETIRED_HERMES_REALTIME_RELAY_SERVICE,
   );

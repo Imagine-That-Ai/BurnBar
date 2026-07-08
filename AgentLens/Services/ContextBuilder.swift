@@ -173,10 +173,13 @@ enum ContextBuilder {
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
 
-        let allUsages = (try? await dataStore.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
-        let recentUsages = allUsages
-            .filter { $0.startTime >= weekAgo }
-            .sorted { $0.startTime > $1.startTime }
+        let recentUsages = (try? await dataStore.fetchUsage(in: weekAgo...now, limit: 200)) ?? [] // try?-ok(optional usage rollup)
+        let weeklyCostBreakdown = await usageCostBreakdown(
+            from: dataStore,
+            dateRange: weekAgo...now,
+            fallbackUsages: recentUsages,
+            limit: 6
+        )
 
         var lines: [String] = []
         lines.append("You are OpenBurnBar's in-app AI coding assistant with access to this developer's recent agent session history.")
@@ -200,22 +203,17 @@ enum ContextBuilder {
         }
 
         lines.append("")
-        lines.append("## This week's token spend")
+        lines.append(weeklyCostBreakdown.isExhaustive
+            ? "## This week's token spend"
+            : "## This week's token spend (available sampled rows)")
 
-        let weekUsages = allUsages.filter { $0.startTime >= weekAgo }
-        var modelCost: [String: Double] = [:]
-        var projectCost: [String: Double] = [:]
-        for u in weekUsages {
-            modelCost[u.model, default: 0] += u.cost
-            projectCost[u.projectName, default: 0] += u.cost
+        let totalWeek = weeklyCostBreakdown.breakdown.totalCost
+        for bucket in weeklyCostBreakdown.breakdown.modelCosts.prefix(6) {
+            let pct = totalWeek > 0 ? (bucket.cost / totalWeek) * 100 : 0
+            lines.append("- \(bucket.label): \(String(format: "%.0f", pct))% (\(bucket.cost.formatAsCost()))")
         }
-        let totalWeek = weekUsages.reduce(0.0) { $0 + $1.cost }
-        for (model, cost) in modelCost.sorted(by: { $0.value > $1.value }).prefix(6) {
-            let pct = totalWeek > 0 ? (cost / totalWeek) * 100 : 0
-            lines.append("- \(model): \(String(format: "%.0f", pct))% (\(cost.formatAsCost()))")
-        }
-        if let topProj = projectCost.max(by: { $0.value < $1.value }) {
-            lines.append("- Top project: \(topProj.key) (\(topProj.value.formatAsCost()))")
+        if let topProj = weeklyCostBreakdown.breakdown.projectCosts.first {
+            lines.append("- Top project: \(topProj.label) (\(topProj.cost.formatAsCost()))")
         }
 
         lines.append("")
@@ -328,13 +326,16 @@ enum ContextBuilder {
         var rollupLines: [String] = []
         rollupLines.append("## Ephemeral rollups (not exhaustive)")
         rollupLines.append(
-            "High-level usage from OpenBurnBar tables—not a substitute for retrieved excerpts. Use for spend/time questions when retrieval is thin."
+            "High-level usage from OpenBurnBar tables—not a substitute for retrieved excerpts. Weekly spend totals are exhaustive for the local token_usage window; recent-work bullets are sampled."
         )
 
-        let allUsages = (try? await dataStore.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
-        let recentUsages = allUsages
-            .filter { $0.startTime >= weekAgo }
-            .sorted { $0.startTime > $1.startTime }
+        let recentUsages = (try? await dataStore.fetchUsage(in: weekAgo...now, limit: 200)) ?? [] // try?-ok(optional usage rollup)
+        let weeklyCostBreakdown = await usageCostBreakdown(
+            from: dataStore,
+            dateRange: weekAgo...now,
+            fallbackUsages: recentUsages,
+            limit: 5
+        )
 
         let conversations = (try? await dataStore.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
@@ -353,21 +354,16 @@ enum ContextBuilder {
         }
 
         rollupLines.append("")
-        rollupLines.append("### This week's token spend (approximate mix)")
-        let weekUsages = allUsages.filter { $0.startTime >= weekAgo }
-        var modelCost: [String: Double] = [:]
-        var projectCost: [String: Double] = [:]
-        for u in weekUsages {
-            modelCost[u.model, default: 0] += u.cost
-            projectCost[u.projectName, default: 0] += u.cost
+        rollupLines.append(weeklyCostBreakdown.isExhaustive
+            ? "### This week's token spend"
+            : "### This week's token spend (available sampled rows)")
+        let totalWeek = weeklyCostBreakdown.breakdown.totalCost
+        for bucket in weeklyCostBreakdown.breakdown.modelCosts.prefix(5) {
+            let pct = totalWeek > 0 ? (bucket.cost / totalWeek) * 100 : 0
+            rollupLines.append("- \(bucket.label): \(String(format: "%.0f", pct))% (\(bucket.cost.formatAsCost()))")
         }
-        let totalWeek = weekUsages.reduce(0.0) { $0 + $1.cost }
-        for (model, cost) in modelCost.sorted(by: { $0.value > $1.value }).prefix(5) {
-            let pct = totalWeek > 0 ? (cost / totalWeek) * 100 : 0
-            rollupLines.append("- \(model): \(String(format: "%.0f", pct))% (\(cost.formatAsCost()))")
-        }
-        if let topProj = projectCost.max(by: { $0.value < $1.value }) {
-            rollupLines.append("- Top project: \(topProj.key) (\(topProj.value.formatAsCost()))")
+        if let topProj = weeklyCostBreakdown.breakdown.projectCosts.first {
+            rollupLines.append("- Top project: \(topProj.label) (\(topProj.cost.formatAsCost()))")
         }
 
         rollupLines.append("")
@@ -410,6 +406,55 @@ enum ContextBuilder {
             return ad < bd
         })
     }
+
+    private static func usageCostBreakdown(
+        from dataStore: DataStore,
+        dateRange: ClosedRange<Date>,
+        fallbackUsages: [TokenUsage],
+        limit: Int
+    ) async -> (breakdown: UsageCostBreakdown, isExhaustive: Bool) {
+        if let breakdown = try? await dataStore.fetchUsageCostBreakdown(in: dateRange, limit: limit) {
+            return (breakdown, true)
+        }
+        return (fallbackUsageCostBreakdown(from: fallbackUsages, limit: limit), false)
+    }
+
+    private static func fallbackUsageCostBreakdown(
+        from usages: [TokenUsage],
+        limit: Int
+    ) -> UsageCostBreakdown {
+        var modelCosts: [String: Double] = [:]
+        var projectCosts: [String: Double] = [:]
+        var totalTokens = 0
+        var totalCost = 0.0
+        for usage in usages {
+            modelCosts[usage.model, default: 0] += usage.cost
+            let projectName = usage.projectName.isEmpty ? "Unassigned" : usage.projectName
+            projectCosts[projectName, default: 0] += usage.cost
+            totalTokens += usage.totalTokens
+            totalCost += usage.cost
+        }
+        return UsageCostBreakdown(
+            sessionCount: usages.count,
+            totalTokens: totalTokens,
+            totalCost: totalCost,
+            modelCosts: sortedCostBuckets(modelCosts, limit: limit),
+            projectCosts: sortedCostBuckets(projectCosts, limit: limit)
+        )
+    }
+
+    private static func sortedCostBuckets(_ costs: [String: Double], limit: Int) -> [UsageCostBucket] {
+        guard limit > 0 else { return [] }
+        return costs
+            .map { UsageCostBucket(label: $0.key, cost: $0.value) }
+            .sorted {
+                if $0.cost == $1.cost { return $0.label < $1.label }
+                return $0.cost > $1.cost
+            }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     /// Prepares session transcript for on-demand summarization (middle section dropped when very long).
     static func chunkedSessionContext(_ fullText: String) -> String {
         if fullText.count <= 80_000 { return fullText }
