@@ -41,25 +41,77 @@ on:
       - "crates/openburnbar-iroh/bindings/csharp/**"
       - ".github/workflows/pr-windows-full.yml"
   pull_request:
-    paths:
-      - "windows/**"
-      # The sln's native-shim projects reference the committed uniffi C# bindings
-      # that live crate-side (decision 0001), so binding changes must run the
-      # full suite too.
-      - "crates/burnbar-remote/bindings/csharp/**"
-      - "crates/openburnbar-iroh/bindings/csharp/**"
-      - ".github/workflows/pr-windows-full.yml"
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
 
 concurrency:
   group: pr-windows-full-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  detect-windows-full-changes:
+    name: Detect Windows full-suite changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      windows: ${{ steps.filter.outputs.windows }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 2
+
+      - name: Determine whether full Windows paths changed
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            echo "windows=true" >> "$GITHUB_OUTPUT"
+            echo "Event ${EVENT_NAME}: running Windows full suite unconditionally."
+            exit 0
+          fi
+
+          base="${BASE_SHA}"
+          head="${HEAD_SHA}"
+
+          if git cat-file -e "HEAD^1^{commit}" 2>/dev/null && \
+             git cat-file -e "HEAD^2^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only HEAD^1 HEAD^2)"
+          elif git cat-file -e "${base}^{commit}" 2>/dev/null && \
+               git cat-file -e "${head}^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only "${base}" "${head}")"
+          else
+            echo "windows=true" >> "$GITHUB_OUTPUT"
+            echo "Could not resolve merge parents or base/head commits; running Windows full suite to stay fail-safe."
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "${changed}"
+
+          if echo "${changed}" | grep -Eq \
+            '^(windows/|crates/burnbar-remote/bindings/csharp/|crates/openburnbar-iroh/bindings/csharp/|\.github/workflows/pr-windows-full\.yml)'; then
+            echo "windows=true" >> "$GITHUB_OUTPUT"
+            echo "Windows full-suite surface changed: running x64 + ARM64 full-suite legs."
+          else
+            echo "windows=false" >> "$GITHUB_OUTPUT"
+            echo "No Windows full-suite surface changed: skipping expensive Windows legs; aggregate still reports success."
+          fi
+
   # ──────────────────────────────────────────────────────────────────────────
   # x64 leg — the full suite on windows-latest.
   # ──────────────────────────────────────────────────────────────────────────
   build-test-x64:
     name: Windows full suite (x64)
+    needs: detect-windows-full-changes
+    if: needs.detect-windows-full-changes.outputs.windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 45
     defaults:
@@ -132,6 +184,8 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   build-test-arm64:
     name: Windows full suite (ARM64)
+    needs: detect-windows-full-changes
+    if: needs.detect-windows-full-changes.outputs.windows == 'true'
     runs-on: windows-11-arm
     timeout-minutes: 45
     defaults:
@@ -181,6 +235,7 @@ jobs:
   pr-windows-full-gate:
     name: PR Windows Full Gate
     needs:
+      - detect-windows-full-changes
       - build-test-x64
       - build-test-arm64
     runs-on: ubuntu-latest
@@ -188,22 +243,36 @@ jobs:
     steps:
       - name: Check both Windows full-suite legs passed
         env:
+          WINDOWS_CHANGED: ${{ needs.detect-windows-full-changes.outputs.windows }}
+          DETECT_RESULT: ${{ needs.detect-windows-full-changes.result }}
           X64_RESULT: ${{ needs.build-test-x64.result }}
           ARM64_RESULT: ${{ needs.build-test-arm64.result }}
         run: |
           set -euo pipefail
+          echo "detect-windows-full-changes: ${DETECT_RESULT}"
+          echo "windows-changed: ${WINDOWS_CHANGED}"
           echo "build-test-x64: ${X64_RESULT}"
           echo "build-test-arm64: ${ARM64_RESULT}"
 
-          # Both legs must succeed (no skip path — this workflow only runs on
-          # Windows surface changes or merge to main).
-          if [[ "${X64_RESULT}" != "success" ]]; then
-            echo "::error::Windows full suite (x64) failed (result=${X64_RESULT})."
+          if [[ "${DETECT_RESULT}" != "success" ]]; then
+            echo "::error::detect-windows-full-changes did not succeed (${DETECT_RESULT})."
             exit 1
           fi
-          if [[ "${ARM64_RESULT}" != "success" ]]; then
-            echo "::error::Windows full suite (ARM64) failed (result=${ARM64_RESULT})."
-            exit 1
+
+          if [[ "${WINDOWS_CHANGED}" == "true" ]]; then
+            if [[ "${X64_RESULT}" != "success" ]]; then
+              echo "::error::Windows full suite (x64) failed (result=${X64_RESULT})."
+              exit 1
+            fi
+            if [[ "${ARM64_RESULT}" != "success" ]]; then
+              echo "::error::Windows full suite (ARM64) failed (result=${ARM64_RESULT})."
+              exit 1
+            fi
+          else
+            if [[ "${X64_RESULT}" != "skipped" || "${ARM64_RESULT}" != "skipped" ]]; then
+              echo "::error::Windows full-suite legs should skip when no Windows full-suite surface changed."
+              exit 1
+            fi
           fi
 
           echo "### PR Windows Full Gate: full-suite build + ~2,545 tests green on x64 + ARM64" >> "$GITHUB_STEP_SUMMARY"
