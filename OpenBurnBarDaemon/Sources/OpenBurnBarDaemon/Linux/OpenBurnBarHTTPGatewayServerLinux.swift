@@ -33,6 +33,7 @@ public actor BurnBarHTTPGatewayServer {
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder?
     let proxyRouteLogStore: BurnBarProxyRouteLogStore?
+    let quotaSignalStore: BurnBarQuotaSignalStore?
     let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     let anthropicExecutor: BurnBarAnthropicProviderExecutor
     let factoryExecutor: FactoryDroidProviderExecutor
@@ -48,6 +49,7 @@ public actor BurnBarHTTPGatewayServer {
         configStore: BurnBarConfigStore,
         usageRecorder: BurnBarUsageRecorder? = nil,
         proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
+        quotaSignalStore: BurnBarQuotaSignalStore? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
@@ -60,6 +62,7 @@ public actor BurnBarHTTPGatewayServer {
         self.configStore = configStore
         self.usageRecorder = usageRecorder
         self.proxyRouteLogStore = proxyRouteLogStore
+        self.quotaSignalStore = quotaSignalStore
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
         self.factoryExecutor = factoryExecutor
@@ -344,6 +347,14 @@ public actor BurnBarHTTPGatewayServer {
                                     streamCommit: streamCommit,
                                     fileDescriptor: fileDescriptor
                                 )
+                                await recordQuotaSignalIfAvailable(
+                                    headers: proxyStream.headers,
+                                    route: route,
+                                    requestPath: endpoint.requestPath,
+                                    endpoint: endpoint.displayName,
+                                    httpStatus: proxyStream.statusCode,
+                                    streamed: true
+                                )
                                 attempts.append(routeAttempt(
                                     sequence: attempts.count + 1,
                                     startedAt: attemptStartedAt,
@@ -377,6 +388,14 @@ public actor BurnBarHTTPGatewayServer {
                             formatFamily: formatFamily,
                             variant: resolvedModel.variant
                         )
+                        await recordQuotaSignalIfAvailable(
+                            headers: response.headers,
+                            route: route,
+                            requestPath: endpoint.requestPath,
+                            endpoint: endpoint.displayName,
+                            httpStatus: response.statusCode,
+                            streamed: false
+                        )
                         await recordUsageIfAvailable(
                             response.usage,
                             route: route,
@@ -408,6 +427,17 @@ public actor BurnBarHTTPGatewayServer {
                         ))
                     } catch {
                         lastFailedRoute = route
+                        if let providerError = error as? BurnBarProviderExecutorError,
+                           !providerError.upstreamHeaders.isEmpty {
+                            await recordQuotaSignalIfAvailable(
+                                headers: providerError.upstreamHeaders,
+                                route: route,
+                                requestPath: endpoint.requestPath,
+                                endpoint: endpoint.displayName,
+                                httpStatus: Self.httpStatus(from: error),
+                                streamed: streamCommit.responseStarted
+                            )
+                        }
                         attempts.append(routeAttempt(
                             sequence: attempts.count + 1,
                             startedAt: attemptStartedAt,
@@ -704,6 +734,28 @@ public actor BurnBarHTTPGatewayServer {
         } catch {
             logger.silentFailure("gateway_usage_record", error: error)
         }
+    }
+
+    private func recordQuotaSignalIfAvailable(
+        headers: [String: String],
+        route: BurnBarProviderRoute,
+        requestPath: String?,
+        endpoint: String?,
+        httpStatus: Int?,
+        streamed: Bool
+    ) async {
+        guard let quotaSignalStore,
+              let signal = BurnBarQuotaSignalStore.signal(
+                  from: headers,
+                  route: route,
+                  requestPath: requestPath,
+                  endpoint: endpoint,
+                  httpStatus: httpStatus,
+                  streamed: streamed
+              ) else {
+            return
+        }
+        await quotaSignalStore.append(signal)
     }
 
     private func recordProxyRouteLogEntry(
