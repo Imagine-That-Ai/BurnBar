@@ -61,6 +61,10 @@ jobs:
         if: matrix.mode == 'runnable'
         run: npm ci --prefix apps/linux-desktop
 
+      - name: Build mission Linux toolchain image
+        if: matrix.mode == 'runnable'
+        run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
+
       - name: Run shell smoke
         if: matrix.mode == 'runnable' && matrix.smoke == 'shell'
         run: node scripts/linux-port/run-shell-smoke.mjs

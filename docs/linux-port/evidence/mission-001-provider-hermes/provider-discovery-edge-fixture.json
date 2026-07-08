@@ -2,37 +2,37 @@
   "cases": [
     {
       "directoryReadable": true,
-      "expandedPath": "/tmp/tmp.0zjPkN1Qjh/home/.codex",
+      "expandedPath": "/tmp/tmp.XoEDUHBpXh/home/.codex",
       "filePattern": "state_5.sqlite",
       "logicalPath": "~/.codex",
       "partialFilePresent": true,
       "provider": "codex",
-      "sessionIdentityKey": "codex|/tmp/tmp.0zjPkN1Qjh/home/.codex",
-      "standardizedPath": "/tmp/tmp.0zjPkN1Qjh/home/.codex",
+      "sessionIdentityKey": "codex|/tmp/tmp.XoEDUHBpXh/home/.codex",
+      "standardizedPath": "/tmp/tmp.XoEDUHBpXh/home/.codex",
       "symlink": true,
-      "symlinkTarget": "/tmp/tmp.0zjPkN1Qjh/home/real-codex"
+      "symlinkTarget": "/tmp/tmp.XoEDUHBpXh/home/real-codex"
     },
     {
       "directoryReadable": true,
-      "expandedPath": "/tmp/tmp.0zjPkN1Qjh/home/.claude/projects",
+      "expandedPath": "/tmp/tmp.XoEDUHBpXh/home/.claude/projects",
       "filePattern": "*.jsonl",
       "logicalPath": "~/.claude/projects",
       "partialFilePresent": false,
       "provider": "claudeCode",
-      "sessionIdentityKey": "claudeCode|/tmp/tmp.0zjPkN1Qjh/home/.claude/projects",
-      "standardizedPath": "/tmp/tmp.0zjPkN1Qjh/home/.claude/projects",
+      "sessionIdentityKey": "claudeCode|/tmp/tmp.XoEDUHBpXh/home/.claude/projects",
+      "standardizedPath": "/tmp/tmp.XoEDUHBpXh/home/.claude/projects",
       "symlink": false,
-      "symlinkTarget": "/tmp/tmp.0zjPkN1Qjh/home/.claude/projects"
+      "symlinkTarget": "/tmp/tmp.XoEDUHBpXh/home/.claude/projects"
     },
     {
       "directoryReadable": false,
-      "expandedPath": "/tmp/tmp.0zjPkN1Qjh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+      "expandedPath": "/tmp/tmp.XoEDUHBpXh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
       "filePattern": "*.json",
       "logicalPath": "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
       "partialFilePresent": false,
       "provider": "cline",
-      "sessionIdentityKey": "cline|/tmp/tmp.0zjPkN1Qjh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
-      "standardizedPath": "/tmp/tmp.0zjPkN1Qjh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+      "sessionIdentityKey": "cline|/tmp/tmp.XoEDUHBpXh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+      "standardizedPath": "/tmp/tmp.XoEDUHBpXh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
       "symlink": false,
       "symlinkTarget": null
     }
