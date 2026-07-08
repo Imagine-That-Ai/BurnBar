@@ -97,7 +97,6 @@ final class ChatSessionController {
         didSet { if persistsViewState { UserDefaults.standard.set(chatModelDroid, forKey: Self.udChatModelDroid) } }
     }
 
-
     var chatModelForge: String = "" {
         didSet { if persistsViewState { UserDefaults.standard.set(chatModelForge, forKey: Self.udChatModelForge) } }
     }
@@ -211,7 +210,6 @@ final class ChatSessionController {
     /// System-prompt assembly version baked into the extraction idempotency key;
     /// a new prompt version is a distinct extraction event.
     static let memoryPromptVersion = "openburnbar-prompt-v1"
-
 
     var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
 

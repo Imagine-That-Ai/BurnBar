@@ -1,0 +1,65 @@
+:root {
+  /* ── Liquid Glass material system ────────────────────────────────────────
+   * Shared vocabulary for translucent, layered chrome across the Linux shell.
+   * Built on top of Pensieve color tokens; use these for blur, tint, border,
+   * highlight, and shadow so every glass surface feels like one material.
+   */
+
+  /* blur / saturation */
+  --glass-blur-sm: 12px;
+  --glass-blur-md: 20px;
+  --glass-blur-lg: 28px;
+  --glass-blur-xl: 36px;
+  --glass-saturate: 160%;
+  --glass-saturate-high: 180%;
+
+  /* tint — slightly richer than the raw color tokens so surfaces read */
+  --glass-tint-base: color-mix(in srgb, var(--color-glass-bg) 72%, transparent);
+  --glass-tint-elevated: color-mix(in srgb, var(--color-glass-bg-elevated) 72%, transparent);
+  --glass-tint-sunken: color-mix(in srgb, var(--color-glass-bg) 42%, transparent);
+  --glass-tint-clear: color-mix(in srgb, var(--color-glass-bg) 28%, transparent);
+
+  /* strokes */
+  --glass-stroke: var(--color-glass-line);
+  --glass-stroke-bright: var(--color-glass-line-bright);
+  --glass-stroke-frost: var(--color-frost-line);
+
+  /* inner / outer light */
+  --glass-inner-light: inset 0 1px 0 var(--color-frost-line);
+  --glass-inner-glow: inset 0 1px 0 color-mix(in srgb, var(--color-mercury-bright) 14%, transparent);
+
+  --glass-shadow-sm: 0 4px 16px color-mix(in srgb, var(--color-ink-void) 35%, transparent);
+  --glass-shadow-md: 0 8px 28px color-mix(in srgb, var(--color-ink-void) 40%, transparent);
+  --glass-shadow-lg: 0 16px 48px color-mix(in srgb, var(--color-ink-void) 45%, transparent);
+
+  /* radius */
+  --glass-radius-sm: var(--radius-sm);
+  --glass-radius-md: var(--radius-md);
+  --glass-radius-lg: var(--radius-lg);
+  --glass-radius-pill: var(--radius-pill);
+
+  /* semantic surfaces */
+  --glass-toolbar: var(--glass-tint-base);
+  --glass-toolbar-stroke: var(--glass-stroke);
+  --glass-toolbar-blur: blur(var(--glass-blur-lg)) saturate(var(--glass-saturate));
+  --glass-toolbar-shadow: var(--glass-shadow-sm), var(--glass-inner-light);
+
+  --glass-card: var(--glass-tint-elevated);
+  --glass-card-stroke: var(--glass-stroke);
+  --glass-card-blur: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
+  --glass-card-shadow: var(--glass-shadow-sm), var(--glass-inner-light);
+
+  --glass-pill: var(--glass-tint-clear);
+  --glass-pill-stroke: color-mix(in srgb, var(--glass-stroke) 70%, transparent);
+  --glass-pill-blur: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  --glass-pill-shadow: var(--glass-inner-light);
+
+  --glass-alert-info: color-mix(in srgb, var(--color-tier-end-to-end) 10%, var(--glass-tint-elevated));
+  --glass-alert-warning: color-mix(in srgb, var(--color-tier-server-readable) 10%, var(--glass-tint-elevated));
+  --glass-alert-error: color-mix(in srgb, var(--color-seal-crimson) 10%, var(--glass-tint-elevated));
+
+  /* transition */
+  --glass-transition: background 160ms var(--motion-ease-standard),
+    border-color 160ms var(--motion-ease-standard),
+    box-shadow 160ms var(--motion-ease-standard);
+}

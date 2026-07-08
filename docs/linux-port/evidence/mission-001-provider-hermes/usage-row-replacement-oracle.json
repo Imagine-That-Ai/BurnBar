@@ -1,0 +1,114 @@
+{
+  "canonicalOutputChecksumSHA256": "f7d541544244f6dfa4275047a5db7c0646a6b7725aa591d7f5b6204beda6151a",
+  "rows": [
+    {
+      "cachedInputTokens": 200,
+      "caseID": "codex-linux-sqlite-usage",
+      "confidence": 0.98,
+      "costUSD": 0.0042,
+      "endedAt": "2026-07-03T08:00:09Z",
+      "inputTokens": 1200,
+      "model": "gpt-5-codex",
+      "outputTokens": 340,
+      "parentRequestID": "req-codex-parent-000",
+      "privacyMode": false,
+      "project": "openburnbar-linux",
+      "provenance": {
+        "recordLocator": "conversation:42/message:3",
+        "sourcePath": "~/.codex/state_5.sqlite"
+      },
+      "provider": "codex",
+      "providerAccountID": "acct-codex-linux",
+      "requestID": "req-codex-linux-001",
+      "sessionID": "codex-session-linux-001",
+      "sourceDeviceID": "linux-fixture-device",
+      "startedAt": "2026-07-03T08:00:01Z",
+      "usageID": "usage_codex_linux_001",
+      "usageSource": "parser.replacement.codex.sqlite"
+    },
+    {
+      "cachedInputTokens": 0,
+      "caseID": "claude-linux-jsonl-rotation",
+      "confidence": 0.97,
+      "costUSD": 0.0215,
+      "endedAt": "2026-07-03T08:01:22Z",
+      "inputTokens": 2200,
+      "model": "claude-opus-4-8",
+      "outputTokens": 510,
+      "parentRequestID": "req-claude-parent-000",
+      "privacyMode": false,
+      "project": "openburnbar-linux",
+      "provenance": {
+        "recordLocator": "line:18",
+        "sourcePath": "~/.claude/projects/session-a.jsonl"
+      },
+      "provider": "claudeCode",
+      "providerAccountID": "acct-claude-linux",
+      "requestID": "req-claude-linux-001",
+      "sessionID": "claude-session-linux-001",
+      "sourceDeviceID": "linux-fixture-device",
+      "startedAt": "2026-07-03T08:01:00Z",
+      "usageID": "usage_claude_linux_001",
+      "usageSource": "parser.replacement.claude.jsonl"
+    },
+    {
+      "cachedInputTokens": 0,
+      "caseID": "grok-linux-privacy-mode",
+      "confidence": 0.93,
+      "costUSD": 0.0031,
+      "endedAt": "2026-07-03T08:02:18Z",
+      "inputTokens": 900,
+      "model": "grok-4-code",
+      "outputTokens": 220,
+      "parentRequestID": null,
+      "privacyMode": true,
+      "project": "redacted-project",
+      "provenance": {
+        "recordLocator": "session:grok-session-linux-privacy-001",
+        "sourcePath": "~/.grok/sessions/summary.json"
+      },
+      "provider": "xAI",
+      "providerAccountID": "acct-grok-linux",
+      "requestID": "req-grok-linux-001",
+      "sessionID": "grok-session-linux-privacy-001",
+      "sourceDeviceID": "linux-fixture-device",
+      "startedAt": "2026-07-03T08:02:10Z",
+      "usageID": "usage_grok_linux_privacy_001",
+      "usageSource": "parser.replacement.grok.privacy"
+    },
+    {
+      "cachedInputTokens": 1024,
+      "caseID": "large-file-window",
+      "confidence": 0.96,
+      "costUSD": 0.016,
+      "endedAt": "2026-07-03T08:03:44Z",
+      "inputTokens": 4096,
+      "model": "gpt-5-codex",
+      "outputTokens": 1024,
+      "parentRequestID": "req-codex-large-049999",
+      "privacyMode": false,
+      "project": "openburnbar-linux",
+      "provenance": {
+        "recordLocator": "conversation:50000/message:1",
+        "sourcePath": "~/.codex/state_5.sqlite"
+      },
+      "provider": "codex",
+      "providerAccountID": "acct-codex-linux",
+      "requestID": "req-codex-large-050000",
+      "sessionID": "codex-session-linux-large",
+      "sourceDeviceID": "linux-fixture-device",
+      "startedAt": "2026-07-03T08:03:00Z",
+      "usageID": "usage_codex_large_050000",
+      "usageSource": "parser.replacement.codex.large-window"
+    }
+  ],
+  "schema": "openburnbar-linux-usage-row-replacement-oracle-v1",
+  "sourceFixture": "/workspace/docs/linux-port/fixtures/provider-parser-replacement-oracle.json",
+  "warnings": [
+    {
+      "code": "malformed_record_skipped",
+      "recordLocator": "line:7",
+      "rowCount": 0
+    }
+  ]
+}

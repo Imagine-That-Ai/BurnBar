@@ -114,11 +114,6 @@ export function scan(paths, read) {
 
 // ── git + filesystem adapters (the impure edges) ──────────────────────────
 
-// The tracked-file list is >1MB of NUL-separated paths; node's default 1MB
-// spawnSync maxBuffer kills `git ls-files` with ENOBUFS once the tree grows
-// past it, failing the guard on every branch regardless of content.
-const GIT_LIST_MAX_BUFFER = 256 * 1024 * 1024;
-
 function repoRoot() {
   return execFileSync("git", ["rev-parse", "--show-toplevel"], {
     encoding: "utf8",
@@ -126,11 +121,9 @@ function repoRoot() {
 }
 
 function trackedFiles(root) {
-  return execFileSync("git", ["ls-files", "-z"], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: GIT_LIST_MAX_BUFFER,
-  })
+  // 64 MiB: `git ls-files -z` on this monorepo overflows node's 1 MiB default
+  // (spawnSync git ENOBUFS) once the tracked tree grows past ~20k paths.
+  return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
     .split("\0")
     .filter(Boolean);
 }
@@ -139,7 +132,7 @@ function stagedFiles(root) {
   return execFileSync(
     "git",
     ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
-    { cwd: root, encoding: "utf8", maxBuffer: GIT_LIST_MAX_BUFFER },
+    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   )
     .split("\0")
     .filter(Boolean);
@@ -149,7 +142,7 @@ function publishableFiles(root) {
   return execFileSync(
     "git",
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    { cwd: root, encoding: "utf8", maxBuffer: GIT_LIST_MAX_BUFFER },
+    { cwd: root, encoding: "utf8" },
   )
     .split("\0")
     .filter(Boolean);
