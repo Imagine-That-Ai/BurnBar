@@ -1,6 +1,6 @@
 daemon_bin=/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
 cli_bin=/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI
-/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, BuildID[sha1]=3585a08545401e57214e0b425740ad63f291216c, with debug_info, not stripped
-/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI:    ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, BuildID[sha1]=fd19fbf1f775c4066f445ab96f9ac1d7a6cc5699, with debug_info, not stripped
-fc69ca4641778d476bf44c9c4c155c90b9034ba59c5de947b8272b2647f2a3d7  /tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
-937c6a74ccb29cdad2943662742be9b2c0e51c7076b021e4d9f9e504e70f3b49  /tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI
+/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, BuildID[sha1]=0a725a3922589e8f11c8b8e511798c0394ca10e5, with debug_info, not stripped
+/tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI:    ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, BuildID[sha1]=a80c31a36c78867cfb186729348e71d12a1306b6, with debug_info, not stripped
+6497f66f3933eb6d54b5253907f4af729f6fe0b47fdd1c97c1364299f86f1112  /tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+2b1bef1cbc12a626934e9c39ca9fffc638000296707ec26e361d32721e401c6a  /tmp/openburnbar-ipc-cli-gateway-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI
