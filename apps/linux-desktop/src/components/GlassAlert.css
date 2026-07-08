@@ -1,0 +1,214 @@
+/* Liquid Glass status alerts — compact, layered capsules over kernel backdrop.
+ * Built on the shared liquid-glass token system; if you change blur/tint/border
+ * here, consider promoting the value to a token instead.
+ */
+
+.glass-alert-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  max-width: 52rem;
+}
+
+.glass-alert-stack--inline {
+  margin-bottom: var(--space-3);
+}
+
+.glass-alert {
+  --_alert-tint: var(--glass-alert-info);
+
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--glass-radius-pill);
+  border: 1px solid var(--glass-card-stroke);
+  background: var(--_alert-tint);
+  backdrop-filter: var(--glass-card-blur);
+  -webkit-backdrop-filter: var(--glass-card-blur);
+  box-shadow: var(--glass-card-shadow);
+  color: var(--color-text-base);
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  transition: var(--glass-transition);
+}
+
+.glass-alert--info { --_alert-tint: var(--glass-alert-info); }
+.glass-alert--warning { --_alert-tint: var(--glass-alert-warning); }
+.glass-alert--error { --_alert-tint: var(--glass-alert-error); }
+
+/* Ghost alert — minimal inline row for dense failure/recovery lists.
+ * Uses only a left accent line and icon tint instead of a full pill.
+ */
+.glass-alert--ghost {
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border: none;
+  border-left: 2px solid var(--glass-stroke);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.glass-alert--ghost.glass-alert--info { border-left-color: color-mix(in srgb, var(--color-tier-end-to-end) 55%, var(--glass-stroke)); }
+.glass-alert--ghost.glass-alert--warning { border-left-color: color-mix(in srgb, var(--color-tier-server-readable) 55%, var(--glass-stroke)); }
+.glass-alert--ghost.glass-alert--error { border-left-color: color-mix(in srgb, var(--color-seal-crimson) 55%, var(--glass-stroke)); }
+
+.glass-alert--ghost .glass-alert-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  background: transparent;
+  border-color: transparent;
+}
+
+.glass-alert--ghost .glass-alert-title {
+  font-weight: 600;
+}
+
+.glass-alert--ghost .glass-alert-description {
+  color: var(--color-text-dim);
+}
+
+button.glass-alert {
+  cursor: pointer;
+}
+
+button.glass-alert:hover,
+button.glass-alert:focus-visible {
+  border-color: var(--glass-stroke-bright);
+  background: color-mix(in srgb, var(--color-frost-veil) 28%, var(--_alert-tint));
+  outline: none;
+}
+
+.glass-alert-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--glass-stroke);
+  background: var(--glass-tint-sunken);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.glass-alert--info .glass-alert-icon {
+  color: var(--color-tier-end-to-end);
+  border-color: color-mix(in srgb, var(--color-tier-end-to-end) 32%, var(--glass-stroke));
+}
+
+.glass-alert--warning .glass-alert-icon {
+  color: var(--color-tier-server-readable);
+  border-color: color-mix(in srgb, var(--color-tier-server-readable) 36%, var(--glass-stroke));
+}
+
+.glass-alert--error .glass-alert-icon {
+  color: var(--color-seal-crimson);
+  border-color: color-mix(in srgb, var(--color-seal-crimson) 40%, var(--glass-stroke));
+}
+
+.glass-alert-body {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.glass-alert-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--color-text-bright);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.glass-alert-description {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--color-text-mute);
+  overflow-wrap: anywhere;
+}
+
+.glass-alert-description.mono {
+  font-family: var(--font-mono);
+}
+
+.glass-alert-aside {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.glass-alert-action-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--color-text-bright);
+}
+
+.glass-alert-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-mute);
+  cursor: pointer;
+  transition: var(--glass-transition);
+}
+
+.glass-alert-dismiss:hover,
+.glass-alert-dismiss:focus-visible {
+  border-color: var(--glass-stroke);
+  background: var(--glass-tint-sunken);
+  color: var(--color-text-bright);
+  outline: none;
+}
+
+.glass-alert-children {
+  margin-top: var(--space-1);
+}
+
+.glass-alert-children .actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Legacy evidence + Banner wrapper hooks */
+.banner.glass-alert-legacy {
+  border-radius: var(--glass-radius-pill);
+}
+
+@media (max-width: 640px) {
+  .glass-alert {
+    align-items: start;
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .glass-alert-body {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .glass-alert-title {
+    white-space: normal;
+  }
+}

@@ -69,6 +69,21 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(auditKey.metadata.note.contains("systemd credentials"))
     }
 
+    func testSecretStoreSetupProbeIncludesLibsecretTPMAndUXBlockers() {
+        let rows = LinuxSecretStoreSetupProbeBuilder.rows(
+            secretToolPath: nil,
+            hasSessionBus: false,
+            tpm2ToolPath: nil,
+            hasTPMDevice: false
+        )
+
+        XCTAssertTrue(rows.contains { $0.backend == "org.freedesktop.secrets" && $0.status == "blocked" })
+        XCTAssertTrue(rows.contains { $0.backend == "kwallet" && $0.status == "test_command_fixture" })
+        XCTAssertTrue(rows.contains { $0.backend == "systemd_credentials" && $0.status == "fallback_supported" })
+        XCTAssertTrue(rows.contains { $0.backend == "tpm2" && $0.status == "blocked_optional_hardening" })
+        XCTAssertTrue(rows.allSatisfy { $0.setupUX.isEmpty == false })
+    }
+
     func testPKCELoopbackAuthAndTokenCustody() async throws {
         let flow = LinuxPKCELoopbackFlow(
             authBaseURL: URL(string: "https://securetoken.google.com/auth")!,
@@ -110,6 +125,40 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(signOutResult.localSessionCleared)
     }
 
+    func testFirebaseAuthProtocolFixturesAndBrowserLaunchAreRedacted() async throws {
+        let flow = LinuxPKCELoopbackFlow(
+            authBaseURL: URL(string: "https://securetoken.google.com/auth")!,
+            clientID: "linux-client",
+            callbackPort: 41277,
+            state: "state-123",
+            verifier: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ._-~",
+            scopes: ["openid", "email"]
+        )
+        let launch = LinuxAuthProtocolEvidence.browserLaunch(flow: flow)
+        XCTAssertEqual(launch["launcher"], "xdg-open")
+        XCTAssertEqual(launch["custody"], "external_browser_no_embedded_webview")
+
+        let signIn = LinuxAuthProtocolEvidence.signInWithIdpExchange(apiKey: "test-api-key", providerID: "google.com")
+        XCTAssertEqual(signIn.method, "POST")
+        XCTAssertTrue(signIn.url.contains("accounts:signInWithIdp"))
+        XCTAssertEqual(signIn.requestBody["returnSecureToken"], "true")
+        XCTAssertFalse(signIn.requestBody.values.joined().contains("id-token-value"))
+        XCTAssertEqual(signIn.responseBody["refreshTokenCustody"], "SecretStore metadata only")
+
+        let metadata = LinuxSecretMetadata(
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken,
+            trustLevel: .secretService,
+            backend: "org.freedesktop.secrets.test",
+            createdAtMillis: 1_800_000_000_000,
+            note: "metadata only"
+        )
+        let revoke = LinuxAuthProtocolEvidence.revokeRefreshTokenExchange(apiKey: "test-api-key", metadata: metadata)
+        XCTAssertTrue(revoke.url.contains("accounts:update"))
+        XCTAssertEqual(revoke.requestBody["tokenBackend"], "org.freedesktop.secrets.test")
+        XCTAssertEqual(revoke.responseBody["localSessionCleared"], "true")
+    }
+
     func testStripeMembershipRestoreFixtureHasNoStoreKitDependency() async throws {
         let client = LinuxMembershipClient { uid in
             XCTAssertEqual(uid, "user-1")
@@ -130,6 +179,25 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertEqual(cancelled.state, .cancelled)
         XCTAssertEqual(failed.state, .paymentFailed)
         XCTAssertEqual(offline.state, .offline)
+    }
+
+    func testMembershipProtocolAndDaemonShellCacheUpdate() {
+        let checkout = LinuxMembershipProtocolEvidence.checkoutSession(uid: "user-1")
+        XCTAssertEqual(checkout.requestHeaders["stripe-mode"], "test")
+        XCTAssertTrue(checkout.url.contains("/checkout/sessions"))
+        XCTAssertEqual(checkout.responseBody["id"], "cs_test_openburnbar")
+
+        let portal = LinuxMembershipProtocolEvidence.portalSession(uid: "user-1")
+        XCTAssertTrue(portal.url.contains("/billing_portal/sessions"))
+
+        var cache = LinuxMembershipEntitlementCache()
+        let update = cache.apply(
+            uid: "user-1",
+            result: LinuxMembershipRestoreResult(state: .active, entitlementID: "burnbar_pro", source: "stripe_checkout")
+        )
+        XCTAssertEqual(update.daemonCacheKey, "entitlements/user-1")
+        XCTAssertEqual(update.shellCacheEvent, "membership.entitlement_cache.updated")
+        XCTAssertEqual(cache.entries["user-1"]?.entitlementID, "burnbar_pro")
     }
 
     func testTelemetryConsentRedactionAndSupportBundleSample() {
@@ -167,6 +235,31 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertFalse(bundle.contains("/home/alberto"))
     }
 
+    func testTelemetryBridgeControlsAndRedactionSurfaceProofs() {
+        let seeded = "token=sk-ant-abcdefghijklmnopqrstuvwxyz refreshToken=secret123 email=alberto@example.com path=/home/alberto/.config/openburnbar/session.json cookie=sessionid apiKey=key123 prompt=private operator request"
+        var controls = LinuxTelemetryControlStore()
+        controls.record(event: "linux.auth.error", consent: .declined, properties: ["detail": seeded])
+        XCTAssertTrue(controls.captured.isEmpty)
+
+        controls.record(event: "linux.auth.error", consent: .granted, properties: ["detail": seeded])
+        XCTAssertEqual(controls.captured.count, 1)
+        let exported = controls.export()
+        XCTAssertEqual(exported.count, 1)
+        XCTAssertFalse(exported[0]["detail"]?.contains("alberto@example.com") ?? true)
+        controls.disable()
+        controls.record(event: "linux.auth.error", consent: .granted, properties: ["detail": seeded])
+        XCTAssertEqual(controls.captured.count, 1)
+        controls.deleteAll()
+        XCTAssertTrue(controls.export().isEmpty)
+
+        let proofs = LinuxRedactionSurfaceEvidence.proofs(seed: seeded)
+        XCTAssertEqual(
+            Set(proofs.map(\.surface)),
+            Set(["daemon_journal", "provider_payload_trace", "crash_error_report", "release_evidence_log"])
+        )
+        XCTAssertTrue(proofs.allSatisfy { $0.rawMarkerFound == false })
+    }
+
     func testCloudSyncPrivacyBOLASealedPayloadsAndWatermarkCommitBoundary() throws {
         let guardrail = LinuxCloudSyncPrivacyGuard(uid: "user-1")
         XCTAssertNoThrow(try guardrail.validateUpload(LinuxCloudSyncDocument(
@@ -202,6 +295,18 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         tx.recordProcessed(remoteUpdateMillis: 1_800_000_010_000)
         tx.commit()
         XCTAssertEqual(try tx.watermarkAfterCommit(), 1_800_000_010_000)
+    }
+
+    func testCloudSyncLocalStagingTransportRetryConflictAndWatermarkEvidence() throws {
+        var simulator = LinuxCloudSyncLocalStagingSimulator(uid: "user-1")
+        let rows = try simulator.run()
+        XCTAssertTrue(rows.contains { $0.transport == .callable && $0.step == "callable_owner_upload_allowed" })
+        XCTAssertTrue(rows.contains { $0.transport == .firestoreREST && $0.step == "rest_patch_transform_update" })
+        XCTAssertTrue(rows.contains { $0.transport == .firestoreListenWebSocket && $0.step == "listen_ws_remote_update" })
+        XCTAssertTrue(rows.contains { $0.step == "rules_owner_mismatch_denied" && $0.response.contains("403") })
+        XCTAssertTrue(rows.contains { $0.step == "retry_backoff_before_commit" && $0.backoffMillis == [100, 250, 500] })
+        XCTAssertTrue(rows.contains { $0.step == "conflict_remote_newer_wins" && $0.conflictResolution == "remote_newer_by_update_time" })
+        XCTAssertEqual(rows.last?.watermark, 1_800_000_001_000)
     }
 }
 

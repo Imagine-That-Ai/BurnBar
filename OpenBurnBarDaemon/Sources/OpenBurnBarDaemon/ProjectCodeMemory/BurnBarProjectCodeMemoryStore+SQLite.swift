@@ -1,6 +1,10 @@
 import Foundation
 import OpenBurnBarCore
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 extension BurnBarProjectCodeMemoryStore {
     func groupedCounts(_ sql: String, _ binds: [SQLiteBind]) throws -> [String: Int] {

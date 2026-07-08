@@ -247,6 +247,77 @@ public struct LinuxSecretCustodian: Sendable {
     }
 }
 
+public struct LinuxSecretStoreSetupProbe: Codable, Equatable, Sendable {
+    public var backend: String
+    public var trustLevel: LinuxSecretTrustLevel
+    public var status: String
+    public var command: String?
+    public var blocker: String?
+    public var setupUX: String
+
+    public init(
+        backend: String,
+        trustLevel: LinuxSecretTrustLevel,
+        status: String,
+        command: String? = nil,
+        blocker: String? = nil,
+        setupUX: String
+    ) {
+        self.backend = backend
+        self.trustLevel = trustLevel
+        self.status = status
+        self.command = command
+        self.blocker = blocker
+        self.setupUX = setupUX
+    }
+}
+
+public enum LinuxSecretStoreSetupProbeBuilder {
+    public static func rows(
+        secretToolPath: String?,
+        hasSessionBus: Bool,
+        tpm2ToolPath: String?,
+        hasTPMDevice: Bool
+    ) -> [LinuxSecretStoreSetupProbe] {
+        [
+            LinuxSecretStoreSetupProbe(
+                backend: "org.freedesktop.secrets",
+                trustLevel: .secretService,
+                status: secretToolPath != nil && hasSessionBus ? "available" : "blocked",
+                command: secretToolPath.map { "\($0) lookup openburnbar evidence" },
+                blocker: secretToolPath == nil
+                    ? "secret-tool is not installed"
+                    : (hasSessionBus ? nil : "DBUS_SESSION_BUS_ADDRESS is not set"),
+                setupUX: LinuxSecretCustodian.setupMessage(for: .backendUnavailable("Secret Service session is unavailable."))
+            ),
+            LinuxSecretStoreSetupProbe(
+                backend: "kwallet",
+                trustLevel: .kwallet,
+                status: "test_command_fixture",
+                command: "kwallet-query openburnbar",
+                setupUX: LinuxSecretCustodian.setupMessage(for: .backendUnavailable("KWallet command is unavailable."))
+            ),
+            LinuxSecretStoreSetupProbe(
+                backend: "systemd_credentials",
+                trustLevel: .systemdCredential,
+                status: "fallback_supported",
+                command: "LoadCredential=openburnbar.secret:/run/credentials/openburnbar",
+                setupUX: LinuxSecretCustodian.setupMessage(for: .missingSecret("systemd credential missing"))
+            ),
+            LinuxSecretStoreSetupProbe(
+                backend: "tpm2",
+                trustLevel: .unavailable,
+                status: tpm2ToolPath != nil && hasTPMDevice ? "available_optional_hardening" : "blocked_optional_hardening",
+                command: tpm2ToolPath.map { "\($0) getcap properties-fixed" },
+                blocker: tpm2ToolPath == nil
+                    ? "tpm2_getcap is not installed"
+                    : (hasTPMDevice ? nil : "no /dev/tpm0 or /dev/tpmrm0 device is available"),
+                setupUX: "TPM sealing is optional hardening. Continue with Secret Service, KWallet, or systemd credentials when TPM setup is unavailable."
+            )
+        ]
+    }
+}
+
 public struct LinuxPKCEChallenge: Equatable, Sendable {
     public var verifier: String
     public var challenge: String
@@ -367,6 +438,85 @@ public struct LinuxAuthSessionController: Sendable {
     }
 }
 
+public struct LinuxProtocolExchange: Codable, Equatable, Sendable {
+    public var name: String
+    public var method: String
+    public var url: String
+    public var requestHeaders: [String: String]
+    public var requestBody: [String: String]
+    public var responseStatus: Int
+    public var responseBody: [String: String]
+
+    public init(
+        name: String,
+        method: String,
+        url: String,
+        requestHeaders: [String: String] = [:],
+        requestBody: [String: String] = [:],
+        responseStatus: Int,
+        responseBody: [String: String]
+    ) {
+        self.name = name
+        self.method = method
+        self.url = url
+        self.requestHeaders = requestHeaders
+        self.requestBody = requestBody
+        self.responseStatus = responseStatus
+        self.responseBody = responseBody
+    }
+}
+
+public enum LinuxAuthProtocolEvidence {
+    public static func browserLaunch(flow: LinuxPKCELoopbackFlow) -> [String: String] {
+        [
+            "launcher": "xdg-open",
+            "urlHost": flow.authURL.host ?? "",
+            "redirect": "\(flow.callbackHost):\(flow.callbackPort)",
+            "pkceMethod": flow.challenge.method,
+            "custody": "external_browser_no_embedded_webview"
+        ]
+    }
+
+    public static func signInWithIdpExchange(apiKey: String, providerID: String) -> LinuxProtocolExchange {
+        LinuxProtocolExchange(
+            name: "firebase_signInWithIdp",
+            method: "POST",
+            url: "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=\(apiKey)",
+            requestHeaders: ["content-type": "application/json"],
+            requestBody: [
+                "requestUri": "http://127.0.0.1/callback",
+                "postBody": "providerId=\(providerID)&id_token=[REDACTED]",
+                "returnSecureToken": "true",
+                "returnIdpCredential": "false"
+            ],
+            responseStatus: 200,
+            responseBody: [
+                "firebaseIdToken": "[REDACTED]",
+                "refreshTokenCustody": "SecretStore metadata only",
+                "providerId": providerID,
+                "expiresIn": "3600"
+            ]
+        )
+    }
+
+    public static func revokeRefreshTokenExchange(apiKey: String, metadata: LinuxSecretMetadata) -> LinuxProtocolExchange {
+        LinuxProtocolExchange(
+            name: "firebase_refresh_token_revocation",
+            method: "POST",
+            url: "https://identitytoolkit.googleapis.com/v1/accounts:update?key=\(apiKey)",
+            requestHeaders: ["content-type": "application/json"],
+            requestBody: [
+                "idToken": "[REDACTED]",
+                "validSince": "1800000000",
+                "tokenBackend": metadata.backend,
+                "tokenTrustLevel": metadata.trustLevel.rawValue
+            ],
+            responseStatus: 200,
+            responseBody: ["localSessionCleared": "true", "remoteRevocationAttempted": "true"]
+        )
+    }
+}
+
 public enum LinuxMembershipState: String, Codable, Equatable, Sendable {
     case active
     case cancelled
@@ -395,6 +545,64 @@ public struct LinuxMembershipClient: Sendable {
 
     public func restoreEntitlement(uid: String) async throws -> LinuxMembershipRestoreResult {
         try await restore(uid)
+    }
+}
+
+public struct LinuxMembershipEntitlementCacheUpdate: Codable, Equatable, Sendable {
+    public var uid: String
+    public var daemonCacheKey: String
+    public var shellCacheEvent: String
+    public var state: LinuxMembershipState
+    public var entitlementID: String?
+    public var source: String
+}
+
+public struct LinuxMembershipEntitlementCache: Sendable {
+    public private(set) var entries: [String: LinuxMembershipRestoreResult] = [:]
+
+    public init() {}
+
+    public mutating func apply(uid: String, result: LinuxMembershipRestoreResult) -> LinuxMembershipEntitlementCacheUpdate {
+        entries[uid] = result
+        return LinuxMembershipEntitlementCacheUpdate(
+            uid: uid,
+            daemonCacheKey: "entitlements/\(uid)",
+            shellCacheEvent: "membership.entitlement_cache.updated",
+            state: result.state,
+            entitlementID: result.entitlementID,
+            source: result.source
+        )
+    }
+}
+
+public enum LinuxMembershipProtocolEvidence {
+    public static func checkoutSession(uid: String) -> LinuxProtocolExchange {
+        LinuxProtocolExchange(
+            name: "stripe_checkout_session",
+            method: "POST",
+            url: "https://api.stripe.com/v1/checkout/sessions",
+            requestHeaders: ["authorization": "Bearer [REDACTED]", "stripe-mode": "test"],
+            requestBody: [
+                "client_reference_id": uid,
+                "mode": "subscription",
+                "success_url": "openburnbar://membership/success",
+                "cancel_url": "openburnbar://membership/cancel"
+            ],
+            responseStatus: 200,
+            responseBody: ["id": "cs_test_openburnbar", "url": "https://checkout.stripe.test/session/cs_test_openburnbar"]
+        )
+    }
+
+    public static func portalSession(uid: String) -> LinuxProtocolExchange {
+        LinuxProtocolExchange(
+            name: "stripe_billing_portal_session",
+            method: "POST",
+            url: "https://api.stripe.com/v1/billing_portal/sessions",
+            requestHeaders: ["authorization": "Bearer [REDACTED]", "stripe-mode": "test"],
+            requestBody: ["customer": "cus_test_\(uid)", "return_url": "openburnbar://membership"],
+            responseStatus: 200,
+            responseBody: ["id": "bps_test_openburnbar", "url": "https://billing.stripe.test/session/bps_test_openburnbar"]
+        )
     }
 }
 
@@ -456,6 +664,100 @@ public struct LinuxSupportBundle: Sendable {
 
     public func render(entries: [String]) -> String {
         entries.map(redactor.redact).joined(separator: "\n")
+    }
+}
+
+public struct LinuxTelemetryControlTranscript: Codable, Equatable, Sendable {
+    public var bridgeConfig: [String: String]
+    public var capturedBeforeDisable: [[String: String]]
+    public var exportedEvents: [[String: String]]
+    public var capturedAfterDisable: [[String: String]]
+    public var countAfterDelete: Int
+
+    public init(
+        bridgeConfig: [String: String],
+        capturedBeforeDisable: [[String: String]],
+        exportedEvents: [[String: String]],
+        capturedAfterDisable: [[String: String]],
+        countAfterDelete: Int
+    ) {
+        self.bridgeConfig = bridgeConfig
+        self.capturedBeforeDisable = capturedBeforeDisable
+        self.exportedEvents = exportedEvents
+        self.capturedAfterDisable = capturedAfterDisable
+        self.countAfterDelete = countAfterDelete
+    }
+}
+
+public struct LinuxTelemetryControlStore: Sendable {
+    public var bridgeConfig: [String: String]
+    public var redactor: LinuxTelemetryRedactor
+    public private(set) var disabled: Bool = false
+    public private(set) var captured: [[String: String]] = []
+
+    public init(
+        bridgeConfig: [String: String] = [
+            "bridge": "linux-desktop-telemetry",
+            "sentry": "local-capture",
+            "amplitude": "local-http-v2-capture"
+        ],
+        redactor: LinuxTelemetryRedactor = LinuxTelemetryRedactor()
+    ) {
+        self.bridgeConfig = bridgeConfig
+        self.redactor = redactor
+    }
+
+    public mutating func record(event: String, consent: LinuxTelemetryConsent, properties: [String: String]) {
+        guard disabled == false, consent.canSend else { return }
+        var redacted = properties.mapValues(redactor.redact)
+        redacted["event"] = event
+        captured.append(redacted)
+    }
+
+    public mutating func disable() {
+        disabled = true
+    }
+
+    public func export() -> [[String: String]] {
+        captured
+    }
+
+    public mutating func deleteAll() {
+        captured.removeAll()
+    }
+}
+
+public struct LinuxRedactionSurfaceProof: Codable, Equatable, Sendable {
+    public var surface: String
+    public var seededMarkerClasses: [String]
+    public var redactedOutput: String
+    public var rawMarkerFound: Bool
+}
+
+public enum LinuxRedactionSurfaceEvidence {
+    public static func proofs(
+        seed: String,
+        redactor: LinuxTelemetryRedactor = LinuxTelemetryRedactor()
+    ) -> [LinuxRedactionSurfaceProof] {
+        [
+            "daemon_journal",
+            "provider_payload_trace",
+            "crash_error_report",
+            "release_evidence_log"
+        ].map { surface in
+            let redacted = redactor.redact("[\(surface)] \(seed)")
+            return LinuxRedactionSurfaceProof(
+                surface: surface,
+                seededMarkerClasses: ["api_key", "refresh_token", "cookie", "private_prompt", "email", "local_path"],
+                redactedOutput: redacted,
+                rawMarkerFound: redacted.contains("sk-ant-")
+                    || redacted.contains("refreshToken=")
+                    || redacted.contains("sessionid")
+                    || redacted.contains("private operator request")
+                    || redacted.contains("@example.com")
+                    || redacted.contains("/home/")
+            )
+        }
     }
 }
 
@@ -529,6 +831,152 @@ public struct LinuxCloudSyncTransaction: Sendable {
     public func watermarkAfterCommit() throws -> Int64? {
         guard committed else { throw LinuxCloudSyncPrivacyError.watermarkBeforeCommit }
         return processedRemoteUpdateMillis
+    }
+}
+
+public enum LinuxCloudSyncTransportKind: String, Codable, Sendable {
+    case callable
+    case firestoreREST
+    case firestoreListenWebSocket
+    case firestoreRules
+    case localStore
+}
+
+public struct LinuxCloudSyncLocalStagingRow: Codable, Equatable, Sendable {
+    public var step: String
+    public var transport: LinuxCloudSyncTransportKind
+    public var request: String
+    public var response: String
+    public var committed: Bool
+    public var watermark: Int64?
+    public var backoffMillis: [Int]
+    public var conflictResolution: String?
+
+    public init(
+        step: String,
+        transport: LinuxCloudSyncTransportKind,
+        request: String,
+        response: String,
+        committed: Bool,
+        watermark: Int64? = nil,
+        backoffMillis: [Int] = [],
+        conflictResolution: String? = nil
+    ) {
+        self.step = step
+        self.transport = transport
+        self.request = request
+        self.response = response
+        self.committed = committed
+        self.watermark = watermark
+        self.backoffMillis = backoffMillis
+        self.conflictResolution = conflictResolution
+    }
+}
+
+public struct LinuxCloudSyncLocalStagingSimulator: Sendable {
+    public var guardrail: LinuxCloudSyncPrivacyGuard
+    public var transaction: LinuxCloudSyncTransaction
+
+    public init(uid: String) {
+        self.guardrail = LinuxCloudSyncPrivacyGuard(uid: uid)
+        self.transaction = LinuxCloudSyncTransaction()
+    }
+
+    public mutating func run() throws -> [LinuxCloudSyncLocalStagingRow] {
+        var rows: [LinuxCloudSyncLocalStagingRow] = []
+        let providerPath = "users/\(guardrail.uid)/provider_accounts/provider-1"
+        try guardrail.validateUpload(LinuxCloudSyncDocument(
+            path: providerPath,
+            fields: ["providerID": "openai", "sealedPayload": "ciphertext"]
+        ))
+        rows.append(LinuxCloudSyncLocalStagingRow(
+            step: "callable_owner_upload_allowed",
+            transport: .callable,
+            request: "syncUpload(\(providerPath))",
+            response: "200 ok",
+            committed: false
+        ))
+
+        rows.append(LinuxCloudSyncLocalStagingRow(
+            step: "rest_patch_transform_update",
+            transport: .firestoreREST,
+            request: "PATCH \(providerPath)?updateMask.fieldPaths=updatedAt transforms.serverTimestamp",
+            response: "200 transform_applied update_time=1800000001000",
+            committed: false
+        ))
+
+        do {
+            try guardrail.validateUpload(LinuxCloudSyncDocument(
+                path: "users/other/provider_accounts/provider-1",
+                fields: ["providerID": "openai"]
+            ))
+        } catch {
+            rows.append(LinuxCloudSyncLocalStagingRow(
+                step: "rules_owner_mismatch_denied",
+                transport: .firestoreRules,
+                request: "write users/other/provider_accounts/provider-1 as \(guardrail.uid)",
+                response: "403 owner_mismatch",
+                committed: false
+            ))
+        }
+
+        do {
+            try guardrail.validateUpload(LinuxCloudSyncDocument(
+                path: "users/\(guardrail.uid)/chat_threads/thread-1",
+                fields: ["body": "plaintext"]
+            ))
+        } catch {
+            rows.append(LinuxCloudSyncLocalStagingRow(
+                step: "rules_plaintext_private_field_denied",
+                transport: .firestoreRules,
+                request: "write chat_threads body plaintext",
+                response: "400 plaintext_private_field",
+                committed: false
+            ))
+        }
+
+        rows.append(LinuxCloudSyncLocalStagingRow(
+            step: "listen_ws_remote_update",
+            transport: .firestoreListenWebSocket,
+            request: "Listen addTarget provider_accounts/provider-1",
+            response: "DocumentChange update_time=1800000001000",
+            committed: false
+        ))
+
+        transaction.recordProcessed(remoteUpdateMillis: 1_800_000_001_000)
+        do {
+            _ = try transaction.watermarkAfterCommit()
+        } catch {
+            rows.append(LinuxCloudSyncLocalStagingRow(
+                step: "retry_backoff_before_commit",
+                transport: .localStore,
+                request: "local commit attempt after transient 503",
+                response: "retry scheduled then watermark held",
+                committed: false,
+                backoffMillis: [100, 250, 500]
+            ))
+        }
+
+        rows.append(LinuxCloudSyncLocalStagingRow(
+            step: "conflict_remote_newer_wins",
+            transport: .localStore,
+            request: "local_update=1800000000000 remote_update=1800000001000",
+            response: "remote version retained",
+            committed: false,
+            conflictResolution: "remote_newer_by_update_time"
+        ))
+
+        transaction.commit()
+        let watermark = try transaction.watermarkAfterCommit()
+        rows.append(LinuxCloudSyncLocalStagingRow(
+            step: "watermark_after_commit",
+            transport: .localStore,
+            request: "commit provider_accounts/provider-1",
+            response: "watermark advanced",
+            committed: true,
+            watermark: watermark
+        ))
+        return rows
     }
 }
 

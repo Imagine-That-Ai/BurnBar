@@ -1,8 +1,0 @@
-=== Line counts (all must be ≤800) ===
-
-  ProviderQuotaService.swift: 585 lines  ✓
-  ProviderQuotaService+Routing.swift: 327 lines  ✓
-  ProviderQuotaService+Refresh.swift: 239 lines  ✓
-  ProviderQuotaService+Context.swift: 186 lines  ✓
-  ProviderQuotaService+AccountSnapshots.swift: 179 lines  ✓
-  ProviderQuotaService+Cumulative.swift: 295 lines  ✓

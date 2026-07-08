@@ -8,7 +8,11 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "paths": {
+      "@openburnbar/entitlements": ["../../packages/entitlements/src/index.ts"],
+      "@openburnbar/gl-engine/*": ["../../packages/gl-engine/src/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../../packages/gl-engine/src", "../../packages/entitlements/src"]
 }

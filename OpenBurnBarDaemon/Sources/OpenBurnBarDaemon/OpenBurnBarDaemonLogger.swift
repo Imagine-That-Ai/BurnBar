@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(OSLog)
 import OSLog
+#endif
 import OpenBurnBarCore
 
 /// Abstraction over structured daemon logging so tests can intercept log
@@ -41,41 +43,82 @@ extension BurnBarDaemonLogging {
 }
 
 public struct BurnBarDaemonLogger: Sendable {
+#if canImport(OSLog)
     private let logger: Logger
+#else
+    private let subsystem: String
+    private let category: String
+#endif
 
     public init(
         subsystem: String = "com.openburnbar.daemon",
         category: String = "bootstrap"
     ) {
+#if canImport(OSLog)
         self.logger = Logger(subsystem: subsystem, category: category)
+#else
+        self.subsystem = subsystem
+        self.category = category
+#endif
     }
 
     public func debug(_ event: String, metadata: [String: String] = [:]) {
+#if canImport(OSLog)
         logger.debug("\(format(event: event, metadata: metadata), privacy: .private)")
+#else
+        emit("debug", event: event, metadata: metadata)
+#endif
     }
 
     public func info(_ event: String, metadata: [String: String] = [:]) {
+#if canImport(OSLog)
         logger.info("\(format(event: event, metadata: metadata), privacy: .private)")
+#else
+        emit("info", event: event, metadata: metadata)
+#endif
     }
 
     public func notice(_ event: String, metadata: [String: String] = [:]) {
+#if canImport(OSLog)
         logger.notice("\(format(event: event, metadata: metadata), privacy: .private)")
+#else
+        emit("notice", event: event, metadata: metadata)
+#endif
     }
 
     public func warning(_ event: String, metadata: [String: String] = [:]) {
+#if canImport(OSLog)
         logger.warning("\(format(event: event, metadata: metadata), privacy: .private)")
+#else
+        emit("warning", event: event, metadata: metadata)
+#endif
     }
 
     public func error(_ event: String, metadata: [String: String] = [:]) {
+#if canImport(OSLog)
         logger.error("\(format(event: event, metadata: metadata), privacy: .private)")
+#else
+        emit("error", event: event, metadata: metadata)
+#endif
     }
 
     /// Log a failed operation that was intentionally handled silently.
     public func silentFailure(_ operation: String, error: Error, context: [String: String] = [:]) {
         var metadata = context
         metadata["error"] = String(describing: error)
+#if canImport(OSLog)
         logger.warning("Silent failure: \(format(event: operation, metadata: metadata), privacy: .public)")
+#else
+        emit("warning", event: "silent_failure.\(operation)", metadata: metadata)
+#endif
     }
+
+#if !canImport(OSLog)
+    private func emit(_ level: String, event: String, metadata: [String: String]) {
+        let line = "\(Date()) level=\(level) subsystem=\(subsystem) category=\(category) \(format(event: event, metadata: metadata))\n"
+        FileHandle.standardError.write(Data(line.utf8))
+    }
+#endif
 
     private func format(event: String, metadata: [String: String]) -> String {
         var merged = TraceContextBridge.currentContext().logFields()

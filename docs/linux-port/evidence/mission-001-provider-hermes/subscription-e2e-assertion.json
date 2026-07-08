@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "transcript": "/workspace/docs/linux-port/evidence/mission-001-provider-hermes/ipc-cli-gateway/subscription-e2e-transcript.jsonl",
+  "rowCount": 5,
+  "setupGatewayHealth": "HTTP/1.1 200 OK",
+  "afterRestartGatewayHealth": "HTTP/1.1 200 OK",
+  "subscriptionID": "ipc-evidence-health-subscription",
+  "startSeq": 1,
+  "beforeRestartResumeSeq": 2,
+  "afterRestartResumeSeq": 3,
+  "recoveredAfterRestart": true,
+  "disconnectDetected": true,
+  "terminalStateDelivered": true,
+  "degradedFallback": true,
+  "backpressure": "coalesce_latest_per_topic"
+}
