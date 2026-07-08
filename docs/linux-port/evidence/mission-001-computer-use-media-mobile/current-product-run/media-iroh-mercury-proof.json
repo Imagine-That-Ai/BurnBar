@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-07-05T12:37:26.984Z",
+  "target": "VAL-MEDIA-001",
+  "status": "pass",
+  "acceptedAsPass": true,
+  "contractBoundary": "Pass requires current checkout iroh loopback proof plus product Mercury codec/backpressure trace and live mobile media/control transcript. Simulator timing alone is rejected.",
+  "currentCheckoutIrohLoopback": {
+    "command": "docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace/crates/openburnbar-iroh -e CARGO_TARGET_DIR=/tmp/openburnbar-cu-iroh-target openburnbar-linux-toolchain:mission-001 cargo test --test loopback_handshake --locked -- --nocapture",
+    "exitCode": 0,
+    "durationMs": 81457,
+    "log": "current-product-run/iroh-loopback-handshake.log",
+    "acceptedAsPass": true,
+    "proofSurface": "docker-linux-toolchain",
+    "cargoResolution": "docker-locked-online-resolution",
+    "dockerProbeExitCode": 0,
+    "dockerProbeLog": "current-product-run/docker-version-for-media.log",
+    "alpn": "openburnbar/1",
+    "relayMode": "disabled",
+    "transport": "iroh loopback direct addresses",
+    "frameRoundTrip": true
+  },
+  "mercuryProductTrace": {
+    "artifact": "preserved-qemu-portal-mobile/computer-use-media-codec-trace.json",
+    "source": "OpenBurnBarMedia product APIs",
+    "selectedVideoCodec": "h264",
+    "wireVersion": 2,
+    "hevcLimitation": "Linux evidence container has no hardware HEVC encoder; production resolver selected h264 fallback.",
+    "frameSealed": true,
+    "backpressure": {
+      "afterLossBitsPerSecond": 4000000,
+      "afterRecoveryBitsPerSecond": 8000000,
+      "datagramAction": "dropped-delta-for-stale-datagrams",
+      "producerAction": "paused-producer",
+      "startBitsPerSecond": 8000000
+    }
+  },
+  "mobileInteropBinding": {
+    "artifact": "preserved-qemu-portal-mobile/mobile-live-surface-probe.json",
+    "iosSimulatorDescription": "iPhone 17 Pro Max (<IOS_DEVICE_ID>), iOS 27.0 runtime",
+    "linuxPeerDescription": "openburnbar-linux-toolchain:mission-001 container 14a0e2c36585 (obb-mobile-peer-cu002-1783168383984), :8766->8766, host peer linux-peer-regenerated-cu002",
+    "mediaControlViewerFramesObserved": true,
+    "exchangeCount": 12
+  },
+  "rejectedEvidenceKinds": {
+    "mediaSimulatorTimingOnly": true,
+    "irohDependencyFailure": false,
+    "fixtureOnlyRows": true
+  },
+  "failures": []
+}

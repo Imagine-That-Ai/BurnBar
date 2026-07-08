@@ -1,0 +1,2 @@
+hermes_event_order_linux=failed
+error=scenario prompt-tool-approval-done raw normalized kind order differs from source oracle: observed=prompt.accepted>tool.approval.required>plan.generated>tool.approval.recorded>assistant.done expected=prompt.accepted>plan.generated>tool.approval.required>tool.approval.recorded>assistant.done

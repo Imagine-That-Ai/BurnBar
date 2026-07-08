@@ -1,0 +1,12 @@
+{
+  "schema": "openburnbar-project-memory-retrieval-golden-diff-v1",
+  "platform": "macos",
+  "sourceFixture": "docs/linux-port/fixtures/project-memory-retrieval-golden-source-oracle.json",
+  "expectedSource": "docs/linux-port/fixtures/project-memory-retrieval-golden-source-oracle.json#normalized-retrieval-contract",
+  "observedSource": "cli-hermes-transcript.txt + packaged-browser-memory-dom-transcript.json",
+  "status": "exact_match",
+  "expectedChecksumSHA256": "63d3d68ba32538a7eb41e5ec3154a8233a1dac366bada5c3bca311f7b53d9dc8",
+  "observedChecksumSHA256": "63d3d68ba32538a7eb41e5ec3154a8233a1dac366bada5c3bca311f7b53d9dc8",
+  "differences": [],
+  "errors": []
+}

@@ -3,7 +3,7 @@ export function displayLinuxSupportDir(home = '~'): string {
 }
 
 export function displayLinuxSocketPath(home = '~'): string {
-  return `${displayLinuxSupportDir(home)}/openburnbar-daemon.sock`;
+  return '$XDG_RUNTIME_DIR/openburnbar/daemon.sock';
 }
 
 export function displayLinuxConfigDir(home = '~'): string {

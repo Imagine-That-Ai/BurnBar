@@ -484,6 +484,9 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
         link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
+        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -512,6 +515,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
 
   OpenBurnBarPrivilegedInputExecution:
     type: tool

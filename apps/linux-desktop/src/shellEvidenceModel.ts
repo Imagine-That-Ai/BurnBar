@@ -19,6 +19,8 @@ export type FailureStateCase = {
   condition: string;
   userMessage: string;
   remediation: string;
+  actionResult: string;
+  restartPersistence: 'required' | 'not-required';
 };
 
 export type RouteSnapshotCase = {
@@ -139,10 +141,10 @@ export function routeAccessibilitySnapshots(): RouteAccessibilitySnapshot[] {
       route.route === 'overview'
         ? 'covered by screenshot-linux-desktop-first-run.png from packaged desktop session'
         : route.route === 'text-expansion'
-          ? 'covered by screenshot-text-expansion-crud.png browser artifact plus local CRUD transcript'
+          ? 'covered by screenshot-route-text-expansion.png from packaged desktop session plus local CRUD transcript'
           : route.route === 'pet'
-            ? 'covered by screenshot-pet-gltf.png browser artifact plus GLB runtime test'
-            : 'covered by route DOM/a11y transcript and route-snapshot-plan.json'
+            ? 'covered by screenshot-route-pet.png from packaged desktop session plus GLB runtime test'
+            : `covered by screenshot-route-${route.route}.png when the packaged desktop route is captured`
   }));
 }
 
@@ -216,64 +218,136 @@ export function failureStateCases(): FailureStateCase[] {
       id: 'daemon-offline',
       route: 'overview',
       condition: 'bridge=null or health.ok=false',
-      userMessage: 'Packaged shell required for live daemon health (browser preview mode).',
-      remediation: 'Start openburnbar-cli service foreground; verify AF_UNIX socket.'
+      userMessage: 'Daemon offline.',
+      remediation: 'Start openburnbar-cli service foreground; verify AF_UNIX socket.',
+      actionResult: 'Reconnect action retries daemon.health, keeps local routes usable, and keeps raw socket errors in diagnostics only.',
+      restartPersistence: 'required'
     },
     {
       id: 'tray-degraded',
       route: 'support',
       condition: 'trayDegraded=true',
       userMessage: 'Tray degraded: use window reopen from launcher.',
-      remediation: 'Install Ayatana AppIndicator; pin app when DE hides tray.'
+      remediation: 'Install Ayatana AppIndicator; pin app when DE hides tray.',
+      actionResult: 'Support copy points to the launcher fallback and tray package remediation.',
+      restartPersistence: 'not-required'
     },
     {
       id: 'secret-store-unavailable',
       route: 'settings',
       condition: 'libsecret/KWallet unavailable or locked',
       userMessage: 'Secret Service locked or unavailable.',
-      remediation: 'Unlock GNOME Keyring/KWallet or configure the headless passphrase file.'
+      remediation: 'Unlock GNOME Keyring/KWallet or configure the headless passphrase file.',
+      actionResult: 'Settings keeps SQLCipher/local mode explicit and exposes setup recovery copy.',
+      restartPersistence: 'required'
+    },
+    {
+      id: 'secret-store-setup',
+      route: 'settings',
+      condition: 'first-run secret store setup incomplete',
+      userMessage: 'Secret Service setup required before encrypted sync credentials can be saved.',
+      remediation: 'Open Settings, unlock GNOME Keyring/KWallet, or set the documented headless passphrase file.',
+      actionResult: 'Setup row stays visible after restart until the user completes or skips onboarding.',
+      restartPersistence: 'required'
     },
     {
       id: 'network-offline',
       route: 'settings',
       condition: 'provider catalog/update request cannot reach network',
       userMessage: 'Network offline.',
-      remediation: 'Keep local SQLite usable, then retry provider/update checks after reconnect.'
+      remediation: 'Keep local SQLite usable, then retry provider/update checks after reconnect.',
+      actionResult: 'Retry defers cloud/provider/update calls without stranding local SQLite.',
+      restartPersistence: 'required'
     },
     {
       id: 'permission-denied',
       route: 'settings',
       condition: 'provider log path cannot be read',
       userMessage: 'Provider path permission denied.',
-      remediation: 'Grant read access only to selected XDG/provider session directories.'
+      remediation: 'Grant read access only to selected XDG/provider session directories.',
+      actionResult: 'Provider path remains opt-in and links the user to precise XDG/session directories.',
+      restartPersistence: 'required'
+    },
+    {
+      id: 'provider-credentials',
+      route: 'settings',
+      condition: 'provider credential missing or rejected by Secret Service',
+      userMessage: 'Provider credentials need attention.',
+      remediation: 'Re-enter provider credentials after Secret Service is unlocked; no plaintext fallback is offered.',
+      actionResult: 'Credential recovery stays scoped to the selected provider and never writes global secrets.',
+      restartPersistence: 'required'
     },
     {
       id: 'quota-exhausted',
       route: 'account',
       condition: 'provider quota bucket exhausted',
       userMessage: 'Quota exhausted.',
-      remediation: 'Switch provider/model tier or wait for the reset window.'
+      remediation: 'Switch provider/model tier or wait for the reset window.',
+      actionResult: 'Account route keeps sync/account controls visible and offers provider/model fallback copy.',
+      restartPersistence: 'required'
+    },
+    {
+      id: 'account-login',
+      route: 'account',
+      condition: 'signed out lower-trust Linux identity',
+      userMessage: 'Signed out.',
+      remediation: 'Log in with the lower-trust Linux identity when cloud sync is required; local data stays usable.',
+      actionResult: 'Login action recovers sync state without hiding local-only mode.',
+      restartPersistence: 'required'
+    },
+    {
+      id: 'account-logout',
+      route: 'account',
+      condition: 'user signs out or token is revoked',
+      userMessage: 'Signed out; encrypted sync is paused.',
+      remediation: 'Confirm logout, keep SQLite local, and sign back in when sync is desired.',
+      actionResult: 'Logout action clears sync credentials while preserving local routes.',
+      restartPersistence: 'required'
+    },
+    {
+      id: 'sync-status',
+      route: 'account',
+      condition: 'cloud sync paused, offline, or lower-trust identity pending',
+      userMessage: 'Sync paused.',
+      remediation: 'Retry sync after network/auth recovery; encrypted private rows stay local until opt-in.',
+      actionResult: 'Sync status copy names the paused state and the recovery path.',
+      restartPersistence: 'required'
     },
     {
       id: 'update-channel-unavailable',
       route: 'updates',
       condition: 'package channel unavailable',
       userMessage: 'Update channel unavailable.',
-      remediation: 'Use support diagnostics/package-manager transcript; release packaging is outside this shell lane.'
+      remediation: 'Use support diagnostics/package-manager transcript; release packaging is outside this shell lane.',
+      actionResult: 'Updates route provides package-manager transcript guidance and restart copy.',
+      restartPersistence: 'required'
+    },
+    {
+      id: 'update-status',
+      route: 'updates',
+      condition: 'update available, unavailable, or restart required',
+      userMessage: 'Restart required after package update.',
+      remediation: 'Quit from tray or Support after package replacement completes.',
+      actionResult: 'Update status survives restart and never reports silent success without package evidence.',
+      restartPersistence: 'required'
     },
     {
       id: 'onboarding-incomplete',
       route: 'onboarding',
       condition: 'onboarding.completed=false',
       userMessage: 'First-run wizard blocks dashboard until Continue or Skip.',
-      remediation: 'Complete onboarding or enable daemon fixture for host smoke.'
+      remediation: 'Complete onboarding or enable daemon fixture for host smoke.',
+      actionResult: 'Skip/retry/resume preserve the current onboarding step.',
+      restartPersistence: 'required'
     },
     {
       id: 'text-expansion-no-consent',
       route: 'text-expansion',
       condition: 'consent=null',
       userMessage: 'Acknowledge in-app-only expansion before saving snippets.',
-      remediation: 'Check consent box and save snippet.'
+      remediation: 'Check consent box and save snippet.',
+      actionResult: 'Snippet save is blocked until the in-app-only consent is acknowledged.',
+      restartPersistence: 'required'
     }
   ];
 }
@@ -319,7 +393,7 @@ export function onboardingFlowTranscript(): OnboardingTranscriptStep[] {
     {
       action: 'retry-check',
       persistedState: { completed: false, step: 0, skippedSteps: [] },
-      expected: 'Retry probes daemon health without advancing or losing the current step.'
+      expected: 'Retry probes daemon health, shows visible status feedback, and does not advance or lose the current step.'
     },
     {
       action: 'skip-step',
@@ -333,8 +407,8 @@ export function onboardingFlowTranscript(): OnboardingTranscriptStep[] {
     },
     {
       action: 'complete',
-      persistedState: { completed: true, step: 4, skippedSteps: [0] },
-      expected: 'Completion is persisted so later launches can open the dashboard.'
+      persistedState: { completed: true, step: 7, skippedSteps: [0] },
+      expected: 'Completion is persisted and the wizard renders a completed state before later launches open the dashboard.'
     }
   ];
 }

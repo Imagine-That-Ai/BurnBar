@@ -24,6 +24,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case config
     /// Usage + proxy-route observability reads/writes.
     case observability
+    /// Local membership cache reads plus Stripe checkout/restore handoff.
+    case membership
     /// Connector-plane + browser tooling actions.
     case tooling
     /// Computer-use / HID-adjacent agency (session start, invoke, approvals,
@@ -66,8 +68,10 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .providerModelDisplayNameSet, .providerModelDisplayNameClear:
             return .config
         case .usageRecord, .usageRecent,
-             .proxyRouteLogRecent, .proxyRouteLogClear:
+             .proxyRouteLogRecent, .proxyRouteLogClear, .perfMeasure:
             return .observability
+        case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
+            return .membership
         case .connectorPlaneGet, .connectorConfigUpdate, .connectorAction,
              .browserToolingGet, .browserToolingUpdate, .browserAction:
             return .tooling
@@ -93,6 +97,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .clientAttach, .clientClaimControl, .clientDetach:
             return .client
         case .runCreate, .runList, .runGet, .runPoll, .runCancel, .runRetry, .runResume,
+             .subscriptionStart, .subscriptionResume,
              .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
             return .run
         case .searchQuery:
@@ -153,13 +158,13 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     /// Read-only posture: lifecycle + read observability + search. No config
     /// writes, no run dispatch, no computer-use/HID agency.
     public static let readOnly = BurnBarPeerCapabilityProfile(
-        capabilities: [.lifecycle, .observability, .search, .memoryRead, .codeRead]
+        capabilities: [.lifecycle, .observability, .membership, .search, .memoryRead, .codeRead]
     )
 
     /// A controller that drives runs but is denied the computer-use/HID surface
     /// and config-credential writes — the minimum a chat/run client needs.
     public static let runClient = BurnBarPeerCapabilityProfile(
-        capabilities: [.lifecycle, .client, .run, .tooling, .observability, .search, .missionControl, .memoryRead, .codeRead]
+        capabilities: [.lifecycle, .client, .run, .tooling, .observability, .membership, .search, .missionControl, .memoryRead, .codeRead]
     )
 
     /// Signed CLI support posture. Keep this as an exact method allowlist, not
@@ -179,6 +184,7 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .codeWatchProject,
         .codeSearch,
         .codeIndexStatus,
+        .runCreate,
         .runResume
     ])
 
