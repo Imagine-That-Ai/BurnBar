@@ -159,7 +159,8 @@ extension MercuryRouter {
             connectionId: frame.connectionId,
             viewerDeviceId: req.viewerDeviceId,
             controlAuthorityPeerNodeId: req.controlAuthorityPeerNodeId,
-            remotePeerNodeId: remotePeerNodeID
+            remotePeerNodeId: remotePeerNodeID,
+            now: clock()
         )
 
         // Consent fast-paths:
