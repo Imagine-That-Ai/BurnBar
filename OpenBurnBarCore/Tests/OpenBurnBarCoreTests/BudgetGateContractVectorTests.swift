@@ -103,6 +103,7 @@ final class BudgetGateContractVectorTests: XCTestCase {
         private let spend: [String: Double]
         private let unreadable: Set<String>
         private(set) var readCount = 0
+        private var undeclaredReadFaults: [String] = []
 
         init(spend: [String: Double], unreadable: Set<String>) {
             self.spend = spend
@@ -110,11 +111,15 @@ final class BudgetGateContractVectorTests: XCTestCase {
         }
 
         func reads() -> Int { readCount }
+        func undeclaredReads() -> [String] { undeclaredReadFaults }
 
         func currentSpend(forRule rule: BudgetRule, reference: Date) async throws -> Double {
             readCount += 1
             if unreadable.contains(rule.id) { throw ReadFault() }
-            guard let value = spend[rule.id] else { throw ReadFault() }
+            guard let value = spend[rule.id] else {
+                undeclaredReadFaults.append(rule.id)
+                throw ReadFault()
+            }
             return value
         }
     }
@@ -195,6 +200,11 @@ final class BudgetGateContractVectorTests: XCTestCase {
                 let reads = await ledger.reads()
                 XCTAssertEqual(reads, 0, "[\(v.id)] expected no ledger reads but observed \(reads)")
             }
+            let undeclaredReads = await ledger.undeclaredReads()
+            XCTAssertTrue(
+                undeclaredReads.isEmpty,
+                "[\(v.id)] ledger reads missing fixture spend entries for rule ids: \(undeclaredReads.joined(separator: ", "))"
+            )
         }
 
         // Anti-vacuous: the suite must exercise every budget scope, or a platform could
@@ -236,6 +246,7 @@ final class BudgetGateContractVectorTests: XCTestCase {
                 }
                 XCTAssertEqual(fallback.providerID, candidate.providerID, "\(ctx) fallback providerID")
                 XCTAssertEqual(fallback.slotID, candidate.accountID ?? "default", "\(ctx) fallback slotID")
+                XCTAssertEqual(fallback.billingMode, .unknown, "\(ctx) fallback billingMode")
             } else {
                 XCTAssertNil(fallback, "\(ctx) expected no fallback but got one")
             }

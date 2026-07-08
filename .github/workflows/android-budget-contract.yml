@@ -14,6 +14,7 @@ on:
   pull_request:
     paths:
       - "android/app/src/main/java/com/openburnbar/data/budget/**"
+      - "android/app/src/main/java/com/openburnbar/data/models/BudgetModels.kt"
       - "android/app/src/test/java/com/openburnbar/data/budget/**"
       - "android/app/src/test/resources/budget-enforcement/**"
       - "tests/fixtures/budget-enforcement/**"
