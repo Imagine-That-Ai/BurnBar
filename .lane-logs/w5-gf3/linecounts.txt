@@ -1,0 +1,7 @@
+  722 AuroraNavigationIcons.swift
+   55 AuroraNavIcon+Pulse.swift
+  456 AuroraNavIcon+Burn.swift
+  290 AuroraNavIcon+Streams.swift
+  227 AuroraNavIcon+Hermes.swift
+   97 AuroraNavIcon+You.swift
+ 1847 total
