@@ -278,3 +278,8 @@ node_modules/
 **/bin/
 **/obj/
 .lane-logs/
+
+# Ledger-referenced Linux-port evidence logs (VAL-OPS-002, VAL-EXTENSION-001):
+# these two .log files are release-gate proof and must be committed despite *.log.
+!docs/linux-port/evidence/mission-001-ops-toolchain/docker-toolchain-smoke-current.log
+!docs/linux-port/evidence/mission-001-discovery-devices-extension/extension-focused-tests.log
