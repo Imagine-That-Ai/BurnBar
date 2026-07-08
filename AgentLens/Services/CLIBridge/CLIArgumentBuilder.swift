@@ -225,6 +225,44 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
+    static func ompArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        var arguments = [
+            "-p",
+            sanitizedPrompt(prompt),
+            "--mode",
+            "json",
+            "--no-session"
+        ]
+        if let workspaceDirectory {
+            arguments.append(contentsOf: ["--cwd", workspaceDirectory.path])
+        }
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedModel.isEmpty {
+            arguments.append(contentsOf: ["--model", trimmedModel])
+        }
+        if let capabilityGrant, capabilityGrant.isActive() {
+            var tools: [String] = ["read", "grep", "glob", "lsp"]
+            if capabilityGrant.capabilities.contains(.shell) {
+                tools.append("bash")
+            }
+            if capabilityGrant.capabilities.contains(.workspaceWrite) {
+                tools.append(contentsOf: ["edit", "write"])
+            }
+            let dedupedTools = (Array(NSOrderedSet(array: tools)) as? [String] ?? tools)
+                .joined(separator: ",")
+            arguments.append(contentsOf: ["--tools", dedupedTools])
+            arguments.append("--auto-approve")
+        } else {
+            arguments.append("--no-tools")
+        }
+        return arguments
+    }
+
     private static func isYOLOGrant(_ grant: AgentCapabilityGrant) -> Bool {
         grant.trustMode == .trusted && Set(AgentDesktopCapability.allCases).isSubset(of: grant.capabilities)
     }

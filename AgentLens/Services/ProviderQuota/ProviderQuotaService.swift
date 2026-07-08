@@ -1253,7 +1253,11 @@ final class ProviderQuotaService {
 
     private func upsertSnapshot(_ snapshot: ProviderQuotaSnapshot, for provider: AgentProvider? = nil) {
         if Self.normalizedSnapshotIdentifier(snapshot.accountID) == nil {
-            snapshotsByProvider[provider ?? snapshot.provider] = snapshot
+            // Filter out snapshots whose provider string doesn't map to a known
+            // AgentProvider — drop rather than crash or mislabel as .claudeCode
+            // (which would corrupt the real Claude Code entry in the dict).
+            guard let resolvedProvider = provider ?? snapshot.quotaProvider ?? AgentProvider(rawValue: snapshot.provider) else { return }
+            snapshotsByProvider[resolvedProvider] = snapshot
         }
         snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
     }
@@ -1440,7 +1444,7 @@ final class ProviderQuotaService {
 
     private func persistSnapshots() {
         snapshotStore.persistSnapshots(snapshotsByProvider, accountSnapshots: snapshotsByAccountID)
-        let syncableSnapshots = snapshotsForCloudSync.filter { $0.source != .unavailable }
+        let syncableSnapshots = snapshotsForCloudSync.filter { $0.sourceKind != .unavailable }
         if !syncableSnapshots.isEmpty {
             onSnapshotsPersistedForCloudSync?(syncableSnapshots)
         }
@@ -1652,7 +1656,7 @@ extension ProviderQuotaService {
         case .codex:
             return CLIAuthDiscovery.discoverAuthState(for: cliType).accountDescription
                 ?? "Current \(cliType.displayName) login"
-        case .claude, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .junie:
+        case .claude, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
             return "Current \(cliType.displayName) login"
         }
     }
@@ -1774,7 +1778,7 @@ extension ProviderQuotaService {
         let order: [ProviderQuotaSourceKind] = [
             .officialAPI, .localCLI, .localSession, .manualEstimate, .unavailable
         ]
-        for kind in order where snapshots.contains(where: { $0.source == kind }) {
+        for kind in order where snapshots.contains(where: { $0.sourceKind == kind }) {
             return kind
         }
         return .unavailable

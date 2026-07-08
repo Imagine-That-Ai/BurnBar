@@ -21,6 +21,7 @@ enum DiscoverySource: Equatable {
     case kimi(executablePath: String?, configDirectory: String?)
     case pi(executablePath: String?, configDirectory: String?)
     case junie(executablePath: String?, configDirectory: String?)
+    case omp(executablePath: String?, configDirectory: String?)
 }
 
 /// Authentication state of a discovered identity.
@@ -210,6 +211,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .pi(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .junie:
                 source = .junie(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .omp:
+                source = .omp(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             }
 
             guard cliInfo.isInstalled else {
@@ -434,6 +437,18 @@ final class SwitcherDiscoveryService: ObservableObject {
                     displayLabel: "Junie",
                     configDirectory: configDirectory,
                     accountDescription: "Junie local profile"
+                ),
+                sortKey: 0
+            )
+        case .omp(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .omp,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "OMP",
+                    configDirectory: configDirectory,
+                    accountDescription: "OMP local profile"
                 ),
                 sortKey: 0
             )
@@ -869,6 +884,9 @@ final class SwitcherDiscoveryService: ObservableObject {
                 case .junie(_, let configDirectory):
                     return cliType == .junie
                         && configDirectory == saved.cliMetadata?.configDirectory
+                case .omp(_, let configDirectory):
+                    return cliType == .omp
+                        && configDirectory == saved.cliMetadata?.configDirectory
                 default:
                     return false
                 }
@@ -978,6 +996,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .pi(executablePath: CLILaunchAdapter.executablePath(for: .pi), configDirectory: nil)
         case .junie:
             return .junie(executablePath: CLILaunchAdapter.executablePath(for: .junie), configDirectory: nil)
+        case .omp:
+            return .omp(executablePath: CLILaunchAdapter.executablePath(for: .omp), configDirectory: nil)
         }
     }
 
@@ -1011,7 +1031,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .junie:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -1027,6 +1047,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .kimi: cliType = .kimi
             case .pi: cliType = .pi
             case .junie: cliType = .junie
+            case .omp: cliType = .omp
             default: cliType = .codex
             }
             let execPath = CLILaunchAdapter.executablePath(for: cliType)
@@ -1105,6 +1126,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .piAgent
         case .junie:
             return .junie
+        case .omp:
+            return .omp
         }
     }
 
@@ -1259,6 +1282,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         case (.kimi, .kimiCLI): return true
         case (.pi, .piCLI): return true
         case (.junie, .junieCLI): return true
+        case (.omp, .ompCLI): return true
         default: return false
         }
     }
@@ -1281,6 +1305,7 @@ extension DiscoverySource {
         case .kimi: return .kimi
         case .pi: return .pi
         case .junie: return .junie
+        case .omp: return .omp
         default: return nil
         }
     }

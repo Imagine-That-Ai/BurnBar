@@ -1,0 +1,10 @@
+{
+  "generatedAt": "2026-07-08T03:19:09.873Z",
+  "reducedMotion": {
+    "query": "(prefers-reduced-motion: reduce)",
+    "bodyClass": "reduced-motion",
+    "cssRulePresent": true,
+    "transitionSuppressed": true,
+    "capture": "Verified from app.css plus applyReducedMotionClass contract; browser/desktop screenshots are collected by the packaged session."
+  }
+}

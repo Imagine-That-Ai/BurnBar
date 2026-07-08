@@ -467,6 +467,17 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             ).chatBackend,
             .forge
         )
+        for alias in ["omp", "ohmypi", "oh-my-pi", "oh my pi"] {
+            XCTAssertEqual(
+                CLIAgentMissionRuntimePlanner.resolve(
+                    requestedRuntime: alias,
+                    missionKind: "custom",
+                    enabledBackends: enabled
+                ).chatBackend,
+                .omp,
+                "alias \(alias)"
+            )
+        }
 
         let opencode = CLIAgentMissionRuntimePlanner.resolve(
             requestedRuntime: "opencode",
@@ -496,6 +507,10 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "droid"), .droid)
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "factory-droid"), .droid)
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "forge"), .forge)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "omp"), .omp)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "ohmypi"), .omp)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "oh-my-pi"), .omp)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "oh my pi"), .omp)
         XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "unknown"))
     }
 
@@ -703,6 +718,55 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         let toolsIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--tools"))
         XCTAssertEqual(plan.arguments[toolsIndex + 1], "")
         XCTAssertTrue(plan.arguments.joined(separator: "\n").contains(hostilePrompt))
+    }
+
+    func test_missionRuntimePlanner_usesDirectArgumentsForOMPWithHostPromptImmediatelyAfterDashP() throws {
+        let hostilePrompt = #"Read "$HOME"; rm -rf /tmp/should-not-run"#
+        let backend = CLIAgentMissionBackend(chatBackend: .omp)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "OMP direct mission",
+            prompt: hostilePrompt,
+            backend: backend,
+            data: [
+                "approvalMode": "read_only",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        XCTAssertEqual(plan.executableName, "omp")
+        XCTAssertEqual(plan.extraEnvironment, [:])
+        XCTAssertFalse(plan.arguments.contains("-lc"))
+        let promptIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "-p"))
+        let hostPrompt = plan.arguments[promptIndex + 1]
+        XCTAssertNotEqual(hostPrompt, "--mode")
+        XCTAssertTrue(hostPrompt.contains("OpenBurnBar Mission Control"))
+        XCTAssertTrue(hostPrompt.contains(hostilePrompt))
+        XCTAssertEqual(Array(plan.arguments[promptIndex...promptIndex + 4]), ["-p", hostPrompt, "--mode", "json", "--no-session"])
+        XCTAssertTrue(plan.arguments.contains("--no-tools"))
+    }
+
+    func test_missionRuntimePlanner_passesRequestedModelToOMPDirectCLI() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .omp)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "OMP selected model mission",
+            prompt: "Use the phone-selected model.",
+            backend: backend,
+            data: [
+                "requestedModelID": "anthropic/claude-sonnet-4",
+                "approvalMode": "read_only",
+                "commandsAllowed": true,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        let promptIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "-p"))
+        XCTAssertNotEqual(plan.arguments[promptIndex + 1], "--mode")
+        let modelIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--model"))
+        XCTAssertEqual(plan.arguments[modelIndex + 1], "anthropic/claude-sonnet-4")
+        let toolsIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--tools"))
+        XCTAssertTrue(plan.arguments[toolsIndex + 1].contains("bash"))
+        XCTAssertFalse(plan.arguments[toolsIndex + 1].contains("edit"))
     }
 
     func test_missionRuntimePlanner_passesRequestedModelToPiDirectCLI() throws {

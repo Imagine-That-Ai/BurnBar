@@ -1,0 +1,52 @@
+/**
+ * Do not edit directly, this file was auto-generated.
+ */
+
+:root {
+  --color-ink-void: #050508;
+  --color-ink-base: #0a0a0e;
+  --color-ink-elevated: #12121a;
+  --color-ink-furnace: #180805;
+  --color-mercury-bright: #f4f6fb;
+  --color-mercury-core: #c7cfdd;
+  --color-mercury-deep: #8b94a8;
+  --color-mercury-wash: rgba(199, 207, 221, 0.06);
+  --color-brass-core: #fa6b06;
+  --color-brass-bright: #fdc42c;
+  --color-brass-deep: #ee1803;
+  --color-brass-glow: rgba(250, 107, 6, 0.4);
+  --color-frost-veil: rgba(199, 207, 221, 0.1);
+  --color-frost-line: rgba(255, 255, 255, 0.1);
+  --color-seal-crimson: #c5221f;
+  --color-glass-bg: rgba(10, 10, 15, 0.5);
+  --color-glass-bg-elevated: rgba(18, 18, 26, 0.62);
+  --color-glass-line: rgba(255, 255, 255, 0.08);
+  --color-glass-line-bright: rgba(255, 255, 255, 0.15);
+  --color-text-bright: #ffffff;
+  --color-text-base: rgba(255, 255, 255, 0.85);
+  --color-text-mute: rgba(255, 255, 255, 0.55);
+  --color-text-dim: rgba(255, 255, 255, 0.35);
+  --color-tier-server-readable: #fdc42c;
+  --color-tier-zero-access: #8b94a8;
+  --color-tier-end-to-end: #3cd6c0;
+  --font-display: Outfit, 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-swirl-seconds: 18;
+  --motion-frost-flip-ms: 520;
+  --font-arcane: 'Fraunces Variable', Georgia, serif;
+  --ds-skin: editorial;
+  --ds-accent-gradient: linear-gradient(135deg, var(--color-brass-core), var(--color-brass-bright));
+}

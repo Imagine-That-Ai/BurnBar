@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-07-08T03:18:20.408Z",
+  "lane": "W06ShellEvidenceRepair",
+  "mode": "openburnbar-daemon-af-unix",
+  "status": "ready",
+  "detail": "Real OpenBurnBarDaemon listening on AF_UNIX socket for packaged shell session.",
+  "socketPath": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock",
+  "authTokenFile": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/daemon-socket-auth-token",
+  "logPath": "/evidence/daemon-shell-session.log",
+  "missionWorktree": "/workspace",
+  "missionWorktreeHost": null,
+  "validatorGuidance": "Tray reconnect exercised a real OpenBurnBarDaemon AF_UNIX health round-trip."
+}

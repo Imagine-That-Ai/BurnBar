@@ -95,6 +95,7 @@ final class OpenBurnBarDaemonSocketClientCredentialReadTests: XCTestCase {
         let backend = FaultInjectingKeychainBackend()
         let store = makeStore(backend: backend)
         try store.set("stale-keychain-token", for: account)
+        backend.resetReadAttempts()
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("BurnBarSocketTokenPreferredFile-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -151,6 +152,10 @@ private final class FaultInjectingKeychainBackend: KeychainStoreBackend, @unchec
             throw readError
         }
         return storage[service]?[account]
+    }
+
+    func resetReadAttempts() {
+        readAttempts = 0
     }
 
     func delete(service: String, account: String) throws {

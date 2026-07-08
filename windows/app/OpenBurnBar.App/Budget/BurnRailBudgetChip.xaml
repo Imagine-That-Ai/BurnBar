@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Dashboard/Components/BurnRailBudgetChip.swift — the compact
+  budget pill for the BurnBar top rail. Hidden until any rule is >= 50% spent; gains a warning
+  tint at 80%, turns error-red at 100%. Driven by SetState(BudgetChipState) from the portable
+  BurnRailBudgetChipModel (unit-tested on macOS), which owns the most-restrictive selection +
+  severity banding + label/tooltip strings.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Budget.BurnRailBudgetChip"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Border x:Name="Root"
+            Visibility="Collapsed"
+            CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+            BorderThickness="0.5"
+            Padding="7,3">
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <FontIcon x:Name="Icon" FontFamily="Segoe MDL2 Assets" FontSize="9" />
+            <TextBlock x:Name="AmountText"
+                       FontFamily="Cascadia Mono, Consolas"
+                       FontSize="10"
+                       FontWeight="SemiBold" />
+        </StackPanel>
+    </Border>
+</UserControl>

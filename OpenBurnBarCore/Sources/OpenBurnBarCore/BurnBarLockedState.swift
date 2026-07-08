@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(os)
 import os
+#endif
 
 // MARK: - Locked<T>
 
@@ -14,6 +16,7 @@ import os
 /// `Locked` is reference-typed so that in-place mutation is visible to all
 /// owners of the box, similar to a `class`-based container.
 public final class Locked<T: Sendable>: Sendable {
+#if canImport(os)
     private let storage: OSAllocatedUnfairLock<T>
 
     public init(_ value: T) {
@@ -23,6 +26,29 @@ public final class Locked<T: Sendable>: Sendable {
     public func withLock<R>(_ action: (inout T) throws -> R) rethrows -> R {
         try storage.withLockUnchecked(action)
     }
+#else
+    // NSLock-protected mutable storage; safe for concurrent access.
+    // sendable-allowlist: nslock-protected-storage
+    private final class Storage: @unchecked Sendable {
+        let lock = NSLock()
+        var value: T
+
+        init(_ value: T) {
+            self.value = value
+        }
+    }
+    private let storage: Storage
+
+    public init(_ value: T) {
+        storage = Storage(value)
+    }
+
+    public func withLock<R>(_ action: (inout T) throws -> R) rethrows -> R {
+        storage.lock.lock()
+        defer { storage.lock.unlock() }
+        return try action(&storage.value)
+    }
+#endif
 
     public func read() -> T { withLock { $0 } }
 

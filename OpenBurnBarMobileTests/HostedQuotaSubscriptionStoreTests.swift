@@ -11,6 +11,16 @@ private let burnBarUltraProductID = "com.openburnbar.ultra.monthly"
 
 @MainActor
 final class HostedQuotaSubscriptionStoreTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        UltraTierBridge.shared.tier = nil
+    }
+
+    override func tearDown() {
+        UltraTierBridge.shared.tier = nil
+        super.tearDown()
+    }
+
     func testCatalogMatchesLockedCommercialProductIDs() {
         XCTAssertEqual(OpenBurnBarProductCatalog.cloudMonthlyProductID, "com.openburnbar.pro.monthly")
         XCTAssertEqual(OpenBurnBarProductCatalog.cloudAnnualProductID, "com.openburnbar.pro.annual")
@@ -162,6 +172,60 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertTrue(didFinishTransaction)
         XCTAssertEqual(service.bindingRequests.first?.productID, HostedQuotaSubscriptionStore.cloudUltraMonthlyProductID)
         XCTAssertEqual(service.verifyRequests.first?.productID, HostedQuotaSubscriptionStore.cloudUltraMonthlyProductID)
+    }
+
+    func testPurchaseRecoversUltraDirectEntitlementAfterStoreKitFailure() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 4_102_444_799)
+        let service = FakeHostedQuotaEntitlementService()
+        let directReader = FakeHostedQuotaDirectReader(
+            response: .burnBarUltra(active: true, expiresAt: expiresAt)
+        )
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            directReader: directReader,
+            purchaseProduct: { _, _ in throw TestHostedQuotaError.storeKitInternal },
+            isSignedIn: { true }
+        )
+
+        await store.purchase()
+
+        XCTAssertNil(store.error)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.isActivePro)
+        XCTAssertTrue(store.isActiveUltra)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(store.activeProductID, burnBarUltraProductID)
+        XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertEqual(directReader.fetchCount, 1)
+        XCTAssertEqual(service.bindingRequests.first?.productID, HostedQuotaSubscriptionStore.productID)
+    }
+
+    func testPurchaseRecoversUltraServerTierAfterStoreKitFailureWhenDirectReadUnavailable() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let service = FakeHostedQuotaEntitlementService()
+        let tierReader = FakeHostedQuotaTierReader(tier: "ultra")
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            tierReader: tierReader,
+            purchaseProduct: { _, _ in throw TestHostedQuotaError.storeKitInternal },
+            isSignedIn: { true }
+        )
+
+        await store.purchase()
+
+        XCTAssertNil(store.error)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.isActivePro)
+        XCTAssertTrue(store.isActiveUltra)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(store.activeProductID, burnBarUltraProductID)
+        XCTAssertNil(store.expirationDate)
+        XCTAssertEqual(tierReader.fetchCount, 1)
+        XCTAssertEqual(service.bindingRequests.first?.productID, HostedQuotaSubscriptionStore.productID)
+        XCTAssertEqual(service.restoreRequests.count, 0)
     }
 
     func testPurchaseCloudProTopUpCreditsAllowance() async throws {
@@ -324,6 +388,30 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(service.restoreRequests.count, 0)
     }
 
+    func testRefreshUsesServerResolvedUltraTierWhenDirectReadIsUnavailable() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let service = FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)
+        let tierReader = FakeHostedQuotaTierReader(tier: "ultra")
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            tierReader: tierReader,
+            isSignedIn: { true }
+        )
+
+        try await store.refreshEntitlement()
+
+        XCTAssertNil(store.error)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.isActivePro)
+        XCTAssertTrue(store.isActiveUltra)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(store.activeProductID, burnBarUltraProductID)
+        XCTAssertNil(store.expirationDate)
+        XCTAssertEqual(tierReader.fetchCount, 1)
+        XCTAssertEqual(service.restoreRequests.count, 0)
+    }
+
     func testRefreshIgnoresSandboxDirectEntitlementWhenRuntimeRejectsEnvironment() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
@@ -369,6 +457,93 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(store.expirationDate, expiresAt)
         XCTAssertEqual(service.restoreRequests.count, 1)
         XCTAssertEqual(service.restoreRequests.first?.productID, HostedQuotaSubscriptionStore.productID)
+    }
+
+    func testRestoreUsesUltraDirectEntitlementBeforeCloudFallbackWhenNoStoreKitTransaction() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 4_102_444_799)
+        let service = FakeHostedQuotaEntitlementService()
+        let directReader = FakeHostedQuotaDirectReader(
+            response: .burnBarUltra(active: true, expiresAt: expiresAt)
+        )
+        var didSyncAppStore = false
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            directReader: directReader,
+            syncAppStore: { didSyncAppStore = true },
+            isSignedIn: { true }
+        )
+
+        await store.restorePurchases()
+
+        XCTAssertNil(store.error)
+        XCTAssertTrue(didSyncAppStore)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.isActiveUltra)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(store.activeProductID, burnBarUltraProductID)
+        XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertEqual(directReader.fetchCount, 1)
+        XCTAssertEqual(service.restoreRequests.count, 0)
+    }
+
+    func testRestoreUsesServerResolvedUltraTierBeforeCloudFallbackWhenNoStoreKitTransaction() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let service = FakeHostedQuotaEntitlementService()
+        let tierReader = FakeHostedQuotaTierReader(tier: "ultra")
+        var didSyncAppStore = false
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            tierReader: tierReader,
+            syncAppStore: { didSyncAppStore = true },
+            isSignedIn: { true }
+        )
+
+        await store.restorePurchases()
+
+        XCTAssertNil(store.error)
+        XCTAssertTrue(didSyncAppStore)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.isActiveUltra)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(store.activeProductID, burnBarUltraProductID)
+        XCTAssertNil(store.expirationDate)
+        XCTAssertEqual(tierReader.fetchCount, 1)
+        XCTAssertEqual(service.restoreRequests.count, 0)
+    }
+
+    func testRestoreRecoversUltraDirectEntitlementWhenAppStoreSyncFails() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 4_102_444_799)
+        let service = FakeHostedQuotaEntitlementService()
+        let directReader = FakeHostedQuotaDirectReader(
+            response: .burnBarUltra(active: true, expiresAt: expiresAt)
+        )
+        var didSyncAppStore = false
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            directReader: directReader,
+            syncAppStore: {
+                didSyncAppStore = true
+                throw TestHostedQuotaError.storeKitInternal
+            },
+            isSignedIn: { true }
+        )
+
+        await store.restorePurchases()
+
+        XCTAssertNil(store.error)
+        XCTAssertTrue(didSyncAppStore)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.isActiveUltra)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(store.activeProductID, burnBarUltraProductID)
+        XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertEqual(directReader.fetchCount, 1)
+        XCTAssertEqual(service.restoreRequests.count, 0)
     }
 
     func testRestoreDoesNotApplySandboxServerResponseWhenRuntimeRejectsEnvironment() async throws {
@@ -567,6 +742,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
     private func makeHostedQuotaSubscriptionStore(
         functions: any HostedQuotaEntitlementServicing,
         directReader: (any HostedQuotaEntitlementDirectReading)? = nil,
+        tierReader: (any HostedQuotaTierReading)? = nil,
         purchaseProduct: @escaping HostedQuotaProductPurchaseExecutor = { _, _ in
             throw TestHostedQuotaError.productCatalogUnavailable
         },
@@ -584,6 +760,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         HostedQuotaSubscriptionStore(
             functions: functions,
             directReader: directReader,
+            tierReader: tierReader,
             purchaseProduct: purchaseProduct,
             syncAppStore: syncAppStore,
             fetchProducts: fetchProducts,
@@ -668,6 +845,7 @@ final class HermesMobileSetupWizardGateTests: XCTestCase {
 private enum TestHostedQuotaError: Error {
     case replayUnavailable
     case productCatalogUnavailable
+    case storeKitInternal
 }
 
 @MainActor
@@ -783,6 +961,21 @@ private final class FakeHostedQuotaDirectReader: HostedQuotaEntitlementDirectRea
     func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse? {
         fetchCount += 1
         return response
+    }
+}
+
+@MainActor
+private final class FakeHostedQuotaTierReader: HostedQuotaTierReading {
+    private let tier: String?
+    private(set) var fetchCount = 0
+
+    init(tier: String?) {
+        self.tier = tier
+    }
+
+    func fetchHostedQuotaTier() async throws -> String? {
+        fetchCount += 1
+        return tier
     }
 }
 

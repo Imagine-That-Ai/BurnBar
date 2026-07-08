@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenBurnBar.App.Onboarding.ConnectStepPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Connection status step — peer of OnboardingConnectView.swift. -->
+    <Grid RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock Text="Connection status" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="OpenBurnBar reads agent logs from your local filesystem. Here's what it can see for your selected agents."
+                       Opacity="0.7"
+                       FontSize="12.5"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="SectionHost" Spacing="16" />
+        </ScrollViewer>
+
+        <TextBlock x:Name="FootNote"
+                   Grid.Row="2"
+                   Opacity="0.55"
+                   FontSize="11"
+                   TextWrapping="Wrap" />
+    </Grid>
+</Page>

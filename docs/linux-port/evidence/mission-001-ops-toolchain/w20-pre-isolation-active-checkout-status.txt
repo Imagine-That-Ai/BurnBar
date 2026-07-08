@@ -1,0 +1,245 @@
+generated_at=2026-07-05T08:24:34Z
+cwd=$WORKSPACE
+head=1b62ec42bd752cc8a6af578f034bf776c6ec3b97
+branch=main
+upstream=origin/main
+status_scope=active checkout full worktree
+ M .serena/project.yml
+ M OpenBurnBarCore/Package.resolved
+ M OpenBurnBarCore/Package.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/AppCheckAttestationBinding.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/CapabilityTokenIssuer.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/CapabilityTokenIssuerTrustMaterial.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/CapabilityTokenSigning.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/CapabilityTokenVerifier.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditChain.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditExportWriter.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseAuditSignedHead.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseOpenTimestampsClient.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUsePhoneControlSigner.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControlFrameSeal.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControlFrameSealSession.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeyPinStore.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ControllerKeySafetyCode.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/IrohHostKeyPinStore.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAuthoritySigningKey.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlSigningKey.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedInputXPCConstants.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/RemoteUnlockCredentialEnvelopeCrypto.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/RemoteUnlockSessionContextSnapshot.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformSupport.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/IrohRelayPairing.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/LoopbackIrohRelayTransport.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/OpenBurnBarLinuxSecurity.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaFrameAEAD.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarMedia/MediaFrameSealSession.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarMedia/MercuryStreamingStats.swift
+ M OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalCoreUnavailable.swift
+ M OpenBurnBarCore/Tests/OpenBurnBarLinuxSecurityTests/OpenBurnBarLinuxSecurityTests.swift
+ M OpenBurnBarDaemon/Package.resolved
+ M OpenBurnBarDaemon/Package.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarCLI/OpenBurnBarCLIMain.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarCodexProviderExecutor.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonDatabaseCipher.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarResumeService.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRunService+Execution.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ClaudeInteractiveHandoffService.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/BurnBarCLIAuditVerify.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/ComputerUseRunCoordinator.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/ComputerUseService.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonPhoneKeyPinStore.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/FactoryDroidProviderExecutor.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/Bridges/EventKitBridge.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/Bridges/LocalNotificationBridge.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/MissionControlNotificationSecretStore.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/MissionControlService.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarAnthropicProviderExecutor.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarBrowserTargetPolicy.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarBrowserToolService.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarConnectorPlaneService.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarConnectorSecretStore.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonLogger.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarIndexedSearchService.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarLiveModelCatalog.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor+OllamaNative.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor+ResponsesConversion.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarRunJournal.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarCodeEmbedding.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Helpers.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+SQLite.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCObservability.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonSocketRPCCoverage.swift
+ M OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift
+ M OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarCLITests.swift
+ M apps/linux-desktop/src-tauri/src/lib.rs
+ M apps/linux-desktop/src/main.ts
+ M apps/linux-desktop/src/perfMarks.ts
+ M apps/linux-desktop/src/shellEvidence.harness.test.ts
+ M apps/linux-desktop/src/shellEvidenceModel.ts
+ M apps/linux-desktop/src/styles/app.css
+ M apps/linux-desktop/src/tauriBridge.ts
+ M docs/linux-port/evidence/mission-001-linux-cloud-security/README.md
+ M docs/linux-port/evidence/mission-001-linux-cloud-security/blocked-production-evidence.md
+ M docs/linux-port/evidence/mission-001-linux-cloud-security/harness/Sources/LinuxSecurityEvidence/main.swift
+ M docs/linux-port/evidence/mission-001-linux-cloud-security/linux-security-evidence.json
+ M docs/linux-port/evidence/mission-001-shell-ux/OpenBurnBar_0.1.0_arm64.deb
+ M docs/linux-port/evidence/mission-001-shell-ux/a11y-keyboard-transcript.json
+ M docs/linux-port/evidence/mission-001-shell-ux/accessibility-tree-linux-desktop.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/automated-a11y-scan.json
+ M docs/linux-port/evidence/mission-001-shell-ux/daemon-route-transcript.json
+ M docs/linux-port/evidence/mission-001-shell-ux/failure-state-transcript.json
+ M docs/linux-port/evidence/mission-001-shell-ux/linux-deb-contents.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/linux-deb-control.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/linux-deb-install-run-transcript.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/linux-desktop-session-report.json
+ M docs/linux-port/evidence/mission-001-shell-ux/linux-desktop-session-wrapper-transcript.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/linux-tauri-build-transcript.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/onboarding-flow-transcript.json
+ M docs/linux-port/evidence/mission-001-shell-ux/openburnbar-linux-desktop.pid
+ M docs/linux-port/evidence/mission-001-shell-ux/openburnbar-window-id.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/perf-budget.json
+ M docs/linux-port/evidence/mission-001-shell-ux/pet-tier-matrix.json
+ M docs/linux-port/evidence/mission-001-shell-ux/route-a11y-user-flow-transcript.json
+ M docs/linux-port/evidence/mission-001-shell-ux/route-snapshot-plan.json
+ M docs/linux-port/evidence/mission-001-shell-ux/screenshot-linux-desktop-after-tray-open.png
+ M docs/linux-port/evidence/mission-001-shell-ux/screenshot-linux-desktop-first-run.png
+ M docs/linux-port/evidence/mission-001-shell-ux/smoke-transcript.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/text-expansion-safety-proof.json
+ M docs/linux-port/evidence/mission-001-shell-ux/token-visual-diff.json
+ M docs/linux-port/evidence/mission-001-shell-ux/tray-menu-property.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/tray-open-menu-event.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/tray-quit-menu-event.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/tray-reconnect-menu-event.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/tray-registered-items.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/tray-status-notifier-introspection.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/window-after-tray-open-xwininfo.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/window-initial-xprop.txt
+ M docs/linux-port/evidence/mission-001-shell-ux/window-initial-xwininfo.txt
+ M scripts/linux-port/linux-desktop-session.sh
+ M scripts/linux-port/run-discovery-devices-extension-evidence.sh
+ M scripts/linux-port/run-ipc-cli-gateway-evidence.sh
+ M scripts/linux-port/run-perf-budget.mjs
+ M scripts/linux-port/run-provider-hermes-evidence.sh
+ M scripts/linux-port/run-shell-desktop-session.mjs
+ M scripts/linux-port/run-shell-smoke.mjs
+?? OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/CryptoSendableCompat.swift
+?? OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCIPCCanon.generated.swift
+?? OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/OpenBurnBarLinuxPaths.swift
+?? OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProviderLogDiscovery.swift
+?? OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/AgentProviderLogDiscoveryLinuxTests.swift
+?? OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/Fixtures/linux-provider-model-parity-fixture.json
+?? OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/Fixtures/linux-provider-model-parity-fixture.sha256
+?? OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/Fixtures/platform-crypto-kats.json
+?? OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/LinuxCoreFoundationTests.swift
+?? OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/BurnBarCLIComputerUseLiveSurface.swift
+?? OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/
+?? crates/openburnbar-iroh/target-linux-ffi-serial/
+?? docs/linux-port/evidence/mission-001-computer-use-media-mobile/
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/W08-discovery-evidence-repair-report.md
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/avahi-environment.txt
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/avahi-parser-fixture-transcript.txt
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/cli-linux-transcript.txt
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/device-iot-target-status.json
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/extension-linux-path-sample.json
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/linux-compile-gate.txt
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/linux-xdg-path-evidence.json
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/live-simulator/
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/mdns-live-status.json
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/mdns-metadata-sample.json
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/parity-ledger-sample.json
+?? docs/linux-port/evidence/mission-001-discovery-devices-extension/pixelclock-firmware-lane-sample.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/auth-pkce-signout-transcript.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/auth-protocol-fixture.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/cloud-sync-local-staging-transcript.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/cloud-sync-request-response-trace.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/high-risk-owner-action-audit-local-store-transcript.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-active.svg
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-cancelled.svg
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-offline.svg
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-paymentFailed.svg
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-stripe-protocol-cache-ui-transcript.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-stripe-restore-transcript.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-ui-screenshot-active.svg
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-ui-screenshot-cancelled.svg
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-ui-screenshot-offline.svg
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/membership-ui-screenshot-paymentFailed.svg
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/redaction-crash_error_report.txt
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/redaction-daemon_journal.txt
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/redaction-provider_payload_trace.txt
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/redaction-release_evidence_log.txt
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/redaction-surface-negative-scan.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/secret-store-setup-proof.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/telemetry-controls-transcript.json
+?? docs/linux-port/evidence/mission-001-linux-cloud-security/telemetry-local-capture.json
+?? docs/linux-port/evidence/mission-001-ops-toolchain/
+?? docs/linux-port/evidence/mission-001-provider-hermes/
+?? docs/linux-port/evidence/mission-001-shell-ux/accessibility-surface-evidence.json
+?? docs/linux-port/evidence/mission-001-shell-ux/daemon-session-oracle.json
+?? docs/linux-port/evidence/mission-001-shell-ux/desktop-package-provision.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/desktop-package-versions.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/macos-perf-comparison.json
+?? docs/linux-port/evidence/mission-001-shell-ux/onboarding-linux-flow-evidence.json
+?? docs/linux-port/evidence/mission-001-shell-ux/packaged-route-session-transcript.json
+?? docs/linux-port/evidence/mission-001-shell-ux/perf-threshold-enforcement.json
+?? docs/linux-port/evidence/mission-001-shell-ux/pet-runtime-behavior-evidence.json
+?? docs/linux-port/evidence/mission-001-shell-ux/provider-glyph-logo-cases.json
+?? docs/linux-port/evidence/mission-001-shell-ux/reduced-motion-capture.json
+?? docs/linux-port/evidence/mission-001-shell-ux/runtime-perf-samples.jsonl
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-account.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-activity.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-chat.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-database.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-insights.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-memory.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-missions.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-onboarding.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-overview.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-pet.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-projects.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-providers.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-settings.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-support.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-text-expansion.png
+?? docs/linux-port/evidence/mission-001-shell-ux/screenshot-route-updates.png
+?? docs/linux-port/evidence/mission-001-shell-ux/settings-account-update-support-scenarios.json
+?? docs/linux-port/evidence/mission-001-shell-ux/shell-evidence-verify.json
+?? docs/linux-port/evidence/mission-001-shell-ux/text-expansion-crud-safety-evidence.json
+?? docs/linux-port/evidence/mission-001-shell-ux/visual-review.md
+?? docs/linux-port/evidence/mission-001-shell-ux/visual-ux-matrix.json
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-account-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-activity-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-chat-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-database-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-insights-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-memory-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-missions-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-onboarding-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-overview-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-pet-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-projects-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-providers-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-settings-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-support-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-text-expansion-xwininfo.txt
+?? docs/linux-port/evidence/mission-001-shell-ux/window-route-updates-xwininfo.txt
+?? docs/linux-port/fixtures/
+?? docs/linux-port/generated/
+?? extensions/openburnbar/src/generated/
+?? functions/src/__tests__/highRiskOwnerActionAuditPersistence.test.ts
+?? scripts/linux-port/run-computer-use-evidence.mjs
+?? scripts/linux-port/run-provider-hermes-canonical-oracles.mjs
+?? scripts/linux-port/start-shell-session-daemon.sh
+?? scripts/linux-port/verify-shell-evidence.mjs
+?? tools/ipc/

@@ -1,0 +1,30 @@
+{
+  "aesGCM" : {
+    "aad" : "OpenBurnBar-KAT-AAD-v1",
+    "combinedHex" : "101112131415161718191a1b6fad9a7c0d3660e831395504a4a4c1550be2a635156b756bd04e29c3c789d609a3a40fe3dd6b5624ecd13a2e57a0c0",
+    "keyHex" : "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+    "nonceHex" : "101112131415161718191a1b",
+    "plaintextBase64" : "T3BlbkJ1cm5CYXIgcGxhdGZvcm0gY3J5cHRvIEtBVA=="
+  },
+  "canonicalJSON" : {
+    "encodedString" : "{\n  \"enabled\" : true,\n  \"generatedAt\" : \"2023-11-14T22:13:20Z\",\n  \"labels\" : [\n    \"linux\",\n    \"macos\",\n    \"swiftpm\"\n  ],\n  \"metadata\" : {\n    \"alpha\" : \"one\",\n    \"omega\" : \"last\"\n  },\n  \"name\" : \"openburnbar\",\n  \"version\" : 2\n}",
+    "sha256Hex" : "7328d2f6bd351d7b7eb796d0c66ecd468f4e715cad7b446f34f56f4f5c1e4541"
+  },
+  "ed25519" : {
+    "messageBase64" : "T3BlbkJ1cm5CYXIgRWQyNTUxOSBLQVQ=",
+    "privateKeyHex" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "publicKeyHex" : "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+    "signatureHex" : "e6f03ecb85d6e73f4f19f8a76353e0e977bc81d3fe3f4994148778bfa30c1a6701cf2791bdb04f7ff7de0ea2bbb6922e42eba38325123a4993202dfd11975204"
+  },
+  "generatedBy" : "OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/LinuxCoreFoundationTests.swift",
+  "hash" : {
+    "messageBase64" : "T3BlbkJ1cm5CYXIgaGFzaCBLQVQ=",
+    "sha256Hex" : "2b78548bf4d51c75d3ed7118cebfb22520f51d23aa7940a3525265738dd26ba2"
+  },
+  "hmac" : {
+    "hmacSHA256Hex" : "92cb90fa61c9e0d021a529af41f1e87ceeb0da80362fb1229f8079526fb26d39",
+    "keyHex" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "messageBase64" : "T3BlbkJ1cm5CYXIgSE1BQyBLQVQ="
+  },
+  "schema" : "openburnbar-platform-crypto-kat-v1"
+}

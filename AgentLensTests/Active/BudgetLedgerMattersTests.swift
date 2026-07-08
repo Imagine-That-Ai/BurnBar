@@ -41,7 +41,13 @@ final class BudgetLedgerMattersTests: XCTestCase {
         )
     }
 
-    private func insertGlobalUsage(into queue: DatabaseQueue, cost: Double, at startTime: Date) async throws {
+    private func insertGlobalUsage(
+        into queue: DatabaseQueue,
+        cost: Double,
+        at startTime: Date,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
+    ) async throws {
         let store = UsageStore(dbQueue: queue)
         let usage = TokenUsage(
             provider: .claudeCode,
@@ -52,9 +58,23 @@ final class BudgetLedgerMattersTests: XCTestCase {
             outputTokens: 500,
             costUSD: cost,
             startTime: startTime,
-            endTime: startTime
+            endTime: startTime,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel
         )
         try await store.insert(usage)
+    }
+
+    private func organizationRule(id: String, identifier: String, limit: Double = 100) -> BudgetRule {
+        BudgetRule(
+            id: id,
+            scope: .organization,
+            identifier: identifier,
+            label: identifier,
+            amountUSD: limit,
+            period: .month,
+            behavior: .hardBlock
+        )
     }
 
     // MARK: - Legit zero (read succeeds, no rows)
@@ -85,6 +105,39 @@ final class BudgetLedgerMattersTests: XCTestCase {
         let result = await ledger.snapshot(forRules: [rule], reference: now.addingTimeInterval(60))
 
         XCTAssertEqual(try XCTUnwrap(result[rule.id]), 19.75, accuracy: 0.0001)
+    }
+
+    func test_currentSpend_organizationIncludesUnlabeledRowsForMatchedAccount() async throws {
+        let queue = try makeMigratedQueue()
+        let now = Date()
+        try await insertGlobalUsage(
+            into: queue,
+            cost: 10,
+            at: now,
+            providerAccountID: "acct-a",
+            providerAccountLabel: "Acme Org"
+        )
+        try await insertGlobalUsage(
+            into: queue,
+            cost: 5,
+            at: now,
+            providerAccountID: "acct-a",
+            providerAccountLabel: nil
+        )
+        try await insertGlobalUsage(
+            into: queue,
+            cost: 99,
+            at: now,
+            providerAccountID: "acct-b",
+            providerAccountLabel: "Other Org"
+        )
+
+        let ledger = BudgetLedger(dbQueue: queue)
+        let rule = organizationRule(id: "rule-org", identifier: "Acme Org")
+
+        let spend = try await ledger.currentSpend(forRule: rule, reference: now.addingTimeInterval(60))
+
+        XCTAssertEqual(spend, 15, accuracy: 0.0001)
     }
 
     // MARK: - Fail closed (read throws)

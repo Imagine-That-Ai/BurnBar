@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Components.QuotaWindowStrip"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of QuotaDualWindowStrip in
+      AgentLens/Views/Components/ProviderQuota/ProviderQuotaStripViews.swift — a compact inline
+      strip that always shows TWO quota windows (a short slot: 5h/24h; a long slot: 7d/30d) as
+      horizontal bars. Slot selection, labels, fractions, fill bands and remaining text all come
+      from the parity-tested QuotaBucket / QuotaFill; brand tints from ProviderBrand. Missing
+      windows render a dashed placeholder.
+    -->
+    <Border x:Name="Container"
+            CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+            Background="{StaticResource PensieveColorGlassBgBrush}"
+            BorderThickness="1"
+            Padding="8">
+        <StackPanel Spacing="8">
+            <Grid x:Name="ShortRow" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="34" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="36" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <FontIcon x:Name="ShortIcon"
+                              FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                              FontSize="9"
+                              Glyph="&#xE823;" />
+                    <TextBlock x:Name="ShortLabel"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               FontFamily="Cascadia Mono, Consolas"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                </StackPanel>
+                <Grid x:Name="ShortTrackHost" Grid.Column="1" Height="10" SizeChanged="OnShortTrackSizeChanged">
+                    <Border x:Name="ShortTrack" CornerRadius="3" BorderThickness="1" />
+                    <Border x:Name="ShortFill" HorizontalAlignment="Left" CornerRadius="2" Width="0" />
+                </Grid>
+                <TextBlock x:Name="ShortRemaining"
+                           Grid.Column="2"
+                           FontSize="10"
+                           FontFamily="Cascadia Mono, Consolas"
+                           TextAlignment="Right"
+                           VerticalAlignment="Center" />
+            </Grid>
+
+            <Grid x:Name="LongRow" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="34" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="36" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <FontIcon x:Name="LongIcon"
+                              FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                              FontSize="9"
+                              Glyph="&#xE787;" />
+                    <TextBlock x:Name="LongLabel"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               FontFamily="Cascadia Mono, Consolas"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                </StackPanel>
+                <Grid x:Name="LongTrackHost" Grid.Column="1" Height="10" SizeChanged="OnLongTrackSizeChanged">
+                    <Border x:Name="LongTrack" CornerRadius="3" BorderThickness="1" />
+                    <Border x:Name="LongFill" HorizontalAlignment="Left" CornerRadius="2" Width="0" />
+                </Grid>
+                <TextBlock x:Name="LongRemaining"
+                           Grid.Column="2"
+                           FontSize="10"
+                           FontFamily="Cascadia Mono, Consolas"
+                           TextAlignment="Right"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

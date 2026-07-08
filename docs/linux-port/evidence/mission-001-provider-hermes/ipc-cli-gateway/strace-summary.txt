@@ -1,0 +1,2 @@
+strace unavailable in container
+equivalent evidence: socket-permissions.txt, socket-roundtrip.jsonl, cli-transcript.txt, source-scan.txt

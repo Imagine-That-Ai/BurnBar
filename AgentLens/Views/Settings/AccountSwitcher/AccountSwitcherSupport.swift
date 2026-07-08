@@ -215,6 +215,8 @@ extension SwitcherCLIProfileType {
             return .piAgent
         case .junie:
             return .junie
+        case .omp:
+            return .omp
         }
     }
 }

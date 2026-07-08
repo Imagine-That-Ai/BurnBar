@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Insights nav destination (Phase 3 · W7). Two states in one page: the template gallery
+  (default) and the stamped canvas of widget tiles. Picking a template stamps it into a fresh
+  InsightCanvas and lays the tiles out via InsightsCanvasPanel (the 12-column grid); "Templates"
+  returns to the gallery. The Windows render of InsightsWorkspaceView's gallery → canvas flow.
+-->
+<Page
+    x:Class="OpenBurnBar.App.Insights.InsightsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.Insights"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Padding="20,16,20,8" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button x:Name="BackButton"
+                    Grid.Column="0"
+                    Click="OnBackClick"
+                    Visibility="Collapsed"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE72B;" FontSize="12" />
+                    <TextBlock Text="Templates" />
+                </StackPanel>
+            </Button>
+            <TextBlock x:Name="HeaderTitle"
+                       Grid.Column="1"
+                       Text="Insights"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            <Border x:Name="SampleChip"
+                    Grid.Column="2"
+                    Visibility="Collapsed"
+                    VerticalAlignment="Center"
+                    CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                    Background="#1FC7CFDD"
+                    Padding="8,3">
+                <TextBlock Text="Sample data preview"
+                           FontSize="10"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </Border>
+        </Grid>
+
+        <!-- Content: gallery OR stamped canvas -->
+        <Grid Grid.Row="1">
+            <local:TemplateGalleryView x:Name="GalleryView" />
+            <ScrollViewer x:Name="CanvasScroller"
+                          Visibility="Collapsed"
+                          Padding="20,4,20,20"
+                          HorizontalScrollMode="Disabled"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <local:InsightsCanvasPanel x:Name="CanvasPanel" />
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Page>

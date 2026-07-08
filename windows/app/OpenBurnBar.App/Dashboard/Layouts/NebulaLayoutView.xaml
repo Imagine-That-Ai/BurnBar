@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NebulaLayoutView — a bento grid: provider panel, a big burn card, a framed swarm
+  stage, and a tokens / sessions / cost-curve row. Windows peer of NebulaLayoutView.swift.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.Layouts.NebulaLayoutView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:OpenBurnBar.App.Components"
+    xmlns:layouts="using:OpenBurnBar.App.Dashboard.Layouts"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24" ColumnSpacing="16" RowSpacing="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.1*" />
+            <ColumnDefinition Width="1.4*" />
+            <ColumnDefinition Width="1*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="1.5*" />
+            <RowDefinition Height="1*" />
+        </Grid.RowDefinitions>
+
+        <!-- Provider panel. -->
+        <components:UnifiedGlassCard Grid.Row="0" Grid.Column="0">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Data source" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
+                <TextBlock x:Name="ProviderStatusText"
+                           Text="No SQLCipher database connected"
+                           TextWrapping="Wrap"
+                           FontSize="14" />
+            </StackPanel>
+        </components:UnifiedGlassCard>
+
+        <!-- Big burn card. -->
+        <components:UnifiedGlassCard Grid.Row="0" Grid.Column="1" Interactive="True">
+            <StackPanel Spacing="6" VerticalAlignment="Center">
+                <TextBlock Text="Burn rate" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
+                <TextBlock x:Name="BurnTile" Text="—" FontSize="34" FontWeight="Bold" />
+                <TextBlock x:Name="BurnDetailText" Text="Connect a usage database for live aggregates" FontSize="13" Opacity="0.7" />
+            </StackPanel>
+        </components:UnifiedGlassCard>
+
+        <!-- Framed swarm stage (transparent — backdrop reads through the frame). -->
+        <Border Grid.Row="0" Grid.Column="2"
+                CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                BorderThickness="1"
+                BorderBrush="{StaticResource OBBStrokeBrush}">
+            <TextBlock Text="Swarm"
+                       Margin="12"
+                       VerticalAlignment="Top"
+                       Opacity="0.5"
+                       FontSize="12" />
+        </Border>
+
+        <!-- Bottom row: tokens / sessions / cost-curve. -->
+        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                    Orientation="Horizontal" Spacing="16">
+            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
+                                     AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
+            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
+                                     AccentBrush="{StaticResource OBBAccentBrush}" />
+            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Cost"
+                                     AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

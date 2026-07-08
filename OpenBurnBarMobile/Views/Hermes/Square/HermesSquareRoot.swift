@@ -1,7 +1,10 @@
 import SwiftUI
+import os.log
 import OpenBurnBarCore
 import OpenBurnBarMedia
 import FirebaseAuth
+
+private let hermesSquareLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSquare")
 
 // MARK: - Hermes Square Root (Hermes Square §3 / §6.2)
 //
@@ -1032,7 +1035,7 @@ struct HermesSquareRoot: View {
                     )
                     await inbox.refresh()
                 } catch {
-                    print("Error updating CLI session metadata: \(error)")
+                    hermesSquareLogger.error("Error updating CLI session metadata: \(String(describing: error), privacy: .public)")
                 }
             }
         } else if prefix == "hermes" || prefix == "pi" || prefix == "cliMirror" {
@@ -1347,7 +1350,7 @@ struct HermesSquareRoot: View {
             HermesConversationListView(service: hermesService, dashboardSnapshot: nil)
         case .pi:
             PiConversationListView(service: piService)
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .junie:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
             if let cliRuntime = CLIAgentRuntime(assistant: runtime) {
                 CLIAgentConversationListView(runtime: cliRuntime)
             } else {
@@ -1363,7 +1366,7 @@ struct HermesSquareRoot: View {
             HermesChatView(service: hermesService, dashboardSnapshot: nil, route: .new)
         case .pi:
             PiChatThreadView(service: piService, route: .new)
-        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .junie:
+        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
             runtimeNativeView(for: runtime)
         }
     }

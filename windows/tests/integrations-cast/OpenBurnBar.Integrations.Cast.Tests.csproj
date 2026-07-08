@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable Google Cast integration (Phase 4 ·
+    Integrations · Google Cast lane). Runs today via `dotnet test` on the
+    authoring host, against the SAME assembly that ships on Windows. Mirrors the
+    proven presentation/switcher/dashboard test pattern (net10.0, xUnit).
+
+    Coverage:
+      • CastFramingTests           — byte-for-byte CASTV2 protobuf encode of a
+        known message, round-trip decode, the intentional inbound source/dest
+        default swap, streaming frame reassembly (partial + multi-frame + garbage).
+      • CastMdnsTests              — parses a captured _googlecast._tcp mDNS
+        advertisement (194 real bytes, with DNS name compression) into a
+        CastDevice byte-for-byte; builds the DNS-SD browse query; TXT parse;
+        the supports-display capability matrix; discovery merge/score/sort.
+      • CastReceiverProtocolTests  — namespaces/app-id, CONNECT/GET_STATUS/LAUNCH/
+        STOP/PING/PONG builders, DashCast LOAD force/reload semantics, the
+        fail-closed non-finite-number JSON guard.
+      • CastReceiverStateMachineTests — the launch handshake driver: fresh-launch
+        (idle), STOP-then-relaunch (stale session, incl. a live DashCast one),
+        transport CONNECT + 3-attempt LOAD plan, NOT_FOUND → friendly failure,
+        PING → PONG, missing-transport + no-response timeouts.
+      • CastReconnectPlannerTests  — backoff schedule + the success / HA-recovered
+        / failed classification of an attempt sequence.
+      • CastWizardTests            — the wizard state machine transitions + the
+        reactive view-model driven with a fake browser + fake cast runner.
+      • HomeAssistantRecoveryPayloadTests — the recovery webhook JSON body shape.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../integrations/cast/OpenBurnBar.Integrations.Cast/OpenBurnBar.Integrations.Cast.csproj" />
+  </ItemGroup>
+
+</Project>

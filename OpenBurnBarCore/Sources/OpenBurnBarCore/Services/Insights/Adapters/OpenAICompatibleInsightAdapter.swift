@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Generic OpenAI-compatible chat-completions adapter used for user-key
 /// providers that expose `/v1/chat/completions` but are not OpenAI itself

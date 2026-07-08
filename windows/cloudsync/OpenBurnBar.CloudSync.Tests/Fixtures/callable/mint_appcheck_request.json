@@ -1,0 +1,12 @@
+{
+  "data": {
+    "attestation": {
+      "kind": "mock",
+      "appId": "1:1234567890:web:abcdef0123456789",
+      "nonce": "0123456789abcdef0123",
+      "issuedAtMs": 1720000000000,
+      "mac": "deadbeefcafef00d"
+    },
+    "ttlMillis": 1800000
+  }
+}

@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 

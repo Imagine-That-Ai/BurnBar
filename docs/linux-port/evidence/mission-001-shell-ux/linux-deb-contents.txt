@@ -1,0 +1,11 @@
+drwxr-xr-x 0/0               0 2026-07-08 03:17 usr
+drwxr-xr-x 0/0               0 2026-07-08 03:17 usr/share
+drwxr-xr-x 0/0               0 2026-07-08 03:17 usr/share/applications
+-rw-r--r-- 0/0             220 2026-07-08 03:17 usr/share/applications/OpenBurnBar.desktop
+drwxr-xr-x 0/0               0 2026-07-08 03:17 usr/share/icons
+drwxr-xr-x 0/0               0 2026-07-08 03:17 usr/share/icons/hicolor
+drwxr-xr-x 0/0               0 2026-07-08 03:17 usr/share/icons/hicolor/256x256
+drwxr-xr-x 0/0               0 2026-07-08 03:17 usr/share/icons/hicolor/256x256/apps
+-rw-r--r-- 0/0           25018 2026-07-08 03:17 usr/share/icons/hicolor/256x256/apps/openburnbar-linux-desktop.png
+drwxr-xr-x 0/0               0 2026-07-08 03:17 usr/bin
+-rwxr-xr-x 0/0        15993560 2026-07-08 03:17 usr/bin/openburnbar-linux-desktop

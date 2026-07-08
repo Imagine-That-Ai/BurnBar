@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 // MARK: - Agent Provider Enum
 
@@ -30,6 +29,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case goose = "Goose"
     case openClaw = "OpenClaw"
     case openClaude = "OpenClaude"
+    case omp = "OMP"
     case ollama = "Ollama"
     case windsurf = "Windsurf"
     case warp = "Warp"
@@ -50,6 +50,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .openCode,
         .openClaw,
         .openClaude,
+        .omp,
         .hermes,
         .geminiCLI,
         .junie,
@@ -84,6 +85,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     public static let quotaSignalProviders: [AgentProvider] = [
         .codex,
         .openCode,
+        .omp,
         .claudeCode,
         .openAI,
         .deepSeek,
@@ -263,6 +265,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .openClaw
         case "openclaude", "open-claude":
             return .openClaude
+        case "omp", "ohmypi", "oh-my-pi", "oh my pi":
+            return .omp
         case "forge", "forgedev":
             return .forgeDev
         case "augment":
@@ -314,6 +318,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"
         case .openClaude: return "OpenClaudeLogo"
+        case .omp: return "OMPLogo"
         case .ollama:     return "OllamaLogo"
         case .windsurf:   return "WindsurfLogo"
         case .warp:       return "WarpLogo"
@@ -352,6 +357,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .goose: return "bird.fill"
         case .openClaw: return "point.3.connected.trianglepath.dotted"
         case .openClaude: return "arrow.triangle.branch"
+        case .omp: return "command"
         case .ollama: return "server.rack"
         case .windsurf: return "sailboat.fill"
         case .warp: return "terminal.fill"

@@ -38,6 +38,8 @@
 | **Windsurf** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Goose** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **OpenClaw** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
+| **OpenClaude** | `OpenClaudeQuotaAdapter` | `.unavailable` | Install detection / `openclaude` CLI | Spawned Claude Code fork; no usage API or programmatic quota source |
+| **OMP** | `OMPQuotaAdapter` | `.exact` | `omp usage --json --redact` | Oh My Pi local CLI quota reports by provider/account/window |
 | **OpenRouter** | Routed via API key | `.exact` | `GET openrouter.ai/v1/activity` | Per-call exact cost in USD (no quota limits) |
 | **Anthropic** | Admin API key | `.estimated` | `GET api.anthropic.com/v1/organizations` | Org-wide messages usage report (~24h lag) |
 
@@ -74,6 +76,7 @@
 | **Pi Agent** | None | N/A (local file) | N/A | Offline workspace interaction logger |
 | **xAI (Grok)** | API key / Management key | `xai-…` inference key; `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok pacing log + Management API; daemon gateway emits pacing events on routed xAI traffic |
 | **Grok Build CLI** | Local CLI + optional `XAI_API_KEY` | `grok` binary; sessions under `~/.grok/` | OpenBurnBar gateway block in `config.toml` | Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
+| **OMP** | Local CLI | `omp` binary | N/A | Uses installed Oh My Pi CLI; OpenBurnBar stores no provider credential |
 
 ---
 
@@ -96,6 +99,7 @@
 | Kimi | `GET https://kimi.com/api/v1/user/billing` | HTTP | Kimi BillingService payload returning polled usage logs |
 | Hermes | `~/.hermes/sessions/*.jsonl` | File read | Offline telemetry schemas parsing UI steps, duration, and local models |
 | Pi Agent | `~/.pi/sessions/*.jsonl` | File read | Scrapes conversation tokens and environment properties offline |
+| OMP | `omp usage --json --redact` | Local process | Redacted machine-readable usage reports with provider windows and quota buckets |
 
 ---
 
@@ -120,6 +124,7 @@
 | Kimi | On refresh (polled) | Yes |
 | Hermes | Real-time on automation step | None |
 | Pi Agent | Real-time on workspace transaction | None |
+| OMP | On refresh (polled) | None |
 
 ---
 

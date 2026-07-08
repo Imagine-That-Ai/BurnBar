@@ -5,6 +5,12 @@ import GRDB
 @testable import OpenBurnBar
 
 // MARK: - DashboardViewIntegrationTests
+//
+// After the Command Deck cleanup (Step 6), DashboardView stores navigation
+// state in @State properties. @State writes are managed by SwiftUI's view-graph
+// storage and do not persist outside of a mounted view, so these tests verify
+// initial/default state and pure-logic methods rather than simulating
+// mutations on an unmounted view instance.
 
 @MainActor
 final class DashboardViewIntegrationTests: XCTestCase {
@@ -34,25 +40,22 @@ final class DashboardViewIntegrationTests: XCTestCase {
 
     func test_initialRouteIsOverview() throws {
         let view = try makeDashboardView()
-        XCTAssertEqual(view.navigationModel.mainRoute, .overview)
+        XCTAssertEqual(view.mainRoute, .overview)
     }
 
-    func test_testTriggerNavigate_changesRoute() throws {
+    func test_initialRouteHistoryIsEmpty() throws {
         let view = try makeDashboardView()
-        view.testTriggerNavigate(to: .database)
-        XCTAssertEqual(view.navigationModel.mainRoute, .database)
+        XCTAssertEqual(view.routeHistory, [])
     }
 
-    func test_testTriggerGoBack_returnsToOverview() throws {
+    func test_canGoBackIsFalseOnOverview() throws {
         let view = try makeDashboardView()
-        view.testTriggerNavigate(to: .database)
-        view.testTriggerGoBack()
-        XCTAssertEqual(view.navigationModel.mainRoute, .overview)
+        XCTAssertFalse(view.canGoBack)
     }
 
-    func test_viewModeDefaultsToAgents() throws {
+    func test_backButtonHelpTextOnOverview() throws {
         let view = try makeDashboardView()
-        XCTAssertEqual(view.navigationModel.viewMode, .agents)
+        XCTAssertEqual(view.backButtonHelpText, "Back to Overview")
     }
 
     func test_settingsSheetStartsClosed() throws {
@@ -60,23 +63,30 @@ final class DashboardViewIntegrationTests: XCTestCase {
         XCTAssertFalse(view.showingSettings)
     }
 
-    func test_navigateToChatRoute() throws {
+    func test_routeTitleMapping() throws {
         let view = try makeDashboardView()
-        view.testTriggerNavigate(to: .chat)
-        XCTAssertEqual(view.navigationModel.mainRoute, .chat)
+        XCTAssertEqual(view.routeTitle(.overview), "Overview")
+        XCTAssertEqual(view.routeTitle(.chat), "Chat")
+        XCTAssertEqual(view.routeTitle(.database), "Database")
+        XCTAssertEqual(view.routeTitle(.projects), "Projects")
+        XCTAssertEqual(view.routeTitle(.quota), "Quota")
     }
 
-    func test_sidebarRouteOrderIncludesChat() throws {
+    func test_commandPaletteStartsClosed() throws {
         let view = try makeDashboardView()
-        let order = view.navigationModel.sidebarRouteOrder(
-            providerSummaries: [],
-            modelSummaries: []
-        )
-        XCTAssertTrue(order.contains(.chat))
+        XCTAssertFalse(view.showCommandPalette)
     }
 
-    func test_routeTitleForChat() throws {
-        let view = try makeDashboardView()
-        XCTAssertEqual(view.navigationModel.routeTitle(.chat), "Chat")
+    func test_primarySectionsContainSevenRoutes() {
+        XCTAssertEqual(DashboardMainRoute.primarySections.count, 7)
+        XCTAssertTrue(DashboardMainRoute.primarySections.contains(.chat))
+        XCTAssertTrue(DashboardMainRoute.primarySections.contains(.quota))
+        XCTAssertTrue(DashboardMainRoute.primarySections.contains(.memoryReview))
+    }
+
+    func test_primarySectionIndexIsOneBased() {
+        XCTAssertEqual(DashboardMainRoute.chat.primarySectionIndex, 1)
+        XCTAssertEqual(DashboardMainRoute.memoryReview.primarySectionIndex, 7)
+        XCTAssertNil(DashboardMainRoute.overview.primarySectionIndex)
     }
 }

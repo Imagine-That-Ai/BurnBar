@@ -120,7 +120,10 @@ final class CopilotParser: LogParser, Sendable {
 
             // Timestamps
             if let ts = json["timestamp"] as? String {
-                let date = ISO8601DateFormatter().date(from: ts)
+                // Lock-guarded shared parser: accepts fractional-second timestamps
+                // (which a default ISO8601DateFormatter() rejects) and avoids a
+                // per-line formatter allocation.
+                let date = ThreadSafeISO8601DateFormatter.parse(ts)
                 if startTime == nil { startTime = date }
                 endTime = date
             } else if let ts = json["timestamp"] as? Double {
@@ -135,14 +138,11 @@ final class CopilotParser: LogParser, Sendable {
             // Exact usage data (post-Feb 2026 Copilot CLI)
             // assistant.usage events and session.shutdown events contain token counts
             if eventType == "assistant.usage" || eventType == "session.shutdown" {
-                if let usage = json["usage"] as? [String: Any] {
-                    let extracted = TokenExtractionUtility.extractUsageTokens(usage)
-                    exactInputTokens += extracted.input
-                    exactOutputTokens += extracted.output
-                    exactCachedTokens += extracted.cacheRead
-                    foundExactUsage = true
-                }
-                if let usage = json["token_usage"] as? [String: Any] {
+                // `usage` and `token_usage` are alternate spellings of the same
+                // payload; an event carrying both would previously be counted
+                // twice. Prefer `usage`, fall back to `token_usage` — never add
+                // both for a single event.
+                if let usage = (json["usage"] as? [String: Any]) ?? (json["token_usage"] as? [String: Any]) {
                     let extracted = TokenExtractionUtility.extractUsageTokens(usage)
                     exactInputTokens += extracted.input
                     exactOutputTokens += extracted.output

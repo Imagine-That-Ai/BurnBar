@@ -361,7 +361,7 @@ public enum CLIRuntimeModelCatalog {
                 "jetbrains",
                 "JetBrains via Junie CLI"
             )
-        case .droid, .forge, .hermes, .pi, .openClaw, .openClaude:
+        case .droid, .forge, .hermes, .pi, .openClaw, .openClaude, .omp:
             return nil
         }
     }

@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import Foundation
+import os.log
 #if canImport(PushKit)
 @preconcurrency import PushKit
 #endif
@@ -20,6 +21,8 @@ import OpenBurnBarMedia
 /// (Decision 1 in `plans/2026-05-15-mercury-media-master-plan.md`).
 @MainActor
 final class VoIPCallService: NSObject {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "VoIPCallService")
+
     static let incomingCallNotification = Notification.Name("MediaCallIncomingNotification")
     static let endedCallNotification = Notification.Name("MediaCallEndedNotification")
 
@@ -111,7 +114,7 @@ extension VoIPCallService: @preconcurrency PKPushRegistryDelegate {
                 )
         } catch {
             #if DEBUG
-            print("VoIPCallService voip token persist failed: \(error.localizedDescription)")
+            Self.log.error("VoIPCallService voip token persist failed: \(error.localizedDescription, privacy: .public)")
             #endif
         }
     }

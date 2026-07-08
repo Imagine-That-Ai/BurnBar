@@ -1,3 +1,4 @@
+#if canImport(AppIntents)
 import AppIntents
 import Foundation
 
@@ -79,3 +80,4 @@ public struct AskAssistantIntent: AppIntent {
         return .result()
     }
 }
+#endif

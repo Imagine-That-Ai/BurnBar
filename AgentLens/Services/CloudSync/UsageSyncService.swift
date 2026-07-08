@@ -3,6 +3,27 @@ import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 
+/// Lifecycle of a one-shot orphaned-cloud-doc reconciliation request.
+///
+/// Cleanup deletes every same-device cloud doc whose usage ID is missing from
+/// the local table, so it must only ever compare against a FULLY persisted
+/// table. A recount that is mid-persist (or failed partway) leaves the table
+/// non-empty but incomplete — reconciling against it would destroy cloud
+/// history for rows not yet persisted.
+///
+/// `String`-raw so the state persists durably in UserDefaults (see
+/// `UsageSyncService.orphanReconciliationState`).
+enum UsageOrphanReconciliationState: String, Sendable, Equatable {
+    /// No reconciliation pending.
+    case idle
+    /// A recount started rebuilding the local table but its persist has not
+    /// verifiably committed. Cleanup must NOT run, and the request must stay
+    /// pending so a successful recount retry can re-arm it.
+    case awaitingRecountCompletion
+    /// The rebuild fully committed; the next sync may reconcile orphans.
+    case readyForReconciliation
+}
+
 /// Sync domain for uploading local TokenUsage rows to Firestore.
 ///
 /// Firestore layout: `users/{uid}/usage/{deviceId}_{usageId}`
@@ -12,6 +33,20 @@ import OpenBurnBarCore
 /// being written in plaintext. An opaque keyed `projectKeyHash` is also written
 /// so on-device readers can group usage by project without decrypting every row.
 final class UsageSyncService: CloudSyncDomain, Sendable {
+    /// Durable one-shot reconciliation state: recountAll drives it, the next
+    /// sync consumes it. UserDefaults (not in-memory state) because
+    /// uploadPending() constructs a fresh, short-lived UsageSyncService per
+    /// call — instance state would be created only AFTER recountAll already
+    /// signalled, so the request would never be seen. It also survives a
+    /// relaunch between recount and the next sync — including an app death
+    /// while a recount was mid-persist, where the state stays
+    /// `awaitingRecountCompletion` and cleanup remains blocked until a recount
+    /// verifiably commits.
+    static let orphanReconciliationStateDefaultsKey = "OpenBurnBarUsageOrphanReconciliationState"
+    /// Legacy Bool key from the pre-tri-state durable flag ("a recount
+    /// completed and requested reconciliation"). Read for migration only;
+    /// cleared on the first state transition.
+    static let orphanReconciliationDefaultsKey = "OpenBurnBarUsageOrphanReconciliationRequested"
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
@@ -29,6 +64,46 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         self.vaultKeyProvider = vaultKeyProvider
     }
 
+    /// The durable reconciliation lifecycle state. Orphan cleanup is O(total
+    /// same-device history) in Firestore reads, so it must not run on every
+    /// incremental sync — and it only runs in `.readyForReconciliation`,
+    /// i.e. after the rebuild's local persist verifiably committed.
+    static var orphanReconciliationState: UsageOrphanReconciliationState {
+        get {
+            let defaults = UserDefaults.standard
+            if let raw = defaults.string(forKey: orphanReconciliationStateDefaultsKey),
+               let decoded = UsageOrphanReconciliationState(rawValue: raw) {
+                return decoded
+            }
+            // Migration: the legacy durable flag was a Bool meaning "a recount
+            // completed and requested reconciliation".
+            return defaults.bool(forKey: orphanReconciliationDefaultsKey)
+                ? .readyForReconciliation
+                : .idle
+        }
+        set {
+            let defaults = UserDefaults.standard
+            defaults.set(newValue.rawValue, forKey: orphanReconciliationStateDefaultsKey)
+            defaults.removeObject(forKey: orphanReconciliationDefaultsKey)
+        }
+    }
+
+    /// A recount is about to clear and rebuild the local usage table: demote
+    /// any armed reconciliation so orphan cleanup can never run against a
+    /// mid-rebuild (partially populated) table. Durable — an app death between
+    /// here and the verified commit keeps cleanup blocked after relaunch, and
+    /// the pending request is re-armed by the next recount that fully commits.
+    static func beginOrphanReconciliationRecount() {
+        orphanReconciliationState = .awaitingRecountCompletion
+    }
+
+    /// Request a one-shot orphaned-cloud-doc reconciliation on the next sync.
+    /// Durable across the ephemeral per-sync UsageSyncService instances.
+    /// Callers assert the local table is fully persisted and authoritative.
+    static func requestOrphanReconciliation() {
+        orphanReconciliationState = .readyForReconciliation
+    }
+
     /// Upload all unsynced local usage rows to Firestore.
     /// Call after UsageAggregator.refreshAll().
     func sync() async {
@@ -42,7 +117,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         guard state.beginSyncingIfIdle() else { return }
         let deviceId = gate.account.deviceId
         let syncStartTime = Date()
-        var lastBatchCount = 0
+        var syncedItemCount = 0
 
         defer { state.endSyncing() }
 
@@ -55,14 +130,20 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             while true {
                 let unsynced = try await context.dataStore.fetchUnsynced()
                 guard !unsynced.isEmpty else { break }
-                lastBatchCount = unsynced.count
+                syncedItemCount += unsynced.count
 
                 let batch = context.firestoreGateway.batch()
 
                 for usage in unsynced {
                     let docId = "\(deviceId)_\(usage.id.uuidString)"
                     let docRef = collectionRef.document(docId)
-                    let data = try encodeUsage(usage, deviceId: deviceId, vaultKey: resolvedVaultKey.keyData)
+                    let data = try encodeUsage(
+                        usage,
+                        uid: uid,
+                        deviceId: deviceId,
+                        docID: docId,
+                        vaultKey: resolvedVaultKey.keyData
+                    )
                     batch.setData(data, forDocument: docRef, merge: true)
                 }
 
@@ -78,12 +159,45 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 try await context.dataStore.markSynced(ids: syncedIds)
             }
 
+            // Orphan cleanup runs only AFTER the replacement upload committed
+            // (never leaves the cloud with neither old nor new docs), only when
+            // a recount explicitly requested reconciliation AND its local
+            // persist verifiably committed (`.readyForReconciliation` — a
+            // recount that is mid-persist or failed partway leaves the table
+            // partially populated, and reconciling against it would delete
+            // cloud docs for rows not yet persisted), and never against an
+            // empty local table (a fully failed recount persist must not
+            // delete the device's entire cloud history).
+            if Self.orphanReconciliationState == .readyForReconciliation {
+                let keeping = Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
+                if keeping.isEmpty {
+                    AppLogger.sync.error(
+                        "usage_orphan_cleanup_refused_empty_local_table",
+                        metadata: ["reason": "failed recount persist would delete entire cloud history"]
+                    )
+                } else {
+                    let completed = try await deleteOrphanedUsageDocs(
+                        collectionRef: collectionRef,
+                        deviceId: deviceId,
+                        keeping: keeping
+                    )
+                    // Clear the one-shot request only after cleanup verifiably
+                    // completed (a failed sync retries reconciliation next
+                    // time), and only while still armed: if a new recount
+                    // started meanwhile (`.awaitingRecountCompletion`), keep
+                    // its state instead of stomping it.
+                    if completed, Self.orphanReconciliationState == .readyForReconciliation {
+                        Self.orphanReconciliationState = .idle
+                    }
+                }
+            }
+
             state.withLock {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = nil
             }
             let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
-            let itemCountBucket = AnalyticsBuckets.count(lastBatchCount)
+            let itemCountBucket = AnalyticsBuckets.count(syncedItemCount)
             Task { @MainActor in
                 Analytics.shared.track(.cloudsyncCompleted, [
                     "domain": "usage",
@@ -94,8 +208,55 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             }
             try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
-            await recordSyncError(error)
+            await recordSyncError(error, uid: uid, deviceId: deviceId)
         }
+    }
+
+    /// Deletes same-device cloud usage docs whose usage IDs are missing from
+    /// `currentUsageIds`. Returns `true` when cleanup fully completed, `false`
+    /// when it aborted because a new recount started mid-cleanup (the local
+    /// table is being rebuilt, so `currentUsageIds` may no longer describe a
+    /// fully persisted table — deleting against it could destroy cloud history
+    /// for rows not yet re-persisted).
+    private func deleteOrphanedUsageDocs(
+        collectionRef: CloudSyncCollectionGateway,
+        deviceId: String,
+        keeping currentUsageIds: Set<String>
+    ) async throws -> Bool {
+        let prefix = "\(deviceId)_"
+        let snapshot = try await collectionRef.whereField("deviceId", isEqualTo: deviceId).getDocuments()
+        let orphanDocIds = snapshot.documents.compactMap { document -> String? in
+            let documentID = document.documentID
+            guard documentID.hasPrefix(prefix) else { return nil }
+            let usageID = String(documentID.dropFirst(prefix.count))
+            return currentUsageIds.contains(usageID) ? nil : documentID
+        }
+        guard !orphanDocIds.isEmpty else { return true }
+
+        for batchStart in stride(from: 0, to: orphanDocIds.count, by: 400) {
+            // Re-check the reconciliation state before every delete commit: a
+            // recount starting (`beginOrphanReconciliationRecount`) demotes
+            // the state, and deletion must stop before touching another doc.
+            guard Self.orphanReconciliationState == .readyForReconciliation else {
+                AppLogger.sync.notice(
+                    "usage_orphan_cleanup_aborted_recount_started",
+                    metadata: ["deletedSoFar": "\(batchStart)", "planned": "\(orphanDocIds.count)"]
+                )
+                return false
+            }
+            let batch = context.firestoreGateway.batch()
+            for docId in orphanDocIds[batchStart..<min(batchStart + 400, orphanDocIds.count)] {
+                batch.deleteDocument(collectionRef.document(docId))
+            }
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "usage"
+            ) {
+                try await batch.commit()
+            }
+        }
+        return true
     }
 
     private func publishDeviceHeartbeatBestEffort(uid: String, deviceId: String) async {
@@ -119,8 +280,28 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 "isOnline": true,
                 "lastSyncAt": Timestamp(date: now),
                 "collectionsInSync": collectionsInSync,
+                "lastErrorCode": FieldValue.delete(),
                 "updatedAt": Timestamp(date: now)
             ], merge: true)
+    }
+
+    private func publishSyncFailureStatus(uid: String, deviceId: String, error: Error) async {
+        let now = Date()
+        do {
+            try await context.firestoreGateway.collection("users").document(uid)
+                .collection("sync_status").document(deviceId).setData([
+                    "deviceId": deviceId,
+                    "isOnline": true,
+                    "lastAttemptAt": Timestamp(date: now),
+                    "lastErrorCode": Self.syncBlockedCode(for: error),
+                    "updatedAt": Timestamp(date: now)
+                ], merge: true)
+        } catch {
+            AppLogger.sync.error(
+                "usage_sync_failure_status_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     private func publishDeviceHeartbeat(uid: String, deviceId: String, at now: Date) async throws {
@@ -137,8 +318,41 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         ], merge: true)
     }
 
-    private func recordSyncError(_ error: Error) async {
+    static func syncBlockedCode(for error: Error) -> String {
+        if let cloudVaultError = error as? CloudVaultAccessError {
+            switch cloudVaultError {
+            case .vaultKeyUnavailable:
+                return "vault_key_unavailable"
+            case .vaultKeyMismatch:
+                return "vault_key_mismatch"
+            case .invalidWrappedKey:
+                return "vault_key_invalid"
+            }
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == FirestoreErrorDomain,
+           let code = FirestoreErrorCode.Code(rawValue: nsError.code) {
+            switch code {
+            case .permissionDenied:
+                return "permission_denied"
+            case .unauthenticated:
+                return "unauthenticated"
+            default:
+                break
+            }
+        }
+
+        if nsError.domain == NSURLErrorDomain {
+            return "network_unavailable"
+        }
+
+        return "other"
+    }
+
+    private func recordSyncError(_ error: Error, uid: String, deviceId: String) async {
         state.withLock { $0.lastSyncError = error.localizedDescription }
+        await publishSyncFailureStatus(uid: uid, deviceId: deviceId, error: error)
 
         let nsError = error as NSError
         let errorType = String(describing: type(of: error))
@@ -159,7 +373,13 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
     }
 
-    private func encodeUsage(_ usage: TokenUsage, deviceId: String, vaultKey: Data) throws -> [String: Any] {
+    private func encodeUsage(
+        _ usage: TokenUsage,
+        uid: String,
+        deviceId: String,
+        docID: String,
+        vaultKey: Data
+    ) throws -> [String: Any] {
         var data: [String: Any] = [
             "id": usage.id.uuidString,
             "deviceId": deviceId,
@@ -191,7 +411,22 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
         // Seal the project name instead of writing it in clear. The server stays a
         // blind store-and-forward: only on-device key holders can recover the name.
-        let sealedProjectName = try CloudVaultCrypto.sealText(usage.projectName, keyData: vaultKey)
+        // The deployed rules only accept a sealed envelope that carries the exact
+        // per-document AAD context (`validCloudSealedTextAt`): schemaVersion >= 2
+        // plus `aad == "OpenBurnBar-CloudVault-aad-v2|uid|usage|docID|sealedProjectName|2|sealedProjectName"`.
+        // Sealing without the context omits both fields, so every usage create is
+        // PERMISSION_DENIED — the writer must bind the seal to its document.
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "usage",
+            docID: docID,
+            field: "sealedProjectName"
+        )
+        let sealedProjectName = try CloudVaultCrypto.sealText(
+            usage.projectName,
+            keyData: vaultKey,
+            aadContext: aadContext
+        )
         data["sealedProjectName"] = try CloudVaultCrypto.firestoreDictionary(sealedProjectName)
         // Opaque keyed group-by trapdoor so readers can bucket usage by project
         // without decrypting every row. Absent for empty/blank names. A real

@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/SessionLogs/SessionLogsView.swift (Phase 3 · W7).
+  A list-detail surface: a 340px command center (stats header, search, source/group
+  filter chips, grouped ListView) on the left and the SessionLogDetailPane on the right —
+  the Windows analog of the SwiftUI HStack(commandCenter | Divider | detailPane). It is
+  designed to be hosted as a destination inside the AppShell NavigationView.
+
+  Binds to the portable OpenBurnBar.App.Presentation.SessionLogs.SessionLogsViewModel
+  (unit-tested on macOS). The grouped list uses a CollectionViewSource (IsSourceGrouped)
+  over the view-model's Groups; each group's Logs is the item source.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.SessionLogs.SessionLogsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:slvm="using:OpenBurnBar.App.Presentation.SessionLogs"
+    xmlns:local="using:OpenBurnBar.App.SessionLogs"
+    xmlns:conv="using:OpenBurnBar.App.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <conv:NegatedBoolToVisibilityConverter x:Key="NegatedBoolToVisibility" />
+        <conv:SessionLogAccentBrushConverter x:Key="AccentBrush" />
+        <CollectionViewSource x:Name="GroupedLogs" IsSourceGrouped="True" ItemsPath="Logs" />
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340" />
+            <ColumnDefinition Width="1" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Command center -->
+        <Grid Grid.Column="0" Background="{StaticResource PensieveColorInkElevatedBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Stats header -->
+            <StackPanel Grid.Row="0" Spacing="8" Padding="20,20,20,12">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE9D9;" FontSize="11" Foreground="{StaticResource OBBAccentBrush}" />
+                    <TextBlock Text="SESSION LOGS"
+                               FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </StackPanel>
+                <TextBlock Text="{x:Bind ViewModel.CountLabel, Mode=OneWay}"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="{x:Bind ViewModel.ProviderCount, Mode=OneWay}"
+                                   FontFamily="Cascadia Mono, Consolas"
+                                   FontSize="12"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock Text="providers" FontSize="11" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="{x:Bind ViewModel.ProjectCount, Mode=OneWay}"
+                                   FontFamily="Cascadia Mono, Consolas"
+                                   FontSize="12"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock Text="projects" FontSize="11" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Search -->
+            <Border Grid.Row="1"
+                    Margin="20,0,20,8"
+                    CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                    Background="{StaticResource OBBSurfaceBrush}"
+                    BorderBrush="{StaticResource OBBStrokeBrush}"
+                    BorderThickness="1"
+                    Padding="12,2">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="11"
+                              VerticalAlignment="Center"
+                              Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBox Grid.Column="1"
+                             x:Name="SearchBox"
+                             PlaceholderText="Search by title, project, provider, or keyword…"
+                             TextChanged="OnSearchTextChanged"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             FontSize="13" />
+                </Grid>
+            </Border>
+
+            <!-- Source filter chips -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Padding="20,4,20,8">
+                <Button x:Name="FilterAll" Content="All" Tag="All" Click="OnSourceFilterClick"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                <Button x:Name="FilterProvider" Content="Provider" Tag="Provider" Click="OnSourceFilterClick"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                <Button x:Name="FilterAssistant" Content="Assistant" Tag="Assistant" Click="OnSourceFilterClick"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}" />
+            </StackPanel>
+
+            <!-- Group-mode chips -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Padding="20,0,20,10">
+                <Button x:Name="GroupTime" Content="Time" Tag="Time" Click="OnGroupModeClick"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                <Button x:Name="GroupProvider" Content="Provider" Tag="Provider" Click="OnGroupModeClick"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                <Button x:Name="GroupProject" Content="Project" Tag="Project" Click="OnGroupModeClick"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}" />
+            </StackPanel>
+
+            <!-- List / loading / empty -->
+            <Grid Grid.Row="4">
+                <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                              Width="24" Height="24"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Padding="24"
+                            Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                    <FontIcon Glyph="&#xE9D9;" FontSize="36" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                    <TextBlock Text="No session logs yet"
+                               HorizontalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </StackPanel>
+
+                <ListView x:Name="LogsList"
+                          SelectionMode="Single"
+                          SelectionChanged="OnLogSelectionChanged"
+                          Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource NegatedBoolToVisibility}}"
+                          Padding="8,4">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,1" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate x:DataType="slvm:SessionLogGroup">
+                                    <Grid Padding="12,8,12,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Grid.Column="0"
+                                                  Glyph="{x:Bind local:SessionLogRowFormat.GroupGlyph(Id)}"
+                                                  FontSize="11"
+                                                  Margin="0,0,8,0"
+                                                  Foreground="{x:Bind Accent, Converter={StaticResource AccentBrush}}" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{x:Bind Title}"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                        <Border Grid.Column="2"
+                                                CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                                                Background="#1FC7CFDD"
+                                                Padding="8,1">
+                                            <TextBlock Text="{x:Bind local:SessionLogRowFormat.Count(Count)}"
+                                                       FontFamily="Cascadia Mono, Consolas"
+                                                       FontSize="10"
+                                                       Foreground="{x:Bind Accent, Converter={StaticResource AccentBrush}}" />
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListView.GroupStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="slvm:SessionLogRecord">
+                            <Grid ColumnSpacing="8" Padding="6,5">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0"
+                                        Width="28" Height="28"
+                                        CornerRadius="14"
+                                        Background="#1FC7CFDD"
+                                        VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE8BD;" FontSize="12"
+                                              Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind DisplayTitle}"
+                                               FontSize="12"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="{x:Bind ProjectName}"
+                                                   FontSize="10"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                        <TextBlock Text="·" FontSize="10" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                        <TextBlock Text="{x:Bind local:SessionLogRowFormat.Messages(MessageCount)}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock Grid.Column="2"
+                                           Text="{x:Bind local:SessionLogRowFormat.Time(TimelineDate)}"
+                                           FontSize="10"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+        </Grid>
+
+        <!-- Divider -->
+        <Border Grid.Column="1" Background="{StaticResource PensieveColorGlassLineBrush}" />
+
+        <!-- Detail -->
+        <local:SessionLogDetailPane Grid.Column="2" x:Name="DetailPane" />
+    </Grid>
+</UserControl>

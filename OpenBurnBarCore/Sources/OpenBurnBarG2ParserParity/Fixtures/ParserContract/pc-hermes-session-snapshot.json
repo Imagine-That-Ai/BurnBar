@@ -1,0 +1,19 @@
+{
+  "session_id": "cron_test_001",
+  "model": "MiniMax-M2.7-highspeed",
+  "platform": "cron",
+  "session_start": "2026-04-01T16:30:00.000Z",
+  "last_updated": "2026-04-01T16:30:12.000Z",
+  "messages": [
+    {
+      "role": "user",
+      "timestamp": "2026-04-01T16:30:00.000Z",
+      "content": "Build a beautiful district core with parks and mixed-use frontage."
+    },
+    {
+      "role": "assistant",
+      "timestamp": "2026-04-01T16:30:12.000Z",
+      "content": "Reviewed the build area, planned a coherent block, and applied a bounded set of upgrades."
+    }
+  ]
+}

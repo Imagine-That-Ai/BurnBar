@@ -34,6 +34,14 @@ class BudgetGate(
 
         val candidates = mutableListOf<BudgetRuleEntity>()
         candidates.addAll(dao.getCredentialRules(credential.providerID, credential.slotID))
+        candidates.addAll(
+            dao.getOrganizationRules(
+                slotID = credential.slotID,
+                displayLabel = credential.displayLabel,
+                providerAccountID = credential.providerAccountID,
+                providerAccountLabel = credential.providerAccountLabel,
+            ),
+        )
         if (!projectName.isNullOrBlank()) {
             candidates.addAll(dao.getProjectRules(projectName))
         }

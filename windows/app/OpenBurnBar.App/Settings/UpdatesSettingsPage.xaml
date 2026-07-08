@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Updates (Phase 3 · W7). WinUI peer of AgentLens/Views/Settings/UpdatesSettingsView.swift,
+  as CommunityToolkit SettingsCard rows anchored to their SettingsAnchor ids so a search
+  result deep-links to App Version / Automatic Checks / Release Notes.
+-->
+<Page
+    x:Class="OpenBurnBar.App.Settings.Winui.UpdatesSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}">
+        <StackPanel Spacing="6" MaxWidth="720" HorizontalAlignment="Left">
+
+            <TextBlock
+                Style="{StaticResource TitleTextBlockStyle}"
+                Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                Text="Updates" />
+            <TextBlock
+                Margin="0,0,0,8"
+                Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                Text="App version, automatic updates, and the release channel." />
+
+            <tk:SettingsCard x:Name="OverviewCard" Header="App Version"
+                             Description="The installed OpenBurnBar version and update channel">
+                <tk:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE896;" />
+                </tk:SettingsCard.HeaderIcon>
+                <TextBlock Foreground="{StaticResource PensieveColorTextMuteBrush}" Text="—" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="AutomaticChecksCard" Header="Automatically Check for Updates"
+                             Description="Check shortly after launch and once a day">
+                <ToggleSwitch IsOn="True" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="ReleaseNotesCard" Header="Release Notes"
+                             Description="Open the GitHub releases page">
+                <Button Content="Open" />
+            </tk:SettingsCard>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

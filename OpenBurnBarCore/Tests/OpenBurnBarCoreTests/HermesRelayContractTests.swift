@@ -201,6 +201,7 @@ final class HermesRelayContractTests: XCTestCase {
             .claude: "claude_code",
             .openClaw: "openclaw",
             .openClaude: "openclaude",
+            .omp: "omp",
             .droid: "droid",
             .forge: "forge",
             .antigravity: "antigravity",

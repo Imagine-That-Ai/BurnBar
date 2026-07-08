@@ -563,6 +563,7 @@ extension AccountSwitcherSettingsView {
                 case .kimi: "KimiLogo"
                 case .pi: "PiAgentLogo"
                 case .junie: "JunieLogo"
+                case .omp: "OMPLogo"
                 }
                 groups.append(ProfileGroup(
                     key: cliType.rawValue,

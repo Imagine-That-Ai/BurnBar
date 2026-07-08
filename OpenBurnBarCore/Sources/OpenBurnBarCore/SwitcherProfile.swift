@@ -52,6 +52,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     case antigravity
     case grok
     case cursorAgent = "cursoragent"
+    case omp
     case gemini
     case kimi
     case pi
@@ -67,6 +68,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .antigravity: return "Antigravity"
         case .grok: return "Grok Build"
         case .cursorAgent: return "Cursor Agent"
+        case .omp: return "OMP"
         case .gemini: return "Gemini CLI"
         case .kimi: return "Kimi"
         case .pi: return "Pi"
@@ -85,6 +87,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .antigravity: return "AntigravityLogo"
         case .grok: return "GrokLogo"
         case .cursorAgent: return "CursorLogo"
+        case .omp: return "OMPLogo"
         case .gemini: return "GeminiCLILogo"
         case .kimi: return "KimiLogo"
         case .pi: return "PiAgentLogo"
@@ -103,6 +106,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .antigravity: return "agy"
         case .grok: return "grok"
         case .cursorAgent: return "cursor-agent"
+        case .omp: return "omp"
         case .gemini: return "gemini"
         case .kimi: return "kimi"
         case .pi: return "pi"
@@ -169,6 +173,14 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "/opt/homebrew/bin/cursor-agent",
                 "$HOME/.cursor-agent/bin/cursor-agent"
             ]
+        case .omp:
+            return [
+                "/usr/local/bin/omp",
+                "/opt/homebrew/bin/omp",
+                "$HOME/.bun/bin/omp",
+                "$HOME/.local/bin/omp",
+                "$HOME/.omp/bin/omp"
+            ]
         case .gemini:
             return [
                 "/usr/local/bin/gemini",
@@ -222,6 +234,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .antigravity: return .antigravity
         case .grok: return .xAI
         case .cursorAgent: return .cursorAgent
+        case .omp: return .omp
         case .gemini: return .geminiCLI
         case .kimi: return .kimi
         case .pi: return .piAgent

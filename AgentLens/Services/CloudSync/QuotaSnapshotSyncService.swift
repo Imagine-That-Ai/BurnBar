@@ -164,15 +164,15 @@ final class QuotaSnapshotSyncService: Sendable {
     private func encodeSnapshot(_ snapshot: ProviderQuotaSnapshot, deviceId: String) -> [String: Any] {
         let sourceID = normalizedSourceID(snapshot, fallback: deviceId)
         var result: [String: Any] = [
-            "provider": snapshot.provider.persistedToken,
+            "provider": (AgentProvider.fromProviderID(snapshot.providerID) ?? AgentProvider(rawValue: snapshot.provider))?.persistedToken ?? snapshot.provider,
             "providerID": snapshot.providerID.rawValue,
             "sourceKind": snapshot.sourceKind.rawValue,
             "sourceId": sourceID,
             "sourceID": sourceID,
-            "source": snapshot.provider.displayName,
+            "source": (AgentProvider.fromProviderID(snapshot.providerID) ?? AgentProvider(rawValue: snapshot.provider))?.displayName ?? snapshot.provider,
             "fetchedAt": Timestamp(date: snapshot.fetchedAt),
             "confidence": snapshot.confidence.rawValue,
-            "statusMessage": snapshot.statusMessage,
+            "statusMessage": snapshot.statusMessage ?? "",
             "buckets": snapshot.displayableQuotaBuckets.map(encodeBucket),
             "schemaVersion": snapshot.schemaVersion,
             "updatedAt": FieldValue.serverTimestamp()

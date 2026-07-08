@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Chat/ElderWand/ElderWandConfiguratorView.swift (Phase 3 · W7).
+  The Elder Wand configurator: assemble an analysis panel + judge from the live advertised
+  models, tune the research (tool-call) budget, and save named presets. A scrolling multi-section
+  form of Liquid-Glass cards (Analysis / Judge / Research budget / Presets), the Windows analog of
+  the SwiftUI SettingsDetailContainer + GlassCard stack.
+
+  Reachability parity: on macOS this surface is gated behind `.gatedFeature(.elderWand)` and reached
+  from the Settings tree ("Analysis Models") or the chat header — NOT one of the 12 top-level nav
+  destinations. It is hosted the same way here (a Settings leaf / gated entry the integration wave
+  wires in), so it is intentionally not registered as a NavigationView destination.
+
+  Model catalog + settings store are injected via Configure(); the sections x:Bind the portable,
+  macOS-unit-tested view-models.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.ElderWand.ElderWandConfiguratorView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.ElderWand"
+    xmlns:comp="using:OpenBurnBar.App.Components"
+    xmlns:conv="using:OpenBurnBar.App.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+        <ScrollViewer Padding="20"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16" MaxWidth="720" HorizontalAlignment="Left">
+                <!-- Title + subtitle -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Analysis Models"
+                               FontSize="22"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <TextBlock Text="The Elder Wand answers hard prompts with a panel of models. They reason in parallel; a judge compares their answers; your chat model writes the final reply."
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                </StackPanel>
+
+                <!-- Empty state: opened without a live chat catalog -->
+                <comp:UnifiedGlassCard Visibility="{x:Bind ShowNotConfigured, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel Spacing="12" Padding="20" HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE8F1;" FontSize="32" Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                        <TextBlock Text="Open from a chat to pick live models"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   TextAlignment="Center"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock Text="The Elder Wand panel is built from the models your chat gateway is advertising right now. Start a chat, then open Analysis Models from the chat header."
+                                   FontSize="12"
+                                   TextAlignment="Center"
+                                   MaxWidth="420"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
+                </comp:UnifiedGlassCard>
+
+                <!-- Empty state: configured but no models advertised -->
+                <comp:UnifiedGlassCard Visibility="{x:Bind ShowNoModels, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel Spacing="8" Padding="20">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="28" HorizontalAlignment="Left" Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                        <TextBlock Text="No live models advertised"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock Text="Connect or enable a routed provider, then refresh the chat gateway."
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
+                </comp:UnifiedGlassCard>
+
+                <!-- The live form -->
+                <StackPanel Spacing="16"
+                            Visibility="{x:Bind HasLiveModels, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                    <comp:UnifiedGlassCard>
+                        <local:ElderWandAnalysisSection x:Name="AnalysisSection" Margin="4" />
+                    </comp:UnifiedGlassCard>
+
+                    <comp:UnifiedGlassCard>
+                        <local:ElderWandJudgeSection x:Name="JudgeSection" Margin="4" />
+                    </comp:UnifiedGlassCard>
+
+                    <!-- Research (tool-call) budget -->
+                    <comp:UnifiedGlassCard>
+                        <StackPanel Spacing="12" Margin="4">
+                            <Grid>
+                                <StackPanel Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="Research budget"
+                                               FontSize="15"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                    <TextBlock Text="Max web search / fetch steps per model."
+                                               FontSize="11"
+                                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                </StackPanel>
+                                <TextBlock HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PensieveColorBrassBrightBrush}"
+                                           Text="{x:Bind BudgetLabel(Editor.MaxToolCalls), Mode=OneWay}" />
+                            </Grid>
+                            <Slider x:Name="BudgetSlider"
+                                    ValueChanged="OnBudgetChanged"
+                                    Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                        </StackPanel>
+                    </comp:UnifiedGlassCard>
+
+                    <comp:UnifiedGlassCard>
+                        <local:ElderWandPresetSection x:Name="PresetSection" Margin="4" />
+                    </comp:UnifiedGlassCard>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

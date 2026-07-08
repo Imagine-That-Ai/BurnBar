@@ -79,6 +79,13 @@ public enum HermesInlineMarkdown {
     /// This is the lightweight sibling of the chip-rendering rich bubbles —
     /// right for cards, banners, and any surface where tappable atom chips
     /// would be overkill but raw markdown markers would be wrong.
+    ///
+    /// `AttributedString.inlinePresentationIntent` / `InlinePresentationIntent`
+    /// live in the Apple Foundation attributed-string scopes and are unavailable in
+    /// the Windows/Linux swift-corelibs Foundation. This rich-text renderer is only
+    /// consumed by SwiftUI surfaces (all under Views/, excluded off-Apple), so it is
+    /// Apple-only. The plain run-stream expansion (`expand`) above stays cross-platform.
+    #if canImport(Darwin)
     public static func attributedString(_ text: String) -> AttributedString {
         var result = AttributedString()
         for run in HermesAtomParser.parse(text) {
@@ -99,6 +106,7 @@ public enum HermesInlineMarkdown {
         }
         return result
     }
+    #endif
 
     // MARK: - Body expansion
 

@@ -6,6 +6,23 @@
       "headers": {
         "Authorization": "Bearer ${MEM0_BURNBAR_API_KEY}"
       }
+    },
+    "zenith": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "/Users/albertonunez/.local/share/zenith/zenith",
+        "zenith-server",
+        "--mode",
+        "orchestrator"
+      ],
+      "env": {
+        "ZENITH_ORCHESTRATOR_PROVIDER": "claude",
+        "ZENITH_WORKER_PROVIDER": "claude",
+        "ZENITH_WORKER_ACP_COMMAND": "claude-agent-acp"
+      }
     }
   }
 }

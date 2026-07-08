@@ -1,0 +1,19 @@
+generated_at=2026-07-05T08:24:36Z
+protected_paths=docs/linux-port tools/linux-toolchain OpenBurnBarCore OpenBurnBarDaemon apps/linux-desktop functions scripts/linux-port
+mission_runtime_paths_not_modified=.zenith runtime-managed state is outside product checkout and only copied-to/append-only with escalation
+worktree_root=$WORKSPACE
+mission_bundle=$ZENITH_EVIDENCE/active-checkout-v20-repair-20260705T0735Z
+no_broad_reset_policy=No git reset --hard, git clean, broad checkout/restore, or broad stage was used by this worker. Existing dirty user/worker changes were preserved.
+observed_reflog_tail
+1b62ec42bd HEAD@{2026-07-04 21:52:40 -0500}: pull --ff-only origin main: Fast-forward
+8092d19ea1 HEAD@{2026-07-04 21:52:39 -0500}: checkout: moving from fix/post-merge-parity-fixes to main
+c70c1615a2 HEAD@{2026-07-04 20:22:03 -0500}: commit: fix(core): make ClaudeQuotaAdapter.JSONLTokenWindows + scanJSONLTokenWindows public; alias EscrowDeviceTrustState
+bbe44fbd33 HEAD@{2026-07-04 19:48:38 -0500}: commit: fix(core): add public init to OpenBurnBarAppPaths
+956dbecdce HEAD@{2026-07-04 19:01:00 -0500}: commit: fix(core): make AntigravityParser.parseSession + stringLength public
+a0a6217cbe HEAD@{2026-07-04 18:24:29 -0500}: commit: fix(post-merge): WindsurfParser Windows parity + Rust audit log LazyLock + AAR/Kotlin regen
+8092d19ea1 HEAD@{2026-07-04 18:24:19 -0500}: checkout: moving from main to fix/post-merge-parity-fixes
+8092d19ea1 HEAD@{2026-07-04 17:19:03 -0500}: pull --ff-only origin main: Fast-forward
+f927311642 HEAD@{2026-07-04 17:19:02 -0500}: checkout: moving from windows/integration-all-prs to main
+80ec257985 HEAD@{2026-07-04 17:15:28 -0500}: commit: feat(windows): atomic integration — all 17 parity-burndown PRs + macOS app BUILD SUCCEEDED
+1e7634fa3b HEAD@{2026-07-04 17:15:27 -0500}: reset: moving to 1e7634fa3b2e9f2c48639e8fba7c55245544bcd5
+38b1d6b6d6 HEAD@{2026-07-04 16:46:32 -0500}: commit: fix(rust): cargo fmt the audit log Mutex code (fixes build-test-lint cargo fmt --check)

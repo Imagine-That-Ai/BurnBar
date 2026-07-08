@@ -170,4 +170,68 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         XCTAssertEqual(publishCount, 0, "Reading activeGrantCount from a SwiftUI body must not publish")
         cancellable.cancel()
     }
+
+    // MARK: - Remember-by-default + sliding renewal (2026-07-03)
+
+    func test_rememberAcceptedMirrorPeersDefaultsOnWhenUnset() {
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertTrue(store.rememberAcceptedMirrorPeers,
+                      "an unset key must default to remembering, so users only Accept once")
+    }
+
+    func test_explicitUserOptOutIsRespected() {
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers)
+    }
+
+    func test_legacyAlwaysAllowMigratesToRememberOn() {
+        defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertTrue(store.rememberAcceptedMirrorPeers,
+                      "the legacy global consent was broader than device-bound grants; carry intent forward")
+        XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_autoAcceptSlidesGrantExpiryForward() {
+        let store = MercuryConsentStore(defaults: defaults)
+        store.rememberAcceptedMirrorPeers = true
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        store.rememberAcceptedPeer(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            requesterName: "iPhone",
+            now: t0
+        )
+        let firstExpiry = store.grants.first?.expiresAt
+        XCTAssertNotNil(firstExpiry)
+
+        // Auto-accept 200 days later: still inside the window, and the grant
+        // must renew so an actively-used device never re-rings the Mac.
+        let t1 = t0.addingTimeInterval(200 * 24 * 60 * 60)
+        XCTAssertTrue(store.canAutoAccept(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            now: t1
+        ))
+        let renewedExpiry = store.grants.first?.expiresAt
+        XCTAssertNotNil(renewedExpiry)
+        XCTAssertGreaterThan(renewedExpiry!, firstExpiry!,
+                             "each auto-accepted session must extend the grant (sliding window)")
+
+        // A device dormant past the TTL expires and must ring again.
+        let t2 = t1.addingTimeInterval(400 * 24 * 60 * 60)
+        XCTAssertFalse(store.canAutoAccept(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            now: t2
+        ))
+    }
 }

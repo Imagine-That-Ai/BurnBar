@@ -13,6 +13,9 @@ OpenBurnBarCore/ @Ajnunezg @emilio3435
 OpenBurnBarDaemon/ @Ajnunezg @emilio3435
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/ @Ajnunezg @emilio3435
 
+# Windows port tree (WinUI app / PAL / native shim / tests)
+windows/ @Ajnunezg @emilio3435
+
 # Editor extension
 extensions/openburnbar/ @Ajnunezg @emilio3435
 

@@ -28,6 +28,7 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
     case claude
     case openClaw = "openclaw"
     case openClaude = "openclaude"
+    case omp = "omp"
     case droid
     case forge
     case antigravity
@@ -44,6 +45,7 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
         case .claude:   self = .claude
         case .openClaw: self = .openClaw
         case .openClaude: self = .openClaude
+        case .omp: self = .omp
         case .droid:    self = .droid
         case .forge:    self = .forge
         case .antigravity: self = .antigravity
@@ -60,6 +62,7 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
         case .claude:   return .claude
         case .openClaw: return .openClaw
         case .openClaude: return .openClaude
+        case .omp: return .omp
         case .droid:    return .droid
         case .forge:    return .forge
         case .antigravity: return .antigravity
@@ -75,6 +78,7 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
         case .claude:   return "Claude Code"
         case .openClaw: return "OpenClaw"
         case .openClaude: return "OpenClaude"
+        case .omp: return "OMP"
         case .droid:    return "Droid"
         case .forge:    return "Forge"
         case .antigravity: return "Antigravity"

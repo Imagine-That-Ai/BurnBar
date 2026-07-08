@@ -1,0 +1,7 @@
+data: {"id":"chatcmpl-wskel","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}
+
+data: {"id":"chatcmpl-wskel","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":", Windows"}}]}
+
+data: {"id":"chatcmpl-wskel","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}
+
+data: [DONE]

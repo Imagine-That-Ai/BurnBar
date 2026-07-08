@@ -133,6 +133,7 @@ final class ThreadInboxStore {
             case .cursorAgent: runtime = .cursorAgent
             case .openClaude: runtime = .openClaude
             case .junie:    runtime = .junie
+            case .omp: runtime = .omp
             }
             return ThreadInboxItem(
                 id: "cli:\(record.id)",

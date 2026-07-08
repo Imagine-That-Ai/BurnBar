@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// Swift port of the Pensieve on-device embedding + vault-key vector cloaking
@@ -59,12 +58,13 @@ public enum PensieveVectorCloak {
     /// RFC 5869 HKDF-SHA256 keystream, byte-identical to `hkdfSha256` in embed.ts
     /// (counter is a single byte, info then counter, salt defaults to 32 zero
     /// bytes when empty). Kept explicit so the Householder keystream matches the
-    /// TS implementation exactly; CryptoKit's `HKDF.deriveKey` only exposes the
+    /// TS implementation exactly; the PAL HKDF API only exposes the
     /// final OKM, not the intermediate keystream this PRNG consumes.
-    private static func hkdfKeystream(input: Data, salt: Data, info: Data, length: Int) -> Data {
-        let saltKey = SymmetricKey(data: salt.isEmpty ? Data(repeating: 0, count: 32) : salt)
-        let prk = Data(HMAC<SHA256>.authenticationCode(for: input, using: saltKey))
-        let prkKey = SymmetricKey(data: prk)
+    private static func hkdfKeystream(input: Data, salt: Data, info: Data, length: Int) throws -> Data {
+        let prk = try PlatformCrypto.hmacSHA256(
+            input,
+            keyData: salt.isEmpty ? Data(repeating: 0, count: 32) : salt
+        )
         var output = Data()
         var previous = Data()
         var counter: UInt8 = 1
@@ -72,7 +72,7 @@ public enum PensieveVectorCloak {
             var block = previous
             block.append(info)
             block.append(counter)
-            let digest = Data(HMAC<SHA256>.authenticationCode(for: block, using: prkKey))
+            let digest = try PlatformCrypto.hmacSHA256(block, keyData: prk)
             output.append(digest)
             previous = digest
             counter = counter &+ 1
@@ -117,8 +117,8 @@ public enum PensieveVectorCloak {
     // guarded by cacheLock
     private static nonisolated(unsafe) var reflectionCache: [CacheKey: [[Double]]] = [:]
 
-    private static func deriveReflections(vaultKey: Data, modelVersion: String, dim: Int) -> [[Double]] {
-        let keyHash = SHA256.hash(data: vaultKey).map { String(format: "%02x", $0) }.joined().prefix(32)
+    private static func deriveReflections(vaultKey: Data, modelVersion: String, dim: Int) throws -> [[Double]] {
+        let keyHash = PlatformCrypto.sha256Hex(vaultKey).prefix(32)
         let cacheKey = CacheKey(keyHash: String(keyHash), modelVersion: modelVersion, dim: dim)
 
         cacheLock.lock()
@@ -131,7 +131,7 @@ public enum PensieveVectorCloak {
         let info = Data("OpenBurnBar-Pensieve-Cloak-\(modelVersion)-v1".utf8)
         // 2 uniforms per gaussian, 4 bytes per uniform, reflections * dim gaussians, + slack.
         let byteLen = cloakReflections * dim * 2 * 4 + 64
-        let keystream = hkdfKeystream(input: vaultKey, salt: cloakSalt, info: info, length: byteLen)
+        let keystream = try hkdfKeystream(input: vaultKey, salt: cloakSalt, info: info, length: byteLen)
         let uniform = UniformStream(keystream)
 
         var vectors: [[Double]] = []
@@ -166,9 +166,9 @@ public enum PensieveVectorCloak {
         _ vector: [Double],
         vaultKey: Data,
         modelVersion: String = embeddingModelVersion
-    ) -> [Double] {
+    ) throws -> [Double] {
         let dim = vector.count
-        let reflections = deriveReflections(vaultKey: vaultKey, modelVersion: modelVersion, dim: dim)
+        let reflections = try deriveReflections(vaultKey: vaultKey, modelVersion: modelVersion, dim: dim)
         var x = vector
         for v in reflections {
             var dot = 0.0
@@ -210,7 +210,7 @@ public enum PensieveVectorCloak {
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { $0.count >= 2 }
         for token in tokens {
-            let digest = Array(SHA256.hash(data: Data(token.utf8)))
+            let digest = Array(PlatformCrypto.sha256(Data(token.utf8)))
             let index = ((Int(digest[0]) << 8) | Int(digest[1])) % embeddingDim
             let sign: Double = (digest[2] & 1) == 0 ? 1 : -1
             acc[index] += sign
@@ -225,9 +225,9 @@ public enum PensieveVectorCloak {
         vaultKey: Data,
         isQuery: Bool = false,
         modelVersion: String = deterministicModelVersion
-    ) -> (modelVersion: String, vector: [Double]) {
+    ) throws -> (modelVersion: String, vector: [Double]) {
         let raw = deterministicEmbed(text, isQuery: isQuery)
-        return (modelVersion, cloak(raw, vaultKey: vaultKey, modelVersion: modelVersion))
+        return (modelVersion, try cloak(raw, vaultKey: vaultKey, modelVersion: modelVersion))
     }
 
     #if DEBUG

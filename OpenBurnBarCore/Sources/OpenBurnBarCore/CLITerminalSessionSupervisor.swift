@@ -91,6 +91,8 @@ public enum CLIQuotaExhaustionClassifier {
         case .codex:
             cliSpecificPatterns = [
                 "codex quota",
+                "codex is out of limit",
+                "codex is out of limits",
                 "chatgpt plan limit",
                 "run codex and use /status to refresh local quota data"
             ]
@@ -140,6 +142,13 @@ public enum CLIQuotaExhaustionClassifier {
                 "cursor-agent limit",
                 "cursor agent quota",
                 "cursor agent limit"
+            ]
+        case .omp:
+            cliSpecificPatterns = [
+                "omp quota",
+                "oh my pi quota",
+                "omp usage limit",
+                "provider quota"
             ]
         case .gemini:
             cliSpecificPatterns = [
@@ -261,7 +270,7 @@ public final class CLITerminalSessionSupervisor: Sendable {
         let fd = pipe.fileHandleForReading.fileDescriptor
         let bufferSize = 4096
         var buffer = [UInt8](repeating: 0, count: bufferSize)
-        
+
         let readSource = DispatchSource.makeReadSource(
             fileDescriptor: fd,
             queue: queue

@@ -1,0 +1,166 @@
+{
+  "generatedAt": "2026-07-08T03:19:09.874Z",
+  "method": "providerGlyphs-module-plus-route-render-contract",
+  "glyphs": [
+    {
+      "id": "openai",
+      "label": "OpenAI",
+      "accent": "#10a37f",
+      "logo": "/provider-logos/openai.png",
+      "cssSelector": ".glyph-chip[data-provider=\"openai\"]",
+      "renderedCase": "OpenAI chip with accent #10a37f"
+    },
+    {
+      "id": "anthropic",
+      "label": "Anthropic",
+      "accent": "#cc785c",
+      "logo": "/provider-logos/anthropic.png",
+      "cssSelector": ".glyph-chip[data-provider=\"anthropic\"]",
+      "renderedCase": "Anthropic chip with accent #cc785c"
+    },
+    {
+      "id": "google",
+      "label": "Google",
+      "accent": "#4285f4",
+      "logo": "/provider-logos/google.svg",
+      "cssSelector": ".glyph-chip[data-provider=\"google\"]",
+      "renderedCase": "Google chip with accent #4285f4"
+    },
+    {
+      "id": "hermes",
+      "label": "Hermes",
+      "accent": "#c8bfb5",
+      "logo": "/provider-logos/hermes.png",
+      "cssSelector": ".glyph-chip[data-provider=\"hermes\"]",
+      "renderedCase": "Hermes chip with accent #c8bfb5"
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "accent": "#fa6b06",
+      "logo": "/provider-logos/codex.png",
+      "cssSelector": ".glyph-chip[data-provider=\"codex\"]",
+      "renderedCase": "Codex chip with accent #fa6b06"
+    },
+    {
+      "id": "cursor",
+      "label": "Cursor",
+      "accent": "#00e5ff",
+      "logo": "/provider-logos/cursor.png",
+      "cssSelector": ".glyph-chip[data-provider=\"cursor\"]",
+      "renderedCase": "Cursor chip with accent #00e5ff"
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/opencode.png",
+      "cssSelector": ".glyph-chip[data-provider=\"opencode\"]",
+      "renderedCase": "OpenCode chip with accent #8b5cf6"
+    },
+    {
+      "id": "ollama",
+      "label": "Ollama",
+      "accent": "#ffffff",
+      "logo": "/provider-logos/ollama.png",
+      "cssSelector": ".glyph-chip[data-provider=\"ollama\"]",
+      "renderedCase": "Ollama chip with accent #ffffff"
+    },
+    {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "accent": "#d97757",
+      "logo": "/provider-logos/claude-code.png",
+      "cssSelector": ".glyph-chip[data-provider=\"claude-code\"]",
+      "renderedCase": "Claude Code chip with accent #d97757"
+    },
+    {
+      "id": "copilot",
+      "label": "Copilot",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/copilot.png",
+      "cssSelector": ".glyph-chip[data-provider=\"copilot\"]",
+      "renderedCase": "Copilot chip with accent #8b5cf6"
+    },
+    {
+      "id": "factory",
+      "label": "Factory",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/factory.png",
+      "cssSelector": ".glyph-chip[data-provider=\"factory\"]",
+      "renderedCase": "Factory chip with accent #8b5cf6"
+    },
+    {
+      "id": "minimax",
+      "label": "MiniMax",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/minimax.png",
+      "cssSelector": ".glyph-chip[data-provider=\"minimax\"]",
+      "renderedCase": "MiniMax chip with accent #8b5cf6"
+    },
+    {
+      "id": "deepseek",
+      "label": "DeepSeek",
+      "accent": "#4d8eff",
+      "logo": "/provider-logos/deepseek.png",
+      "cssSelector": ".glyph-chip[data-provider=\"deepseek\"]",
+      "renderedCase": "DeepSeek chip with accent #4d8eff"
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini",
+      "accent": "#4285f4",
+      "logo": "/provider-logos/gemini.png",
+      "cssSelector": ".glyph-chip[data-provider=\"gemini\"]",
+      "renderedCase": "Gemini chip with accent #4285f4"
+    },
+    {
+      "id": "grok",
+      "label": "xAI",
+      "accent": "#ffffff",
+      "logo": "/provider-logos/grok.png",
+      "cssSelector": ".glyph-chip[data-provider=\"grok\"]",
+      "renderedCase": "xAI chip with accent #ffffff"
+    },
+    {
+      "id": "kimi",
+      "label": "Kimi",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/kimi.png",
+      "cssSelector": ".glyph-chip[data-provider=\"kimi\"]",
+      "renderedCase": "Kimi chip with accent #8b5cf6"
+    },
+    {
+      "id": "cline",
+      "label": "Cline",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/cline.png",
+      "cssSelector": ".glyph-chip[data-provider=\"cline\"]",
+      "renderedCase": "Cline chip with accent #8b5cf6"
+    },
+    {
+      "id": "windsurf",
+      "label": "Windsurf",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/windsurf.png",
+      "cssSelector": ".glyph-chip[data-provider=\"windsurf\"]",
+      "renderedCase": "Windsurf chip with accent #8b5cf6"
+    },
+    {
+      "id": "goose",
+      "label": "Goose",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/goose.png",
+      "cssSelector": ".glyph-chip[data-provider=\"goose\"]",
+      "renderedCase": "Goose chip with accent #8b5cf6"
+    },
+    {
+      "id": "openclaw",
+      "label": "OpenClaw",
+      "accent": "#8b5cf6",
+      "logo": "/provider-logos/openclaw.png",
+      "cssSelector": ".glyph-chip[data-provider=\"openclaw\"]",
+      "renderedCase": "OpenClaw chip with accent #8b5cf6"
+    }
+  ]
+}

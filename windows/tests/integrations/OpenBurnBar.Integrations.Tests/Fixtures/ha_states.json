@@ -1,0 +1,61 @@
+[
+  {
+    "entity_id": "media_player.office_speaker",
+    "state": "idle",
+    "attributes": {
+      "friendly_name": "Office Speaker",
+      "supported_features": 4092,
+      "device_class": "speaker"
+    }
+  },
+  {
+    "entity_id": "media_player.living_room_nest_hub",
+    "state": "playing",
+    "attributes": {
+      "friendly_name": "Living Room Nest Hub",
+      "model_name": "Google Nest Hub",
+      "supported_features": 152461,
+      "volume_level": 0.42,
+      "is_volume_muted": false
+    }
+  },
+  {
+    "entity_id": "media_player.chromecast_tv",
+    "state": "off",
+    "attributes": {
+      "friendly_name": "Chromecast TV",
+      "supported_features": 152463
+    }
+  },
+  {
+    "entity_id": "media_player.play_media_only",
+    "state": "idle",
+    "attributes": {
+      "friendly_name": "Aux Amp",
+      "supported_features": "512"
+    }
+  },
+  {
+    "entity_id": "media_player.spare_no_name",
+    "state": "idle",
+    "attributes": {
+      "supported_features": 0
+    }
+  },
+  {
+    "entity_id": "light.kitchen",
+    "state": "on",
+    "attributes": {
+      "friendly_name": "Kitchen",
+      "brightness": 200
+    }
+  },
+  {
+    "entity_id": "sensor.outdoor_temperature",
+    "state": "18.4",
+    "attributes": {
+      "friendly_name": "Outdoor Temperature",
+      "unit_of_measurement": "°C"
+    }
+  }
+]

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Liquid-Glass vocabulary styles (Windows) — the XAML half of the W6-DS-GLASS chokepoint.
+  Companion to Theme/LiquidGlass.cs; together they mirror AgentLens/Theme/LiquidGlass.swift.
+
+  Style -> Swift member:
+    • LiquidGlassSurfaceStyle       -> View.liquidGlassSurface(in:)      (passive plate)
+    • LiquidGlassInteractiveStyle   -> View.liquidGlassInteractive(in:)  (PointerOver/Pressed
+                                       VisualStates = the interactive-lensing stand-in, R7)
+    • LiquidGlassCircleButtonStyle  -> View.liquidGlassCircleButton(diameter:) (default 30)
+
+  The surface *brush* itself (Mica-translucent / Acrylic / solid, chosen by the transparency
+  preference) is resolved in code by LiquidGlass.ResolveSurfaceBrush / the LiquidGlass.Surface
+  attached property. These styles carry the shape/stroke/padding + pointer feedback; the code
+  carries the transparency-preference math. See the R7 NOTES block in LiquidGlass.cs.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- liquidGlassSurface: passive plate for trays, floating bars, cards. -->
+    <Style x:Key="LiquidGlassSurfaceStyle" TargetType="Border">
+        <Setter Property="CornerRadius" Value="{StaticResource OBBCardCornerRadius}" />
+        <Setter Property="Background" Value="{StaticResource OBBSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource OBBStrokeBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <!-- liquidGlassInteractive: glass that responds to pointer (buttons, chips, pills). -->
+    <Style x:Key="LiquidGlassInteractiveStyle" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource OBBSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource OBBStrokeBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+        <Setter Property="CornerRadius" Value="{StaticResource OBBCardCornerRadius}" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="RootGrid"
+                          Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="{TemplateBinding CornerRadius}">
+                        <!--
+                          The pointer-feedback overlay. On macOS the interactive glass lenses
+                          the light under the pointer; here (R7) it is a subtle luminance
+                          overlay that fades in on PointerOver / Pressed.
+                        -->
+                        <Border x:Name="HoverOverlay"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                Background="{ThemeResource TextFillColorPrimaryBrush}"
+                                Opacity="0"
+                                IsHitTestVisible="False" />
+                        <ContentPresenter x:Name="ContentPresenter"
+                                          Padding="{TemplateBinding Padding}"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          ContentTransitions="{TemplateBinding ContentTransitions}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          AutomationProperties.AccessibilityView="Raw" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.08"
+                                                         Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.16"
+                                                         Duration="0:0:0.06" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="RootGrid"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.4"
+                                                         Duration="0" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--
+      liquidGlassCircleButton: the recurring circular toolbar/overlay control
+      (close, collapse chevron). Interactive glass + circular. Default 30x30 mirrors the
+      Swift default; LiquidGlass.CircleButtonDiameter overrides Width/Height/CornerRadius.
+    -->
+    <Style x:Key="LiquidGlassCircleButtonStyle" TargetType="Button" BasedOn="{StaticResource LiquidGlassInteractiveStyle}">
+        <Setter Property="Width" Value="30" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="CornerRadius" Value="15" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+</ResourceDictionary>

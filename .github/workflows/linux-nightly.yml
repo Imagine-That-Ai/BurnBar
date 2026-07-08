@@ -1,0 +1,104 @@
+name: Linux Nightly Matrix
+
+on:
+  schedule:
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: linux-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-surface:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: ubuntu-gnome-x11-xvfb
+            mode: runnable
+            smoke: shell
+          - label: ubuntu-gnome-wayland-portal
+            mode: blocked
+            reason: GitHub hosted runner has no interactive GNOME Wayland session bus or xdg-desktop-portal consent surface.
+          - label: fedora-kde-wayland
+            mode: blocked
+            reason: GitHub hosted runner is Ubuntu; Fedora KDE Wayland needs a dedicated VM or nested compositor runner.
+          - label: arch-wlroots
+            mode: blocked
+            reason: GitHub hosted runner is Ubuntu; Arch/wlroots needs a dedicated VM or nested compositor runner.
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/linux-desktop/package-lock.json
+
+      - name: Record blocked environment row
+        if: matrix.mode == 'blocked'
+        run: |
+          mkdir -p docs/linux-port/evidence/mission-001-release/nightly/${{ matrix.label }}
+          cat > docs/linux-port/evidence/mission-001-release/nightly/${{ matrix.label }}/blocked.json <<'JSON'
+          {
+            "label": "${{ matrix.label }}",
+            "status": "blocked",
+            "reason": "${{ matrix.reason }}",
+            "requiredBeforePromotion": "Rerun shell, daemon, portal, package, Computer Use, and media smokes on a real matching desktop environment."
+          }
+          JSON
+
+      - name: Install Linux desktop dependencies
+        if: matrix.mode == 'runnable'
+        run: npm ci --prefix apps/linux-desktop
+
+      - name: Build mission Linux toolchain image
+        if: matrix.mode == 'runnable'
+        run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
+
+      - name: Run shell smoke
+        if: matrix.mode == 'runnable' && matrix.smoke == 'shell'
+        run: node scripts/linux-port/run-shell-smoke.mjs
+
+      - name: Run package release structural checks
+        if: matrix.mode == 'runnable'
+        run: |
+          node scripts/linux-port/validate-linux-release-config.mjs
+          node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
+          node scripts/linux-port/check-linux-docs.mjs
+
+      - name: Upload Linux nightly evidence
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: linux-nightly-${{ matrix.label }}
+          path: docs/linux-port/evidence/
+          if-no-files-found: warn
+
+  open-failure-issue:
+    runs-on: ubuntu-latest
+    needs: [linux-surface]
+    if: always() && contains(needs.*.result, 'failure')
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - name: Record Linux nightly failure
+        uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: open
+          lane: linux-nightly
+          title-prefix: Linux nightly matrix failed
+          summary: The Linux desktop/package evidence matrix failed.
+          details: |
+            Job results:
+            ```json
+            ${{ toJSON(needs) }}
+            ```

@@ -1,5 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(os.log)
 import os.log
+#endif
 
 /// Server-proxied hosted fallback adapter for the Intelligence Brief
 /// answer path.

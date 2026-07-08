@@ -1,0 +1,29 @@
+# Windows (MSVC) build configuration for the `burnbar-remote` workspace.
+#
+# This config sits at the workspace root, so it applies to every member —
+# including `burnbar-remote-ffi`, the `cdylib`/C-ABI crate the Windows C# shim
+# consumes (`crates/burnbar-remote/bindings/csharp`). Cargo has no per-member
+# override for build targets; the FFI crate's Windows targets ARE these
+# workspace-level targets, which is why the FFI-specific aliases below name it
+# explicitly.
+#
+# Supported Windows build targets:
+#   x86_64-pc-windows-msvc    Windows 10/11 on x64
+#   aarch64-pc-windows-msvc   Windows 11 on ARM64 (build-only on x64 CI hosts)
+#
+# Exercised by `.github/workflows/build-burnbar-remote-windows.yml` (native
+# `windows-latest` MSVC). Rationale — and why the workspace does NOT force the
+# target via `[build] target` or pin it in `rust-toolchain.toml` — is recorded in
+# `docs/windows-port/decisions/0002-rust-windows-msvc-targets.md`.
+#
+# From this macOS workspace the cross-compile attempt runs through cargo-xwin
+# (`cargo xwin build --target x86_64-pc-windows-msvc`); see the decision note for
+# the recorded outcome. The aliases only *name* the targets — none forces a
+# target onto a plain `cargo build`/`cargo test`, so the shipping macOS/iOS/Android
+# lanes build exactly as before.
+[alias]
+build-win-x64 = "build --workspace --target x86_64-pc-windows-msvc"
+build-win-arm64 = "build --workspace --target aarch64-pc-windows-msvc"
+test-win-x64 = "test --workspace --target x86_64-pc-windows-msvc"
+build-win-x64-ffi = "build -p burnbar-remote-ffi --target x86_64-pc-windows-msvc"
+build-win-arm64-ffi = "build -p burnbar-remote-ffi --target aarch64-pc-windows-msvc"

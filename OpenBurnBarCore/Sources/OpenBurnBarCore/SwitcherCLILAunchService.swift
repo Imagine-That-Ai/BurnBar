@@ -53,7 +53,7 @@ public enum CLILaunchAdapter {
         didSet { executableResolutionCache.write([:]) }
     }
     // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup; reads are effectively immutable in production.
-    nonisolated(unsafe) static var homeDirectoryProvider: () -> String = { FileManager.default.homeDirectoryForCurrentUser.path } {
+    nonisolated(unsafe) static var homeDirectoryProvider: () -> String = { NSHomeDirectory() } {
         didSet { executableResolutionCache.write([:]) }
     }
 
@@ -557,7 +557,7 @@ public enum CLILaunchAdapter {
         }
 
         // Verify it's within user's home or a known safe location
-        let homeDir = fileManager.homeDirectoryForCurrentUser.path
+        let homeDir = NSHomeDirectory()
         let isInsideHome = trimmed.hasPrefix(homeDir)
         let isInTemp = trimmed.hasPrefix(NSTemporaryDirectory())
         let isInVar = trimmed.hasPrefix("/var/folders/")
@@ -833,6 +833,8 @@ public enum CLILaunchAdapter {
             return ["PI_HOME", "PI_CONFIG_HOME"]
         case .junie:
             return ["JUNIE_HOME"]
+        case .omp:
+            return ["OMP_HOME", "OMP_CONFIG_HOME"]
         }
     }
 }

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <rect width="640" height="360" fill="#111827"/>
+  <rect x="42" y="42" width="556" height="276" rx="8" fill="#f8fafc"/>
+  <text x="74" y="112" font-family="Arial, sans-serif" font-size="26" fill="#0f172a">OpenBurnBar Linux membership</text>
+  <text x="74" y="174" font-family="Arial, sans-serif" font-size="48" fill="#0f766e">active</text>
+  <text x="74" y="232" font-family="Arial, sans-serif" font-size="24" fill="#334155">Source: Stripe web checkout</text>
+  <text x="74" y="274" font-family="Arial, sans-serif" font-size="20" fill="#475569">ent_linux_active</text>
+</svg>
