@@ -8,5 +8,15 @@ public sealed partial class AtelierLayoutView : UserControl
     public AtelierLayoutView()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+    }
+
+    private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        Loaded -= OnLoaded;
+        var summary = await DashboardUsageProvider.LoadAsync();
+        SpendTile.Value = DashboardUsageSummaryFormatter.Spend(summary);
+        TokensTile.Value = DashboardUsageSummaryFormatter.Tokens(summary);
+        ProvidersTile.Value = DashboardUsageSummaryFormatter.Providers(summary);
     }
 }

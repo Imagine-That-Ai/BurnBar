@@ -14,7 +14,7 @@ private final class DBByteCompatBundleMarker {}
 /// SQLite file the Mac writes today. This test:
 ///
 ///   1. Migrates a fresh DB through the **live** `OpenBurnBarDatabase` migrator
-///      to `v55` inside a real SQLCipher-keyed `DatabaseQueue` (the production
+///      to the live endpoint inside a real SQLCipher-keyed `DatabaseQueue` (the production
 ///      keying path, `DatabaseEncryptionService.makeConfiguration`).
 ///   2. Proves the currently-**implicit** SQLCipher parameters resolve to the
 ///      pinned SQLCipher-4.16.0 defaults (`cipher_page_size=4096`,
@@ -91,17 +91,17 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
 
     // MARK: - Migrator endpoint sanity
 
-    /// The kit is pinned to the `v55` endpoint. A future migration bump must fail
+    /// The kit is pinned to the current endpoint. A future migration bump must fail
     /// this loudly and force a conscious fixture/vector refresh.
-    func test_liveMigrator_endpointIsV55() throws {
+    func test_liveMigrator_endpointMatchesCommittedVector() throws {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
             DatabaseByteCompatVector.expectedSchemaEndpoint,
             "Migrator endpoint changed — regenerate the DB-compat fixture + vector."
         )
         XCTAssertGreaterThanOrEqual(
-            OpenBurnBarDatabase.migrator.migrations.count, 56,
-            "Expected at least 56 registered migrations (v1..v55 + v51a interstitial)."
+            OpenBurnBarDatabase.migrator.migrations.count, 55,
+            "Expected at least 55 registered migrations (v1..v54 + v51a interstitial)."
         )
     }
 
@@ -235,7 +235,7 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
         let params: [DatabaseByteCompatVector.ObservedParam]
     }
 
-    /// Migrate a fresh keyed DB to v55, seed the corpus, and measure the schema
+    /// Migrate a fresh keyed DB to the live endpoint, seed the corpus, and measure the schema
     /// hash + FTS vector + SQLCipher params. The `DatabaseQueue` is released when
     /// this returns, closing the connection so the file can be copied.
     private func generate(at dbPath: String) throws -> Generated {

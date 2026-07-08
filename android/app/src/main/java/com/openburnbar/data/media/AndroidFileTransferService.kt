@@ -295,6 +295,8 @@ class AndroidFileTransferService(
 
 internal object AndroidFileTransferCachePath {
     private const val MAX_CACHE_NAME_LENGTH = 96
+    private const val MAX_UNIQUE_SUFFIX_LENGTH = 32
+    private const val MAX_EXTENSION_LENGTH = 16
     private val parentDirectoryMarker = Regex("\\.{2,}")
 
     fun targetFile(cacheRoot: File, displayName: String, uniqueSuffix: String? = null): File {
@@ -323,7 +325,7 @@ internal object AndroidFileTransferCachePath {
             ?.joinToString(separator = "")
             ?.replace(parentDirectoryMarker, "_")
             ?.trim('.', '_', '-')
-            ?.take(32)
+            ?.take(MAX_UNIQUE_SUFFIX_LENGTH)
             ?.takeIf { it.isNotBlank() }
             ?.let { "-$it" }
             .orEmpty()
@@ -331,7 +333,7 @@ internal object AndroidFileTransferCachePath {
         val extension = if (
             extensionStart > 0 &&
             extensionStart < sanitized.lastIndex &&
-            sanitized.length - extensionStart <= 16
+            sanitized.length - extensionStart <= MAX_EXTENSION_LENGTH
         ) {
             sanitized.substring(extensionStart)
         } else {

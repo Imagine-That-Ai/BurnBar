@@ -23,6 +23,12 @@ actor, a real `Sendable` payload, or a lock-guarded owned value whenever that is
 | `firestore-any-test-fake` | Firestore fake payloads | Test-only fake carries immutable untyped values. |
 | `foundation-sdk-shim` | Foundation/Security SDK reference or untyped C-API shims | Wrapper serializes mutable access or transfers single-owned SDK objects. |
 | `apple-media-buffer` | AVFoundation/CoreMedia buffers | Wrapper transfers a single-owned media buffer without concurrent mutation. |
+| `database-handle-wrapper` | Database connection handles (GRDB/SQLite) | All database access is serialized by the owning queue or lock; handle never escapes unsynchronized. |
+| `internal-lock-snapshot-store` | Reference types with internal NSLock/queue synchronization | All mutable state is guarded by the type's own lock; safe to share across actors. |
+| `locked-formatter-cache` | Non-thread-safe formatter caches (ISO8601DateFormatter) | Every cache read/write runs under an NSLock; formatters never escape the lock scope. |
+| `nslock-blocking-outcome` | NSLock-protected generic result boxes | Outcome is set once under lock and read under lock; no concurrent mutation. |
+| `nslock-protected-storage` | NSLock-protected generic mutable storage | All reads and writes run through the lock; no unsynchronized access path. |
+| `swift-crypto-key-material` | Swift Crypto / CryptoKit key-material value wrappers | The values are immutable key-material handles passed across module/actor boundaries; OpenBurnBar exposes no shared mutable mutation path and uses them only through deterministic crypto operations. |
 
 ## Current Handoff 2 Additions
 

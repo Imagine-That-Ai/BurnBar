@@ -18,32 +18,32 @@
 
     <StackPanel Padding="24" Spacing="16" MaxWidth="900" HorizontalAlignment="Left">
         <StackPanel Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile Value="$1,284" Caption="Spend this month"
+            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend this month"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-            <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile Value="342" Caption="Sessions"
+            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
         </StackPanel>
 
         <components:UnifiedGlassCard>
             <StackPanel Spacing="6">
-                <TextBlock Text="Live cost curve" FontSize="14" FontWeight="SemiBold" />
-                <TextBlock Text="Your 30-day spend, day by day." FontSize="13" Opacity="0.7" />
+                <TextBlock Text="Cost curve" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock x:Name="CostCurveText" Text="Connect a usage database for live trend data." FontSize="13" Opacity="0.7" />
             </StackPanel>
         </components:UnifiedGlassCard>
 
         <components:UnifiedGlassCard>
             <StackPanel Spacing="6">
-                <TextBlock Text="Providers" FontSize="14" FontWeight="SemiBold" />
-                <TextBlock Text="Anthropic · OpenAI · Google · xAI" FontSize="13" Opacity="0.7" />
+                <TextBlock Text="Data source" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock x:Name="ProviderStatusText" Text="No SQLCipher database connected" FontSize="13" Opacity="0.7" TextWrapping="Wrap" />
             </StackPanel>
         </components:UnifiedGlassCard>
 
         <components:UnifiedGlassCard>
             <StackPanel Spacing="6">
                 <TextBlock Text="Models" FontSize="14" FontWeight="SemiBold" />
-                <TextBlock Text="Top models by spend and tokens." FontSize="13" Opacity="0.7" />
+                <TextBlock x:Name="ModelsStatusText" Text="Connect a usage database for model spend and token rankings." FontSize="13" Opacity="0.7" TextWrapping="Wrap" />
             </StackPanel>
         </components:UnifiedGlassCard>
 

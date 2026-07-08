@@ -371,8 +371,8 @@ final class SearchIndexStore: Sendable {
         // Count rekeyed chunks (same hash but different chunk ID)
         var rekeyedCount = 0
         for hash in unchangedHashes {
-            let oldIDs = Set(existingByHash[hash]!.map(\.id))
-            let newIDs = Set(newByHash[hash]!.map(\.id))
+            let oldIDs = Set(existingByHash[hash, default: []].map(\.id))
+            let newIDs = Set(newByHash[hash, default: []].map(\.id))
             if oldIDs != newIDs {
                 rekeyedCount += max(oldIDs.count, newIDs.count)
             }
@@ -383,8 +383,8 @@ final class SearchIndexStore: Sendable {
         // A chunk is rekeyed when contentHash matches but chunkID differs.
         var unchangedCount = 0
         for hash in unchangedHashes {
-            let oldIDs = Set(existingByHash[hash]!.map(\.id))
-            let newIDs = Set(newByHash[hash]!.map(\.id))
+            let oldIDs = Set(existingByHash[hash, default: []].map(\.id))
+            let newIDs = Set(newByHash[hash, default: []].map(\.id))
             if oldIDs == newIDs {
                 // Identical chunkIDs: truly unchanged — no writes needed
                 unchangedCount += oldIDs.count
@@ -418,20 +418,20 @@ final class SearchIndexStore: Sendable {
             )
         }
 
-        var oldIDsToDelete: [String] = deletedHashes.flatMap { existingByHash[$0]!.map(\.id) }
+        var oldIDsToDelete: [String] = deletedHashes.flatMap { existingByHash[$0, default: []].map(\.id) }
         var chunksToInsert: [SearchChunkRecord] = []
 
         for hash in addedHashes {
-            chunksToInsert.append(contentsOf: newByHash[hash]!)
+            chunksToInsert.append(contentsOf: newByHash[hash, default: []])
         }
 
         for hash in unchangedHashes {
-            let oldIDs = Set(existingByHash[hash]!.map(\.id))
-            let newIDs = Set(newByHash[hash]!.map(\.id))
+            let oldIDs = Set(existingByHash[hash, default: []].map(\.id))
+            let newIDs = Set(newByHash[hash, default: []].map(\.id))
             guard oldIDs != newIDs else { continue }
             oldIDsToDelete.append(contentsOf: oldIDs.subtracting(newIDs))
             let idsOnlyInNew = newIDs.subtracting(oldIDs)
-            chunksToInsert.append(contentsOf: newByHash[hash]!.filter { idsOnlyInNew.contains($0.id) })
+            chunksToInsert.append(contentsOf: newByHash[hash, default: []].filter { idsOnlyInNew.contains($0.id) })
         }
 
         let (projectName, provider) = try await fetchDocumentIndexContext(documentID: documentID)

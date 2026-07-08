@@ -1,0 +1,23 @@
+[2025-07-01 12:00:00,000]: Request {}
+Body {
+  "batch": [
+    {
+      "event": "AgentResponse.Completed",
+      "originalTimestamp": "2025-07-01T12:00:00Z",
+      "properties": {
+        "payload": {
+          "session_id": "warp-contract-1",
+          "model": "claude-sonnet-4",
+          "workspace": "/tmp/ParserContract",
+          "prompt": "Summarize quota usage",
+          "response": "Quota usage is healthy.",
+          "usage": {
+            "input_tokens": 120,
+            "output_tokens": 45,
+            "cache_read_input_tokens": 10
+          }
+        }
+      }
+    }
+  ]
+}

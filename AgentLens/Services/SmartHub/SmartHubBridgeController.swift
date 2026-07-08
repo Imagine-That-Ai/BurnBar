@@ -633,7 +633,7 @@ final class SmartHubBridgeController {
             let primaryBucket = Self.bestBucket(in: primary, for: period) ?? primary.primaryDisplayableBucket
             let primaryPercent = primaryBucket.map { Int(($0.progressFraction * 100).rounded()) } ?? 0
             let primaryTone = Self.tone(for: primaryPercent)
-            let primaryLabel = primaryBucket?.usageText ?? primary.statusMessage
+            let primaryLabel = primaryBucket?.usageText ?? primary.statusMessage ?? ""
             let primaryWindowLabel = primaryBucket.map(Self.windowLabel(for:)) ?? ""
 
             // Rich card pieces.
@@ -818,7 +818,7 @@ final class SmartHubBridgeController {
             if let percent = bucket.usedPercent {
                 return "\(Int(percent.rounded()))%"
             }
-        case .sessions, .lines, .files, .count:
+        case .sessions, .lines, .files, .count, .credits, .fastCalls, .unknown:
             if let used = bucket.usedValue {
                 return formatValueAbbreviation(used, unit: bucket.unit)
             }
@@ -936,12 +936,14 @@ final class SmartHubBridgeController {
     private static func bridgeStatusPill(snapshot: ProviderQuotaSnapshot, now: Date) -> String {
         let age = now.timeIntervalSince(snapshot.fetchedAt)
         if age < 60 { return "live" }
-        if snapshot.confidence == .unavailable { return "unavailable" }
-        if snapshot.confidence == .estimated {
+        if snapshot.confidence == .stale { return "unavailable" }
+        if snapshot.confidence == .medium {
             if age > 6 * 3600 { return "estimated · \(Int(age / 3600))h ago" }
             return "estimated"
         }
-        switch snapshot.source {
+        switch snapshot.sourceKind {
+        case .provider:
+            return age > 6 * 3600 ? "source \(Int(age / 3600))h ago" : "source live"
         case .localCLI, .localSession:
             if age > 6 * 3600 { return "source \(Int(age / 3600))h ago" }
             if age > 60 * 60 { return "live local · \(Int(age / 60))m ago" }
@@ -958,7 +960,7 @@ final class SmartHubBridgeController {
         now: Date
     ) -> SmartHubBridgeSnapshot.Provider.Tone {
         let age = now.timeIntervalSince(snapshot.fetchedAt)
-        if snapshot.confidence == .unavailable { return .warning }
+        if snapshot.confidence == .stale { return .warning }
         if age < 5 * 60 { return .success }
         if age < 60 * 60 { return .whimsy }
         if age < 6 * 3600 { return .mercury }

@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const appDir = path.join(root, 'apps/linux-desktop');
-const outDir = path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
+const outDir = process.env.OB_EVIDENCE_OUT
+  ? path.resolve(process.env.OB_EVIDENCE_OUT)
+  : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 fs.mkdirSync(outDir, { recursive: true });
 
 const env = { ...process.env, OB_EVIDENCE_OUT: outDir };
@@ -32,7 +34,16 @@ const artifacts = [
   'onboarding-flow-transcript.json',
   'daemon-route-transcript.json',
   'pet-tier-matrix.json',
-  'text-expansion-safety-proof.json'
+  'text-expansion-safety-proof.json',
+  'visual-ux-matrix.json',
+  'reduced-motion-capture.json',
+  'provider-glyph-logo-cases.json',
+  'visual-review.md',
+  'accessibility-surface-evidence.json',
+  'settings-account-update-support-scenarios.json',
+  'onboarding-linux-flow-evidence.json',
+  'pet-runtime-behavior-evidence.json',
+  'text-expansion-crud-safety-evidence.json'
 ];
 const missing = artifacts.filter((a) => !fs.existsSync(path.join(outDir, a)));
 if (missing.length) {

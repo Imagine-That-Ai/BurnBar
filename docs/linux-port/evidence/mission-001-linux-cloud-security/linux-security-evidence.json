@@ -1,34 +1,69 @@
 {
-  "auth": {
-    "callbackCodeAccepted": "auth-code",
-    "loopbackHost": "127.0.0.1",
-    "pkceMethod": "S256",
-    "tokenCustody": "secret-service"
+  "auth" : {
+    "callbackCodeAccepted" : "auth-code",
+    "localSessionCleared" : "true",
+    "loopbackHost" : "127.0.0.1",
+    "pkceMethod" : "S256",
+    "signOutRevoked" : "true",
+    "tokenCustody" : "secret-service"
   },
-  "cloudSync": {
-    "allowedPath": "users/uid-123/provider_accounts/provider-1",
-    "bolaDenied": "true",
-    "plaintextDenied": "true",
-    "watermarkAfterCommit": "1800000001000"
+  "cloudSync" : {
+    "allowedPath" : "users\/uid-123\/provider_accounts\/provider-1",
+    "bolaDenied" : "true",
+    "plaintextDenied" : "true",
+    "watermarkAfterCommit" : "1800000001000"
   },
-  "membershipStates": [
+  "cloudSyncTrace" : [
+    "owner_upload_allowed",
+    "bola_denied",
+    "plaintext_private_field_denied",
+    "failure_injection_before_commit",
+    "watermark_after_local_commit"
+  ],
+  "membershipArtifacts" : [
+    "membership-active.svg",
+    "membership-cancelled.svg",
+    "membership-paymentFailed.svg",
+    "membership-offline.svg"
+  ],
+  "membershipStates" : [
     "active",
     "cancelled",
     "paymentFailed",
     "offline"
   ],
-  "refusedPlaintextFallback": true,
-  "secretBackends": [
+  "refusedPlaintextFallback" : true,
+  "secretBackends" : [
     "secret-service:secret_service",
     "kwallet:kwallet",
     "headless:headless_passphrase",
     "headless:headless_passphrase",
     "secret-service:secret_service"
   ],
-  "telemetry": {
-    "consentDeclinedEventCount": "0",
-    "grantedEmail": "[REDACTED]",
-    "grantedToken": "[REDACTED]",
-    "supportBundle": "[REDACTED]\nemail=[REDACTED]\npath=[REDACTED]"
+  "secretNegativeCases" : [
+    "database_key:plaintext_refused",
+    "signal_identity_key:plaintext_refused",
+    "cloud_vault_key:plaintext_refused",
+    "refresh_token:plaintext_refused",
+    "capability_root:plaintext_refused",
+    "local_auth_pin:plaintext_refused",
+    "audit_signing_key:plaintext_refused"
+  ],
+  "telemetry" : {
+    "consentDeclinedEventCount" : "0",
+    "grantedEmail" : "[REDACTED]",
+    "grantedPrompt" : "[REDACTED]",
+    "grantedToken" : "[REDACTED]",
+    "supportBundle" : "[REDACTED]\nemail=[REDACTED]\npath=[REDACTED]\n[REDACTED]\n[REDACTED]"
+  },
+  "telemetryCapture" : {
+    "destinations" : [
+      "sentry_local_capture",
+      "amplitude_http_v2_local_capture"
+    ],
+    "events" : [
+      "linux_auth",
+      "linux_auth"
+    ]
   }
 }

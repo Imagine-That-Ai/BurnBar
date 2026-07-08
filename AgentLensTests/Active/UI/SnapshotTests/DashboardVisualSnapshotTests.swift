@@ -37,7 +37,7 @@ final class DashboardVisualSnapshotTests: XCTestCase {
         .padding(20)
         .background(DesignSystem.Colors.background)
 
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 860, height: 520),
             named: SnapshotName.castleGreatHall,
@@ -52,7 +52,7 @@ final class DashboardVisualSnapshotTests: XCTestCase {
             width: 120,
             height: 40
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 140, height: 60),
             named: SnapshotName.miniSparklineFlat
@@ -66,7 +66,7 @@ final class DashboardVisualSnapshotTests: XCTestCase {
             width: 120,
             height: 40
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 140, height: 60),
             named: SnapshotName.miniSparklineRising
@@ -80,7 +80,7 @@ final class DashboardVisualSnapshotTests: XCTestCase {
             width: 120,
             height: 40
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 140, height: 60),
             named: SnapshotName.miniSparklineFalling

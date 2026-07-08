@@ -146,7 +146,8 @@ public struct OpenBurnBarDatabaseOwnershipDecision: Equatable, Sendable {
     )
 }
 
-// AUDIT: sendable-allowlist: sqlite-raw-pointer
+// Wraps a non-Sendable database handle; all access is internally synchronized.
+// sendable-allowlist: database-handle-wrapper
 public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
     public static let ownershipDecision = OpenBurnBarDatabaseOwnershipDecision.linuxEngineSoleWriter
 
@@ -378,9 +379,16 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
                 arguments: fixture.documentArguments
             )
             for chunk in fixture.chunks {
-                // FTS row first so its rowid lands on the chunk row, matching
-                // the app-side SearchIndexStore invariant (rowid-targeted FTS
-                // deletes; see v55_search_chunks_fts_rowid).
+                try db.execute(
+                    sql: """
+                    INSERT INTO search_chunks (
+                        id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
+                        startOffset, endOffset, messageStartOffset, messageEndOffset,
+                        sectionPath, text, createdAt, updatedAt
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    arguments: chunk.chunkArguments(documentID: fixture.documentID)
+                )
                 try db.execute(
                     sql: """
                     INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
@@ -394,17 +402,6 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
                         fixture.projectName,
                         fixture.provider
                     ]
-                )
-                let ftsRowid = db.lastInsertedRowID
-                try db.execute(
-                    sql: """
-                    INSERT INTO search_chunks (
-                        id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
-                        startOffset, endOffset, messageStartOffset, messageEndOffset,
-                        sectionPath, text, ftsRowid, createdAt, updatedAt
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    arguments: chunk.chunkArguments(documentID: fixture.documentID, ftsRowid: ftsRowid)
                 )
             }
             try db.execute(
@@ -933,7 +930,7 @@ public struct OpenBurnBarSearchFixtureChunk: Equatable, Sendable {
         self.vectorBlob = vectorBlob
     }
 
-    func chunkArguments(documentID: String, ftsRowid: Int64) -> StatementArguments {
+    func chunkArguments(documentID: String) -> StatementArguments {
         [
             id,
             documentID,
@@ -947,7 +944,6 @@ public struct OpenBurnBarSearchFixtureChunk: Equatable, Sendable {
             nil,
             sectionPath,
             text,
-            ftsRowid,
             Date(timeIntervalSince1970: 1_800_000_000),
             Date(timeIntervalSince1970: 1_800_000_000)
         ]

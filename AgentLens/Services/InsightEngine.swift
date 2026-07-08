@@ -413,8 +413,9 @@ enum InsightEngine {
         }
 
         let todayCost = todayUsages.reduce(0.0) { $0 + $1.cost }
-        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: now))!
         let yesterdayEnd = calendar.startOfDay(for: now)
+        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: yesterdayEnd)
+            ?? yesterdayEnd.addingTimeInterval(-86_400)
         let yesterdayUsages = usages.filter { $0.startTime >= yesterdayStart && $0.startTime < yesterdayEnd }
         let yesterdayCost = yesterdayUsages.reduce(0.0) { $0 + $1.cost }
 
@@ -478,7 +479,8 @@ enum InsightEngine {
             )
         }
 
-        let weekAgo = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: now))!
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: now))
+            ?? calendar.startOfDay(for: now).addingTimeInterval(-7 * 86_400)
         let recentPastUsages = usages.filter {
             $0.startTime >= weekAgo && $0.startTime < calendar.startOfDay(for: now)
         }

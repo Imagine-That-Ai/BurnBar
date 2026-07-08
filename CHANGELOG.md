@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mission fan-out synthesis now launches Phase B second-stage missions** —
+  tapping Synthesize on a completed fan-out group queues a sealed, read-only
+  Hermes synthesizer mission with the child results as input, then records the
+  queued synthesizer request in the group merge summary.
 - **Settings overhaul — "Command Bridge"** — completely redesigned the Settings
   sidebar and navigation for discoverability:
   - **Sectioned sidebar**: the flat 14-tab list is now grouped into labeled
@@ -51,6 +55,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Command Deck top-chrome redesign** — collapses ~146pt of stacked chrome
   (toolbar + tab-card strip) into one ~52pt bar with a ⌘K command palette for
   section fuzzy-filter + session search, and ⌘1–⌘7 section shortcuts.
+- **Nest Hub Speak Now** — makes `/voice-refresh` queue a real bridge-page
+  announcement event instead of acknowledging a no-op, so the rendered smart
+  display can pulse and speak the current provider summary on its next poll.
+
+### Fixed
+
+- **macOS StoreKit entitlement resolution** — `MacCloudEntitlementStore` now
+  reads StoreKit 2 current entitlements and transaction updates, maps the same
+  Cloud / Cloud Pro / Cloud Ultra SKUs as iOS, and uses locally verified
+  entitlements only when the cloud entitlement document is absent.
+
+### Fixed
+
+- **iPhone Call Mac action** — replaces the Mercury Live Sheet follow-up stub
+  with real `media.call.invite` signaling over the live paired-Mac control
+  stream, shows pending/ack status on iPhone, and keeps the Mac wake path scoped
+  to the existing PushKit/FCM callable for Mac-originated calls.
+
+- **Recount cloud usage duplication** - makes Mac usage IDs deterministic across
+  Recount reparses, removes stale same-device Firestore usage docs, and reports
+  the full cloud-sync batch total to analytics.
+
+## [1.0.29] - 2026-07-05
+
+### Added
+
+- **Latest-main macOS release cut** - advances the direct-download release to
+  `1.0.29` from `origin/main` commit `1b62ec42bd`, including the Windows
+  parity integration merge, the post-merge Windsurf/Windows/AAR fixes, Command
+  Bridge settings IA, Model Proxy tab, and Command Deck top-chrome redesign.
+- **Fresh TestFlight build line** - bumps the iOS, widget, and keyboard build
+  number to `82` while keeping the approved iOS marketing version at `1.0.2`,
+  giving App Store Connect a unique upload for the newest source cut.
+- **Android release metadata** - bumps the Android release bundle to
+  `versionCode` 39 / `versionName` `1.0.29` so Google Play metadata remains
+  aligned with the same release source.
+
+### Fixed
+
+- **iOS 27 mobile stability** - carries the Firebase source-built gRPC guard,
+  Firestore cloud-sync repair, edge-to-edge backdrop fixes, Face ID usage
+  description, and Mercury mirror consent/session stability fixes into the
+  mobile release line.
+- **Cloud sync resilience** - keeps one bad escrow entry from killing all usage
+  uploads and binds usage project-name seals to their document AAD context.
 
 ## [1.0.28] - 2026-07-03
 

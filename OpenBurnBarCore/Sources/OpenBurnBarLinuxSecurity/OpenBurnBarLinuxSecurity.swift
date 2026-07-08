@@ -328,6 +328,45 @@ public struct LinuxAuthTokenStore: Sendable {
     }
 }
 
+public struct LinuxAuthSignOutResult: Codable, Equatable, Sendable {
+    public var tokenMetadata: LinuxSecretMetadata
+    public var remoteRevocationAttempted: Bool
+    public var localSessionCleared: Bool
+
+    public init(
+        tokenMetadata: LinuxSecretMetadata,
+        remoteRevocationAttempted: Bool,
+        localSessionCleared: Bool
+    ) {
+        self.tokenMetadata = tokenMetadata
+        self.remoteRevocationAttempted = remoteRevocationAttempted
+        self.localSessionCleared = localSessionCleared
+    }
+}
+
+public struct LinuxAuthSessionController: Sendable {
+    public var tokenStore: LinuxAuthTokenStore
+    public var revokeRemoteSession: @Sendable (LinuxSecretMetadata) async throws -> Void
+
+    public init(
+        tokenStore: LinuxAuthTokenStore,
+        revokeRemoteSession: @escaping @Sendable (LinuxSecretMetadata) async throws -> Void
+    ) {
+        self.tokenStore = tokenStore
+        self.revokeRemoteSession = revokeRemoteSession
+    }
+
+    public func signOut() async throws -> LinuxAuthSignOutResult {
+        let metadata = try tokenStore.restoreRefreshToken()
+        try await revokeRemoteSession(metadata)
+        return LinuxAuthSignOutResult(
+            tokenMetadata: metadata,
+            remoteRevocationAttempted: true,
+            localSessionCleared: true
+        )
+    }
+}
+
 public enum LinuxMembershipState: String, Codable, Equatable, Sendable {
     case active
     case cancelled
@@ -374,7 +413,7 @@ public struct LinuxTelemetryRedactor: Sendable {
         var output = input
         let patterns = [
             #"(?i)(sk-[a-z0-9_-]{12,}|sk-ant-[a-z0-9_-]{12,}|xox[baprs]-[a-z0-9-]{12,}|gh[pousr]_[a-z0-9_]{12,})"#,
-            #"(?i)(refresh[_-]?token|access[_-]?token|id[_-]?token|cookie|authorization)\s*[:=]\s*[^\s,;]+"#,
+            #"(?i)(refresh[_-]?token|access[_-]?token|id[_-]?token|cookie|authorization|api[_-]?key|secret|private[_-]?key|prompt|message)\s*[:=]\s*[^\n,;]+"#,
             #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#,
             #"/(?:home|Users)/[A-Za-z0-9._ -]+/[^\s,;]+"#
         ]

@@ -10,7 +10,8 @@ name: PR Windows Dist Gate
 #   • an END-TO-END signer round-trip through the OpenBurnBar.Dist.UpdateFeed.Tool CLI
 #     (gen-key → sign-entry → build-feed → verify-feed) asserting a good pin verifies and a
 #     WRONG pin is rejected (exit 2);
-#   • xmllint over the packaging props (DLL-hardening flags must be well-formed XML);
+#   • Python stdlib XML parsing over the packaging props (DLL-hardening flags must be
+#     well-formed XML without relying on runner-local xmllint packages);
 #   • scripts/verify-version-consistency.sh (the Windows version surface must stay consistent).
 #
 # It mirrors pr-windows-fast.yml's detector + aggregate shape so a non-dist PR reports one
@@ -145,11 +146,17 @@ jobs:
       - name: Lint packaging props (well-formed XML)
         run: |
           set -euo pipefail
-          for f in windows/dist/props/OpenBurnBar.Windows.Hardening.props \
-                   windows/dist/props/OpenBurnBar.Windows.NativeHardening.props; do
-            xmllint --noout "$f"
-            echo "xmllint OK: $f"
-          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          for file_name in (
+              "windows/dist/props/OpenBurnBar.Windows.Hardening.props",
+              "windows/dist/props/OpenBurnBar.Windows.NativeHardening.props",
+          ):
+              ET.parse(file_name)
+              print(f"xml parse OK: {file_name}")
+          PY
 
       - name: Verify version consistency (Windows surface included)
         run: bash scripts/verify-version-consistency.sh

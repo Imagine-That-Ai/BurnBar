@@ -56,7 +56,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let database = OpenBurnBarDatabase(databaseQueue: queue)
 
         // Should not throw and should not attempt file backup
-        try database.runMigrationsSafely()
+        XCTAssertNoThrow(try database.runMigrationsSafely())
     }
 
     func test_runMigrationsSafely_skipsBackup_whenFileBasedDBIsCurrent() throws {
@@ -83,7 +83,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v55_search_chunks_fts_rowid",
+            OpenBurnBarDatabase.latestMigrationIdentifier,
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }

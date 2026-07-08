@@ -25,14 +25,16 @@ it with `./scripts/test-openburnbar-app.sh`.
 
 **2026-05-30 PR4:** Open Wave 2 rows are **legacy reference** only — see [ADR](../../docs/adr/2026-05-30-wave2-stale-contract-legacy-reference.md). No Swift sources remain under `AgentLensTests/Quarantine/`.
 
-**2026-07-01 freshness re-date:** The two `Skipped-with-issue` (Active `XCTSkip`) rows carry real, still-open blockers, so they are legitimately re-dated rather than reclassified — they are *not* documentation-only `LegacyReference` entries. `test_circuitBreaker_halfOpenToClosed_recovery` still needs the fake CloudSync gateway to surface retry failures into the circuit breaker; `testMakeConfigurationWithKey_reportsCipherVersion` still needs a release-build (SQLCipher `PRAGMA cipher_version`) CI lane. Both Target Dates move from May 2026 to **2026-09-30** so `scripts/ci/check-quarantine-freshness.sh` (R-GH8) tracks a live milestone instead of a stale, already-overdue one. The blockers, not the calendar, gate revival.
+**2026-07-01 freshness re-date:** At the time, the two `Skipped-with-issue` (Active `XCTSkip`) rows carried real, still-open blockers, so they were legitimately re-dated rather than reclassified — they were *not* documentation-only `LegacyReference` entries. `test_circuitBreaker_halfOpenToClosed_recovery` still needed the fake CloudSync gateway to surface retry failures into the circuit breaker; `testMakeConfigurationWithKey_reportsCipherVersion` still needed a release-build (SQLCipher `PRAGMA cipher_version`) CI lane. Both Target Dates moved from May 2026 to **2026-09-30** so `scripts/ci/check-quarantine-freshness.sh` (R-GH8) could track a live milestone instead of a stale, already-overdue one. The blockers, not the calendar, gated revival.
+
+**2026-07-06 CloudSync revival:** `test_circuitBreaker_halfOpenToClosed_recovery` now runs in Active with a fake-gateway batch-commit fault seam and zero-delay retry policy override. The test drives a retryable Firestore failure through `UsageSyncService`, proves the breaker opens, advances breaker time deterministically, then proves the half-open probe closes the breaker and uploads the pending row.
 
 | Test Name | Status | Reason | Owner | Source Subsystem | Revival Criteria | Target Date |
 |-----------|--------|--------|-------|------------------|------------------|-------------|
 | `testOperatingLayerBuildsMissionDirectionBurnFromIndexedProjectData` | LegacyReference | Stale contract — mission direction-burn signal classification drifted | AgentLens | Operating Layer | Refresh thresholds and realign mission/direction-burn fixtures | 2026-05-17 |
 | `test_backoff_suppression_onPermissionDenied` | Done | ~~Stale contract~~ **Revived 2026-05-25** → `AgentLensTests/Active/OfflineOnlineMergeTests.swift` | CloudSync | Offline/Online Merge | — | Done |
 | `test_watermark_doesNotAdvanceOnFailure` | Done | ~~Stale contract~~ **Revived 2026-05-25** → `AgentLensTests/Active/OfflineOnlineMergeTests.swift` | CloudSync | Offline/Online Merge | — | Done |
-| `test_circuitBreaker_halfOpenToClosed_recovery` | Skipped-with-issue | Stale contract — circuit breaker state machine refactor needed | CloudSync | Offline/Online Merge | Fake gateway must surface retry failures to breaker; Active: `OfflineOnlineMergeTests` XCTSkip; re-dated 2026-07-01 — blocker still open (see 2026-07-01 note) | 2026-09-30 |
+| `test_circuitBreaker_halfOpenToClosed_recovery` | Done | ~~Stale contract~~ **Revived 2026-07-06** → `AgentLensTests/Active/OfflineOnlineMergeTests.swift` | CloudSync | Offline/Online Merge | — | Done |
 | `test_runMigrationsSafely_integrityCheckFails_throws` | LegacyReference | Stale contract — integrity check error path now handled before migrations dispatch | Database | Database Migration | Rebuild test against pre-migration integrity-check dispatch | 2026-05-17 |
 | `test_conversationUpload_writesToFirestoreAndMarksSynced` | Done | ~~Stale contract~~ **Revived 2026-05-27** → `AgentLensTests/Active/ConversationSyncRoundTripTests.swift` | CloudSync | Conversation Sync | — | Done |
 | `test_refreshAll_storesUsagesInDataStore` | LegacyReference | Stale contract — UsageAggregator refresh now scans live provider directories | UsageAggregation | Usage Aggregator | Add hermetic FS sandbox so aggregator does not scan host machine | 2026-05-17 |
@@ -68,8 +70,8 @@ it with `./scripts/test-openburnbar-app.sh`.
 | Bucket | Count |
 |--------|------:|
 | Wave 2 rows (this manifest) | 24 |
-| Revived (`Done`) | 5 |
-| Active `XCTSkip` (`Skipped-with-issue`) | 2 |
+| Revived (`Done`) | 6 |
+| Active `XCTSkip` (`Skipped-with-issue`) | 1 |
 | Legacy reference (open Wave 2 + legacy suites) | 17 |
 | Compiled quarantine Swift files | 0 |
 | `AgentLensTests/LegacyReference/` suites | 2 |

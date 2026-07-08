@@ -30,6 +30,19 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
     /// Number of batch commits that have been executed.
     var batchCommitCount: Int { state.batchCommitCount }
 
+    /// Number of batch commit attempts, including attempts that fail before writes apply.
+    var batchCommitAttemptCount: Int { state.batchCommitAttemptCount }
+
+    /// Number of batch commit attempts that failed via the fake gateway.
+    var batchCommitFailureCount: Int { state.batchCommitFailureCount }
+
+    /// Queue errors that should fail only batch commits. This keeps tests on the
+    /// same retry-wrapped path as production `UsageSyncService` uploads without
+    /// faulting unrelated heartbeat or read calls.
+    func failNextBatchCommits(_ count: Int, with error: Error) {
+        state.enqueueBatchCommitFailures(count: count, error: error)
+    }
+
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway {
         CloudSyncCollectionFakeGateway(store: store, path: collectionPath, nextError: { [weak state] in state?.nextError })
     }
@@ -38,7 +51,10 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
         CloudSyncWriteBatchFakeGateway(
             store: store,
             nextError: { [weak state] in state?.nextError },
-            onCommit: { [weak state] in state?.incrementBatchCommitCount() }
+            nextBatchCommitError: { [weak state] in state?.consumeBatchCommitError() },
+            onCommitAttempt: { [weak state] in state?.incrementBatchCommitAttemptCount() },
+            onCommitFailure: { [weak state] in state?.incrementBatchCommitFailureCount() },
+            onCommitSuccess: { [weak state] in state?.incrementBatchCommitCount() }
         )
     }
 
@@ -75,6 +91,9 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
     private struct State {
         var storedNextError: Error?
         var storedBatchCommitCount = 0
+        var storedBatchCommitAttemptCount = 0
+        var storedBatchCommitFailureCount = 0
+        var storedBatchCommitErrors: [Error] = []
         var storedBeforeNextTransaction: (@Sendable () -> Void)?
     }
 
@@ -89,6 +108,14 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
         state.withLockUnchecked { $0.storedBatchCommitCount }
     }
 
+    var batchCommitAttemptCount: Int {
+        state.withLockUnchecked { $0.storedBatchCommitAttemptCount }
+    }
+
+    var batchCommitFailureCount: Int {
+        state.withLockUnchecked { $0.storedBatchCommitFailureCount }
+    }
+
     var beforeNextTransaction: (@Sendable () -> Void)? {
         get { state.withLockUnchecked { $0.storedBeforeNextTransaction } }
         set { state.withLockUnchecked { $0.storedBeforeNextTransaction = newValue } }
@@ -96,6 +123,28 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
 
     func incrementBatchCommitCount() {
         state.withLockUnchecked { $0.storedBatchCommitCount += 1 }
+    }
+
+    func incrementBatchCommitAttemptCount() {
+        state.withLockUnchecked { $0.storedBatchCommitAttemptCount += 1 }
+    }
+
+    func incrementBatchCommitFailureCount() {
+        state.withLockUnchecked { $0.storedBatchCommitFailureCount += 1 }
+    }
+
+    func enqueueBatchCommitFailures(count: Int, error: Error) {
+        guard count > 0 else { return }
+        state.withLockUnchecked { state in
+            state.storedBatchCommitErrors.append(contentsOf: Array(repeating: error, count: count))
+        }
+    }
+
+    func consumeBatchCommitError() -> Error? {
+        state.withLockUnchecked { state in
+            guard !state.storedBatchCommitErrors.isEmpty else { return nil }
+            return state.storedBatchCommitErrors.removeFirst()
+        }
     }
 
     func consumeBeforeNextTransaction() -> (@Sendable () -> Void)? {
@@ -440,17 +489,26 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
 
     private let store: FakeDocumentStore
     private let nextError: @Sendable () -> Error?
-    private let onCommit: (@Sendable () -> Void)?
+    private let nextBatchCommitError: @Sendable () -> Error?
+    private let onCommitAttempt: (@Sendable () -> Void)?
+    private let onCommitFailure: (@Sendable () -> Void)?
+    private let onCommitSuccess: (@Sendable () -> Void)?
     private let pending = OSAllocatedUnfairLock<[PendingOperation]>(uncheckedState: [])
 
     init(
         store: FakeDocumentStore,
         nextError: @escaping @Sendable () -> Error?,
-        onCommit: (@Sendable () -> Void)? = nil
+        nextBatchCommitError: @escaping @Sendable () -> Error?,
+        onCommitAttempt: (@Sendable () -> Void)? = nil,
+        onCommitFailure: (@Sendable () -> Void)? = nil,
+        onCommitSuccess: (@Sendable () -> Void)? = nil
     ) {
         self.store = store
         self.nextError = nextError
-        self.onCommit = onCommit
+        self.nextBatchCommitError = nextBatchCommitError
+        self.onCommitAttempt = onCommitAttempt
+        self.onCommitFailure = onCommitFailure
+        self.onCommitSuccess = onCommitSuccess
     }
 
     func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) {
@@ -480,7 +538,15 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
     }
 
     func commit() async throws {
-        if let error = nextError() { throw error }
+        onCommitAttempt?()
+        if let error = nextError() {
+            onCommitFailure?()
+            throw error
+        }
+        if let error = nextBatchCommitError() {
+            onCommitFailure?()
+            throw error
+        }
         let operations = pending.withLockUnchecked { pending -> [PendingOperation] in
             let operations = pending
             pending.removeAll()
@@ -498,7 +564,7 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
                 store.deleteDocument(at: path)
             }
         }
-        onCommit?()
+        onCommitSuccess?()
     }
 }
 

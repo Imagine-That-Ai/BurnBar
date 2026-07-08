@@ -29,6 +29,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 baseline_path="${repo_root}/budgets/windows-tree-baseline.json"
 mode="${1:-}"
 
+# No-tracked-binaries tripwire (docs/windows-port/PARITY_100_REMEDIATION_PLAN.md,
+# Wave 0 item 6): windows/ must stay 100% text in git. Build outputs are already
+# gitignored (**/bin/, **/obj/); this guards the residual risk — a future
+# force-add or a copy step that lands compiled artifacts outside bin/ or obj/.
+tracked_binaries="$(cd "${repo_root}" && git ls-files -- windows/ \
+  | grep -E '\.(dll|so|dylib|pdb|exe|winmd|lib|a|o|nupkg|msix|msi|zip)$' || true)"
+if [[ -n "${tracked_binaries}" ]]; then
+  echo "ERROR: compiled/binary artifacts are tracked under windows/ — the tree must stay text-only in git:" >&2
+  echo "${tracked_binaries}" >&2
+  echo "Remove them from the index (git rm --cached); build outputs belong under gitignored bin/ or obj/." >&2
+  exit 1
+fi
+
 python3 - "${repo_root}" "${baseline_path}" "${mode}" <<'PY'
 import json
 import sys

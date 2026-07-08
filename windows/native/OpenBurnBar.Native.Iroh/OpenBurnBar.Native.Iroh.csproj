@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    OpenBurnBar.Native.Iroh — the managed shim over the iroh QUIC transport
+    cdylib (`crates/openburnbar-iroh`, cdylib `openburnbar_iroh`). Wires the
+    GENERATED uniffi binding (crates/openburnbar-iroh/bindings/csharp, committed
+    + drift-checked) into the hardened OpenBurnBar.Native loader and fronts it
+    with an availability-gated facade so hosts without the cdylib get
+    NativeShimUnavailableException instead of DllNotFoundException.
+
+    The Windows DLLs come from .github/workflows/build-iroh-windows.yml
+    (openburnbar_iroh.dll, x64 + ARM64); the macOS dev host builds
+    libopenburnbar_iroh.dylib with `cargo build` in crates/openburnbar-iroh.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Native.Iroh</RootNamespace>
+  </PropertyGroup>
+
+  <Import Project="../../dist/props/OpenBurnBar.Windows.Hardening.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Native/OpenBurnBar.Native.csproj" />
+    <!-- The generated binding library (committed generated source; see
+         docs/windows-port/decisions/0001-csharp-binding-path.md). -->
+    <ProjectReference Include="../../../crates/openburnbar-iroh/bindings/csharp/OpenBurnBarIroh.Ffi/OpenBurnBarIroh.Ffi.csproj" />
+  </ItemGroup>
+
+</Project>

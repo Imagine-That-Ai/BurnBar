@@ -206,7 +206,10 @@ actor QuotaRefreshActor {
                 }
             },
             claudeCredentialsReader: claudeCredentialsReader,
-            resolvedAPIKeys: resolved.keys
+            resolvedAPIKeys: resolved.keys,
+            secretStore: ProviderQuotaMacPlatform.secretStore,
+            cliExecutor: ProviderQuotaMacPlatform.cliExecutor,
+            quotaLogger: ProviderQuotaMacPlatform.quotaLogger
         )
         return context
     }

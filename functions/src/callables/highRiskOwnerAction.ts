@@ -1,6 +1,7 @@
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
+import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { requireTrustedDeviceActionProof } from "./computerUseSecurity.js";
 import { boundedTrimmedString } from "./shared.js";
 
@@ -56,6 +57,12 @@ export async function enforceHighRiskOwnerAction(
     nonce,
     proofRaw: data.actionProof,
     allowedPlatforms: HIGH_RISK_OWNER_ACTION_PLATFORMS,
+  });
+
+  await appendAuditEventRequired(uid, {
+    actor: auditActorLabel(request),
+    action: AUDIT_ACTIONS.highRiskOwnerAction,
+    domain: `${options.actionKind}:${subjectId}`,
   });
 }
 
