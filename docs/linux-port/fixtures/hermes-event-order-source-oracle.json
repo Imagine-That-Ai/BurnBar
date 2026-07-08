@@ -1,0 +1,58 @@
+{
+  "schema": "openburnbar-hermes-event-order-source-oracle-v2",
+  "provenance": {
+    "createdFor": "mission-001 Hermes event-order canonical oracle repair",
+    "sourceSurface": "OpenBurnBar daemon run journal, AF_UNIX CLI lifecycle, packaged Linux shell proof",
+    "reason": "Canonical event order for Linux Hermes validation. Observed rows must be parsed from product-generated artifacts, never copied from this fixture.",
+    "acceptedAsCanonical": true
+  },
+  "scenarios": [
+    {
+      "scenarioID": "prompt-tool-approval-done",
+      "promptID": "hermes-prompt-approval",
+      "events": [
+        { "seq": 1, "kind": "prompt.accepted", "source": "daemon", "phase": "planning" },
+        { "seq": 2, "kind": "plan.generated", "source": "daemon", "phase": "planning" },
+        { "seq": 3, "kind": "tool.approval.required", "source": "daemon", "phase": "awaiting_approval" },
+        { "seq": 4, "kind": "tool.approval.recorded", "source": "daemon", "phase": "awaiting_approval", "decision": "approve" },
+        { "seq": 5, "kind": "assistant.done", "source": "daemon", "phase": "completed", "terminal": true }
+      ]
+    },
+    {
+      "scenarioID": "cancel-before-terminal",
+      "promptID": "hermes-prompt-cancel",
+      "events": [
+        { "seq": 1, "kind": "prompt.accepted", "source": "daemon", "phase": "planning" },
+        { "seq": 2, "kind": "plan.generated", "source": "daemon", "phase": "planning" },
+        { "seq": 3, "kind": "tool.approval.required", "source": "daemon", "phase": "awaiting_approval" },
+        { "seq": 4, "kind": "run.cancel.requested", "source": "cli", "phase": "cancelling" },
+        { "seq": 5, "kind": "assistant.cancelled", "source": "daemon", "phase": "cancelled", "terminal": true }
+      ]
+    },
+    {
+      "scenarioID": "retry-after-error",
+      "promptID": "hermes-prompt-retry",
+      "events": [
+        { "seq": 1, "kind": "prompt.accepted", "source": "daemon", "phase": "planning" },
+        { "seq": 2, "kind": "plan.generated", "source": "daemon", "phase": "planning" },
+        { "seq": 3, "kind": "assistant.error", "source": "daemon", "phase": "failed" },
+        { "seq": 4, "kind": "run.retry.requested", "source": "cli", "phase": "retrying" },
+        { "seq": 5, "kind": "prompt.accepted", "source": "daemon", "phase": "planning" },
+        { "seq": 6, "kind": "plan.generated", "source": "daemon", "phase": "planning" },
+        { "seq": 7, "kind": "assistant.done", "source": "daemon", "phase": "completed", "terminal": true }
+      ]
+    },
+    {
+      "scenarioID": "persistence-list-readback",
+      "promptID": "hermes-prompt-persistence",
+      "events": [
+        { "seq": 1, "kind": "prompt.accepted", "source": "daemon", "phase": "planning" },
+        { "seq": 2, "kind": "assistant.done", "source": "daemon", "phase": "completed", "terminal": true },
+        { "seq": 3, "kind": "run.persistence.checkpoint", "source": "daemon", "phase": "completed" },
+        { "seq": 4, "kind": "run.list.readback", "source": "cli", "phase": "completed" },
+        { "seq": 5, "kind": "run.get.readback", "source": "cli", "phase": "completed" },
+        { "seq": 6, "kind": "run.poll.readback", "source": "cli", "phase": "completed" }
+      ]
+    }
+  ]
+}

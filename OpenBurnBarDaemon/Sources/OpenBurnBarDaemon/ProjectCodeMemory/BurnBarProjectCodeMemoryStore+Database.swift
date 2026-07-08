@@ -1,6 +1,10 @@
 import Foundation
 import OpenBurnBarCore
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 extension BurnBarProjectCodeMemoryStore {
     enum SQLiteBind {

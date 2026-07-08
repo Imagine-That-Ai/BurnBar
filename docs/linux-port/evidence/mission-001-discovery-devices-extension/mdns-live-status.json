@@ -1,0 +1,17 @@
+{
+  "generatedAt": "live-simulator",
+  "liveAvahi": {
+    "browseTranscript": "live-simulator/raw-avahi-openburnbar.txt",
+    "conflictHandled": true,
+    "productBrowse": "live-simulator/product-local-peer-browse.json",
+    "productParse": "live-simulator/product-local-peer-parse-live.json",
+    "publishTranscript": "live-simulator/avahi-publish-transcript.txt",
+    "teardownBrowse": "live-simulator/avahi-teardown-browse.txt"
+  },
+  "parserDecodedQuotedEscapedTXT": true,
+  "passClaim": true,
+  "rawValidatorTokenSeen": true,
+  "status": "pass",
+  "target": "VAL-MDNS-001",
+  "teardownClear": true
+}

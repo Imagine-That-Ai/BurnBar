@@ -1,0 +1,32 @@
+[
+  {
+    "adapter": "pixel_clock",
+    "discoveryMethod": "_http._tcp awtrix_*",
+    "evidence": "CLI devices pixel-clock discover",
+    "status": "discoverable"
+  },
+  {
+    "adapter": "google_cast",
+    "discoveryMethod": "_googlecast._tcp",
+    "evidence": "CLI devices iot cast status",
+    "status": "discoverable"
+  },
+  {
+    "adapter": "home_assistant",
+    "discoveryMethod": "_home-assistant._tcp",
+    "evidence": "CLI devices iot homeassistant status",
+    "status": "configured"
+  },
+  {
+    "adapter": "smart_hub_bridge",
+    "discoveryMethod": "loopback_http",
+    "evidence": "CLI devices iot smarthub status",
+    "status": "control_ready"
+  },
+  {
+    "adapter": "awtrix_http",
+    "discoveryMethod": "_http._tcp",
+    "evidence": "CLI devices discover awtrix",
+    "status": "discoverable"
+  }
+]
