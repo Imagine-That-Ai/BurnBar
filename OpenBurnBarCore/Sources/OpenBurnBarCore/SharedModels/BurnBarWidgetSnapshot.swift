@@ -73,8 +73,16 @@ public enum BurnBarWidgetShared {
 
     /// The shared container URL for the App Group. Returns `nil` if the app group is not configured.
     public static var containerURL: URL? {
+        #if canImport(Darwin)
         FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+        #else
+        // App Groups are an Apple-platform capability. Off-Apple (Windows/Linux
+        // Engine subset) there is no shared container, so the snapshot store's
+        // read/write helpers surface `.appGroupUnavailable`. The flat
+        // `BurnBarWidgetSnapshot` value + its JSON codec stay fully cross-platform.
+        nil
+        #endif
     }
 
     /// Full path to the widget snapshot JSON file.

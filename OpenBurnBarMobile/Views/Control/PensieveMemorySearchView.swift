@@ -242,7 +242,7 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
             throw DataVaultError.notSignedIn
         }
         let vaultKey = try CloudVaultKeyStore().getOrCreateKey(uid: uid)
-        let cloaked = PensieveVectorCloak.embedAndCloak(query, vaultKey: vaultKey, isQuery: true)
+        let cloaked = try PensieveVectorCloak.embedAndCloak(query, vaultKey: vaultKey, isQuery: true)
 
         let callable = Functions.functions(region: "us-central1").httpsCallable("searchKnowledge")
         let result = try await callable.call([

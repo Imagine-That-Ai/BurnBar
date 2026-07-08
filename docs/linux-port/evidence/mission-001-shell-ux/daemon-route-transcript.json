@@ -1,0 +1,214 @@
+{
+  "generatedAt": "2026-07-06T04:23:40.994Z",
+  "lane": "W06LinuxShellUx",
+  "mode": "real-daemon-af-unix-oracle",
+  "daemon": {
+    "ok": true,
+    "protocolVersion": 1,
+    "daemonVersion": "OpenBurnBarDaemon shell-session-evidence",
+    "socketPath": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock",
+    "gatewayEnabled": false,
+    "gatewayHost": "127.0.0.1",
+    "gatewayPort": 0
+  },
+  "routes": [
+    {
+      "route": "overview",
+      "label": "overview",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    },
+    {
+      "route": "insights",
+      "label": "insights",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    },
+    {
+      "route": "database",
+      "label": "database",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    },
+    {
+      "route": "providers",
+      "label": "providers",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    },
+    {
+      "route": "projects",
+      "label": "projects",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    },
+    {
+      "route": "missions",
+      "label": "missions",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    },
+    {
+      "route": "activity",
+      "label": "activity",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    },
+    {
+      "route": "chat",
+      "label": "chat",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    },
+    {
+      "route": "memory",
+      "label": "memory",
+      "source": "daemon-health",
+      "rows": [
+        {
+          "id": "daemon-version",
+          "title": "Daemon version",
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
+        },
+        {
+          "id": "socket-path",
+          "title": "AF_UNIX socket",
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
+        },
+        {
+          "id": "gateway-status",
+          "title": "Gateway",
+          "detail": "disabled"
+        }
+      ]
+    }
+  ]
+}

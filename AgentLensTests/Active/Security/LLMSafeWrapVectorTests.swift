@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// Marker so `Bundle(for:)` resolves the `OpenBurnBarTests` resource bundle, where

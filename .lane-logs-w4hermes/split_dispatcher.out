@@ -1,0 +1,10 @@
+original physical lines: 1831
+wrote OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift: 311 lines
+wrote OpenBurnBarMobile/Services/CLIAgentMissionDispatcher+Sealing.swift: 223 lines
+wrote OpenBurnBarMobile/Services/CLIAgentMissionDispatcher+FanOut.swift: 471 lines
+wrote OpenBurnBarMobile/Services/CLIAgentMissionDispatcher+MissionControl.swift: 207 lines
+wrote OpenBurnBarMobile/Services/AgentHarnessImportJobDispatcher.swift: 114 lines
+wrote OpenBurnBarMobile/Services/CLIAgentMissionRequestPayloadFactory.swift: 322 lines
+wrote OpenBurnBarMobile/Services/CLIAgentMissionModels.swift: 274 lines
+LOSSLESSNESS OK: all 1831 original lines accounted for verbatim exactly once
+(6 declaration lines then widened private->internal; imports + nilIfEmpty helper replicated per file)

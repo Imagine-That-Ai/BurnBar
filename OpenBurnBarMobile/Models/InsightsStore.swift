@@ -144,6 +144,10 @@ final class InsightsStore {
             try? await store.upsert(canvas)
             selectedCanvasID = canvas.id
         } catch {
+            // Seeding is best-effort — fall back to the static template canvas
+            // so first launch always has content, but log the analysis failure.
+            let errorLog = Self.errorLogContext(error)
+            Self.log.warning("seedInitialAnalysisCanvas: falling back to template errorType=\(errorLog.typeName, privacy: .public) messageHash=\(errorLog.message.fingerprint, privacy: .public) messageChars=\(errorLog.message.characterCount, privacy: .public)")
             let template = MobileInsightsTemplates.today
             var canvas = template.instantiate()
             canvas.modelTag = selectedModelTag

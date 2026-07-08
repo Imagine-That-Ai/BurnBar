@@ -5,11 +5,24 @@ import Security
 #endif
 
 /// Failures raised by shared privileged-socket trust primitives.
-public enum PrivilegedSocketTrustError: Error, Equatable, Sendable {
+public enum PrivilegedSocketTrustError: Error, LocalizedError, Equatable, Sendable {
     case auditTokenUnavailable
     case codeSignatureInvalid(status: OSStatus)
     case serverIdentityUnavailable
     case serverNotExpectedUser(expected: uid_t, actual: uid_t)
+
+    public var errorDescription: String? {
+        switch self {
+        case .auditTokenUnavailable:
+            return "OpenBurnBar could not read the peer audit token for the local privileged socket."
+        case .codeSignatureInvalid(let status):
+            return "OpenBurnBar code-signature validation failed with OSStatus \(status). The peer must be signed by the OpenBurnBar team with an allowed identifier, hardened runtime, and library validation."
+        case .serverIdentityUnavailable:
+            return "OpenBurnBar could not verify the owner of the local privileged socket peer."
+        case .serverNotExpectedUser(let expected, let actual):
+            return "OpenBurnBar rejected the local privileged socket peer because it is owned by user \(actual), not the expected user \(expected)."
+        }
+    }
 }
 
 /// Canonical OpenBurnBar signing identity and UNIX-socket peer-trust primitives.

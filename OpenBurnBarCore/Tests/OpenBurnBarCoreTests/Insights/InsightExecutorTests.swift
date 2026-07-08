@@ -17,7 +17,7 @@ final class InsightExecutorTests: XCTestCase {
     func testKPITotalCostMatchesSum() {
         let result = executor.evaluate(binding: .kpi(metric: .totalCost, window: .last30d),
                                        filter: filter, snapshot: snapshot)
-        guard case .kpi(let kpi) = result else { XCTFail("expected kpi") 
+        guard case .kpi(let kpi) = result else { XCTFail("expected kpi")
 return }
         let expected = snapshot.usages.reduce(0) { $0 + $1.costUSD }
         XCTAssertEqual(kpi.value, expected, accuracy: 0.0001)
@@ -27,7 +27,7 @@ return }
     func testKPICacheHitRateIsBoundedZeroOne() {
         let result = executor.evaluate(binding: .kpi(metric: .cacheHitRate, window: .last30d),
                                        filter: filter, snapshot: snapshot)
-        guard case .kpi(let kpi) = result else { XCTFail("expected kpi") 
+        guard case .kpi(let kpi) = result else { XCTFail("expected kpi")
 return }
         XCTAssertGreaterThanOrEqual(kpi.value, 0)
         XCTAssertLessThanOrEqual(kpi.value, 1)
@@ -38,7 +38,7 @@ return }
             binding: .timeSeries(metric: .cost, dimension: .provider, window: .last30d),
             filter: filter, snapshot: snapshot
         )
-        guard case .timeSeries(let ts) = result else { XCTFail("expected timeSeries") 
+        guard case .timeSeries(let ts) = result else { XCTFail("expected timeSeries")
 return }
         XCTAssertFalse(ts.series.isEmpty)
         XCTAssertLessThanOrEqual(ts.series.count, 5)
@@ -52,7 +52,7 @@ return }
             binding: .ranking(metric: .cost, dimension: .model, limit: 2, window: .last30d),
             filter: filter, snapshot: snapshot
         )
-        guard case .ranking(let r) = result else { XCTFail("expected ranking") 
+        guard case .ranking(let r) = result else { XCTFail("expected ranking")
 return }
         XCTAssertLessThanOrEqual(r.rows.count, 2)
         // Descending by value.
@@ -65,7 +65,7 @@ return }
             binding: .heatmap(metric: .sessions, window: .last30d),
             filter: filter, snapshot: snapshot
         )
-        guard case .heatmap(let h) = result else { XCTFail("expected heatmap") 
+        guard case .heatmap(let h) = result else { XCTFail("expected heatmap")
 return }
         XCTAssertEqual(h.cells.count, 7)
         XCTAssertEqual(h.cells.first?.count, 24)
@@ -76,7 +76,7 @@ return }
             binding: .forecast(metric: .cost, horizonDays: 5),
             filter: filter, snapshot: snapshot
         )
-        guard case .forecast(let f) = result else { XCTFail("expected forecast") 
+        guard case .forecast(let f) = result else { XCTFail("expected forecast")
 return }
         XCTAssertEqual(f.forecast.count, 5)
         XCTAssertEqual(f.lowerBound.count, 5)
@@ -90,7 +90,7 @@ return }
     func testQuotaBindingReturnsBuckets() {
         let result = executor.evaluate(binding: .quota(providerKey: nil),
                                        filter: filter, snapshot: snapshot)
-        guard case .quota(let q) = result else { XCTFail("expected quota") 
+        guard case .quota(let q) = result else { XCTFail("expected quota")
 return }
         XCTAssertFalse(q.buckets.isEmpty)
     }
@@ -107,7 +107,7 @@ return }
 
         let result = executor.evaluate(binding: .anomaly(window: .last90d),
                                        filter: filter, snapshot: injected)
-        guard case .anomaly(let table) = result else { XCTFail("expected anomaly") 
+        guard case .anomaly(let table) = result else { XCTFail("expected anomaly")
 return }
         XCTAssertFalse(table.rows.isEmpty, "Expected at least one anomaly when a spike is injected")
         XCTAssertTrue(table.rows.first!.label.lowercased().contains("spike"))
@@ -127,7 +127,7 @@ return }
 
         let result = executor.evaluate(binding: .anomaly(window: .last90d),
                                        filter: filter, snapshot: injected)
-        guard case .anomaly(let table) = result else { XCTFail("expected anomaly") 
+        guard case .anomaly(let table) = result else { XCTFail("expected anomaly")
 return }
         let row = try XCTUnwrap(table.rows.first)
         let sessionIDs: [String] = row.citations.compactMap { cite in
@@ -153,7 +153,7 @@ return }
         }
         let result = executor.evaluate(binding: .anomaly(window: .last90d),
                                        filter: filter, snapshot: injected)
-        guard case .anomaly(let table) = result else { XCTFail("expected anomaly") 
+        guard case .anomaly(let table) = result else { XCTFail("expected anomaly")
 return }
         XCTAssertLessThanOrEqual(table.rows.count, 12)
     }
@@ -162,7 +162,7 @@ return }
         // No spike: baseline noise should not surface anomalies above z=2.
         let result = executor.evaluate(binding: .anomaly(window: .last90d),
                                        filter: filter, snapshot: snapshot)
-        guard case .anomaly(let table) = result else { XCTFail("expected anomaly") 
+        guard case .anomaly(let table) = result else { XCTFail("expected anomaly")
 return }
         for row in table.rows {
             XCTAssertGreaterThanOrEqual(row.score, 2.0)
@@ -172,7 +172,7 @@ return }
     func testRadarSeriesValuesNormalized() {
         let result = executor.evaluate(binding: .radar(target: .allAgents, window: .last30d),
                                        filter: filter, snapshot: snapshot)
-        guard case .radar(let radar) = result else { XCTFail("expected radar") 
+        guard case .radar(let radar) = result else { XCTFail("expected radar")
 return }
         XCTAssertFalse(radar.axes.isEmpty)
         for series in radar.series {
@@ -189,7 +189,7 @@ return }
             binding: .distribution(metric: .cost, dimension: .provider, window: .last30d),
             filter: filter, snapshot: snapshot
         )
-        guard case .distribution(let d) = result else { XCTFail("expected distribution") 
+        guard case .distribution(let d) = result else { XCTFail("expected distribution")
 return }
         let sum = d.slices.reduce(0) { $0 + $1.value }
         XCTAssertEqual(d.total, sum, accuracy: 0.001)
@@ -201,7 +201,7 @@ return }
             .kpi(metric: .totalTokens, window: .last7d)
         ])
         let result = executor.evaluate(binding: composed, filter: filter, snapshot: snapshot)
-        guard case .composed(let children) = result else { XCTFail("expected composed") 
+        guard case .composed(let children) = result else { XCTFail("expected composed")
 return }
         XCTAssertEqual(children.count, 2)
         for child in children {

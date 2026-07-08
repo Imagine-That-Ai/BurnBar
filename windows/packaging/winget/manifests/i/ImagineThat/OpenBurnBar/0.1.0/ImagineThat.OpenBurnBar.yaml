@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+# OpenBurnBar — winget VERSION manifest (points at the default locale + version).
+# Publisher: Imagine That. Directory follows the winget-pkgs convention
+# manifests/<first-letter>/<Publisher>/<Package>/<Version>/.
+PackageIdentifier: ImagineThat.OpenBurnBar
+PackageVersion: 0.1.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

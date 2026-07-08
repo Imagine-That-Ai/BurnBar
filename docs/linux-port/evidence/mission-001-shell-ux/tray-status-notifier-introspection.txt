@@ -1,0 +1,63 @@
+node /org/ayatana/NotificationItem/tray_icon_tray_app_9276_1 {
+  interface org.freedesktop.DBus.Properties {
+    methods:
+      Get(in  s interface_name,
+          in  s property_name,
+          out v value);
+      GetAll(in  s interface_name,
+             out a{sv} properties);
+      Set(in  s interface_name,
+          in  s property_name,
+          in  v value);
+    signals:
+      PropertiesChanged(s interface_name,
+                        a{sv} changed_properties,
+                        as invalidated_properties);
+    properties:
+  };
+  interface org.freedesktop.DBus.Introspectable {
+    methods:
+      Introspect(out s xml_data);
+    signals:
+    properties:
+  };
+  interface org.freedesktop.DBus.Peer {
+    methods:
+      Ping();
+      GetMachineId(out s machine_uuid);
+    signals:
+    properties:
+  };
+  interface org.kde.StatusNotifierItem {
+    methods:
+      Scroll(in  i delta,
+             in  s orientation);
+      SecondaryActivate(in  i x,
+                        in  i y);
+      XAyatanaSecondaryActivate(in  u timestamp);
+    signals:
+      NewIcon();
+      NewIconThemePath(s icon_theme_path);
+      NewAttentionIcon();
+      NewStatus(s status);
+      XAyatanaNewLabel(s label,
+                       s guide);
+      NewTitle();
+    properties:
+      readonly s Id = 'tray-icon tray app 9276-1';
+      readonly s Category = 'ApplicationStatus';
+      readonly s Status = 'Active';
+      readonly s IconName = '/tmp/openburnbar-linux-desktop-session/runtime/tray-icon/tray-icon-9276-1-0.png';
+      readonly s IconAccessibleDesc = 'icon';
+      readonly s AttentionIconName = '';
+      readonly s AttentionAccessibleDesc = '';
+      readonly s Title = 'openburnbar-linux-desktop';
+      readonly s IconThemePath = '/tmp/openburnbar-linux-desktop-session/runtime/tray-icon';
+      readonly o Menu = '/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1/Menu';
+      readonly s XAyatanaLabel = '';
+      readonly s XAyatanaLabelGuide = '';
+      readonly u XAyatanaOrderingIndex = 0;
+  };
+  node Menu {
+  };
+};

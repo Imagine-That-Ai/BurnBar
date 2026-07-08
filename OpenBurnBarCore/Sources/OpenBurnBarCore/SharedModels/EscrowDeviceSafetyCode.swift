@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// Stream 6 — Multi-device trust + safety-number UX.
@@ -90,7 +89,7 @@ public enum EscrowDeviceSafetyCode {
     ///   absent / not base64 / not a 65-byte x9.63 P-256 public key.
     public static func recomputeFingerprint(fromPublicKeyData base64PublicKey: String?) -> String? {
         guard let keyData = validatedPublicKeyData(base64PublicKey) else { return nil }
-        return Data(SHA256.hash(data: keyData)).base64EncodedString()
+        return PlatformCrypto.sha256(keyData).base64EncodedString()
     }
 
     /// Format a grouped, human-comparable safety code derived from the escrow
@@ -131,7 +130,7 @@ public enum EscrowDeviceSafetyCode {
         guard !trimmedStored.isEmpty,
               let storedDigest = Data(base64Encoded: trimmedStored),
               let keyData = validatedPublicKeyData(base64PublicKey) else { return false }
-        let recomputed = Data(SHA256.hash(data: keyData))
+        let recomputed = PlatformCrypto.sha256(keyData)
         // Fixed-length digests; constant-time compare avoids leaking how many
         // leading bytes matched to a tamper probe.
         return constantTimeEquals(storedDigest, recomputed)
@@ -147,7 +146,7 @@ public enum EscrowDeviceSafetyCode {
         guard !trimmed.isEmpty,
               let raw = Data(base64Encoded: trimmed),
               raw.count == p256X963PublicKeyByteCount,
-              (try? P256.KeyAgreement.PublicKey(x963Representation: raw)) != nil else { return nil }
+              (try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: raw)) != nil else { return nil }
         return raw
     }
 

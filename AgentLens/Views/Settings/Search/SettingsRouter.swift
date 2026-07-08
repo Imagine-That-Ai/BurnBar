@@ -54,7 +54,7 @@ final class SettingsRouter {
 
     /// Sidebar tab the detail pane is currently bound to. Driven by the
     /// `SettingsView` selection binding.
-    var selectedTab: SettingsTab? = .general
+    var selectedTab: SettingsTab? = .home
 
     /// Navigation path inside the detail `NavigationStack`. We model
     /// destinations as `SettingsPageRoute` values so the same router can
@@ -129,6 +129,10 @@ final class SettingsRouter {
     /// empty path; deep routes append the route.
     private func pathForRoute(_ route: SettingsPageRoute) -> [SettingsPageRoute] {
         switch route {
+        // Home — the landing tab; no drill path.
+        case .homeRoot:
+            return []
+
         // General subpages drill from `GeneralSettingsView`.
         case .generalRoot:
             return []
@@ -161,6 +165,10 @@ final class SettingsRouter {
         case .agentsAccounts, .agentsCLIs, .agentsRuntimes, .agentsModels, .agentsAdvanced:
             return [route]
 
+        // Model Proxy — top-level tab, no drill path.
+        case .modelProxyRoot:
+            return []
+
         // The Elder Wand configurator and the standing Fusion Impact screen
         // each drill from the Agents landing into their own detail, which
         // `SettingsView.destination(for:)` renders.
@@ -188,7 +196,7 @@ final class SettingsRouter {
         }
     }
 
-    private func scheduleHighlightClear(for anchor: String, after seconds: TimeInterval) {
+    func scheduleHighlightClear(for anchor: String, after seconds: TimeInterval) {
         let target = anchor
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
             guard let self else { return }

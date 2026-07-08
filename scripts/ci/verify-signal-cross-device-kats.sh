@@ -7,7 +7,8 @@
 # (`make signal-cross-device-kats`) and from CI.
 #
 # Legs:
-#   G1  reverse-direction interop fixture: 3 byte-identical copies + structure (Swift+Android open it)
+#   G1  reverse-direction interop fixture: 4 byte-identical copies + structure (Swift+Android open it;
+#       the 4th is the Windows KAT copy — VAL-P0-HARNESS-026)
 #   G6  + at-rest: crypto-proof harness — bindingToAAD A/A2 (incl. transport), HPKE B, recognizer C,
 #       cross-language fixture pins D (incl. the Swift transport AAD copy)
 #   contract directory cases: signal-envelope-contracts node --test suite
@@ -31,7 +32,7 @@ ci_if_missing packages/libsignal-protocol
 echo "==> npm run build --prefix packages/libsignal-bridge"
 npm run build --prefix packages/libsignal-bridge >/dev/null
 
-echo "==> [G1] reverse-direction interop fixture: presence + byte-identity + structure"
+echo "==> [G1] reverse-direction interop fixture: presence + byte-identity (4 copies) + structure"
 node scripts/ci/check-reverse-interop-fixture.mjs
 
 echo "==> [G6 + at-rest] crypto-proof harness (bindingToAAD A/A2, HPKE B, recognizer C, fixture pins D)"

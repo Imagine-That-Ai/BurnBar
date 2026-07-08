@@ -10,9 +10,8 @@ struct DashboardChatWorkspaceToolbar: View {
     var settingsManager: SettingsManager
     /// Mode controls which buttons are shown.
     var mode: DashboardChatWorkspaceView.Mode
-
-    /// When the pane workspace is tiled, each pane carries its own engine + model pickers,
-    /// so the shared toolbar hides them to avoid a duplicate control surface.
+    /// When tiled (2+ panes) each pane header carries its own engine + model pickers, so
+    /// the top toolbar hides its duplicates. Single pane ⇒ true (identical to today).
     var showsEnginePickers: Bool = true
 
     var onNewChat: () -> Void

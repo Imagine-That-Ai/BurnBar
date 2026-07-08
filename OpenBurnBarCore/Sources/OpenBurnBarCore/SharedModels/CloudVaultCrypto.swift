@@ -1,6 +1,7 @@
-import CryptoKit
 import Foundation
+#if canImport(Security)
 import Security
+#endif
 
 public enum CloudVaultCryptoError: LocalizedError, Sendable {
     case invalidKeyLength
@@ -199,193 +200,6 @@ public struct CloudVaultSealedPayload: Codable, Hashable, Sendable {
     }
 }
 
-/// The at-rest Signal seal of a CloudVault payload — a self/group HPKE identity
-/// seal carried **alongside** the existing ``CloudVaultSealedText`` /
-/// ``CloudVaultSealedPayload`` fields (additive, never a replacement).
-///
-/// This is the Swift mirror of the at-rest variant of the shared TypeScript
-/// `SignalEnvelope` (`packages/signal-envelope-contracts/src/index.ts`) and the
-/// at-rest `CloudVaultSignalEnvelope` TS mirror
-/// (`packages/signal-envelope-contracts/src/cloudVaultSignalEnvelope.ts`). It is
-/// a pure **at-rest** envelope: `mode == "at-rest"`, `binding.scope ==
-/// "cloudvault"`, `relayEncryption == ``CloudVaultCrypto.signalAtRestEncryption``,
-/// and the content key is wrapped per-recipient (self + group members + escrow +
-/// recovery) so any trusted device can open the same ciphertext.
-///
-/// IMPORTANT — this remains additive and flag-OFF. Real Swift sealing/opening
-/// now lives in the separate `OpenBurnBarSignalCore` target so the base
-/// `OpenBurnBarCore` model target stays free of the native libsignal dependency.
-/// Production CloudVault writes still use
-/// ``CloudVaultCrypto/sealPayload(_:keyData:vaultKeyID:keyVersion:aadContext:)``
-/// and ``CloudVaultCrypto/sealText(_:keyData:keyVersion:aadContext:)`` until the
-/// migration flag selects Signal for a specific domain. The AEAD
-/// `associatedData` / HPKE `info` derives from
-/// ``signalEnvelopeBindingToAAD(_:)`` over ``CloudVaultSignalBinding/aadBinding``.
-public struct CloudVaultSignalCiphertextLayer: Codable, Hashable, Sendable {
-    public let payloadCiphertextB64: String
-    public let payloadAADLabel: String
-    public let schemaVersion: Int
-
-    public init(payloadCiphertextB64: String, payloadAADLabel: String, schemaVersion: Int) {
-        self.payloadCiphertextB64 = payloadCiphertextB64
-        self.payloadAADLabel = payloadAADLabel
-        self.schemaVersion = schemaVersion
-    }
-}
-
-/// One per-recipient wrap of the symmetric content key. `recipientKind` is
-/// `"device" | "escrow" | "recovery"`; `sealedContentKeyB64` is the HPKE seal of
-/// the 32-byte content key to `recipientIdentityKeyB64`. Mirrors the contract's
-/// `SignalAtRestWrap`.
-public struct CloudVaultSignalAtRestWrap: Codable, Hashable, Sendable {
-    public let recipientKind: String
-    public let recipientIdentityKeyId: String
-    public let recipientIdentityKeyB64: String
-    public let sealedContentKeyB64: String
-
-    public init(
-        recipientKind: String,
-        recipientIdentityKeyId: String,
-        recipientIdentityKeyB64: String,
-        sealedContentKeyB64: String
-    ) {
-        self.recipientKind = recipientKind
-        self.recipientIdentityKeyId = recipientIdentityKeyId
-        self.recipientIdentityKeyB64 = recipientIdentityKeyB64
-        self.sealedContentKeyB64 = sealedContentKeyB64
-    }
-}
-
-/// At-rest key delivery: the content key wrapped to every trusted recipient.
-/// Mirrors the contract's `SignalAtRestKeyDelivery` (`scheme`, `wraps`,
-/// `contentKeyLength == 32`).
-public struct CloudVaultSignalAtRestKeyDelivery: Codable, Hashable, Sendable {
-    public let scheme: String
-    public let wraps: [CloudVaultSignalAtRestWrap]
-    public let contentKeyLength: Int
-
-    public init(
-        scheme: String = CloudVaultCrypto.signalAtRestEncryption,
-        wraps: [CloudVaultSignalAtRestWrap],
-        contentKeyLength: Int = CloudVaultCrypto.signalAtRestContentKeyLength
-    ) {
-        self.scheme = scheme
-        self.wraps = wraps
-        self.contentKeyLength = contentKeyLength
-    }
-}
-
-/// The structured binding of an at-rest CloudVault Signal envelope. For the
-/// `cloudvault` scope the document coordinates (`collection`/`docId`/`field`) are
-/// present and the gateway-only `clientId`/`slotId` are absent. Mirrors the
-/// contract's `SignalBinding`.
-public struct CloudVaultSignalBinding: Codable, Hashable, Sendable {
-    public let uid: String
-    public let scope: String
-    public let collection: String
-    public let docId: String
-    public let field: String
-    public let mode: String
-    public let formatVersion: Int
-
-    public init(
-        uid: String,
-        collection: String,
-        docId: String,
-        field: String,
-        scope: String = CloudVaultCrypto.signalAtRestScope,
-        mode: String = CloudVaultCrypto.signalAtRestMode,
-        formatVersion: Int = CloudVaultCrypto.signalEnvelopeFormatVersion
-    ) {
-        self.uid = uid
-        self.scope = scope
-        self.collection = collection
-        self.docId = docId
-        self.field = field
-        self.mode = mode
-        self.formatVersion = formatVersion
-    }
-
-    /// Bridge into ``SignalEnvelopeAAD/Binding`` so the canonical AAD/HPKE-info
-    /// string comes from the single byte-parity serializer
-    /// ``signalEnvelopeBindingToAAD(_:)`` — never re-derived here.
-    public var aadBinding: SignalEnvelopeAAD.Binding {
-        SignalEnvelopeAAD.Binding(
-            uid: uid,
-            scope: .cloudvault,
-            clientId: nil,
-            collection: collection,
-            docId: docId,
-            field: field,
-            slotId: nil,
-            mode: .atRest,
-            formatVersion: formatVersion
-        )
-    }
-}
-
-/// Sender authentication for an at-rest Signal envelope. The writing device signs
-/// the envelope (binding + ciphertext + recipient wraps) with its identity PRIVATE
-/// key; a reader verifies the signature against the sender's PINNED public key from
-/// the trusted-device set (NOT the wire `senderIdentityKeyB64`). Because the server
-/// holds only PUBLIC identity keys it cannot forge a valid signature, which closes
-/// the at-rest forgery hole (a Base-mode HPKE seal alone has no sender auth).
-/// Mirrors the contract's at-rest `senderIdentityKeyId` + `senderSignatureB64`.
-public struct CloudVaultSignalSenderAuth: Codable, Hashable, Sendable {
-    public let senderIdentityKeyId: String
-    public let senderIdentityKeyB64: String
-    public let signatureB64: String
-    public let signatureVersion: Int
-
-    public init(
-        senderIdentityKeyId: String,
-        senderIdentityKeyB64: String,
-        signatureB64: String,
-        signatureVersion: Int = CloudVaultCrypto.signalAtRestSenderAuthVersion
-    ) {
-        self.senderIdentityKeyId = senderIdentityKeyId
-        self.senderIdentityKeyB64 = senderIdentityKeyB64
-        self.signatureB64 = signatureB64
-        self.signatureVersion = signatureVersion
-    }
-}
-
-/// At-rest Signal envelope for a CloudVault payload (the Swift mirror of the
-/// shared TS `SignalEnvelope` at-rest variant). TYPE ONLY — see the doc comment
-/// on ``CloudVaultSignalCiphertextLayer``. `relayKeyVersion` is intentionally
-/// absent for at-rest envelopes (the contract rejects it on `at-rest`).
-public struct CloudVaultSignalEnvelope: Codable, Hashable, Sendable {
-    public let signalEnvelopeFormatVersion: Int
-    public let mode: String
-    public let relayEncryption: String
-    public let ciphertextLayer: CloudVaultSignalCiphertextLayer
-    public let keyDelivery: CloudVaultSignalAtRestKeyDelivery
-    public let binding: CloudVaultSignalBinding
-    /// Optional on the wire (legacy envelopes predate it), but REQUIRED for a
-    /// reader to accept an at-rest envelope — `OpenBurnBarSignalAtRest.openPayload`
-    /// rejects an envelope without verified sender auth and the caller falls back to
-    /// the (non-forgeable) legacy sealedPayload.
-    public let senderAuth: CloudVaultSignalSenderAuth?
-
-    public init(
-        ciphertextLayer: CloudVaultSignalCiphertextLayer,
-        keyDelivery: CloudVaultSignalAtRestKeyDelivery,
-        binding: CloudVaultSignalBinding,
-        senderAuth: CloudVaultSignalSenderAuth? = nil,
-        signalEnvelopeFormatVersion: Int = CloudVaultCrypto.signalEnvelopeFormatVersion,
-        mode: String = CloudVaultCrypto.signalAtRestMode,
-        relayEncryption: String = CloudVaultCrypto.signalAtRestEncryption
-    ) {
-        self.signalEnvelopeFormatVersion = signalEnvelopeFormatVersion
-        self.mode = mode
-        self.relayEncryption = relayEncryption
-        self.ciphertextLayer = ciphertextLayer
-        self.keyDelivery = keyDelivery
-        self.binding = binding
-        self.senderAuth = senderAuth
-    }
-}
-
 public struct CloudVaultDocumentRewrapResult {
     public let data: [String: Any]
     public let changedFields: [String]
@@ -407,16 +221,16 @@ public enum CloudVaultCrypto {
     /// the Signal HPKE identity seal described by ``CloudVaultSignalEnvelope``.
     /// Production CloudVault writes do not use this scheme yet; the real sealer is
     /// isolated in `OpenBurnBarSignalCore` and remains behind migration flags.
-    public static let signalEnvelopeFormatVersion = 1
-    public static let signalAtRestMode = "at-rest"
-    public static let signalAtRestScope = "cloudvault"
-    public static let signalAtRestEncryption = "signal-hpke-identity-seal-v1"
-    public static let signalAtRestContentKeyLength = 32
+    public static let signalEnvelopeFormatVersion = CloudVaultSignalEnvelopeContract.signalEnvelopeFormatVersion
+    public static let signalAtRestMode = CloudVaultSignalEnvelopeContract.signalAtRestMode
+    public static let signalAtRestScope = CloudVaultSignalEnvelopeContract.signalAtRestScope
+    public static let signalAtRestEncryption = CloudVaultSignalEnvelopeContract.signalAtRestEncryption
+    public static let signalAtRestContentKeyLength = CloudVaultSignalEnvelopeContract.signalAtRestContentKeyLength
     /// Version of the at-rest sender-authentication signature construction
     /// (``CloudVaultSignalSenderAuth``). The signed message + domain separator are
     /// defined in `OpenBurnBarSignalAtRest`; bump only on a breaking change.
-    public static let signalAtRestSenderAuthVersion = 1
-    public static let signalAtRestSenderAuthDomain = "OpenBurnBar-Signal-AtRest-SenderAuth-v1"
+    public static let signalAtRestSenderAuthVersion = CloudVaultSignalEnvelopeContract.signalAtRestSenderAuthVersion
+    public static let signalAtRestSenderAuthDomain = CloudVaultSignalEnvelopeContract.signalAtRestSenderAuthDomain
     public static let aadContextPrefix = "OpenBurnBar-CloudVault-aad-v2"
     public static let legacyAADContextPrefix = "OpenBurnBar-CloudVault-aad-v1"
     public static let currentSealedTextSchemaVersion = 2
@@ -434,10 +248,13 @@ public enum CloudVaultCrypto {
     public static let recoverySalt = Data("OpenBurnBar-Recovery-Salt-v1".utf8)
     public static let recoveryWrapInfo = Data("OpenBurnBar-Recovery-Wrap-v1".utf8)
 
+    #if canImport(Security)
     // Test-only injection seam: production never reassigns this (stays the pure C `SecRandomCopyBytes`); only one XCTest swaps a stub in and restores the original via `defer` within a single synchronous test, so there is no concurrent mutation.
     nonisolated(unsafe) internal static var secureRandomCopyBytes: (SecRandomRef?, Int, UnsafeMutableRawPointer) -> OSStatus = SecRandomCopyBytes
+    #endif
 
     private static func randomBytes(count: Int) throws -> [UInt8] {
+        #if canImport(Security)
         var bytes = [UInt8](repeating: 0, count: count)
         let status = bytes.withUnsafeMutableBytes { buffer -> OSStatus in
             guard let baseAddress = buffer.baseAddress else {
@@ -447,6 +264,13 @@ public enum CloudVaultCrypto {
         }
         guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
         return bytes
+        #else
+        do {
+            return Array(try PlatformCrypto.secureRandomBytes(count: count))
+        } catch {
+            throw CloudVaultCryptoError.keychainError(-1)
+        }
+        #endif
     }
 
     public static func generateVaultKey() throws -> Data {
@@ -474,12 +298,11 @@ public enum CloudVaultCrypto {
         aadContext: CloudVaultAADContext? = nil
     ) throws -> CloudVaultSealedText {
         let plaintext = Data(text.utf8)
-        let sealed: AES.GCM.SealedBox
-        if let aadContext {
-            sealed = try AES.GCM.seal(plaintext, using: try symmetricKey(from: keyData), authenticating: aadContext.data)
-        } else {
-            sealed = try AES.GCM.seal(plaintext, using: try symmetricKey(from: keyData))
-        }
+        let sealed = try PlatformCrypto.sealAESGCMDetached(
+            plaintext: plaintext,
+            keyData: keyData,
+            authenticating: aadContext?.data ?? Data()
+        )
         return try sealedText(from: sealed, keyVersion: keyVersion, aadContext: aadContext)
     }
 
@@ -501,21 +324,17 @@ public enum CloudVaultCrypto {
         keyVersion: Int = currentKeyVersion,
         aadContext: CloudVaultAADContext? = nil
     ) throws -> CloudVaultBlobEnvelope {
-        let sealed: AES.GCM.SealedBox
-        if let aadContext {
-            sealed = try AES.GCM.seal(data, using: try symmetricKey(from: keyData), authenticating: aadContext.data)
-        } else {
-            sealed = try AES.GCM.seal(data, using: try symmetricKey(from: keyData))
-        }
-        guard let combined = sealed.combined else {
-            throw CloudVaultCryptoError.sealedBoxUnavailable
-        }
+        let sealed = try PlatformCrypto.sealAESGCMDetached(
+            plaintext: data,
+            keyData: keyData,
+            authenticating: aadContext?.data ?? Data()
+        )
         return CloudVaultBlobEnvelope(
             schemaVersion: currentBlobEnvelopeSchemaVersion,
             keyVersion: keyVersion,
             plaintextHMAC: try blobPlaintextHMAC(data, keyData: keyData),
             integrityHashVersion: blobIntegrityHashVersion,
-            sealedBoxBase64: combined.base64EncodedString(),
+            sealedBoxBase64: sealed.combined.base64EncodedString(),
             aad: aadContext?.stringValue ?? blobEnvelopeAADContext
         )
     }
@@ -531,25 +350,24 @@ public enum CloudVaultCrypto {
         guard let combined = Data(base64Encoded: envelope.sealedBoxBase64) else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
-        let box = try AES.GCM.SealedBox(combined: combined)
         let plaintext: Data
         switch envelope.schemaVersion {
         case 1:
-            plaintext = try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+            plaintext = try PlatformCrypto.openAESGCM(combined: combined, keyData: keyData)
             guard let plaintextSHA256 = envelope.plaintextSHA256,
                   sha256Hex(plaintext) == plaintextSHA256 else {
                 throw CloudVaultCryptoError.invalidEnvelope
             }
         case currentBlobEnvelopeSchemaVersion:
             if envelope.aad == blobEnvelopeAADContext {
-                plaintext = try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+                plaintext = try PlatformCrypto.openAESGCM(combined: combined, keyData: keyData)
             } else {
                 guard let aadContext else {
                     throw CloudVaultCryptoError.invalidEnvelope
                 }
-                plaintext = try AES.GCM.open(
-                    box,
-                    using: try symmetricKey(from: keyData),
+                plaintext = try PlatformCrypto.openAESGCM(
+                    combined: combined,
+                    keyData: keyData,
                     authenticating: try aadData(matching: envelope.aad, context: aadContext)
                 )
             }
@@ -615,14 +433,11 @@ public enum CloudVaultCrypto {
             sealedBoxBase64: "",
             aad: aadContext?.stringValue ?? sealedPayloadAADContext
         )
-        let sealed = try AES.GCM.seal(
-            data,
-            using: try symmetricKey(from: keyData),
+        let combined = try PlatformCrypto.sealAESGCM(
+            plaintext: data,
+            keyData: keyData,
             authenticating: sealedPayloadAAD(for: draft, aadContext: aadContext)
         )
-        guard let combined = sealed.combined else {
-            throw CloudVaultCryptoError.sealedBoxUnavailable
-        }
         return CloudVaultSealedPayload(
             schemaVersion: currentSealedPayloadSchemaVersion,
             keyVersion: keyVersion,
@@ -642,24 +457,23 @@ public enum CloudVaultCrypto {
               let combined = Data(base64Encoded: envelope.sealedBoxBase64) else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
-        let box = try AES.GCM.SealedBox(combined: combined)
         switch envelope.schemaVersion {
         case 1:
-            return try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+            return try PlatformCrypto.openAESGCM(combined: combined, keyData: keyData)
         case currentSealedPayloadSchemaVersion:
             if envelope.aad == sealedPayloadAADContext {
-                return try AES.GCM.open(
-                    box,
-                    using: try symmetricKey(from: keyData),
+                return try PlatformCrypto.openAESGCM(
+                    combined: combined,
+                    keyData: keyData,
                     authenticating: sealedPayloadAAD(for: envelope, aadContext: nil)
                 )
             }
             guard let aadContext else {
                 throw CloudVaultCryptoError.invalidEnvelope
             }
-            return try AES.GCM.open(
-                box,
-                using: try symmetricKey(from: keyData),
+            return try PlatformCrypto.openAESGCM(
+                combined: combined,
+                keyData: keyData,
                 authenticating: try aadData(matching: envelope.aad, context: aadContext)
             )
         default:
@@ -845,8 +659,8 @@ public enum CloudVaultCrypto {
     /// HKDF<SHA256> → HMAC<SHA256> → hex recipe.
     public static func projectMemoryDocID(forSlug slug: String, keyData: Data) throws -> String {
         let key = try projectMemoryDocIDKey(from: keyData)
-        let mac = HMAC<SHA256>.authenticationCode(for: Data(slug.utf8), using: key)
-        return "pm_" + Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined()
+        let mac = try PlatformCrypto.hmacSHA256(Data(slug.utf8), keyData: PlatformCrypto.symmetricKeyData(key))
+        return "pm_" + mac.prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
     /// Vault-keyed dedup hash for a Pensieve knowledge chunk's plaintext.
@@ -859,8 +673,10 @@ public enum CloudVaultCrypto {
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:content") → HMAC<SHA256>(plaintext)`.
     public static func pensieveDedupHash(_ plaintext: String, keyData: Data) throws -> String {
         let key = try pensieveDedupKey(from: keyData, label: "content")
-        let mac = HMAC<SHA256>.authenticationCode(for: Data(plaintext.utf8), using: key)
-        return Data(mac).map { String(format: "%02x", $0) }.joined()
+        return try PlatformCrypto.hmacSHA256Hex(
+            Data(plaintext.utf8),
+            keyData: PlatformCrypto.symmetricKeyData(key)
+        )
     }
 
     /// Vault-keyed HMAC of a Pensieve source slug — the opaque filter column that
@@ -869,8 +685,10 @@ public enum CloudVaultCrypto {
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:slug") → HMAC<SHA256>(slug)`.
     public static func pensieveSlugHmac(_ slug: String, keyData: Data) throws -> String {
         let key = try pensieveDedupKey(from: keyData, label: "slug")
-        let mac = HMAC<SHA256>.authenticationCode(for: Data(slug.utf8), using: key)
-        return Data(mac).map { String(format: "%02x", $0) }.joined()
+        return try PlatformCrypto.hmacSHA256Hex(
+            Data(slug.utf8),
+            keyData: PlatformCrypto.symmetricKeyData(key)
+        )
     }
 
     /// Deterministic, opaque Firestore document id for a subscription topic.
@@ -886,17 +704,21 @@ public enum CloudVaultCrypto {
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "subscription-topic") → HMAC<SHA256>("agentURI:topicID")`.
     public static func subscriptionDocID(agentURI: String, topicID: String, keyData: Data) throws -> String {
         let key = try subscriptionDocIDKey(from: keyData)
-        let mac = HMAC<SHA256>.authenticationCode(for: Data("\(agentURI):\(topicID)".utf8), using: key)
-        return "sub_" + Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined()
+        let mac = try PlatformCrypto.hmacSHA256(
+            Data("\(agentURI):\(topicID)".utf8),
+            keyData: PlatformCrypto.symmetricKeyData(key)
+        )
+        return "sub_" + mac.prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func tokenHashes(forTerms terms: [String], key: SymmetricKey, limit: Int) -> [String] {
+    private static func tokenHashes(forTerms terms: [String], key: PlatformSymmetricKey, limit: Int) -> [String] {
         guard limit > 0 else { return [] }
         var seen = Set<String>()
         var hashes: [String] = []
+        let keyData = PlatformCrypto.symmetricKeyData(key)
         for term in terms where seen.insert(term).inserted {
-            let mac = HMAC<SHA256>.authenticationCode(for: Data(term.utf8), using: key)
-            hashes.append(Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined())
+            guard let mac = try? PlatformCrypto.hmacSHA256(Data(term.utf8), keyData: keyData) else { continue }
+            hashes.append(mac.prefix(16).map { String(format: "%02x", $0) }.joined())
             if hashes.count >= limit { break }
         }
         return hashes
@@ -960,9 +782,10 @@ public enum CloudVaultCrypto {
 
         let dimensions = 64
         var accumulator = [Double](repeating: 0, count: dimensions)
+        let semanticKeyData = PlatformCrypto.symmetricKeyData(key)
         for feature in features {
-            let mac = HMAC<SHA256>.authenticationCode(for: Data(feature.name.utf8), using: key)
-            let bytes = Array(Data(mac))
+            let mac = try PlatformCrypto.hmacSHA256(Data(feature.name.utf8), keyData: semanticKeyData)
+            let bytes = Array(mac)
             let index = ((Int(bytes[0]) << 8) | Int(bytes[1])) % dimensions
             let sign = (bytes[2] & 1) == 0 ? 1.0 : -1.0
             accumulator[index] += sign * feature.weight
@@ -972,8 +795,8 @@ public enum CloudVaultCrypto {
         var seen = Set<String>()
         func appendBucket(_ bucket: String) {
             guard hashes.count < limit else { return }
-            let mac = HMAC<SHA256>.authenticationCode(for: Data(bucket.utf8), using: key)
-            let hash = Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined()
+            guard let mac = try? PlatformCrypto.hmacSHA256(Data(bucket.utf8), keyData: semanticKeyData) else { return }
+            let hash = mac.prefix(16).map { String(format: "%02x", $0) }.joined()
             if seen.insert(hash).inserted {
                 hashes.append(hash)
             }
@@ -1008,49 +831,45 @@ public enum CloudVaultCrypto {
 
     public static func wrapVaultKey(_ keyData: Data, recipientPublicKey: Data) throws -> Data {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        guard let recipientKey = try? P256.KeyAgreement.PublicKey(x963Representation: recipientPublicKey) else {
+        guard let recipientKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: recipientPublicKey) else {
             throw CloudVaultCryptoError.invalidPublicKey
         }
-        let ephemeralKey = P256.KeyAgreement.PrivateKey()
-        let sharedSecret = try ephemeralKey.sharedSecretFromKeyAgreement(with: recipientKey)
-        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
+        let ephemeralKey = PlatformCrypto.p256KeyAgreementPrivateKey()
+        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: ephemeralKey, publicKey: recipientKey)
+        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
+            sharedSecret: sharedSecret,
             salt: Data(),
-            sharedInfo: Data("OpenBurnBar-Escrow-v1".utf8),
+            info: Data("OpenBurnBar-Escrow-v1".utf8),
             outputByteCount: 32
         )
-        let sealed = try AES.GCM.seal(keyData, using: wrappingKey)
-        guard let combined = sealed.combined else {
-            throw CloudVaultCryptoError.sealedBoxUnavailable
-        }
+        let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey)
         return ephemeralKey.publicKey.x963Representation + combined
     }
 
-    public static func unwrapVaultKey(_ ciphertext: Data, privateKey: P256.KeyAgreement.PrivateKey) throws -> Data {
+    public static func unwrapVaultKey(_ ciphertext: Data, privateKey: PlatformP256KeyAgreementPrivateKey) throws -> Data {
         guard ciphertext.count > 65 else { throw CloudVaultCryptoError.invalidEnvelope }
         let publicKeyData = ciphertext.prefix(65)
         let sealedBoxData = ciphertext.suffix(from: 65)
-        guard let publicKey = try? P256.KeyAgreement.PublicKey(x963Representation: publicKeyData) else {
+        guard let publicKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: Data(publicKeyData)) else {
             throw CloudVaultCryptoError.invalidPublicKey
         }
-        let sharedSecret = try privateKey.sharedSecretFromKeyAgreement(with: publicKey)
-        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
+        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey, publicKey: publicKey)
+        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
+            sharedSecret: sharedSecret,
             salt: Data(),
-            sharedInfo: Data("OpenBurnBar-Escrow-v1".utf8),
+            info: Data("OpenBurnBar-Escrow-v1".utf8),
             outputByteCount: 32
         )
-        let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-        let keyData = try AES.GCM.open(sealedBox, using: wrappingKey)
+        let keyData = try PlatformCrypto.openAESGCM(combined: Data(sealedBoxData), key: wrappingKey)
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         return keyData
     }
 
-    public static func deriveRecoveryWrappingKey(from recoveryKey: String) throws -> SymmetricKey {
+    public static func deriveRecoveryWrappingKey(from recoveryKey: String) throws -> PlatformSymmetricKey {
         let normalized = normalizedRecoveryKey(recoveryKey)
         guard normalized.count >= 20 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: Data(normalized.utf8)),
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: Data(normalized.utf8),
             salt: recoverySalt,
             info: recoveryWrapInfo,
             outputByteCount: 32
@@ -1063,10 +882,7 @@ public enum CloudVaultCrypto {
     ) throws -> (wrappedVaultKeyBase64: String, verificationHash: String) {
         guard vaultKey.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         let wrappingKey = try deriveRecoveryWrappingKey(from: recoveryKey)
-        let sealed = try AES.GCM.seal(vaultKey, using: wrappingKey)
-        guard let combined = sealed.combined else {
-            throw CloudVaultCryptoError.sealedBoxUnavailable
-        }
+        let combined = try PlatformCrypto.sealAESGCM(plaintext: vaultKey, key: wrappingKey)
         return (
             wrappedVaultKeyBase64: combined.base64EncodedString(),
             verificationHash: recoveryVerificationHash(forDerivedKey: wrappingKey)
@@ -1080,8 +896,10 @@ public enum CloudVaultCrypto {
         guard let combined = Data(base64Encoded: wrappedVaultKeyBase64) else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
-        let box = try AES.GCM.SealedBox(combined: combined)
-        let keyData = try AES.GCM.open(box, using: try deriveRecoveryWrappingKey(from: recoveryKey))
+        let keyData = try PlatformCrypto.openAESGCM(
+            combined: combined,
+            key: try deriveRecoveryWrappingKey(from: recoveryKey)
+        )
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         return keyData
     }
@@ -1091,14 +909,14 @@ public enum CloudVaultCrypto {
     }
 
     public static func sha256Hex(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        PlatformCrypto.sha256Hex(data)
     }
 
     public static func sha256Hex(_ text: String) -> String {
         sha256Hex(Data(text.utf8))
     }
 
-    private static func recoveryVerificationHash(forDerivedKey key: SymmetricKey) -> String {
+    private static func recoveryVerificationHash(forDerivedKey key: PlatformSymmetricKey) -> String {
         key.withUnsafeBytes { bytes in
             sha256Hex(Data(bytes))
         }
@@ -1110,21 +928,20 @@ public enum CloudVaultCrypto {
             .filter { $0.isLetter || $0.isNumber }
     }
 
-    private static func symmetricKey(from data: Data) throws -> SymmetricKey {
+    private static func symmetricKey(from data: Data) throws -> PlatformSymmetricKey {
         guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return SymmetricKey(data: data)
+        return try PlatformCrypto.symmetricKey(data: data)
     }
 
     private static func keyedHMACHex(_ data: Data, keyData: Data, purpose: String) throws -> String {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        let key = HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: keyData),
+        let key = try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: keyData,
             salt: Data("OpenBurnBar-CloudVault-HMAC-Salt-v1".utf8),
             info: Data("OpenBurnBar-CloudVault-HMAC-v1|\(purpose)".utf8),
             outputByteCount: 32
         )
-        let mac = HMAC<SHA256>.authenticationCode(for: data, using: key)
-        return Data(mac).map { String(format: "%02x", $0) }.joined()
+        return PlatformCrypto.hexString(try PlatformCrypto.hmacSHA256(data, keyData: PlatformCrypto.symmetricKeyData(key)))
     }
 
     private static func sealedPayloadAAD(for envelope: CloudVaultSealedPayload, aadContext: CloudVaultAADContext?) -> Data {
@@ -1165,30 +982,30 @@ public enum CloudVaultCrypto {
         try aadData(matching: envelopeAAD, context: context, rejectLegacyV1: rejectLegacyV1)
     }
 
-    private static func searchKey(from data: Data) throws -> SymmetricKey {
+    private static func searchKey(from data: Data) throws -> PlatformSymmetricKey {
         guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: data),
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: data,
             salt: Data("OpenBurnBar-CloudSearch-Salt-v1".utf8),
             info: Data("OpenBurnBar-CloudSearch-TokenHash-v1".utf8),
             outputByteCount: 32
         )
     }
 
-    private static func semanticSearchKey(from data: Data) throws -> SymmetricKey {
+    private static func semanticSearchKey(from data: Data) throws -> PlatformSymmetricKey {
         guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: data),
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: data,
             salt: Data("OpenBurnBar-CloudSearch-Semantic-Salt-v1".utf8),
             info: Data("OpenBurnBar-CloudSearch-SemanticHash-v1".utf8),
             outputByteCount: 32
         )
     }
 
-    private static func projectMemoryDocIDKey(from data: Data) throws -> SymmetricKey {
+    private static func projectMemoryDocIDKey(from data: Data) throws -> PlatformSymmetricKey {
         guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: data),
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: data,
             salt: Data("OpenBurnBar-DocID-Salt-v1".utf8),
             info: Data("OpenBurnBar-ProjectMemory-DocID-v1".utf8),
             outputByteCount: 32
@@ -1198,10 +1015,10 @@ public enum CloudVaultCrypto {
     /// Per-user Pensieve dedup subkey. Mirrors the TS device derivation the server
     /// test pins (`knowledgeMemoryDedupHash.test.ts`): empty HKDF salt, info
     /// `"pensieve-dedup:<label>"` where `label` is `content` or `slug`.
-    private static func pensieveDedupKey(from data: Data, label: String) throws -> SymmetricKey {
+    private static func pensieveDedupKey(from data: Data, label: String) throws -> PlatformSymmetricKey {
         guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: data),
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: data,
             salt: Data(),
             info: Data("pensieve-dedup:\(label)".utf8),
             outputByteCount: 32
@@ -1213,10 +1030,10 @@ public enum CloudVaultCrypto {
     /// (`AgentSubscriptionTopicStore.documentID`) must reproduce so the same
     /// `(agentURI, topicID, vaultKey)` yields an identical opaque doc id on iOS
     /// and Android.
-    private static func subscriptionDocIDKey(from data: Data) throws -> SymmetricKey {
+    private static func subscriptionDocIDKey(from data: Data) throws -> PlatformSymmetricKey {
         guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: data),
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: data,
             salt: Data(),
             info: Data("subscription-topic".utf8),
             outputByteCount: 32
@@ -1392,7 +1209,7 @@ public enum CloudVaultCrypto {
     }
 
     private static func sealedText(
-        from sealed: AES.GCM.SealedBox,
+        from sealed: (nonce: Data, ciphertext: Data, tag: Data, combined: Data),
         keyVersion: Int,
         aadContext: CloudVaultAADContext?
     ) throws -> CloudVaultSealedText {
@@ -1400,7 +1217,7 @@ public enum CloudVaultCrypto {
             schemaVersion: aadContext == nil ? nil : currentSealedTextSchemaVersion,
             algorithm: aesGCMAlgorithm,
             keyVersion: keyVersion,
-            nonce: sealed.nonce.withUnsafeBytes { Data($0).base64EncodedString() },
+            nonce: sealed.nonce.base64EncodedString(),
             ciphertext: sealed.ciphertext.base64EncodedString(),
             tag: sealed.tag.base64EncodedString(),
             aad: aadContext?.stringValue
@@ -1418,20 +1235,25 @@ public enum CloudVaultCrypto {
               let tag = Data(base64Encoded: envelope.tag) else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
-        let nonce = try AES.GCM.Nonce(data: nonceData)
-        let box = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag)
         let schemaVersion = envelope.schemaVersion ?? 1
         if schemaVersion >= currentSealedTextSchemaVersion {
             guard let aadContext else {
                 throw CloudVaultCryptoError.invalidEnvelope
             }
-            return try AES.GCM.open(
-                box,
-                using: try symmetricKey(from: keyData),
+            return try PlatformCrypto.openAESGCMDetached(
+                nonce: nonceData,
+                ciphertext: ciphertext,
+                tag: tag,
+                keyData: keyData,
                 authenticating: try aadData(matching: envelope.aad, context: aadContext)
             )
         }
-        return try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+        return try PlatformCrypto.openAESGCMDetached(
+            nonce: nonceData,
+            ciphertext: ciphertext,
+            tag: tag,
+            keyData: keyData
+        )
     }
 }
 
@@ -1443,6 +1265,7 @@ public struct CloudVaultKeyStore: Sendable {
     }
 
     public func loadKey(uid: String) throws -> Data? {
+        #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -1457,6 +1280,9 @@ public struct CloudVaultKeyStore: Sendable {
         guard let data = item as? Data else { throw CloudVaultCryptoError.keychainDataMissing }
         guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         return data
+        #else
+        return nil
+        #endif
     }
 
     public func getOrCreateKey(uid: String) throws -> Data {
@@ -1470,6 +1296,7 @@ public struct CloudVaultKeyStore: Sendable {
 
     public func saveKey(_ keyData: Data, uid: String) throws {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -1491,6 +1318,7 @@ public struct CloudVaultKeyStore: Sendable {
         guard addStatus == errSecSuccess else {
             throw CloudVaultCryptoError.keychainError(Int(addStatus))
         }
+        #endif
     }
 
     private func account(uid: String) -> String {

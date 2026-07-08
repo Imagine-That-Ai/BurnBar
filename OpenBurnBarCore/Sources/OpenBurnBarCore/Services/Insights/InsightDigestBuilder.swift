@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// Builds the privacy-bounded `InsightDigest` that gets shipped to a model.
 ///
@@ -146,8 +145,7 @@ public struct InsightDigestBuilder: Sendable {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(withoutHash) else { return "" }
-        let bytes = SHA256.hash(data: data)
-        return bytes.map { String(format: "%02x", $0) }.joined()
+        return PlatformCrypto.sha256Hex(data)
     }
 
     // MARK: - Filtering
@@ -722,8 +720,10 @@ public struct InsightDigestBuilder: Sendable {
     }
 
     private static func shortHash(_ raw: String, salt: String) -> String {
-        let bytes = SHA256.hash(data: Data("\(salt):\(raw)".utf8))
-        return bytes.prefix(4).map { String(format: "%02x", $0) }.joined()
+        PlatformCrypto.sha256(Data("\(salt):\(raw)".utf8))
+            .prefix(4)
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     // MARK: - Size trimming

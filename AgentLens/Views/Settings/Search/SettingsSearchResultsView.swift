@@ -85,13 +85,15 @@ struct SettingsSearchResultsView: View {
 
     private func pageDisplayName(_ route: SettingsPageRoute) -> String {
         switch route {
-        case .generalRoot, .updatesRoot, .daemonRoot, .accountRoot, .cloudRoot,
+        case .homeRoot, .generalRoot, .updatesRoot, .daemonRoot, .accountRoot, .cloudRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
              .switcherRoot, .hermesRoot, .agentsRoot, .textExpansionRoot, .mediaRoot,
              .dataControlCenterRoot,
              .computerUseRoot, .petsRoot:
             return ""
+        case .modelProxyRoot:
+            return "Model Proxy"
         case .agentsAccounts: return "Accounts"
         case .agentsCLIs: return "CLIs"
         case .agentsRuntimes: return "Runtimes"

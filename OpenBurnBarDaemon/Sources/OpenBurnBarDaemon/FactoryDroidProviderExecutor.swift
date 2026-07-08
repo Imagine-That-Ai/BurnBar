@@ -1,5 +1,9 @@
 import OpenBurnBarCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 public struct FactoryDroidProcessResult: Sendable {

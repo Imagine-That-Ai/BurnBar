@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    DLL-load hardening core for the Windows app (Phase 5 · R19 library-validation equivalent).
+
+    macOS gives the daemon a "library validation" hardened-runtime guarantee: the loader refuses
+    to load any code not signed by the app's Team ID. Windows has no single equivalent, so the
+    R19 parity is assembled from THREE controls, and this library owns the runtime one:
+
+      1. RUNTIME dll-search hardening (this library): at process start the managed app calls
+         SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) + SetDllDirectory("") to strip
+         the current working directory and the legacy unsafe search order from LoadLibrary — the
+         classic DLL-planting / DLL-preloading defense.
+      2. LINK-TIME hardening (windows/dist/props/OpenBurnBar.Windows.NativeHardening.props): the
+         in-tree native binaries link with /DEPENDENTLOADFLAG:0x0800 (LOAD_LIBRARY_SEARCH_SYSTEM32),
+         /guard:cf (Control Flow Guard), /HIGHENTROPYVA, /DYNAMICBASE, /NXCOMPAT.
+      3. PE hardening for the managed app (OpenBurnBar.Windows.Hardening.props): HighEntropyVA +
+         deterministic build so the shipped EXE gets full ASLR entropy.
+
+    HardeningPolicy below is the SINGLE SOURCE OF TRUTH for the required flags/properties; the
+    test suite (windows/tests/dist) asserts the .props files actually carry them, so the policy
+    and the packaging props can never silently drift.
+
+    The DllImport declarations compile on any host (they are just P/Invoke metadata); they only
+    EXECUTE on Windows (guarded by OperatingSystem.IsWindows()), so this restores + is unit-tested
+    on the macOS authoring host today. net8.0, no Windows TFM.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Dist.Hardening</RootNamespace>
+    <AssemblyName>OpenBurnBar.Dist.Hardening</AssemblyName>
+    <!-- Silence the CA1416 platform-compat analyzer: every Win32 call is guarded by an
+         OperatingSystem.IsWindows() check at runtime, which the analyzer cannot see across
+         the P/Invoke boundary. The guard IS present (see DllSearchHardening.Apply). -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenBurnBar.Dist.Hardening.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -78,6 +78,19 @@ final class HoistedStoreLifecycleTests: XCTestCase {
         store.stopListening()
     }
 
+    func testDashboardStore_listenerSuccessMarksBudgetSpendReadable() async {
+        let store = DashboardStore()
+        XCTAssertFalse(store.hasLoadedOnce)
+        XCTAssertFalse(store.budgetSpendSnapshotIsReadable)
+
+        await store.handleRollupListenerResult(.success([makeRollup(window: .today)]))
+
+        XCTAssertTrue(store.hasLoadedOnce, "A successful listener snapshot must make the dashboard warm")
+        XCTAssertTrue(store.budgetSpendSnapshotIsReadable, "Budget gates must treat listener-delivered rollups as readable")
+        XCTAssertNil(store.error)
+        XCTAssertNotNil(store.rollupsByWindow[.today])
+    }
+
     func testDashboardStore_selectionSyncIsCacheOnly() {
         let store = DashboardStore(initialRollups: [
             makeRollup(window: .today),

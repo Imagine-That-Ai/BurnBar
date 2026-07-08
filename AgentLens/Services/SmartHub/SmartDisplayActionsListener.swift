@@ -217,10 +217,16 @@ final class SmartDisplayActionsListener {
                     await fail(document: document, message: "No smart display reached a working state.", extra: ["repair": payload])
                 }
             case "nest_hub_identify":
-                // No-op endpoint — the iOS-side adapter only uses this
-                // as a "speak now" signal that we surface to future
-                // voice integrations.
-                await complete(document: document)
+                if let event = queueHubVoiceRefresh() {
+                    await complete(document: document, extra: [
+                        "voice": event.status,
+                        "voiceTarget": event.target,
+                        "voiceEventId": NSNumber(value: event.eventId),
+                        "voiceMessage": event.message
+                    ])
+                } else {
+                    await fail(document: document, message: "bridge not running")
+                }
             case "nest_hub_stop":
                 settingsManager.smartHubQuotaDisplayEnabled = false
                 await complete(document: document)
@@ -239,6 +245,14 @@ final class SmartDisplayActionsListener {
         guard SmartHubBridgeServer.shared.isRunning else { return nil }
         SmartHubBridgeServer.shared.bumpRefresh()
         return true
+    }
+
+    /// Triggers the same queued voice event as POST /voice-refresh so
+    /// iPhone/Android "Identify" and routine webhook calls converge on
+    /// one bridge-page announcement path.
+    private func queueHubVoiceRefresh() -> SmartHubBridgeServer.VoiceRefreshEvent? {
+        guard SmartHubBridgeServer.shared.isRunning else { return nil }
+        return SmartHubBridgeServer.shared.queueVoiceRefresh()
     }
 
     private func decodePixelClockConfig(_ data: [String: Any]) -> PixelClockConfig? {

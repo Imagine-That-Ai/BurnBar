@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Settings shell + search core (Phase 3 · W7 · Settings lane).
+
+    This is the Windows peer of the macOS Settings search/routing logic:
+      AgentLens/Views/Settings/SettingsTab.swift
+      AgentLens/Views/Settings/Search/{SettingsItem,SettingsManifest,
+        SettingsSearchEngine,SettingsRouter,SettingsSearchResultsView}.swift
+      OpenBurnBarCore/.../SharedModels/AgentProvider.swift (identity subset).
+
+    It targets plain net8.0 — NO Windows TFM, zero P/Invoke, zero UI framework —
+    on purpose: the SAME managed assembly the WinUI shell (net8.0-windows) links is
+    unit-tested on the macOS authoring host today (`dotnet test`). This mirrors the
+    already-proven OpenBurnBar.Pretext / OpenBurnBar.Storage portable-core pattern:
+    a higher-runtime test project (net10.0) references this net8.0 library, and the
+    WinUI app (net8.0-windows) references the very same library.
+
+    The search index + ranking engine + router path logic are PORTABLE and carry
+    real xUnit coverage (windows/tests/settings/). The WinUI XAML that consumes
+    them (NavigationView shell + SettingsCard/SettingsExpander leaf pages) lives in
+    windows/app/OpenBurnBar.App/Settings/ and is Windows/dev-host-deferred at the
+    XamlCompiler gate — identical to the WINUI-016 spike baseline.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.Settings</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.Settings</AssemblyName>
+    <!--
+      Lets the net8.0 library be RESTORED/BUILT by the net10.0 SDK on macOS without
+      a Windows targeting pack. It is a pure managed library, so no Windows facet
+      is needed; this simply keeps tooling quiet on the authoring host.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>

@@ -560,6 +560,7 @@ jobs:
             extensions/openburnbar/package.json
             homebrew/burnbar.rb
             OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift
+            windows/app/OpenBurnBar.App/app.manifest
             scripts/verify-version-consistency.sh
 
       - name: Verify version consistency
@@ -894,6 +895,25 @@ jobs:
       - name: Check Swift twin basenames
         run: bash scripts/ci/check-twin-basenames.sh
 
+  # ── Budget fork drift gate (BudgetGate stays de-forked in OpenBurnBarCore) ──
+  budget-fork-drift:
+    name: Budget fork drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            AgentLens/Services/DataStore
+            OpenBurnBarMobile/Models
+            OpenBurnBarCore/Sources/OpenBurnBarCore/Budget
+            scripts/ci/check-budget-fork-drift.sh
+            scripts/ci/budget-fork-baselines
+
+      - name: Check budget fork drift
+        run: bash scripts/ci/check-budget-fork-drift.sh
+
   # ── Production env hygiene (no checked-in secrets) ─────────────────────────
   env-no-secrets:
     name: Production env has no secrets
@@ -913,6 +933,36 @@ jobs:
 
       - name: Check production env files
         run: bash scripts/ci/check-env-no-secrets.sh
+
+  # ── Windows-port architecture honesty: storage architecture (WPD-0005) ──────
+  # The Windows Engine lane compiles a storage-pruned Engine subset (drops
+  # GRDB-SQLCipher + OpenBurnBarData via OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD).
+  # Per WPD-0005 that prune is PERMANENT ARCHITECTURE — the Engine computes, the
+  # C# seam (windows/storage/) persists — not a waived gap. This gate fails if
+  # any workflow sets the flag without being named in WPD-0005's machine-read
+  # block, if the WPD is missing/malformed, or if the C# storage seam's test
+  # project disappears. (Replaced the storage-prune WAIVER gate on 2026-07-06.)
+  windows-storage-architecture:
+    name: Windows storage architecture (WPD-0005)
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: |
+            .github/workflows
+            docs/windows-port/decisions/0005-windows-storage-architecture.md
+            windows/storage/OpenBurnBar.Storage.Tests
+            scripts/ci/verify-windows-storage-architecture.sh
+            scripts/ci/verify-windows-storage-architecture.test.sh
+
+      - name: Self-test the storage architecture gate
+        run: bash scripts/ci/verify-windows-storage-architecture.test.sh
+
+      - name: Verify Windows storage architecture (WPD-0005 honesty)
+        run: bash scripts/ci/verify-windows-storage-architecture.sh
 
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
@@ -998,6 +1048,12 @@ jobs:
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
+      # Windows per-tree size ratchet (rooted at windows/, partitioned by
+      # app/pal/native/tests). Blocking Windows check on every PR — a red
+      # Windows budget fails HERE at merge time. Pure bash + python3.
+      - name: Windows tree budget (per-tree shrink-only ratchet)
+        run: ./scripts/debt/check-windows-tree-budget.sh
+
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
     name: Fast Feedback Gate
@@ -1024,6 +1080,7 @@ jobs:
       - services-fast
       - no-suppressions
       - twin-basenames
+      - windows-storage-architecture
       - debt-budgets
       - functions-correctness
     runs-on: ubuntu-latest

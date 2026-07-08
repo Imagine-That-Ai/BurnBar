@@ -131,7 +131,7 @@ final class CloudSyncContext: Sendable {
     let circuitBreaker: CloudSyncCircuitBreaker
 
     /// Shared retry policy for transient Firestore failures.
-    let retryPolicy = CloudSyncRetryPolicy()
+    let retryPolicy: CloudSyncRetryPolicy
 
     /// Injectable Firestore gateway. Defaults to live Firestore in production.
     let firestoreGateway: CloudSyncFirestoreGateway
@@ -181,6 +181,7 @@ final class CloudSyncContext: Sendable {
         settingsManager: any SettingsManagerProtocol,
         firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
         circuitBreaker: CloudSyncCircuitBreaker = CloudSyncCircuitBreaker(),
+        retryPolicy: CloudSyncRetryPolicy = CloudSyncRetryPolicy(),
         backupPlanLimits: CloudBackupPlanLimits = .standard
     ) {
         self.dataStore = dataStore
@@ -188,6 +189,7 @@ final class CloudSyncContext: Sendable {
         self.settingsManager = settingsManager
         self.firestoreGateway = firestoreGateway
         self.circuitBreaker = circuitBreaker
+        self.retryPolicy = retryPolicy
         self.backupPlanLimits = backupPlanLimits
     }
 }

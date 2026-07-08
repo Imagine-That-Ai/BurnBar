@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 import OpenBurnBarCore
 import SwiftUI
 import UIKit
@@ -12,6 +13,7 @@ import UIKit
 @Observable
 @MainActor
 final class BudgetSettings {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "BudgetSettings")
     private let store: BudgetRulesStore
     private let legacyBudgetDefaults: UserDefaults
     private let migrateLegacyBudget: Bool
@@ -89,7 +91,9 @@ final class BudgetSettings {
             ))
             await refresh()
         } catch {
-            // Surface via signpost / debug-log if a metrics hook is present.
+            // The returned rule is optimistic — Firestore upsert/audit write failed,
+            // so the listener/refresh will reconcile the cache to the persisted state.
+            Self.log.error("upsertRule failed to persist rule \(stamped.id, privacy: .public) (source: \(source, privacy: .public)): \(error.localizedDescription, privacy: .public)")
         }
         return stamped
     }

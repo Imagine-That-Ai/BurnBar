@@ -1,0 +1,21 @@
+{
+  "actions": [
+    {
+      "id": 2,
+      "label": "Open dashboard"
+    },
+    {
+      "id": 3,
+      "label": "Reconnect daemon"
+    },
+    {
+      "id": 4,
+      "label": "Quit OpenBurnBar"
+    }
+  ],
+  "selected": {
+    "OPEN_ID": 2,
+    "RECONNECT_ID": 3,
+    "QUIT_ID": 4
+  }
+}

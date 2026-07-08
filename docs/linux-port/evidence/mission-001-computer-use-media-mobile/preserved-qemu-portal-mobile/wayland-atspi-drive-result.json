@@ -1,0 +1,17 @@
+{
+  "action": "press",
+  "actionName0": "click",
+  "adapter": "at-spi2",
+  "attempts": [
+    {
+      "attempt": 0,
+      "childCount": 1
+    }
+  ],
+  "didAction": true,
+  "found": true,
+  "nActions": 1,
+  "name": "OpenBurnBar AT-SPI2 Apply",
+  "role": "push button",
+  "targetName": "OpenBurnBar AT-SPI2 Apply"
+}

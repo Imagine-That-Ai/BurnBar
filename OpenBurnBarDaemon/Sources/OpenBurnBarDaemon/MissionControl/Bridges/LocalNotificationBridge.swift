@@ -8,6 +8,7 @@ actor BurnBarLocalNotificationBridge {
     static let shared = BurnBarLocalNotificationBridge()
 
     func deliver(title: String, body: String) async throws {
+        #if canImport(Darwin)
         let userInfo: [String: String] = [
             OpenBurnBarDistributedNotifications.titleKey: title,
             OpenBurnBarDistributedNotifications.bodyKey: body
@@ -18,5 +19,9 @@ actor BurnBarLocalNotificationBridge {
             userInfo: userInfo,
             deliverImmediately: true
         )
+        #else
+        _ = title
+        _ = body
+        #endif
     }
 }

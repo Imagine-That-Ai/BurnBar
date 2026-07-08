@@ -2,11 +2,13 @@
 @preconcurrency import ActivityKit
 import Foundation
 import OpenBurnBarCore
+import os.log
 
 @available(iOS 16.1, *)
 @MainActor
 final class AgentWatchLiveActivityManager {
     static let shared = AgentWatchLiveActivityManager()
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "AgentWatchLiveActivityManager")
 
     private let backend: any AgentWatchLiveActivityBackend
     var hasActiveActivity: Bool { backend.activeSessionId != nil }
@@ -30,6 +32,10 @@ final class AgentWatchLiveActivityManager {
                 )
             )
         } catch {
+            // Live Activity failures are non-critical (e.g. budget exhausted,
+            // authorization revoked) — end any partial activity, but log so a
+            // missing Agent Watch surface is diagnosable.
+            Self.log.warning("start: Live Activity request failed: \(error.localizedDescription, privacy: .public)")
             backend.end()
         }
     }

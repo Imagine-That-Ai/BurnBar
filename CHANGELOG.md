@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
+  `POST /v1/chat/completions` through the shared provider router, relays
+  OpenAI-compatible SSE streams, and records gateway usage events with cache
+  read/creation token fields when providers report them.
+- **Mission fan-out synthesis now launches Phase B second-stage missions** —
+  tapping Synthesize on a completed fan-out group queues a sealed, read-only
+  Hermes synthesizer mission with the child results as input, then records the
+  queued synthesizer request in the group merge summary.
+- **Settings overhaul — "Command Bridge"** — completely redesigned the Settings
+  sidebar and navigation for discoverability:
+  - **Sectioned sidebar**: the flat 14-tab list is now grouped into labeled
+    sections (Agents & Models, Look & Feel, Account & Sync, System, More) with
+    Home above as the default landing page.
+  - **Home overview**: mission-control landing with live status grid (Daemon,
+    Model Proxy, Accounts, Hermes, Cloud Sync, Indexing), an attention strip
+    for items needing action, and task cards for the most common destinations
+    (Accounts, Model Proxy, Appearance, Text Expansion, Cloud, Data & Privacy).
+  - **Model Proxy as first-class tab**: the local OpenAI-compatible gateway is
+    no longer buried under Daemon. New `ModelProxySettingsView` with a
+    status-first hero (on/off + copyable endpoint + model/provider counts),
+    routing strategy, live model catalog, and plumbing behind Advanced.
+  - **Settings Copilot**: search-or-ask command bar. Tier 1 = instant manifest
+    search (unchanged engine). Tier 2 = agentic: asks the question through
+    `CLIBridge.chat()` with a system prompt carrying the action grammar and
+    live settings state. Proposed changes render as confirm chips — nothing
+    mutates until confirmed. Secrets are never writable through the registry.
+    Falls back gracefully when no CLI backend is detected.
+  - **Daemon rebranded to "Engine Room"** for clarity.
+  - All legacy deep links, routes, and anchors resolve via the existing alias
+    machinery — no saved link 404s.
+  - Covered by `SettingsActionRegistryTests` (20 cases),
+    `SettingsCopilotControllerTests` (14 cases), and
+    `SettingsHomeAndSectionTests` (16 cases).
+- **OMP provider parity** — added Oh My Pi (`omp`) as a first-class local CLI
+  provider across Mac chat, direct mission launch, mobile relay/catalog
+  surfaces, provider identity, and quota refresh. OpenBurnBar now reads
+  redacted OMP usage via `omp usage --json --redact` and documents the provider
+  in `docs/PROVIDERS.md`.
+- **Chat workspace tiling (cmux/tmux-style) is now live in the dashboard.** The
+  chat window mounts the pane workspace, so `⌘D` splits the active pane right,
+  `⌘⇧D` splits it down, and `⌘W` closes a pane (the last pane falls through to
+  the standard window close). Dragging a chat chip from the thread rail onto a
+  pane now *suggests* where it will land: dropping in the center loads the
+  conversation into that pane, while dropping on an edge opens it in a brand-new
+  split pane on that side. Thread rows show an "open in a pane" hint, and the top
+  toolbar hides its duplicate engine pickers while tiled (each pane carries its
+  own). `AgentLens/Views/Chat/PaneWorkspace/*` + `DashboardChatWorkspaceView`.
+- **Command Deck top-chrome redesign** — collapses ~146pt of stacked chrome
+  (toolbar + tab-card strip) into one ~52pt bar with a ⌘K command palette for
+  section fuzzy-filter + session search, and ⌘1–⌘7 section shortcuts.
+- **Nest Hub Speak Now** — makes `/voice-refresh` queue a real bridge-page
+  announcement event instead of acknowledging a no-op, so the rendered smart
+  display can pulse and speak the current provider summary on its next poll.
+
+### Fixed
+
+- **macOS StoreKit entitlement resolution** — `MacCloudEntitlementStore` now
+  reads StoreKit 2 current entitlements and transaction updates, maps the same
+  Cloud / Cloud Pro / Cloud Ultra SKUs as iOS, and uses locally verified
+  entitlements only when the cloud entitlement document is absent.
+
+### Fixed
+
+- **iPhone Call Mac action** — replaces the Mercury Live Sheet follow-up stub
+  with real `media.call.invite` signaling over the live paired-Mac control
+  stream, shows pending/ack status on iPhone, and keeps the Mac wake path scoped
+  to the existing PushKit/FCM callable for Mac-originated calls.
+
+- **Recount cloud usage duplication** - makes Mac usage IDs deterministic across
+  Recount reparses, removes stale same-device Firestore usage docs, and reports
+  the full cloud-sync batch total to analytics.
+
+## [1.0.29] - 2026-07-05
+
+### Added
+
+- **Latest-main macOS release cut** - advances the direct-download release to
+  `1.0.29` from `origin/main` commit `1b62ec42bd`, including the Windows
+  parity integration merge, the post-merge Windsurf/Windows/AAR fixes, Command
+  Bridge settings IA, Model Proxy tab, and Command Deck top-chrome redesign.
+- **Fresh TestFlight build line** - bumps the iOS, widget, and keyboard build
+  number to `82` while keeping the approved iOS marketing version at `1.0.2`,
+  giving App Store Connect a unique upload for the newest source cut.
+- **Android release metadata** - bumps the Android release bundle to
+  `versionCode` 39 / `versionName` `1.0.29` so Google Play metadata remains
+  aligned with the same release source.
+
+### Fixed
+
+- **iOS 27 mobile stability** - carries the Firebase source-built gRPC guard,
+  Firestore cloud-sync repair, edge-to-edge backdrop fixes, Face ID usage
+  description, and Mercury mirror consent/session stability fixes into the
+  mobile release line.
+- **Cloud sync resilience** - keeps one bad escrow entry from killing all usage
+  uploads and binds usage project-name seals to their document AAD context.
+
 ## [1.0.28] - 2026-07-03
 
 ### Fixed

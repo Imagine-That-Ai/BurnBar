@@ -274,7 +274,10 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             let deduplicated = Self.deduplicated(discovered)
             options = deduplicated.isEmpty ? try Self.defaultProfileRows(for: runtime) : deduplicated
         case .cursorAgent, .openClaude:
-            _ = try await executable(named: "cursor-agent")
+            _ = try await executable(named: runtime == .openClaude ? "openclaude" : "cursor-agent")
+            options = try Self.defaultProfileRows(for: runtime)
+        case .omp:
+            _ = try await executable(named: "omp")
             options = try Self.defaultProfileRows(for: runtime)
         case .hermes, .pi, .openClaw:
             throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
@@ -591,6 +594,8 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
             return .antigravity
         case "cursor-agent", "cursoragent", "cursor_agent":
             return .cursorAgent
+        case "omp", "ohmypi", "oh-my-pi", "oh my pi":
+            return .omp
         default:
             return nil
         }

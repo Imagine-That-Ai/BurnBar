@@ -1,0 +1,4 @@
+[
+  {"role":"user","content":"Fix the Cline task history parser.","ts":1751328000000},
+  {"role":"assistant","content":"Applied the fix.","model":"claude-sonnet-4-20250514","usage":{"input_tokens":150,"output_tokens":60,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"ts":1751328005000}
+]

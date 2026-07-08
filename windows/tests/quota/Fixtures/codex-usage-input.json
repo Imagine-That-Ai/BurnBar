@@ -1,0 +1,34 @@
+{
+  "plan_type": "pro",
+  "rate_limit": {
+    "primary_window": {
+      "used_percent": 37.25,
+      "limit_window_seconds": 18000,
+      "reset_after_seconds": 3600
+    },
+    "secondary_window": {
+      "used_percent": 68,
+      "limit_window_seconds": 604800,
+      "reset_at": 1751500000
+    }
+  },
+  "additional_rate_limits": [
+    {
+      "limit_name": "Code Review",
+      "rate_limit": {
+        "primary_window": {
+          "used_percent": 5,
+          "reset_after_seconds": 120
+        }
+      }
+    },
+    {
+      "limit_name": "",
+      "rate_limit": {
+        "primary_window": {
+          "used_percent": 99
+        }
+      }
+    }
+  ]
+}

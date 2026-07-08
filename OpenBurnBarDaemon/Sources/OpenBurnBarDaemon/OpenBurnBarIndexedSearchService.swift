@@ -1,6 +1,10 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 private let indexedSearchQueueKey = DispatchSpecificKey<UUID>()

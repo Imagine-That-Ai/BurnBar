@@ -33,7 +33,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tokio-stream = "0.1"
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
-jni = "0.22"
 
 # UniFFI surface used by `OpenBurnBarIroh` Swift package. The proc-macro
 # attribute path (`#[uniffi::export]`) is the modern, scaffolding-free way to
@@ -44,6 +43,15 @@ uniffi = { version = "0.28", features = ["cli"] }
 # Rust side only needs the iroh secret-key representation, which iroh exposes
 # directly. We deliberately do NOT re-derive Ed25519 here so there is one
 # canonical signer (Swift) and one canonical verifier (Swift) per role.
+
+# JNI is used only by the Android application-context bridge
+# (`src/android_context.rs`, gated on `#[cfg(target_os = "android")]`) to hand
+# iroh-dns the JavaVM + Context. Scope the dependency to Android so the new
+# `*-pc-windows-msvc` targets (and the Apple targets) don't compile the JNI
+# bindings — they have no JavaVM. The Android AAR build is unaffected: it targets
+# `*-linux-android`, where this section is active.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22"
 
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }

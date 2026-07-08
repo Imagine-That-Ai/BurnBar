@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows adapter half of the quota acquisition layer: the %LOCALAPPDATA% /
+    %APPDATA% / %USERPROFILE% default paths (mirroring the Mac
+    OpenBurnBarIdentity support-directory layout), the FileSystemWatcher-backed
+    IQuotaFileWatcher, and the static composition-root host the WinUI app calls
+    at launch (same shape as WinAppCloudSyncHost).
+
+    Targets plain net8.0 (the pal/ipc-windows convention) — FileSystemWatcher and
+    environment lookups are portable APIs, so this project builds AND tests via
+    `dotnet` on the macOS authoring host; only the real %APPDATA% content and the
+    installed hook need the WS-D Windows-runner pass.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.Quota.Acquisition.Windows</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.Quota.Acquisition.Windows</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenBurnBar.App.Quota.Acquisition\OpenBurnBar.App.Quota.Acquisition.csproj" />
+  </ItemGroup>
+
+</Project>

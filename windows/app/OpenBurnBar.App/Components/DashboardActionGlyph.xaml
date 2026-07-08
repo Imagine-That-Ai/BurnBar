@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Components.DashboardActionGlyph"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AccessibilityView="Raw">
+
+    <!--
+      Windows peer of AgentLens/Views/Components/DashboardActionGlyphs.swift — the hand-authored
+      24×24 stroked toolbar glyphs (Import-from-logs / Sweep-recount). The stroked figures come
+      from the parity-tested Components/Models/DashboardGlyphGeometry; this control maps them into
+      the current bounds and draws one Path per figure so per-figure line weights are preserved.
+    -->
+    <Canvas x:Name="GlyphCanvas"
+            Width="14"
+            Height="14"
+            SizeChanged="OnCanvasSizeChanged" />
+</UserControl>

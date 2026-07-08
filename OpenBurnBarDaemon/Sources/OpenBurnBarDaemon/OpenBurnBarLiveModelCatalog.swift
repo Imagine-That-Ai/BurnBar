@@ -1,5 +1,8 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
 
 public enum BurnBarLiveModelQuotaState: String, Codable, Hashable, Sendable {
     case healthy
