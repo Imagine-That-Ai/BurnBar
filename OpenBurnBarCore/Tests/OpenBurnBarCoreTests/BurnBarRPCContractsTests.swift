@@ -104,7 +104,15 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .codeIndexStatus: "daemon.code.index_status",
         .codeExplore: "daemon.code.explore",
         .codeOpsDiagnostics: "daemon.code.ops_diagnostics",
-        .runResume: "run.resume"
+        .runResume: "run.resume",
+        // Added with the 98-method canon regen (main 69e2a41deb): membership +
+        // subscription lifecycle + perf.measure. Wire names pinned to the enum rawValues.
+        .membershipStatus: "daemon.membership.status",
+        .membershipCheckoutURL: "daemon.membership.checkoutUrl",
+        .membershipRestore: "daemon.membership.restore",
+        .subscriptionStart: "subscription.start",
+        .subscriptionResume: "subscription.resume",
+        .perfMeasure: "perf.measure"
     ]
 
     func testRPCMethodWireNames_areStableForEveryCase() {
