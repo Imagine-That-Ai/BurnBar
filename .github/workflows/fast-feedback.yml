@@ -206,7 +206,7 @@ jobs:
           DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/ts-diff-coverage.json
         run: |
           set -euo pipefail
-          ./scripts/diff-coverage-ts.sh origin/main | tee ts-diff-coverage.json
+          ./scripts/diff-coverage-ts.sh origin/main
 
       - name: Post diff-coverage summary
         if: always()
