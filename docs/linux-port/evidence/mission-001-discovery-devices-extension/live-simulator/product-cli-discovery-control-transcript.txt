@@ -1,7 +1,7 @@
 ### /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI local-peer browse --json --timeout 2
 [
   {
-    "hostName" : "88701c21477b.local",
+    "hostName" : "4434109eb686.local",
     "instanceName" : "OpenBurnBar SmartHub Bridge",
     "port" : 18084,
     "txt" : {
@@ -12,14 +12,14 @@
     }
   },
   {
-    "hostName" : "88701c21477b.local",
+    "hostName" : "4434109eb686.local",
     "instanceName" : "OpenBurnBar validator",
-    "port" : 48312,
+    "port" : 48313,
     "txt" : {
-      "daemon_version" : "mission-001",
+      "conflict_attempt" : "1",
+      "daemon_version" : "mission-001-conflict",
       "friendly" : "OpenBurnBar validator",
       "note" : "quoted;semi",
-      "path_hint" : "xdg_config",
       "protocol_version" : "1",
       "transport" : "unix-domain"
     }
@@ -29,7 +29,7 @@
 ### /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI local-peer parse-fixture /workspace/docs/linux-port/evidence/mission-001-discovery-devices-extension/live-simulator/raw-avahi-openburnbar.txt --json
 [
   {
-    "hostName" : "88701c21477b.local",
+    "hostName" : "4434109eb686.local",
     "instanceName" : "OpenBurnBar SmartHub Bridge",
     "port" : 18084,
     "txt" : {
@@ -40,14 +40,14 @@
     }
   },
   {
-    "hostName" : "88701c21477b.local",
+    "hostName" : "4434109eb686.local",
     "instanceName" : "OpenBurnBar validator",
-    "port" : 48312,
+    "port" : 48313,
     "txt" : {
-      "daemon_version" : "mission-001",
+      "conflict_attempt" : "1",
+      "daemon_version" : "mission-001-conflict",
       "friendly" : "OpenBurnBar validator",
       "note" : "quoted;semi",
-      "path_hint" : "xdg_config",
       "protocol_version" : "1",
       "transport" : "unix-domain"
     }
@@ -55,19 +55,19 @@
 ]
 
 ### /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI devices discover all --json
-[{"instances":["AWTRIX PixelClock"],"adapter":"pixel_clock","serviceType":"_http._tcp","rawTranscript":"+;eth0;IPv4;AWTRIX\\032PixelClock;Web Site;local\n+;lo;IPv4;AWTRIX\\032PixelClock;Web Site;local\n=;eth0;IPv4;AWTRIX\\032PixelClock;Web Site;local;88701c21477b.local;172.17.0.3;18081;\"openburnbar=1\" \"model=awtrix-light\" \"id=awtrix-sim\"\n=;lo;IPv4;AWTRIX\\032PixelClock;Web Site;local;88701c21477b.local;127.0.0.1;18081;\"openburnbar=1\" \"model=awtrix-light\" \"id=awtrix-sim\"\n"},{"instances":["OpenBurnBar Cast"],"adapter":"google_cast","serviceType":"_googlecast._tcp","rawTranscript":"+;eth0;IPv4;OpenBurnBar\\032Cast;_googlecast._tcp;local\n+;lo;IPv4;OpenBurnBar\\032Cast;_googlecast._tcp;local\n=;eth0;IPv4;OpenBurnBar\\032Cast;_googlecast._tcp;local;88701c21477b.local;172.17.0.3;18082;\"md=OpenBurnBar\" \"id=cast-sim\"\n=;lo;IPv4;OpenBurnBar\\032Cast;_googlecast._tcp;local;88701c21477b.local;127.0.0.1;18082;\"md=OpenBurnBar\" \"id=cast-sim\"\n"},{"instances":["AWTRIX PixelClock"],"adapter":"awtrix_http","serviceType":"_http._tcp","rawTranscript":"+;eth0;IPv4;AWTRIX\\032PixelClock;Web Site;local\n+;lo;IPv4;AWTRIX\\032PixelClock;Web Site;local\n=;eth0;IPv4;AWTRIX\\032PixelClock;Web Site;local;88701c21477b.local;172.17.0.3;18081;\"openburnbar=1\" \"model=awtrix-light\" \"id=awtrix-sim\"\n=;lo;IPv4;AWTRIX\\032PixelClock;Web Site;local;88701c21477b.local;127.0.0.1;18081;\"openburnbar=1\" \"model=awtrix-light\" \"id=awtrix-sim\"\n"},{"instances":["Home Assistant"],"adapter":"home_assistant","serviceType":"_home-assistant._tcp","rawTranscript":"+;eth0;IPv4;Home\\032Assistant;_home-assistant._tcp;local\n+;lo;IPv4;Home\\032Assistant;_home-assistant._tcp;local\n=;eth0;IPv4;Home\\032Assistant;_home-assistant._tcp;local;88701c21477b.local;172.17.0.3;18083;\"openburnbar=1\" \"version=2026.7-sim\"\n=;lo;IPv4;Home\\032Assistant;_home-assistant._tcp;local;88701c21477b.local;127.0.0.1;18083;\"openburnbar=1\" \"version=2026.7-sim\"\n"},{"instances":["OpenBurnBar SmartHub Bridge","OpenBurnBar validator"],"adapter":"smart_hub_bridge","serviceType":"_openburnbar-peer._tcp","rawTranscript":"+;eth0;IPv4;OpenBurnBar\\032validator;_openburnbar-peer._tcp;local\n+;eth0;IPv4;OpenBurnBar\\032SmartHub\\032Bridge;_openburnbar-peer._tcp;local\n+;lo;IPv4;OpenBurnBar\\032validator;_openburnbar-peer._tcp;local\n+;lo;IPv4;OpenBurnBar\\032SmartHub\\032Bridge;_openburnbar-peer._tcp;local\n=;eth0;IPv4;OpenBurnBar\\032validator;_openburnbar-peer._tcp;local;88701c21477b.local;172.17.0.3;48312;\"path_hint=xdg_config\" \"note=quoted\\\\059semi\" \"friendly=OpenBurnBar\\\\032validator\" \"protocol_version=1\" \"daemon_version=mission-001\" \"transport=unix-domain\"\n=;eth0;IPv4;OpenBurnBar\\032SmartHub\\032Bridge;_openburnbar-peer._tcp;local;88701c21477b.local;172.17.0.3;18084;\"friendly=SmartHub\\\\032Bridge\" \"protocol_version=1\" \"daemon_version=smarthub-sim\" \"transport=http\"\n=;lo;IPv4;OpenBurnBar\\032validator;_openburnbar-peer._tcp;local;88701c21477b.local;127.0.0.1;48312;\"path_hint=xdg_config\" \"note=quoted\\\\059semi\" \"friendly=OpenBurnBar\\\\032validator\" \"protocol_version=1\" \"daemon_version=mission-001\" \"transport=unix-domain\"\n=;lo;IPv4;OpenBurnBar\\032SmartHub\\032Bridge;_openburnbar-peer._tcp;local;88701c21477b.local;127.0.0.1;18084;\"friendly=SmartHub\\\\032Bridge\" \"protocol_version=1\" \"daemon_version=smarthub-sim\" \"transport=http\"\n"}]
+[{"rawTranscript":"+;eth0;IPv4;AWTRIX\\032PixelClock;Web Site;local\n+;lo;IPv4;AWTRIX\\032PixelClock;Web Site;local\n=;eth0;IPv4;AWTRIX\\032PixelClock;Web Site;local;4434109eb686.local;172.17.0.2;18081;\"openburnbar=1\" \"model=awtrix-light\" \"id=awtrix-sim\"\n=;lo;IPv4;AWTRIX\\032PixelClock;Web Site;local;4434109eb686.local;127.0.0.1;18081;\"openburnbar=1\" \"model=awtrix-light\" \"id=awtrix-sim\"\n","adapter":"pixel_clock","serviceType":"_http._tcp","instances":["AWTRIX PixelClock"]},{"rawTranscript":"+;eth0;IPv4;OpenBurnBar\\032Cast;_googlecast._tcp;local\n+;lo;IPv4;OpenBurnBar\\032Cast;_googlecast._tcp;local\n=;eth0;IPv4;OpenBurnBar\\032Cast;_googlecast._tcp;local;4434109eb686.local;172.17.0.2;18082;\"md=OpenBurnBar\" \"id=cast-sim\"\n=;lo;IPv4;OpenBurnBar\\032Cast;_googlecast._tcp;local;4434109eb686.local;127.0.0.1;18082;\"md=OpenBurnBar\" \"id=cast-sim\"\n","adapter":"google_cast","serviceType":"_googlecast._tcp","instances":["OpenBurnBar Cast"]},{"rawTranscript":"+;eth0;IPv4;AWTRIX\\032PixelClock;Web Site;local\n+;lo;IPv4;AWTRIX\\032PixelClock;Web Site;local\n=;eth0;IPv4;AWTRIX\\032PixelClock;Web Site;local;4434109eb686.local;172.17.0.2;18081;\"openburnbar=1\" \"model=awtrix-light\" \"id=awtrix-sim\"\n=;lo;IPv4;AWTRIX\\032PixelClock;Web Site;local;4434109eb686.local;127.0.0.1;18081;\"openburnbar=1\" \"model=awtrix-light\" \"id=awtrix-sim\"\n","adapter":"awtrix_http","serviceType":"_http._tcp","instances":["AWTRIX PixelClock"]},{"rawTranscript":"+;eth0;IPv4;Home\\032Assistant;_home-assistant._tcp;local\n+;lo;IPv4;Home\\032Assistant;_home-assistant._tcp;local\n=;eth0;IPv4;Home\\032Assistant;_home-assistant._tcp;local;4434109eb686.local;172.17.0.2;18083;\"openburnbar=1\" \"version=2026.7-sim\"\n=;lo;IPv4;Home\\032Assistant;_home-assistant._tcp;local;4434109eb686.local;127.0.0.1;18083;\"openburnbar=1\" \"version=2026.7-sim\"\n","adapter":"home_assistant","serviceType":"_home-assistant._tcp","instances":["Home Assistant"]},{"rawTranscript":"+;eth0;IPv4;OpenBurnBar\\032validator;_openburnbar-peer._tcp;local\n+;eth0;IPv4;OpenBurnBar\\032SmartHub\\032Bridge;_openburnbar-peer._tcp;local\n+;lo;IPv4;OpenBurnBar\\032validator;_openburnbar-peer._tcp;local\n+;lo;IPv4;OpenBurnBar\\032SmartHub\\032Bridge;_openburnbar-peer._tcp;local\n=;eth0;IPv4;OpenBurnBar\\032validator;_openburnbar-peer._tcp;local;4434109eb686.local;172.17.0.2;48313;\"conflict_attempt=1\" \"note=quoted\\\\059semi\" \"friendly=OpenBurnBar\\\\032validator\" \"protocol_version=1\" \"daemon_version=mission-001-conflict\" \"transport=unix-domain\"\n=;eth0;IPv4;OpenBurnBar\\032SmartHub\\032Bridge;_openburnbar-peer._tcp;local;4434109eb686.local;172.17.0.2;18084;\"friendly=SmartHub\\\\032Bridge\" \"protocol_version=1\" \"daemon_version=smarthub-sim\" \"transport=http\"\n=;lo;IPv4;OpenBurnBar\\032validator;_openburnbar-peer._tcp;local;4434109eb686.local;127.0.0.1;48313;\"conflict_attempt=1\" \"note=quoted\\\\059semi\" \"friendly=OpenBurnBar\\\\032validator\" \"protocol_version=1\" \"daemon_version=mission-001-conflict\" \"transport=unix-domain\"\n=;lo;IPv4;OpenBurnBar\\032SmartHub\\032Bridge;_openburnbar-peer._tcp;local;4434109eb686.local;127.0.0.1;18084;\"friendly=SmartHub\\\\032Bridge\" \"protocol_version=1\" \"daemon_version=smarthub-sim\" \"transport=http\"\n","adapter":"smart_hub_bridge","serviceType":"_openburnbar-peer._tcp","instances":["OpenBurnBar SmartHub Bridge","OpenBurnBar validator"]}]
 
 ### OPENBURNBAR_PIXELCLOCK_URL=http://127.0.0.1:18081 /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI devices pixel-clock control --json
-{"status":"control_ok","stats_response":"{\"firmware\": \"0.96-sim\", \"model\": \"awtrix-light\", \"online\": true, \"port\": 18081, \"role\": \"pixelclock\", \"simulator\": true}","control_surface":"cli+http","agent_process_count":"1","blocker":"","control_response":"{\"accepted\": true, \"ok\": true, \"port\": 18081, \"role\": \"pixelclock\", \"simulator\": true, \"slot\": \"openburnbar\"}","adapter":"pixel_clock","agent_processes":"avahi-publish-s avahi-publish-service AWTRIX PixelClock _http._tcp 18081 id=awtrix-sim model=awtrix-light openburnbar=1","endpoint":"http:\/\/127.0.0.1:18081","accepted_commands":"discover,agents,firmware-lane,control"}
+{"endpoint":"http:\/\/127.0.0.1:18081","adapter":"pixel_clock","status":"control_ok","blocker":"","control_response":"{\"accepted\": true, \"ok\": true, \"port\": 18081, \"role\": \"pixelclock\", \"simulator\": true, \"slot\": \"openburnbar\"}","control_surface":"cli+http","agent_process_count":"1","agent_processes":"avahi-publish-s avahi-publish-service AWTRIX PixelClock _http._tcp 18081 id=awtrix-sim model=awtrix-light openburnbar=1","accepted_commands":"discover,agents,firmware-lane,control","stats_response":"{\"firmware\": \"0.96-sim\", \"model\": \"awtrix-light\", \"online\": true, \"port\": 18081, \"role\": \"pixelclock\", \"simulator\": true}"}
 
 ### OPENBURNBAR_SMARTHUB_BRIDGE_PORT=18084 OPENBURNBAR_HOME_ASSISTANT_URL=http://127.0.0.1:18083 /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI devices iot smarthub status --json
-{"control_response":"{\"accepted\": true, \"body\": {\"message\": \"Linux SmartHub simulator control\", \"surface\": \"mission-001\"}, \"ok\": true, \"port\": 18084, \"role\": \"smarthub\", \"simulator\": true}","adapter":"smart_hub_bridge","control_probe":"curl -fsS --max-time 2 -X POST http:\/\/127.0.0.1:18084\/api\/display","bridge_listen":"127.0.0.1:18084","note":"Linux shell exposes bridge status via CLI; AWTRIX via _http._tcp awtrix_* instances.","status":"bridge_control_ok","health_probe":"curl -fsS --max-time 2 http:\/\/127.0.0.1:18084\/health","blocker":"","discovery":"mDNS+http","health_response":"{\"bridge\": \"openburnbar-smarthub-sim\", \"ok\": true, \"port\": 18084, \"role\": \"smarthub\", \"simulator\": true}","control_surface":"CLI status + local bridge HTTP"}
+{"adapter":"smart_hub_bridge","health_probe":"curl -fsS --max-time 2 http:\/\/127.0.0.1:18084\/health","health_response":"{\"bridge\": \"openburnbar-smarthub-sim\", \"ok\": true, \"port\": 18084, \"role\": \"smarthub\", \"simulator\": true}","bridge_listen":"127.0.0.1:18084","control_surface":"CLI status + local bridge HTTP","status":"bridge_control_ok","control_response":"{\"accepted\": true, \"body\": {\"message\": \"Linux SmartHub simulator control\", \"surface\": \"mission-001\"}, \"ok\": true, \"port\": 18084, \"role\": \"smarthub\", \"simulator\": true}","blocker":"","note":"Linux shell exposes bridge status via CLI; AWTRIX via _http._tcp awtrix_* instances.","discovery":"mDNS+http","control_probe":"curl -fsS --max-time 2 -X POST http:\/\/127.0.0.1:18084\/api\/display"}
 
 ### OPENBURNBAR_HOME_ASSISTANT_URL=http://127.0.0.1:18083 /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI devices iot homeassistant status --json
-{"control_probe":"curl -fsS --max-time 2 http:\/\/127.0.0.1:18083\/api\/","status":"home_assistant_control_ok","adapter":"home_assistant","service_call_response":"{\"body\": {\"entity_id\": \"light.openburnbar_simulator\"}, \"ok\": true, \"port\": 18083, \"role\": \"homeassistant\", \"service_called\": \"\/api\/services\/light\/turn_on\", \"simulator\": true}","control":"http_api","discovery":"_home-assistant._tcp","control_response":"{\"message\": \"API running.\", \"port\": 18083, \"role\": \"homeassistant\", \"simulator\": true, \"version\": \"2026.7-sim\"}","blocker":""}
+{"control_probe":"curl -fsS --max-time 2 http:\/\/127.0.0.1:18083\/api\/","control":"http_api","service_call_response":"{\"body\": {\"entity_id\": \"light.openburnbar_simulator\"}, \"ok\": true, \"port\": 18083, \"role\": \"homeassistant\", \"service_called\": \"\/api\/services\/light\/turn_on\", \"simulator\": true}","blocker":"","adapter":"home_assistant","control_response":"{\"message\": \"API running.\", \"port\": 18083, \"role\": \"homeassistant\", \"simulator\": true, \"version\": \"2026.7-sim\"}","status":"home_assistant_control_ok","discovery":"_home-assistant._tcp"}
 
 ### /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI devices iot cast status --json
-{"control_probe":"http:\/\/127.0.0.1:18082\/setup\/eureka_info","control_response":"{\"cast_build_revision\": \"sim-1\", \"name\": \"OpenBurnBar Cast Simulator\", \"port\": 18082, \"role\": \"cast\", \"simulator\": true, \"ssdp_udn\": \"uuid:openburnbar-cast-sim\"}","adapter":"google_cast","instances":"OpenBurnBar Cast","blocker":"","status":"cast_reachable","bridge_default_port":"8787","discovery_method":"_googlecast._tcp"}
+{"adapter":"google_cast","status":"cast_reachable","instances":"OpenBurnBar Cast","control_probe":"http:\/\/127.0.0.1:18082\/setup\/eureka_info","discovery_method":"_googlecast._tcp","blocker":"","control_response":"{\"cast_build_revision\": \"sim-1\", \"name\": \"OpenBurnBar Cast Simulator\", \"port\": 18082, \"role\": \"cast\", \"simulator\": true, \"ssdp_udn\": \"uuid:openburnbar-cast-sim\"}","bridge_default_port":"8787"}
 
 ### OPENBURNBAR_SMARTHUB_BRIDGE_PORT=18084 OPENBURNBAR_HOME_ASSISTANT_URL=http://127.0.0.1:18083 /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI devices parity --json
 [

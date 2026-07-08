@@ -2,13 +2,13 @@
   "daemon" : {
     "gatewayEnabled" : true,
     "gatewayHost" : "127.0.0.1",
-    "gatewayPort" : 19284,
+    "gatewayPort" : 18404,
     "ok" : true,
     "protocolVersion" : 1,
-    "socketPath" : "\/tmp\/tmp.Lv1lzQnA9W\/socket\/openburnbar.sock",
+    "socketPath" : "\/tmp\/tmp.oOmZ8mt81S\/socket\/openburnbar.sock",
     "version" : "evidence-daemon"
   },
-  "generatedAt" : "2026-07-07T13:34:33Z",
+  "generatedAt" : "2026-07-08T02:46:19Z",
   "redaction" : {
     "socketAuthToken" : "redacted"
   },

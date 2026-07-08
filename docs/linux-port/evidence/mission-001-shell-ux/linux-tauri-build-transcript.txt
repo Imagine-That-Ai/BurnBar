@@ -29,27 +29,27 @@ npm WARN EBADENGINE   current: { node: 'v18.19.1', npm: '9.2.0' }
 npm WARN EBADENGINE }
 npm WARN deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
-added 187 packages in 6s
+added 187 packages in 2s
 
 > @openburnbar/linux-desktop@0.1.0 build
 > vite build
 
 vite v6.4.3 building for production...
 transforming...
-✓ 260 modules transformed.
+✓ 265 modules transformed.
 rendering chunks...
 [esbuild css minify]
 ▲ [WARNING] Expected "}" to go with "{" [css-syntax-error]
 
-    <stdin>:6314:1:
-      6314 │ }
+    <stdin>:6678:1:
+      6678 │ }
            │  ^
            ╵  }
 
   The unbalanced "{" is here:
 
-    <stdin>:4094:36:
-      4094 │ .integration-doc-link:focus-visible {
+    <stdin>:4482:36:
+      4482 │ .integration-doc-link:focus-visible {
            ╵                                     ^
 
 
@@ -60,48 +60,48 @@ rendering chunks...
 (!) /tmp/packages/gl-engine/src/engine/kernels/swarmEmberKernel.ts is dynamically imported by /tmp/packages/gl-engine/src/engine/registry.ts but also statically imported by /tmp/packages/gl-engine/src/engine/BackdropEngine.ts, dynamic import will not move module into another chunk.
 
 computing gzip size...
-dist/index.html                                   0.44 kB │ gzip:   0.28 kB
-dist/assets/index-Bt4zLnsO.css                  132.22 kB │ gzip:  19.54 kB
+dist/index.html                                   0.44 kB │ gzip:   0.29 kB
+dist/assets/index-K4FFnR8g.css                  137.17 kB │ gzip:  20.38 kB
 dist/assets/quasicrystalWaves-BD0dAad5.js         0.07 kB │ gzip:   0.08 kB
 dist/assets/simplex-TAJrGvCX.js                   2.23 kB │ gzip:   1.20 kB
-dist/assets/inversionLatticeKernel-BVCdndsS.js    2.55 kB │ gzip:   1.27 kB
-dist/assets/myceliumMeshKernel-4_4_Hc6E.js        2.60 kB │ gzip:   1.23 kB
-dist/assets/rippleLatticeKernel-By_Nv1Wj.js       2.60 kB │ gzip:   1.28 kB
-dist/assets/vogelBloomKernel-DmUR3SMQ.js          2.81 kB │ gzip:   1.39 kB
-dist/assets/liquidLumenKernel-DpYFe5sF.js         2.87 kB │ gzip:   1.39 kB
-dist/assets/stormCellKernel-DtsYCxuI.js           2.88 kB │ gzip:   1.41 kB
-dist/assets/spectralDriftKernel-qJzOBFBU.js       3.15 kB │ gzip:   1.55 kB
-dist/assets/oilfieldKernel-CuraLbs-.js            3.20 kB │ gzip:   1.46 kB
-dist/assets/crystalDriftKernel-7ikBtcYu.js        3.21 kB │ gzip:   1.48 kB
-dist/assets/flowFieldKernel-D4XRijaN.js           3.27 kB │ gzip:   1.84 kB
-dist/assets/cloudFieldKernel-SM6N2IGU.js          3.31 kB │ gzip:   1.59 kB
-dist/assets/suminagashiDriftKernel-BFM83dHm.js    3.43 kB │ gzip:   1.59 kB
-dist/assets/fluidAuroraKernel-BJVft0w6.js         3.54 kB │ gzip:   1.60 kB
-dist/assets/petroleumSheenKernel-Cu7ajoXb.js      3.61 kB │ gzip:   1.72 kB
-dist/assets/paperfieldKernel-Cv6V_hc0.js          3.87 kB │ gzip:   1.78 kB
-dist/assets/kineticStippleKernel-Bz6Ca22k.js      3.92 kB │ gzip:   1.85 kB
-dist/assets/retroPlasmaKernel-U71kf8xG.js         4.09 kB │ gzip:   1.88 kB
-dist/assets/agent1Kernel-Bf7T1rxL.js              4.11 kB │ gzip:   1.72 kB
-dist/assets/moireKernel-iPQUmZaj.js               4.16 kB │ gzip:   1.97 kB
-dist/assets/boidsKernel-D2b4gzHl.js               4.16 kB │ gzip:   2.19 kB
-dist/assets/inkDiffusionKernel-C0CBFjLg.js        4.30 kB │ gzip:   1.92 kB
-dist/assets/neuralBloomKernel-9ZzatIxI.js         4.85 kB │ gzip:   2.13 kB
-dist/assets/meshKernel-D1O47rwY.js                5.04 kB │ gzip:   2.16 kB
-dist/assets/beamProjectorKernel-Cm5KbtLJ.js       5.50 kB │ gzip:   2.42 kB
-dist/assets/blobsMeshKernel-B-5TF82b.js           5.53 kB │ gzip:   2.56 kB
-dist/assets/volumetricKernel-CDHfUF9R.js          5.99 kB │ gzip:   2.63 kB
-dist/assets/auroraKernel-BGoXwpdX.js              6.13 kB │ gzip:   2.74 kB
-dist/assets/plasmaOrbsKernel-Cbw_mDVT.js          6.34 kB │ gzip:   2.74 kB
-dist/assets/aetherLatticeKernel-DQXJolu-.js       6.72 kB │ gzip:   2.91 kB
-dist/assets/licKernel-CgEEA8ls.js                11.93 kB │ gzip:   7.51 kB
-dist/assets/createShaderKernel-qAK6OiBA.js       16.20 kB │ gzip:   5.67 kB
-dist/assets/index-CXKiyhg7.js                   592.78 kB │ gzip: 178.78 kB
+dist/assets/inversionLatticeKernel-B87tYK_c.js    2.55 kB │ gzip:   1.27 kB
+dist/assets/myceliumMeshKernel-ByZLlbBD.js        2.60 kB │ gzip:   1.23 kB
+dist/assets/rippleLatticeKernel-DDHpOpmG.js       2.60 kB │ gzip:   1.28 kB
+dist/assets/vogelBloomKernel-BZM03kiT.js          2.81 kB │ gzip:   1.38 kB
+dist/assets/liquidLumenKernel-Byj7VG9R.js         2.87 kB │ gzip:   1.39 kB
+dist/assets/stormCellKernel-Batlhwze.js           2.88 kB │ gzip:   1.41 kB
+dist/assets/spectralDriftKernel-BrPkMABY.js       3.15 kB │ gzip:   1.54 kB
+dist/assets/oilfieldKernel-Cy8oGBep.js            3.20 kB │ gzip:   1.46 kB
+dist/assets/crystalDriftKernel-D95TR7vK.js        3.21 kB │ gzip:   1.48 kB
+dist/assets/flowFieldKernel-BD8VkFKx.js           3.27 kB │ gzip:   1.84 kB
+dist/assets/cloudFieldKernel-CjM-u9Jr.js          3.31 kB │ gzip:   1.59 kB
+dist/assets/suminagashiDriftKernel-C2zww2F2.js    3.43 kB │ gzip:   1.59 kB
+dist/assets/fluidAuroraKernel-BOTC8cH2.js         3.54 kB │ gzip:   1.60 kB
+dist/assets/petroleumSheenKernel-CJ-lb5og.js      3.61 kB │ gzip:   1.72 kB
+dist/assets/paperfieldKernel-t-zj2cG3.js          3.87 kB │ gzip:   1.77 kB
+dist/assets/kineticStippleKernel-CHpNkVwz.js      3.92 kB │ gzip:   1.84 kB
+dist/assets/retroPlasmaKernel-Bdagunsq.js         4.09 kB │ gzip:   1.87 kB
+dist/assets/agent1Kernel-QMnt44YB.js              4.11 kB │ gzip:   1.72 kB
+dist/assets/moireKernel-a7MiYmcL.js               4.16 kB │ gzip:   1.97 kB
+dist/assets/boidsKernel-j5b31PuL.js               4.16 kB │ gzip:   2.19 kB
+dist/assets/inkDiffusionKernel-C1O7g_Ii.js        4.30 kB │ gzip:   1.92 kB
+dist/assets/neuralBloomKernel-Dx0xvLU9.js         4.85 kB │ gzip:   2.13 kB
+dist/assets/meshKernel-BbqzQicr.js                5.04 kB │ gzip:   2.15 kB
+dist/assets/beamProjectorKernel-CZ-vbK1V.js       5.50 kB │ gzip:   2.42 kB
+dist/assets/blobsMeshKernel-SH4Rd6IO.js           5.53 kB │ gzip:   2.56 kB
+dist/assets/volumetricKernel-Bu28eGAW.js          5.99 kB │ gzip:   2.63 kB
+dist/assets/auroraKernel-DH2iNmi_.js              6.13 kB │ gzip:   2.73 kB
+dist/assets/plasmaOrbsKernel-BGJBNm2C.js          6.34 kB │ gzip:   2.74 kB
+dist/assets/aetherLatticeKernel-CzvTvGht.js       6.72 kB │ gzip:   2.91 kB
+dist/assets/licKernel-CHdSCrKZ.js                11.93 kB │ gzip:   7.51 kB
+dist/assets/createShaderKernel-Ch1d7tpn.js       16.20 kB │ gzip:   5.67 kB
+dist/assets/index-CI-ISaNC.js                   594.56 kB │ gzip: 179.58 kB
 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 2.36s
+✓ built in 1.17s
 
 > @openburnbar/linux-desktop@0.1.0 tauri:build
 > tauri build --bundles deb
@@ -114,20 +114,20 @@ dist/assets/index-CXKiyhg7.js                   592.78 kB │ gzip: 178.78 kB
 
 vite v6.4.3 building for production...
 transforming...
-✓ 260 modules transformed.
+✓ 265 modules transformed.
 rendering chunks...
 [esbuild css minify]
 ▲ [WARNING] Expected "}" to go with "{" [css-syntax-error]
 
-    <stdin>:6314:1:
-      6314 │ }
+    <stdin>:6678:1:
+      6678 │ }
            │  ^
            ╵  }
 
   The unbalanced "{" is here:
 
-    <stdin>:4094:36:
-      4094 │ .integration-doc-link:focus-visible {
+    <stdin>:4482:36:
+      4482 │ .integration-doc-link:focus-visible {
            ╵                                     ^
 
 
@@ -138,350 +138,350 @@ rendering chunks...
 (!) /tmp/packages/gl-engine/src/engine/kernels/swarmEmberKernel.ts is dynamically imported by /tmp/packages/gl-engine/src/engine/registry.ts but also statically imported by /tmp/packages/gl-engine/src/engine/BackdropEngine.ts, dynamic import will not move module into another chunk.
 
 computing gzip size...
-dist/index.html                                   0.44 kB │ gzip:   0.28 kB
-dist/assets/index-Bt4zLnsO.css                  132.22 kB │ gzip:  19.54 kB
+dist/index.html                                   0.44 kB │ gzip:   0.29 kB
+dist/assets/index-K4FFnR8g.css                  137.17 kB │ gzip:  20.38 kB
 dist/assets/quasicrystalWaves-BD0dAad5.js         0.07 kB │ gzip:   0.08 kB
 dist/assets/simplex-TAJrGvCX.js                   2.23 kB │ gzip:   1.20 kB
-dist/assets/inversionLatticeKernel-BVCdndsS.js    2.55 kB │ gzip:   1.27 kB
-dist/assets/myceliumMeshKernel-4_4_Hc6E.js        2.60 kB │ gzip:   1.23 kB
-dist/assets/rippleLatticeKernel-By_Nv1Wj.js       2.60 kB │ gzip:   1.28 kB
-dist/assets/vogelBloomKernel-DmUR3SMQ.js          2.81 kB │ gzip:   1.39 kB
-dist/assets/liquidLumenKernel-DpYFe5sF.js         2.87 kB │ gzip:   1.39 kB
-dist/assets/stormCellKernel-DtsYCxuI.js           2.88 kB │ gzip:   1.41 kB
-dist/assets/spectralDriftKernel-qJzOBFBU.js       3.15 kB │ gzip:   1.55 kB
-dist/assets/oilfieldKernel-CuraLbs-.js            3.20 kB │ gzip:   1.46 kB
-dist/assets/crystalDriftKernel-7ikBtcYu.js        3.21 kB │ gzip:   1.48 kB
-dist/assets/flowFieldKernel-D4XRijaN.js           3.27 kB │ gzip:   1.84 kB
-dist/assets/cloudFieldKernel-SM6N2IGU.js          3.31 kB │ gzip:   1.59 kB
-dist/assets/suminagashiDriftKernel-BFM83dHm.js    3.43 kB │ gzip:   1.59 kB
-dist/assets/fluidAuroraKernel-BJVft0w6.js         3.54 kB │ gzip:   1.60 kB
-dist/assets/petroleumSheenKernel-Cu7ajoXb.js      3.61 kB │ gzip:   1.72 kB
-dist/assets/paperfieldKernel-Cv6V_hc0.js          3.87 kB │ gzip:   1.78 kB
-dist/assets/kineticStippleKernel-Bz6Ca22k.js      3.92 kB │ gzip:   1.85 kB
-dist/assets/retroPlasmaKernel-U71kf8xG.js         4.09 kB │ gzip:   1.88 kB
-dist/assets/agent1Kernel-Bf7T1rxL.js              4.11 kB │ gzip:   1.72 kB
-dist/assets/moireKernel-iPQUmZaj.js               4.16 kB │ gzip:   1.97 kB
-dist/assets/boidsKernel-D2b4gzHl.js               4.16 kB │ gzip:   2.19 kB
-dist/assets/inkDiffusionKernel-C0CBFjLg.js        4.30 kB │ gzip:   1.92 kB
-dist/assets/neuralBloomKernel-9ZzatIxI.js         4.85 kB │ gzip:   2.13 kB
-dist/assets/meshKernel-D1O47rwY.js                5.04 kB │ gzip:   2.16 kB
-dist/assets/beamProjectorKernel-Cm5KbtLJ.js       5.50 kB │ gzip:   2.42 kB
-dist/assets/blobsMeshKernel-B-5TF82b.js           5.53 kB │ gzip:   2.56 kB
-dist/assets/volumetricKernel-CDHfUF9R.js          5.99 kB │ gzip:   2.63 kB
-dist/assets/auroraKernel-BGoXwpdX.js              6.13 kB │ gzip:   2.74 kB
-dist/assets/plasmaOrbsKernel-Cbw_mDVT.js          6.34 kB │ gzip:   2.74 kB
-dist/assets/aetherLatticeKernel-DQXJolu-.js       6.72 kB │ gzip:   2.91 kB
-dist/assets/licKernel-CgEEA8ls.js                11.93 kB │ gzip:   7.51 kB
-dist/assets/createShaderKernel-qAK6OiBA.js       16.20 kB │ gzip:   5.67 kB
-dist/assets/index-CXKiyhg7.js                   592.78 kB │ gzip: 178.78 kB
+dist/assets/inversionLatticeKernel-B87tYK_c.js    2.55 kB │ gzip:   1.27 kB
+dist/assets/myceliumMeshKernel-ByZLlbBD.js        2.60 kB │ gzip:   1.23 kB
+dist/assets/rippleLatticeKernel-DDHpOpmG.js       2.60 kB │ gzip:   1.28 kB
+dist/assets/vogelBloomKernel-BZM03kiT.js          2.81 kB │ gzip:   1.38 kB
+dist/assets/liquidLumenKernel-Byj7VG9R.js         2.87 kB │ gzip:   1.39 kB
+dist/assets/stormCellKernel-Batlhwze.js           2.88 kB │ gzip:   1.41 kB
+dist/assets/spectralDriftKernel-BrPkMABY.js       3.15 kB │ gzip:   1.54 kB
+dist/assets/oilfieldKernel-Cy8oGBep.js            3.20 kB │ gzip:   1.46 kB
+dist/assets/crystalDriftKernel-D95TR7vK.js        3.21 kB │ gzip:   1.48 kB
+dist/assets/flowFieldKernel-BD8VkFKx.js           3.27 kB │ gzip:   1.84 kB
+dist/assets/cloudFieldKernel-CjM-u9Jr.js          3.31 kB │ gzip:   1.59 kB
+dist/assets/suminagashiDriftKernel-C2zww2F2.js    3.43 kB │ gzip:   1.59 kB
+dist/assets/fluidAuroraKernel-BOTC8cH2.js         3.54 kB │ gzip:   1.60 kB
+dist/assets/petroleumSheenKernel-CJ-lb5og.js      3.61 kB │ gzip:   1.72 kB
+dist/assets/paperfieldKernel-t-zj2cG3.js          3.87 kB │ gzip:   1.77 kB
+dist/assets/kineticStippleKernel-CHpNkVwz.js      3.92 kB │ gzip:   1.84 kB
+dist/assets/retroPlasmaKernel-Bdagunsq.js         4.09 kB │ gzip:   1.87 kB
+dist/assets/agent1Kernel-QMnt44YB.js              4.11 kB │ gzip:   1.72 kB
+dist/assets/moireKernel-a7MiYmcL.js               4.16 kB │ gzip:   1.97 kB
+dist/assets/boidsKernel-j5b31PuL.js               4.16 kB │ gzip:   2.19 kB
+dist/assets/inkDiffusionKernel-C1O7g_Ii.js        4.30 kB │ gzip:   1.92 kB
+dist/assets/neuralBloomKernel-Dx0xvLU9.js         4.85 kB │ gzip:   2.13 kB
+dist/assets/meshKernel-BbqzQicr.js                5.04 kB │ gzip:   2.15 kB
+dist/assets/beamProjectorKernel-CZ-vbK1V.js       5.50 kB │ gzip:   2.42 kB
+dist/assets/blobsMeshKernel-SH4Rd6IO.js           5.53 kB │ gzip:   2.56 kB
+dist/assets/volumetricKernel-Bu28eGAW.js          5.99 kB │ gzip:   2.63 kB
+dist/assets/auroraKernel-DH2iNmi_.js              6.13 kB │ gzip:   2.73 kB
+dist/assets/plasmaOrbsKernel-BGJBNm2C.js          6.34 kB │ gzip:   2.74 kB
+dist/assets/aetherLatticeKernel-CzvTvGht.js       6.72 kB │ gzip:   2.91 kB
+dist/assets/licKernel-CHdSCrKZ.js                11.93 kB │ gzip:   7.51 kB
+dist/assets/createShaderKernel-Ch1d7tpn.js       16.20 kB │ gzip:   5.67 kB
+dist/assets/index-CI-ISaNC.js                   594.56 kB │ gzip: 179.58 kB
 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 2.38s
+✓ built in 1.30s
     Updating crates.io index
  Downloading crates ...
-  Downloaded anyhow v1.0.103
-  Downloaded block-buffer v0.10.4
-  Downloaded adler2 v2.0.1
-  Downloaded cairo-sys-rs v0.18.2
-  Downloaded alloc-stdlib v0.2.4
-  Downloaded dlopen2_derive v0.4.3
-  Downloaded alloc-no-stdlib v2.0.4
-  Downloaded futures-macro v0.3.32
-  Downloaded crypto-common v0.1.7
-  Downloaded cargo-platform v0.1.9
-  Downloaded futures-sink v0.3.32
-  Downloaded fnv v1.0.7
-  Downloaded equivalent v1.0.2
-  Downloaded darling_macro v0.23.0
-  Downloaded ctor-proc-macro v0.0.7
-  Downloaded bit-set v0.8.0
-  Downloaded cfg-if v1.0.4
-  Downloaded futures-io v0.3.32
-  Downloaded futures-task v0.3.32
-  Downloaded form_urlencoded v1.2.2
-  Downloaded cpufeatures v0.2.17
-  Downloaded dtoa-short v0.3.5
-  Downloaded dtor v0.3.0
-  Downloaded gdkx11 v0.18.2
-  Downloaded dtor-proc-macro v0.0.6
-  Downloaded is-wsl v0.4.0
-  Downloaded hex v0.4.3
-  Downloaded heck v0.5.0
-  Downloaded errno v0.3.14
-  Downloaded generic-array v0.14.7
-  Downloaded ident_case v1.0.1
-  Downloaded gdk-pixbuf-sys v0.18.0
-  Downloaded dpi v0.1.2
-  Downloaded cssparser-macros v0.6.1
-  Downloaded futures-core v0.3.32
-  Downloaded rustc-hash v2.1.3
-  Downloaded gdkx11-sys v0.18.2
-  Downloaded dyn-clone v1.0.20
-  Downloaded dunce v1.0.5
-  Downloaded new_debug_unreachable v1.0.6
-  Downloaded libappindicator-sys v0.9.0
   Downloaded ctor v0.8.0
-  Downloaded heck v0.4.1
-  Downloaded dirs v6.0.0
-  Downloaded field-offset v0.3.6
-  Downloaded itoa v1.0.18
-  Downloaded gdkwayland-sys v0.18.2
-  Downloaded gtk3-macros v0.18.2
-  Downloaded serde_spanned v0.6.9
-  Downloaded idna_adapter v1.2.2
-  Downloaded digest v0.10.7
-  Downloaded phf_shared v0.13.1
-  Downloaded gobject-sys v0.18.0
-  Downloaded find-msvc-tools v0.1.9
-  Downloaded gdk-pixbuf v0.18.5
-  Downloaded cargo_metadata v0.19.2
-  Downloaded dlopen2 v0.8.2
+  Downloaded hex v0.4.3
+  Downloaded displaydoc v0.2.6
   Downloaded autocfg v1.5.1
-  Downloaded byteorder v1.5.0
-  Downloaded futures-executor v0.3.32
-  Downloaded erased-serde v0.4.10
-  Downloaded foldhash v0.2.0
+  Downloaded alloc-no-stdlib v2.0.4
+  Downloaded gdkx11 v0.18.2
+  Downloaded cfg-if v1.0.4
+  Downloaded cssparser-macros v0.6.1
+  Downloaded futures-macro v0.3.32
+  Downloaded gdk-pixbuf-sys v0.18.0
+  Downloaded form_urlencoded v1.2.2
+  Downloaded dtoa-short v0.3.5
+  Downloaded block-buffer v0.10.4
+  Downloaded dpi v0.1.2
+  Downloaded futures-core v0.3.32
+  Downloaded dlopen2_derive v0.4.3
+  Downloaded itoa v1.0.18
+  Downloaded darling_macro v0.23.0
+  Downloaded cargo-platform v0.1.9
+  Downloaded dirs v6.0.0
+  Downloaded phf_shared v0.13.1
+  Downloaded adler2 v2.0.1
+  Downloaded idna_adapter v1.2.2
+  Downloaded gdkwayland-sys v0.18.2
+  Downloaded heck v0.4.1
+  Downloaded futures-io v0.3.32
+  Downloaded cpufeatures v0.2.17
+  Downloaded phf_codegen v0.13.1
+  Downloaded heck v0.5.0
+  Downloaded gdkx11-sys v0.18.2
   Downloaded dirs-sys v0.5.0
-  Downloaded glob v0.3.3
-  Downloaded serde_spanned v1.1.1
-  Downloaded mime v0.3.17
-  Downloaded serialize-to-javascript v0.1.2
-  Downloaded sigchld v0.2.4
-  Downloaded siphasher v1.0.3
-  Downloaded same-file v1.0.6
-  Downloaded option-ext v0.2.0
-  Downloaded bit-vec v0.8.0
-  Downloaded atk-sys v0.18.2
-  Downloaded phf_generator v0.13.1
+  Downloaded rustc_version v0.4.1
+  Downloaded alloc-stdlib v0.2.4
   Downloaded num-conv v0.2.2
-  Downloaded embed-resource v3.0.11
-  Downloaded deranged v0.5.8
+  Downloaded futures-task v0.3.32
+  Downloaded futures-sink v0.3.32
+  Downloaded gtk3-macros v0.18.2
+  Downloaded option-ext v0.2.0
+  Downloaded new_debug_unreachable v1.0.6
+  Downloaded is-wsl v0.4.0
+  Downloaded rustc-hash v2.1.3
+  Downloaded powerfmt v0.2.0
+  Downloaded serialize-to-javascript v0.1.2
+  Downloaded serde_spanned v0.6.9
+  Downloaded phf_generator v0.13.1
   Downloaded bitflags v1.3.2
+  Downloaded gdk-pixbuf v0.18.5
+  Downloaded proc-macro-crate v2.0.2
+  Downloaded javascriptcore-rs-sys v1.1.1
+  Downloaded find-msvc-tools v0.1.9
+  Downloaded ref-cast-impl v1.0.25
+  Downloaded percent-encoding v2.3.2
+  Downloaded fdeflate v0.3.7
+  Downloaded fastrand v2.4.1
+  Downloaded anyhow v1.0.103
   Downloaded shared_child v1.1.1
   Downloaded serialize-to-javascript-impl v0.1.2
-  Downloaded bs58 v0.5.1
-  Downloaded ref-cast-impl v1.0.25
-  Downloaded is-docker v0.2.0
-  Downloaded stable_deref_trait v1.2.1
-  Downloaded proc-macro-error-attr v1.0.4
-  Downloaded potential_utf v0.1.5
-  Downloaded fdeflate v0.3.7
-  Downloaded dtoa v1.0.11
-  Downloaded strsim v0.11.1
-  Downloaded rustc_version v0.4.1
-  Downloaded proc-macro-crate v2.0.2
-  Downloaded fastrand v2.4.1
-  Downloaded ref-cast v1.0.25
-  Downloaded memoffset v0.9.1
-  Downloaded cookie v0.18.1
-  Downloaded string_cache_codegen v0.6.1
-  Downloaded serde_repr v0.1.20
-  Downloaded percent-encoding v2.3.2
-  Downloaded atk v0.18.2
-  Downloaded darling v0.23.0
-  Downloaded simd-adler32 v0.3.9
-  Downloaded signal-hook-registry v1.4.8
-  Downloaded servo_arc v0.4.3
-  Downloaded javascriptcore-rs-sys v1.1.1
-  Downloaded shlex v2.0.1
-  Downloaded sha2 v0.10.9
-  Downloaded futures-channel v0.3.32
-  Downloaded camino v1.2.4
-  Downloaded cairo-rs v0.18.5
-  Downloaded tinyvec_macros v0.1.1
-  Downloaded proc-macro-crate v1.3.1
-  Downloaded toml_datetime v0.6.3
-  Downloaded phf_codegen v0.13.1
-  Downloaded powerfmt v0.2.0
-  Downloaded precomputed-hash v0.1.1
-  Downloaded cargo_toml v0.22.3
-  Downloaded slab v0.4.12
-  Downloaded os_pipe v1.2.3
-  Downloaded crc32fast v1.5.0
-  Downloaded string_cache v0.9.0
-  Downloaded soup3-sys v0.5.0
-  Downloaded system-deps v6.2.2
-  Downloaded tauri-plugin v2.6.3
-  Downloaded target-lexicon v0.12.16
-  Downloaded displaydoc v0.2.6
-  Downloaded unic-char-property v0.9.0
-  Downloaded crossbeam-utils v0.8.21
-  Downloaded getrandom v0.3.4
-  Downloaded typeid v1.0.3
-  Downloaded utf-8 v0.7.6
-  Downloaded getrandom v0.4.3
-  Downloaded cfg-expr v0.15.8
-  Downloaded unic-ucd-version v0.9.0
-  Downloaded unic-common v0.9.0
-  Downloaded serde_with_macros v3.21.0
-  Downloaded unic-ucd-ident v0.9.0
-  Downloaded unic-char-range v0.9.0
-  Downloaded utf8_iter v1.0.4
-  Downloaded open v5.3.6
-  Downloaded javascriptcore-rs v1.1.2
-  Downloaded tinystr v0.8.3
-  Downloaded toml_datetime v1.1.1+spec-1.1.0
-  Downloaded toml_datetime v0.7.5+spec-1.1.0
-  Downloaded time-core v0.1.9
-  Downloaded thiserror-impl v1.0.69
-  Downloaded thiserror v2.0.18
-  Downloaded thiserror v1.0.69
-  Downloaded zerofrom-derive v0.1.7
-  Downloaded libloading v0.7.4
-  Downloaded soup3 v0.5.0
-  Downloaded json-patch v3.0.1
-  Downloaded smallvec v1.15.2
-  Downloaded bitflags v2.13.0
-  Downloaded cfb v0.7.3
-  Downloaded tauri-runtime v2.11.3
-  Downloaded scopeguard v1.2.0
-  Downloaded phf_macros v0.13.1
-  Downloaded infer v0.19.0
-  Downloaded toml_writer v1.1.1+spec-1.1.0
-  Downloaded tauri-macros v2.6.3
-  Downloaded phf v0.13.1
-  Downloaded proc-macro-error v1.0.4
-  Downloaded pkg-config v0.3.33
-  Downloaded pin-project-lite v0.2.17
-  Downloaded serde_derive_internals v0.29.1
-  Downloaded quote v1.0.46
-  Downloaded bytes v1.12.0
-  Downloaded serde-untagged v0.1.9
-  Downloaded gio-sys v0.18.1
-  Downloaded version_check v0.9.5
-  Downloaded base64 v0.22.1
-  Downloaded markup5ever v0.38.0
-  Downloaded pango-sys v0.18.0
-  Downloaded glib-macros v0.18.5
-  Downloaded webkit2gtk-sys v2.0.2
-  Downloaded schemars_derive v0.8.22
-  Downloaded socket2 v0.6.4
-  Downloaded glib-sys v0.18.1
-  Downloaded zerofrom v0.1.8
-  Downloaded yoke-derive v0.8.2
-  Downloaded tauri-codegen v2.6.3
-  Downloaded zmij v1.0.21
-  Downloaded toml_parser v1.1.2+spec-1.1.0
-  Downloaded html5ever v0.38.0
-  Downloaded cc v1.2.66
-  Downloaded lock_api v0.4.14
-  Downloaded derive_more v2.1.1
-  Downloaded toml v0.9.12+spec-1.1.0
-  Downloaded toml v1.1.2+spec-1.1.0
-  Downloaded writeable v0.6.3
-  Downloaded version-compare v0.2.1
-  Downloaded urlpattern v0.3.0
-  Downloaded yoke v0.8.3
-  Downloaded thiserror-impl v2.0.18
-  Downloaded tauri-winres v0.3.6
-  Downloaded crossbeam-channel v0.5.15
-  Downloaded gdk v0.18.2
-  Downloaded toml v0.8.2
-  Downloaded zerovec-derive v0.11.3
-  Downloaded walkdir v2.5.0
-  Downloaded unicode-ident v1.0.24
-  Downloaded parking_lot_core v0.9.12
-  Downloaded iana-time-zone v0.1.65
-  Downloaded derive_more-impl v2.1.1
-  Downloaded tinyvec v1.11.0
-  Downloaded once_cell v1.21.4
-  Downloaded keyboard-types v0.7.0
-  Downloaded synstructure v0.13.2
-  Downloaded signal-hook v0.3.18
-  Downloaded parking_lot v0.12.5
-  Downloaded jsonptr v0.6.3
-  Downloaded gdk-sys v0.18.2
-  Downloaded tray-icon v0.24.1
-  Downloaded flate2 v1.1.9
-  Downloaded uuid v1.23.4
-  Downloaded pango v0.18.3
-  Downloaded toml_edit v0.19.15
-  Downloaded web_atoms v0.2.5
-  Downloaded litemap v0.8.2
-  Downloaded toml_edit v0.20.2
-  Downloaded webkit2gtk v2.0.2
-  Downloaded num-traits v0.2.19
-  Downloaded hashbrown v0.12.3
-  Downloaded raw-window-handle v0.6.2
-  Downloaded semver v1.0.28
-  Downloaded dom_query v0.27.0
-  Downloaded dbus v0.9.12
-  Downloaded darling_core v0.23.0
+  Downloaded dlopen2 v0.8.2
   Downloaded cssparser v0.36.0
-  Downloaded tauri-plugin-shell v2.3.5
-  Downloaded typenum v1.20.1
-  Downloaded unicode-segmentation v1.13.3
-  Downloaded time-macros v0.2.31
-  Downloaded icu_provider v2.2.0
-  Downloaded icu_properties v2.2.0
-  Downloaded tendril v0.5.0
-  Downloaded tauri-build v2.6.3
-  Downloaded log v0.4.33
+  Downloaded markup5ever v0.38.0
+  Downloaded byteorder v1.5.0
+  Downloaded mime v0.3.17
+  Downloaded futures-channel v0.3.32
+  Downloaded atk v0.18.2
+  Downloaded getrandom v0.3.4
+  Downloaded shlex v2.0.1
+  Downloaded same-file v1.0.6
+  Downloaded ident_case v1.0.1
+  Downloaded cairo-rs v0.18.5
+  Downloaded sigchld v0.2.4
+  Downloaded base64 v0.22.1
+  Downloaded sha2 v0.10.9
+  Downloaded gio-sys v0.18.1
+  Downloaded getrandom v0.4.3
+  Downloaded serde_spanned v1.1.1
+  Downloaded proc-macro-crate v1.3.1
+  Downloaded gdk v0.18.2
+  Downloaded ref-cast v1.0.25
+  Downloaded proc-macro-error v1.0.4
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded serde_derive_internals v0.29.1
+  Downloaded raw-window-handle v0.6.2
+  Downloaded siphasher v1.0.3
+  Downloaded javascriptcore-rs v1.1.2
+  Downloaded gdk-sys v0.18.2
+  Downloaded soup3-sys v0.5.0
+  Downloaded phf v0.13.1
+  Downloaded lock_api v0.4.14
+  Downloaded strsim v0.11.1
+  Downloaded simd-adler32 v0.3.9
+  Downloaded string_cache_codegen v0.6.1
+  Downloaded socket2 v0.6.4
+  Downloaded serde-untagged v0.1.9
+  Downloaded pin-project-lite v0.2.17
+  Downloaded signal-hook v0.3.18
   Downloaded futures-util v0.3.32
-  Downloaded indexmap v1.9.3
-  Downloaded brotli-decompressor v5.0.3
-  Downloaded aho-corasick v1.1.4
+  Downloaded tauri-runtime v2.11.3
+  Downloaded tauri-codegen v2.6.3
+  Downloaded serde_with v3.21.0
+  Downloaded toml_datetime v0.7.5+spec-1.1.0
+  Downloaded system-deps v6.2.2
+  Downloaded schemars_derive v0.8.22
   Downloaded plist v1.10.0
+  Downloaded synstructure v0.13.2
+  Downloaded serde_derive v1.0.228
+  Downloaded log v0.4.33
+  Downloaded utf8_iter v1.0.4
+  Downloaded selectors v0.36.1
   Downloaded proc-macro2 v1.0.106
   Downloaded serde_core v1.0.228
-  Downloaded ico v0.5.0
-  Downloaded winnow v0.5.40
-  Downloaded gio v0.18.4
-  Downloaded serde_with v3.21.0
-  Downloaded glib v0.18.5
-  Downloaded wry v0.55.1
-  Downloaded miniz_oxide v0.8.9
-  Downloaded libappindicator v0.9.0
   Downloaded icu_normalizer_data v2.2.0
-  Downloaded chrono v0.4.45
-  Downloaded selectors v0.36.1
-  Downloaded time v0.3.53
-  Downloaded tauri v2.11.5
-  Downloaded serde_derive v1.0.228
-  Downloaded schemars v0.9.0
-  Downloaded tao v0.35.3
-  Downloaded gtk v0.18.2
-  Downloaded tauri-runtime-wry v2.11.4
-  Downloaded icu_locale_core v2.2.0
-  Downloaded schemars v0.8.22
-  Downloaded serde v1.0.228
-  Downloaded icu_collections v2.2.0
-  Downloaded schemars v1.2.1
-  Downloaded brotli v8.0.4
-  Downloaded x11-dl v2.21.0
-  Downloaded x11 v2.21.0
-  Downloaded url v2.5.8
+  Downloaded syn v1.0.109
+  Downloaded unic-char-range v0.9.0
+  Downloaded typenum v1.20.1
+  Downloaded utf-8 v0.7.6
   Downloaded icu_normalizer v2.2.0
-  Downloaded memchr v2.8.2
-  Downloaded mio v1.2.1
+  Downloaded unic-ucd-version v0.9.0
+  Downloaded urlpattern v0.3.0
   Downloaded muda v0.19.3
-  Downloaded zerotrie v0.2.4
-  Downloaded encoding_rs v0.8.35
-  Downloaded http v1.4.2
-  Downloaded png v0.17.16
-  Downloaded png v0.18.1
-  Downloaded idna v1.1.0
+  Downloaded soup3 v0.5.0
+  Downloaded zerofrom-derive v0.1.7
+  Downloaded toml_writer v1.1.1+spec-1.1.0
+  Downloaded thiserror-impl v1.0.69
+  Downloaded serde v1.0.228
+  Downloaded toml_parser v1.1.2+spec-1.1.0
+  Downloaded webkit2gtk-sys v2.0.2
+  Downloaded memchr v2.8.2
+  Downloaded unicode-ident v1.0.24
+  Downloaded tinyvec v1.11.0
+  Downloaded yoke v0.8.3
+  Downloaded url v2.5.8
+  Downloaded unic-common v0.9.0
+  Downloaded unic-char-property v0.9.0
+  Downloaded zerofrom v0.1.8
   Downloaded indexmap v2.14.0
-  Downloaded gtk-sys v0.18.2
-  Downloaded zerovec v0.11.6
-  Downloaded tauri-utils v2.9.3
-  Downloaded regex v1.12.4
-  Downloaded serde_json v1.0.150
-  Downloaded icu_properties_data v2.2.0
-  Downloaded hashbrown v0.17.1
+  Downloaded uuid v1.23.4
+  Downloaded mio v1.2.1
+  Downloaded zerotrie v0.2.4
+  Downloaded walkdir v2.5.0
+  Downloaded x11 v2.21.0
+  Downloaded tauri-winres v0.3.6
+  Downloaded toml_edit v0.19.15
+  Downloaded zerovec-derive v0.11.3
+  Downloaded yoke-derive v0.8.2
+  Downloaded zmij v1.0.21
+  Downloaded writeable v0.6.3
+  Downloaded x11-dl v2.21.0
+  Downloaded quick-xml v0.41.0
+  Downloaded wry v0.55.1
   Downloaded winnow v1.0.3
   Downloaded winnow v0.7.15
-  Downloaded quick-xml v0.41.0
-  Downloaded syn v1.0.109
-  Downloaded syn v2.0.118
+  Downloaded winnow v0.5.40
+  Downloaded web_atoms v0.2.5
+  Downloaded toml_datetime v1.1.1+spec-1.1.0
+  Downloaded zerovec v0.11.6
   Downloaded regex-syntax v0.8.11
+  Downloaded time v0.3.53
+  Downloaded tauri-runtime-wry v2.11.4
+  Downloaded webkit2gtk v2.0.2
+  Downloaded tauri-utils v2.9.3
+  Downloaded unic-ucd-ident v0.9.0
+  Downloaded tinyvec_macros v0.1.1
+  Downloaded toml v1.1.2+spec-1.1.0
+  Downloaded time-core v0.1.9
+  Downloaded tauri-plugin-shell v2.3.5
+  Downloaded idna v1.1.0
+  Downloaded toml_edit v0.20.2
+  Downloaded thiserror v2.0.18
+  Downloaded thiserror v1.0.69
+  Downloaded regex v1.12.4
+  Downloaded icu_properties_data v2.2.0
+  Downloaded version_check v0.9.5
+  Downloaded unicode-segmentation v1.13.3
+  Downloaded png v0.18.1
+  Downloaded gtk-sys v0.18.2
+  Downloaded toml_datetime v0.6.3
+  Downloaded toml v0.8.2
+  Downloaded png v0.17.16
+  Downloaded version-compare v0.2.1
+  Downloaded typeid v1.0.3
+  Downloaded tray-icon v0.24.1
+  Downloaded toml v0.9.12+spec-1.1.0
+  Downloaded hashbrown v0.12.3
+  Downloaded tinystr v0.8.3
+  Downloaded http v1.4.2
+  Downloaded encoding_rs v0.8.35
+  Downloaded brotli v8.0.4
+  Downloaded thiserror-impl v2.0.18
+  Downloaded schemars v1.2.1
+  Downloaded schemars v0.9.0
+  Downloaded icu_collections v2.2.0
+  Downloaded html5ever v0.38.0
+  Downloaded tauri v2.11.5
+  Downloaded schemars v0.8.22
+  Downloaded miniz_oxide v0.8.9
+  Downloaded time-macros v0.2.31
   Downloaded regex-automata v0.4.14
+  Downloaded tendril v0.5.0
+  Downloaded tauri-plugin v2.6.3
+  Downloaded tao v0.35.3
+  Downloaded syn v2.0.118
+  Downloaded gtk v0.18.2
+  Downloaded icu_locale_core v2.2.0
+  Downloaded ico v0.5.0
+  Downloaded libappindicator v0.9.0
+  Downloaded indexmap v1.9.3
+  Downloaded icu_provider v2.2.0
   Downloaded libc v0.2.186
+  Downloaded icu_properties v2.2.0
+  Downloaded hashbrown v0.17.1
+  Downloaded num-traits v0.2.19
+  Downloaded string_cache v0.9.0
+  Downloaded glib v0.18.5
+  Downloaded gio v0.18.4
+  Downloaded chrono v0.4.45
+  Downloaded slab v0.4.12
   Downloaded tokio v1.52.3
+  Downloaded parking_lot_core v0.9.12
+  Downloaded parking_lot v0.12.5
+  Downloaded pango v0.18.3
+  Downloaded once_cell v1.21.4
+  Downloaded keyboard-types v0.7.0
   Downloaded libdbus-sys v0.2.7
+  Downloaded jsonptr v0.6.3
+  Downloaded serde_json v1.0.150
+  Downloaded brotli-decompressor v5.0.3
+  Downloaded aho-corasick v1.1.4
+  Downloaded tauri-macros v2.6.3
+  Downloaded tauri-build v2.6.3
+  Downloaded target-lexicon v0.12.16
+  Downloaded semver v1.0.28
+  Downloaded litemap v0.8.2
+  Downloaded iana-time-zone v0.1.65
+  Downloaded smallvec v1.15.2
+  Downloaded dbus v0.9.12
+  Downloaded signal-hook-registry v1.4.8
+  Downloaded open v5.3.6
+  Downloaded quote v1.0.46
+  Downloaded precomputed-hash v0.1.1
+  Downloaded pkg-config v0.3.33
+  Downloaded phf_macros v0.13.1
+  Downloaded pango-sys v0.18.0
+  Downloaded derive_more-impl v2.1.1
+  Downloaded potential_utf v0.1.5
+  Downloaded libloading v0.7.4
+  Downloaded json-patch v3.0.1
+  Downloaded infer v0.19.0
+  Downloaded crossbeam-channel v0.5.15
+  Downloaded cc v1.2.66
+  Downloaded flate2 v1.1.9
+  Downloaded dom_query v0.27.0
+  Downloaded derive_more v2.1.1
+  Downloaded darling_core v0.23.0
+  Downloaded servo_arc v0.4.3
+  Downloaded serde_with_macros v3.21.0
+  Downloaded glib-sys v0.18.1
+  Downloaded glib-macros v0.18.5
+  Downloaded cfb v0.7.3
+  Downloaded bitflags v2.13.0
+  Downloaded foldhash v0.2.0
+  Downloaded dtoa v1.0.11
+  Downloaded darling v0.23.0
+  Downloaded cfg-expr v0.15.8
+  Downloaded crossbeam-utils v0.8.21
+  Downloaded crc32fast v1.5.0
+  Downloaded camino v1.2.4
+  Downloaded os_pipe v1.2.3
+  Downloaded memoffset v0.9.1
+  Downloaded libappindicator-sys v0.9.0
+  Downloaded deranged v0.5.8
+  Downloaded serde_repr v0.1.20
+  Downloaded scopeguard v1.2.0
+  Downloaded proc-macro-error-attr v1.0.4
+  Downloaded is-docker v0.2.0
+  Downloaded generic-array v0.14.7
+  Downloaded digest v0.10.7
+  Downloaded cookie v0.18.1
+  Downloaded cargo_toml v0.22.3
+  Downloaded bytes v1.12.0
+  Downloaded glob v0.3.3
+  Downloaded futures-executor v0.3.32
+  Downloaded embed-resource v3.0.11
+  Downloaded cargo_metadata v0.19.2
+  Downloaded bs58 v0.5.1
+  Downloaded gobject-sys v0.18.0
+  Downloaded erased-serde v0.4.10
+  Downloaded dtor-proc-macro v0.0.6
+  Downloaded crypto-common v0.1.7
+  Downloaded bit-vec v0.8.0
+  Downloaded atk-sys v0.18.2
+  Downloaded fnv v1.0.7
+  Downloaded errno v0.3.14
+  Downloaded equivalent v1.0.2
+  Downloaded dyn-clone v1.0.20
+  Downloaded dunce v1.0.5
+  Downloaded dtor v0.3.0
+  Downloaded bit-set v0.8.0
+  Downloaded field-offset v0.3.6
+  Downloaded ctor-proc-macro v0.0.7
+  Downloaded cairo-sys-rs v0.18.2
    Compiling proc-macro2 v1.0.106
    Compiling unicode-ident v1.0.24
    Compiling quote v1.0.46
@@ -500,148 +500,149 @@ dist/assets/index-CXKiyhg7.js                   592.78 kB │ gzip: 178.78 kB
    Compiling thiserror v1.0.69
    Compiling siphasher v1.0.3
    Compiling phf_shared v0.13.1
-   Compiling icu_normalizer_data v2.2.0
-   Compiling icu_properties_data v2.2.0
-   Compiling memchr v2.8.2
    Compiling fastrand v2.4.1
+   Compiling memchr v2.8.2
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_normalizer_data v2.2.0
    Compiling stable_deref_trait v1.2.1
-   Compiling cfg-if v1.0.4
    Compiling autocfg v1.5.1
+   Compiling cfg-if v1.0.4
    Compiling zmij v1.0.21
    Compiling phf_generator v0.13.1
    Compiling once_cell v1.21.4
+   Compiling indexmap v2.14.0
    Compiling proc-macro-error-attr v1.0.4
    Compiling syn v1.0.109
    Compiling parking_lot_core v0.9.12
-   Compiling indexmap v2.14.0
    Compiling proc-macro-error v1.0.4
    Compiling typeid v1.0.3
-   Compiling cfg-expr v0.15.8
-   Compiling futures-core v0.3.32
-   Compiling pin-project-lite v0.2.17
    Compiling thiserror v2.0.18
-   Compiling futures-task v0.3.32
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-core v0.3.32
+   Compiling cfg-expr v0.15.8
    Compiling time-core v0.1.9
    Compiling slab v0.4.12
    Compiling num-conv v0.2.2
+   Compiling futures-task v0.3.32
    Compiling phf_codegen v0.13.1
-   Compiling heck v0.4.1
-   Compiling erased-serde v0.4.10
-   Compiling itoa v1.0.18
-   Compiling strsim v0.11.1
    Compiling ident_case v1.0.1
    Compiling writeable v0.6.3
+   Compiling strsim v0.11.1
    Compiling litemap v0.8.2
+   Compiling heck v0.4.1
+   Compiling itoa v1.0.18
+   Compiling erased-serde v0.4.10
    Compiling futures-channel v0.3.32
    Compiling utf8_iter v1.0.4
    Compiling scopeguard v1.2.0
-   Compiling anyhow v1.0.103
    Compiling new_debug_unreachable v1.0.6
+   Compiling anyhow v1.0.103
    Compiling lock_api v0.4.14
-   Compiling serde_json v1.0.150
-   Compiling winnow v1.0.3
    Compiling precomputed-hash v0.1.1
    Compiling getrandom v0.4.3
-   Compiling gio v0.18.4
+   Compiling serde_json v1.0.150
+   Compiling winnow v1.0.3
    Compiling ctor-proc-macro v0.0.7
    Compiling toml_writer v1.1.1+spec-1.1.0
+   Compiling gio v0.18.4
+   Compiling dtoa v1.0.11
+   Compiling log v0.4.33
+   Compiling utf-8 v0.7.6
    Compiling percent-encoding v2.3.2
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling futures-io v0.3.32
+   Compiling dtoa-short v0.3.5
    Compiling syn v2.0.118
    Compiling string_cache_codegen v0.6.1
-   Compiling log v0.4.33
-   Compiling dtoa v1.0.11
    Compiling parking_lot v0.12.5
-   Compiling futures-io v0.3.32
-   Compiling utf-8 v0.7.6
-   Compiling selectors v0.36.1
-   Compiling toml_parser v1.1.2+spec-1.1.0
    Compiling form_urlencoded v1.2.2
-   Compiling dtoa-short v0.3.5
    Compiling tendril v0.5.0
+   Compiling selectors v0.36.1
    Compiling aho-corasick v1.1.4
    Compiling indexmap v1.9.3
-   Compiling byteorder v1.5.0
-   Compiling unic-char-range v0.9.0
-   Compiling alloc-no-stdlib v2.0.4
-   Compiling camino v1.2.4
-   Compiling string_cache v0.9.0
    Compiling unic-common v0.9.0
+   Compiling alloc-no-stdlib v2.0.4
+   Compiling byteorder v1.5.0
+   Compiling string_cache v0.9.0
+   Compiling unic-char-range v0.9.0
+   Compiling camino v1.2.4
    Compiling regex-syntax v0.8.11
    Compiling alloc-stdlib v0.2.4
    Compiling unic-ucd-version v0.9.0
    Compiling unic-char-property v0.9.0
    Compiling servo_arc v0.4.3
-   Compiling hashbrown v0.12.3
-   Compiling web_atoms v0.2.5
    Compiling rustc-hash v2.1.3
-   Compiling fnv v1.0.7
-   Compiling deranged v0.5.8
-   Compiling bit-vec v0.8.0
-   Compiling bitflags v2.13.0
+   Compiling hashbrown v0.12.3
    Compiling powerfmt v0.2.0
+   Compiling bitflags v2.13.0
+   Compiling deranged v0.5.8
    Compiling schemars v0.8.22
+   Compiling fnv v1.0.7
+   Compiling web_atoms v0.2.5
+   Compiling bit-vec v0.8.0
    Compiling unic-ucd-ident v0.9.0
    Compiling brotli-decompressor v5.0.3
    Compiling quick-xml v0.41.0
    Compiling memoffset v0.9.1
-   Compiling foldhash v0.2.0
    Compiling bit-set v0.8.0
-   Compiling same-file v1.0.6
-   Compiling dyn-clone v1.0.20
-   Compiling dunce v1.0.5
-   Compiling bytes v1.12.0
-   Compiling base64 v0.22.1
    Compiling semver v1.0.28
    Compiling serde_spanned v1.1.1
-   Compiling uuid v1.23.4
    Compiling toml_datetime v1.1.1+spec-1.1.0
-   Compiling crc32fast v1.5.0
-   Compiling toml v1.1.2+spec-1.1.0
+   Compiling uuid v1.23.4
+   Compiling bytes v1.12.0
+   Compiling base64 v0.22.1
    Compiling rustc_version v0.4.1
+   Compiling foldhash v0.2.0
+   Compiling toml v1.1.2+spec-1.1.0
    Compiling cfb v0.7.3
-   Compiling brotli v8.0.4
+   Compiling crc32fast v1.5.0
+   Compiling dyn-clone v1.0.20
+   Compiling same-file v1.0.6
+   Compiling dunce v1.0.5
+   Compiling field-offset v0.3.6
    Compiling walkdir v2.5.0
-   Compiling ctor v0.8.0
-   Compiling glob v0.3.3
    Compiling serde-untagged v0.1.9
    Compiling http v1.4.2
-   Compiling field-offset v0.3.6
+   Compiling brotli v8.0.4
    Compiling time v0.3.53
+   Compiling ctor v0.8.0
+   Compiling glob v0.3.3
    Compiling gtk v0.18.2
+   Compiling infer v0.19.0
    Compiling shlex v2.0.1
    Compiling find-msvc-tools v0.1.9
    Compiling toml_datetime v0.7.5+spec-1.1.0
-   Compiling infer v0.19.0
    Compiling generic-array v0.14.7
-   Compiling cc v1.2.66
-   Compiling winnow v0.7.15
    Compiling option-ext v0.2.0
+   Compiling winnow v0.7.15
+   Compiling cc v1.2.66
    Compiling dirs-sys v0.5.0
-   Compiling regex-automata v0.4.14
    Compiling time-macros v0.2.31
    Compiling x11 v2.21.0
    Compiling crossbeam-utils v0.8.21
-   Compiling typenum v1.20.1
    Compiling simd-adler32 v0.3.9
+   Compiling typenum v1.20.1
    Compiling dirs v6.0.0
-   Compiling bitflags v1.3.2
+   Compiling regex-automata v0.4.14
    Compiling adler2 v2.0.1
+   Compiling bitflags v1.3.2
    Compiling miniz_oxide v0.8.9
    Compiling embed-resource v3.0.11
+   Compiling tauri-winres v0.3.6
+   Compiling libdbus-sys v0.2.7
+   Compiling x11-dl v2.21.0
+   Compiling cookie v0.18.1
+   Compiling toml v0.9.12+spec-1.1.0
    Compiling synstructure v0.13.2
    Compiling darling_core v0.23.0
    Compiling serde_derive_internals v0.29.1
-   Compiling tauri-winres v0.3.6
-   Compiling libdbus-sys v0.2.7
-   Compiling toml v0.9.12+spec-1.1.0
-   Compiling x11-dl v2.21.0
-   Compiling cookie v0.18.1
-   Compiling crypto-common v0.1.7
-   Compiling regex v1.12.4
    Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
    Compiling crossbeam-channel v0.5.15
    Compiling flate2 v1.1.9
+   Compiling regex v1.12.4
    Compiling fdeflate v0.3.7
+   Compiling raw-window-handle v0.6.2
    Compiling serde_derive v1.0.228
    Compiling zerofrom-derive v0.1.7
    Compiling yoke-derive v0.8.2
@@ -651,99 +652,98 @@ dist/assets/index-CXKiyhg7.js                   592.78 kB │ gzip: 178.78 kB
    Compiling phf_macros v0.13.1
    Compiling futures-macro v0.3.32
    Compiling thiserror-impl v2.0.18
+   Compiling derive_more-impl v2.1.1
    Compiling cssparser-macros v0.6.1
    Compiling darling_macro v0.23.0
-   Compiling derive_more-impl v2.1.1
    Compiling schemars_derive v0.8.22
+   Compiling futures-util v0.3.32
    Compiling phf v0.13.1
    Compiling zerofrom v0.1.8
-   Compiling futures-util v0.3.32
-   Compiling yoke v0.8.3
    Compiling darling v0.23.0
+   Compiling yoke v0.8.3
    Compiling serde_with_macros v3.21.0
    Compiling cssparser v0.36.0
    Compiling zerovec v0.11.6
    Compiling zerotrie v0.2.4
-   Compiling markup5ever v0.38.0
-   Compiling raw-window-handle v0.6.2
    Compiling derive_more v2.1.1
+   Compiling dlopen2_derive v0.4.3
+   Compiling markup5ever v0.38.0
    Compiling tinystr v0.8.3
    Compiling potential_utf v0.1.5
    Compiling html5ever v0.38.0
-   Compiling icu_collections v2.2.0
    Compiling icu_locale_core v2.2.0
-   Compiling png v0.17.16
+   Compiling icu_collections v2.2.0
    Compiling serde_with v3.21.0
+   Compiling png v0.17.16
    Compiling icu_provider v2.2.0
+   Compiling dom_query v0.27.0
    Compiling futures-executor v0.3.32
+   Compiling icu_properties v2.2.0
+   Compiling icu_normalizer v2.2.0
    Compiling toml_datetime v0.6.3
    Compiling serde_spanned v0.6.9
-   Compiling icu_normalizer v2.2.0
-   Compiling icu_properties v2.2.0
-   Compiling toml_edit v0.20.2
    Compiling jsonptr v0.6.3
    Compiling cargo-platform v0.1.9
-   Compiling cargo_metadata v0.19.2
+   Compiling toml_edit v0.20.2
    Compiling toml_edit v0.19.15
    Compiling plist v1.10.0
+   Compiling cargo_metadata v0.19.2
    Compiling json-patch v3.0.1
-   Compiling dom_query v0.27.0
-   Compiling dpi v0.1.2
-   Compiling cargo_toml v0.22.3
    Compiling idna_adapter v1.2.2
    Compiling idna v1.1.0
+   Compiling dpi v0.1.2
+   Compiling cargo_toml v0.22.3
    Compiling url v2.5.8
-   Compiling dlopen2_derive v0.4.3
    Compiling urlpattern v0.3.0
+   Compiling proc-macro-crate v1.3.1
    Compiling toml v0.8.2
    Compiling proc-macro-crate v2.0.2
-   Compiling proc-macro-crate v1.3.1
-   Compiling system-deps v6.2.2
    Compiling digest v0.10.7
-   Compiling gtk3-macros v0.18.2
    Compiling libloading v0.7.4
-   Compiling tauri-utils v2.9.3
+   Compiling system-deps v6.2.2
    Compiling errno v0.3.14
    Compiling cpufeatures v0.2.17
-   Compiling signal-hook v0.3.18
-   Compiling unicode-segmentation v1.13.3
-   Compiling glib-macros v0.18.5
    Compiling wry v0.55.1
+   Compiling unicode-segmentation v1.13.3
    Compiling tauri-runtime v2.11.3
+   Compiling tauri-utils v2.9.3
+   Compiling signal-hook v0.3.18
+   Compiling sha2 v0.10.9
+   Compiling gtk3-macros v0.18.2
+   Compiling glib-macros v0.18.5
+   Compiling keyboard-types v0.7.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling dbus v0.9.12
    Compiling glib-sys v0.18.1
    Compiling gobject-sys v0.18.0
    Compiling gio-sys v0.18.1
    Compiling gdk-sys v0.18.2
    Compiling pango-sys v0.18.0
-   Compiling gdk-pixbuf-sys v0.18.0
    Compiling cairo-sys-rs v0.18.2
+   Compiling gdk-pixbuf-sys v0.18.0
    Compiling atk-sys v0.18.2
    Compiling gtk-sys v0.18.2
-   Compiling soup3-sys v0.5.0
    Compiling javascriptcore-rs-sys v1.1.1
+   Compiling soup3-sys v0.5.0
    Compiling webkit2gtk-sys v2.0.2
    Compiling gdkx11-sys v0.18.2
-   Compiling keyboard-types v0.7.0
-   Compiling sha2 v0.10.9
-   Compiling signal-hook-registry v1.4.8
-   Compiling dbus v0.9.12
-   Compiling dlopen2 v0.8.2
    Compiling ico v0.5.0
+   Compiling dlopen2 v0.8.2
    Compiling tauri-runtime-wry v2.11.4
    Compiling getrandom v0.3.4
-   Compiling png v0.18.1
    Compiling serialize-to-javascript-impl v0.1.2
+   Compiling png v0.18.1
    Compiling os_pipe v1.2.3
    Compiling is-docker v0.2.0
-   Compiling is-wsl v0.4.0
    Compiling sigchld v0.2.4
-   Compiling gdkwayland-sys v0.18.2
-   Compiling serialize-to-javascript v0.1.2
+   Compiling is-wsl v0.4.0
    Compiling serde_repr v0.1.20
+   Compiling serialize-to-javascript v0.1.2
    Compiling tokio v1.52.3
    Compiling mime v0.3.17
-   Compiling shared_child v1.1.1
    Compiling open v5.3.6
+   Compiling gdkwayland-sys v0.18.2
+   Compiling shared_child v1.1.1
    Compiling glib v0.18.5
    Compiling encoding_rs v0.8.35
    Compiling libappindicator-sys v0.9.0
@@ -757,8 +757,8 @@ dist/assets/index-CXKiyhg7.js                   592.78 kB │ gzip: 178.78 kB
    Compiling cairo-rs v0.18.5
    Compiling atk v0.18.2
    Compiling javascriptcore-rs v1.1.2
-   Compiling pango v0.18.3
    Compiling gdk-pixbuf v0.18.5
+   Compiling pango v0.18.3
    Compiling soup3 v0.5.0
    Compiling gdk v0.18.2
    Compiling gdkx11 v0.18.2
@@ -767,7 +767,7 @@ dist/assets/index-CXKiyhg7.js                   592.78 kB │ gzip: 178.78 kB
    Compiling muda v0.19.3
    Compiling tao v0.35.3
    Compiling tray-icon v0.24.1
-    Finished `release` profile [optimized] target(s) in 1m 04s
+    Finished `release` profile [optimized] target(s) in 58.95s
        Built application at: /tmp/openburnbar-linux-desktop-session/app/src-tauri/target/release/openburnbar-linux-desktop
         Info Patching /tmp/openburnbar-linux-desktop-session/app/src-tauri/target/release/openburnbar-linux-desktop with bundle type information: deb
     Bundling OpenBurnBar_0.1.0_arm64.deb (/tmp/openburnbar-linux-desktop-session/app/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.0_arm64.deb)
@@ -777,7 +777,7 @@ dist/assets/index-CXKiyhg7.js                   592.78 kB │ gzip: 178.78 kB
 Package: open-burn-bar
 Version: 0.1.0
 Architecture: arm64
-Installed-Size: 15604
+Installed-Size: 15679
 Maintainer: OpenBurnBar
 Priority: optional
 Depends: libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0
@@ -785,7 +785,7 @@ Description: OpenBurnBar Linux desktop shell
  (none)
 == install deb ==
 Selecting previously unselected package open-burn-bar.
-(Reading database ... 76717 files and directories currently installed.)
+(Reading database ... 76755 files and directories currently installed.)
 Preparing to unpack .../OpenBurnBar_0.1.0_arm64.deb ...
 Unpacking open-burn-bar (0.1.0) ...
 Setting up open-burn-bar (0.1.0) ...
@@ -796,145 +796,148 @@ desktop_file=/usr/share/applications/OpenBurnBar.desktop
 installed_bin=/usr/bin/openburnbar-linux-desktop
 == daemon socket for packaged session ==
 == daemon socket for shell session ==
+== existing OpenBurnBarDaemon is stale for shell session ==
+daemon_bin=/workspace/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
+newer_source=/workspace/OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCIPCCanon.generated.swift
 == build OpenBurnBarDaemon for shell session ==
 daemon_bin=/tmp/openburnbar-linux-desktop-session/daemon-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
-srw------- 1 root root 0 Jul  6 04:22 /tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
+srw------- 1 root root 0 Jul  8 03:18 /tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
 == desktop session ==
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=9222 comm="xfce4-panel --disable-wm-check")
-dbus-daemon[9207]: [session uid=0 pid=9207] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[9235]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=9222 comm="xfce4-panel --disable-wm-check")
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.xfce.Xfconf' requested by ':1.2' (uid=0 pid=9222 comm="xfce4-panel --disable-wm-check")
-dbus-daemon[9235]: Successfully activated service 'org.a11y.atspi.Registry'
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=9278 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[9263]: [session uid=0 pid=9263] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[9291]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=9278 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.xfce.Xfconf' requested by ':1.2' (uid=0 pid=9278 comm="xfce4-panel --disable-wm-check")
+dbus-daemon[9291]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[9207]: [session uid=0 pid=9207] Successfully activated service 'org.xfce.Xfconf'
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.14' (uid=0 pid=9276 comm="/usr/bin/openburnbar-linux-desktop")
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.portal.Documents' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.16' (uid=0 pid=9293 comm="/usr/libexec/xdg-document-portal")
-dbus-daemon[9207]: [session uid=0 pid=9207] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
-dbus-daemon[9207]: [session uid=0 pid=9207] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[9263]: [session uid=0 pid=9263] Successfully activated service 'org.xfce.Xfconf'
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.14' (uid=0 pid=9332 comm="/usr/bin/openburnbar-linux-desktop")
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.portal.Documents' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.16' (uid=0 pid=9349 comm="/usr/libexec/xdg-document-portal")
+dbus-daemon[9263]: [session uid=0 pid=9263] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[9263]: [session uid=0 pid=9263] Successfully activated service 'org.freedesktop.portal.Documents'
 fusermount3: fuse device not found, try 'modprobe fuse' first
 error: fuse init failed: Can't mount path /root/.cache/doc
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.321: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.680: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.321: The preferred method to match portal implementations to desktop environments is to use the portals.conf(5) configuration file
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.680: The preferred method to match portal implementations to desktop environments is to use the portals.conf(5) configuration file
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9308): Gtk-WARNING **: 04:22:53.328: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9364): Gtk-WARNING **: 03:18:22.686: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.336: Failed to create RealtimeKit proxy: Could not connect: No such file or directory
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.695: Failed to create RealtimeKit proxy: Could not connect: No such file or directory
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.336: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.695: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.336: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.695: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9312): Gtk-WARNING **: 04:22:53.343: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9368): Gtk-WARNING **: 03:18:22.700: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.344: Failed to create file chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.701: Failed to create file chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.344: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.701: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.344: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.701: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9314): Gtk-WARNING **: 04:22:53.349: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9370): Gtk-WARNING **: 03:18:22.705: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.350: Failed to create app chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.706: Failed to create app chooser proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.350: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.706: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.350: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.706: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9316): Gtk-WARNING **: 04:22:53.355: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9372): Gtk-WARNING **: 03:18:22.710: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.357: Failed to create print proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.711: Failed to create print proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.357: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.711: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.357: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.711: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9318): Gtk-WARNING **: 04:22:53.362: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9374): Gtk-WARNING **: 03:18:22.716: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.363: Failed to create notification proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.717: Failed to create notification proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.363: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.717: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.363: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.717: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9320): Gtk-WARNING **: 04:22:53.368: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9376): Gtk-WARNING **: 03:18:22.721: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.369: Failed to create inhibit proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.721: Failed to create inhibit proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.369: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.721: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.369: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.721: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9322): Gtk-WARNING **: 04:22:53.375: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9378): Gtk-WARNING **: 03:18:22.727: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.376: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.728: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.376: No skeleton to export
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.728: No skeleton to export
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9324): Gtk-WARNING **: 04:22:53.381: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(xdg-desktop-portal-gtk:9380): Gtk-WARNING **: 03:18:22.732: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9326): Gtk-WARNING **: 04:22:53.386: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9382): Gtk-WARNING **: 03:18:22.736: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.387: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.737: Failed to create access proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.388: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.737: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.395: Failed connect to PipeWire: Couldn't connect to PipeWire
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.746: Failed connect to PipeWire: Couldn't connect to PipeWire
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.395: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.746: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9329): Gtk-WARNING **: 04:22:53.399: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9385): Gtk-WARNING **: 03:18:22.750: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.400: Failed to create account proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.751: Failed to create account proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.400: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.751: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.400: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.751: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9331): Gtk-WARNING **: 04:22:53.406: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9387): Gtk-WARNING **: 03:18:22.756: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.407: Failed to create email proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.757: Failed to create email proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.407: No skeleton to export
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.757: No skeleton to export
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.407: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
-dbus-daemon[9207]: [session uid=0 pid=9207] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9287 comm="/usr/libexec/xdg-desktop-portal")
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.757: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[9263]: [session uid=0 pid=9263] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.15' (uid=0 pid=9343 comm="/usr/libexec/xdg-desktop-portal")
 
-(xdg-desktop-portal-gtk:9333): Gtk-WARNING **: 04:22:53.413: cannot open display:
-dbus-daemon[9207]: [session uid=0 pid=9207] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(xdg-desktop-portal-gtk:9389): Gtk-WARNING **: 03:18:22.761: cannot open display:
+dbus-daemon[9263]: [session uid=0 pid=9263] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.414: Failed to create dynamic_launcher proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.762: Failed to create dynamic_launcher proxy: Error calling StartServiceByName for org.freedesktop.impl.portal.desktop.gtk: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
 
-(/usr/libexec/xdg-desktop-portal:9287): xdg-desktop-portal-WARNING **: 04:22:53.414: No skeleton to export
-dbus-daemon[9207]: [session uid=0 pid=9207] Successfully activated service 'org.freedesktop.portal.Desktop'
+(/usr/libexec/xdg-desktop-portal:9343): xdg-desktop-portal-WARNING **: 03:18:22.762: No skeleton to export
+dbus-daemon[9263]: [session uid=0 pid=9263] Successfully activated service 'org.freedesktop.portal.Desktop'
 palette focus strategy: none
 route.navigation verified for all 16 routes
 {
-  "generatedAt": "2026-07-06T04:23:35.238Z",
+  "generatedAt": "2026-07-08T03:19:04.094Z",
   "mode": "packaged-desktop-route-navigation",
   "surface": "installed-tauri-deb-xvfb-xfce",
   "routeCount": 16,
@@ -948,7 +951,7 @@ route.navigation verified for all 16 routes
     "text-expansion"
   ],
   "daemonOracle": {
-    "generatedAt": "2026-07-06T04:22:51.025Z",
+    "generatedAt": "2026-07-08T03:18:20.408Z",
     "lane": "W06ShellEvidenceRepair",
     "mode": "openburnbar-daemon-af-unix",
     "status": "ready",
@@ -1156,7 +1159,7 @@ route.navigation verified for all 16 routes
   ]
 }
 {
-  "generatedAt": "2026-07-06T04:23:35.868Z",
+  "generatedAt": "2026-07-08T03:19:04.704Z",
   "profile": "dbus-x11-xvfb-xfce-statusnotifier",
   "package": {
     "name": "open-burn-bar",
@@ -1166,16 +1169,16 @@ route.navigation verified for all 16 routes
     "display": ":99",
     "xdgSessionType": "x11",
     "desktop": "XFCE",
-    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1",
-    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1/Menu",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_9332_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_9332_1/Menu",
     "windowId": "10485763",
     "reopenedWindowId": "10485763"
   },
   "performance": {
-    "appStartMs": 314,
-    "trayClickOpenMs": 45,
-    "ipcHealthRoundTripMs": 6,
-    "trayQuitMs": 108
+    "appStartMs": 317,
+    "trayClickOpenMs": 50,
+    "ipcHealthRoundTripMs": 8,
+    "trayQuitMs": 106
   },
   "evidence": {
     "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
@@ -1189,68 +1192,67 @@ route.navigation verified for all 16 routes
 }
 == daemon socket log ==
 
-(xfconfd:9243): xfconfd-WARNING **: 04:23:35.877: Name org.xfce.Xfconf lost on the message dbus, exiting.
+(xfconfd:9299): xfconfd-WARNING **: 03:19:04.713: Name org.xfce.Xfconf lost on the message dbus, exiting.
 starting real OpenBurnBarDaemon
 binary=/tmp/openburnbar-linux-desktop-session/daemon-build/aarch64-unknown-linux-gnu/debug/OpenBurnBarDaemon
 socket=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock
 peer_codesig=disabled-debug-only
-2026-07-06 04:22:50 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:50 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37 vault_uid_present=false
-2026-07-06 04:22:50 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=shell-session-evidence protocol_version=1 socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:50 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_defaults_loaded file_path=/root/.config/OpenBurnBar/provider-config.json trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:50 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=default_model_variants_seeded marker_path=/root/.config/OpenBurnBar/model-variants-seed.v1 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:50 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:50 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=shell-session-evidence socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:50 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:53 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783311773816934294 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:53 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:53 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=163 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:53 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:53 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:54 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=151 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:54 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=168 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:54 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=154 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:54 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=163 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:57 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:57 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:22:57 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:01 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:03 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8081 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:03 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:03 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:03 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:03 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:06 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8081 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:08 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=78 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:08 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=78 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:10 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=78 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:13 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:15 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:15 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8081 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:17 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=183 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:17 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=183 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:17 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=183 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:19 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8081 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:22 +0000 level=error subsystem=com.openburnbar.daemon category=process event=rpc_method_not_found method=daemon.membership.status request_id=rpc-1783311802659555544 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:22 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=152 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:22 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8081 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:24 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783311804972111795 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:24 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:27 +0000 level=error subsystem=com.openburnbar.daemon category=process event=rpc_method_not_found method=daemon.media.status request_id=rpc-1783311807672536213 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:27 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=147 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:27 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783311807673216630 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:27 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:35 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783311815693699675 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
-2026-07-06 04:23:35 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=FF30A076-F973-449D-91AB-59B6B691DD37
+2026-07-08 03:18:20 +0000 level=warning subsystem=com.openburnbar.daemon category=process event=rpc_peer_code_signature_enforcement_disabled reason=OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out) trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:20 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=pensieve_watcher_configured root_count=1 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2 vault_uid_present=false
+2026-07-08 03:18:20 +0000 level=info subsystem=com.openburnbar.daemon category=process event=bootstrap_starting daemon_version=shell-session-evidence protocol_version=1 socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:20 +0000 level=debug subsystem=com.openburnbar.daemon category=config-store event=config_defaults_loaded file_path=/root/.config/OpenBurnBar/provider-config.json trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:20 +0000 level=notice subsystem=com.openburnbar.daemon category=config-store event=default_model_variants_seeded marker_path=/root/.config/OpenBurnBar/model-variants-seed.v1 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:20 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=bootstrap_ready socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:20 +0000 level=notice subsystem=com.openburnbar.daemon category=process event=process_ready daemon_version=shell-session-evidence socket_path=/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:20 +0000 level=error subsystem=com.openburnbar.daemon category=mission-control-service event=mission_control_notification_loop_failed error=Notification keychain secrets are unavailable on this platform. trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783480703165418136 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=163 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=151 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=168 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=154 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:23 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=163 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:26 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:26 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:26 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:30 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:32 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8082 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:32 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:32 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:32 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:32 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=186 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:36 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8082 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:37 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=78 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:37 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:39 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=78 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:39 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=78 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:42 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:44 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=75 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:44 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8082 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:46 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=183 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:46 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=183 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:46 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=183 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:48 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8082 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:51 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=524 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:51 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=8082 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:54 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783480734056197345 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:54 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:56 +0000 level=error subsystem=com.openburnbar.daemon category=process event=rpc_method_not_found method=daemon.media.status request_id=rpc-1783480736947022263 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:56 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=147 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:56 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783480736948309096 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:18:56 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:19:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_request_received method=daemon.health request_id=health-1783480744526189419 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
+2026-07-08 03:19:04 +0000 level=debug subsystem=com.openburnbar.daemon category=process event=rpc_response_sent bytes=276 trace_id=C3CDC178-3AFE-42C2-A512-34AF8EAD55B2
 == uninstall deb ==
-(Reading database ... 76720 files and directories currently installed.)
+(Reading database ... 76758 files and directories currently installed.)
 Removing open-burn-bar (0.1.0) ...
 Processing triggers for hicolor-icon-theme (0.17-2) ...
 Processing triggers for desktop-file-utils (0.27-2build1) ...
 uninstall_verified=true
 {
-  "generatedAt": "2026-07-06T04:23:35.868Z",
+  "generatedAt": "2026-07-08T03:19:04.704Z",
   "profile": "dbus-x11-xvfb-xfce-statusnotifier",
   "package": {
     "name": "open-burn-bar",
@@ -1262,16 +1264,16 @@ uninstall_verified=true
     "display": ":99",
     "xdgSessionType": "x11",
     "desktop": "XFCE",
-    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1",
-    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1/Menu",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_9332_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_9332_1/Menu",
     "windowId": "10485763",
     "reopenedWindowId": "10485763"
   },
   "performance": {
-    "appStartMs": 314,
-    "trayClickOpenMs": 45,
-    "ipcHealthRoundTripMs": 6,
-    "trayQuitMs": 108
+    "appStartMs": 317,
+    "trayClickOpenMs": 50,
+    "ipcHealthRoundTripMs": 8,
+    "trayQuitMs": 106
   },
   "evidence": {
     "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
