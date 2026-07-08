@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T12:37:26.986Z",
+  "generatedAt": "2026-07-08T03:24:57.333Z",
   "sourceRunDirectory": "current-product-run",
   "preservedEvidenceDirectory": "preserved-qemu-portal-mobile",
   "provenanceManifest": "preserved-qemu-portal-mobile-manifest.json",
@@ -24,10 +24,10 @@
     "mediaSimulatorTimingOnlyAcceptedAsPass": false
   },
   "provenance": {
-    "selectedSourceBundle": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054",
+    "selectedSourceBundle": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/worker-cu-qemu-mobile-sec-pass-20260704-1002",
     "preservedTmpDir": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054",
-    "preservedTmpExisted": true,
-    "preservedTmpCreatedOrRefreshed": false,
+    "preservedTmpExisted": false,
+    "preservedTmpCreatedOrRefreshed": true,
     "currentCheckoutCopy": "preserved-qemu-portal-mobile",
     "sourceForCheckout": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054"
   },
@@ -60,14 +60,14 @@
           "path": "preserved-qemu-portal-mobile/approved-pipewire-frame.png",
           "sizeBytes": 808726,
           "sha256": "6cbb7d8e11957c22159277c2d493daa66cd8809da8813b578752345cb335c509",
-          "modifiedAt": "2026-07-05T12:36:05.459Z",
+          "modifiedAt": "2026-07-08T03:23:45.529Z",
           "exists": true
         },
         "pipeWireGraph": {
           "path": "preserved-qemu-portal-mobile/approved-pipewire-graph.json",
           "sizeBytes": 35525,
           "sha256": "e9c5b9b94dbda45411c8c446a2ab3b83e7bf9fa730091ef8c6a9b3641d705e46",
-          "modifiedAt": "2026-07-05T12:36:05.424Z",
+          "modifiedAt": "2026-07-08T03:23:45.514Z",
           "exists": true
         },
         "lifecycleEventCount": 19
@@ -108,14 +108,14 @@
           "path": "preserved-qemu-portal-mobile/wayland-atspi-before.png",
           "sizeBytes": 16030,
           "sha256": "5f918fc494b6a70acb77d8021c1a9300850d70e85c61503c74d1034e8773dfbd",
-          "modifiedAt": "2026-07-05T12:36:05.451Z",
+          "modifiedAt": "2026-07-08T03:23:45.525Z",
           "exists": true
         },
         "afterScreenshot": {
           "path": "preserved-qemu-portal-mobile/wayland-atspi-after.png",
           "sizeBytes": 16019,
           "sha256": "94c4a77aea8332cae046f829fbb7a44ea8c293721a67885695c4d4a0785f43c1",
-          "modifiedAt": "2026-07-05T12:36:05.451Z",
+          "modifiedAt": "2026-07-08T03:23:45.525Z",
           "exists": true
         },
         "responses": [
@@ -306,15 +306,15 @@
       ],
       "failures": [],
       "details": {
-        "generatedAt": "2026-07-05T12:37:26.984Z",
+        "generatedAt": "2026-07-08T03:24:57.332Z",
         "target": "VAL-MEDIA-001",
         "status": "pass",
         "acceptedAsPass": true,
         "contractBoundary": "Pass requires current checkout iroh loopback proof plus product Mercury codec/backpressure trace and live mobile media/control transcript. Simulator timing alone is rejected.",
         "currentCheckoutIrohLoopback": {
-          "command": "docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace/crates/openburnbar-iroh -e CARGO_TARGET_DIR=/tmp/openburnbar-cu-iroh-target openburnbar-linux-toolchain:mission-001 cargo test --test loopback_handshake --locked -- --nocapture",
+          "command": "docker run --rm -v /Users/albertonunez/.cache/burnbar-work/branch:/workspace -w /workspace/crates/openburnbar-iroh -e CARGO_TARGET_DIR=/tmp/openburnbar-cu-iroh-target openburnbar-linux-toolchain:mission-001 cargo test --test loopback_handshake --locked -- --nocapture",
           "exitCode": 0,
-          "durationMs": 81457,
+          "durationMs": 71716,
           "log": "current-product-run/iroh-loopback-handshake.log",
           "acceptedAsPass": true,
           "proofSurface": "docker-linux-toolchain",
@@ -409,7 +409,7 @@
           "path": "preserved-qemu-portal-mobile/mobile-simulator-live-probe.png",
           "sizeBytes": 109543,
           "sha256": "77004610c492faa3d8a070d38f6d37f2b728faf0b1f3289559949c9182e3c3e5",
-          "modifiedAt": "2026-07-05T12:36:05.454Z",
+          "modifiedAt": "2026-07-08T03:23:45.526Z",
           "exists": true
         },
         "dockerHttpOnlyAcceptedAsPass": false
@@ -499,14 +499,14 @@
           "path": "preserved-qemu-portal-mobile/approved-pipewire-frame.png",
           "sizeBytes": 808726,
           "sha256": "6cbb7d8e11957c22159277c2d493daa66cd8809da8813b578752345cb335c509",
-          "modifiedAt": "2026-07-05T12:36:05.459Z",
+          "modifiedAt": "2026-07-08T03:23:45.529Z",
           "exists": true
         },
         "pipeWireGraph": {
           "path": "preserved-qemu-portal-mobile/approved-pipewire-graph.json",
           "sizeBytes": 35525,
           "sha256": "e9c5b9b94dbda45411c8c446a2ab3b83e7bf9fa730091ef8c6a9b3641d705e46",
-          "modifiedAt": "2026-07-05T12:36:05.424Z",
+          "modifiedAt": "2026-07-08T03:23:45.514Z",
           "exists": true
         },
         "lifecycleEventCount": 19
@@ -547,14 +547,14 @@
           "path": "preserved-qemu-portal-mobile/wayland-atspi-before.png",
           "sizeBytes": 16030,
           "sha256": "5f918fc494b6a70acb77d8021c1a9300850d70e85c61503c74d1034e8773dfbd",
-          "modifiedAt": "2026-07-05T12:36:05.451Z",
+          "modifiedAt": "2026-07-08T03:23:45.525Z",
           "exists": true
         },
         "afterScreenshot": {
           "path": "preserved-qemu-portal-mobile/wayland-atspi-after.png",
           "sizeBytes": 16019,
           "sha256": "94c4a77aea8332cae046f829fbb7a44ea8c293721a67885695c4d4a0785f43c1",
-          "modifiedAt": "2026-07-05T12:36:05.451Z",
+          "modifiedAt": "2026-07-08T03:23:45.525Z",
           "exists": true
         },
         "responses": [
@@ -745,15 +745,15 @@
       ],
       "failures": [],
       "details": {
-        "generatedAt": "2026-07-05T12:37:26.984Z",
+        "generatedAt": "2026-07-08T03:24:57.332Z",
         "target": "VAL-MEDIA-001",
         "status": "pass",
         "acceptedAsPass": true,
         "contractBoundary": "Pass requires current checkout iroh loopback proof plus product Mercury codec/backpressure trace and live mobile media/control transcript. Simulator timing alone is rejected.",
         "currentCheckoutIrohLoopback": {
-          "command": "docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace/crates/openburnbar-iroh -e CARGO_TARGET_DIR=/tmp/openburnbar-cu-iroh-target openburnbar-linux-toolchain:mission-001 cargo test --test loopback_handshake --locked -- --nocapture",
+          "command": "docker run --rm -v /Users/albertonunez/.cache/burnbar-work/branch:/workspace -w /workspace/crates/openburnbar-iroh -e CARGO_TARGET_DIR=/tmp/openburnbar-cu-iroh-target openburnbar-linux-toolchain:mission-001 cargo test --test loopback_handshake --locked -- --nocapture",
           "exitCode": 0,
-          "durationMs": 81457,
+          "durationMs": 71716,
           "log": "current-product-run/iroh-loopback-handshake.log",
           "acceptedAsPass": true,
           "proofSurface": "docker-linux-toolchain",
@@ -848,7 +848,7 @@
           "path": "preserved-qemu-portal-mobile/mobile-simulator-live-probe.png",
           "sizeBytes": 109543,
           "sha256": "77004610c492faa3d8a070d38f6d37f2b728faf0b1f3289559949c9182e3c3e5",
-          "modifiedAt": "2026-07-05T12:36:05.454Z",
+          "modifiedAt": "2026-07-08T03:23:45.526Z",
           "exists": true
         },
         "dockerHttpOnlyAcceptedAsPass": false
