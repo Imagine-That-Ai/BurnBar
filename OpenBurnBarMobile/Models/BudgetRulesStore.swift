@@ -29,7 +29,7 @@ final class BudgetRulesStore {
         // screenshot mode. Treat an unconfigured Firebase as testing mode so
         // the store falls back to its in-memory mock rules instead of crashing.
         // Production always has Firebase configured, so this is inert there.
-        forceTestingMode || FirebaseApp.app() == nil || Auth.auth().currentUser == nil
+        forceTestingMode || AppStoreScreenshotMode.isEnabled || FirebaseApp.app() == nil || Auth.auth().currentUser == nil
     }
     #endif
 
