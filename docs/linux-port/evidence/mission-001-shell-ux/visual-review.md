@@ -1,6 +1,6 @@
 # Linux Shell Visual Review
 
-Generated: 2026-07-06T04:23:40.997Z
+Generated: 2026-07-08T03:19:09.874Z
 
 - Token diff covers editorial and aurora skins with changed ink/accent/gradient values.
 - Breakpoints cover desktop, tablet, and mobile expectations; CSS collapse is asserted for failure rows.
