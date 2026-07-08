@@ -76,7 +76,7 @@ enum FirestoreIrohInboundPeerAllowlist {
         } catch {
             AppLogger.network.error(
                 "iroh_inbound_trusted_device_allowlist_load_failed",
-                metadata: ["error": error.localizedDescription]
+                metadata: AppLogger.publicErrorMetadata(error)
             )
         }
 
