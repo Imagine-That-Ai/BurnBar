@@ -104,7 +104,17 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .codeIndexStatus: "daemon.code.index_status",
         .codeExplore: "daemon.code.explore",
         .codeOpsDiagnostics: "daemon.code.ops_diagnostics",
-        .runResume: "run.resume"
+        .runResume: "run.resume",
+        // Pinned after the mission-001 (Linux port) merge added these RPC
+        // methods to BurnBarRPCMethod without updating this stability table —
+        // the wire-name guard has been red on main since. Values copied from
+        // the enum's committed rawValues.
+        .perfMeasure: "perf.measure",
+        .membershipStatus: "daemon.membership.status",
+        .membershipCheckoutURL: "daemon.membership.checkoutUrl",
+        .membershipRestore: "daemon.membership.restore",
+        .subscriptionStart: "subscription.start",
+        .subscriptionResume: "subscription.resume"
     ]
 
     func testRPCMethodWireNames_areStableForEveryCase() {
