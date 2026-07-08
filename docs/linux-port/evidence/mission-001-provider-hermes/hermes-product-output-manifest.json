@@ -1,14 +1,14 @@
 {
   "checkpointCount": 4,
-  "checkpointDir": "/tmp/tmp.ERBOY4WRz5/support/run-checkpoints",
+  "checkpointDir": "/tmp/tmp.QDlL6j9hJD/support/run-checkpoints",
   "journalLineCount": 15,
-  "journalPath": "/tmp/tmp.ERBOY4WRz5/support/run-journal.jsonl",
+  "journalPath": "/tmp/tmp.QDlL6j9hJD/support/run-journal.jsonl",
   "scenarioRunIDs": {
-    "cancel-before-terminal": "FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD",
-    "persistence-list-readback": "B167CE41-0015-4DFF-BAD1-42B3691968CA",
-    "prompt-tool-approval-done": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
-    "retry-after-error": "966DC09E-FC36-4373-A01E-CA58EDB5BE92"
+    "cancel-before-terminal": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+    "persistence-list-readback": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+    "prompt-tool-approval-done": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+    "retry-after-error": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86"
   },
   "schema": "openburnbar-hermes-product-output-manifest-v1",
-  "supportDir": "/tmp/tmp.ERBOY4WRz5/support"
+  "supportDir": "/tmp/tmp.QDlL6j9hJD/support"
 }

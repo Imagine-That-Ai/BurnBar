@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T04:23:35.238Z",
+  "generatedAt": "2026-07-08T03:19:04.094Z",
   "mode": "packaged-desktop-route-navigation",
   "surface": "installed-tauri-deb-xvfb-xfce",
   "routeCount": 16,
@@ -13,7 +13,7 @@
     "text-expansion"
   ],
   "daemonOracle": {
-    "generatedAt": "2026-07-06T04:22:51.025Z",
+    "generatedAt": "2026-07-08T03:18:20.408Z",
     "lane": "W06ShellEvidenceRepair",
     "mode": "openburnbar-daemon-af-unix",
     "status": "ready",
