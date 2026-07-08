@@ -6,6 +6,8 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
+import { rulesSourceForDeploy } from "./firebase-rules-source.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const project = process.env.FIREBASE_PROJECT || process.argv[2] || "burnbar";
 
@@ -17,6 +19,30 @@ function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function firebaseRulesErrorMessage(error) {
+  const messages = [];
+  let cursor = error;
+  while (cursor) {
+    if (typeof cursor.message === "string") messages.push(cursor.message);
+    if (typeof cursor.code === "string") messages.push(cursor.code);
+    cursor = cursor.cause;
+  }
+  return messages.join(" ");
+}
+
+export function isRetryableFirebaseRulesApiError(error) {
+  if (
+    error?.status === 408 ||
+    error?.status === 429 ||
+    (typeof error?.status === "number" && error.status >= 500)
+  ) {
+    return true;
+  }
+  return /fetch failed|UND_ERR_CONNECT_TIMEOUT|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND/i.test(
+    firebaseRulesErrorMessage(error),
+  );
 }
 
 function accessToken() {
@@ -37,24 +63,47 @@ function accessToken() {
 }
 
 async function firebaseRulesJson(path, token, init = {}) {
-  const response = await fetch(`https://firebaserules.googleapis.com/v1/${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "X-Goog-User-Project": process.env.GOOGLE_CLOUD_QUOTA_PROJECT || project,
-      ...init.headers,
-    },
-  });
-  const body = await response.text();
-  if (!response.ok) {
-    const error = new Error(
-      `Firebase Rules API ${init.method || "GET"} ${path} failed: ${response.status} ${body}`,
-    );
-    error.status = response.status;
-    throw error;
+  const method = init.method || "GET";
+  const delaysMs = [0, 1_000, 3_000, 7_000, 15_000];
+  for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+    if (delaysMs[attempt] > 0) await sleep(delaysMs[attempt]);
+    try {
+      const response = await fetch(
+        `https://firebaserules.googleapis.com/v1/${path}`,
+        {
+          ...init,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "X-Goog-User-Project":
+              process.env.GOOGLE_CLOUD_QUOTA_PROJECT || project,
+            ...init.headers,
+          },
+        },
+      );
+      const body = await response.text();
+      if (!response.ok) {
+        const error = new Error(
+          `Firebase Rules API ${method} ${path} failed: ${response.status} ${body}`,
+        );
+        error.status = response.status;
+        throw error;
+      }
+      return JSON.parse(body || "{}");
+    } catch (error) {
+      if (
+        !isRetryableFirebaseRulesApiError(error) ||
+        attempt === delaysMs.length - 1
+      ) {
+        throw error;
+      }
+      const nextDelayMs = delaysMs[attempt + 1];
+      console.warn(
+        `Firebase Rules API ${method} ${path} failed transiently; retrying in ${nextDelayMs}ms`,
+      );
+    }
   }
-  return JSON.parse(body || "{}");
+  throw new Error(`unreachable Firebase Rules API retry state: ${method} ${path}`);
 }
 
 async function releasePathsForStorage(token) {
@@ -81,7 +130,6 @@ async function releasePathsForStorage(token) {
 }
 
 async function createRuleset(token, fileName, content) {
-  const contentHash = sha256(content.trimEnd());
   const ruleset = await firebaseRulesJson(`projects/${project}/rulesets`, token, {
     method: "POST",
     body: JSON.stringify({
@@ -100,7 +148,7 @@ async function createRuleset(token, fileName, content) {
       `Firebase Rules API create ruleset response omitted name for ${fileName}`,
     );
   }
-  return { contentHash, rulesetName: ruleset.name };
+  return { rulesetName: ruleset.name };
 }
 
 export function rulesetFileContentHash(ruleset, fileName) {
@@ -265,7 +313,8 @@ async function verifyRelease(token, releaseName, rulesetName) {
 }
 
 async function deployRulesFile(token, fileName, releaseNames) {
-  const content = readFileSync(resolve(repoRoot, fileName), "utf8");
+  const source = readFileSync(resolve(repoRoot, fileName), "utf8");
+  const content = rulesSourceForDeploy(fileName, source);
   const contentHash = sha256(content.trimEnd());
   const { staleReleaseNames, unchangedReleaseCount } =
     await releasesNeedingRulesetDeploy({

@@ -381,6 +381,8 @@ function run(command, args, options = {}) {
     env: options.env || process.env,
     encoding: "utf8",
     timeout: options.timeout ?? 120_000,
+    // git file lists exceed node's default 1MB maxBuffer (ENOBUFS) on this tree.
+    maxBuffer: 256 * 1024 * 1024,
   });
   return {
     ok: result.status === 0,
