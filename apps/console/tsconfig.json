@@ -16,13 +16,15 @@
     "plugins": [{ "name": "next" }],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@openburnbar/gl-engine/*": ["../../packages/gl-engine/src/*"]
     }
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "../../packages/gl-engine/src",
     ".next/types/**/*.ts"
   ],
   "exclude": ["node_modules"]

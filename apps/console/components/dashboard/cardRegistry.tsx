@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 
-import { KERNEL_META } from "@/lib/gl/engine/registry";
+import { KERNEL_META } from "@openburnbar/gl-engine/engine/registry";
 import type { CardProps } from "./cardTypes";
 import type { GridRect } from "./gridMath";
 import {

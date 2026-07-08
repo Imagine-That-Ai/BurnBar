@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+import { fileURLToPath } from "node:url";
+const glEngineSrc = fileURLToPath(new URL("../../packages/gl-engine/src", import.meta.url));
 
 // Strict CSP for the console. Firebase Auth + callables need their endpoints in
 // connect-src; Firebase Auth's popup bridge loads apis.google.com, and
@@ -52,12 +54,14 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  // Static export keeps this deployable to Firebase Hosting like the rest of the repo.
   output: "export",
   images: { unoptimized: true },
-  // `output: export` does not run next.config headers in production hosting; the
-  // equivalent CSP block is returned to the primary agent for firebase.json. We
-  // still set headers here so `next dev` and any server runtime carry them.
+  webpack: (config) => {
+    config.resolve = config.resolve || {};
+    config.resolve.alias = config.resolve.alias || {};
+    config.resolve.alias["@openburnbar/gl-engine"] = glEngineSrc;
+    return config;
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

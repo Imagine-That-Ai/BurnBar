@@ -5,7 +5,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": resolve(__dirname, ".") },
+    alias: {
+      "@": resolve(__dirname, "."),
+      "@openburnbar/gl-engine": resolve(__dirname, "../../packages/gl-engine/src"),
+    },
   },
   test: {
     // Node provides WebCrypto (globalThis.crypto.subtle) on >=20; jsdom is used
