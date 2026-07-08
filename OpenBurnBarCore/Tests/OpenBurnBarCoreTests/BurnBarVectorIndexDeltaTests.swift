@@ -221,7 +221,7 @@ final class BurnBarVectorIndexDeltaTests: XCTestCase {
         delta.tombstone(key: 1)
         XCTAssertEqual(delta.appendedCount, 1)
         XCTAssertEqual(delta.tombstonedCount, 0)
-        XCTAssertTrue(delta.isEmpty == false)
+        XCTAssertFalse(delta.isEmpty)
     }
 
     // MARK: - Parity: delta overlay vs. full rebuild

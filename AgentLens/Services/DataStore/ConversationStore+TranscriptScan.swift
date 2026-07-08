@@ -208,7 +208,7 @@ extension ConversationStore {
             "bearer ",
             "private_key", "private-key",
             "aws_access_key", "aws-access-key",
-            "slack_token", "slack-token",
+            "slack_token", "slack-token"
         ]
 
         func countOccurrencesInConversationFullText(
