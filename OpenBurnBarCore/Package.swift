@@ -357,12 +357,11 @@ let openBurnBarCoreExcludes = [
     // Firebase App Check debug-token env writer uses POSIX setenv (Windows CRT
     // uses _putenv_s); App Check is not part of the Engine subset.
     "AppCheckDebugTokenEnvironment.swift",
-    // Contracts referencing types defined in excluded files:
-    //   BurnBarRunContracts   -> BurnBarAgentLoopState (OpenBurnBarAgentContracts)
-    //   MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views)
-    "Contracts/BurnBarRunContracts.swift",
-    // Consumes BurnBarRunStateSnapshot (defined in the excluded BurnBarRunContracts).
-    "Contracts/BurnBarEventContracts.swift",
+    // MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views).
+    // BurnBarRunContracts/BurnBarEventContracts are Foundation-only and compile
+    // off-Apple (their BurnBarAgentLoopState dependency lives in the included
+    // OpenBurnBarAgentContracts.swift); the daemon run service and CLI consume
+    // them on Linux.
     "Contracts/MissionGroupContracts.swift",
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than

@@ -1,0 +1,16 @@
+{
+  "platform": "linux",
+  "xdg_config_home": "/tmp/openburnbar-w08-xdg",
+  "daemon_support_directory_default": "/tmp/openburnbar-w08-xdg/OpenBurnBar",
+  "daemon_socket_default": "/tmp/openburnbar-w08-xdg/OpenBurnBar/openburnbar-daemon.sock",
+  "daemon_auth_token_file_default": "/tmp/openburnbar-w08-xdg/OpenBurnBar/daemon-socket-auth-token",
+  "swift_source": "OpenBurnBarLinuxPaths.supportDirectoryURL + defaultDaemonSocketURL",
+  "override_env": [
+    "OPENBURNBAR_DAEMON_SUPPORT_DIR",
+    "BURNBAR_DAEMON_SUPPORT_DIR",
+    "OPENBURNBAR_DAEMON_SOCKET_PATH",
+    "BURNBAR_DAEMON_SOCKET_PATH",
+    "XDG_CONFIG_HOME"
+  ],
+  "note": "Sample uses Linux-style XDG_CONFIG_HOME for mission evidence; host macOS HOME is not claimed as Linux proof."
+}

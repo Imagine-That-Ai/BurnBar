@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OpenBurnBar
+Comment=Start OpenBurnBar when the Linux desktop session starts
+Exec=openburnbar-linux-desktop --background
+Icon=dev.openburnbar.OpenBurnBar
+Terminal=false
+Categories=Development;Utility;
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel
