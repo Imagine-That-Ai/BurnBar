@@ -79,6 +79,8 @@ struct ProviderSummaryAccumulator { // pure-move: was private
     var bestCostSoFar: Double = 0
     var hasAnyEstimated = false
 
+    init() {}
+
     mutating func record(_ row: UsageAggregateRow) {
         totalCost += row.cost
         totalTokens += row.totalTokens
@@ -187,6 +189,10 @@ struct ModelSummaryAccumulator { // pure-move: was private
     var sessionCount = 0
     fileprivate var providerData: [AgentProvider: ProviderUsageAccumulator] = [:]
 
+    init(modelName: String) {
+        self.modelName = modelName
+    }
+
     mutating func record(_ row: UsageAggregateRow) {
         if displayModelName == nil {
             displayModelName = row.model
@@ -267,6 +273,10 @@ struct DailySummaryAccumulator { // pure-move: was private
     var totalCost: Double = 0
     var sessionCount = 0
     var models: Set<String> = []
+
+    init(dayString: String) {
+        self.dayString = dayString
+    }
 
     mutating func record(row: Row, provider: AgentProvider, model: String) {
         let cost = UsageStore.doubleValue(row["cost"])
