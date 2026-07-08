@@ -1,8 +1,8 @@
 {
-  "instance" : "OpenBurnBar-3621dd205120",
+  "instance" : "OpenBurnBar-8b4ed9f3af39",
   "service_type" : "_openburnbar-peer._tcp",
   "txt" : {
-    "daemon_version" : "1.0.28",
+    "daemon_version" : "1.0.29",
     "pairing" : "mdns",
     "platform" : "linux",
     "protocol_version" : "1",
