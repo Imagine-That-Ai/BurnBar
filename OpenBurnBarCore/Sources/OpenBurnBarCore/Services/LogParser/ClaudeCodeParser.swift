@@ -180,7 +180,10 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     }
 
     public func decodeProjectName(_ encoded: String) -> String {
-        let decoded = ClaudeCodeProjectPathCodec.decode(encoded)
+        var decoded = ClaudeCodeProjectPathCodec.decode(encoded)
+        if decoded.isAmbiguous {
+            decoded = ClaudeCodeProjectPathCodec.decode(encoded, style: .windows)
+        }
         let path = decoded.displayPath
 
         if decoded.style == .posix, path.hasPrefix("/Users/") {

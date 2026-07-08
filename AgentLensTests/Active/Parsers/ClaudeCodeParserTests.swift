@@ -62,4 +62,10 @@ final class ClaudeCodeParserTests: XCTestCase {
 
         XCTAssertEqual(parser.decodeProjectName("D--Users-alberto-work-BurnBar"), "~\\work\\BurnBar")
     }
+
+    func testDecodeProjectNamePreservesWindowsUNCPaths() {
+        let parser = ClaudeCodeParser()
+
+        XCTAssertEqual(parser.decodeProjectName("--server-share-project"), "\\\\server\\share\\project")
+    }
 }
