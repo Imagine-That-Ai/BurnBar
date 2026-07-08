@@ -46,7 +46,7 @@ extension UsageStore {
         )
     }
 
-    private static func fetchUsageAggregateRows(
+    static func fetchUsageAggregateRows( // pure-move: was private
         db: Database,
         dateRange: ClosedRange<Date>?
     ) throws -> [UsageAggregateRow] {
@@ -108,7 +108,7 @@ extension UsageStore {
         )
     }
 
-    private static func usageTotals(from rows: [UsageAggregateRow]) -> UsageTotals {
+    static func usageTotals(from rows: [UsageAggregateRow]) -> UsageTotals { // pure-move: was private
         rows.reduce(into: UsageTotals.empty) { totals, row in
             totals.sessionCount += row.sessionCount
             totals.inputTokens += row.inputTokens
@@ -121,7 +121,7 @@ extension UsageStore {
         }
     }
 
-    private static func fetchProjectCostBuckets(
+    static func fetchProjectCostBuckets( // pure-move: was private
         db: Database,
         dateRange: ClosedRange<Date>?,
         limit: Int
@@ -149,7 +149,7 @@ extension UsageStore {
         }
     }
 
-    private static func costBuckets(
+    static func costBuckets( // pure-move: was private
         from rows: [UsageAggregateRow],
         label: KeyPath<UsageAggregateRow, String>,
         limit: Int
