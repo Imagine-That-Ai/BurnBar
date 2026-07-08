@@ -1,6 +1,6 @@
 [
   {
-    "hostName" : "88701c21477b.local",
+    "hostName" : "4434109eb686.local",
     "instanceName" : "OpenBurnBar SmartHub Bridge",
     "port" : 18084,
     "txt" : {
@@ -11,14 +11,14 @@
     }
   },
   {
-    "hostName" : "88701c21477b.local",
+    "hostName" : "4434109eb686.local",
     "instanceName" : "OpenBurnBar validator",
-    "port" : 48312,
+    "port" : 48313,
     "txt" : {
-      "daemon_version" : "mission-001",
+      "conflict_attempt" : "1",
+      "daemon_version" : "mission-001-conflict",
       "friendly" : "OpenBurnBar validator",
       "note" : "quoted;semi",
-      "path_hint" : "xdg_config",
       "protocol_version" : "1",
       "transport" : "unix-domain"
     }
