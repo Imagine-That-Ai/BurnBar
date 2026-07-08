@@ -1,0 +1,86 @@
+[
+  {
+    "backoffMillis" : [
+
+    ],
+    "committed" : false,
+    "request" : "syncUpload(users\/uid-123\/provider_accounts\/provider-1)",
+    "response" : "200 ok",
+    "step" : "callable_owner_upload_allowed",
+    "transport" : "callable"
+  },
+  {
+    "backoffMillis" : [
+
+    ],
+    "committed" : false,
+    "request" : "PATCH users\/uid-123\/provider_accounts\/provider-1?updateMask.fieldPaths=updatedAt transforms.serverTimestamp",
+    "response" : "200 transform_applied update_time=1800000001000",
+    "step" : "rest_patch_transform_update",
+    "transport" : "firestoreREST"
+  },
+  {
+    "backoffMillis" : [
+
+    ],
+    "committed" : false,
+    "request" : "write users\/other\/provider_accounts\/provider-1 as uid-123",
+    "response" : "403 owner_mismatch",
+    "step" : "rules_owner_mismatch_denied",
+    "transport" : "firestoreRules"
+  },
+  {
+    "backoffMillis" : [
+
+    ],
+    "committed" : false,
+    "request" : "write chat_threads body plaintext",
+    "response" : "400 plaintext_private_field",
+    "step" : "rules_plaintext_private_field_denied",
+    "transport" : "firestoreRules"
+  },
+  {
+    "backoffMillis" : [
+
+    ],
+    "committed" : false,
+    "request" : "Listen addTarget provider_accounts\/provider-1",
+    "response" : "DocumentChange update_time=1800000001000",
+    "step" : "listen_ws_remote_update",
+    "transport" : "firestoreListenWebSocket"
+  },
+  {
+    "backoffMillis" : [
+      100,
+      250,
+      500
+    ],
+    "committed" : false,
+    "request" : "local commit attempt after transient 503",
+    "response" : "retry scheduled then watermark held",
+    "step" : "retry_backoff_before_commit",
+    "transport" : "localStore"
+  },
+  {
+    "backoffMillis" : [
+
+    ],
+    "committed" : false,
+    "conflictResolution" : "remote_newer_by_update_time",
+    "request" : "local_update=1800000000000 remote_update=1800000001000",
+    "response" : "remote version retained",
+    "step" : "conflict_remote_newer_wins",
+    "transport" : "localStore"
+  },
+  {
+    "backoffMillis" : [
+
+    ],
+    "committed" : true,
+    "request" : "commit provider_accounts\/provider-1",
+    "response" : "watermark advanced",
+    "step" : "watermark_after_commit",
+    "transport" : "localStore",
+    "watermark" : 1800000001000
+  }
+]
