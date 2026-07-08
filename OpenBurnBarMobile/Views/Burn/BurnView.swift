@@ -67,6 +67,7 @@ struct BurnView: View {
             }
         }
         .navigationTitle("Burn")
+        .accessibilityIdentifier("screen.burn")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
