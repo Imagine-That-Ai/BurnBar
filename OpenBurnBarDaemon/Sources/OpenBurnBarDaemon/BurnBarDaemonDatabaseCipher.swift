@@ -1,6 +1,8 @@
 import Foundation
 import GRDB
+#if canImport(OpenBurnBarLinuxSecurity)
 import OpenBurnBarLinuxSecurity
+#endif
 #if canImport(Security)
 import Security
 #endif

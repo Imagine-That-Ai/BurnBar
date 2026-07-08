@@ -432,6 +432,13 @@ actor QuotaRefreshActor {
         }
 
         var profileContext = context.withEnvironment(environment)
+        if profile.provider == .codex {
+            // The scoped profile scans its own `CODEX_HOME`, so it must not
+            // read or write back the shared rollout scan cache: the default
+            // `~/.codex` entries look "stale" from the profile's perspective
+            // and would be pruned — persisting an empty cache to disk.
+            profileContext = profileContext.withCodexRolloutScanCache(.empty, update: { _, _ in })
+        }
         if profile.provider == .claudeCode,
            let credentials = claudeOAuthCredentials(fromSwitcherProfileConfigDirectory: profile.configDirectory) {
             profileContext = profileContext.withClaudeCredentialsReader(
