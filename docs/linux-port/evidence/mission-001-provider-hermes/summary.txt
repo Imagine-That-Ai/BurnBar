@@ -1,0 +1,9 @@
+lane=W04ProviderHermesEngine
+worktree=/workspace
+ipc_evidence=/workspace/docs/linux-port/evidence/mission-001-provider-hermes/ipc-cli-gateway
+provider_evidence=/workspace/docs/linux-port/evidence/mission-001-provider-hermes
+ipc_replay_exit=0
+hermes_cli_supplement_exit=0
+canonical_oracle_linux_exit=0
+strict_order_mutation_check_exit=0
+artifacts=provider-log-path-matrix.json provider-discovery-edge-fixture.json llmsafe-content-linux-fixture.json cli-hermes-transcript.txt hermes-run-journal.jsonl hermes-run-checkpoints hermes-event-order-raw-events-linux.json hermes-event-order-diff-linux.json hermes-event-order-strict-order-mutation/strict-order-mutation-result.json contract-status.json

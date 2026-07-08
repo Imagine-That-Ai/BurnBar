@@ -1,5 +1,9 @@
 import OpenBurnBarCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 public enum BurnBarDaemonPaths {
@@ -10,9 +14,13 @@ public enum BurnBarDaemonPaths {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
 
+        #if os(Linux)
+        return OpenBurnBarLinuxPaths.supportDirectoryURL()
+        #else
         return FileManager.default
             .homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/OpenBurnBar", isDirectory: true)
+        #endif
     }
 
     public static var defaultSocketURL: URL {
@@ -85,6 +93,10 @@ public enum BurnBarDaemonPaths {
     /// On-disk store of companion-mode interactive Claude handoff sessions (B1).
     public static var defaultClaudeHandoffSessionsURL: URL {
         supportDirectoryURL.appendingPathComponent("claude-handoff-sessions.json", isDirectory: false)
+    }
+
+    public static var defaultMembershipCacheURL: URL {
+        supportDirectoryURL.appendingPathComponent("membership-entitlement-cache.json", isDirectory: false)
     }
 }
 

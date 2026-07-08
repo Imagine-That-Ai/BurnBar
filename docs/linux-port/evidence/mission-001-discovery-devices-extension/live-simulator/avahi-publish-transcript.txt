@@ -1,0 +1,11 @@
+Failed to add service: Local name collision
+Established under name 'AWTRIX PixelClock'
+Established under name 'OpenBurnBar validator'
+Established under name 'Home Assistant'
+Established under name 'OpenBurnBar Cast'
+Established under name 'OpenBurnBar SmartHub Bridge'
+Got SIGTERM, quitting.
+Got SIGTERM, quitting.
+Got SIGTERM, quitting.
+Got SIGTERM, quitting.
+Got SIGTERM, quitting.

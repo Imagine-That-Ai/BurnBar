@@ -1,0 +1,29 @@
+{
+  "generatedAt": "2026-07-06T04:23:42.171Z",
+  "mode": "full",
+  "evidenceDir": "/Users/albertonunez/Documents/Developer/BurnBar-parity-integration/docs/linux-port/evidence/mission-001-shell-ux",
+  "targetStatus": {
+    "VAL-SHELL-005": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-ONBOARDING-001": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-PET-001": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-TEXTEXP-001": {
+      "pass": true,
+      "errors": []
+    },
+    "VAL-PERF-001": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "status": "ok",
+  "errors": []
+}

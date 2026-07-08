@@ -1,0 +1,257 @@
+{
+  "generatedAt": "2026-07-06T04:23:40.996Z",
+  "lane": "W06LinuxShellUx",
+  "method": "executed-vitest-app-module-contracts",
+  "tokenDiff": {
+    "keys": [
+      "--color-ink-void",
+      "--color-brass-core",
+      "--ds-skin",
+      "--ds-accent-gradient",
+      "--font-display",
+      "--space-4",
+      "--radius-lg"
+    ],
+    "editorial": {
+      "--color-ink-void": "#050508",
+      "--color-brass-core": "#fa6b06",
+      "--ds-skin": "editorial",
+      "--ds-accent-gradient": "linear-gradient(135deg, var(--color-brass-core), var(--color-brass-bright))",
+      "--font-display": "Outfit",
+      "--space-4": "16px",
+      "--radius-lg": "20px"
+    },
+    "aurora": {
+      "--color-ink-void": "#040610",
+      "--color-brass-core": "#3cd6c0",
+      "--ds-skin": "aurora",
+      "--ds-accent-gradient": "linear-gradient(135deg, #3cd6c0, #6ee7ff)",
+      "--font-display": "Outfit",
+      "--space-4": "16px",
+      "--radius-lg": "20px"
+    },
+    "changed": [
+      "--color-ink-void",
+      "--color-brass-core",
+      "--ds-skin",
+      "--ds-accent-gradient"
+    ]
+  },
+  "themes": [
+    {
+      "name": "editorial",
+      "tokens": {
+        "--color-ink-void": "#050508",
+        "--color-brass-core": "#fa6b06",
+        "--ds-skin": "editorial",
+        "--ds-accent-gradient": "linear-gradient(135deg, var(--color-brass-core), var(--color-brass-bright))",
+        "--font-display": "Outfit",
+        "--space-4": "16px",
+        "--radius-lg": "20px"
+      }
+    },
+    {
+      "name": "aurora",
+      "tokens": {
+        "--color-ink-void": "#040610",
+        "--color-brass-core": "#3cd6c0",
+        "--ds-skin": "aurora",
+        "--ds-accent-gradient": "linear-gradient(135deg, #3cd6c0, #6ee7ff)",
+        "--font-display": "Outfit",
+        "--space-4": "16px",
+        "--radius-lg": "20px"
+      }
+    }
+  ],
+  "breakpoints": [
+    {
+      "name": "desktop",
+      "width": 1280,
+      "expectation": "persistent left navigation and route card"
+    },
+    {
+      "name": "tablet",
+      "width": 960,
+      "expectation": "content remains scannable with nav visible"
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "expectation": "failure rows collapse to one column via CSS media query"
+    }
+  ],
+  "states": [
+    {
+      "route": "overview",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/overview"
+    },
+    {
+      "route": "insights",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/insights"
+    },
+    {
+      "route": "database",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/database"
+    },
+    {
+      "route": "providers",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/providers"
+    },
+    {
+      "route": "projects",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/projects"
+    },
+    {
+      "route": "missions",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/missions"
+    },
+    {
+      "route": "activity",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/activity"
+    },
+    {
+      "route": "chat",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/chat"
+    },
+    {
+      "route": "memory",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/memory"
+    },
+    {
+      "route": "settings",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/settings"
+    },
+    {
+      "route": "account",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/account"
+    },
+    {
+      "route": "updates",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/updates"
+    },
+    {
+      "route": "support",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/support"
+    },
+    {
+      "route": "onboarding",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/onboarding"
+    },
+    {
+      "route": "pet",
+      "expectedState": "pet-runtime",
+      "reloadUrl": "app://openburnbar-linux/#/pet"
+    },
+    {
+      "route": "text-expansion",
+      "expectedState": "local-crud",
+      "reloadUrl": "app://openburnbar-linux/#/text-expansion"
+    }
+  ],
+  "emptyErrorDegradedStates": [
+    {
+      "id": "daemon-offline",
+      "route": "overview",
+      "condition": "bridge=null or health.ok=false",
+      "userMessage": "Daemon offline."
+    },
+    {
+      "id": "tray-degraded",
+      "route": "support",
+      "condition": "trayDegraded=true",
+      "userMessage": "Tray degraded: use window reopen from launcher."
+    },
+    {
+      "id": "secret-store-unavailable",
+      "route": "settings",
+      "condition": "libsecret/KWallet unavailable or locked",
+      "userMessage": "Secret Service locked or unavailable."
+    },
+    {
+      "id": "secret-store-setup",
+      "route": "settings",
+      "condition": "first-run secret store setup incomplete",
+      "userMessage": "Secret Service setup required before encrypted sync credentials can be saved."
+    },
+    {
+      "id": "network-offline",
+      "route": "settings",
+      "condition": "provider catalog/update request cannot reach network",
+      "userMessage": "Network offline."
+    },
+    {
+      "id": "permission-denied",
+      "route": "settings",
+      "condition": "provider log path cannot be read",
+      "userMessage": "Provider path permission denied."
+    },
+    {
+      "id": "provider-credentials",
+      "route": "settings",
+      "condition": "provider credential missing or rejected by Secret Service",
+      "userMessage": "Provider credentials need attention."
+    },
+    {
+      "id": "quota-exhausted",
+      "route": "account",
+      "condition": "provider quota bucket exhausted",
+      "userMessage": "Quota exhausted."
+    },
+    {
+      "id": "account-login",
+      "route": "account",
+      "condition": "signed out lower-trust Linux identity",
+      "userMessage": "Signed out."
+    },
+    {
+      "id": "account-logout",
+      "route": "account",
+      "condition": "user signs out or token is revoked",
+      "userMessage": "Signed out; encrypted sync is paused."
+    },
+    {
+      "id": "sync-status",
+      "route": "account",
+      "condition": "cloud sync paused, offline, or lower-trust identity pending",
+      "userMessage": "Sync paused."
+    },
+    {
+      "id": "update-channel-unavailable",
+      "route": "updates",
+      "condition": "package channel unavailable",
+      "userMessage": "Update channel unavailable."
+    },
+    {
+      "id": "update-status",
+      "route": "updates",
+      "condition": "update available, unavailable, or restart required",
+      "userMessage": "Restart required after package update."
+    },
+    {
+      "id": "onboarding-incomplete",
+      "route": "onboarding",
+      "condition": "onboarding.completed=false",
+      "userMessage": "First-run wizard blocks dashboard until Continue or Skip."
+    },
+    {
+      "id": "text-expansion-no-consent",
+      "route": "text-expansion",
+      "condition": "consent=null",
+      "userMessage": "Acknowledge in-app-only expansion before saving snippets."
+    }
+  ]
+}
