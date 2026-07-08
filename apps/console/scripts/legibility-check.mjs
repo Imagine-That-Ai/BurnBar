@@ -29,7 +29,7 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(__dirname, "..", ".inspect");
 
-// Append-only — verbatim from lib/gl/engine/types.ts KernelId / KERNEL_INK keys.
+// Append-only — verbatim from packages/gl-engine/src/engine/types.ts KernelId / KERNEL_INK keys.
 const KERNEL_IDS = [
   "constellation", "flow", "aurora", "mesh", "moire", "volumetric", "lic",
   "fluid-aurora", "cloudfield", "plasma-orbs", "blobs-mesh", "retro-plasma",
@@ -37,7 +37,7 @@ const KERNEL_IDS = [
   "liquid-lumen", "spectral-drift", "mycelium-mesh", "oilfield",
   "suminagashi-drift", "kinetic-stipple", "neural-bloom", "agent1",
   "aether-lattice", "bat-signal", "storm-signal", "origami", "ink-diffusion",
-  "petroleum-sheen", "boids",
+  "petroleum-sheen", "boids", "swarmEmber",
 ];
 
 const AA = 4.5;

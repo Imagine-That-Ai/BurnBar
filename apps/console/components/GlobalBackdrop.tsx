@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 
 import { KernelBackdrop } from "@/components/dashboard/KernelBackdrop";
 import { useBackdrop } from "@/lib/useBackdrop";
-import type { KernelId } from "@/lib/gl/engine/types";
+import type { KernelId } from "@openburnbar/gl-engine/engine/types";
 import { inkFor, INK_FG, INK_MUTE, INK_DIM, INK_HALO } from "@/lib/kernelInk";
 
 /**
@@ -29,6 +30,12 @@ import { inkFor, INK_FG, INK_MUTE, INK_DIM, INK_HALO } from "@/lib/kernelInk";
 export function GlobalBackdrop() {
   const { kernelId, inkEnabled } = useBackdrop();
   const [resolved, setResolved] = React.useState<KernelId>(kernelId);
+  const pathname = usePathname();
+  // /experimental mounts its own hero canvas plus a full grid of live kernel
+  // tiles — layering the global kernel underneath adds one more GL context to
+  // a page already at the browser's context limit, for a backdrop that is
+  // ~fully hidden behind the gallery anyway. Ink vars/scrim still publish.
+  const suppressKernel = pathname?.startsWith("/experimental") ?? false;
 
   // Keep `resolved` honest when the kernel switches with no GL fallback (the
   // engine only fires onResolve on mount + switch; this covers fast switches).
@@ -73,12 +80,15 @@ export function GlobalBackdrop() {
 
   return (
     <>
-      {/* The animated kernel — behind everything, on every route. */}
-      <KernelBackdrop
-        kernelId={kernelId}
-        className="ink-backdrop"
-        onResolve={setResolved}
-      />
+      {/* The animated kernel — behind everything, on every route (except the
+          kernel gallery, which saturates the GL-context budget on its own). */}
+      {!suppressKernel && (
+        <KernelBackdrop
+          kernelId={kernelId}
+          className="ink-backdrop"
+          onResolve={setResolved}
+        />
+      )}
       {/* The legibility scrim — only on ink routes, above the kernel, under content. */}
       {inkEnabled && <div className="ink-scrim" aria-hidden />}
     </>

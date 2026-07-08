@@ -32,7 +32,7 @@
  * invariant: add a kernel id and this file fails to type-check until it has ink.
  */
 
-import type { KernelId } from "@/lib/gl/engine/types";
+import type { KernelId } from "@openburnbar/gl-engine/engine/types";
 
 /** Named entrance characters for the hero (per-word/glyph). */
 export type InkMotion =
@@ -133,6 +133,7 @@ export const KERNEL_INK: Record<KernelId, KernelInk> = {
   "ink-diffusion": { lum: 0.3, busy: 0.6, scrim: { hero: 0.46, read: 0.62, nav: 0.5 }, haloTier: 3, accent: "#8FB0E0", motion: "bleed", timing: T.bleed() },
   "petroleum-sheen": { lum: 0.34, busy: 0.65, scrim: { hero: 0.5, read: 0.66, nav: 0.46 }, haloTier: 3, accent: "#7AD6D0", motion: "marble", timing: T.marble() },
   boids: { lum: 0.12, busy: 0.45, scrim: { hero: 0.24, read: 0.4 }, haloTier: 1, accent: "#8FA0FF", motion: "drift", timing: T.drift() },
+  swarmEmber: { lum: 0.14, busy: 0.42, scrim: { hero: 0.26, read: 0.42 }, haloTier: 1, accent: "#FA6B06", motion: "drift", timing: T.drift() },
 };
 
 /** Resolve the ink for a kernel, falling back to the calm default. */
