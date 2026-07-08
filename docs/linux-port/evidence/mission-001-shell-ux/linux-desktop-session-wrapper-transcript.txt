@@ -1,4 +1,4 @@
-docker run --rm --mount type=bind,src=/Users/albertonunez/.cache/burnbar-work/branch,dst=/workspace,readonly --mount type=bind,src=/Users/albertonunez/.cache/burnbar-work/branch/docs/linux-port/evidence/mission-001-shell-ux,dst=/evidence -w /workspace openburnbar-linux-toolchain:mission-001 bash /workspace/scripts/linux-port/linux-desktop-session.sh
+docker run --rm --mount type=bind,src=$WORKSPACE,dst=/workspace,readonly --mount type=bind,src=$WORKSPACE/docs/linux-port/evidence/mission-001-shell-ux,dst=/evidence -w /workspace openburnbar-linux-toolchain:mission-001 bash /workspace/scripts/linux-port/linux-desktop-session.sh
 exit_code=0
 timed_out=false
 timeout_ms=1500000

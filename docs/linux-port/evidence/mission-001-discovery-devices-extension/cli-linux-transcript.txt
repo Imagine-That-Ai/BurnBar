@@ -21,7 +21,7 @@ command=run_cli\ local-peer\ disabled-state\ --json
 exit_code=0
 
 ### local-peer disabled-state with OPENBURNBAR_DISABLE_LOCAL_DISCOVERY=1 (json)
-command=docker\ run\ --rm\ -e\ OPENBURNBAR_DISABLE_LOCAL_DISCOVERY=1\ -v\ /Users/albertonunez/.cache/burnbar-work/branch:/workspace\ -w\ /workspace\ openburnbar-linux-toolchain:mission-001-fts5\ /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI\ local-peer\ disabled-state\ --json
+command=docker\ run\ --rm\ -e\ OPENBURNBAR_DISABLE_LOCAL_DISCOVERY=1\ -v\ $WORKSPACE:/workspace\ -w\ /workspace\ openburnbar-linux-toolchain:mission-001-fts5\ /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI\ local-peer\ disabled-state\ --json
 {
   "disabled" : true
 }
