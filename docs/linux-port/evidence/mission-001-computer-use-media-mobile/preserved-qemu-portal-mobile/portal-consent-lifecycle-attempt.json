@@ -1,0 +1,110 @@
+{
+  "generatedAt": "2026-07-04T14:32:18.563Z",
+  "evidenceRun": {
+    "runId": "cu-evidence-20260704T142426164Z-34646",
+    "startedAt": "2026-07-04T14:24:26.164Z",
+    "generatedAt": "2026-07-04T14:32:18.563Z",
+    "outDir": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426",
+    "freshDirectoryRequired": true,
+    "reusedDirectoryExplicitlyAllowed": false,
+    "staleStatusRowsIgnored": true,
+    "sourcePaths": {
+      "summary": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-evidence-summary.json",
+        "exists": true,
+        "sizeBytes": 6757,
+        "modifiedAt": "2026-07-04T14:31:03.044Z"
+      },
+      "lifecycle": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-lifecycle.jsonl",
+        "exists": true,
+        "sizeBytes": 1949,
+        "modifiedAt": "2026-07-04T14:30:42.545Z"
+      },
+      "pipeWireFrame": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/approved-pipewire-frame.png",
+        "exists": true,
+        "sizeBytes": 808726,
+        "modifiedAt": "2026-07-04T14:30:57.234Z"
+      },
+      "captureLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-capture-log.txt",
+        "exists": true,
+        "sizeBytes": 1465,
+        "modifiedAt": "2026-07-04T14:24:29.964Z"
+      },
+      "portalFrontendLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal.log",
+        "exists": true,
+        "sizeBytes": 1911,
+        "modifiedAt": "2026-07-04T14:30:43.773Z"
+      },
+      "portalBackendLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal-wlr.log",
+        "exists": true,
+        "sizeBytes": 161,
+        "modifiedAt": "2026-07-04T14:30:44.378Z"
+      }
+    }
+  },
+  "target": "VAL-CU-001",
+  "skipped": false,
+  "decisiveSurface": "QEMU aarch64 VM with virtio-gpu DRM, Sway, PipeWire, xdg-desktop-portal, and xdg-desktop-portal-wlr",
+  "frameworkPath": "/Users/albertonunez/linux-test-framework",
+  "fallbackUsed": false,
+  "command": {
+    "exitCode": 0,
+    "durationMs": 346018,
+    "log": "portal-consent-lifecycle-command.log"
+  },
+  "portalEvidence": {
+    "target": "VAL-CU-001",
+    "passed": true,
+    "chooserType": "dmenu",
+    "portalReachable": true,
+    "approvalObserved": true,
+    "denialOrCancellationObserved": true,
+    "revokeOrSessionEndObserved": true,
+    "pipeWireFrameObserved": true,
+    "pipeWireFrameArtifact": "approved-pipewire-frame.png",
+    "blockers": [],
+    "sourcePaths": {
+      "summary": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-evidence-summary.json",
+        "exists": true,
+        "sizeBytes": 6757,
+        "modifiedAt": "2026-07-04T14:31:03.044Z"
+      },
+      "lifecycle": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-lifecycle.jsonl",
+        "exists": true,
+        "sizeBytes": 1949,
+        "modifiedAt": "2026-07-04T14:30:42.545Z"
+      },
+      "pipeWireFrame": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/approved-pipewire-frame.png",
+        "exists": true,
+        "sizeBytes": 808726,
+        "modifiedAt": "2026-07-04T14:30:57.234Z"
+      },
+      "captureLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-capture-log.txt",
+        "exists": true,
+        "sizeBytes": 1465,
+        "modifiedAt": "2026-07-04T14:24:29.964Z"
+      },
+      "portalFrontendLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal.log",
+        "exists": true,
+        "sizeBytes": 1911,
+        "modifiedAt": "2026-07-04T14:30:43.773Z"
+      },
+      "portalBackendLog": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal-wlr.log",
+        "exists": true,
+        "sizeBytes": 161,
+        "modifiedAt": "2026-07-04T14:30:44.378Z"
+      }
+    }
+  }
+}

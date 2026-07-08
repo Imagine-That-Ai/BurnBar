@@ -1,5 +1,4 @@
 export type PetTier = 'overlay-pass-through' | 'draggable-contained';
-
 export function detectPetTierFromEnv(env: Record<string, string | undefined> = {}): {
   tier: PetTier;
   compositor: string;

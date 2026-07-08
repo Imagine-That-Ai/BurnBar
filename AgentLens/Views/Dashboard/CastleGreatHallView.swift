@@ -642,7 +642,7 @@ private struct CastleWorkerTile: View {
         failures: [],
         lastRefreshed: Date(),
         isLoading: false,
-        onRetry: { print("retry") }
+        onRetry: {} // Preview stub — the live retry hook is wired by the hosting dashboard.
     )
     .padding()
     .frame(width: 760)

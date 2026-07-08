@@ -4,10 +4,17 @@ public enum FlexibleQuotaBucketNormalizer {
 
     // MARK: - Date Formatters
 
+    /// Z.ai quota endpoints emit zone-less `yyyy-MM-dd HH:mm:ss` timestamps.
+    /// Without an explicit timeZone, DateFormatter interprets them in the
+    /// device-local zone, skewing reset times by the local UTC offset.
+    /// Z.ai (Zhipu) is a Beijing-based service; no recorded payload or doc in
+    /// the repo indicates a different server zone, so we pin Asia/Shanghai
+    /// (assumption documented per the 2026-07 date-parsing audit, F3).
     private static let zaiDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
         return formatter
     }()
 

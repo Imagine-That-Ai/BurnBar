@@ -1,0 +1,80 @@
+missing=xvfb openbox xfce4-panel xfce4-sntray-plugin ayatana-indicator-application xdotool x11-utils scrot at-spi2-core
+Get:1 http://ports.ubuntu.com/ubuntu-ports noble InRelease [256 kB]
+Get:2 http://ports.ubuntu.com/ubuntu-ports noble-updates InRelease [126 kB]
+Get:3 http://ports.ubuntu.com/ubuntu-ports noble-backports InRelease [126 kB]
+Get:4 http://ports.ubuntu.com/ubuntu-ports noble-security InRelease [126 kB]
+Get:5 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 Packages [1776 kB]
+Get:6 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 Packages [19.0 MB]
+Get:7 http://ports.ubuntu.com/ubuntu-ports noble/restricted arm64 Packages [113 kB]
+Get:8 http://ports.ubuntu.com/ubuntu-ports noble/multiverse arm64 Packages [274 kB]
+Get:9 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 Packages [1371 kB]
+Get:10 http://ports.ubuntu.com/ubuntu-ports noble-updates/universe arm64 Packages [2112 kB]
+Get:11 http://ports.ubuntu.com/ubuntu-ports noble-updates/restricted arm64 Packages [2178 kB]
+Get:12 http://ports.ubuntu.com/ubuntu-ports noble-updates/multiverse arm64 Packages [80.1 kB]
+Get:13 http://ports.ubuntu.com/ubuntu-ports noble-backports/main arm64 Packages [48.9 kB]
+Get:14 http://ports.ubuntu.com/ubuntu-ports noble-backports/multiverse arm64 Packages [671 B]
+Get:15 http://ports.ubuntu.com/ubuntu-ports noble-backports/universe arm64 Packages [36.3 kB]
+Get:16 http://ports.ubuntu.com/ubuntu-ports noble-security/restricted arm64 Packages [2090 kB]
+Get:17 http://ports.ubuntu.com/ubuntu-ports noble-security/multiverse arm64 Packages [75.6 kB]
+Get:18 http://ports.ubuntu.com/ubuntu-ports noble-security/universe arm64 Packages [1533 kB]
+Get:19 http://ports.ubuntu.com/ubuntu-ports noble-security/main arm64 Packages [1056 kB]
+Fetched 32.4 MB in 23min 40s (22.8 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following additional packages will be installed:
+  ayatana-indicator-common exo-utils fonts-urw-base35 libdbus-glib-1-2
+  libexo-2-0 libexo-common libfontenc1 libgarcon-1-0 libgarcon-common
+  libgarcon-gtk3-1-0 libgif7 libgs-common libgs10 libgs10-common libhwy1t64
+  libid3tag0 libidn12 libijs-0.35 libimlib2t64 libjbig2dec0 libjxl0.7
+  libobrender32v5 libobt2v5 libopenjp2-7 libpaper1 librsvg2-2 libspectre1
+  libstartup-notification0 libwnck-3-0 libwnck-3-common libxaw7 libxdo3
+  libxfce4panel-2.0-4 libxfce4ui-2-0 libxfce4ui-common libxfce4util-common
+  libxfce4util7 libxfconf-0-3 libxfont2 libxkbfile1 libxmu6 libxres1 libxt6t64
+  libxv1 libxxf86dga1 poppler-data ucf x11-xkb-utils
+  xfce4-sntray-plugin-common xfconf xfonts-encodings xfonts-utils
+  xserver-common
+Suggested packages:
+  fonts-freefont-otf | fonts-freefont-ttf fonts-texgyre librsvg2-bin devhelp
+  fonts-dejavu tint2 openbox-gnome-session openbox-kde-session poppler-utils
+  ghostscript fonts-japanese-mincho | fonts-ipafont-mincho
+  fonts-japanese-gothic | fonts-ipafont-gothic fonts-arphic-ukai
+  fonts-arphic-uming fonts-nanum mesa-utils
+Recommended packages:
+  liburi-perl fonts-droid-fallback libpaper-utils librsvg2-common
+  libxfce4util-bin obconf | obconf-qt luit xfonts-base
+The following NEW packages will be installed:
+  at-spi2-core ayatana-indicator-application ayatana-indicator-common
+  exo-utils fonts-urw-base35 libdbus-glib-1-2 libexo-2-0 libexo-common
+  libfontenc1 libgarcon-1-0 libgarcon-common libgarcon-gtk3-1-0 libgif7
+  libgs-common libgs10 libgs10-common libhwy1t64 libid3tag0 libidn12
+  libijs-0.35 libimlib2t64 libjbig2dec0 libjxl0.7 libobrender32v5 libobt2v5
+  libopenjp2-7 libpaper1 librsvg2-2 libspectre1 libstartup-notification0
+  libwnck-3-0 libwnck-3-common libxaw7 libxdo3 libxfce4panel-2.0-4
+  libxfce4ui-2-0 libxfce4ui-common libxfce4util-common libxfce4util7
+  libxfconf-0-3 libxfont2 libxkbfile1 libxmu6 libxres1 libxt6t64 libxv1
+  libxxf86dga1 openbox poppler-data scrot ucf x11-utils x11-xkb-utils xdotool
+  xfce4-panel xfce4-sntray-plugin xfce4-sntray-plugin-common xfconf
+  xfonts-encodings xfonts-utils xserver-common xvfb
+0 upgraded, 62 newly installed, 0 to remove and 7 not upgraded.
+Need to get 26.5 MB of archives.
+After this operation, 95.1 MB of additional disk space will be used.
+Get:1 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 poppler-data all 0.4.12-1 [2060 kB]
+Get:2 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 ucf all 3.0043+nmu1 [56.5 kB]
+Get:3 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 at-spi2-core arm64 2.52.0-1build1 [55.8 kB]
+Get:4 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libdbus-glib-1-2 arm64 0.112-3build2 [64.4 kB]
+Get:5 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 ayatana-indicator-common all 0.9.10-1build2 [15.7 kB]
+Get:6 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 ayatana-indicator-application arm64 22.2.0-1build2 [26.9 kB]
+Get:7 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libexo-common all 4.18.0-1build4 [4054 B]
+Get:8 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfce4util-common all 4.18.1-2build3 [60.5 kB]
+Get:9 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfce4util7 arm64 4.18.1-2build3 [29.9 kB]
+Get:10 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libexo-2-0 arm64 4.18.0-1build4 [246 kB]
+Get:11 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfce4ui-common all 4.18.4-1build4 [237 kB]
+Get:12 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libstartup-notification0 arm64 0.12-6build3 [18.9 kB]
+Get:13 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 xfconf arm64 4.18.1-1build3 [125 kB]
+Get:14 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfconf-0-3 arm64 4.18.1-1build3 [29.0 kB]
+Get:15 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 libxfce4ui-2-0 arm64 4.18.4-1build4 [61.3 kB]
+Get:16 http://ports.ubuntu.com/ubuntu-ports noble/universe arm64 exo-utils arm64 4.18.0-1build4 [31.9 kB]
+Get:17 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 libfontenc1 arm64 1:1.1.8-1build1 [13.9 kB]
+Get:18 http://ports.ubuntu.com/ubuntu-ports noble/main arm64 xfonts-encodings all 1:1.0.5-0ubuntu2 [578 kB]

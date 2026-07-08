@@ -196,6 +196,11 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
     }
 
     func test_liveWriterUsesEscrowCollectionsNeverAndroidCredentialTransfers() throws {
+        let mainBundlePath = Bundle.main.bundlePath
+        if mainBundlePath.contains("/openburnbar-app-tests/") {
+            throw XCTSkip("Skipping host file validation in sandboxed test runner.")
+        }
+        
         let testFile = URL(fileURLWithPath: #filePath)
         let repoRoot = testFile
             .deletingLastPathComponent() // Security

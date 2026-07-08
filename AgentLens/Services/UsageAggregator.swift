@@ -263,9 +263,17 @@ final class UsageAggregator {
     /// Clears local usage rows so the dashboard resets immediately, then re-parses all providers.
     func recountAll() async {
         guard !isRefreshing else { return }
+        // Demote any already-armed cloud reconciliation before touching the
+        // table: from here until the rebuild verifiably commits, the local
+        // usage table may be partially populated, and orphan cleanup must
+        // never run against it. Durable, so an app death mid-recount keeps
+        // cleanup blocked after relaunch.
+        UsageSyncService.beginOrphanReconciliationRecount()
+        var clearSucceeded = true
         do {
             try await dataStore.deleteAll()
         } catch {
+            clearSucceeded = false
             let typed = OpenBurnBarError.database(
                 "recount_clear_failed",
                 message: "Failed to clear usage rows before recount.",
@@ -285,11 +293,40 @@ final class UsageAggregator {
                 typedPersistenceError = healthTyped
             }
         }
+        let recountStartedAt = Date()
         await refreshAll()
         // Tell the usage sync domain to reconcile now-orphaned cloud docs on
-        // its next pass. Posted only after refreshAll so an aborted recount
-        // never triggers cloud deletion against an empty local table.
-        NotificationCenter.default.post(name: .usageRecountDidRebuildLocalRows, object: nil)
+        // its next pass — a durable state (not a notification) because the
+        // sync service is constructed fresh per upload and would miss an
+        // in-memory signal — but ONLY when this rebuild verifiably committed:
+        // the clear succeeded, the refresh actually applied its results
+        // (`lastRefresh` advanced; a cancelled or short-circuited refresh
+        // leaves it stale), and persistence reported no error. A recount whose
+        // persist failed partway leaves a non-empty-but-INCOMPLETE table, and
+        // reconciling against it would delete cloud docs for rows that were
+        // never re-persisted. On failure the request stays pending
+        // (`awaitingRecountCompletion`) and a successful retry re-arms it.
+        let refreshApplied = (lastRefresh ?? .distantPast) >= recountStartedAt
+        if Self.recountRebuildCommitted(
+            clearSucceeded: clearSucceeded,
+            refreshApplied: refreshApplied,
+            typedPersistenceError: typedPersistenceError
+        ) {
+            UsageSyncService.requestOrphanReconciliation()
+        }
+    }
+
+    /// Completion gate for `recountAll`'s one-shot cloud orphan reconciliation:
+    /// the rebuild counts as committed only when the table clear succeeded, the
+    /// refresh ran to completion and applied its results, and usage persistence
+    /// reported no error. Anything less can leave a partially populated local
+    /// table, which must never be used as the deletion baseline for cloud docs.
+    internal static func recountRebuildCommitted(
+        clearSucceeded: Bool,
+        refreshApplied: Bool,
+        typedPersistenceError: OpenBurnBarError?
+    ) -> Bool {
+        clearSucceeded && refreshApplied && typedPersistenceError == nil
     }
 
     // MARK: - Refresh Single Provider

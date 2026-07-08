@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
@@ -22,6 +23,8 @@ import UIKit
 ///   5. UI surfaces (Phase 2) read the `lastReceivedManifest` publisher.
 @MainActor
 final class iOSFileTransferService: ObservableObject {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "iOSFileTransferService")
+
     /// Mercury Phase 8 — singleton accessor populated by `AppDelegate`
     /// after `configureMercuryFileTransfer()` builds the receiver. Lets
     /// the Mercury Live sheet drive outbound sends without threading
@@ -173,7 +176,7 @@ final class iOSFileTransferService: ObservableObject {
             do {
                 try MobileMediaInboxFileProtection.apply(to: destination)
             } catch {
-                print("warning: MobileMediaInboxFileProtection failed for \(destination.lastPathComponent): \(error.localizedDescription)")
+                Self.log.warning("MobileMediaInboxFileProtection failed for \(destination.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
             lastReceivedAttachment = ReceivedAttachment(
                 id: manifest.manifestId,

@@ -1,0 +1,9 @@
+probe_started_at=2026-07-05T11:33:49Z
+avahi_browse_path=missing
+avahi_publish_path=missing
+dbus_system_bus=missing
+busctl_path=missing
+udevadm_path=missing
+serial_devices=none
+docker_avahi_probe_exit_code=0
+live_simulator_exit_code=0

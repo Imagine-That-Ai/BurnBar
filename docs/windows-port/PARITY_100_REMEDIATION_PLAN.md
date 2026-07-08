@@ -8,18 +8,25 @@
 
 ## 1. TL;DR — the honest number
 
-**The Windows app is roughly 40% of the way to true parity, not "almost done."**
+**Original assessment (2026-07-05): ~40%. After the 2026-07-06 build session: ~55%** — and the honest ceiling for *agent-only* work is ~65% (everything remaining is Windows-hardware or Alberto-account gated; see [`TONIGHT_PUNCHLIST.md`](TONIGHT_PUNCHLIST.md)).
 
-Broken down honestly:
+Broken down honestly (recalibrated 2026-07-06 after ~20 merged PRs):
 
-| Layer | Parity | Basis |
-|---|---|---|
-| Portable logic (parsers, crypto, state machines, protocol codecs) | ~65–70% | ~126K LOC C#, ~1,677 test methods, real x64+ARM64 CI (`pr-windows-full.yml`) |
-| UI surfaces authored (XAML exists, navigable) | 13/13 destinations | But only **4/13 are "Real"** (live data); 9 run on sample/seeded data |
-| End-to-end proven on real Windows (live data, live cloud, OS integration) | ~10–15% | Every OS boundary is dev-host-deferred; all launch evidence is PLACEHOLDER |
-| Shippable artifact (signed installer a user can run) | 0% | No Authenticode cert (W0), MSIX never built/signed, updater round-trip never run |
+| Layer | 07-05 | 07-06 | Basis |
+|---|---|---|---|
+| Portable logic (parsers, crypto, state machines, subsystems) | ~65–70% | **~85%** | ~135K LOC C#, ~2,500 test methods; native FFI shim real, quota acquisition, 8 cloud callables, Firebase OAuth+Firestore, ManagedAgentRuntime/CursorConnector/TextExpansion/memory-search ported from **zero**, 11/12 settings tabs given real VMs |
+| UI surfaces "Real" (live data flowing in the portable path) | 4/13 | **~9/13** | Dashboard, Insights, Quota, MissionControl, DCC now read real data via the OAuth-backed gateway + storage seams (was sessionLogs/memory/onboarding/settings only) |
+| End-to-end proven on real Windows (live cloud, OS integration, render) | ~10–15% | ~15% | G2 parser byte-diff green on real Windows CI; native FFI loopback ran on dylibs. Still: no live cloud round-trip, no render/TPM proof — **all bucket-C, needs the Win11 VM** |
+| Shippable artifact (signed installer a user can run) | 0% | 0% | No Authenticode cert (W0), MSIX never signed/built — **bucket-D, needs Alberto** |
 
-The port's architecture is sound and deliberately staged (portable `net8.0` cores tested on macOS + thin deferred Windows adapters), so this is *honest scaffolding*, not fake work — but "authored and unit-tested" has been allowed to read as "done" in some docs. Gate status per the repo's own ledger: **G0 ✅ G1 ✅ G2 ❌ (headline PROVEN 2026-07-06 — Wave 1 item 1; remaining G2 items open) G3 ❌ G4 ❌ G5 ❌**.
+The port's architecture is sound and deliberately staged (portable `net8.0` cores tested on macOS + thin deferred Windows adapters). Gate status: **G0 ✅ G1 ✅ G2 🟡 (headline PROVEN; storage decided WPD-0005, daemon decided WPD-0006; remaining G2 = live cloud round-trip on VM) G3 ❌ G4 ❌ G5 ❌**. The remaining ~45% is **not** more portable code — it's the Win11-VM validation pass (bucket C) and the cert/accounts (bucket D). Agent work maxes out at ~65%.
+
+### Session log — 2026-07-06 (what landed)
+
+Wave 0 (foundation, 5 PRs): #1270 Swift-core repair, #1274 plan+honest docs, #1275 CI heal, #1280 Android detekt, #1282 no-binaries tripwire.
+Decisions: #1290 **WPD-0006 daemon** (per-capability substitution), #1291 **WPD-0005 storage** (C# seam permanent; waiver retired; **G2 headline PROVEN**).
+Wave 1/2 code: #1293 **native FFI shim** (13 Windows-validated FFI round-trips), #1296 **quota acquisition**, #1297 **8 CloudSync governance callables**, #1304 **Firebase OAuth + live Firestore** (keystone), #1301 **ManagedAgentRuntime**, #1303 **CursorConnector**, #1302 **TextExpansion**, #1300 **Switcher store proof**, #1339 **dashboard/surfaces live-data flip**, #1340 **11/12 settings tabs → real VMs**, #1341 **memory/search core**.
+Tooling: #1338 **TONIGHT_PUNCHLIST.md** + `scripts/windows-port/vm-validate.ps1`. Same-session iOS fix: #1279 (SmartHub debounce, injectable clock).
 
 ---
 

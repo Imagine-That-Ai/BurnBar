@@ -88,6 +88,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.codeWatchProject))
         XCTAssertTrue(profile.permits(.codeSearch))
         XCTAssertTrue(profile.permits(.codeIndexStatus))
+        XCTAssertTrue(profile.permits(.runCreate))
         XCTAssertTrue(profile.permits(.runResume))
 
         // The CLI must not inherit whole capability groups just because one
@@ -97,7 +98,6 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.workspaceExecuteTool))
-        XCTAssertFalse(profile.permits(.runCreate))
         XCTAssertFalse(profile.permits(.missionCreate))
         XCTAssertFalse(profile.permits(.missionCancel))
         XCTAssertFalse(profile.permits(.memoryRemember))
