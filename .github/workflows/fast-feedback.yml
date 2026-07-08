@@ -602,7 +602,7 @@ jobs:
   fast-feedback-path-filter:
     name: Fast Feedback path filter
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 8
     outputs:
       rust_changed: ${{ steps.changed.outputs.rust_changed }}
     steps:
@@ -610,7 +610,7 @@ jobs:
         with:
           # The PR checkout ref is a synthetic merge commit. Depth 2 includes its
           # base and head parents without fetching the entire repository history,
-          # keeping this path filter inside its two-minute budget.
+          # while leaving enough room for large artifact-purge diffs to checkout.
           fetch-depth: 2
 
       - name: Detect Rust-relevant changes
