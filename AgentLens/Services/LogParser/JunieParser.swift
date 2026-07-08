@@ -208,7 +208,7 @@ final class JunieParser: LogParser, Sendable {
             }
             if let usageDict = firstDictionary(in: json, keys: ["usage", "tokenUsage", "token_usage", "llmUsage", "totalUsage"]) {
                 let extracted = TokenExtractionUtility.extractUsageTokens(usageDict)
-                if extracted.hasNoExplicitBuckets == false {
+                if Self.hasExplicitUsageBuckets(extracted) {
                     tokenData.input = extracted.input
                     tokenData.output = extracted.output
                     tokenData.cacheCreation = extracted.cacheCreation
@@ -272,7 +272,7 @@ final class JunieParser: LogParser, Sendable {
                         inputHint: userCharCount,
                         outputHint: assistantCharCount + assistantReasoningCharCount
                     )
-                    if extracted.hasNoExplicitBuckets == false {
+                    if Self.hasExplicitUsageBuckets(extracted) {
                         if usedExplicitUsage == false {
                             // First explicit usage supersedes any state.json totals of zero.
                             usedExplicitUsage = true
@@ -462,6 +462,14 @@ final class JunieParser: LogParser, Sendable {
         guard let events = FileSignature(for: eventsFile) else { return nil }
         let state = FileSignature(for: stateFile)
         return CompositeFileSignature(primary: events, settings: state, metadata: nil)
+    }
+
+    private static func hasExplicitUsageBuckets(_ usage: ExtractedTokenUsage) -> Bool {
+        usage.input > 0
+            || usage.output > 0
+            || usage.cacheCreation > 0
+            || usage.cacheRead > 0
+            || usage.reasoningTokens > 0
     }
 
     private func appendEntry(
