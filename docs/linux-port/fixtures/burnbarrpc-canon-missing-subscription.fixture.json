@@ -1,0 +1,289 @@
+{
+  "fixture": "burnbarrpc-canon-missing-subscription",
+  "purpose": "Negative drift fixture: deliberately omits subscription.resume so tools/ipc/generate-burnbarrpc-canon.mjs --fixture must fail nonzero.",
+  "omittedMethod": "subscription.resume",
+  "methods": [
+    {
+      "id": "approval.respond"
+    },
+    {
+      "id": "auth.bootstrap"
+    },
+    {
+      "id": "client.attach"
+    },
+    {
+      "id": "client.claimControl"
+    },
+    {
+      "id": "client.detach"
+    },
+    {
+      "id": "daemon.browser.action"
+    },
+    {
+      "id": "daemon.browser.tooling.get"
+    },
+    {
+      "id": "daemon.browser.tooling.update"
+    },
+    {
+      "id": "daemon.catalog"
+    },
+    {
+      "id": "daemon.code.call_graph"
+    },
+    {
+      "id": "daemon.code.context_pack"
+    },
+    {
+      "id": "daemon.code.diagnostics"
+    },
+    {
+      "id": "daemon.code.explore"
+    },
+    {
+      "id": "daemon.code.find_references"
+    },
+    {
+      "id": "daemon.code.get_symbol"
+    },
+    {
+      "id": "daemon.code.index_project"
+    },
+    {
+      "id": "daemon.code.index_status"
+    },
+    {
+      "id": "daemon.code.ops_diagnostics"
+    },
+    {
+      "id": "daemon.code.search"
+    },
+    {
+      "id": "daemon.code.watch_project"
+    },
+    {
+      "id": "daemon.computer_use.approval.pending"
+    },
+    {
+      "id": "daemon.computer_use.approval.respond"
+    },
+    {
+      "id": "daemon.computer_use.audit_export"
+    },
+    {
+      "id": "daemon.computer_use.invoke"
+    },
+    {
+      "id": "daemon.computer_use.panic_halt"
+    },
+    {
+      "id": "daemon.computer_use.session.start"
+    },
+    {
+      "id": "daemon.config.get"
+    },
+    {
+      "id": "daemon.config.update"
+    },
+    {
+      "id": "daemon.connector.action"
+    },
+    {
+      "id": "daemon.connector.config.update"
+    },
+    {
+      "id": "daemon.connector.plane.get"
+    },
+    {
+      "id": "daemon.controller.project.get"
+    },
+    {
+      "id": "daemon.controller.project.list"
+    },
+    {
+      "id": "daemon.controller.project.upsert"
+    },
+    {
+      "id": "daemon.controller.review.record"
+    },
+    {
+      "id": "daemon.controller.runtime_snapshot"
+    },
+    {
+      "id": "daemon.controller.summary"
+    },
+    {
+      "id": "daemon.followup.calendar"
+    },
+    {
+      "id": "daemon.followup.create"
+    },
+    {
+      "id": "daemon.followup.done"
+    },
+    {
+      "id": "daemon.followup.list"
+    },
+    {
+      "id": "daemon.followup.snooze"
+    },
+    {
+      "id": "daemon.health"
+    },
+    {
+      "id": "daemon.memory.analytics"
+    },
+    {
+      "id": "daemon.memory.audit_trail"
+    },
+    {
+      "id": "daemon.memory.forget"
+    },
+    {
+      "id": "daemon.memory.recall"
+    },
+    {
+      "id": "daemon.memory.remember"
+    },
+    {
+      "id": "daemon.mission.approve"
+    },
+    {
+      "id": "daemon.mission.cancel"
+    },
+    {
+      "id": "daemon.mission.create"
+    },
+    {
+      "id": "daemon.mission.get"
+    },
+    {
+      "id": "daemon.mission.list"
+    },
+    {
+      "id": "daemon.mission.packet.dispatch"
+    },
+    {
+      "id": "daemon.mission.result.record"
+    },
+    {
+      "id": "daemon.notification.command"
+    },
+    {
+      "id": "daemon.notification.config.get"
+    },
+    {
+      "id": "daemon.notification.config.update"
+    },
+    {
+      "id": "daemon.notification.health"
+    },
+    {
+      "id": "daemon.phone_control.pin.provision"
+    },
+    {
+      "id": "daemon.projection.rebuild"
+    },
+    {
+      "id": "daemon.provider.credential_slot.remove"
+    },
+    {
+      "id": "daemon.provider.credential_slot.upsert"
+    },
+    {
+      "id": "daemon.provider.custom_model.remove"
+    },
+    {
+      "id": "daemon.provider.custom_model.upsert"
+    },
+    {
+      "id": "daemon.provider.model_alias.remove"
+    },
+    {
+      "id": "daemon.provider.model_alias.upsert"
+    },
+    {
+      "id": "daemon.provider.model_display_name.clear"
+    },
+    {
+      "id": "daemon.provider.model_display_name.set"
+    },
+    {
+      "id": "daemon.provider.model_variant.remove"
+    },
+    {
+      "id": "daemon.provider.model_variant.upsert"
+    },
+    {
+      "id": "daemon.proxy.route_log.clear"
+    },
+    {
+      "id": "daemon.proxy.route_log.recent"
+    },
+    {
+      "id": "daemon.question.answer"
+    },
+    {
+      "id": "daemon.question.create"
+    },
+    {
+      "id": "daemon.question.get"
+    },
+    {
+      "id": "daemon.question.list"
+    },
+    {
+      "id": "daemon.search.query"
+    },
+    {
+      "id": "daemon.simulator.list"
+    },
+    {
+      "id": "daemon.simulator.replay"
+    },
+    {
+      "id": "daemon.simulator.run"
+    },
+    {
+      "id": "daemon.usage.recent"
+    },
+    {
+      "id": "daemon.usage.record"
+    },
+    {
+      "id": "perf.measure"
+    },
+    {
+      "id": "run.cancel"
+    },
+    {
+      "id": "run.create"
+    },
+    {
+      "id": "run.get"
+    },
+    {
+      "id": "run.list"
+    },
+    {
+      "id": "run.poll"
+    },
+    {
+      "id": "run.resume"
+    },
+    {
+      "id": "run.retry"
+    },
+    {
+      "id": "subscription.start"
+    },
+    {
+      "id": "workspace.executeTool"
+    },
+    {
+      "id": "workspace.toolResult"
+    }
+  ]
+}

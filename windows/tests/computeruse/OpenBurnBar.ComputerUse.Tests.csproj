@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable Computer-Use policy + crypto core
+    (Phase 4 · W5). Runs today via `dotnet test` on the authoring host, the SAME
+    assembly that ships on Windows. Mirrors the proven storage/theme/ipc/
+    presentation test pattern (net10.0, xUnit).
+
+    Coverage (all REAL, no mocked verdicts):
+      * CanonicalJsonTests           — deterministic sorted-key / omit-null / no-slash-escape encoding.
+      * Ed25519Tests                 — real RFC-8032 sign/verify, wrong-key + tamper rejection.
+      * CapabilityTokenTests         — issue -> verify -> REPLAY-REJECTED; expiry; domain; signature
+                                       tamper; scope/attestation/escrow binding (no self-match);
+                                       action-not-allowed; budget; revoked/absent issuer; file-ledger replay.
+      * AuditChainTests              — chained append; tamper detected (parent + LAST-entry via signed
+                                       head); truncation fail-closed; index/schema/decode failures;
+                                       signed-head signature verify + tamper.
+      * KillSwitchTests              — all THREE panic paths halt; FAIL-CLOSED-ON-RC-ERROR; UIA-trust
+                                       revocation; durable flag set synchronously (halt bound);
+                                       watchdog-set flag blocks dispatch independent of the app.
+      * WatchdogProtocolTests        — activate/clear/health wire round-trip; malformed/unsupported;
+                                       peer-unauthorized gate; exact response bytes.
+      * ScopeMatcherTests            — deny-precedence, newest-wins, url/bundle/title matching, expiry,
+                                       built-in deny registry blocks secure surfaces + oauth + loopback.
+      * CapabilityGateTests          — the full decision matrix incl. deny-region-beats-everything,
+                                       phone escape hatch, first-action approval, budget/daily caps.
+      * BudgetProjectorTests         — soft/hard thresholds + month-end projection.
+      * AttestationBindingTests      — digest determinism + freshness window.
+      * EndToEndSafetyTests          — gate -> audit append -> verify -> panic -> dispatch blocked.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.ComputerUse.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
+  </ItemGroup>
+
+</Project>

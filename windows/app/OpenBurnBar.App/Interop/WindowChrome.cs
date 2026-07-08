@@ -1,0 +1,100 @@
+using System;
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using OpenBurnBar.App.Theme;
+using Windows.Graphics;
+using WinRT.Interop;
+
+namespace OpenBurnBar.App.Interop;
+
+/// <summary>
+/// Small helpers that reach the <see cref="AppWindow"/> behind a WinUI <see cref="Window"/>
+/// so the shell can do the two things WinUI's window API doesn't expose directly:
+/// make a window a borderless top-most flyout (the NSPopover shape) and apply a Mica
+/// backdrop (the Liquid-Glass analog, master plan §9.6).
+/// </summary>
+internal static class WindowChrome
+{
+    /// <summary>The Win32 HWND backing a WinUI window.</summary>
+    public static IntPtr GetHandle(Window window) => WindowNative.GetWindowHandle(window);
+
+    /// <summary>The <see cref="AppWindow"/> facade for a WinUI window.</summary>
+    public static AppWindow GetAppWindow(Window window)
+    {
+        var windowId = Win32Interop.GetWindowIdFromWindow(GetHandle(window));
+        return AppWindow.GetFromWindowId(windowId);
+    }
+
+    /// <summary>
+    /// Apply the window backdrop through the Liquid-Glass chokepoint
+    /// (<see cref="LiquidGlass.ApplyWindowBackdrop"/>), so the window honors the transparency
+    /// preference (Frosted↔System↔Clear = Mica BaseAlt ↔ Mica Base ↔ DesktopAcrylic) and the
+    /// Reduce-Transparency clamp. On Windows 10 (no backdrop support) the chokepoint resolves
+    /// to a null backdrop and the window keeps its solid theme brush — the honest fallback the
+    /// master plan calls for. Retained as a thin compatibility wrapper over the shim so every
+    /// window-backdrop decision flows through the single glass seam.
+    /// </summary>
+    public static void TryApplyMica(Window window) =>
+        LiquidGlass.ApplyWindowBackdrop(window, LiquidGlassEnvironment.Current);
+
+    /// <summary>
+    /// Enable or disable the translucent window backdrop — the shell's window-level
+    /// reduced-transparency / high-contrast on/off switch (master plan §9.6 theme axes),
+    /// owned by <c>ThemeService</c>. Enabling routes through <see cref="TryApplyMica"/> →
+    /// <see cref="LiquidGlass.ApplyWindowBackdrop"/> so the resolved kind (Mica BaseAlt ↔
+    /// Mica Base ↔ DesktopAcrylic) still honors the transparency-preference math in the
+    /// glass shim (#1200); disabling clears <see cref="Window.SystemBackdrop"/> so the window
+    /// falls back to its solid theme brush — the same null backdrop the shim itself resolves
+    /// to for its <c>Solid</c> kind. One coherent backdrop path: every window-backdrop
+    /// decision flows through the single glass seam, this method only gates it on/off.
+    /// </summary>
+    public static void ApplyBackdrop(Window window, bool enabled)
+    {
+        if (enabled)
+        {
+            TryApplyMica(window);
+        }
+        else
+        {
+            window.SystemBackdrop = null;
+        }
+    }
+
+    /// <summary>
+    /// Turn a window into a borderless, non-resizable, always-on-top flyout: no title bar,
+    /// no border, hidden from the taskbar and Alt-Tab. Mirrors an NSPopover attached to the
+    /// menu-bar status item.
+    /// </summary>
+    public static void ConfigureAsFlyout(AppWindow appWindow)
+    {
+        if (appWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.SetBorderAndTitleBar(hasBorder: false, hasTitleBar: false);
+            presenter.IsResizable = false;
+            presenter.IsMaximizable = false;
+            presenter.IsMinimizable = false;
+            presenter.IsAlwaysOnTop = true;
+        }
+
+        // Keep the flyout out of the taskbar and Alt-Tab — it's a transient popover.
+        appWindow.IsShownInSwitchers = false;
+    }
+
+    /// <summary>
+    /// Position a flyout of <paramref name="size"/> at the bottom-right of the work area
+    /// (just above the notification tray), inset by <paramref name="margin"/> — where a
+    /// menu-bar popover would drop on Windows. Uses the display nearest the window.
+    /// </summary>
+    public static void MoveToTrayCorner(AppWindow appWindow, SizeInt32 size, int margin = 12)
+    {
+        appWindow.Resize(size);
+
+        var display = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Nearest);
+        var work = display.WorkArea;
+
+        int x = work.X + work.Width - size.Width - margin;
+        int y = work.Y + work.Height - size.Height - margin;
+        appWindow.Move(new PointInt32(x, y));
+    }
+}

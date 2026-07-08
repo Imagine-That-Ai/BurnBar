@@ -1,7 +1,10 @@
 import SwiftUI
+import os.log
 import OpenBurnBarCore
 import OpenBurnBarMedia
 import FirebaseAuth
+
+private let hermesSquareLeftColumnLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSquare")
 
 // The Hermes Square left column view.
 // Extracted from HermesSquareSplitLayout.swift (god-file decomposition) — same module, verbatim.
@@ -1055,7 +1058,7 @@ struct HermesSquareLeftColumn: View {
                     )
                     await inbox.refresh()
                 } catch {
-                    print("Error updating CLI session metadata: \(error)")
+                    hermesSquareLeftColumnLogger.error("Error updating CLI session metadata: \(String(describing: error), privacy: .public)")
                 }
             }
         } else if prefix == "hermes" || prefix == "pi" || prefix == "cliMirror" {

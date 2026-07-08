@@ -5,12 +5,14 @@ import OpenBurnBarCore
 
 /// Defines the available settings tabs in the settings navigation.
 enum SettingsTab: String, CaseIterable, Identifiable {
+    case home
     case general
     case updates
     case daemon
     case account
     case cloud
     case agents
+    case modelProxy
     case alerts
     case notifications
     case devicesAndSync
@@ -24,12 +26,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .home: return "Home"
         case .general: return "General"
         case .updates: return "Updates"
-        case .daemon: return "Daemon"
+        case .daemon: return "Engine Room"
         case .account: return "Account"
         case .cloud: return "Cloud"
         case .agents: return "Agents"
+        case .modelProxy: return "Model Proxy"
         case .alerts: return "Alerts"
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
@@ -45,18 +49,22 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     /// lives behind it without forcing the user to click in.
     var subtitle: String {
         switch self {
+        case .home:
+            return "Health, attention items, and quick actions"
         case .general:
-            return "Appearance, refresh, default view, indexing, summaries"
+            return "Appearance, dashboard defaults, refresh, indexing, summaries"
         case .updates:
             return "App version, automatic updates, release channel"
         case .daemon:
-            return "Lifecycle, HTTP gateway, controller runtime"
+            return "Daemon lifecycle, controller runtime"
         case .account:
             return "Sign-in, subscription, account actions"
         case .cloud:
             return "OpenBurnBar Cloud — hosted refresh, backup, Hermes anywhere"
         case .agents:
             return "Cloud keys, local CLIs, and local runtimes"
+        case .modelProxy:
+            return "Local gateway endpoint, routing strategy, model catalog"
         case .alerts:
             return "Spend thresholds, daily digest"
         case .notifications:
@@ -78,12 +86,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .home: return "house.fill"
         case .general: return "gearshape.fill"
         case .updates: return "arrow.down.circle.fill"
         case .daemon: return "cpu.fill"
         case .account: return "person.crop.circle.fill"
         case .cloud: return "sparkles"
         case .agents: return "cpu.fill"
+        case .modelProxy: return "network"
         case .alerts: return "bell.fill"
         case .notifications: return "bell.badge.fill"
         case .devicesAndSync: return "macbook.and.iphone"
@@ -111,12 +121,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var accentColor: Color {
         switch self {
+        case .home: return DesignSystem.Colors.ember
         case .general: return DesignSystem.Colors.amber
         case .updates: return DesignSystem.Colors.frost
         case .daemon: return DesignSystem.Colors.teal
         case .account: return DesignSystem.Colors.whimsy
         case .cloud: return DesignSystem.Colors.hermesAureate
         case .agents: return DesignSystem.Colors.ember
+        case .modelProxy: return DesignSystem.Colors.purple
         case .alerts: return DesignSystem.Colors.blaze
         case .notifications: return DesignSystem.Colors.whimsy
         case .devicesAndSync: return DesignSystem.Colors.teal
@@ -132,19 +144,94 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .agents:
             return [.claudeCode, .codex, .openCode, .hermes]
+        case .modelProxy:
+            return [.claudeCode, .openAI, .codex]
         default:
             return []
+        }
+    }
+
+    // MARK: - Section grouping
+
+    /// Which sidebar section this tab belongs to.
+    var section: SettingsSection {
+        switch self {
+        case .home:            return .home
+        case .agents, .modelProxy:
+            return .agentsAndModels
+        case .general:         return .lookAndFeel
+        case .account, .cloud, .alerts, .notifications, .devicesAndSync:
+            return .accountAndSync
+        case .daemon, .updates, .dataPrivacy:
+            return .system
+        case .textExpansion, .media, .computerUse, .pets:
+            return .extras
         }
     }
 }
 
 extension SettingsTab {
     static var visibleTabs: [SettingsTab] {
-        #if DISTRIBUTION_MAS
-        return allCases.filter { $0 != .computerUse && $0 != .updates }
-        #else
-        return allCases
-        #endif
+        var tabs: [SettingsTab] = [.home]
+        for section in SettingsSection.visibleSections {
+            tabs.append(contentsOf: section.tabs.filter { tab in
+                #if DISTRIBUTION_MAS
+                return tab != .computerUse && tab != .updates
+                #else
+                return true
+                #endif
+            })
+        }
+        return tabs
+    }
+}
+
+// MARK: - Settings Section
+
+/// Groups sidebar tabs into labeled sections so the sidebar reads as
+/// organized categories rather than a flat list of entries.
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case home
+    case agentsAndModels
+    case lookAndFeel
+    case accountAndSync
+    case system
+    case extras
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .home:             return ""
+        case .agentsAndModels:  return "Agents & Models"
+        case .lookAndFeel:      return "Look & Feel"
+        case .accountAndSync:   return "Account & Sync"
+        case .system:           return "System"
+        case .extras:           return "More"
+        }
+    }
+
+    /// Tabs in display order within this section.
+    var tabs: [SettingsTab] {
+        switch self {
+        case .home:
+            return [.home]
+        case .agentsAndModels:
+            return [.agents, .modelProxy]
+        case .lookAndFeel:
+            return [.general]
+        case .accountAndSync:
+            return [.account, .cloud, .devicesAndSync, .alerts, .notifications]
+        case .system:
+            return [.daemon, .updates, .dataPrivacy]
+        case .extras:
+            return [.textExpansion, .media, .computerUse, .pets]
+        }
+    }
+
+    /// Sections that should render in the sidebar, in order (home handled separately).
+    static var visibleSections: [SettingsSection] {
+        allCases.filter { $0 != .home }
     }
 }
 
@@ -157,6 +244,8 @@ extension SettingsTab {
         switch raw {
         case "providers", "routingPools", "connections", "switcher", "hermes":
             return .agents
+        case "gateway", "proxy", "modelProxy":
+            return .modelProxy
         default:
             return nil
         }

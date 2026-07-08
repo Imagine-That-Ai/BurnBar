@@ -1,0 +1,105 @@
+name: openburnbar-iroh (Windows / MSVC)
+
+# Windows crate-build lane for the iroh QUIC transport, mirroring
+# build-iroh-android-aar.yml (which runs the same crate on a non-Apple host —
+# ubuntu). Builds `openburnbar-iroh` for both supported Windows triples on a
+# native `windows-latest` MSVC host.
+#
+# Ownership (VAL-P0-RUST-005): this file, and build-burnbar-remote-windows.yml,
+# are OWNED and authored by the Rust→Windows lane. CI-002/W-SCAFFOLD only
+# *references* them (factory shared-file discipline, master plan §6.3).
+#
+# Green msvc build+test is PROVEN by VAL-P0-RUST-006 once a Windows runner is
+# enabled (billing is an open item). The lane is authored now so it is one
+# toggle from green.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/openburnbar-iroh/**"
+      - ".github/workflows/build-iroh-windows.yml"
+  pull_request:
+    paths:
+      - "crates/openburnbar-iroh/**"
+      - ".github/workflows/build-iroh-windows.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: openburnbar-iroh-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      # `ring` (pulled by iroh) assembles its crypto primitives with NASM on the
+      # MSVC target; Perl (its other build-time dependency) is preinstalled on the
+      # windows-latest image.
+      - name: Install NASM
+        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1.5.2
+
+      - name: Install rust toolchain
+        # Keep in sync with crates/openburnbar-iroh/rust-toolchain.toml and the
+        # iroh Android/xcframework lanes so every platform builds on the same
+        # rustc against the `iroh =1.0.0-rc.0` pin.
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
+        with:
+          toolchain: "1.96.0"
+          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            crates/openburnbar-iroh/target
+          key: iroh-windows-${{ runner.os }}-${{ hashFiles('crates/openburnbar-iroh/Cargo.toml', 'crates/openburnbar-iroh/Cargo.lock') }}
+          restore-keys: |
+            iroh-windows-${{ runner.os }}-
+
+      # ---- x86_64: full build + test (native on the x64 runner) --------------
+      - name: Build (x86_64-pc-windows-msvc)
+        run: cargo build --target x86_64-pc-windows-msvc
+        working-directory: crates/openburnbar-iroh
+
+      - name: Test datagrams + chat ALPN (x86_64-pc-windows-msvc)
+        run: cargo test --target x86_64-pc-windows-msvc
+        working-directory: crates/openburnbar-iroh
+
+      # ---- aarch64: build-only (cannot execute ARM64 on the x64 runner) -------
+      - name: Build (aarch64-pc-windows-msvc, build-only)
+        run: cargo build --target aarch64-pc-windows-msvc
+        working-directory: crates/openburnbar-iroh
+
+      - name: Inspect built native artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "== x86_64 =="
+          ls -la crates/openburnbar-iroh/target/x86_64-pc-windows-msvc/debug/*.dll crates/openburnbar-iroh/target/x86_64-pc-windows-msvc/debug/*.lib 2>/dev/null || true
+          echo "== aarch64 =="
+          ls -la crates/openburnbar-iroh/target/aarch64-pc-windows-msvc/debug/*.dll crates/openburnbar-iroh/target/aarch64-pc-windows-msvc/debug/*.lib 2>/dev/null || true
+
+      - name: Upload openburnbar-iroh Windows native libraries
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: openburnbar-iroh-windows-native
+          path: |
+            crates/openburnbar-iroh/target/x86_64-pc-windows-msvc/debug/openburnbar_iroh.dll
+            crates/openburnbar-iroh/target/x86_64-pc-windows-msvc/debug/openburnbar_iroh.dll.lib
+            crates/openburnbar-iroh/target/aarch64-pc-windows-msvc/debug/openburnbar_iroh.dll
+          if-no-files-found: warn
+          retention-days: 14

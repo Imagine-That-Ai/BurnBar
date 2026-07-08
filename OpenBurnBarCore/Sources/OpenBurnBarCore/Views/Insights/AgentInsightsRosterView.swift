@@ -14,6 +14,7 @@ public struct AgentInsightsRosterView: View {
     public var onSelectAggregate: (() -> Void)?
 
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+    @AppStorage("useKernelBackdrop") private var useKernelBackdrop: Bool = false
 
     public init(
         providers: [AgentProvider] = AgentProvider.allCases,
@@ -46,7 +47,11 @@ public struct AgentInsightsRosterView: View {
                 .frame(width: geometry.size.width, alignment: .leading)
             }
         }
-        .background(useWebsiteBackground ? Color.clear : UnifiedDesignSystem.Colors.background)
+        .background(usesLiveBackground ? Color.clear : UnifiedDesignSystem.Colors.background)
+    }
+
+    private var usesLiveBackground: Bool {
+        useWebsiteBackground || useKernelBackdrop
     }
 
     private var aggregateRow: some View {

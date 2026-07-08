@@ -1,22 +1,22 @@
 {
-  "originHash" : "59a16738ed4d514abac357bf1bcb348e4179e0f45df64518f09e9e68407f0d08",
+  "originHash" : "601fa0f246e0e65cf6710acca2239c2a4d66486b757bf0f5036f8cc15de7d094",
   "pins" : [
     {
-      "identity" : "sentry-cocoa",
+      "identity" : "swift-asn1",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/getsentry/sentry-cocoa",
+      "location" : "https://github.com/apple/swift-asn1.git",
       "state" : {
-        "revision" : "43abfbf9a26089ad34604c718ad0935440caf1d4",
-        "version" : "9.18.0"
+        "revision" : "a9a5efd40eaf558a2bcd48d64b1d1646be686008",
+        "version" : "1.7.1"
       }
     },
     {
-      "identity" : "sqlcipher.swift",
+      "identity" : "swift-crypto",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/sqlcipher/SQLCipher.swift.git",
+      "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
-        "revision" : "07bf6bc2191a063d6f1e7c3b5f276a3fadfe36b7",
-        "version" : "4.16.0"
+        "revision" : "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
+        "version" : "3.15.1"
       }
     }
   ],

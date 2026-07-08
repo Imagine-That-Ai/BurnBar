@@ -313,7 +313,7 @@ private struct SubscriptionOrb: View {
         if let bucket = entry.weeklyOrMonthlyBucket ?? entry.primaryDisplayableBucket {
             lines.append("\(bucket.label): \(bucket.remainingText) left")
         } else {
-            lines.append(entry.snapshot.statusMessage)
+            lines.append(entry.snapshot.statusMessage ?? "")
         }
         if let reset = entry.nextResetDate {
             lines.append("Resets \(reset.formatted(.relative(presentation: .numeric)))")

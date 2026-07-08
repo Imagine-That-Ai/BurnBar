@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    OpenBurnBar.Native — the shared managed↔Rust loader kernel of the Windows
+    native shim (W2). Owns the hardened native-library probe/resolve path the
+    per-crate shims (OpenBurnBar.Native.BurnBarRemote, OpenBurnBar.Native.Iroh)
+    register against their generated uniffi bindings, plus the graceful
+    NotSupported surface (NativeShimUnavailableException) for hosts where the
+    Rust cdylib is absent (the macOS dev host, CI without a cargo step).
+
+    Portable net8.0 — same TFM discipline as the other windows/ portable cores;
+    compiles and unit-tests on macOS with no Windows or native dependency.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>OpenBurnBar.Native</RootNamespace>
+  </PropertyGroup>
+
+  <!-- R19 managed PE hardening (HighEntropyVA + Deterministic), same import the
+       WinUI app uses. -->
+  <Import Project="../../dist/props/OpenBurnBar.Windows.Hardening.props" />
+
+</Project>

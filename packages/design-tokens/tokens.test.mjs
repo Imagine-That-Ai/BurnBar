@@ -11,6 +11,8 @@ const read = (p) => readFileSync(join(HERE, p), "utf8");
 const css = read("dist/css/pensieve.css");
 const swift = read("dist/swift/PensieveTokens.swift");
 const kotlin = read("dist/compose/PensieveTokens.kt");
+const winuiXaml = read("dist/winui/PensieveTokens.xaml");
+const winuiCs = read("dist/winui/PensieveTokens.cs");
 
 test("CSS exposes the Pensieve + brand tokens as :root custom properties", () => {
   for (const v of [
@@ -70,6 +72,63 @@ test("android in-tree PensieveTokens.kt matches generated Compose output (run ./
     onDisk,
     kotlin,
     "android PensieveTokens.kt is stale — run ./gradlew :app:syncGeneratedSources (Compose design tokens must equal the generated output byte-for-byte)"
+  );
+});
+
+test("WinUI XAML emits every color as #AARRGGBB (WinUI cannot parse rgba())", () => {
+  // No un-converted CSS rgba() may reach the XAML (WinUI's color parser rejects it).
+  assert.ok(!/rgba?\(/i.test(winuiXaml), "XAML still contains an rgba()/rgb() color");
+  // rgba(199,207,221,0.06) -> #0FC7CFDD ; rgba(255,255,255,0.08) -> #14FFFFFF (surface).
+  assert.ok(winuiXaml.includes('x:Key="PensieveColorMercuryWash">#0FC7CFDD<'), "mercury.wash alpha fold drifted");
+  assert.ok(winuiXaml.includes('x:Key="PensieveColorGlassLine">#14FFFFFF<'), "glass.line alpha fold drifted");
+  // Opaque #rrggbb gains an explicit #FF alpha; brass.core is the brand accent.
+  assert.ok(winuiXaml.includes('x:Key="PensieveColorBrassCore">#FFFA6B06<'), "brass.core opaque alpha missing");
+});
+
+test("WinUI XAML preserves the shell semantic OBB* keys + demonstrates every WinUI type", () => {
+  for (const key of [
+    "OBBAccentColor", "OBBAccentBrush", "OBBStdoutBrush", "OBBStderrBrush",
+    "OBBToolBrush", "OBBSystemBrush", "OBBSurfaceBrush", "OBBStrokeBrush",
+    "OBBMonoFontFamily", "OBBCardCornerRadius", "OBBCardPadding",
+  ]) {
+    assert.ok(winuiXaml.includes(`x:Key="${key}"`), `shell key ${key} missing from generated XAML`);
+  }
+  // Accent + surface/stroke resolve to Pensieve primitives (brand from the pipeline).
+  assert.ok(winuiXaml.includes('x:Key="OBBSurfaceBrush" Color="{StaticResource PensieveColorGlassLine}"'));
+  assert.ok(winuiXaml.includes('x:Key="OBBStrokeBrush" Color="{StaticResource PensieveColorGlassLineBright}"'));
+  // Every WinUI resource type the emitter must produce is present.
+  for (const t of ["<Color ", "<SolidColorBrush ", "<x:Double ", "<Thickness ", "<CornerRadius ", "<x:String "]) {
+    assert.ok(winuiXaml.includes(t), `generated XAML never emits ${t.trim()}`);
+  }
+});
+
+test("WinUI C# mirrors Swift/Kotlin (same token count, PascalCase, no undefined)", () => {
+  assert.ok(!winuiCs.includes("undefined"), "C# has an unresolved token");
+  assert.ok(winuiCs.includes("public static class PensieveTokens"));
+  assert.ok(winuiCs.includes('public const string ColorMercuryBright = "#f4f6fb";'));
+  const csCount = (winuiCs.match(/public const string /g) || []).length;
+  const swiftCount = (swift.match(/static let /g) || []).length;
+  assert.equal(csCount, swiftCount, "C# vs Swift token count drift (one source of truth)");
+});
+
+// The WinUI app can't reference files outside its project, so the shell keeps an
+// in-tree copy of the generated tokens (same pattern as the Android Compose copy
+// above). CI must catch any drift between those copies and fresh dist output.
+test("windows shell in-tree Tokens.xaml matches generated WinUI XAML (run node config.mjs && cp)", () => {
+  const onDisk = readFileSync(join(HERE, "..", "..", "windows", "app", "OpenBurnBar.App", "Theme", "Tokens.xaml"), "utf8");
+  assert.equal(
+    onDisk,
+    winuiXaml,
+    "windows/app/OpenBurnBar.App/Theme/Tokens.xaml is stale — regenerate: (cd packages/design-tokens && node config.mjs) && cp dist/winui/PensieveTokens.xaml ../../windows/app/OpenBurnBar.App/Theme/Tokens.xaml"
+  );
+});
+
+test("windows shell in-tree PensieveTokens.cs matches generated WinUI C# (run node config.mjs && cp)", () => {
+  const onDisk = readFileSync(join(HERE, "..", "..", "windows", "app", "OpenBurnBar.App", "Theme", "PensieveTokens.cs"), "utf8");
+  assert.equal(
+    onDisk,
+    winuiCs,
+    "windows/app/OpenBurnBar.App/Theme/PensieveTokens.cs is stale — regenerate: (cd packages/design-tokens && node config.mjs) && cp dist/winui/PensieveTokens.cs ../../windows/app/OpenBurnBar.App/Theme/PensieveTokens.cs"
   );
 });
 

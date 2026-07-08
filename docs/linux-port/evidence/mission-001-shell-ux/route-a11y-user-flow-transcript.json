@@ -1,0 +1,327 @@
+{
+  "generatedAt": "2026-07-06T04:23:40.988Z",
+  "lane": "W06LinuxShellUx",
+  "mode": "route-dom-a11y-oracle",
+  "routes": [
+    {
+      "route": "overview",
+      "label": "Overview",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/overview",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:overview",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-linux-desktop-first-run.png from packaged desktop session"
+    },
+    {
+      "route": "insights",
+      "label": "Insights",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/insights",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:insights",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-insights.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "database",
+      "label": "Database",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/database",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:database",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-database.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "providers",
+      "label": "Providers & models",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/providers",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:providers",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-providers.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "projects",
+      "label": "Projects",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/projects",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:projects",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-projects.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "missions",
+      "label": "Missions",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/missions",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:missions",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-missions.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "activity",
+      "label": "Activity & logs",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/activity",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:activity",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-activity.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "chat",
+      "label": "Chat / Hermes",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/chat",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:chat",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-chat.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "memory",
+      "label": "Memory",
+      "expectedState": "daemon-backed",
+      "reloadUrl": "app://openburnbar-linux/#/memory",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:memory",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-memory.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "settings",
+      "label": "Settings",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/settings",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:settings",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-settings.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "account",
+      "label": "Account & sync",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/account",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:account",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-account.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "updates",
+      "label": "Updates",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/updates",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:updates",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-updates.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "support",
+      "label": "Support & diagnostics",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/support",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:support",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-support.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "onboarding",
+      "label": "First-run setup",
+      "expectedState": "settings-failure",
+      "reloadUrl": "app://openburnbar-linux/#/onboarding",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:onboarding",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-onboarding.png when the packaged desktop route is captured"
+    },
+    {
+      "route": "pet",
+      "label": "Pet companion",
+      "expectedState": "pet-runtime",
+      "reloadUrl": "app://openburnbar-linux/#/pet",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:pet",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-pet.png from packaged desktop session plus GLB runtime test"
+    },
+    {
+      "route": "text-expansion",
+      "label": "Text expansion",
+      "expectedState": "local-crud",
+      "reloadUrl": "app://openburnbar-linux/#/text-expansion",
+      "expectedActiveNav": "button.nav-link[aria-current=\"page\"]:text-expansion",
+      "expectedLandmarks": [
+        "a.skip-link[href=\"#main\"]",
+        "nav[aria-label=\"Primary\"]",
+        "main#main",
+        "#route-title"
+      ],
+      "expectedKeyboardPath": [
+        "Tab to skip link",
+        "Activate skip link",
+        "Tab to active route",
+        "Enter route button"
+      ],
+      "screenshotExpectation": "covered by screenshot-route-text-expansion.png from packaged desktop session plus local CRUD transcript"
+    }
+  ]
+}

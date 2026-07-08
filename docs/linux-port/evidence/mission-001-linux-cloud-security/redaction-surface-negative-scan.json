@@ -1,0 +1,54 @@
+[
+  {
+    "rawMarkerFound" : false,
+    "redactedOutput" : "[daemon_journal] [REDACTED]",
+    "seededMarkerClasses" : [
+      "api_key",
+      "refresh_token",
+      "cookie",
+      "private_prompt",
+      "email",
+      "local_path"
+    ],
+    "surface" : "daemon_journal"
+  },
+  {
+    "rawMarkerFound" : false,
+    "redactedOutput" : "[provider_payload_trace] [REDACTED]",
+    "seededMarkerClasses" : [
+      "api_key",
+      "refresh_token",
+      "cookie",
+      "private_prompt",
+      "email",
+      "local_path"
+    ],
+    "surface" : "provider_payload_trace"
+  },
+  {
+    "rawMarkerFound" : false,
+    "redactedOutput" : "[crash_error_report] [REDACTED]",
+    "seededMarkerClasses" : [
+      "api_key",
+      "refresh_token",
+      "cookie",
+      "private_prompt",
+      "email",
+      "local_path"
+    ],
+    "surface" : "crash_error_report"
+  },
+  {
+    "rawMarkerFound" : false,
+    "redactedOutput" : "[release_evidence_log] [REDACTED]",
+    "seededMarkerClasses" : [
+      "api_key",
+      "refresh_token",
+      "cookie",
+      "private_prompt",
+      "email",
+      "local_path"
+    ],
+    "surface" : "release_evidence_log"
+  }
+]

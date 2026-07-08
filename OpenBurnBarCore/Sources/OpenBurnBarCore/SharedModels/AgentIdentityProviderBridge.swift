@@ -43,6 +43,7 @@ extension AgentIdentity {
         case .codex:    return .codex
         case .openClaw: return .openClaw
         case .openClaude: return .openClaude
+        case .omp: return .omp
         case .droid:    return .factory
         case .forge:    return .forgeDev
         case .antigravity: return .antigravity

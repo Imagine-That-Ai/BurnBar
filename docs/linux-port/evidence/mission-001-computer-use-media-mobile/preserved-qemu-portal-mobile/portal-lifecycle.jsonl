@@ -1,0 +1,19 @@
+{"phase":"init","ts":"2026-07-04T14:30:23+00:00"}
+{"phase":"sway-running","ts":"2026-07-04T14:30:32+00:00"}
+{"wayland_display":"wayland-1","ts":"2026-07-04T14:30:32+00:00"}
+{"phase":"portal-started","ts":"2026-07-04T14:30:40+00:00"}
+{"event": "portal-screencast-reachable", "ts": "2026-07-04T14:30:40+00:00", "version": "5"}
+{"callError": null, "event": "approve-create-session-response", "response": 0, "timedOut": false, "ts": "2026-07-04T14:30:40+00:00"}
+{"event":"consent-chooser-invoked","mode":"approve","args":"","stdin":"Virtual-1","ts":"2026-07-04T14:30:40+00:00"}
+{"event":"consent-chooser-selected","mode":"approve","selected":"Virtual-1","ts":"2026-07-04T14:30:40+00:00"}
+{"callError": null, "event": "approve-select-sources-response", "response": 0, "timedOut": false, "ts": "2026-07-04T14:30:40+00:00"}
+{"callError": null, "event": "approve-start-response", "response": 0, "timedOut": false, "ts": "2026-07-04T14:30:40+00:00"}
+{"event": "approve-session-close-success", "ts": "2026-07-04T14:30:40+00:00"}
+{"callError": null, "event": "deny-create-session-response", "response": 0, "timedOut": false, "ts": "2026-07-04T14:30:40+00:00"}
+{"event":"consent-chooser-invoked","mode":"deny","args":"","stdin":"Virtual-1","ts":"2026-07-04T14:30:40+00:00"}
+{"event":"consent-chooser-denied","mode":"deny","ts":"2026-07-04T14:30:41+00:00"}
+{"callError": null, "event": "deny-select-sources-response", "response": 1, "timedOut": false, "ts": "2026-07-04T14:30:41+00:00"}
+{"error": "g-dbus-error-quark: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: Object does not exist at path \u201c/org/freedesktop/portal/desktop/session/1_11/deny_session\u201d (19)", "event": "deny-session-close-failed", "ts": "2026-07-04T14:30:41+00:00"}
+{"event": "portal-lifecycle-probe-complete", "passed": true, "ts": "2026-07-04T14:30:41+00:00"}
+{"phase":"complete","ts":"2026-07-04T14:30:41+00:00"}
+{"phase":"outer-complete","ts":"2026-07-04T14:30:41+00:00"}

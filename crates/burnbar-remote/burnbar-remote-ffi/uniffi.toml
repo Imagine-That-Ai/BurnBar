@@ -1,0 +1,13 @@
+# C# binding configuration for uniffi-bindgen-cs (Windows port, FFI-007 /
+# VAL-P0-FFI-007). Consumed by `crates/burnbar-remote/bindings/csharp/regenerate.sh`.
+#
+# `access_modifier = "public"` emits a normal reusable library — the WinUI app
+# (Phase 1+) and the round-trip test project both consume the generated types
+# without an InternalsVisibleTo dance. The C# namespace is left at the tool
+# default (`uniffi.burnbar_remote`), matching the Swift/Kotlin generated-binding
+# convention already used for this crate.
+#
+# Only the C# emitter reads this file; the Swift/Kotlin lanes ignore
+# `[bindings.csharp]`.
+[bindings.csharp]
+access_modifier = "public"

@@ -14,6 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
+-- Schema hash: 6f4094a9eeb75469377818fa393183081cd853c8b9b1418cd0b3d74413992a93
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -110,11 +111,17 @@ CREATE TABLE source_artifacts (
 CREATE INDEX source_artifacts_source_idx ON source_artifacts(sourceType, sourceId);
 CREATE INDEX source_artifacts_timestamp_idx ON source_artifacts(timestamp DESC);
 
--- Full-text search virtual table over source_artifacts.content
-CREATE VIRTUAL TABLE IF NOT EXISTS search_chunks_fts USING fts5(
-  content,
-  content='source_artifacts',
-  content_rowid='rowid'
+-- Current search chunk FTS layout (v21+). The indexed payload spans the chunk
+-- text plus the document title/provider context so snippet/rank behavior stays
+-- aligned with the GRDB migrator.
+CREATE VIRTUAL TABLE search_chunks_fts USING fts5(
+  chunkID UNINDEXED,
+  documentID UNINDEXED,
+  title,
+  chunkText,
+  projectName,
+  provider,
+  tokenize='porter unicode61'
 );
 
 -- ── Local MCP Project Code Memory overlay ───────────────────────────────────
@@ -477,17 +484,61 @@ CREATE TABLE code_index_checkpoints (
   vacuumed_at      TEXT
 );
 
--- ── Provider Accounts Cache (v22+) ───────────────────────────────────────────
--- Local cache of the Firestore provider_accounts collection.
+-- ── Provider Accounts (v35+) ────────────────────────────────────────────────
 
-CREATE TABLE provider_accounts_cache (
-  accountId     TEXT NOT NULL PRIMARY KEY,
-  providerName  TEXT NOT NULL,
-  displayName   TEXT,
-  quotaType     TEXT NOT NULL DEFAULT 'hosted',   -- "hosted" | "self_hosted"
-  monthlyBudget REAL,                             -- USD monthly cap
-  cachedAt      REAL NOT NULL
+CREATE TABLE provider_accounts (
+  id                      TEXT     NOT NULL PRIMARY KEY,
+  providerID              TEXT     NOT NULL,
+  label                   TEXT     NOT NULL,
+  identityHint            TEXT,
+  status                  TEXT     NOT NULL,
+  credentialKind          TEXT     NOT NULL,
+  storageScope            TEXT     NOT NULL,
+  redactedLabel           TEXT     NOT NULL,
+  sourceDeviceID          TEXT,
+  linkedSwitcherProfileID TEXT,
+  isDefault               BOOLEAN  NOT NULL DEFAULT 0,
+  sortKey                 DOUBLE   NOT NULL DEFAULT 0,
+  lastValidatedAt         DATETIME,
+  lastRefreshAt           DATETIME,
+  lastErrorCode           TEXT,
+  schemaVersion           INTEGER  NOT NULL DEFAULT 1,
+  createdAt               DATETIME NOT NULL,
+  updatedAt               DATETIME NOT NULL
 );
+
+CREATE INDEX provider_accounts_provider_sort_idx
+  ON provider_accounts(providerID, sortKey, createdAt);
+CREATE INDEX provider_accounts_provider_default_idx
+  ON provider_accounts(providerID, isDefault);
+
+-- ── Provider Quota Snapshots (v54+) ─────────────────────────────────────────
+
+CREATE TABLE provider_quota_snapshots (
+  id           TEXT     NOT NULL PRIMARY KEY,
+  providerID   TEXT     NOT NULL,
+  providerName TEXT     NOT NULL,
+  source       TEXT     NOT NULL,
+  sourceID     TEXT     NOT NULL,
+  sourceLabel  TEXT     NOT NULL,
+  period       TEXT     NOT NULL,
+  quotaLimit   REAL,
+  used         REAL,
+  remaining    REAL,
+  resetAt      DATETIME,
+  planName     TEXT,
+  rawJSON      TEXT     NOT NULL,
+  fetchedAt    DATETIME NOT NULL,
+  createdAt    DATETIME NOT NULL,
+  updatedAt    DATETIME NOT NULL
+);
+
+CREATE UNIQUE INDEX provider_quota_snapshots_identity_idx
+  ON provider_quota_snapshots(providerID, source, sourceID, period);
+CREATE INDEX provider_quota_snapshots_provider_time_idx
+  ON provider_quota_snapshots(providerID, fetchedAt);
+CREATE INDEX provider_quota_snapshots_reset_idx
+  ON provider_quota_snapshots(resetAt);
 
 -- ── Sync Cursors (v25+) ──────────────────────────────────────────────────────
 -- Tracks Firestore sync watermarks to enable incremental reads.

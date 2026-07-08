@@ -1,0 +1,104 @@
+{
+  "cacheUpdates" : [
+    {
+      "daemonCacheKey" : "entitlements\/active",
+      "entitlementID" : "ent_linux_active",
+      "shellCacheEvent" : "membership.entitlement_cache.updated",
+      "source" : "stripe_checkout",
+      "state" : "active",
+      "uid" : "active"
+    },
+    {
+      "daemonCacheKey" : "entitlements\/cancelled",
+      "entitlementID" : "ent_linux_cancelled",
+      "shellCacheEvent" : "membership.entitlement_cache.updated",
+      "source" : "stripe_checkout",
+      "state" : "cancelled",
+      "uid" : "cancelled"
+    },
+    {
+      "daemonCacheKey" : "entitlements\/paymentFailed",
+      "shellCacheEvent" : "membership.entitlement_cache.updated",
+      "source" : "stripe_checkout",
+      "state" : "paymentFailed",
+      "uid" : "paymentFailed"
+    },
+    {
+      "daemonCacheKey" : "entitlements\/offline",
+      "shellCacheEvent" : "membership.entitlement_cache.updated",
+      "source" : "stripe_checkout",
+      "state" : "offline",
+      "uid" : "offline"
+    }
+  ],
+  "checkout" : {
+    "method" : "POST",
+    "name" : "stripe_checkout_session",
+    "requestBody" : {
+      "cancel_url" : "openburnbar:\/\/membership\/cancel",
+      "client_reference_id" : "active",
+      "mode" : "subscription",
+      "success_url" : "openburnbar:\/\/membership\/success"
+    },
+    "requestHeaders" : {
+      "authorization" : "Bearer [REDACTED]",
+      "stripe-mode" : "test"
+    },
+    "responseBody" : {
+      "id" : "cs_test_openburnbar",
+      "url" : "https:\/\/checkout.stripe.test\/session\/cs_test_openburnbar"
+    },
+    "responseStatus" : 200,
+    "url" : "https:\/\/api.stripe.com\/v1\/checkout\/sessions"
+  },
+  "portal" : {
+    "method" : "POST",
+    "name" : "stripe_billing_portal_session",
+    "requestBody" : {
+      "customer" : "cus_test_active",
+      "return_url" : "openburnbar:\/\/membership"
+    },
+    "requestHeaders" : {
+      "authorization" : "Bearer [REDACTED]",
+      "stripe-mode" : "test"
+    },
+    "responseBody" : {
+      "id" : "bps_test_openburnbar",
+      "url" : "https:\/\/billing.stripe.test\/session\/bps_test_openburnbar"
+    },
+    "responseStatus" : 200,
+    "url" : "https:\/\/api.stripe.com\/v1\/billing_portal\/sessions"
+  },
+  "restores" : [
+    {
+      "checkoutSurface" : "stripe_web_checkout_or_portal",
+      "entitlementID" : "ent_linux_active",
+      "source" : "stripe_checkout",
+      "state" : "active",
+      "uid" : "active",
+      "visualArtifact" : "membership-active.svg"
+    },
+    {
+      "checkoutSurface" : "stripe_web_checkout_or_portal",
+      "entitlementID" : "ent_linux_cancelled",
+      "source" : "stripe_checkout",
+      "state" : "cancelled",
+      "uid" : "cancelled",
+      "visualArtifact" : "membership-cancelled.svg"
+    },
+    {
+      "checkoutSurface" : "stripe_web_checkout_or_portal",
+      "source" : "stripe_checkout",
+      "state" : "paymentFailed",
+      "uid" : "paymentFailed",
+      "visualArtifact" : "membership-paymentFailed.svg"
+    },
+    {
+      "checkoutSurface" : "stripe_web_checkout_or_portal",
+      "source" : "stripe_checkout",
+      "state" : "offline",
+      "uid" : "offline",
+      "visualArtifact" : "membership-offline.svg"
+    }
+  ]
+}

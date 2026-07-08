@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-07-06T04:23:40.990Z",
+  "lane": "W06LinuxShellUx",
+  "breakpoints": [
+    "default",
+    "max-width:960px"
+  ],
+  "skins": [
+    "editorial",
+    "aurora"
+  ],
+  "keys": [
+    "--color-ink-void",
+    "--color-brass-core",
+    "--ds-skin",
+    "--ds-accent-gradient",
+    "--font-display",
+    "--space-4",
+    "--radius-lg"
+  ],
+  "editorial": {
+    "--color-ink-void": "#050508",
+    "--color-brass-core": "#fa6b06",
+    "--ds-skin": "editorial",
+    "--ds-accent-gradient": "linear-gradient(135deg, var(--color-brass-core), var(--color-brass-bright))",
+    "--font-display": "Outfit",
+    "--space-4": "16px",
+    "--radius-lg": "20px"
+  },
+  "aurora": {
+    "--color-ink-void": "#040610",
+    "--color-brass-core": "#3cd6c0",
+    "--ds-skin": "aurora",
+    "--ds-accent-gradient": "linear-gradient(135deg, #3cd6c0, #6ee7ff)",
+    "--font-display": "Outfit",
+    "--space-4": "16px",
+    "--radius-lg": "20px"
+  },
+  "changed": [
+    "--color-ink-void",
+    "--color-brass-core",
+    "--ds-skin",
+    "--ds-accent-gradient"
+  ]
+}

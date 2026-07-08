@@ -256,6 +256,19 @@ xcodebuild: error: Could not resolve package dependencies:
 LOG
 )"
 
+swiftpm_xcode_internal_package_graph_crash_log="$(write_fixture swiftpm-xcode-internal-package-graph-crash <<'LOG'
+Fetching from https://github.com/google/grpc-binary.git
+Checking out 1.69.1 of package 'grpc-binary'
+*** Terminating app due to uncaught exception 'NSInvalidArgumentException', reason: '*** -[NSMutableArray insertObjects:atIndexes:]: count of array (32) differs from count of index set (31)'
+8   IDESwiftPackageCore                 0x0000000120da4830 IDESwiftWorkspace.DependencyPackagesGroup.sortedInsert(of:)
+11  IDESwiftPackageCore                 0x0000000120cec4ac IDESPMWorkspaceDelegate.packageGraphDidFinishAction
+23  SwiftPM                             0x0000000124fdf201 SPMWorkspace.packageGraphActionFinished
+** INTERNAL ERROR: Uncaught exception **
+Uncaught Exception: *** -[NSMutableArray insertObjects:atIndexes:]: count of array (32) differs from count of index set (31)
+./scripts/test-openburnbar-app.sh: line 484: 94247 Abort trap: 6           xcodebuild test "${xcodebuild_args[@]}" 2>&1
+LOG
+)"
+
 interleaved_security_failure_log="$(write_fixture interleaved-security-failure <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-19 03:17:42.489.
 2026-06-19 03:20:49.210291+0000 OpenBurnBar[80/Users/runner/work/BurnBar/BurnBar/AgentLensTests/Active/ComputerUse/PhoneControlReceiverTests.swift:1449: error: -[OpenBurnBarTests.PhoneControlReceiverTests testStrictAttestationDeniesClipboardBeforePasteboardOrInputMutation] : XCTAssertEqual failed: ("accepted") is not equal to ("denied")
@@ -299,6 +312,7 @@ assert_true "SwiftPM binary artifact download timeout is retryable infrastructur
 assert_true "SwiftPM package clone network timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_clone_timeout_log"
 assert_false "SwiftPM timeout does not hide concrete XCTest failure" is_swiftpm_dependency_resolution_transient "$swiftpm_timeout_with_xctest_failure_log"
 assert_true "SwiftPM cache race plus Signal FFI mapping miss is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_cache_and_signal_ffi_mapping_log"
+assert_true "Xcode SwiftPM package graph internal crash is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_xcode_internal_package_graph_crash_log"
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
 
 echo "OpenBurnBar app-test classifier fixtures passed."

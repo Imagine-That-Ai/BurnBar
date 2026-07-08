@@ -3,6 +3,29 @@ import OpenBurnBarCore
 import SwiftUI
 import WebKit
 
+enum DashboardLiveBackdropVisibility {
+    static func exposesContentBackdrop(
+        appearanceSkin: AppSkin,
+        useWebsiteBackground: Bool,
+        useKernelBackdrop: Bool
+    ) -> Bool {
+        appearanceSkin == .editorial
+            || useWebsiteBackground
+            || useKernelBackdrop
+    }
+}
+
+private struct DashboardLiveBackdropActiveKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var dashboardLiveBackdropActive: Bool {
+        get { self[DashboardLiveBackdropActiveKey.self] }
+        set { self[DashboardLiveBackdropActiveKey.self] = newValue }
+    }
+}
+
 struct UsageModeToolbarPicker: View {
     @Binding var selection: UsageDisplayMode
 
@@ -70,7 +93,11 @@ struct DashboardBackdrop: View {
     }
 
     private var dynamicBackdropEnabled: Bool {
-        settingsManager.useWebsiteBackground || useKernelBackdrop
+        DashboardLiveBackdropVisibility.exposesContentBackdrop(
+            appearanceSkin: settingsManager.appearanceSkin,
+            useWebsiteBackground: settingsManager.useWebsiteBackground,
+            useKernelBackdrop: useKernelBackdrop
+        )
     }
 
     private var substrate: SwarmSubstrate {

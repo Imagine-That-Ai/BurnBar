@@ -58,7 +58,7 @@ object AnalyticsManager {
             consent = store,
             transport = transport,
             apiKey = BuildConfig.AMPLITUDE_API_KEY,
-            superProperties = { superProperties(app) },
+            superProperties = ::superProperties,
         )
         consentStore = store
         analytics = recorder
@@ -131,7 +131,7 @@ object AnalyticsManager {
         trackSessionStartIfConsented(isFirstLaunch = currentSessionIsFirstLaunch)
     }
 
-    private fun superProperties(context: Context): Map<String, AnalyticsValue> {
+    private fun superProperties(): Map<String, AnalyticsValue> {
         val locale = Locale.getDefault()
         val region = locale.country.takeIf { it.isNotBlank() }
         val bcp47 = if (region != null) "${locale.language}-$region" else locale.language

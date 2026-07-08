@@ -1,0 +1,1 @@
+{"message":{"type":"StatusUpdate","payload":{"message_id":"msg-1","token_usage":{"input_other":180,"output":70,"input_cache_read":20,"input_cache_creation":0,"model":"kimi-for-coding"}}}}

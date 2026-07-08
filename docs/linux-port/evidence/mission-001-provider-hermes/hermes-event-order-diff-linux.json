@@ -1,0 +1,13 @@
+{
+  "differences": [],
+  "errors": [],
+  "expectedChecksumSHA256": "af712a7b8536cc4100fdc67f08488bb0b248373aa13038f0965736af895b790f",
+  "expectedSource": "docs/linux-port/fixtures/hermes-event-order-source-oracle.json#scenarios",
+  "observedChecksumSHA256": "af712a7b8536cc4100fdc67f08488bb0b248373aa13038f0965736af895b790f",
+  "observedSequencing": "raw product ordinals sorted before seq assignment",
+  "observedSource": "hermes-run-journal.jsonl + hermes-run-checkpoints + cli-hermes-transcript.txt",
+  "platform": "linux",
+  "schema": "openburnbar-hermes-event-order-diff-v3",
+  "sourceFixture": "docs/linux-port/fixtures/hermes-event-order-source-oracle.json",
+  "status": "exact_match"
+}

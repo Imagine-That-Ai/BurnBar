@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable TextExpansion core (Phase 3 · Windows port · TextExpansion lane).
+
+    This is the Windows peer of the macOS `&&`-trigger text-expansion engine:
+      OpenBurnBarCore/.../TextExpansion/TextExpansion.swift            (model + matcher + planner + policy)
+      OpenBurnBarCore/.../TextExpansion/TextExpansionKeyEventCharacters.swift (US-ANSI keycode map)
+      OpenBurnBarCore/.../TextExpansion/TextExpansionInbox.swift        (keyboard composer)
+      OpenBurnBarCore/.../TextExpansion/TextExpansionUsageStore.swift   (usage ledger + ranking)
+      OpenBurnBarCore/.../TextExpansion/TextExpansionSnapshotStore.swift(JSON snapshot store)
+      AgentLens/Services/TextExpansion/TextExpansionRuntimeController.swift (CGEvent-tap state machine)
+
+    It targets plain net8.0 — NO Windows TFM, zero P/Invoke, zero UI framework, zero
+    keystroke capture — on purpose: the SAME managed assembly the WinUI shell
+    (net8.0-windows) links is unit-tested on the macOS authoring host today
+    (`dotnet test`). This mirrors the already-proven OpenBurnBar.App.Settings /
+    OpenBurnBar.Pretext portable-core pattern: a higher-runtime test project
+    (net10.0) references this net8.0 library, and the WinUI app references it too.
+
+    The REAL OS keystroke capture + injection (the CGEvent-tap peer: a Win32
+    low-level keyboard hook + SendInput) is the OS adapter and is explicitly
+    DEFERRED to bucket B/C. It plugs in behind the seams defined here:
+      • ITextExpansionKeystrokeSink  — delete N chars + type the replacement
+      • ITextExpansionSnippetSource  — supply the active snippet set
+      • the injected clock (Func&lt;DateTimeOffset&gt;) — the suppress window
+    Everything above those seams (trigger detection, the match algorithm, the
+    runtime state machine, the snippet model, JSON snapshot store) is PORTABLE and
+    carries real xUnit coverage in windows/tests/text-expansion/.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.TextExpansion</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.TextExpansion</AssemblyName>
+    <!--
+      Lets the net8.0 library be RESTORED/BUILT by the net10.0 SDK on macOS without
+      a Windows targeting pack. It is a pure managed library, so no Windows facet
+      is needed; this simply keeps tooling quiet on the authoring host.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>

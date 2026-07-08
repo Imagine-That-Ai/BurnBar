@@ -1,0 +1,1 @@
+{"contentKeyLength":32,"ratchetEpochHint":2,"scheme":"sealed-sender","senderIdentityKeyId":"sk-1","signalMessageB64":"bXNn","signalMessageType":3,"wraps":[{"recipientIdentityKeyB64":"cmVjaXA=","recipientIdentityKeyId":"rk-1","recipientKind":"device","sealedContentKeyB64":"c2VhbGVk"}]}

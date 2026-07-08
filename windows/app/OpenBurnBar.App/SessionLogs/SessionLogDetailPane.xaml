@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/SessionLogs/SessionLogDetailPane.swift (Phase 3 · W7).
+  The right-hand detail of the session-logs list-detail: a header (source chip, project,
+  relative time, title, meta chips), then the structured transcript parsed from the
+  record's fullText by the portable TranscriptBlockParser (unit-tested on macOS), then a
+  Copy / Export action bar. Controller/mission panels + resume are later-wave macOS
+  integrations and are intentionally out of this port's scope.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.SessionLogs.SessionLogDetailPane"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:slvm="using:OpenBurnBar.App.Presentation.SessionLogs"
+    xmlns:local="using:OpenBurnBar.App.SessionLogs"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!-- Per-kind transcript templates (selected by TranscriptBlockTemplateSelector). -->
+        <DataTemplate x:Key="UserBlockTemplate" x:DataType="slvm:TranscriptBlock">
+            <Border CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                    Background="#1FC7CFDD"
+                    BorderBrush="{StaticResource OBBStrokeBrush}"
+                    BorderThickness="1"
+                    Padding="12"
+                    Margin="0,0,0,10"
+                    HorizontalAlignment="Right"
+                    MaxWidth="560">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="You"
+                               FontSize="10"
+                               Foreground="{StaticResource PensieveColorMercuryDeepBrush}" />
+                    <TextBlock Text="{x:Bind Content}"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AssistantBlockTemplate" x:DataType="slvm:TranscriptBlock">
+            <Border Padding="0" Margin="0,0,0,10" HorizontalAlignment="Left" MaxWidth="620">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Assistant"
+                               FontSize="10"
+                               Foreground="{StaticResource OBBAccentBrush}" />
+                    <TextBlock Text="{x:Bind Content}"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CodeBlockTemplate" x:DataType="slvm:TranscriptBlock">
+            <Border CornerRadius="{StaticResource PensieveRadiusSmCorner}"
+                    Background="{StaticResource PensieveColorInkVoidBrush}"
+                    BorderBrush="{StaticResource OBBStrokeBrush}"
+                    BorderThickness="1"
+                    Padding="12"
+                    Margin="0,0,0,10">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{x:Bind Label}"
+                               FontSize="10"
+                               FontFamily="Cascadia Mono, Consolas"
+                               Foreground="{StaticResource OBBToolBrush}" />
+                    <TextBlock Text="{x:Bind Content}"
+                               FontFamily="Cascadia Mono, Consolas, Courier New"
+                               FontSize="12.5"
+                               TextWrapping="NoWrap"
+                               IsTextSelectionEnabled="True"
+                               Foreground="{StaticResource OBBStdoutBrush}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ToolBlockTemplate" x:DataType="slvm:TranscriptBlock">
+            <Border CornerRadius="{StaticResource PensieveRadiusSmCorner}"
+                    Background="#146AB0FF"
+                    BorderBrush="#336AB0FF"
+                    BorderThickness="1"
+                    Padding="10"
+                    Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE756;" FontSize="12" Foreground="{StaticResource OBBToolBrush}" />
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{x:Bind Label}"
+                                   FontSize="12"
+                                   Foreground="{StaticResource OBBToolBrush}" />
+                        <TextBlock Text="{x:Bind Content}"
+                                   FontSize="11.5"
+                                   FontFamily="Cascadia Mono, Consolas"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SeparatorBlockTemplate" x:DataType="slvm:TranscriptBlock">
+            <Border Height="1" Margin="40,10" Background="{StaticResource PensieveColorGlassLineBrush}" />
+        </DataTemplate>
+
+        <local:TranscriptBlockTemplateSelector
+            x:Key="TranscriptSelector"
+            UserTemplate="{StaticResource UserBlockTemplate}"
+            AssistantTemplate="{StaticResource AssistantBlockTemplate}"
+            CodeTemplate="{StaticResource CodeBlockTemplate}"
+            ToolTemplate="{StaticResource ToolBlockTemplate}"
+            SeparatorTemplate="{StaticResource SeparatorBlockTemplate}" />
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Empty state (no selection). -->
+        <StackPanel x:Name="EmptyState"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="10"
+                    Padding="40">
+            <FontIcon Glyph="&#xE7C3;" FontSize="44" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+            <TextBlock Text="Select a session to read its transcript"
+                       FontSize="14"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+        </StackPanel>
+
+        <!-- Detail content (visible when a record is bound). -->
+        <Grid x:Name="ContentRoot" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Spacing="8" Padding="24,24,24,16">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                            Background="#24FDC42C"
+                            BorderBrush="#59FDC42C"
+                            BorderThickness="0.5"
+                            Padding="8,2">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon x:Name="SourceIcon" Glyph="&#xE8CE;" FontSize="9"
+                                      Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                            <TextBlock x:Name="SourceLabel"
+                                       FontSize="11"
+                                       Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="ProjectLabel"
+                               FontSize="11"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock x:Name="TimeLabel"
+                               FontSize="11"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </StackPanel>
+
+                <TextBlock x:Name="TitleLabel"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           MaxLines="2"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+
+                <TextBlock x:Name="MetaLabel"
+                           FontSize="11"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+
+            <Border Grid.Row="1" Height="1" Background="{StaticResource PensieveColorGlassLineBrush}" />
+
+            <!-- Transcript -->
+            <ListView Grid.Row="2"
+                      x:Name="TranscriptList"
+                      ItemsSource="{x:Bind Blocks, Mode=OneWay}"
+                      ItemTemplateSelector="{StaticResource TranscriptSelector}"
+                      SelectionMode="None"
+                      Padding="20,16"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+
+            <!-- Fallback body when the parser yields no blocks. -->
+            <TextBlock Grid.Row="2"
+                       x:Name="FallbackBody"
+                       Visibility="Collapsed"
+                       Padding="24,16"
+                       FontSize="13"
+                       TextWrapping="Wrap"
+                       IsTextSelectionEnabled="True"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+
+            <Border Grid.Row="3" Height="1" Background="{StaticResource PensieveColorGlassLineBrush}" />
+
+            <!-- Action bar -->
+            <StackPanel Grid.Row="4"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="12"
+                        Padding="24,12">
+                <Button x:Name="CopyButton"
+                        Click="OnCopyMarkdownClick"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE8C8;" FontSize="12" />
+                        <TextBlock x:Name="CopyLabel" Text="Copy Markdown" FontSize="12" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

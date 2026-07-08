@@ -20,6 +20,7 @@ enum DiscoverySource: Equatable {
     case gemini(executablePath: String?, configDirectory: String?)
     case kimi(executablePath: String?, configDirectory: String?)
     case pi(executablePath: String?, configDirectory: String?)
+    case omp(executablePath: String?, configDirectory: String?)
 }
 
 /// Authentication state of a discovered identity.
@@ -207,6 +208,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .kimi(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .pi:
                 source = .pi(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .omp:
+                source = .omp(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             }
 
             guard cliInfo.isInstalled else {
@@ -418,6 +421,18 @@ final class SwitcherDiscoveryService: ObservableObject {
                     displayLabel: "Pi",
                     configDirectory: configDirectory,
                     accountDescription: "Pi local profile"
+                ),
+                sortKey: 0
+            )
+        case .omp(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .omp,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "OMP",
+                    configDirectory: configDirectory,
+                    accountDescription: "OMP local profile"
                 ),
                 sortKey: 0
             )
@@ -850,6 +865,9 @@ final class SwitcherDiscoveryService: ObservableObject {
                 case .pi(_, let configDirectory):
                     return cliType == .pi
                         && configDirectory == saved.cliMetadata?.configDirectory
+                case .omp(_, let configDirectory):
+                    return cliType == .omp
+                        && configDirectory == saved.cliMetadata?.configDirectory
                 default:
                     return false
                 }
@@ -956,6 +974,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .kimi(executablePath: CLILaunchAdapter.executablePath(for: .kimi), configDirectory: nil)
         case .pi:
             return .pi(executablePath: CLILaunchAdapter.executablePath(for: .pi), configDirectory: nil)
+        case .omp:
+            return .omp(executablePath: CLILaunchAdapter.executablePath(for: .omp), configDirectory: nil)
         }
     }
 
@@ -980,7 +1000,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -995,6 +1015,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .gemini: cliType = .gemini
             case .kimi: cliType = .kimi
             case .pi: cliType = .pi
+            case .omp: cliType = .omp
             default: cliType = .codex
             }
             let execPath = CLILaunchAdapter.executablePath(for: cliType)
@@ -1071,6 +1092,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .kimi
         case .pi:
             return .piAgent
+        case .omp:
+            return .omp
         }
     }
 
@@ -1224,6 +1247,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         case (.gemini, .geminiCLI): return true
         case (.kimi, .kimiCLI): return true
         case (.pi, .piCLI): return true
+        case (.omp, .ompCLI): return true
         default: return false
         }
     }
@@ -1245,6 +1269,7 @@ extension DiscoverySource {
         case .gemini: return .gemini
         case .kimi: return .kimi
         case .pi: return .pi
+        case .omp: return .omp
         default: return nil
         }
     }

@@ -1,0 +1,34 @@
+{
+  "tree": "windows",
+  "target": 800,
+  "areas": [
+    "app",
+    "pal",
+    "native",
+    "storage",
+    "cloudsync",
+    "particles",
+    "pretext",
+    "computeruse",
+    "integrations",
+    "packaging",
+    "dist",
+    "tests"
+  ],
+  "oversized": {
+    "app": [],
+    "pal": [],
+    "native": [],
+    "storage": [],
+    "cloudsync": [],
+    "particles": [],
+    "pretext": [],
+    "computeruse": [],
+    "integrations": [],
+    "packaging": [],
+    "dist": [],
+    "tests": []
+  },
+  "generatedAt": "2026-07-04T00:00:00Z",
+  "note": "reason: per-tree shrink-only size ratchet for the Windows source tree, seeded greenfield (all areas empty). Mirrors budgets/swift-file-size-baseline.json but is rooted at windows/ and partitioned by the twelve documented sub-trees (app=WinUI shell, pal=Platform Abstraction Layer + ViGEm computer-use input path + pet overlay, native=C-ABI/Rust FFI shim, storage=SQLCipher DataStore seam, cloudsync=portable cloud sync + crypto + auth — the Firestore CloudSync REST gateway (ICloudSyncGateway over documents.get/patch/commit/runQuery + the Firebase callable envelope + the Firestore model domains + FakeGateway + offline-queue/listener state machines), the CloudVault E2EE seal/open + escrow key-wrap crypto port, and the Windows App Check client (portable mint pipeline + net8.0-windows TPM producer + HttpClient transport), particles=Win2D particle-engine renderer + perf harness, pretext=Pretext text-layout engine + offscreen WebView2 host + metric-parity harness, computeruse=portable Computer-Use policy/crypto core + Windows SendInput/UIA/WGC adapters, integrations=third-party device/service integrations — Google Cast, Home Assistant + SmartHub, Mercury media pipeline — each a portable protocol/state-machine lib + net8.0-windows adapter, packaging=distribution manifests + signed auto-update — the MSIX Package.appxmanifest + WAP packaging project, the portable-zip layout + build script, the winget manifest set, and the Chocolatey nuspec + install scripts (data/config/script files), plus packaging/updater/ — the Ed25519-pinned update feed (appcast XML + latest-windows.json), the portable net8.0 updater-core (feed parse + pinned Ed25519 pin-verify over the artifact bytes + SHA-256 + downgrade-blocking version compare, R19), the release-side appcast generator, and the net8.0-windows WinSparkle host adapter, dist=signed-distribution core — the portable update-feed verification kernel (pinned Ed25519 over a canonical release descriptor, independent of Authenticode; strict feed parse + fail-closed decision), the release-pipeline signer CLI, and the DLL-load hardening library/policy (R19 library-validation equivalent) whose flags the packaging props under windows/dist/props carry, tests). scripts/debt/check-windows-tree-budget.sh counts source files (.cs/.xaml/.cpp/.cxx/.cc/.c/.h/.hpp/.rs) over `target` lines, per area. Partition guarantee: a macOS-tree (AgentLens/, OpenBurnBarCore/, OpenBurnBarDaemon/) or Android-tree (android/) change is never scanned because the scan root is windows/, so it cannot move any Windows counter; and each area counter is computed only from windows/<area>/, so app growth cannot move the pal/native/storage/cloudsync/particles/pretext/computeruse/integrations/packaging/dist/test counters. Regenerate with `scripts/debt/check-windows-tree-budget.sh --print-live` and commit as real WinUI/PAL/native/storage/cloudsync/particles/pretext/computeruse/integrations/packaging/dist/test code lands, ratcheting each area down as files drop below target."
+}
