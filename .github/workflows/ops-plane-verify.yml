@@ -59,6 +59,11 @@ jobs:
 
   detect-secrets:
     runs-on: ubuntu-latest
+    # Production-environment jobs (this, plus verify / skipped-no-gcp-key via `needs`)
+    # run only on schedule / workflow_dispatch. On pull_request, only drift-check-selftest
+    # runs (it has no environment), so PRs never hit production environment protection.
+    # Without this guard the PR check fails with "not allowed to deploy to production".
+    if: github.event_name != 'pull_request'
     environment: production
     outputs:
       has-gcp-sa-key: ${{ steps.detect.outputs.has-gcp-sa-key }}
