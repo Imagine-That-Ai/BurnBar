@@ -303,6 +303,52 @@ final class MacFileTransferSecurityTests: XCTestCase {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
     }
 
+    func testInboundAdvertiseDoesNotTrustForgedSealedEnvelopeMagicBytes() async throws {
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+
+        var forgedPlaintext = MediaFrameAEAD.magic
+        forgedPlaintext.append(MediaFrameAEAD.version)
+        forgedPlaintext.append(Data("attacker plaintext after public magic".utf8))
+        let backend = QuarantineBlobBackend(payload: forgedPlaintext)
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-file-transfer-forged-seal-\(UUID().uuidString)", isDirectory: true)
+        let inboxURL = temp.appendingPathComponent("inbox", isDirectory: true)
+        let service = MediaFileTransferService(
+            backend: backend,
+            configuration: .init(
+                storeDirectoryURL: temp.appendingPathComponent("store", isDirectory: true),
+                inboxDirectoryURL: inboxURL,
+                secretKeyProvider: { Data(repeating: 0x42, count: 32) }
+            )
+        )
+        let sessionKey = SymmetricKey(data: Data(repeating: 0x5A, count: 32))
+        let adapter = MacFileTransferService(
+            service: service,
+            settingsProvider: { true },
+            frameSealKeyProvider: { _, _ in sessionKey }
+        )
+        let manifest = Self.manifest(size: Int64(forgedPlaintext.count))
+        let frame = Self.advertiseFrame(manifest: manifest)
+        var acks: [HermesRealtimeRelayFrame] = []
+
+        await adapter.handleAdvertise(frame: frame) { ack in
+            acks.append(ack)
+        }
+
+        let downloaded = inboxURL.appendingPathComponent("blob_quarantine_hash.txt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: downloaded.path))
+        let onDisk = try Data(contentsOf: downloaded)
+        XCTAssertTrue(MediaFrameAEAD.isSealedEnvelope(onDisk), "received file must be sealed at rest")
+        XCTAssertFalse(
+            onDisk.contains(Data("attacker plaintext after public magic".utf8)),
+            "public magic bytes must not let attacker-controlled plaintext bypass at-rest sealing"
+        )
+        XCTAssertEqual(acks.first?.media?.ack?.status, .received)
+
+        try? FileManager.default.removeItem(at: temp)
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+    }
+
     func testInboundAdvertiseRejectsOversizedFileInsteadOfInMemorySealing() async throws {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
 
@@ -338,8 +384,9 @@ final class MacFileTransferSecurityTests: XCTestCase {
         let fetchedTickets = await backend.fetchedTickets
         XCTAssertEqual(fetchedTickets, [])
         XCTAssertEqual(acks.first?.media?.ack?.status, .rejected)
-        XCTAssertTrue(
-            acks.first?.media?.ack?.reason?.contains("too large") == true,
+        XCTAssertEqual(
+            acks.first?.media?.ack?.reason?.contains("too large"),
+            true,
             "oversized at-rest sealing rejection should be visible to the sender"
         )
 
@@ -385,8 +432,9 @@ final class MacFileTransferSecurityTests: XCTestCase {
         let fetchedTickets = await backend.fetchedTickets
         XCTAssertEqual(fetchedTickets, ["blob1ticket"])
         XCTAssertEqual(acks.first?.media?.ack?.status, .rejected)
-        XCTAssertTrue(
-            acks.first?.media?.ack?.reason?.contains("exceeded expected size") == true,
+        XCTAssertEqual(
+            acks.first?.media?.ack?.reason?.contains("exceeded expected size"),
+            true,
             "underreported blob rejection should identify the manifest size mismatch"
         )
 
@@ -492,9 +540,14 @@ private struct DenyingCapabilityGate: MediaCapabilityGate {
 }
 
 private actor QuarantineBlobBackend: IrohBlobBackend {
+    private let payload: Data
     private var fetchedTicketStorage: [String] = []
     private var publishedPathStorage: [String] = []
     private var publishedPayloadStorage: [Data] = []
+
+    init(payload: Data = Data("downloaded".utf8)) {
+        self.payload = payload
+    }
 
     var fetchedTickets: [String] {
         fetchedTicketStorage
@@ -529,7 +582,7 @@ private actor QuarantineBlobBackend: IrohBlobBackend {
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try Data("downloaded".utf8).write(to: url)
+        try payload.write(to: url)
         return BlobTransferStats(
             bytesTotal: 10,
             blake3Hash: "blake3:quarantine",
