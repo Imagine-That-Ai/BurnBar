@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { KernelId } from '@openburnbar/gl-engine/engine/types';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { KernelBackdrop } from '../components/KernelBackdrop.js';
+import { NavRail } from '../components/NavRail.js';
 import { TopChrome } from '../components/TopChrome.js';
 import { SurfaceRouter } from '../surfaces/SurfaceRouter.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
@@ -9,7 +10,7 @@ import { useShellStore } from '../state/shellStore.js';
 
 /**
  * Shell layout. A11y landmark contract (pinned by evidence harness):
- * `a.skip-link[href="#main"]` → `nav[aria-label="Primary"]` (tab strip) → `main#main`.
+ * `a.skip-link[href="#main"]` → `nav[aria-label="Primary"]` (rail) → `main#main`.
  */
 export function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -66,9 +67,12 @@ export function App() {
         }}
       />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
-      <main className="shell-main shell-main--bleed" id="main" tabIndex={-1}>
-        <SurfaceRouter route={route} />
-      </main>
+      <div className="shell-body">
+        <NavRail />
+        <main className="shell-main shell-main--bleed" id="main" tabIndex={-1}>
+          <SurfaceRouter route={route} />
+        </main>
+      </div>
     </div>
   );
 }

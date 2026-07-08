@@ -38,30 +38,27 @@ describe('App shell', () => {
     expect(container.querySelector('.status-pill[role="status"]')).not.toBeNull();
   });
 
-  it('exposes exactly one aria-current=page tab for primary sections', () => {
+  it('exposes exactly one aria-current=page rail item for every route', () => {
     const { container } = render(<App />);
-    const primary = ['chat', 'providers', 'database', 'projects', 'missions', 'activity', 'memory'] as const;
-    for (const id of primary) {
+    for (const { id } of ROUTES) {
       act(() => useShellStore.getState().setRoute(id));
       const active = container.querySelectorAll('button.nav-link[aria-current="page"]');
       expect(active).toHaveLength(1);
       expect(location.hash).toBe(`#/${id}`);
     }
-    act(() => useShellStore.getState().setRoute('overview'));
-    expect(container.querySelectorAll('button.nav-link[aria-current="page"]')).toHaveLength(0);
   });
 
-  it('switches routes from the top tabbar', () => {
+  it('switches routes from the side rail', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('tab', { name: /Quota/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Providers & models/i }));
     expect(useShellStore.getState().route).toBe('providers');
-    fireEvent.click(screen.getByRole('tab', { name: /Session Logs/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Activity & logs/i }));
     expect(useShellStore.getState().route).toBe('activity');
   });
 
   it('navigates to the dashboard when the brand logo is clicked', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('tab', { name: /Missions/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Missions/i }));
     expect(useShellStore.getState().route).toBe('missions');
     fireEvent.click(screen.getByRole('button', { name: /Go to dashboard overview/i }));
     expect(useShellStore.getState().route).toBe('overview');
