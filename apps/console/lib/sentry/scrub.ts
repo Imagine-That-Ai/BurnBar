@@ -11,7 +11,7 @@
  * Kept framework-agnostic and side-effect free so the same scrubber is shared by
  * the client, server, and edge Sentry init files.
  */
-import type { ErrorEvent, EventHint, Breadcrumb } from "@sentry/nextjs";
+import type { Breadcrumb, ErrorEvent, EventHint } from "@sentry/core";
 
 const REDACTED = "[REDACTED]";
 
@@ -66,13 +66,15 @@ function isSensitiveQueryKey(key: string): boolean {
 }
 
 function redactURLSecrets(value: string): string {
-  return value.replace(/([?&])([^=&#\s]+)=([^&#\s]+)/g, (match, separator: string, key: string) =>
-    isSensitiveQueryKey(key) ? `${separator}${key}=${REDACTED}` : match,
-  );
+  return value
+    .replace(URL_USERINFO_PATTERN, `$1${REDACTED}@`)
+    .replace(/([?&#])([^=&#\s]+)=([^&#\s]+)/g, (match, separator: string, key: string) =>
+      isSensitiveQueryKey(key) ? `${separator}${key}=${REDACTED}` : match,
+    );
 }
 
 function redactSensitiveText(value: string): string {
-  return redactURLSecrets(value.replace(URL_USERINFO_PATTERN, `$1${REDACTED}@`))
+  return redactURLSecrets(value)
     .replace(AUTH_HEADER_VALUE_PATTERN, `$1 ${REDACTED}`)
     .replace(SECRET_TOKEN_VALUE_PATTERN, REDACTED)
     .replace(
@@ -134,6 +136,16 @@ function scrubRequest(request: NonNullable<ErrorEvent["request"]>): void {
  * and redacts secrets from breadcrumb URLs. Safe to call on every event.
  */
 export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
+  if (typeof event.message === "string") {
+    event.message = redactSensitiveText(event.message);
+  }
+  if (event.exception?.values) {
+    event.exception.values = event.exception.values.map((entry) => ({
+      ...entry,
+      type: typeof entry.type === "string" ? redactSensitiveText(entry.type) : entry.type,
+      value: typeof entry.value === "string" ? redactSensitiveText(entry.value) : entry.value,
+    }));
+  }
   if (event.request) {
     scrubRequest(event.request);
   }

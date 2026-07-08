@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ErrorEvent } from "@sentry/nextjs";
+import type { ErrorEvent } from "@sentry/core";
 
 import {
   beforeSend,
@@ -9,6 +9,10 @@ import {
 } from "../lib/sentry/scrub";
 
 const { redactSensitiveText, redactURLSecrets } = __testing;
+
+function errorEvent(event: Partial<ErrorEvent>): ErrorEvent {
+  return { type: undefined, ...event } as ErrorEvent;
+}
 
 /**
  * The console is a private member surface. These tests pin the invariant that
@@ -62,20 +66,31 @@ describe("sentry scrub — value redaction", () => {
     expect(out).not.toContain("abc123");
     expect(out).not.toContain("zzz");
   });
+
+  it("redacts URL userinfo and fragment tokens", () => {
+    const out = redactURLSecrets(
+      "https://member:secret@app.burnbar.ai/#access_token=frag&page=2",
+    );
+    expect(out).toContain("https://[REDACTED]@app.burnbar.ai/");
+    expect(out).toContain("access_token=[REDACTED]");
+    expect(out).toContain("page=2");
+    expect(out).not.toContain("member:secret");
+    expect(out).not.toContain("frag");
+  });
 });
 
 describe("sentry scrub — event sanitization", () => {
   it("strips request body/cookies/env and redacts URL secrets", () => {
-    const event: ErrorEvent = {
+    const event = errorEvent({
       request: {
         url: "https://app.burnbar.ai/api?token=leakme",
         data: { password: "hunter2" },
-        cookies: "session=abc",
+        cookies: { session: "abc" },
         env: { SECRET: "x" },
         query_string: "token=leakme",
         headers: { authorization: "Bearer leaked", "x-trace": "ok" },
       },
-    } as ErrorEvent;
+    });
 
     const out = sanitizeSentryEvent(event);
     expect(out.request?.data).toBeUndefined();
@@ -89,13 +104,13 @@ describe("sentry scrub — event sanitization", () => {
   });
 
   it("redacts secret-shaped keys and body-shaped keys in extra", () => {
-    const event: ErrorEvent = {
+    const event = errorEvent({
       extra: {
         accessToken: "abc",
         nested: { api_key: "def", note: "fine" },
         payload: { anything: "here" },
       },
-    } as ErrorEvent;
+    });
 
     const out = sanitizeSentryEvent(event);
     const extra = out.extra as Record<string, unknown>;
@@ -115,24 +130,47 @@ describe("sentry scrub — event sanitization", () => {
     expect((out.data as Record<string, unknown>).url).toContain("secret=[REDACTED]");
     expect((out.data as Record<string, unknown>).token).toBe("[REDACTED]");
   });
+
+  it("redacts top-level event and exception text", () => {
+    const event = errorEvent({
+      message: "member alberto@example.com opened /Users/alberto/private with api_key=raw",
+      exception: {
+        values: [
+          {
+            type: "Error",
+            value: "failed for https://member:secret@app.burnbar.ai/#access_token=frag",
+          },
+        ],
+      },
+    });
+
+    const out = sanitizeSentryEvent(event);
+    expect(out.message).toContain("[REDACTED-EMAIL]");
+    expect(out.message).toContain("[REDACTED-PATH]");
+    expect(out.message).toContain("api_key=[REDACTED]");
+    expect(out.exception?.values?.[0]?.value).toContain("https://[REDACTED]@");
+    expect(out.exception?.values?.[0]?.value).toContain("access_token=[REDACTED]");
+  });
 });
 
 describe("sentry scrub — beforeSend noise filtering", () => {
   it("drops ResizeObserver loop noise", () => {
-    const event = { message: "ResizeObserver loop completed with undelivered notifications." } as ErrorEvent;
+    const event = errorEvent({
+      message: "ResizeObserver loop completed with undelivered notifications.",
+    });
     expect(beforeSend(event)).toBeNull();
   });
 
   it("drops rate-limit / RESOURCE_EXHAUSTED noise", () => {
-    expect(beforeSend({ message: "hit rate limit" } as ErrorEvent)).toBeNull();
-    expect(beforeSend({ message: "RESOURCE_EXHAUSTED" } as ErrorEvent)).toBeNull();
+    expect(beforeSend(errorEvent({ message: "hit rate limit" }))).toBeNull();
+    expect(beforeSend(errorEvent({ message: "RESOURCE_EXHAUSTED" }))).toBeNull();
   });
 
   it("passes real errors through, sanitized", () => {
-    const event = {
+    const event = errorEvent({
       message: "TypeError: cannot read x",
       extra: { secret: "keepout" },
-    } as ErrorEvent;
+    });
     const out = beforeSend(event);
     expect(out).not.toBeNull();
     expect((out!.extra as Record<string, unknown>).secret).toBe("[REDACTED]");

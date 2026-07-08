@@ -226,30 +226,29 @@ for abi in "${ABIS[@]}"; do
 done
 
 ensure_uniffi_bindgen_kotlin_helper
-BINDGEN_ABI="${ABIS[0]}"
-BINDGEN_TARGET="$(abi_to_rust_target "${BINDGEN_ABI}")"
-HOST_SO="${CRATE_DIR}/target/${BINDGEN_TARGET}/${PROFILE_DIR}/lib${LIB_NAME}.so"
-[[ -f "${HOST_SO}" ]] || HOST_SO="${ARCHS_DIR}/${BINDGEN_ABI}/lib${LIB_NAME}.so"
+case "$(uname -s)" in
+  Darwin) host_libname="lib${LIB_NAME}.dylib" ;;
+  Linux) host_libname="lib${LIB_NAME}.so" ;;
+  *) abort "unsupported host OS for Kotlin bindgen metadata library: $(uname -s)" ;;
+esac
 
-if [[ "${PROFILE}" != "debug" ]]; then
-  log "building debug metadata library for Kotlin bindgen (${BINDGEN_ABI})"
-  (
-    cd "${CRATE_DIR}"
-    ANDROID_NDK_HOME="${ANDROID_NDK_HOME}" \
-    RUSTFLAGS="$(android_rustflags)" \
-    PATH="${HOME}/.cargo/bin:${PATH}" \
-      "${CARGO_BIN}" ndk \
-        -t "${BINDGEN_ABI}" \
-        -o "${BUILD_DIR}/bindgen-jni" \
-        build --lib --package "${PACKAGE_NAME}"
-  )
-  HOST_SO="${CRATE_DIR}/target/${BINDGEN_TARGET}/debug/lib${LIB_NAME}.so"
-fi
+log "building host metadata library for Kotlin bindgen"
+(
+  cd "${CRATE_DIR}"
+  PATH="${HOME}/.cargo/bin:${PATH}" \
+    "${CARGO_BIN}" build --lib --package "${PACKAGE_NAME}"
+)
+HOST_TARGET_DIR="$(
+  cd "${CRATE_DIR}" && "${CARGO_BIN}" metadata --no-deps --format-version 1 \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
+)"
+HOST_SO="${HOST_TARGET_DIR}/debug/${host_libname}"
+[[ -f "${HOST_SO}" ]] || abort "host metadata library missing: ${HOST_SO}"
 
 rm -rf "${GENERATED_KT_DIR}"
 rm -rf "${BUILD_DIR}/kotlin-out"
 mkdir -p "${GENERATED_KT_DIR}"
-log "generating kotlin bindings via pinned UniFFI helper (${BINDGEN_ABI})"
+log "generating kotlin bindings via pinned UniFFI helper"
 (
   cd "${CRATE_DIR}"
   UNIFFI_LIBRARY_PATH="${HOST_SO}" \

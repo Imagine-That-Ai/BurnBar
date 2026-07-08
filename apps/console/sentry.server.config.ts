@@ -6,7 +6,7 @@
  * `next dev` and by server-component rendering during `next build`, keeping
  * server-side render errors observable. No-op unless a DSN is configured.
  */
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from "@sentry/node";
 import { sharedSentryOptions } from "@/lib/sentry/options";
 
 Sentry.init({

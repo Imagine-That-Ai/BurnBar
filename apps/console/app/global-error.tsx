@@ -13,7 +13,7 @@
  * left the member staring at a blank white page.
  */
 import { useEffect } from "react";
-import * as Sentry from "@sentry/nextjs";
+import { captureException } from "@sentry/browser";
 
 export default function GlobalError({
   error,
@@ -25,7 +25,7 @@ export default function GlobalError({
   useEffect(() => {
     // Forward to Sentry. `beforeSend` (lib/sentry/scrub.ts) scrubs PII/secrets
     // from the event; this is a no-op when NEXT_PUBLIC_SENTRY_DSN is unset.
-    Sentry.captureException(error);
+    captureException(error);
   }, [error]);
 
   // Inline styles mirror the console's Pensieve tokens (paper #f6f4ef, ink text,

@@ -10,7 +10,7 @@
  * No-op unless `NEXT_PUBLIC_SENTRY_DSN` is set (see `lib/sentry/options.ts`),
  * so local dev and no-DSN deploys stay dark.
  */
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from "@sentry/browser";
 import { sharedSentryOptions } from "@/lib/sentry/options";
 
 Sentry.init({
@@ -23,6 +23,3 @@ Sentry.init({
   replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 0,
 });
-
-// Instrument App Router client-side navigations (modern SDK hook).
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

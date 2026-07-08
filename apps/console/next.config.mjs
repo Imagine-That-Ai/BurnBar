@@ -1,5 +1,4 @@
 /** @type {import('next').NextConfig} */
-import { withSentryConfig } from "@sentry/nextjs";
 
 // Strict CSP for the console. Firebase Auth + callables need their endpoints in
 // connect-src; Firebase Auth's popup bridge loads apis.google.com, and
@@ -20,11 +19,11 @@ const csp = [
   // Google Fonts webfont files come from fonts.gstatic.com.
   "font-src 'self' data: https://fonts.gstatic.com",
   // api2.amplitude.com (US) / api.eu.amplitude.com (EU) are the opt-in analytics
-  // egress endpoints (Amplitude Browser SDK). They are only ever contacted AFTER
-  // the member opts in; pre-consent the SDK is never loaded. The same origins
-  // must also be present in firebase.json's `console` hosting target, since a
-  // static export does not apply these next.config headers in production.
-  "connect-src 'self' https://apis.google.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com https://www.gstatic.com https://api2.amplitude.com https://api.eu.amplitude.com",
+  // egress endpoints. Sentry ingest origins are direct browser crash-report
+  // endpoints when NEXT_PUBLIC_SENTRY_DSN is configured. The same origins must
+  // also be present in firebase.json's `console` hosting target, since a static
+  // export does not apply these next.config headers in production.
+  "connect-src 'self' https://apis.google.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com https://www.gstatic.com https://api2.amplitude.com https://api.eu.amplitude.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
   "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://appleid.apple.com https://www.google.com/recaptcha/",
   "frame-ancestors 'none'",
   "form-action 'self'",
@@ -65,46 +64,8 @@ const nextConfig = {
 };
 
 // ── Sentry (observability) ────────────────────────────────────────────────────
-// Wrap the Next config so client crashes on app.burnbar.ai are no longer
-// invisible. Runtime init lives in instrumentation-client.ts / instrumentation.ts
-// and is gated on NEXT_PUBLIC_SENTRY_DSN, so a no-DSN build is a clean no-op.
-//
-// Source-map upload is the only build-time Sentry behavior, and it is gated on a
-// SENTRY_AUTH_TOKEN. CI runs `npm ci && next build` WITHOUT that token, so upload
-// must stay disabled there or the build breaks; readable stack traces are a
-// nice-to-have that the token unlocks when configured. `sentry.properties` is
-// intentionally gitignored — all config comes from env, never a committed file.
-const uploadSourceMaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
-
-const sentryBuildOptions = {
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-
-  // Quiet unless in CI, matching functions' `silent: !process.env.CI` posture.
-  silent: !process.env.CI,
-
-  // Only upload source maps when a token is present; delete them from the client
-  // bundle afterward so raw sources never ship to the browser.
-  sourcemaps: {
-    disable: !uploadSourceMaps,
-    deleteSourcemapsAfterUpload: true,
-  },
-
-  // No tunnel route: the console is a static export with a strict CSP and no
-  // server to proxy through. Ingest goes straight to the (allowlisted) DSN host.
-  tunnelRoute: undefined,
-
-  // Tree-shake Sentry's internal logger from the production bundle.
-  disableLogger: true,
-
-  // The console never registers a service worker; skip Sentry's SW injection.
-  widenClientFileUpload: false,
-};
-
-// Only engage the Sentry build plugin when a DSN is configured. This keeps
-// no-DSN local/CI builds byte-for-byte the plain Next output (no injected
-// instrumentation, no build-time Sentry work).
-export default process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN
-  ? withSentryConfig(nextConfig, sentryBuildOptions)
-  : nextConfig;
+// Runtime init lives in instrumentation-client.ts / instrumentation.ts and is
+// gated on NEXT_PUBLIC_SENTRY_DSN, so a no-DSN build is a clean no-op. We do not
+// use the Next Sentry build wrapper here: it pulls in the Sentry CLI package,
+// whose source-available license is intentionally blocked by dependency review.
+export default nextConfig;

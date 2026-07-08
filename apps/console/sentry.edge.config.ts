@@ -5,7 +5,7 @@
  * routes). The console currently ships none, but this keeps the SDK wired if any
  * edge code is added later. No-op unless a DSN is configured.
  */
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from "@sentry/vercel-edge";
 import { sharedSentryOptions } from "@/lib/sentry/options";
 
 Sentry.init({

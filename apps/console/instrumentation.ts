@@ -6,7 +6,7 @@
  * Sentry (nested React Server Component errors that never reach the client).
  * Both are no-ops unless a DSN is configured.
  */
-import * as Sentry from "@sentry/nextjs";
+import { captureException } from "@sentry/core";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
@@ -17,4 +17,6 @@ export async function register() {
   }
 }
 
-export const onRequestError = Sentry.captureRequestError;
+export function onRequestError(error: unknown): void {
+  captureException(error);
+}
