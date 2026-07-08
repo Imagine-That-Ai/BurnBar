@@ -1,7 +1,11 @@
 import Foundation
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
 import OpenBurnBarCore
+#if canImport(Security)
 import Security
+#endif
 
 public protocol BurnBarNotificationSecretStoring: Sendable {
     func telegramBotToken() throws -> String?
@@ -40,6 +44,7 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
     }
 
     public func telegramBotToken() throws -> String? {
+#if canImport(Security) && canImport(LocalAuthentication)
         let context = LAContext()
         context.interactionNotAllowed = true
         let query: [String: Any] = [
@@ -68,9 +73,13 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded?.isEmpty == false ? decoded : nil
+#else
+        return nil
+#endif
     }
 
     public func setTelegramBotToken(_ token: String?) throws {
+#if canImport(Security) && canImport(LocalAuthentication)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -112,5 +121,12 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
         guard addStatus == errSecSuccess else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
         }
+#else
+        throw NSError(
+            domain: "BurnBarNotificationKeychainSecretStore",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Notification keychain secrets are unavailable on this platform."]
+        )
+#endif
     }
 }

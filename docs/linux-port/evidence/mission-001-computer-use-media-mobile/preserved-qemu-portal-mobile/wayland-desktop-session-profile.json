@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-07-04T14:24:29.960Z",
+  "targetIds": [
+    "VAL-CU-001",
+    "VAL-CU-002"
+  ],
+  "profile": "ci-wayland-portal-pipewire-atspi-uinput",
+  "purpose": "Real Wayland Computer Use capture/input evidence profile; X11 fallback must remain fallback-only.",
+  "requiredSession": {
+    "compositor": "Sway/wlroots headless or nested session, GNOME Shell, or KDE KWin Wayland with a matching portal backend",
+    "dbus": "session DBus visible to xdg-desktop-portal and org.a11y.Bus",
+    "capture": "xdg-desktop-portal ScreenCast consent dialog returning PipeWire node",
+    "input": "libei/AT-SPI2/uinput adapter after explicit local approval",
+    "uinput": "/dev/uinput writable only through installer-approved group or udev rule"
+  },
+  "ciCommandSketch": [
+    "dbus-run-session -- bash",
+    "start pipewire and wireplumber in the session",
+    "start a Wayland compositor first; prefer WLR_BACKENDS=headless sway or nested sway for CI",
+    "start xdg-desktop-portal plus backend (wlr for sway/wlroots, gtk/gnome/kde only for matching desktops)",
+    "run OB_EVIDENCE_OUT=<dir> node scripts/linux-port/run-computer-use-evidence.mjs",
+    "collect portal approve/deny/revoke screenshots/logs; do not substitute X11 for VAL-CU-001"
+  ],
+  "observedEnvironment": {
+    "platform": "linux",
+    "XDG_SESSION_TYPE": null,
+    "WAYLAND_DISPLAY": null,
+    "DISPLAY": null,
+    "XDG_CURRENT_DESKTOP": null
+  },
+  "packageProbe": {
+    "command": "bash -lc for bin in dbus-run-session sway swaymsg weston gnome-shell kwin_wayland xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk pipewire wireplumber pw-cli gdbus at-spi-bus-launcher grim; do   if command -v \"$bin\" >/dev/null 2>&1; then printf \"%s=%s\\n\" \"$bin\" \"$(command -v \"$bin\")\"; else printf \"%s=missing\\n\" \"$bin\"; fi; done",
+    "exitCode": 0,
+    "stdout": "dbus-run-session=/usr/bin/dbus-run-session\nsway=missing\nswaymsg=missing\nweston=missing\ngnome-shell=missing\nkwin_wayland=missing\nxdg-desktop-portal=missing\nxdg-desktop-portal-wlr=missing\nxdg-desktop-portal-gtk=missing\npipewire=/usr/bin/pipewire\nwireplumber=missing\npw-cli=/usr/bin/pw-cli\ngdbus=/usr/bin/gdbus\nat-spi-bus-launcher=missing\ngrim=missing\n",
+    "stderr": ""
+  },
+  "blockerRows": [
+    {
+      "id": "wayland-portal-pipewire",
+      "target": "VAL-CU-001",
+      "reason": "No interactive Wayland session in evidence environment (platform=linux, XDG_SESSION_TYPE=).",
+      "unblock": "Run on GNOME/KDE Wayland with xdg-desktop-portal and PipeWire session bus."
+    },
+    {
+      "id": "xdg-desktop-portal-screencast",
+      "target": "VAL-CU-001",
+      "reason": "ScreenCast portal was not reachable on the session bus.",
+      "unblock": "Start an interactive desktop session with xdg-desktop-portal backend."
+    },
+    {
+      "id": "at-spi2",
+      "target": "VAL-CU-002",
+      "reason": "AT-SPI2 bus unavailable.",
+      "unblock": "Enable accessibility bus in the desktop session."
+    },
+    {
+      "id": "uinput",
+      "target": "VAL-CU-002",
+      "reason": "/dev/uinput missing or not writable by the test user.",
+      "unblock": "Provision uinput group/udev policy for explicit installer-approved input."
+    }
+  ]
+}

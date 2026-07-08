@@ -1,0 +1,9 @@
+{
+  "castStatus": "cast_reachable",
+  "devicePass": true,
+  "homeAssistantStatus": "home_assistant_control_ok",
+  "iotPass": true,
+  "mdnsPass": true,
+  "pixelclockStatus": "control_ok",
+  "smartHubStatus": "bridge_control_ok"
+}
