@@ -4,7 +4,7 @@
   "git": {
     "commit": "a4a854c6569a46f1abe5135ce5a266bc73599a45",
     "branch": "unknown",
-    "remote": "/Users/albertonunez/.cache/burnbar-work/branch",
+    "remote": "$WORKSPACE",
     "dirty": false,
     "dirtyEntries": [],
     "gitAvailable": true

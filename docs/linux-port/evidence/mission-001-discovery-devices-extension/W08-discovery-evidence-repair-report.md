@@ -1,7 +1,7 @@
 # W08 Discovery Evidence Repair
 
 Lane: `W08DiscoveryEvidenceRepair`
-Worktree: `/Users/albertonunez/.cache/burnbar-work/branch`
+Worktree: `$WORKSPACE`
 Generated: 2026-07-08T03:21:45Z
 
 ## Summary

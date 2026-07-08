@@ -17,7 +17,7 @@ timed_out=false
 > vitest run
 
 
- RUN  v3.2.6 /Users/albertonunez/.cache/burnbar-work/branch/apps/linux-desktop
+ RUN  v3.2.6 $WORKSPACE/apps/linux-desktop
 
  ✓ src/chat/gatewayClient.test.ts (10 tests) 37ms
  ✓ src/shellEvidence.harness.test.ts (15 tests) 11ms
@@ -139,10 +139,10 @@ dist/assets/index-CI-ISaNC.js                   594.56 kB │ gzip: 179.87 kB
 
 
 [plugin vite:reporter]
-(!) /Users/albertonunez/.cache/burnbar-work/branch/apps/linux-desktop/node_modules/@tauri-apps/api/core.js is dynamically imported by /Users/albertonunez/.cache/burnbar-work/branch/apps/linux-desktop/src/perfMarks.ts but also statically imported by /Users/albertonunez/.cache/burnbar-work/branch/apps/linux-desktop/node_modules/@tauri-apps/plugin-shell/dist-js/index.js, /Users/albertonunez/.cache/burnbar-work/branch/apps/linux-desktop/src/tauriBridge.ts, dynamic import will not move module into another chunk.
+(!) $WORKSPACE/apps/linux-desktop/node_modules/@tauri-apps/api/core.js is dynamically imported by $WORKSPACE/apps/linux-desktop/src/perfMarks.ts but also statically imported by $WORKSPACE/apps/linux-desktop/node_modules/@tauri-apps/plugin-shell/dist-js/index.js, $WORKSPACE/apps/linux-desktop/src/tauriBridge.ts, dynamic import will not move module into another chunk.
 
 [plugin vite:reporter]
-(!) /Users/albertonunez/.cache/burnbar-work/branch/packages/gl-engine/src/engine/kernels/swarmEmberKernel.ts is dynamically imported by /Users/albertonunez/.cache/burnbar-work/branch/packages/gl-engine/src/engine/registry.ts but also statically imported by /Users/albertonunez/.cache/burnbar-work/branch/packages/gl-engine/src/engine/BackdropEngine.ts, dynamic import will not move module into another chunk.
+(!) $WORKSPACE/packages/gl-engine/src/engine/kernels/swarmEmberKernel.ts is dynamically imported by $WORKSPACE/packages/gl-engine/src/engine/registry.ts but also statically imported by $WORKSPACE/packages/gl-engine/src/engine/BackdropEngine.ts, dynamic import will not move module into another chunk.
 
 
 (!) Some chunks are larger than 500 kB after minification. Consider:
@@ -152,7 +152,7 @@ dist/assets/index-CI-ISaNC.js                   594.56 kB │ gzip: 179.87 kB
 
 
 ### step 4
-node /Users/albertonunez/.cache/burnbar-work/branch/scripts/linux-port/run-shell-desktop-session.mjs
+node $WORKSPACE/scripts/linux-port/run-shell-desktop-session.mjs
 exit_code=0
 timed_out=false
 == profile ==
@@ -1447,14 +1447,14 @@ linux-desktop-session-ok
 
 
 ### step 5
-node /Users/albertonunez/.cache/burnbar-work/branch/scripts/linux-port/run-shell-evidence.mjs
+node $WORKSPACE/scripts/linux-port/run-shell-evidence.mjs
 exit_code=0
 timed_out=false
 
 
 
 ### step 6
-node /Users/albertonunez/.cache/burnbar-work/branch/scripts/linux-port/run-perf-budget.mjs
+node $WORKSPACE/scripts/linux-port/run-perf-budget.mjs
 exit_code=0
 timed_out=false
 {
@@ -1592,13 +1592,13 @@ timed_out=false
 
 
 ### step 7
-node /Users/albertonunez/.cache/burnbar-work/branch/scripts/linux-port/verify-shell-evidence.mjs /Users/albertonunez/.cache/burnbar-work/branch/docs/linux-port/evidence/mission-001-shell-ux
+node $WORKSPACE/scripts/linux-port/verify-shell-evidence.mjs $WORKSPACE/docs/linux-port/evidence/mission-001-shell-ux
 exit_code=0
 timed_out=false
 {
   "generatedAt": "2026-07-08T03:19:10.714Z",
   "mode": "full",
-  "evidenceDir": "/Users/albertonunez/.cache/burnbar-work/branch/docs/linux-port/evidence/mission-001-shell-ux",
+  "evidenceDir": "$WORKSPACE/docs/linux-port/evidence/mission-001-shell-ux",
   "targetStatus": {
     "VAL-SHELL-005": {
       "pass": true,
