@@ -182,6 +182,28 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(settings.ollamaEndpoints.map(\.label), ["Edge A", "Edge B"])
     }
 
+    func testOllamaEndpointDecodeAndEncodePreservesExplicitEmptyArray() throws {
+        let data = Data("""
+        {
+          "providerID": "ollama-local",
+          "isEnabled": true,
+          "baseURL": "http://localhost:11434/v1",
+          "preferredModelIDs": [],
+          "credentialSlots": [],
+          "ollamaEndpoints": []
+        }
+        """.utf8)
+
+        let settings = try JSONDecoder().decode(BurnBarProviderSettings.self, from: data)
+
+        XCTAssertEqual(settings.ollamaEndpoints, [])
+
+        let encoded = try JSONEncoder().encode(settings)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNotNil(object["ollamaEndpoints"])
+        XCTAssertEqual((object["ollamaEndpoints"] as? [Any])?.count, 0)
+    }
+
     func testOllamaEndpointDecodeRejectsDuplicateIDsAndNonHTTPURLs() throws {
         let duplicateIDs = Data("""
         {
@@ -255,6 +277,36 @@ final class BurnBarConfigStoreTests: XCTestCase {
             }
             XCTAssertEqual(providerID, "ollama-local")
         }
+    }
+
+    func testConfigStorePreservesExplicitEmptyOllamaEndpointSlots() async throws {
+        let harness = try makeHarness(name: "empty-ollama-endpoints")
+
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama-local",
+                isEnabled: true,
+                baseURL: "http://localhost:11434/v1",
+                preferredModelIDs: [],
+                ollamaEndpoints: [
+                    BurnBarOllamaEndpointConfig(id: "edge", baseURL: "http://127.0.0.1:21434", label: "Edge", priority: 0)
+                ]
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama-local",
+                isEnabled: true,
+                baseURL: "http://localhost:11434/v1",
+                preferredModelIDs: [],
+                ollamaEndpoints: []
+            )
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        let localOllama = try XCTUnwrap(snapshot.providerSettings(id: "ollama-local"))
+        XCTAssertEqual(localOllama.ollamaEndpoints, [])
+        XCTAssertEqual(localOllama.credentialSlots, [])
     }
 
     func testResolvedConfigurationReflectsStoredCredentialAndBaseURLOverride() async throws {

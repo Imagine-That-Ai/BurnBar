@@ -294,7 +294,6 @@ struct DefaultRoamingProfileLocalStore: RoamingProfileLocalStoring {
 
 extension OpenBurnBarDaemonManager {
     func applyRoamingOllamaEndpoints(_ endpoints: [RoamingOllamaEndpoint]) async {
-        guard !endpoints.isEmpty else { return }
         do {
             try await applyRoamingOllamaEndpointsOrThrow(endpoints)
         } catch {
@@ -308,7 +307,6 @@ extension OpenBurnBarDaemonManager {
 
     private func applyRoamingOllamaEndpointsOrThrow(_ endpoints: [RoamingOllamaEndpoint]) async throws {
         let providerEndpoints = try DefaultRoamingProfileLocalStore.providerOllamaEndpoints(from: endpoints)
-        guard !providerEndpoints.isEmpty else { return }
 
         if case .healthy = status {
             // already healthy
@@ -333,16 +331,18 @@ extension OpenBurnBarDaemonManager {
                 DefaultRoamingProfileLocalStore.isRoamingOllamaProviderID($0.providerID)
             }) {
                 var settings = snapshot.providers[index]
-                settings.isEnabled = true
-                settings.baseURL = providerEndpoints.first?.baseURL ?? settings.baseURL
+                if let firstEndpoint = providerEndpoints.first {
+                    settings.isEnabled = true
+                    settings.baseURL = firstEndpoint.baseURL
+                }
                 settings.ollamaEndpoints = providerEndpoints
                 snapshot.providers[index] = settings
-            } else {
+            } else if let firstEndpoint = providerEndpoints.first {
                 snapshot.providers.append(
                     BurnBarProviderSettings(
                         providerID: "ollama-local",
                         isEnabled: true,
-                        baseURL: providerEndpoints.first?.baseURL ?? "http://localhost:11434",
+                        baseURL: firstEndpoint.baseURL,
                         preferredModelIDs: [],
                         ollamaEndpoints: providerEndpoints
                     )

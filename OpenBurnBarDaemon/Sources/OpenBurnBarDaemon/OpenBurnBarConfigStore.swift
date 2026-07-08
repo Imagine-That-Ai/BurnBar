@@ -1131,8 +1131,7 @@ public actor BurnBarConfigStore {
         var endpointSettings = settings
         endpointSettings.baseURL = normalizedBaseURL
         let normalizedOllamaEndpoints = try normalizedOllamaEndpoints(
-            settings: endpointSettings,
-            defaults: defaultSnapshot.providerSettings(id: settings.providerID)
+            settings: endpointSettings
         )
         if isOllamaLocalProvider(settings.providerID) {
             normalizedSlots = Self.mergingOllamaEndpointSlots(
@@ -1215,21 +1214,14 @@ public actor BurnBarConfigStore {
     }
 
     private func normalizedOllamaEndpoints(
-        settings: BurnBarProviderSettings,
-        defaults: BurnBarProviderSettings?
+        settings: BurnBarProviderSettings
     ) throws -> [BurnBarOllamaEndpointConfig] {
         guard isOllamaLocalProvider(settings.providerID) else {
             return []
         }
 
-        let endpoints = settings.ollamaEndpoints.isEmpty
-            ? (defaults?.ollamaEndpoints.isEmpty == false
-                ? defaults?.ollamaEndpoints ?? []
-                : [OpenBurnBarDaemonOllamaEndpointDefaults.synthesizedLegacyDefault(providerBaseURL: settings.baseURL)])
-            : settings.ollamaEndpoints
-
         do {
-            return try BurnBarOllamaEndpointConfig.normalizedList(endpoints)
+            return try BurnBarOllamaEndpointConfig.normalizedList(settings.ollamaEndpoints)
         } catch BurnBarOllamaEndpointConfig.ValidationError.invalidBaseURL(_) {
             throw BurnBarConfigStoreError.invalidBaseURL(settings.providerID)
         } catch {

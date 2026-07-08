@@ -434,8 +434,11 @@ extension BurnBarRunService {
             }
             let normalizedBody = body.lowercased()
             return normalizedBody.contains("quota")
-                || normalizedBody.contains("rate")
-                || normalizedBody.contains("insufficient")
+                || normalizedBody.contains("rate limit")
+                || normalizedBody.contains("rate_limit")
+                || normalizedBody.contains("insufficient_quota")
+                || normalizedBody.contains("insufficient funds")
+                || normalizedBody.contains("insufficient balance")
                 || normalizedBody.contains("exhaust")
         } else if error is BurnBarProviderExecutorError {
             return false

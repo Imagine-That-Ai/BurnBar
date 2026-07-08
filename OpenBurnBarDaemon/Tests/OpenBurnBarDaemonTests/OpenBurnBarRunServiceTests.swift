@@ -121,10 +121,18 @@ final class BurnBarRunServiceTests: XCTestCase {
         let generic500Failover = await harness.runService.shouldFailOverProviderError(
             BurnBarProviderExecutorError.upstreamError(500, "temporary backend failure")
         )
+        let incidentalRateTextFailover = await harness.runService.shouldFailOverProviderError(
+            BurnBarProviderExecutorError.upstreamError(500, "generate rate estimate unavailable")
+        )
+        let insufficientFundsFailover = await harness.runService.shouldFailOverProviderError(
+            BurnBarProviderExecutorError.upstreamError(500, "insufficient funds")
+        )
 
         XCTAssertTrue(emptyBody529Failover)
         XCTAssertTrue(overloadBody529Failover)
         XCTAssertFalse(generic500Failover)
+        XCTAssertFalse(incidentalRateTextFailover)
+        XCTAssertTrue(insufficientFundsFailover)
     }
 
     // MARK: - VAL-EXEC-011: Run-level failover continuity preserves idempotent usage accounting

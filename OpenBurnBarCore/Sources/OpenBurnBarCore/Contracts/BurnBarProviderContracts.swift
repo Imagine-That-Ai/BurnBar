@@ -996,7 +996,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         try container.encode(disabledAdvertisedModelIDs, forKey: .disabledAdvertisedModelIDs)
         try container.encodeIfPresent(preferredCredentialSlotID, forKey: .preferredCredentialSlotID)
         try container.encode(credentialSlots, forKey: .credentialSlots)
-        if !ollamaEndpoints.isEmpty {
+        if !ollamaEndpoints.isEmpty || providerID.caseInsensitiveCompare("ollama-local") == .orderedSame {
             try container.encode(ollamaEndpoints, forKey: .ollamaEndpoints)
         }
         try container.encode(modelVariants, forKey: .modelVariants)

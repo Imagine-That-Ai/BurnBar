@@ -619,7 +619,7 @@ extension BurnBarHTTPGatewayServer {
 
     func shouldReturnFinalProviderFailure(_ error: Error) -> Bool {
         guard let providerError = error as? BurnBarProviderExecutorError else { return false }
-        return !providerError.upstreamHeaders.isEmpty
+        return providerError.upstreamStatusAndBody != nil
     }
 
     func shouldPreferContextualProviderError(body: String, statusCode: Int) -> Bool {
