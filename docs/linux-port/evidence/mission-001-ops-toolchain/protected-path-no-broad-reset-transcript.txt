@@ -1,8 +1,8 @@
 generated_at=2026-07-05T08:24:36Z
 protected_paths=docs/linux-port tools/linux-toolchain OpenBurnBarCore OpenBurnBarDaemon apps/linux-desktop functions scripts/linux-port
 mission_runtime_paths_not_modified=.zenith runtime-managed state is outside product checkout and only copied-to/append-only with escalation
-worktree_root=/Users/albertonunez/Documents/Developer/BurnBar
-mission_bundle=/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/active-checkout-v20-repair-20260705T0735Z
+worktree_root=$WORKSPACE
+mission_bundle=$ZENITH_EVIDENCE/active-checkout-v20-repair-20260705T0735Z
 no_broad_reset_policy=No git reset --hard, git clean, broad checkout/restore, or broad stage was used by this worker. Existing dirty user/worker changes were preserved.
 observed_reflog_tail
 1b62ec42bd HEAD@{2026-07-04 21:52:40 -0500}: pull --ff-only origin main: Fast-forward
