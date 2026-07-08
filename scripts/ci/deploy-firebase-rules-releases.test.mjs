@@ -5,9 +5,14 @@ import {
   buildReleaseCreateRequest,
   buildReleasePatchRequest,
   buildReleaseUpdate,
+  isRetryableFirebaseRulesApiError,
   releasesNeedingRulesetDeploy,
   rulesetFileContentHash,
 } from "./deploy-firebase-rules-releases.mjs";
+import {
+  compactFirebaseRulesSource,
+  rulesSourceForDeploy,
+} from "./firebase-rules-source.mjs";
 
 const releaseName = "projects/demo-project/releases/cloud.firestore";
 const rulesetName = "projects/demo-project/rulesets/example-ruleset";
@@ -42,6 +47,54 @@ assert.throws(
 assert.throws(
   () => buildReleasePatchRequest(releaseName, "projects/demo-project/releases/not-a-ruleset"),
   /rulesetName must be a Firebase resource name/,
+);
+assert.equal(
+  isRetryableFirebaseRulesApiError(
+    new TypeError("fetch failed", {
+      cause: Object.assign(new Error("Connect Timeout Error"), {
+        code: "UND_ERR_CONNECT_TIMEOUT",
+      }),
+    }),
+  ),
+  true,
+);
+const invalidRules = new Error("invalid argument");
+invalidRules.status = 400;
+assert.equal(isRetryableFirebaseRulesApiError(invalidRules), false);
+
+const verboseFirestoreRules = [
+  "rules_version = '2'; // keep the version statement",
+  "service cloud.firestore {",
+  "  match /databases/{database}/documents {",
+  "    // URLs inside strings are not comments.",
+  "    function validRelay(value) {",
+  "      return value.matches(\"^wss://relay.example.test/path$\"); // trailing note",
+  "    }",
+  "  }",
+  "}",
+  "",
+].join("\n");
+assert.equal(
+  compactFirebaseRulesSource(verboseFirestoreRules),
+  [
+    "rules_version = '2';",
+    "service cloud.firestore {",
+    "match /databases/{database}/documents {",
+    "function validRelay(value) {",
+    "return value.matches(\"^wss://relay.example.test/path$\");",
+    "}",
+    "}",
+    "}",
+    "",
+  ].join("\n"),
+);
+assert.equal(
+  rulesSourceForDeploy("firestore.rules", verboseFirestoreRules),
+  compactFirebaseRulesSource(verboseFirestoreRules),
+);
+assert.equal(
+  rulesSourceForDeploy("storage.rules", verboseFirestoreRules),
+  verboseFirestoreRules,
 );
 
 const desiredRuleset = {

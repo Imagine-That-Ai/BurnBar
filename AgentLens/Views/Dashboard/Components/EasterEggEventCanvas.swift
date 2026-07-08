@@ -32,7 +32,12 @@ struct EasterEggEventCanvas: View {
     private let crestNames = EasterEggAssets.cloudCrestNames
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        // 30 fps cap: without `minimumInterval` the timeline ticks at the
+        // display's full refresh (60–120 Hz), and every tick re-runs the
+        // simulation step + Canvas draw + an NSHostingView layout pass on the
+        // main thread. The confetti/storm choreography reads identically at
+        // 30 fps for half (or a quarter) of the CPU.
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
             Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: false) { context, canvasSize in
                 guard let simulation else { return }
                 step(simulation, now: timeline.date, size: canvasSize)
