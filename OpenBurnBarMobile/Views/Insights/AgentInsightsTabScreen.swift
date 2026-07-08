@@ -255,6 +255,7 @@ struct AgentInsightsTabScreen: View {
                         }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("insights.section.\(section.rawValue.lowercased())")
             }
         }
         .padding(4)
