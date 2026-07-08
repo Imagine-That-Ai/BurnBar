@@ -1,6 +1,6 @@
 {
   "fixture": "docs/linux-port/fixtures/hermes-event-order-source-oracle.json",
-  "generatedAt": "2026-07-07T13:35:05.517Z",
+  "generatedAt": "2026-07-08T02:47:11.870Z",
   "rawArtifactsRequired": [
     "hermes-run-journal.jsonl",
     "hermes-run-checkpoints/",
