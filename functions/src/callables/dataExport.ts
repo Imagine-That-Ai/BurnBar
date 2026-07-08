@@ -205,6 +205,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "escrow_envelopes",
       "escrow_audit_events",
       "account_recovery_methods",
+      "roaming_profile",
     ],
     storagePrefixes: [],
   },

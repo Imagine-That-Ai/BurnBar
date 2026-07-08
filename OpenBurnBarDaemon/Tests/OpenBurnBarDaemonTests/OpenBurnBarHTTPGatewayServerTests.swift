@@ -797,142 +797,6 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(entry.attempts.first?.providerLogoKey, "ZaiProviderLogo")
     }
 
-    func testGatewayCapturesRateLimitHeadersAsQuotaSignals() async throws {
-        let sessionConfig = URLSessionConfiguration.ephemeral
-        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
-        let session = URLSession(configuration: sessionConfig)
-        GatewayUpstreamURLProtocol.enqueue(
-            status: 200,
-            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#,
-            path: "/v1/models"
-        )
-        GatewayUpstreamURLProtocol.enqueue(
-            status: 200,
-            body: #"{"id":"chatcmpl-quota-signal","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
-            path: "/v1/chat/completions",
-            headers: [
-                "x-ratelimit-remaining": "17",
-                "x-ratelimit-limit": "20",
-                "x-ratelimit-reset": "2026-07-04T08:00:00Z",
-                "Authorization": "Bearer must-not-persist",
-                "X-Not-Quota": "ignore"
-            ]
-        )
-
-        let harness = try GatewayHarness(
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
-            modelCatalogSession: session
-        )
-        try await harness.configureZAIProviderForGateway()
-        try await harness.start()
-        addTeardownBlock { await harness.stop() }
-
-        let (response, body) = try await sendGatewayRequest(
-            port: harness.port,
-            method: "POST",
-            path: "/v1/chat/completions",
-            headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"zai/primary/glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
-        )
-
-        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
-        let signals = try await harness.quotaSignalStore.recent(limit: 5)
-        let signal = try XCTUnwrap(signals.first)
-        XCTAssertEqual(signal.signalTier, .trafficHeaders)
-        XCTAssertEqual(signal.providerID, "zai")
-        XCTAssertEqual(signal.accountID, "primary")
-        XCTAssertEqual(signal.requestPath, "/v1/chat/completions")
-        XCTAssertEqual(signal.endpoint, "Chat Completions")
-        XCTAssertEqual(signal.remaining, 17)
-        XCTAssertEqual(signal.limit, 20)
-        XCTAssertEqual(signal.resetsAt, ISO8601DateFormatter().date(from: "2026-07-04T08:00:00Z"))
-
-        let headerNames = Set(signal.headers.map(\.name))
-        XCTAssertEqual(headerNames, ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"])
-        XCTAssertFalse(headerNames.contains("authorization"))
-        XCTAssertFalse(headerNames.contains("x-not-quota"))
-    }
-
-    func testQuotaSignalParserAvoidsRatelimitLimitFalsePositiveAndParsesDurations() throws {
-        let observedAt = Date(timeIntervalSince1970: 1_800_000_000)
-        let route = BurnBarProviderRoute(
-            providerID: "anthropic",
-            providerDisplayName: "Anthropic",
-            credentialSlotID: "primary",
-            credentialSlotLabel: "Primary",
-            baseURL: "https://api.anthropic.com/v1",
-            requestedModel: "claude-opus",
-            resolvedModelID: "claude-opus",
-            apiKey: "sk-test",
-            pricing: .defaultFallback,
-            formatFamily: .anthropic
-        )
-
-        let signal = try XCTUnwrap(BurnBarQuotaSignalStore.signal(
-            from: [
-                "ratelimit-policy": "100;w=60",
-                "x-ratelimit-remaining": "12",
-                "x-ratelimit-reset": "1h",
-                "anthropic-ratelimit-tokens-reset": "10ms"
-            ],
-            route: route,
-            requestPath: "/v1/messages",
-            endpoint: "Messages",
-            httpStatus: 429,
-            streamed: false,
-            observedAt: observedAt
-        ))
-
-        XCTAssertEqual(signal.remaining, 12)
-        XCTAssertNil(signal.limit)
-        XCTAssertEqual(signal.resetsAt, observedAt.addingTimeInterval(0.01))
-    }
-
-    func testGatewayCapturesQuotaHeadersFromUpstreamFailure() async throws {
-        let sessionConfig = URLSessionConfiguration.ephemeral
-        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
-        let session = URLSession(configuration: sessionConfig)
-        GatewayUpstreamURLProtocol.enqueue(
-            status: 200,
-            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#,
-            path: "/v1/models"
-        )
-        GatewayUpstreamURLProtocol.enqueue(
-            status: 429,
-            body: #"{"error":{"message":"rate_limit_error"}}"#,
-            path: "/v1/chat/completions",
-            headers: [
-                "x-ratelimit-remaining": "0",
-                "x-ratelimit-limit": "20",
-                "x-ratelimit-reset": "1h"
-            ]
-        )
-
-        let harness = try GatewayHarness(
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
-            modelCatalogSession: session
-        )
-        try await harness.configureZAIProviderForGateway()
-        try await harness.start()
-        addTeardownBlock { await harness.stop() }
-
-        let (response, body) = try await sendGatewayRequest(
-            port: harness.port,
-            method: "POST",
-            path: "/v1/chat/completions",
-            headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"zai/primary/glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
-        )
-
-        XCTAssertEqual(response.statusCode, 429, String(decoding: body, as: UTF8.self))
-        let recentSignals = try await harness.quotaSignalStore.recent(limit: 5)
-        let signal = try XCTUnwrap(recentSignals.first)
-        XCTAssertEqual(signal.httpStatus, 429)
-        XCTAssertEqual(signal.remaining, 0)
-        XCTAssertEqual(signal.limit, 20)
-        XCTAssertEqual(signal.resetsAt, signal.observedAt.addingTimeInterval(3_600))
-    }
-
     func testGatewayRecordsEachRepeatedUpstreamDispatchInUsageLedger() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -5232,6 +5096,142 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 }
 
 extension BurnBarHTTPGatewayServerTests {
+    func testGatewayCapturesRateLimitHeadersAsQuotaSignals() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#,
+            path: "/v1/models"
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-quota-signal","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+            path: "/v1/chat/completions",
+            headers: [
+                "x-ratelimit-remaining": "17",
+                "x-ratelimit-limit": "20",
+                "x-ratelimit-reset": "2026-07-04T08:00:00Z",
+                "Authorization": "Bearer must-not-persist",
+                "X-Not-Quota": "ignore"
+            ]
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"zai/primary/glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let signals = try await harness.quotaSignalStore.recent(limit: 5)
+        let signal = try XCTUnwrap(signals.first)
+        XCTAssertEqual(signal.signalTier, .trafficHeaders)
+        XCTAssertEqual(signal.providerID, "zai")
+        XCTAssertEqual(signal.accountID, "primary")
+        XCTAssertEqual(signal.requestPath, "/v1/chat/completions")
+        XCTAssertEqual(signal.endpoint, "Chat Completions")
+        XCTAssertEqual(signal.remaining, 17)
+        XCTAssertEqual(signal.limit, 20)
+        XCTAssertEqual(signal.resetsAt, ISO8601DateFormatter().date(from: "2026-07-04T08:00:00Z"))
+
+        let headerNames = Set(signal.headers.map(\.name))
+        XCTAssertEqual(headerNames, ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"])
+        XCTAssertFalse(headerNames.contains("authorization"))
+        XCTAssertFalse(headerNames.contains("x-not-quota"))
+    }
+
+    func testQuotaSignalParserAvoidsRatelimitLimitFalsePositiveAndParsesDurations() throws {
+        let observedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let route = BurnBarProviderRoute(
+            providerID: "anthropic",
+            providerDisplayName: "Anthropic",
+            credentialSlotID: "primary",
+            credentialSlotLabel: "Primary",
+            baseURL: "https://api.anthropic.com/v1",
+            requestedModel: "claude-opus",
+            resolvedModelID: "claude-opus",
+            apiKey: "sk-test",
+            pricing: .defaultFallback,
+            formatFamily: .anthropic
+        )
+
+        let signal = try XCTUnwrap(BurnBarQuotaSignalStore.signal(
+            from: [
+                "ratelimit-policy": "100;w=60",
+                "x-ratelimit-remaining": "12",
+                "x-ratelimit-reset": "1h",
+                "anthropic-ratelimit-tokens-reset": "10ms"
+            ],
+            route: route,
+            requestPath: "/v1/messages",
+            endpoint: "Messages",
+            httpStatus: 429,
+            streamed: false,
+            observedAt: observedAt
+        ))
+
+        XCTAssertEqual(signal.remaining, 12)
+        XCTAssertNil(signal.limit)
+        XCTAssertEqual(signal.resetsAt, observedAt.addingTimeInterval(0.01))
+    }
+
+    func testGatewayCapturesQuotaHeadersFromUpstreamFailure() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#,
+            path: "/v1/models"
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"error":{"message":"rate_limit_error"}}"#,
+            path: "/v1/chat/completions",
+            headers: [
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-limit": "20",
+                "x-ratelimit-reset": "1h"
+            ]
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"zai/primary/glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 429, String(decoding: body, as: UTF8.self))
+        let recentSignals = try await harness.quotaSignalStore.recent(limit: 5)
+        let signal = try XCTUnwrap(recentSignals.first)
+        XCTAssertEqual(signal.httpStatus, 429)
+        XCTAssertEqual(signal.remaining, 0)
+        XCTAssertEqual(signal.limit, 20)
+        XCTAssertEqual(signal.resetsAt, signal.observedAt.addingTimeInterval(3_600))
+    }
+
     // MARK: - Non-loopback bind warning (F-RR06-003 remediation test)
 
     func testGatewayConfigurationIsLoopbackClassification() {

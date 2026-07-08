@@ -1,6 +1,5 @@
 import OpenBurnBarCore
 import XCTest
-import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// The Trusted Devices list collapses duplicate registrations of the same

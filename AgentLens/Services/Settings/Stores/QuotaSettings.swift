@@ -50,7 +50,7 @@ final class QuotaSettings {
     private let persistence: SettingsPersistenceCoordinator
     private var hasLoadedPersistedValues = false
 
-    private(set) var updatedAt: Date = Date(timeIntervalSince1970: 0)
+    private(set) var updatedAt = Date(timeIntervalSince1970: 0)
 
     private func markUpdated() {
         guard hasLoadedPersistedValues else { return }
