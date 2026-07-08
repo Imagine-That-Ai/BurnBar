@@ -389,33 +389,67 @@ enum MacCloudVaultKeyAccess {
         let trusted = try await userRef.collection("escrow_devices")
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
             .getDocuments()
+
+        // Devices that already hold an active wrapper for THIS vault key need
+        // no re-verification or re-wrap — skipping them keeps the steady-state
+        // fan-out a no-op and avoids re-walking trust chains on every sync.
+        let existingWrappers = try await userRef.collection("cloud_vault_key_wrappers")
+            .whereField("vaultKeyID", isEqualTo: vaultKeyID)
+            .whereField("status", isEqualTo: "active")
+            .getDocuments()
+        let coveredDeviceIds = Set(
+            existingWrappers.documents.compactMap { $0.data()["targetDeviceId"] as? String }
+        )
+
         for doc in trusted.documents {
-            let target = try await CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
-                uid: uid,
-                userRef: userRef,
-                deviceDocument: doc,
-                localIdentity: signalIdentity
-            )
-            let wrapped = try CloudVaultCrypto.wrapVaultKey(
-                vaultKey,
-                recipientPublicKey: target.escrowPublicKeyData
-            )
-            try await userRef.collection("cloud_vault_key_wrappers")
-                .document("\(vaultKeyID)_\(target.deviceId)_\(target.keyVersion)")
-                .setData([
-                    "uid": uid,
-                    "vaultKeyID": vaultKeyID,
-                    "targetDeviceId": target.deviceId,
-                    "sourceDeviceId": deviceId,
-                    "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
-                    "keyVersion": target.keyVersion,
-                    "wrappedVaultKey": wrapped.base64EncodedString(),
-                    "algorithm": "ECIES-P256-AESGCM",
-                    "status": "active",
-                    "createdAt": FieldValue.serverTimestamp(),
-                    "updatedAt": FieldValue.serverTimestamp(),
-                    "schemaVersion": 2
-                ], merge: true)
+            let candidateId = (doc.data()["deviceId"] as? String) ?? doc.documentID
+            if coveredDeviceIds.contains(candidateId) { continue }
+
+            // Per-device best-effort: one malformed registry entry (a trusted
+            // doc missing its key material, or a trust chain pointing at a
+            // deleted device) must never sink the whole fan-out — and with it
+            // every usage upload. That exact failure kept this account's Mac
+            // from syncing usage for a month: the chain verifier threw
+            // `invalidTrustedDevice` on a dangling reference and the throw
+            // propagated out of `keyForWriting`. Skipping is fail-closed for
+            // the broken device (it simply gets no wrapper) and harmless for
+            // everyone else.
+            do {
+                let target = try await CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                    uid: uid,
+                    userRef: userRef,
+                    deviceDocument: doc,
+                    localIdentity: signalIdentity
+                )
+                let wrapped = try CloudVaultCrypto.wrapVaultKey(
+                    vaultKey,
+                    recipientPublicKey: target.escrowPublicKeyData
+                )
+                try await userRef.collection("cloud_vault_key_wrappers")
+                    .document("\(vaultKeyID)_\(target.deviceId)_\(target.keyVersion)")
+                    .setData([
+                        "uid": uid,
+                        "vaultKeyID": vaultKeyID,
+                        "targetDeviceId": target.deviceId,
+                        "sourceDeviceId": deviceId,
+                        "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
+                        "keyVersion": target.keyVersion,
+                        "wrappedVaultKey": wrapped.base64EncodedString(),
+                        "algorithm": "ECIES-P256-AESGCM",
+                        "status": "active",
+                        "createdAt": FieldValue.serverTimestamp(),
+                        "updatedAt": FieldValue.serverTimestamp(),
+                        "schemaVersion": 2
+                    ], merge: true)
+            } catch {
+                AppLogger.sync.notice(
+                    "cloud_vault_wrapper_skip",
+                    metadata: [
+                        "targetDeviceId": candidateId,
+                        "errorClass": "\(String(describing: type(of: error)))"
+                    ]
+                )
+            }
         }
         return signalIdentity
     }

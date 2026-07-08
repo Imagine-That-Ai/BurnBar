@@ -1,0 +1,62 @@
+{
+  "assertions": {
+    "analyticsRowsRendered": true,
+    "auditTrailRowsRendered": true,
+    "indexedProjectFixture": true,
+    "privacyDisabledCacheInspected": true,
+    "recalledMemoryGolden": true,
+    "searchedCodeGolden": true,
+    "watchedProjectFixture": true
+  },
+  "dataSource": "live-daemon-backed-tauri-bridge",
+  "generatedAt": "2026-07-04T17:57:08.157Z",
+  "kind": "memory",
+  "lane": "W04ProviderHermesEngineV4",
+  "proofStatus": "completed",
+  "route": "memory",
+  "rows": [
+    {
+      "method": "daemon.memory.remember",
+      "result": "memory=mem_8b6ddcd4c1ca99246b36f11f9898500a audit=d620faa1ba908db7bce199e2be072bb0139eeb2ffec5cc9ce360427130359195",
+      "step": "remember golden memory"
+    },
+    {
+      "method": "daemon.code.index_project",
+      "result": "files=31 chunks=871",
+      "step": "index project fixture"
+    },
+    {
+      "method": "daemon.code.watch_project",
+      "result": "files=31 chunks=0",
+      "step": "start watch flow"
+    },
+    {
+      "method": "daemon.code.search",
+      "result": "hits=3 project=proj_c52ddf65534b7b46",
+      "step": "search code golden"
+    },
+    {
+      "method": "daemon.memory.recall",
+      "result": "hits=1 project=proj_c52ddf65534b7b46",
+      "step": "recall memory golden"
+    },
+    {
+      "method": "daemon.memory.audit_trail",
+      "result": "events=19 project=proj_c52ddf65534b7b46",
+      "step": "audit trail rows"
+    },
+    {
+      "method": "daemon.memory.analytics",
+      "result": "total=1 project=proj_c52ddf65534b7b46",
+      "step": "analytics rows"
+    },
+    {
+      "method": "privacy",
+      "result": "memory bodies are stored as redacted project-memory sections and cache rows expose hashes, not raw secrets",
+      "step": "privacy-disabled cache inspection"
+    }
+  ],
+  "statusText": "Live project memory proof: completed",
+  "stepCount": 8,
+  "surface": "installed-tauri-deb-xvfb-xfce-dom"
+}

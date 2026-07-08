@@ -132,6 +132,7 @@ final class ThreadInboxStore {
             case .grok: runtime = .grok
             case .cursorAgent: runtime = .cursorAgent
             case .openClaude: runtime = .openClaude
+            case .omp: runtime = .omp
             }
             return ThreadInboxItem(
                 id: "cli:\(record.id)",

@@ -46,6 +46,8 @@ export const AUTH_ONLY_CALLABLES = [
   "beginPasskeyAssertion",
   "verifyPasskeyAssertion",
   "bindAppCheckAttestation",
+  "mintLinuxAppCheckToken",
+  "mintWindowsAppCheckToken",
   "issueHighRiskActionNonce",
   "searchStreams",
   "issueRemoteMcpGrant",

@@ -950,6 +950,7 @@ struct ChatPanel: View {
         case .antigravity: return "Ask Antigravity\u{2026}"
         case .cursorAgent: return "Ask Cursor Agent\u{2026}"
         case .openClaude: return "Ask OpenClaude\u{2026}"
+        case .omp: return "Ask OMP\u{2026}"
         }
     }
 

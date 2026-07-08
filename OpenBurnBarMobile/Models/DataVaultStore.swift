@@ -314,6 +314,12 @@ enum PensieveCommitQueueDrainer {
     }
 }
 
+extension FunctionsDataVaultService: HostedQuotaTierReading {
+    func fetchHostedQuotaTier() async throws -> String? {
+        try await getDataDomainUsage().tier
+    }
+}
+
 // MARK: - Store
 
 /// Observable view-model for the Data & Privacy Control Center. Holds the usage

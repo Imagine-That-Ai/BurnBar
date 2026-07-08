@@ -79,6 +79,8 @@ xcuserdata/
 .secrets/
 *.env
 *.pem
+# Public verification keys are safe and required in-tree (private keys stay ignored)
+!packaging/linux/openburnbar-linux-ed25519.pub.pem
 *.p12
 *.p8
 *.mobileprovision
@@ -104,6 +106,12 @@ artifacts/
 functions/lib/
 website/public/downloads/*.dmg
 website/public/downloads/*.zip
+
+# Linux port mission evidence/build outputs. Keep compact JSON/text/PNG proof
+# artifacts tracked, but never commit generated build caches or source tarballs.
+docs/linux-port/evidence/**/harness/.build/
+docs/linux-port/evidence/**/sidecars/*.tar
+crates/openburnbar-iroh/target-linux-ffi-serial/
 
 # BurnBar local MCP (Python venv)
 tools/burnbar-mcp/.venv/
@@ -256,3 +264,17 @@ docs/security/SOTA_*_SIGNOFF.md
 # from the Vendor/libsignal submodule via Rust+protobuf); multi-GB, never committed.
 Vendor/OpenBurnBarSignalFfiIOS.xcframework/
 Vendor/OpenBurnBarSignalFfiMac.xcframework/
+
+# Regenerable build caches — keep on disk, never commit (added 2026-07-03, Windows-port landing)
+.tmp-openburnbar-iroh-target/
+.swiftpm-linux-build/
+.build-linux*/
+.build-*/
+crates/**/target/
+.serena/cache/
+node_modules/
+
+# Dotnet build output directories (C# / WinUI)
+**/bin/
+**/obj/
+.lane-logs/

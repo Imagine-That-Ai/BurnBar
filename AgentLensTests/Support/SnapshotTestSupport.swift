@@ -87,7 +87,7 @@ private func renderViewSnapshotBody<V: View>(
 
 /// Asserts a visual snapshot of a SwiftUI view in both light and dark modes.
 @MainActor
-func assertAdaptiveSnapshot<V: View>(
+func XCTAssertAdaptiveSnapshot<V: View>(
     of view: V,
     size: CGSize,
     named: String,

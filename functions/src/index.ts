@@ -138,6 +138,8 @@ export {
 export { revokeAllAccess } from "./callables/panic.js";
 export { getAuditLog, verifyAuditLog } from "./callables/auditLog.js";
 export { registerBrowserEscrowDevice } from "./callables/webAppCheck.js";
+export { mintLinuxAppCheckToken } from "./callables/linuxAppCheck.js";
+export { mintWindowsAppCheckToken } from "./callables/windowsAppCheck.js";
 export {
   registerPasskey,
   verifyPasskeyRegistration,

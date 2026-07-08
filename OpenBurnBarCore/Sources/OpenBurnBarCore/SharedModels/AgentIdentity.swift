@@ -443,6 +443,11 @@ extension AgentIdentity {
             tagline = "Local-first agent runtime. Yours by default."
             capabilities = [.fullCLI, .memory, .mcpUI]
             dispatchTransport = .macRelay(runtime: "openclaw")
+        case .omp:
+            paletteHex = "EC4899"
+            tagline = "OMP — Oh My Pi via your Mac."
+            capabilities = [.fullCLI, .codeExecution, .memory, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "omp")
         case .openClaude:
             paletteHex = "D97757"
             tagline = "OpenClaude — an open fork of Claude Code, on your Mac."

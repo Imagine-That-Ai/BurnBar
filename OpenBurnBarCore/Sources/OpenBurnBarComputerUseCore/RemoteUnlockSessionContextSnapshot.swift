@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+import OpenBurnBarCore
 
 /// Signed, short-lived presenter context for Remote Unlock Virtual HID leaves.
 ///
@@ -101,18 +101,18 @@ public struct RemoteUnlockSessionContextSnapshotSigner: Sendable {
 
     public func sign(
         snapshot: RemoteUnlockSessionContextSnapshot,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> RemoteUnlockSessionContextSnapshot {
         var signed = snapshot
         let payload = try canonicalSignableBytes(snapshot: snapshot)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         signed.signatureEd25519Base64 = signature.base64EncodedString()
         return signed
     }
 
     public func verify(
         snapshot: RemoteUnlockSessionContextSnapshot,
-        publicKey: Curve25519.Signing.PublicKey
+        publicKey: PlatformEd25519PublicKey
     ) throws -> Bool {
         guard let signatureBase64 = snapshot.signatureEd25519Base64 else {
             throw RemoteUnlockSessionContextFailure.signatureMissing
@@ -121,7 +121,7 @@ public struct RemoteUnlockSessionContextSnapshotSigner: Sendable {
             return false
         }
         let payload = try canonicalSignableBytes(snapshot: snapshot)
-        return publicKey.isValidSignature(signature, for: payload)
+        return try PlatformCrypto.verifyEd25519Signature(signature, message: payload, publicKey: publicKey)
     }
 }
 

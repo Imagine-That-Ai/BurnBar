@@ -1,6 +1,4 @@
-import CryptoKit
 import Foundation
-import Security
 
 // MARK: - Security considerations (MP-16; mirror of relay_e2ee.py — keep in sync)
 //
@@ -25,14 +23,14 @@ import Security
 // because the caller passes the PINNED peer key to `unwrapSymmetricKey` (never a wire
 // `senderPublicKey` field), rooted at pairing time in the two-key safety code.
 
-public struct HermesRelayPrivateKey: Sendable, Equatable {
-    fileprivate let key: P256.KeyAgreement.PrivateKey
+public struct HermesRelayPrivateKey: @unchecked Sendable, Equatable { // AUDIT sendable-allowlist: swift-crypto-key-material
+    fileprivate let key: PlatformP256KeyAgreementPrivateKey
 
     public init(rawRepresentation: Data) throws {
-        self.key = try P256.KeyAgreement.PrivateKey(rawRepresentation: rawRepresentation)
+        self.key = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
     }
 
-    fileprivate init(_ key: P256.KeyAgreement.PrivateKey) {
+    fileprivate init(_ key: PlatformP256KeyAgreementPrivateKey) {
         self.key = key
     }
 
@@ -132,18 +130,15 @@ public enum HermesRelayCrypto {
     public static let symmetricKeyByteCount = 32
 
     public static func generatePrivateKey() -> HermesRelayPrivateKey {
-        HermesRelayPrivateKey(P256.KeyAgreement.PrivateKey())
+        HermesRelayPrivateKey(PlatformCrypto.p256KeyAgreementPrivateKey())
     }
 
     public static func generateSymmetricKeyData() throws -> Data {
-        var bytes = [UInt8](repeating: 0, count: symmetricKeyByteCount)
-        let status = bytes.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, symmetricKeyByteCount, buffer.baseAddress!)
-        }
-        guard status == errSecSuccess else {
+        do {
+            return try PlatformCrypto.secureRandomBytes(count: symmetricKeyByteCount)
+        } catch {
             throw HermesRelayCryptoError.randomGenerationFailed
         }
-        return Data(bytes)
     }
 
     public static func requestAAD(uid: String, connectionID: String, requestID: String) -> Data {
@@ -307,14 +302,11 @@ public enum HermesRelayCrypto {
         guard keyData.count == symmetricKeyByteCount else {
             throw HermesRelayCryptoError.invalidSymmetricKey
         }
-        let sealed = try AES.GCM.seal(
-            plaintext,
-            using: SymmetricKey(data: keyData),
+        let combined = try PlatformCrypto.sealAESGCM(
+            plaintext: plaintext,
+            keyData: keyData,
             authenticating: aad
         )
-        guard let combined = sealed.combined else {
-            throw HermesRelayCryptoError.invalidCiphertext
-        }
         return combined.base64EncodedString()
     }
 
@@ -325,8 +317,7 @@ public enum HermesRelayCrypto {
         guard let data = Data(base64Encoded: ciphertext) else {
             throw HermesRelayCryptoError.invalidCiphertext
         }
-        let sealedBox = try AES.GCM.SealedBox(combined: data)
-        return try AES.GCM.open(sealedBox, using: SymmetricKey(data: keyData), authenticating: aad)
+        return try PlatformCrypto.openAESGCM(combined: data, keyData: keyData, authenticating: aad)
     }
 
     /// Wrap a symmetric key to a recipient.
@@ -347,18 +338,18 @@ public enum HermesRelayCrypto {
             throw HermesRelayCryptoError.invalidSymmetricKey
         }
         guard let publicKeyData = Data(base64Encoded: recipientPublicKeyBase64),
-              let recipientKey = try? P256.KeyAgreement.PublicKey(x963Representation: publicKeyData) else {
+              let recipientKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: publicKeyData) else {
             throw HermesRelayCryptoError.invalidPublicKey
         }
-        let ephemeralKey = P256.KeyAgreement.PrivateKey()
-        let dh1 = try ephemeralKey.sharedSecretFromKeyAgreement(with: recipientKey)
+        let ephemeralKey = PlatformCrypto.p256KeyAgreementPrivateKey()
+        let dh1 = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: ephemeralKey, publicKey: recipientKey)
         let enc = ephemeralKey.publicKey.x963Representation
 
-        let wrappingKey: SymmetricKey
+        let wrappingKey: PlatformSymmetricKey
         if let senderPrivateKey {
             // v2 authenticated: ikm = ECDH(eph, R) ‖ ECDH(skS, R)
-            let dh2 = try senderPrivateKey.key.sharedSecretFromKeyAgreement(with: recipientKey)
-            wrappingKey = authenticatedWrappingKey(
+            let dh2 = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: senderPrivateKey.key, publicKey: recipientKey)
+            wrappingKey = try authenticatedWrappingKey(
                 dh1: dh1,
                 dh2: dh2,
                 enc: enc,
@@ -368,17 +359,14 @@ public enum HermesRelayCrypto {
             )
         } else {
             // v1 ephemeral-static (realtime relay) — unchanged byte layout.
-            wrappingKey = dh1.hkdfDerivedSymmetricKey(
-                using: SHA256.self,
+            wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
+                sharedSecret: dh1,
                 salt: Data(),
-                sharedInfo: keyWrapSharedInfo(aad: aad),
+                info: keyWrapSharedInfo(aad: aad),
                 outputByteCount: symmetricKeyByteCount
             )
         }
-        let sealed = try AES.GCM.seal(keyData, using: wrappingKey, authenticating: aad)
-        guard let combined = sealed.combined else {
-            throw HermesRelayCryptoError.invalidCiphertext
-        }
+        let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey, authenticating: aad)
         return (enc + combined).base64EncodedString()
     }
 
@@ -400,20 +388,20 @@ public enum HermesRelayCrypto {
         }
         let ephemeralPublicKeyData = envelope.prefix(65)
         let sealedBoxData = envelope.suffix(from: 65)
-        guard let ephemeralPublicKey = try? P256.KeyAgreement.PublicKey(x963Representation: ephemeralPublicKeyData) else {
+        guard let ephemeralPublicKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: Data(ephemeralPublicKeyData)) else {
             throw HermesRelayCryptoError.invalidPublicKey
         }
-        let dh1 = try privateKey.key.sharedSecretFromKeyAgreement(with: ephemeralPublicKey)
+        let dh1 = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey.key, publicKey: ephemeralPublicKey)
 
-        let wrappingKey: SymmetricKey
+        let wrappingKey: PlatformSymmetricKey
         if let senderPublicKeyBase64 {
             // v2 authenticated: recompute ikm = ECDH(r, eph) ‖ ECDH(r, S_pinned).
             guard let senderPublicKeyData = Data(base64Encoded: senderPublicKeyBase64),
-                  let senderKey = try? P256.KeyAgreement.PublicKey(x963Representation: senderPublicKeyData) else {
+                  let senderKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: senderPublicKeyData) else {
                 throw HermesRelayCryptoError.invalidPublicKey
             }
-            let dh2 = try privateKey.key.sharedSecretFromKeyAgreement(with: senderKey)
-            wrappingKey = authenticatedWrappingKey(
+            let dh2 = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey.key, publicKey: senderKey)
+            wrappingKey = try authenticatedWrappingKey(
                 dh1: dh1,
                 dh2: dh2,
                 enc: Data(ephemeralPublicKeyData),
@@ -422,28 +410,31 @@ public enum HermesRelayCrypto {
                 aad: aad
             )
         } else {
-            wrappingKey = dh1.hkdfDerivedSymmetricKey(
-                using: SHA256.self,
+            wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
+                sharedSecret: dh1,
                 salt: Data(),
-                sharedInfo: keyWrapSharedInfo(aad: aad),
+                info: keyWrapSharedInfo(aad: aad),
                 outputByteCount: symmetricKeyByteCount
             )
         }
-        let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-        return try AES.GCM.open(sealedBox, using: wrappingKey, authenticating: aad)
+        return try PlatformCrypto.openAESGCM(
+            combined: Data(sealedBoxData),
+            key: wrappingKey,
+            authenticating: aad
+        )
     }
 
     /// v2 authenticated wrapping-key derivation (HPKE-AuthEncap-shaped):
     /// `ikm = dh1 ‖ dh2`, `info = "…KeyWrap-v2|" ‖ aad ‖ enc ‖ pkR ‖ pkS`
     /// (kem_context binds the ephemeral pub + both party identities → UKS-resistant).
     private static func authenticatedWrappingKey(
-        dh1: SharedSecret,
-        dh2: SharedSecret,
+        dh1: PlatformSharedSecret,
+        dh2: PlatformSharedSecret,
         enc: Data,
         recipientPublicKey: Data,
         senderPublicKey: Data,
         aad: Data
-    ) -> SymmetricKey {
+    ) throws -> PlatformSymmetricKey {
         var ikm = Data()
         dh1.withUnsafeBytes { ikm.append(contentsOf: $0) }
         dh2.withUnsafeBytes { ikm.append(contentsOf: $0) }
@@ -452,8 +443,8 @@ public enum HermesRelayCrypto {
         info.append(enc)
         info.append(recipientPublicKey)
         info.append(senderPublicKey)
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: ikm),
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: ikm,
             salt: Data(),
             info: info,
             outputByteCount: symmetricKeyByteCount
@@ -500,17 +491,17 @@ public enum HermesRelayCrypto {
             throw HermesRelayCryptoError.invalidSymmetricKey
         }
         guard let publicKeyData = Data(base64Encoded: recipientPublicKeyBase64),
-              let recipientKey = try? P256.KeyAgreement.PublicKey(x963Representation: publicKeyData) else {
+              let recipientKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: publicKeyData) else {
             throw HermesRelayCryptoError.invalidPublicKey
         }
-        var sender = try HPKE.Sender(
-            recipientKey: recipientKey,
-            ciphersuite: .P256_SHA256_AES_GCM_256,
+        let sealed = try PlatformCrypto.hpkeSealP256SHA256AESGCM256(
+            plaintext: keyData,
+            recipientPublicKey: recipientKey,
             info: hpkeV3Info(aad: aad),
+            aad: aad,
             authenticatedBy: senderPrivateKey.key
         )
-        let wrappedKey = try sender.seal(keyData, authenticating: aad)
-        return HermesRelayKeyWrapV3(enc: sender.encapsulatedKey, wrappedKey: wrappedKey)
+        return HermesRelayKeyWrapV3(enc: sealed.encapsulatedKey, wrappedKey: sealed.ciphertext)
     }
 
     /// Open a v3 HPKE Auth key wrap, binding the PINNED sender static key.
@@ -529,18 +520,18 @@ public enum HermesRelayCrypto {
         aad: Data
     ) throws -> Data {
         guard let senderPublicKeyData = Data(base64Encoded: pinnedSenderPublicKeyBase64),
-              let senderKey = try? P256.KeyAgreement.PublicKey(x963Representation: senderPublicKeyData) else {
+              let senderKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: senderPublicKeyData) else {
             throw HermesRelayCryptoError.invalidPublicKey
         }
         do {
-            var recipient = try HPKE.Recipient(
-                privateKey: privateKey.key,
-                ciphersuite: .P256_SHA256_AES_GCM_256,
+            let opened = try PlatformCrypto.hpkeOpenP256SHA256AESGCM256(
+                ciphertext: wrappedKey,
+                recipientPrivateKey: privateKey.key,
                 info: hpkeV3Info(aad: aad),
                 encapsulatedKey: enc,
-                authenticatedBy: senderKey
+                authenticatedBy: senderKey,
+                aad: aad
             )
-            let opened = try recipient.open(wrappedKey, authenticating: aad)
             guard opened.count == symmetricKeyByteCount else {
                 throw HermesRelayCryptoError.invalidSymmetricKey
             }
@@ -598,14 +589,14 @@ public enum HermesRelayCrypto {
     }
 }
 
-public struct PiAgentRelayPrivateKey: Sendable, Equatable {
-    fileprivate let key: P256.KeyAgreement.PrivateKey
+public struct PiAgentRelayPrivateKey: @unchecked Sendable, Equatable { // AUDIT sendable-allowlist: swift-crypto-key-material
+    fileprivate let key: PlatformP256KeyAgreementPrivateKey
 
     public init(rawRepresentation: Data) throws {
-        self.key = try P256.KeyAgreement.PrivateKey(rawRepresentation: rawRepresentation)
+        self.key = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
     }
 
-    fileprivate init(_ key: P256.KeyAgreement.PrivateKey) {
+    fileprivate init(_ key: PlatformP256KeyAgreementPrivateKey) {
         self.key = key
     }
 
@@ -640,7 +631,7 @@ public enum PiAgentRelayCrypto {
     public static let symmetricKeyByteCount = HermesRelayCrypto.symmetricKeyByteCount
 
     public static func generatePrivateKey() -> PiAgentRelayPrivateKey {
-        PiAgentRelayPrivateKey(P256.KeyAgreement.PrivateKey())
+        PiAgentRelayPrivateKey(PlatformCrypto.p256KeyAgreementPrivateKey())
     }
 
     public static func generateSymmetricKeyData() throws -> Data {
@@ -682,21 +673,18 @@ public enum PiAgentRelayCrypto {
             throw HermesRelayCryptoError.invalidSymmetricKey
         }
         guard let publicKeyData = Data(base64Encoded: recipientPublicKeyBase64),
-              let recipientKey = try? P256.KeyAgreement.PublicKey(x963Representation: publicKeyData) else {
+              let recipientKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: publicKeyData) else {
             throw HermesRelayCryptoError.invalidPublicKey
         }
-        let ephemeralKey = P256.KeyAgreement.PrivateKey()
-        let sharedSecret = try ephemeralKey.sharedSecretFromKeyAgreement(with: recipientKey)
-        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
+        let ephemeralKey = PlatformCrypto.p256KeyAgreementPrivateKey()
+        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: ephemeralKey, publicKey: recipientKey)
+        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
+            sharedSecret: sharedSecret,
             salt: Data(),
-            sharedInfo: keyWrapSharedInfo(aad: aad),
+            info: keyWrapSharedInfo(aad: aad),
             outputByteCount: symmetricKeyByteCount
         )
-        let sealed = try AES.GCM.seal(keyData, using: wrappingKey, authenticating: aad)
-        guard let combined = sealed.combined else {
-            throw HermesRelayCryptoError.invalidCiphertext
-        }
+        let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey, authenticating: aad)
         return (ephemeralKey.publicKey.x963Representation + combined).base64EncodedString()
     }
 
@@ -711,18 +699,21 @@ public enum PiAgentRelayCrypto {
         }
         let ephemeralPublicKeyData = envelope.prefix(65)
         let sealedBoxData = envelope.suffix(from: 65)
-        guard let ephemeralPublicKey = try? P256.KeyAgreement.PublicKey(x963Representation: ephemeralPublicKeyData) else {
+        guard let ephemeralPublicKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: Data(ephemeralPublicKeyData)) else {
             throw HermesRelayCryptoError.invalidPublicKey
         }
-        let sharedSecret = try privateKey.key.sharedSecretFromKeyAgreement(with: ephemeralPublicKey)
-        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
+        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey.key, publicKey: ephemeralPublicKey)
+        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
+            sharedSecret: sharedSecret,
             salt: Data(),
-            sharedInfo: keyWrapSharedInfo(aad: aad),
+            info: keyWrapSharedInfo(aad: aad),
             outputByteCount: symmetricKeyByteCount
         )
-        let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-        return try AES.GCM.open(sealedBox, using: wrappingKey, authenticating: aad)
+        return try PlatformCrypto.openAESGCM(
+            combined: Data(sealedBoxData),
+            key: wrappingKey,
+            authenticating: aad
+        )
     }
 
     private static func aad(_ parts: [String]) -> Data {

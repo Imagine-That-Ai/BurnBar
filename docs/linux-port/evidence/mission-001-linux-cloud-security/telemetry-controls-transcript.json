@@ -1,0 +1,38 @@
+{
+  "bridgeConfig" : {
+    "amplitude" : "local-http-v2-capture",
+    "bridge" : "linux-desktop-telemetry",
+    "sentry" : "local-capture"
+  },
+  "capturedAfterDisable" : [
+    {
+      "cookie" : "[REDACTED]",
+      "email" : "[REDACTED]",
+      "event" : "linux_auth",
+      "path" : "[REDACTED]",
+      "prompt" : "[REDACTED]",
+      "token" : "[REDACTED]"
+    }
+  ],
+  "capturedBeforeDisable" : [
+    {
+      "cookie" : "[REDACTED]",
+      "email" : "[REDACTED]",
+      "event" : "linux_auth",
+      "path" : "[REDACTED]",
+      "prompt" : "[REDACTED]",
+      "token" : "[REDACTED]"
+    }
+  ],
+  "countAfterDelete" : 0,
+  "exportedEvents" : [
+    {
+      "cookie" : "[REDACTED]",
+      "email" : "[REDACTED]",
+      "event" : "linux_auth",
+      "path" : "[REDACTED]",
+      "prompt" : "[REDACTED]",
+      "token" : "[REDACTED]"
+    }
+  ]
+}

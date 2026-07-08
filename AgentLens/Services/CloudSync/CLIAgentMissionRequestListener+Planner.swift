@@ -25,6 +25,8 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .openclaw)
             case "openclaude", "open-claude":
                 return CLIAgentMissionBackend(chatBackend: .openClaude)
+            case "omp", "ohmypi", "oh-my-pi", "oh my pi":
+                return CLIAgentMissionBackend(chatBackend: .omp)
             case "droid", "factory", "factory-droid", "factorydroid":
                 return CLIAgentMissionBackend(chatBackend: .droid)
             case "forge", "forge-dev", "forgedev":
@@ -138,7 +140,7 @@ enum CLIAgentMissionRuntimePlanner {
             switch chatBackend {
             case .hermes:
                 return false
-            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
                 return true
             }
         }
@@ -202,6 +204,38 @@ enum CLIAgentMissionRuntimePlanner {
                     modelCommand
                 ],
                 extraEnvironment: env
+            )
+        case ChatBackendID.omp.rawValue:
+            let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+            let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+            var arguments = [
+                "-p",
+                hostPrompt,
+                "--mode",
+                "json",
+                "--no-session"
+            ]
+            if commandsAllowed || fileEditsAllowed {
+                var tools = ["read", "grep", "glob", "lsp"]
+                if commandsAllowed {
+                    tools.append("bash")
+                }
+                if fileEditsAllowed {
+                    tools += ["edit", "write"]
+                }
+                let dedupedTools = (Array(NSOrderedSet(array: tools)) as? [String] ?? tools)
+                    .joined(separator: ",")
+                arguments += ["--tools", dedupedTools, "--auto-approve"]
+            } else {
+                arguments.append("--no-tools")
+            }
+            if let requestedModelID {
+                arguments += ["--model", requestedModelID]
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "omp",
+                arguments: arguments,
+                extraEnvironment: [:]
             )
         case ChatBackendID.openClaude.rawValue:
             let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
@@ -419,6 +453,7 @@ enum CLIAgentMissionRuntimePlanner {
                 extraEnvironment: [:]
             )
         case ChatBackendID.openClaude.rawValue,
+            ChatBackendID.omp.rawValue,
             ChatBackendID.hermes.rawValue,
             ChatBackendID.piAgent.rawValue,
             "opencode",
@@ -459,6 +494,7 @@ enum CLIAgentMissionRuntimePlanner {
             case .claude: return .claude
             case .openclaw: return .openClaw
             case .openClaude: return .openClaude
+            case .omp: return .omp
             case .droid: return .droid
             case .forge: return .forge
             case .antigravity: return .antigravity
@@ -470,6 +506,7 @@ enum CLIAgentMissionRuntimePlanner {
         switch backend.rawValue {
         case "openclaw", "open-claw": return .openClaw
         case "openclaude", "open-claude": return .openClaude
+        case "omp", "ohmypi", "oh-my-pi", "oh my pi": return .omp
         case "droid", "factory": return .droid
         case "forge": return .forge
         case "antigravity", "agy", "google-antigravity": return .antigravity

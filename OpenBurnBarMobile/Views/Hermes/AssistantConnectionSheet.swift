@@ -196,7 +196,7 @@ struct AssistantConnectionSheet: View {
                 urlString: directURL,
                 bearerToken: directBearer.isEmpty ? nil : directBearer
             )
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp:
             // Bridged runtimes are paired via the macOS host — direct URL
             // entry from mobile is intentionally a no-op for now.
             break

@@ -105,6 +105,10 @@ enum InteractiveTerminalLauncher {
             var arguments: [String] = []
             if let model { arguments += ["--model", model] }
             return Invocation(executableName: "openclaude", arguments: arguments, extraEnvironment: [:])
+        case "omp", "ohmypi", "oh-my-pi":
+            var arguments: [String] = []
+            if let model { arguments += ["--model", model] }
+            return Invocation(executableName: "omp", arguments: arguments, extraEnvironment: [:])
         case "cursoragent", "cursor-agent":
             var arguments: [String] = []
             if let model { arguments += ["--model", model] }

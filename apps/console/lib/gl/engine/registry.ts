@@ -297,6 +297,16 @@ export const KERNELS: KernelDescriptor[] = [
   },
   // ── CUBELOVE voxel world: eight ways to love a cube. ──
   // ── CUBELOVE premium: WebGPU sparse-voxel path tracer. Degrades to `voxel`. ──
+  // ── Boids murmuration: classic Reynolds flocking on the 2D substrate. ──
+  {
+    id: "boids",
+    label: "Boids",
+    blurb: "A living murmuration — hundreds of birds flocking as one.",
+    substrate: "2d",
+    create: () =>
+      lazyKernel("boids", "Boids", "2d", () =>
+        import("./kernels/boidsKernel").then((m) => m.createBoidsKernel)),
+  },
   ];
 
 export const DEFAULT_KERNEL_ID: KernelId = "constellation";

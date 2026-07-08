@@ -1,0 +1,2 @@
+{"source":"USER_EXPLICIT","type":"USER_INPUT","content":"Add golden fixtures for parser parity.","created_at":"2025-07-01T00:00:00Z"}
+{"source":"MODEL","type":"PLANNER_RESPONSE","content":"I will add harness entries and frozen fixtures.","thinking":"","tool_calls":[],"created_at":"2025-07-01T00:00:05Z"}

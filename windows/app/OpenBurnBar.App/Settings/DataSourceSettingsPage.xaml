@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data Source — SQLCipher Mac DB path + passphrase, and optional Firebase dev-host tokens.
+-->
+<Page
+    x:Class="OpenBurnBar.App.Settings.Winui.DataSourceSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}">
+        <StackPanel Spacing="6" MaxWidth="720" HorizontalAlignment="Left">
+
+            <TextBlock
+                Style="{StaticResource TitleTextBlockStyle}"
+                Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                Text="Data source" />
+            <TextBlock
+                Margin="0,0,0,8"
+                Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                TextWrapping="Wrap"
+                Text="Point OpenBurnBar at your Mac SQLCipher database and optional cloud sync credentials. Saved to app_config.json; environment variables still override at runtime." />
+
+            <tk:SettingsCard x:Name="DbPathCard" Header="SQLCipher database" Description="Path to the .sqlite file produced on macOS">
+                <StackPanel Spacing="8" MinWidth="280">
+                    <TextBox x:Name="DbPathBox" PlaceholderText="C:\path\to\openburnbar.sqlite" />
+                    <Button x:Name="BrowseDbButton" Content="Browse…" Click="OnBrowseDb" HorizontalAlignment="Left" />
+                </StackPanel>
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="PassphraseCard" Header="Database passphrase" Description="Same passphrase used when the file was created on Mac">
+                <PasswordBox x:Name="PassphraseBox" MinWidth="280" PlaceholderText="Passphrase" />
+            </tk:SettingsCard>
+
+            <TextBlock
+                Margin="0,10,0,2"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                Text="Cloud sync (optional)" />
+
+            <tk:SettingsCard Header="Firebase project" Description="Defaults to openburnbar-dev when empty">
+                <TextBox x:Name="FirebaseProjectBox" MinWidth="280" PlaceholderText="openburnbar-dev" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Firebase UID" Description="Your Firebase user id">
+                <TextBox x:Name="FirebaseUidBox" MinWidth="280" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Firebase ID token" Description="Paste a dev-host ID token (OAuth flow deferred)">
+                <TextBox x:Name="FirebaseIdTokenBox" MinWidth="280" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="App Check token" Description="Optional; leave empty if not using App Check">
+                <TextBox x:Name="AppCheckTokenBox" MinWidth="280" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Vault key (Base64)" Description="Optional E2EE vault key; generated if empty when UID is set">
+                <TextBox x:Name="VaultKeyBox" MinWidth="280" />
+            </tk:SettingsCard>
+
+            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,12,0,0">
+                <Button x:Name="SaveButton" Content="Save" Style="{StaticResource AccentButtonStyle}" Click="OnSave" />
+                <TextBlock x:Name="StatusLabel" VerticalAlignment="Center" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

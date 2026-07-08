@@ -24,6 +24,7 @@ struct DashboardView: View {
     @State var routeHistory: [DashboardMainRoute] = []
     @State var selectedTimeRange: TimeRange = .today
     @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
+    @AppStorage("dashboardViewMode") var storedViewMode: DashboardViewMode = .agents
     @State var showingSettings = false
     @State var showProgressPanel = false
     @State var overviewAppeared = false
@@ -183,11 +184,7 @@ struct DashboardView: View {
         return NavigationSplitView {
             sidebarView
                 .navigationSplitViewColumnWidth(min: 260, ideal: 280, max: 320)
-                // Keep the column transparent so the themed backdrop reaches the
-                // rail and the Liquid Glass plate can refract it. The rail's own
-                // `SidebarThemeGlass` supplies the surface (glass, or paper in
-                // the editorial skin).
-                .background(Color.clear)
+                .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
         } detail: {
             detailView
         }
@@ -292,6 +289,7 @@ struct DashboardView: View {
         }
         .toolbar { toolbarContent }
         .background {
+            sectionShortcuts
             commandPaletteShortcut
         }
         .sheet(isPresented: $showCommandPalette) {
@@ -434,6 +432,29 @@ struct DashboardView: View {
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(\.dashboardLiveBackdropActive, dashboardLiveBackdropActive)
         .environment(settingsManager)
+    }
+
+    // MARK: - Hidden keyboard shortcuts
+
+    /// Window-level ⌘1–⌘7 for primary sections. Zero-size, non-interactive
+    /// buttons so the shortcut fires regardless of focus but the views are
+    /// never visible. Mirrors the proven `globalShortcut` pattern from
+    /// `BurnBarTopRail.swift`.
+    @ViewBuilder
+    private var sectionShortcuts: some View {
+        ForEach(Array(DashboardMainRoute.primarySections.enumerated()), id: \.element) { index, route in
+            Button {
+                withAnimation(DesignSystem.Animation.standard) {
+                    navigate(to: route)
+                }
+            } label: {
+                EmptyView()
+            }
+            .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+        }
     }
 
     /// Hidden ⌘K to open the Command Palette from anywhere in the window.

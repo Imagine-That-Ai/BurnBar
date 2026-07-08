@@ -347,7 +347,7 @@ public enum CLIRuntimeModelCatalog {
                 "Cursor via Cursor Agent CLI",
                 source: .cursorAgentProfile
             )
-        case .droid, .forge, .hermes, .pi, .openClaw, .openClaude:
+        case .droid, .forge, .hermes, .pi, .openClaw, .openClaude, .omp:
             return nil
         }
     }

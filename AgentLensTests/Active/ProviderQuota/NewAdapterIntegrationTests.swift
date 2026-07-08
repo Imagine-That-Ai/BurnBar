@@ -176,5 +176,6 @@ final class NewAdapterIntegrationTests: XCTestCase {
             foundTasks == 0,
             "Kilo Code task data not found; skipping user-local provider data check."
         )
+        XCTAssertGreaterThan(foundTasks, 0)
     }
 }

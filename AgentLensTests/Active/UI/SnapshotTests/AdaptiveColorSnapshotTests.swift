@@ -11,7 +11,7 @@ final class AdaptiveColorSnapshotTests: XCTestCase {
 
     func test_designSystemColorSwatches() {
         let view = ColorSwatchGrid()
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 500, height: 600),
             named: SnapshotName.colorSwatches
@@ -20,7 +20,7 @@ final class AdaptiveColorSnapshotTests: XCTestCase {
 
     func test_providerPrimaryColors() {
         let view = ProviderColorGrid()
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 500, height: 800),
             named: SnapshotName.providerColors

@@ -26,8 +26,9 @@ Test at least one device from each receiver class before calling DashCast suppor
 5. Verify the display leaves the DashCast splash and renders the OpenBurnBar dashboard, and verify the action reports proof that `/state.json` was polled after cast.
 6. Wait 90 seconds. Verify the dashboard is still visible after at least one refresh poll.
 7. Use `Refresh Hub`. Verify the dashboard updates instead of returning to the DashCast splash.
-8. From another browser/device, request the same bridge host without the generated bridge token. Verify `/render.html`, `/state.json`, `/refresh`, and `/period` reject the request instead of exposing or mutating dashboard state.
-9. Interrupt the display with ambient mode or another Cast app, then run `Make display work` again. Verify OpenBurnBar recovers without manual URL edits.
+8. Use `Identify` / `Speak Now`. Verify the dashboard pulses and, when the receiver browser allows Web Speech, announces the current OpenBurnBar provider summary.
+9. From another browser/device, request the same bridge host without the generated bridge token. Verify `/render.html`, `/state.json`, `/refresh`, `/period`, and `/voice-refresh` reject the request instead of exposing or mutating dashboard state.
+10. Interrupt the display with ambient mode or another Cast app, then run `Make display work` again. Verify OpenBurnBar recovers without manual URL edits.
 
 The DashCast payload contract is covered by `CastChannelClientTests`. In particular, `force=true` must disable DashCast reload mode; combining `force=true` with `reload=true` is a known way to strand receivers on the DashCast splash. The runtime LOAD path also sends `reloadSeconds: 0`, which keeps DashCast's built-in periodic reload disabled — the page polls `/state.json` every 5 s on its own, has a 10-minute stale-poll `location.reload()` safety, and the Mac-side cast watchdog handles truly stuck sessions. A non-zero `reload_time` would force the Nest Hub to flash the DashCast splash on every reload, producing a continuous "displays OpenBurnBar briefly → blanks → re-displays" reset cycle.
 

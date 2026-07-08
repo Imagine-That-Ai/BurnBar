@@ -99,7 +99,20 @@ public struct IrohPairingPublisher: Sendable {
             throw IrohPairingDirectoryError.recordNotFound
         }
         try IrohPairingSignature.verify(record, publicKey: publicKey, now: now)
-        try await IrohPairingReplayGuardShared.session.consume(record: record, now: now)
+        do {
+            try await IrohPairingReplayGuardShared.session.consume(record: record, now: now)
+        } catch IrohPairingError.replayed {
+            // Re-dials legitimately re-read the SAME record: the Mac only
+            // republishes every ~60s while a reconnecting client retries every
+            // few seconds, so strict consume-once semantics meant at most one
+            // successful dial per republish window and an endless
+            // "Reconnecting" storm in between (observed live 2026-07-03).
+            // Signature and freshness were re-verified above on this exact
+            // fetch, and the pairing doc is server-write-only, so accepting a
+            // record WE already consumed within its freshness window does not
+            // weaken the anti-replay property the guard exists for (an
+            // attacker substituting a stale snapshot still fails `verify`).
+        }
         return record.dialTarget
     }
 }

@@ -1,4 +1,5 @@
 import UIKit
+import os.log
 import FirebaseAuth
 import FirebaseCore
 import FirebaseAppCheck
@@ -12,6 +13,8 @@ import Sentry
 #endif
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "AppDelegate")
+
     /// Retained iOS file-transfer service so its `@Published` state
     /// survives the lifetime of the app and any inbound
     /// `media.blob.advertise` frames have a live receiver.
@@ -116,7 +119,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         #if DEBUG
-        print("Remote notification registration failed: \(error.localizedDescription)")
+        Self.log.error("Remote notification registration failed: \(error.localizedDescription, privacy: .public)")
         #endif
     }
 
@@ -205,17 +208,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ///   token from `firebase.console -> App Check -> iOS app` is accepted.
     private func configureFirebase() {
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") else {
-            print("warning: GoogleService-Info.plist not found; Firebase remains unconfigured.")
+            Self.log.warning("GoogleService-Info.plist not found; Firebase remains unconfigured.")
             return
         }
         guard Self.googleServiceInfoLooksConfigured(at: path) else {
-            print("warning: GoogleService-Info.plist is a placeholder or invalid; Firebase remains unconfigured.")
+            Self.log.warning("GoogleService-Info.plist is a placeholder or invalid; Firebase remains unconfigured.")
             return
         }
 
         let appCheckProvider = Self.installAppCheckProviderFactory(firebasePlistPath: path)
         #if DEBUG
-        print("OpenBurnBarMobile App Check provider: \(appCheckProvider)")
+        Self.log.info("OpenBurnBarMobile App Check provider: \(appCheckProvider, privacy: .public)")
         #endif
 
         FirebaseApp.configure()
@@ -238,40 +241,55 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
     }
 
+    /// True when this launch deliberately turned Firestore's live network off
+    /// (emergency kill switch below). `CloudSyncHealthStore` reads this so the
+    /// sync UI says "cloud sync is switched off on this device" instead of
+    /// rendering empty data as $0.00 burn and "Mac last seen: never".
+    private(set) static var isFirestoreNetworkDisabled = false
+
+    /// Emergency escape hatch: setting this defaults key to `true` (e.g. via a
+    /// support script or `defaults write`) disables Firestore's live network on
+    /// next launch without a binary update, should a runtime/gRPC regression
+    /// like the iOS 27 beta one ever resurface.
+    static let firestoreNetworkKillSwitchDefaultsKey = "OpenBurnBarDisableFirestoreNetwork"
+
     private static func disableFirestoreNetworkOnIncompatibleOSIfNeeded() {
         guard shouldDisableFirestoreNetworkForRuntime(
             isSimulator: isRunningInSimulator,
-            operatingSystemVersion: ProcessInfo.processInfo.operatingSystemVersion
+            operatingSystemVersion: ProcessInfo.processInfo.operatingSystemVersion,
+            killSwitchEnabled: UserDefaults.standard.bool(forKey: firestoreNetworkKillSwitchDefaultsKey)
         ) else {
             return
         }
+        isFirestoreNetworkDisabled = true
         Firestore.firestore().disableNetwork { error in
             #if DEBUG
             if let error {
-                print("warning: failed to disable Firestore network for iOS 27 gRPC compatibility: \(error.localizedDescription)")
+                Self.log.error("failed to disable Firestore network via kill switch: \(error.localizedDescription, privacy: .public)")
             } else {
-                print("OpenBurnBarMobile disabled Firestore network for iOS 27 gRPC/BoringSSL compatibility.")
+                Self.log.notice("OpenBurnBarMobile disabled Firestore network via the emergency kill switch.")
             }
             #endif
         }
     }
 
-    /// iOS 27 ships a networking/security stack that faults inside the bundled
+    /// History: the iOS 27 BETA runtime faulted inside the bundled
     /// gRPC/BoringSSL (Firebase 11.15 / grpc-binary 1.69) the first time
-    /// Firestore opens its gRPC TLS channel: `EXC_BAD_ACCESS` (SIGBUS) in
-    /// `OPENSSL_cleanse` via `ssl_cert_dup` → `create_tsi_ssl_handshaker` on a
-    /// background connect thread, crashing the app before the dashboard appears.
-    /// First observed on the iOS 27 Simulator; it reproduces IDENTICALLY on a
-    /// physical iOS 27 device (verified by the on-device crash report). The gate
-    /// is therefore OS-version driven, NOT simulator-only — disable Firestore's
-    /// live network on iOS 27+ everywhere until Firebase ships an iOS-27
-    /// compatible gRPC, then drop this shim. `isSimulator` is retained for the
-    /// call site/tests but no longer narrows the gate.
+    /// Firestore opened its gRPC TLS channel — `EXC_BAD_ACCESS` (SIGBUS) in
+    /// `OPENSSL_cleanse` via `ssl_cert_dup` → `create_tsi_ssl_handshaker` — so
+    /// this gate used to hard-disable Firestore's network on iOS 27+. That
+    /// left every iOS 27 user with a silently cloud-dead app ($0.00 burn,
+    /// "Mac last seen: never", no quota) while auth kept working over REST.
+    /// Verified on-device on iOS 27.0 GM with Firebase 12.15: the handshake no
+    /// longer faults, so the version gate is gone. What remains is the
+    /// explicit kill switch above — never an OS-version heuristic — and the
+    /// sync UI now surfaces the disabled state instead of faking empty data.
     static func shouldDisableFirestoreNetworkForRuntime(
         isSimulator: Bool,
-        operatingSystemVersion: OperatingSystemVersion
+        operatingSystemVersion: OperatingSystemVersion,
+        killSwitchEnabled: Bool
     ) -> Bool {
-        operatingSystemVersion.majorVersion >= 27
+        killSwitchEnabled
     }
 
     private static var isRunningInSimulator: Bool {
@@ -304,7 +322,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     @MainActor
     private static func postAppCheckWarning(_ message: String) {
-        print("App Check validation warning: \(message)")
+        Self.log.warning("App Check validation warning: \(message, privacy: .public)")
         NotificationCenter.default.post(
             name: .openBurnBarMobileAppCheckValidationFailed,
             object: nil,
@@ -316,7 +334,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         guard let clientID = FirebaseApp.app()?.options.clientID
             ?? googleServiceInfoValue("CLIENT_ID")
         else {
-            print("warning: Google sign-in client ID is missing; Google auth remains disabled.")
+            Self.log.warning("Google sign-in client ID is missing; Google auth remains disabled.")
             return
         }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
@@ -429,7 +447,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         case "devicecheck", "devicecheckprovider":
             return .deviceCheck
         default:
-            print("warning: Unknown OPENBURNBAR_APP_CHECK_PROVIDER '\(raw)'; falling back to the build default.")
+            Self.log.warning("Unknown OPENBURNBAR_APP_CHECK_PROVIDER '\(raw, privacy: .public)'; falling back to the build default.")
             return nil
         }
     }
@@ -468,10 +486,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 } else {
                     return
                 }
-                print("OpenBurnBarMobile E2E Firebase sign-in active for uid \(result.user.uid).")
+                Self.log.info("OpenBurnBarMobile E2E Firebase sign-in active for uid \(result.user.uid, privacy: .public).")
                 await launchE2EMissionIfRequested(environment: environment)
             } catch {
-                print("warning: OpenBurnBarMobile E2E Firebase sign-in failed: \(error.localizedDescription)")
+                Self.log.warning("OpenBurnBarMobile E2E Firebase sign-in failed: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -498,9 +516,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 commandsAllowed: false,
                 fileEditsAllowed: false
             )
-            print("OpenBurnBarMobile E2E mission dispatched: \(requestID)")
+            Self.log.info("OpenBurnBarMobile E2E mission dispatched: \(requestID, privacy: .public)")
         } catch {
-            print("warning: OpenBurnBarMobile E2E mission dispatch failed: \(error.localizedDescription)")
+            Self.log.warning("OpenBurnBarMobile E2E mission dispatch failed: \(error.localizedDescription, privacy: .public)")
         }
     }
     #endif

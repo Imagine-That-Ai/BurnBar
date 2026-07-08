@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable Windows App Check CLIENT (Phase 2 ·
+    CloudSync · App Check client lane — consumes the Phase-0 mint backend
+    functions/src/callables/windowsAppCheck.ts). Runs today via `dotnet test` on
+    the authoring host, against the SAME assemblies that ship on Windows. Mirrors
+    the proven cast/presentation/switcher test pattern (net10.0, xUnit).
+
+    Coverage:
+      • MockAttestationMacParityTests   — BYTE-PARITY of the C# mock MAC against
+        the committed golden vectors (openssl oracle == the server's
+        signMockAttestation formula); domain/secret/formula drift detection.
+      • MockAttestationProducerTests    — produced claim shape, nonce bounds
+        (16..256), wrong-secret => different MAC (server would reject as forged).
+      • AppCheckTokenTests              — TTL / expiry / refresh-window math.
+      • AppCheckMintClientTests         — callable request encode (fake transport
+        captures the exact wire bytes), success decode, and every fail-closed
+        path: non-2xx, error envelope, ok!=true, malformed/missing fields.
+      • WindowsAppCheckProviderTests    — mock-claim -> mint -> install; TTL
+        refresh BEFORE expiry; token attached as X-Firebase-AppCheck; mint-failure
+        => request BLOCKED (fail-closed, no header); missing id token => blocked;
+        single-flight (one mint under concurrency); Invalidate re-mints; serve
+        still-valid token when a proactive refresh fails.
+      • LiveLoopbackMintTests           — the FULL path through the real
+        HttpClientAppCheckMintTransport against a loopback HttpListener mint
+        server (mirrors the HA live-HttpListener test): a real HTTP round-trip
+        mints + installs a token and attaches the header; a 401 fails closed.
+      • AppCheckMintEndpointTests       — callable URL construction + overrides.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck/OpenBurnBar.CloudSync.AppCheck.csproj" />
+    <ProjectReference Include="../../cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck.Net/OpenBurnBar.CloudSync.AppCheck.Net.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Fixtures/mock-attestation-vectors.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

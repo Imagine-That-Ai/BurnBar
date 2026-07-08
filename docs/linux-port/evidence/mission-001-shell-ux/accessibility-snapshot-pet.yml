@@ -1,0 +1,35 @@
+- generic [ref=f4e60]:
+  - link "Skip to content" [ref=f4e61] [cursor=pointer]:
+    - /url: "#main"
+  - navigation "Primary" [ref=f4e62]:
+    - generic [ref=f4e63]: OpenBurnBar Linux
+    - status [ref=f4e64]: Daemon fixture-0.1.0 (fixture)
+    - generic [ref=f4e65]: Dashboard
+    - button "Overview" [ref=f4e66] [cursor=pointer]
+    - button "Insights" [ref=f4e67] [cursor=pointer]
+    - button "Database" [ref=f4e68] [cursor=pointer]
+    - button "Providers & models" [ref=f4e69] [cursor=pointer]
+    - button "Projects" [ref=f4e70] [cursor=pointer]
+    - button "Missions" [ref=f4e71] [cursor=pointer]
+    - button "Activity & logs" [ref=f4e72] [cursor=pointer]
+    - button "Chat / Hermes" [ref=f4e73] [cursor=pointer]
+    - button "Memory" [ref=f4e74] [cursor=pointer]
+    - generic [ref=f4e75]: System
+    - button "Settings" [ref=f4e76] [cursor=pointer]
+    - button "Account & sync" [ref=f4e77] [cursor=pointer]
+    - button "Updates" [ref=f4e78] [cursor=pointer]
+    - button "Support & diagnostics" [ref=f4e79] [cursor=pointer]
+    - button "First-run setup" [ref=f4e80] [cursor=pointer]
+    - button "Pet companion" [ref=f4e81] [cursor=pointer]
+    - button "Text expansion" [ref=f4e82] [cursor=pointer]
+    - 'button "Skin: editorial" [ref=f4e83] [cursor=pointer]'
+  - main [ref=f4e84]:
+    - region "Pet companion" [ref=f4e85]:
+      - heading "Pet companion" [level=2] [ref=f4e86]
+      - paragraph [ref=f4e87]: Overlay tier matrix and degraded draggable mode.
+      - img "Pet companion GLB preview" [ref=f4e88]:
+        - paragraph [ref=f4e90]: "GLB runtime loaded 252 vertices; animations: idle, walk, wave, jump."
+      - paragraph [ref=f4e91]: "Tier: draggable-contained"
+      - paragraph [ref=f4e92]: GNOME Wayland does not expose global click-through overlays. Pet runs in a draggable contained tier with explicit copy.
+      - paragraph [ref=f4e93]: "glTF: /pets/kawaii-aurora-fox-actions.glb"
+      - generic [ref=f4e94]: "[ { \"id\": \"idle-bob\", \"label\": \"Idle bob\", \"kind\": \"idle\", \"next\": [ \"react-wave\", \"tier-gnome-contained\" ] }, { \"id\": \"react-wave\", \"label\": \"React wave\", \"kind\": \"react\", \"next\": [ \"idle-bob\" ] }, { \"id\": \"tier-gnome-contained\", \"label\": \"GNOME: no click-through\", \"kind\": \"tier-limit\", \"next\": [ \"idle-bob\" ] } ]"

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="OpenBurnBar.App.Onboarding.OnboardingWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Welcome to OpenBurnBar">
+
+    <!--
+      Standalone host for the onboarding wizard (the macOS 520x620 first-run window).
+      When the deferred WinUI AppShell (#1203) lands, OnboardingPage can instead be a nav
+      destination inside its NavigationView Frame; this window is the self-sufficient entry
+      that works today. Glass window backdrop routes through the LiquidGlass chokepoint.
+    -->
+    <Grid x:Name="RootHost" />
+</Window>

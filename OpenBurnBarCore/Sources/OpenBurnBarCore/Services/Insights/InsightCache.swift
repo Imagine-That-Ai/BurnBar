@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// Content-addressed cache for completed LLM investigations.
 ///
@@ -35,8 +34,7 @@ public actor InsightCache {
                            tier: InsightCapabilityTier,
                            instruction: InsightInvestigateRequest.Instruction) -> String {
         let raw = [digestContentHash, prompt, modelID, tier.rawValue, instruction.rawValue].joined(separator: "|")
-        let bytes = SHA256.hash(data: Data(raw.utf8))
-        return bytes.map { String(format: "%02x", $0) }.joined()
+        return PlatformCrypto.sha256Hex(Data(raw.utf8))
     }
 
     public func lookup(key: String) -> CachedCanvas? {

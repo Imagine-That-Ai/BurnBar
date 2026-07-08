@@ -83,7 +83,7 @@ export const issueHighRiskActionNonce = onCall(
   wrapCallableHandler("issueHighRiskActionNonce", async (request: CallableRequest) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before requesting a high-risk action nonce.");
-    enforceHighRiskComputerUseCallable(request, uid);
+    enforceHighRiskComputerUseCallable(request, uid, { allowLowerTrustDesktop: true });
     const { nonce, expiresAtMillis } = await issueHighRiskNonceForUid(uid);
     return { ok: true, nonce, expiresAtMillis };
   }),

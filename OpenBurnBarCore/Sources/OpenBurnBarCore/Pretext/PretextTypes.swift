@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import CoreGraphics
 
@@ -179,3 +180,5 @@ public enum PretextError: Error, CustomStringConvertible, Sendable {
         }
     }
 }
+
+#endif

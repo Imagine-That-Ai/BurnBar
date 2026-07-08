@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Transparent, click-through pet-overlay window for the Windows PAL (Phase 4 · G4
+    — PetCompanion lane / R-overlay).
+
+    The platform half of the desktop pet's window: a WS_EX_LAYERED | TRANSPARENT |
+    TOOLWINDOW | NOACTIVATE per-pixel-alpha overlay (Windows peer of the macOS
+    borderless non-activating NSPanel in
+    AgentLens/PetCompanion/Shell/PetPanel.swift). The PORTABLE half — the exact
+    extended-style bitmask (OverlayWindowStyle) and the per-pixel hit-test
+    (PerPixelHitTest) — has zero OS dependency and is unit-tested on the macOS
+    authoring host (windows/tests/pet/Overlay). The Win32 host
+    (LayeredOverlayWindow) reaches every OS surface through hand-written P/Invoke
+    (Interop/) marked [SupportedOSPlatform("windows")].
+
+    Target framework note: this targets plain net8.0 (NOT net8.0-windows) so the
+    whole assembly COMPILES on the macOS authoring host as extra evidence (the same
+    macOS-compile trick windows/pal/ipc-windows uses), AND — critically — so the
+    net8.0-windows WinUI app can REFERENCE it (a higher-TFM lib cannot be consumed by
+    a lower-TFM app, so net8.0 is the single-source home for OverlayWindowStyle). The
+    net10.0 test project consumes it fine (lower TFM is usable by a higher one). It
+    does not RUN off-Windows; the live layered-window + hit-test proof is a Windows
+    dev-host / CI step (windows/pal/overlay/README.md).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>OpenBurnBar.Pal.Overlay</RootNamespace>
+    <AssemblyName>OpenBurnBar.Pal.Overlay</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The per-pixel-alpha frame upload copies into the DIB backing store via
+         Buffer.MemoryCopy over a fixed pointer. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

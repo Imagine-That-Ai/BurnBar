@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Live HttpClient transport for the portable App Check mint client
+    (Phase 2 · CloudSync · App Check client lane).
+
+    This is the network half of the mint call: a System.Net.Http implementation of
+    IAppCheckMintTransport that POSTs the callable request the portable client
+    assembled. It is cross-platform (no WinRT), so unlike the WinUI/TPM adapters it
+    RUNS today on the macOS authoring host — the test project stands up a loopback
+    HttpListener mint server and drives the whole claim → HTTP → token-install path
+    through this real transport (mirrors the Home Assistant .Net transport + live
+    HttpListener test already proven in windows/tests/integrations).
+
+    Targets net10.0 (matching the Home Assistant .Net transport); it references the
+    net8.0 portable core (a lower TFM is consumable by a higher one).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.CloudSync.AppCheck.Net</RootNamespace>
+    <AssemblyName>OpenBurnBar.CloudSync.AppCheck.Net</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.CloudSync.AppCheck/OpenBurnBar.CloudSync.AppCheck.csproj" />
+  </ItemGroup>
+
+</Project>

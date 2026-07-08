@@ -128,6 +128,7 @@ struct YouView: View {
     private var cloudMembershipRow: some View {
         if let cloudStore, cloudStore.isActive {
             CloudMemberCrestRow(
+                tier: tier,
                 purchaseDate: cloudStore.purchaseDate,
                 expirationDate: cloudStore.expirationDate,
                 onTap: { showCloudStore = true }
@@ -490,6 +491,7 @@ enum YouRoute: Hashable, CaseIterable {
 // "Cloud Member · Since {date}" with foil edge.
 
 private struct CloudMemberCrestRow: View {
+    let tier: CloudTier
     let purchaseDate: Date?
     let expirationDate: Date?
     let onTap: () -> Void
@@ -508,7 +510,7 @@ private struct CloudMemberCrestRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Text("PRO")
+                        Text(tierPillLabel)
                             .font(.system(size: 12, weight: .heavy, design: .rounded))
                             .tracking(1.6)
                             .foregroundStyle(Color.white)
@@ -523,7 +525,7 @@ private struct CloudMemberCrestRow: View {
                                     )
                                 )
                             )
-                        Text("CLOUD MEMBER")
+                        Text(memberStatusLabel)
                             .font(MobileTheme.Typography.tiny)
                             .fontWeight(.heavy)
                             .tracking(1.8)
@@ -650,7 +652,30 @@ private struct CloudMemberCrestRow: View {
     // MARK: - Copy
 
     private var headlineLine: String {
-        "Cloud Member"
+        switch tier {
+        case .ultra: return "Cloud Ultra"
+        case .pro: return "Cloud Pro"
+        case .cloud: return "Cloud Member"
+        case .none: return "Cloud Member"
+        }
+    }
+
+    private var tierPillLabel: String {
+        switch tier {
+        case .ultra: return "ULTRA"
+        case .pro: return "PRO"
+        case .cloud: return "CLOUD"
+        case .none: return "CLOUD"
+        }
+    }
+
+    private var memberStatusLabel: String {
+        switch tier {
+        case .ultra: return "CLOUD ULTRA"
+        case .pro: return "CLOUD PRO"
+        case .cloud: return "CLOUD MEMBER"
+        case .none: return "CLOUD MEMBER"
+        }
     }
 
     /// Human-readable status. Sentinel/far-future expirations show monthly
@@ -828,6 +853,7 @@ extension CloudSyncHealth {
         case .offline: return "icloud.slash.fill"
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return "exclamationmark.icloud.fill"
         case .degraded: return "icloud.fill"
+        case .networkDisabledOnThisDevice: return "icloud.slash.fill"
         case .unknown: return "questionmark.circle.fill"
         }
     }
@@ -840,6 +866,7 @@ extension CloudSyncHealth {
         case .offline: return MobileTheme.warning
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
         case .degraded: return MobileTheme.warning
+        case .networkDisabledOnThisDevice: return MobileTheme.warning
         case .unknown: return MobileTheme.Colors.textMuted
         }
     }
@@ -864,6 +891,8 @@ extension CloudSyncHealth {
             return CloudErrorClassification.firebaseUnavailable.recoveryHint
         case .degraded(let reason):
             return reason.recoveryHint
+        case .networkDisabledOnThisDevice:
+            return "Cloud sync was turned off on this device by the emergency compatibility switch, so no data is being read. Remove the override to reconnect."
         }
     }
 }

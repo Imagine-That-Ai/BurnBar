@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// Deterministic, no-LLM verdict producer.
 ///
@@ -642,8 +641,7 @@ public struct RuleBasedVerdictEngine: Sendable {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(canonical) else { return "" }
-        let digest = SHA256.hash(data: data)
-        return digest.compactMap { String(format: "%02x", $0) }.joined()
+        return PlatformCrypto.sha256Hex(data)
     }
 
     private static let zeroUUID = UUID(

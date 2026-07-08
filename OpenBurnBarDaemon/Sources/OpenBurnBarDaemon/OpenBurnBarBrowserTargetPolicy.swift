@@ -110,7 +110,11 @@ enum OpenBurnBarBrowserTargetPolicy {
         #if canImport(Darwin) || canImport(Glibc)
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
+        #if os(Linux)
+        hints.ai_socktype = Int32(SOCK_STREAM.rawValue)
+        #else
         hints.ai_socktype = SOCK_STREAM
+        #endif
         var result: UnsafeMutablePointer<addrinfo>?
         let status = getaddrinfo(host, nil, &hints, &result)
         guard status == 0, let first = result else { return [] }

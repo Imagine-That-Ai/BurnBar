@@ -1,0 +1,15 @@
+{
+  "platform": "linux",
+  "default_support_dir": "~/.config/OpenBurnBar",
+  "default_socket_path": "~/.config/OpenBurnBar/openburnbar-daemon.sock",
+  "default_auth_token_file": "~/.config/OpenBurnBar/daemon-socket-auth-token",
+  "override_env": [
+    "OPENBURNBAR_DAEMON_SOCKET_PATH",
+    "BURNBAR_DAEMON_SOCKET_PATH",
+    "OPENBURNBAR_DAEMON_SUPPORT_DIR",
+    "BURNBAR_DAEMON_SUPPORT_DIR"
+  ],
+  "health_alert": "state/controller.ts invokes alertDaemonUnreachable(socketPath) on sustained disconnect",
+  "no_parallel_health_stack": true,
+  "source": "extensions/openburnbar/src/platform/paths.ts"
+}

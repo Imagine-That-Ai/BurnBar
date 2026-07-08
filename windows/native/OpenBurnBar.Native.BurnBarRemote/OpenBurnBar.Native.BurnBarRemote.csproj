@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    OpenBurnBar.Native.BurnBarRemote — the managed shim over the gen-2 remote
+    engine cdylib (`crates/burnbar-remote`, cdylib `burnbar_remote`). Wires the
+    GENERATED uniffi binding (crates/burnbar-remote/bindings/csharp, committed +
+    drift-checked) into the hardened OpenBurnBar.Native loader and fronts it
+    with an availability-gated facade so hosts without the cdylib get
+    NativeShimUnavailableException instead of DllNotFoundException.
+
+    The Windows DLLs come from .github/workflows/build-burnbar-remote-windows.yml
+    (burnbar_remote.dll, x64 + ARM64); the macOS dev host builds
+    libburnbar_remote.dylib with `cargo build -p burnbar-remote-ffi`.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Native.BurnBarRemote</RootNamespace>
+  </PropertyGroup>
+
+  <Import Project="../../dist/props/OpenBurnBar.Windows.Hardening.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Native/OpenBurnBar.Native.csproj" />
+    <!-- The generated binding library (committed generated source; see
+         docs/windows-port/decisions/0001-csharp-binding-path.md). -->
+    <ProjectReference Include="../../../crates/burnbar-remote/bindings/csharp/BurnBarRemote.Ffi/BurnBarRemote.Ffi.csproj" />
+  </ItemGroup>
+
+</Project>
