@@ -1145,6 +1145,24 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Fast-exit CLI flags before booting the GUI: a GTK/WebKit app launched
+    // headless (packaging smoke, CI) would otherwise spin forever on `--version`.
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--version" | "-V" => {
+                println!("OpenBurnBar {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            "--help" | "-h" => {
+                println!(
+                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--version] [--help]"
+                );
+                std::process::exit(0);
+            }
+            _ => {}
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
