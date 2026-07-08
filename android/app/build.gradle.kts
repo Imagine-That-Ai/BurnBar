@@ -22,7 +22,7 @@ plugins {
     // version (not in the root plugins block) so the mapping-upload + native
     // gradle config stays scoped to :app. Upload is auth-token gated below so
     // local/offline builds without Sentry credentials still succeed.
-    id("io.sentry.android.gradle") version "6.11.0"
+    id("io.sentry.android.gradle") version "6.14.0"
     // Baseline-profile consumer: wires the :macrobenchmark producer so
     // `./gradlew :app:generateBaselineProfile` captures an app-specific
     // profile (library profiles for Compose/activity already ship via the
