@@ -433,7 +433,7 @@ dependencies {
     "baselineProfile"(project(":macrobenchmark"))
 
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -567,8 +567,8 @@ dependencies {
     testImplementation("androidx.datastore:datastore-preferences:1.2.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.8")
-    androidTestImplementation("androidx.compose.ui:ui-test-manifest:1.7.8")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.compose.ui:ui-test-manifest")
     // Mockk on-device flavor — pure-JVM `io.mockk:mockk` brings in
     // bytebuddy classes the ART runtime can't load, so the instrumented
     // suites use `mockk-android` instead.
