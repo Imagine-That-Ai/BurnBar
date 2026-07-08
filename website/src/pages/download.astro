@@ -10,6 +10,12 @@ const macDownloadHref = macDownloadBaseUrl
 const hasMacUpdateFeed = Boolean(macUpdateBaseUrl);
 const macLatestHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macUpdateFeedFile}` : "";
 const macAppcastHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macAppcastFile}` : "";
+
+const linuxDownloadBaseUrl = SITE.linuxDownloadBaseUrl.replace(/\/$/, "");
+const linuxAppImageHref = `${linuxDownloadBaseUrl}/${SITE.linuxReleaseFile}`;
+const linuxDebHref = `${linuxDownloadBaseUrl}/${SITE.linuxDebFile}`;
+const linuxRpmHref = `${linuxDownloadBaseUrl}/${SITE.linuxRpmFile}`;
+const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
 ---
 
 <BaseLayout
@@ -22,6 +28,7 @@ const macAppcastHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macAppcast
       <h1 class="pagehead__h">Get OpenBurnBar</h1>
       <nav class="jump" aria-label="Jump to platform">
         <a href="#macos">macOS</a>
+        <a href="#linux">Linux</a>
         <a href="#ios">iOS · iPadOS</a>
         <a href="#editor">Editor</a>
         <a href="#android">Android</a>
@@ -107,6 +114,89 @@ const macAppcastHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macAppcast
 cd BurnBar
 make install</code></pre>
           <p class="muted small">Requires Xcode 16+, Swift 5.10+, XcodeGen optional.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- LINUX -->
+  <section id="linux" class="dlsec">
+    <div class="container dlsec__shell">
+      <div class="dlsec__head">
+        <div class="dlsec__intro">
+          <span class="tag tag--review tag--plain mono">{SITE.linuxStatus}</span>
+          <h2>Linux desktop app</h2>
+          <p class="lead">
+            Tauri + WebView shell over the native OpenBurnBar daemon. First release ships{" "}
+            {SITE.linuxArch} artifacts. AppImage runs anywhere; deb and rpm for Debian/Ubuntu and Fedora/RHEL.
+            Every artifact is Ed25519-signed with a keyless Sigstore/cosign attestation.
+          </p>
+        </div>
+        <a class="btn btn--ember dlsec__primary" href={linuxAppImageHref}>
+          Download AppImage · {SITE.linuxReleaseLatest}
+          <span class="btn-arrow" aria-hidden="true">↓</span>
+        </a>
+      </div>
+
+      <ol class="steps" data-animate-onview>
+        <li class="step">
+          <span class="step__num mono">1</span>
+          <div class="step__card">
+            <h3>Pick your package</h3>
+            <p>
+              <a href={linuxAppImageHref}>AppImage</a> (portable, {SITE.linuxArch}) ·{" "}
+              <a href={linuxDebHref}>.deb</a> (Debian/Ubuntu) ·{" "}
+              <a href={linuxRpmHref}>.rpm</a> (Fedora/RHEL). Served from the signed GitHub Release.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step__num mono">2</span>
+          <div class="step__card">
+            <h3>Make it runnable</h3>
+            <p>
+              AppImage: <code>chmod +x OpenBurnBar_{SITE.linuxReleaseLatest}_aarch64.AppImage</code
+              >{" "}
+              then launch it. deb: <code
+                >sudo apt install ./OpenBurnBar_{SITE.linuxReleaseLatest}_arm64.deb</code
+              >. rpm: <code
+                >sudo dnf install ./OpenBurnBar-{SITE.linuxReleaseLatest}-1.aarch64.rpm</code
+              >.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step__num mono">3</span>
+          <div class="step__card">
+            <h3>Verify the signature (optional)</h3>
+            <p>
+              Detached Ed25519 signatures ship beside each artifact, plus keyless cosign bundles.
+              The public verification key is{" "}
+              <a href={linuxPubKeyHref}>openburnbar-linux-ed25519.pub.pem</a>.
+            </p>
+          </div>
+        </li>
+      </ol>
+
+      <details class="reqs">
+        <summary>Requirements &amp; notes</summary>
+        <div class="reqs__body">
+          <h4>Linux</h4>
+          <ul>
+            <li>{SITE.linuxArch}. GTK 3 + WebKit2GTK 4.1 (bundled in the AppImage).</li>
+            <li>
+              Talks to the OpenBurnBar daemon over an AF_UNIX socket; start it with the packaged
+              systemd user unit or <code>openburnbar-cli service</code>.
+            </li>
+            <li>
+              Signed with Ed25519 detached signatures and keyless Sigstore/cosign attestation
+              bundles.
+            </li>
+            <li>
+              This is a preview prerelease — it seeds the auto-update chain for subsequent stable
+              Linux releases.
+            </li>
+          </ul>
         </div>
       </details>
     </div>
