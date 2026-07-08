@@ -1,5 +1,5 @@
 generated_at=2026-07-05T08:24:34Z
-cwd=/Users/albertonunez/Documents/Developer/BurnBar
+cwd=$WORKSPACE
 head=1b62ec42bd752cc8a6af578f034bf776c6ec3b97
 branch=main
 upstream=origin/main
