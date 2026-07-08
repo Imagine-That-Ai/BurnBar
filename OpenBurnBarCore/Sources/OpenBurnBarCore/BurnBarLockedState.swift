@@ -27,9 +27,8 @@ public final class Locked<T: Sendable>: Sendable {
         try storage.withLockUnchecked(action)
     }
 #else
-    // AUDIT(@unchecked Sendable): Foundation NSLock guards every read/write on
-    // non-Darwin platforms where OSAllocatedUnfairLock is unavailable.
-    // sendable-allowlist: foundation-sdk-shim
+    // NSLock-protected mutable storage; safe for concurrent access.
+    // sendable-allowlist: nslock-protected-storage
     private final class Storage: @unchecked Sendable {
         let lock = NSLock()
         var value: T

@@ -107,6 +107,8 @@ type QuotaRefreshSweepOptions<Doc extends SweepAccountDoc> = {
   now?: Date;
   /** Backfill scan page size per stream per run (default 200). */
   backfillScanPageSize?: number;
+  /** Maximum ordered account docs inspected while selecting one refresh batch. */
+  maxSelectionScanCount?: number;
   /** Refresh one provider account doc. Expected to handle its own errors. */
   refreshAccountDoc(doc: Doc): Promise<void>;
   /** `${uid}/${providerID}` key used to dedupe the legacy connection pass. */
@@ -127,6 +129,7 @@ const REFRESHABLE_STATUSES = ["connected", "stale", "error"] as const;
 const REFRESHABLE_SCOPES = ["cloud_refreshable", "server_private"] as const;
 const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_BACKFILL_SCAN_PAGE_SIZE = 200;
+const DEFAULT_SELECTION_SCAN_MULTIPLIER = 5;
 
 /**
  * Schema-valid marker for legacy provider account docs that predate
@@ -345,13 +348,20 @@ export async function runQuotaRefreshSweep<Doc extends SweepAccountDoc>(
   const selectedAccounts: Doc[] = [];
   const selectedAccountPaths = new Set<string>();
   const legacyKeys = new Set<string>();
+  const maxSelectionScanCount = Math.max(
+    options.batchSize,
+    options.maxSelectionScanCount ?? options.batchSize * DEFAULT_SELECTION_SCAN_MULTIPLIER,
+  );
+  let scannedForSelection = 0;
 
   for (const status of REFRESHABLE_STATUSES) {
-    if (selectedAccounts.length >= options.batchSize) break;
+    if (selectedAccounts.length >= options.batchSize || scannedForSelection >= maxSelectionScanCount) break;
     let cursor: Doc | undefined;
 
     for (;;) {
-      const limit = options.batchSize - selectedAccounts.length;
+      const scanRemaining = maxSelectionScanCount - scannedForSelection;
+      if (scanRemaining <= 0) break;
+      const limit = Math.min(options.batchSize - selectedAccounts.length, scanRemaining);
       let query = db
         .collectionGroup("provider_accounts")
         .where("status", "==", status)
@@ -364,6 +374,7 @@ export async function runQuotaRefreshSweep<Doc extends SweepAccountDoc>(
       }
 
       const snapshot = await query.get();
+      scannedForSelection += snapshot.docs.length;
       for (const doc of snapshot.docs) {
         if (isDemoSweepAccountDoc(doc) || selectedAccountPaths.has(doc.ref.path)) continue;
         if (!isQuotaSweepAccountDue(doc, now)) continue;
@@ -374,7 +385,11 @@ export async function runQuotaRefreshSweep<Doc extends SweepAccountDoc>(
         if (selectedAccounts.length >= options.batchSize) break;
       }
 
-      if (selectedAccounts.length >= options.batchSize || snapshot.docs.length < limit) {
+      if (
+        selectedAccounts.length >= options.batchSize
+        || scannedForSelection >= maxSelectionScanCount
+        || snapshot.docs.length < limit
+      ) {
         break;
       }
       cursor = snapshot.docs.at(-1);

@@ -17,6 +17,7 @@ typealias TokenUsage = OpenBurnBarCore.TokenUsage
 typealias UsageProvenanceMethod = OpenBurnBarCore.UsageProvenanceMethod
 typealias UsageProvenanceConfidence = OpenBurnBarCore.UsageProvenanceConfidence
 typealias UsageSource = OpenBurnBarCore.UsageSource
+typealias EscrowDeviceTrustState = OpenBurnBarCore.EscrowDeviceTrustState
 
 // MARK: - Provider Support Level (Mac-only)
 

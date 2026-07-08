@@ -78,6 +78,20 @@ final class QuotaSettingsTests: XCTestCase {
         XCTAssertEqual(settings2.percentageDisplayMode, .fractional)
     }
 
+    func test_roamingRelevantQuotaPreferencesAdvanceUpdatedAt() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+        XCTAssertEqual(settings.updatedAt, Date(timeIntervalSince1970: 0))
+
+        settings.percentageDisplayMode = .fractional
+        coordinator.flush()
+
+        XCTAssertGreaterThan(settings.updatedAt, Date(timeIntervalSince1970: 0))
+        let coordinator2 = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings2 = QuotaSettings(persistence: coordinator2)
+        XCTAssertEqual(settings2.updatedAt.timeIntervalSince1970, settings.updatedAt.timeIntervalSince1970, accuracy: 0.001)
+    }
+
     func test_providerOrder_persistsAcrossRecreate() {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
         let settings = QuotaSettings(persistence: coordinator)

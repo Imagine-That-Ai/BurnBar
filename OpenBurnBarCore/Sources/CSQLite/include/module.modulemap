@@ -1,4 +1,4 @@
-module CSQLite {
+module OpenBurnBarCoreCSQLite {
     header "sqlite3.h"
     export *
 }

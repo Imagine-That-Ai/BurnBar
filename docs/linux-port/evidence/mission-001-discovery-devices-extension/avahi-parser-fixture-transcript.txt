@@ -1,0 +1,4 @@
+fixture_path=/workspace/docs/linux-port/evidence/mission-001-discovery-devices-extension/avahi-parsable-fixture.txt
+note=Parser/fixture proof via linked OpenBurnBarCLI; not live mDNS.
+The operation could not be completed. The file doesn’t exist.
+local_peer_parse_fixture_exit_code=1

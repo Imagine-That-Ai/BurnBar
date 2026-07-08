@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPD-0007 C-ABI proof: P/Invoke into libOpenBurnBarCoreCAbi.dylib / OpenBurnBarCoreCAbi.dll
+    (`obb_parse_cli_stdout`) — real ClaudeCodeParser in-process, no swift run subprocess.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.EngineBinding.Tests</RootNamespace>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <Content Include="../../../AgentLensTests/Fixtures/ParserContract/pc-claude-basic-session.jsonl">
+      <Link>Fixtures/pc-claude-basic-session.jsonl</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="../../../AgentLensTests/Fixtures/ParserContract/parser-output-golden.json">
+      <Link>Fixtures/parser-output-golden.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

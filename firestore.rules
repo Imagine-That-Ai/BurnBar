@@ -1191,6 +1191,7 @@ service cloud.firestore {
         && value.keyVersion >= 1
         && value.keyVersion <= 100
         && validVaultKeyID(value.vaultKeyID)
+        && matchesCurrentVaultKey(userId, value.vaultKeyID)
         && value.aad == roamingProfileAADContext(userId)
         && value.sealedBoxBase64 is string
         && value.sealedBoxBase64.size() > 0

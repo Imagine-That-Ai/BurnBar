@@ -26,11 +26,11 @@
         <!-- Provider list panel. -->
         <components:UnifiedGlassCard Grid.Row="0" Grid.Column="0">
             <StackPanel Spacing="10">
-                <TextBlock Text="Providers" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
-                <TextBlock Text="Anthropic — $612" FontSize="14" />
-                <TextBlock Text="OpenAI — $438" FontSize="14" />
-                <TextBlock Text="Google — $142" FontSize="14" />
-                <TextBlock Text="xAI — $92" FontSize="14" />
+                <TextBlock Text="Data source" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
+                <TextBlock x:Name="ProviderStatusText"
+                           Text="No SQLCipher database connected"
+                           TextWrapping="Wrap"
+                           FontSize="14" />
             </StackPanel>
         </components:UnifiedGlassCard>
 
@@ -47,11 +47,11 @@
         <!-- Bottom data band. -->
         <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
                     Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile Value="$1,284" Caption="Spend"
+            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-            <layouts:ConceptStatTile Value="18.4M" Caption="Tokens"
+            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile Value="342" Caption="Sessions"
+            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
         </StackPanel>
     </Grid>

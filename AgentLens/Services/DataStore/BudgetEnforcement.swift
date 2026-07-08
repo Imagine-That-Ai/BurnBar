@@ -116,7 +116,7 @@ final class BudgetEnforcement {
     /// `token_usage` insert refines the ledger to exact pricing.
     nonisolated static func estimateCost(model: String, inputCharacters: Int, assumedOutputTokens: Int = 1024) -> Double {
         let inputTokens = max(0, inputCharacters) / 4
-        let pricing = ModelPricing.lookup(model: model)
+        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
         let inputUSD = Double(inputTokens) * pricing.inputPerMToken / 1_000_000.0
         let outputUSD = Double(assumedOutputTokens) * pricing.outputPerMToken / 1_000_000.0
         return inputUSD + outputUSD
@@ -127,7 +127,13 @@ final class BudgetEnforcement {
 /// raw secret never leaves the call frame; the resulting slot ID lines up with what the
 /// usage row would store under `providerAccountID`.
 enum AgentLensCredentialIdentity {
-    static func make(providerHint: String, bearerToken: String?, displayLabel: String) -> BudgetCredentialIdentity {
+    static func make(
+        providerHint: String,
+        bearerToken: String?,
+        displayLabel: String,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
+    ) -> BudgetCredentialIdentity {
         let secret = bearerToken ?? ""
         let mode = BudgetCredentialIdentity.billingMode(forSecretPrefix: secret)
         let slotID = secret.isEmpty ? "default" : hashedSlotID(secret)
@@ -135,6 +141,8 @@ enum AgentLensCredentialIdentity {
             providerID: providerHint,
             slotID: slotID,
             displayLabel: displayLabel,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel,
             billingMode: mode
         )
     }

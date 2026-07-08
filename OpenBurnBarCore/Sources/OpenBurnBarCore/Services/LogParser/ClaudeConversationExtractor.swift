@@ -4,25 +4,26 @@ import OpenBurnBarCore
 // MARK: - Claude-format JSONL conversation extraction
 
 /// Accumulates user/assistant text and tool metadata from Claude Code / Factory JSONL lines.
-final class ClaudeConversationAccumulator {
-    private(set) var fullText = ""
-    private(set) var firstUserText: String?
-    private(set) var lastAssistantText = ""
-    private(set) var messageCount = 0
-    private(set) var userWordCount = 0
-    private(set) var assistantWordCount = 0
-    private(set) var keyFiles: [String] = []
-    private(set) var keyCommands: [String] = []
-    private(set) var keyTools: [String] = []
+public final class ClaudeConversationAccumulator {
+    public init() {}
+    public private(set) var fullText = ""
+    public private(set) var firstUserText: String?
+    public private(set) var lastAssistantText = ""
+    public private(set) var messageCount = 0
+    public private(set) var userWordCount = 0
+    public private(set) var assistantWordCount = 0
+    public private(set) var keyFiles: [String] = []
+    public private(set) var keyCommands: [String] = []
+    public private(set) var keyTools: [String] = []
     private var fileSet = Set<String>()
     private var commandSet = Set<String>()
     private var toolSet = Set<String>()
-    private(set) var startTime: Date?
-    private(set) var endTime: Date?
+    public private(set) var startTime: Date?
+    public private(set) var endTime: Date?
 
     private let titleMax = 120
 
-    func ingest(jsonLine: [String: Any]) {
+    public func ingest(jsonLine: [String: Any]) {
         applyTimeline(from: jsonLine)
 
         guard let type = jsonLine["type"] as? String else { return }
@@ -162,7 +163,7 @@ final class ClaudeConversationAccumulator {
         }
     }
 
-    func finalizeArrays() {
+    public func finalizeArrays() {
         keyFiles = Array(fileSet).sorted()
         keyCommands = Array(commandSet).sorted()
         keyTools = Array(toolSet).sorted()

@@ -189,7 +189,7 @@ final class ProviderQuotaService {
 
     private let keyStore: ProviderAPIKeyStore
     private let providerRuntimeKeyStore: KeychainStore
-    private let appPaths: OpenBurnBarAppPaths
+    private let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     private let fileManager: FileManager
     private let session: URLSession
     private let environment: [String: String]
@@ -235,10 +235,10 @@ final class ProviderQuotaService {
         settingsManager: SettingsManager = .shared,
         keyStore: ProviderAPIKeyStore = .shared,
         providerRuntimeKeyStore: KeychainStore = KeychainStore(
-            service: OpenBurnBarIdentity.cursorConnectorKeychainService,
-            legacyServices: OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+            service: OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,
+            legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
         ),
-        appPaths: OpenBurnBarAppPaths = .live(),
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
         fileManager: FileManager = .default,
         session: URLSession = .shared,
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -313,7 +313,7 @@ final class ProviderQuotaService {
         // here used to make that whole-cache loss invisible. Keep init
         // resilient (the service must still construct) but record the fault.
         do {
-            _ = try OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+            _ = try OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
         } catch {
             AppLogger.dataStore.error(
                 "ProviderQuotaService: prepareSupportDirectory failed",
@@ -1253,7 +1253,11 @@ final class ProviderQuotaService {
 
     private func upsertSnapshot(_ snapshot: ProviderQuotaSnapshot, for provider: AgentProvider? = nil) {
         if Self.normalizedSnapshotIdentifier(snapshot.accountID) == nil {
-            snapshotsByProvider[provider ?? snapshot.provider] = snapshot
+            // Filter out snapshots whose provider string doesn't map to a known
+            // AgentProvider — drop rather than crash or mislabel as .claudeCode
+            // (which would corrupt the real Claude Code entry in the dict).
+            guard let resolvedProvider = provider ?? snapshot.quotaProvider ?? AgentProvider(rawValue: snapshot.provider) else { return }
+            snapshotsByProvider[resolvedProvider] = snapshot
         }
         snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
     }
@@ -1442,7 +1446,7 @@ final class ProviderQuotaService {
         let persistedSnapshots = deduplicatedPersistedSnapshots()
         snapshotStore.persistSnapshots(snapshotsByProvider, accountSnapshots: snapshotsByAccountID)
         recordSnapshotWrittenTelemetry(for: persistedSnapshots)
-        let syncableSnapshots = snapshotsForCloudSync.filter { $0.source != .unavailable }
+        let syncableSnapshots = snapshotsForCloudSync.filter { $0.sourceKind != .unavailable }
         if !syncableSnapshots.isEmpty {
             onSnapshotsPersistedForCloudSync?(syncableSnapshots)
         }
@@ -1473,7 +1477,7 @@ final class ProviderQuotaService {
                 attributes: [
                     "quota_event": "snapshot_written",
                     "provider": snapshot.providerID.rawValue,
-                    "source": snapshot.source.rawValue,
+                    "source": snapshot.source,
                     "snapshot_age_bucket": Self.snapshotAgeBucket(fetchedAt: snapshot.fetchedAt, now: now)
                 ]
             )
@@ -1819,7 +1823,7 @@ extension ProviderQuotaService {
         let order: [ProviderQuotaSourceKind] = [
             .officialAPI, .localCLI, .localSession, .manualEstimate, .unavailable
         ]
-        for kind in order where snapshots.contains(where: { $0.source == kind }) {
+        for kind in order where snapshots.contains(where: { $0.sourceKind == kind }) {
             return kind
         }
         return .unavailable

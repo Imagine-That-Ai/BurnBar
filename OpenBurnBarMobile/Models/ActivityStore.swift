@@ -4,10 +4,13 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
+import os.log
 
 @Observable
 @MainActor
 final class ActivityStore {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "ActivityStore")
+
     private let firestore: FirestoreRepository
     private let functions: FunctionsRepository
     private let vault: CloudVaultGateway
@@ -207,6 +210,9 @@ final class ActivityStore {
         } catch is CancellationError {
             return
         } catch {
+            // Both search legs are already try?-guarded, so this is a defensive
+            // backstop — clear stale hits but log so a real failure is traceable.
+            Self.log.warning("search: failed for active query: \(error.localizedDescription, privacy: .public)")
             searchHits = []
             cloudSearchHits = []
         }
@@ -777,6 +783,8 @@ actor CloudTranscriptCache {
             try writeIndex(index)
             return transcript
         } catch {
+            // Deliberate self-healing: a corrupt/undecryptable cache entry is
+            // evicted so the next read falls back to a fresh cloud download.
             try? removeCachedKey(key)
             return nil
         }
@@ -1488,6 +1496,8 @@ final class ConversationCockpitStore {
                 )
                 result.available += 1
             } catch {
+                // Not swallowed — per-row failures are surfaced to the caller
+                // through `result.failed` in the warmup summary.
                 result.failed += 1
             }
         }

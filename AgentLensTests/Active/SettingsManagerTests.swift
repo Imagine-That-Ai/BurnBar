@@ -235,6 +235,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.desktopWallpaperBackground = .forestMoss
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertEqual(settings.desktopWallpaperBackground, .forestMoss)
     }
 
     func test_desktopWallpaperBackgrounds_areBurnBarOwnedBackdrops() {
@@ -275,6 +276,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.clickDesktopToCycleSwarm = true
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertTrue(settings.clickDesktopToCycleSwarm)
     }
 
     func test_cycleShapesScreensaver_postsChangeNotification() {
@@ -293,6 +295,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.cycleShapesScreensaver = false
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertFalse(settings.cycleShapesScreensaver)
     }
 
     func test_desktopWallpaperSpeed_defaultValue_isBalanced() {
@@ -334,6 +337,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.desktopWallpaperSpeed = 1.2
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertEqual(settings.desktopWallpaperSpeed, 1.2, accuracy: 0.000_001)
     }
 
     func test_desktopWallpaperProviderGlyphs_defaultToAllProviders() {
@@ -372,6 +376,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.desktopWallpaperProviderGlyphs = [.codex]
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertEqual(settings.desktopWallpaperProviderGlyphs, [.codex])
     }
 
     func test_excludeBrandShapesFromSwarm_defaultsToFalse() {
@@ -406,6 +411,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.excludeBrandShapesFromSwarm = true
 
         wait(for: [expectation], timeout: 1)
+        XCTAssertTrue(settings.excludeBrandShapesFromSwarm)
     }
 
     func test_swarmWallpaperColorDriver_prioritizesRunningProvidersOverHistoricalUsage() {
@@ -1919,13 +1925,14 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - ChatBackendID Tests
 
     func test_chatBackendID_allCases() {
-        XCTAssertEqual(ChatBackendID.allCases.count, 10)
+        XCTAssertEqual(ChatBackendID.allCases.count, 11)
         XCTAssertTrue(ChatBackendID.allCases.contains(.codex))
         XCTAssertTrue(ChatBackendID.allCases.contains(.claude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.hermes))
         XCTAssertTrue(ChatBackendID.allCases.contains(.piAgent))
         XCTAssertTrue(ChatBackendID.allCases.contains(.openclaw))
         XCTAssertTrue(ChatBackendID.allCases.contains(.openClaude))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.omp))
         XCTAssertTrue(ChatBackendID.allCases.contains(.droid))
         XCTAssertTrue(ChatBackendID.allCases.contains(.forge))
         XCTAssertTrue(ChatBackendID.allCases.contains(.antigravity))
@@ -1938,6 +1945,8 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(ChatBackendID.hermes.displayName, "Hermes")
         XCTAssertEqual(ChatBackendID.piAgent.displayName, "Pi Agent")
         XCTAssertEqual(ChatBackendID.openclaw.displayName, "OpenClaw")
+        XCTAssertEqual(ChatBackendID.openClaude.displayName, "OpenClaude")
+        XCTAssertEqual(ChatBackendID.omp.displayName, "OMP")
         XCTAssertEqual(ChatBackendID.droid.displayName, "Droid")
         XCTAssertEqual(ChatBackendID.forge.displayName, "Forge")
         XCTAssertEqual(ChatBackendID.antigravity.displayName, "Antigravity")

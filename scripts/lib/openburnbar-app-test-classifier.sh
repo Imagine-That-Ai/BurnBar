@@ -162,6 +162,12 @@ is_swiftpm_dependency_resolution_transient() {
         return 1
     fi
 
+    if grep -Fq "** INTERNAL ERROR: Uncaught exception **" "$log_path" &&
+        grep -Fq "*** -[NSMutableArray insertObjects:atIndexes:]" "$log_path" &&
+        grep -Eq "IDESwiftPackageCore|SPMWorkspace|packageGraphDidFinishAction" "$log_path"; then
+        return 0
+    fi
+
     grep -Eq "Could not resolve package dependencies|failed downloading .* which is required by binary target|Failed to clone repository|fatal: unable to access|Git command .* config --get remote\\.origin\\.url|binary target .*OpenBurnBarSignalFfi.* could not be mapped" "$log_path" || return 1
     grep -Eiq "downloadError\\(\"The request timed out\\.\"\\)|Failed to connect to .* port 443|Couldn'?t connect to server|Connection (reset|timed out)|network connection was lost|TLS handshake timeout|HTTP (502|503|504)|Bad Gateway|Service Unavailable|Gateway Timeout|fatal: cannot change to .+: No such file or directory|binary target .*OpenBurnBarSignalFfi.* could not be mapped to an artifact with expected name .*OpenBurnBarSignalFfi" "$log_path"
 }

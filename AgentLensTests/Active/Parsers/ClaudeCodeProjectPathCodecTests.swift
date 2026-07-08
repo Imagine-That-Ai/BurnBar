@@ -13,7 +13,7 @@ private final class ClaudeCodePathsBundleMarker {}
 /// invariants, and the capture-fixture schema. All vectors run on macOS.
 final class ClaudeCodeProjectPathCodecTests: XCTestCase {
 
-    private typealias Codec = OpenBurnBar.ClaudeCodeProjectPathCodec
+    private typealias Codec = OpenBurnBarCore.ClaudeCodeProjectPathCodec
 
     // MARK: Encode — ground truth against REAL macOS observations
 

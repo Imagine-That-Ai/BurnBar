@@ -1142,8 +1142,8 @@ final class SwitcherAuthStoreTests: XCTestCase {
 
     func test_deleteCredentials_handlesMissingCredentials() throws {
         let store = makeStore()
-        // Should not throw
-        try store.deleteCredentials(forProfileID: "nonexistent-profile")
+        XCTAssertNoThrow(try store.deleteCredentials(forProfileID: "nonexistent-profile"))
+        XCTAssertNil(store.apiKey(forProfileID: "nonexistent-profile", cliType: .codex))
     }
 
     // MARK: - Keychain Error Handling (try? -> logged do/catch conversion)

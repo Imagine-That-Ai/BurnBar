@@ -19,7 +19,7 @@ final class OnboardingVisualSnapshotTests: XCTestCase {
             isDetected: true,
             onTap: {}
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 180, height: 50),
             named: "onboardingProviderPill.selected"
@@ -33,7 +33,7 @@ final class OnboardingVisualSnapshotTests: XCTestCase {
             isDetected: false,
             onTap: {}
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 180, height: 50),
             named: "onboardingProviderPill.unselected"
@@ -48,7 +48,7 @@ final class OnboardingVisualSnapshotTests: XCTestCase {
             onOpenDashboard: {},
             onDismiss: {}
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 400, height: 300),
             named: SnapshotName.onboardingComplete

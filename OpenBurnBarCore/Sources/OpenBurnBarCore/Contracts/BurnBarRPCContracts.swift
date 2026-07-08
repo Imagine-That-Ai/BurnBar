@@ -31,6 +31,10 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case proxyRouteLogClear = "daemon.proxy.route_log.clear"
     case quotaSignalsRecent = "daemon.quota.signals.recent"
     case quotaSignalsClear = "daemon.quota.signals.clear"
+    case perfMeasure = "perf.measure"
+    case membershipStatus = "daemon.membership.status"
+    case membershipCheckoutURL = "daemon.membership.checkoutUrl"
+    case membershipRestore = "daemon.membership.restore"
     case connectorPlaneGet = "daemon.connector.plane.get"
     case connectorConfigUpdate = "daemon.connector.config.update"
     case connectorAction = "daemon.connector.action"
@@ -89,6 +93,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case workspaceExecuteTool = "workspace.executeTool"
     case workspaceToolResult = "workspace.toolResult"
     case approvalRespond = "approval.respond"
+    case subscriptionStart = "subscription.start"
+    case subscriptionResume = "subscription.resume"
     case clientAttach = "client.attach"
     case clientClaimControl = "client.claimControl"
     case clientDetach = "client.detach"
@@ -188,6 +194,170 @@ public struct BurnBarRPCResponseEnvelope<Result: Codable & Sendable>: Codable, S
     }
 }
 
+public struct BurnBarPerfMeasureRequest: Codable, Hashable, Sendable {
+    public let name: String
+
+    public init(name: String) {
+        self.name = name
+    }
+}
+
+public struct BurnBarPerfMeasureResponse: Codable, Hashable, Sendable {
+    public let ok: Bool
+    public let source: String
+    public let detail: String?
+
+    public init(ok: Bool, source: String, detail: String? = nil) {
+        self.ok = ok
+        self.source = source
+        self.detail = detail
+    }
+}
+
+public enum BurnBarMembershipState: String, Codable, Hashable, Sendable {
+    case active
+    case cancelled
+    case paymentFailed
+    case offline
+}
+
+public enum BurnBarMembershipErrorCode: String, Codable, Hashable, Sendable {
+    case unauthenticated
+    case offline
+    case cloudUnavailable
+    case invalidResponse
+}
+
+public struct BurnBarMembershipErrorResult: Codable, Hashable, Sendable {
+    public let code: BurnBarMembershipErrorCode
+    public let message: String
+
+    public init(code: BurnBarMembershipErrorCode, message: String) {
+        self.code = code
+        self.message = message
+    }
+}
+
+public struct BurnBarMembershipEntitlementDocument: Codable, Hashable, Sendable {
+    public let active: Bool
+    public let productID: String?
+    public let expiresAt: String?
+    public let expireAt: String?
+    public let source: String?
+
+    public init(
+        active: Bool,
+        productID: String? = nil,
+        expiresAt: String? = nil,
+        expireAt: String? = nil,
+        source: String? = nil
+    ) {
+        self.active = active
+        self.productID = productID
+        self.expiresAt = expiresAt
+        self.expireAt = expireAt
+        self.source = source
+    }
+}
+
+public struct BurnBarMembershipSnapshot: Codable, Hashable, Sendable {
+    public let tier: String
+    public let entitlementIds: [String]
+    public let activeEntitlements: [String]
+    public let entitlementDocs: [String: BurnBarMembershipEntitlementDocument]
+    public let renewsAt: String?
+    public let restoreAvailable: Bool
+    public let state: BurnBarMembershipState
+    public let cacheEvent: String
+    public let shellCacheEvent: String
+    public let daemonCacheKey: String
+    public let source: String
+    public let updatedAt: String?
+    public let error: BurnBarMembershipErrorResult?
+
+    public init(
+        tier: String,
+        entitlementIds: [String],
+        activeEntitlements: [String]? = nil,
+        entitlementDocs: [String: BurnBarMembershipEntitlementDocument] = [:],
+        renewsAt: String? = nil,
+        restoreAvailable: Bool,
+        state: BurnBarMembershipState,
+        cacheEvent: String = "membership.entitlement_cache.updated",
+        shellCacheEvent: String = "membership.entitlement_cache.updated",
+        daemonCacheKey: String,
+        source: String,
+        updatedAt: String? = nil,
+        error: BurnBarMembershipErrorResult? = nil
+    ) {
+        self.tier = tier
+        self.entitlementIds = entitlementIds
+        self.activeEntitlements = activeEntitlements ?? entitlementIds
+        self.entitlementDocs = entitlementDocs
+        self.renewsAt = renewsAt
+        self.restoreAvailable = restoreAvailable
+        self.state = state
+        self.cacheEvent = cacheEvent
+        self.shellCacheEvent = shellCacheEvent
+        self.daemonCacheKey = daemonCacheKey
+        self.source = source
+        self.updatedAt = updatedAt
+        self.error = error
+    }
+}
+
+public struct BurnBarMembershipStatusResponse: Codable, Hashable, Sendable {
+    public let membership: BurnBarMembershipSnapshot
+
+    public init(membership: BurnBarMembershipSnapshot) {
+        self.membership = membership
+    }
+}
+
+public struct BurnBarMembershipCheckoutURLRequest: Codable, Hashable, Sendable {
+    public let successURL: String
+    public let cancelURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case successURL = "success_url"
+        case cancelURL = "cancel_url"
+    }
+
+    public init(
+        successURL: String = "openburnbar://membership/success",
+        cancelURL: String = "openburnbar://membership/cancel"
+    ) {
+        self.successURL = successURL
+        self.cancelURL = cancelURL
+    }
+}
+
+public struct BurnBarMembershipCheckoutURLResponse: Codable, Hashable, Sendable {
+    public let url: String
+    public let source: String
+
+    public init(url: String, source: String = "stripe_checkout") {
+        self.url = url
+        self.source = source
+    }
+}
+
+public struct BurnBarMembershipRestoreResponse: Codable, Hashable, Sendable {
+    public let ok: Bool
+    public let membership: BurnBarMembershipSnapshot?
+    public let error: BurnBarMembershipErrorResult?
+
+    public init(
+        ok: Bool,
+        membership: BurnBarMembershipSnapshot? = nil,
+        error: BurnBarMembershipErrorResult? = nil
+    ) {
+        self.ok = ok
+        self.membership = membership
+        self.error = error
+    }
+}
+
 public enum BurnBarResumeMode: String, Codable, Sendable, Hashable {
     case print
     case copy
@@ -269,6 +439,134 @@ public struct BurnBarRunResumeResponse: Codable, Sendable, Hashable {
         self.cleanupAfterSeconds = cleanupAfterSeconds
         self.errorCode = errorCode
         self.errorRecovery = errorRecovery
+    }
+}
+
+public struct BurnBarSubscriptionStartRequest: Codable, Sendable, Hashable {
+    public let topic: String
+    public let runID: String?
+    public let requestedSubscriptionID: String?
+    public let clientID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case topic
+        case runID = "run_id"
+        case requestedSubscriptionID = "requested_subscription_id"
+        case clientID = "client_id"
+    }
+
+    public init(
+        topic: String,
+        runID: String? = nil,
+        requestedSubscriptionID: String? = nil,
+        clientID: String? = nil
+    ) {
+        self.topic = topic
+        self.runID = runID
+        self.requestedSubscriptionID = requestedSubscriptionID
+        self.clientID = clientID
+    }
+}
+
+public struct BurnBarSubscriptionResumeRequest: Codable, Sendable, Hashable {
+    public let subscriptionID: String
+    public let topic: String
+    public let afterSeq: Int
+    public let runID: String?
+    public let clientID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case subscriptionID = "subscription_id"
+        case topic
+        case afterSeq = "after_seq"
+        case runID = "run_id"
+        case clientID = "client_id"
+    }
+
+    public init(
+        subscriptionID: String,
+        topic: String,
+        afterSeq: Int,
+        runID: String? = nil,
+        clientID: String? = nil
+    ) {
+        self.subscriptionID = subscriptionID
+        self.topic = topic
+        self.afterSeq = afterSeq
+        self.runID = runID
+        self.clientID = clientID
+    }
+}
+
+public struct BurnBarSubscriptionEvent: Codable, Sendable, Hashable {
+    public let seq: Int
+    public let kind: String
+    public let snapshot: [String: String]
+    public let terminal: Bool
+
+    public init(seq: Int, kind: String, snapshot: [String: String], terminal: Bool = false) {
+        self.seq = seq
+        self.kind = kind
+        self.snapshot = snapshot
+        self.terminal = terminal
+    }
+}
+
+public struct BurnBarSubscriptionResponse: Codable, Sendable, Hashable {
+    public let subscriptionID: String
+    public let topic: String
+    public let seq: Int
+    public let cursor: String
+    public let firstSnapshot: Bool
+    public let events: [BurnBarSubscriptionEvent]
+    public let degradedFallback: Bool
+    public let degradationReason: String?
+    public let backpressure: String
+    public let disconnectDetected: Bool
+    public let recoveredAfterRestart: Bool
+    public let terminalStateDelivered: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case subscriptionID = "subscription_id"
+        case topic
+        case seq
+        case cursor
+        case firstSnapshot = "first_snapshot"
+        case events
+        case degradedFallback = "degraded_fallback"
+        case degradationReason = "degradation_reason"
+        case backpressure
+        case disconnectDetected = "disconnect_detected"
+        case recoveredAfterRestart = "recovered_after_restart"
+        case terminalStateDelivered = "terminal_state_delivered"
+    }
+
+    public init(
+        subscriptionID: String,
+        topic: String,
+        seq: Int,
+        cursor: String,
+        firstSnapshot: Bool,
+        events: [BurnBarSubscriptionEvent],
+        degradedFallback: Bool,
+        degradationReason: String?,
+        backpressure: String,
+        disconnectDetected: Bool,
+        recoveredAfterRestart: Bool,
+        terminalStateDelivered: Bool
+    ) {
+        self.subscriptionID = subscriptionID
+        self.topic = topic
+        self.seq = seq
+        self.cursor = cursor
+        self.firstSnapshot = firstSnapshot
+        self.events = events
+        self.degradedFallback = degradedFallback
+        self.degradationReason = degradationReason
+        self.backpressure = backpressure
+        self.disconnectDetected = disconnectDetected
+        self.recoveredAfterRestart = recoveredAfterRestart
+        self.terminalStateDelivered = terminalStateDelivered
     }
 }
 

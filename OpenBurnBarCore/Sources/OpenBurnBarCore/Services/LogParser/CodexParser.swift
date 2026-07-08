@@ -12,18 +12,18 @@ import Foundation
 
 /// Reads token usage from Codex's SQLite store and JSONL session files.
 /// Prefers exact token breakdowns from JSONL `token_count` events over the aggregate `tokens_used` in SQLite.
-final class CodexParser: LogParser, Sendable {
-    let provider: AgentProvider = .codex
+public final class CodexParser: LogParser, Sendable {
+    public let provider: AgentProvider = .codex
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
     private let homeDirectoryURL: URL
     private let cacheStore: ParserDiskCacheStore<CodexCacheEntry>
 
-    init(
+    public init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
-        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+        homeDirectoryURL: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
@@ -38,11 +38,11 @@ final class CodexParser: LogParser, Sendable {
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
-    func parse(options: LogParseOptions) async throws -> ParseResult {
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let dbPath = homeDirectoryURL
             .appendingPathComponent(".codex", isDirectory: true)
             .appendingPathComponent("state_5.sqlite", isDirectory: false)
@@ -471,26 +471,26 @@ final class CodexParser: LogParser, Sendable {
 
 }
 
-struct CodexTokenUsage: Codable, Equatable {
-    let input: Int
-    let output: Int
-    let cacheRead: Int
+public struct CodexTokenUsage: Codable, Equatable, Sendable {
+    public let input: Int
+    public let output: Int
+    public let cacheRead: Int
 }
 
-struct CodexConversationCacheEntry: Codable, Equatable {
-    let title: String
-    let markdown: String
-    let messageCount: Int
-    let userWordCount: Int
-    let assistantWordCount: Int
-    let keyFiles: [String]
-    let keyCommands: [String]
-    let keyTools: [String]
-    let lastAssistantMessage: String
+public struct CodexConversationCacheEntry: Codable, Equatable, Sendable {
+    public let title: String
+    public let markdown: String
+    public let messageCount: Int
+    public let userWordCount: Int
+    public let assistantWordCount: Int
+    public let keyFiles: [String]
+    public let keyCommands: [String]
+    public let keyTools: [String]
+    public let lastAssistantMessage: String
 }
 
-struct CodexCacheEntry: Codable, Equatable {
-    let signature: FileSignature
-    let tokenUsage: CodexTokenUsage?
-    let conversation: CodexConversationCacheEntry?
+public struct CodexCacheEntry: Codable, Equatable, Sendable {
+    public let signature: FileSignature
+    public let tokenUsage: CodexTokenUsage?
+    public let conversation: CodexConversationCacheEntry?
 }

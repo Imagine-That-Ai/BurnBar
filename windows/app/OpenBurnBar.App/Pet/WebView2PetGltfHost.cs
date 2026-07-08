@@ -6,6 +6,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using OpenBurnBar.App.Pet.Gltf;
+using Path = System.IO.Path;
 
 namespace OpenBurnBar.App.Pet;
 

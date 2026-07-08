@@ -459,7 +459,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
             statusMessage: "Isolated profile quota.",
             buckets: [
                 ProviderQuotaBucket(
-                    key: "codex-profile-5h",
+                    key: "codex-isolated-5h",
                     label: "5-hour window",
                     windowKind: .rollingHours,
                     usedValue: 25,

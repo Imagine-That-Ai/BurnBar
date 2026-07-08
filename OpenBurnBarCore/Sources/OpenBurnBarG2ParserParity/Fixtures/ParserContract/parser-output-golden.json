@@ -2,6 +2,42 @@
   "fixtures" : [
     {
       "conversationCount" : 1,
+      "fixtureId" : "antigravityBasicSession",
+      "parser" : "AntigravityParser",
+      "provider" : "Antigravity",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 21,
+          "cacheReadTokens" : 0,
+          "costNanoUSD" : 686250,
+          "estimatorVersion" : "char-ratio-v1",
+          "inputTokens" : 36,
+          "model" : "Claude Opus 4.6 (Thinking)",
+          "outputTokens" : 15,
+          "projectName" : "Antigravity",
+          "provenanceConfidence" : "high_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Antigravity",
+          "reasoningTokens" : 0,
+          "sessionId" : "antigravity-contract-1",
+          "totalTokens" : 72,
+          "usageSource" : "provider_log"
+        }
+      ]
+    },
+    {
+      "conversationCount" : 0,
+      "fixtureId" : "augmentBasicSession",
+      "parser" : "AugmentParser",
+      "provider" : "Augment",
+      "usageCount" : 0,
+      "usages" : [
+
+      ]
+    },
+    {
+      "conversationCount" : 1,
       "fixtureId" : "claudeCodeMultiTurnSession",
       "parser" : "ClaudeCodeParser",
       "provider" : "Claude Code",
@@ -105,6 +141,32 @@
       ]
     },
     {
+      "conversationCount" : 1,
+      "fixtureId" : "clineBasicTask",
+      "parser" : "ClineFormatParser",
+      "provider" : "Cline",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 0,
+          "cacheReadTokens" : 0,
+          "costNanoUSD" : 1350000,
+          "estimatorVersion" : "",
+          "inputTokens" : 150,
+          "model" : "claude-sonnet-4-20250514",
+          "outputTokens" : 60,
+          "projectName" : "cline-contract-task-1",
+          "provenanceConfidence" : "exact",
+          "provenanceMethod" : "provider_log",
+          "provider" : "Cline",
+          "reasoningTokens" : 0,
+          "sessionId" : "cline-contract-task-1",
+          "totalTokens" : 210,
+          "usageSource" : "provider_log"
+        }
+      ]
+    },
+    {
       "conversationCount" : 0,
       "fixtureId" : "codexRolloutSession",
       "parser" : "CodexParser",
@@ -183,6 +245,32 @@
       ]
     },
     {
+      "conversationCount" : 1,
+      "fixtureId" : "cursorAgentBasicSession",
+      "parser" : "CursorAgentParser",
+      "provider" : "Cursor Agent",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 61,
+          "cacheReadTokens" : 29,
+          "costNanoUSD" : 856250,
+          "estimatorVersion" : "",
+          "inputTokens" : 103,
+          "model" : "cursor-agent-pro",
+          "outputTokens" : 41,
+          "projectName" : "Cursor Agent",
+          "provenanceConfidence" : "exact",
+          "provenanceMethod" : "provider_log",
+          "provider" : "Cursor Agent",
+          "reasoningTokens" : 0,
+          "sessionId" : "cursor-agent-contract-1",
+          "totalTokens" : 234,
+          "usageSource" : "provider_log"
+        }
+      ]
+    },
+    {
       "conversationCount" : 0,
       "fixtureId" : "emptySession",
       "parser" : "ClaudeCodeParser",
@@ -224,6 +312,94 @@
           "reasoningTokens" : 0,
           "sessionId" : "factory-with-settings",
           "totalTokens" : 1200,
+          "usageSource" : "provider_log"
+        }
+      ]
+    },
+    {
+      "conversationCount" : 0,
+      "fixtureId" : "forgeDevBasicSession",
+      "parser" : "ForgeDevParser",
+      "provider" : "Forge",
+      "usageCount" : 0,
+      "usages" : [
+
+      ]
+    },
+    {
+      "conversationCount" : 1,
+      "fixtureId" : "geminiCLIBasicSession",
+      "parser" : "GeminiCLIParser",
+      "provider" : "Gemini CLI",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 0,
+          "cacheReadTokens" : 10,
+          "costNanoUSD" : 145800,
+          "estimatorVersion" : "",
+          "inputTokens" : 110,
+          "model" : "gemini",
+          "outputTokens" : 45,
+          "projectName" : "project-hash-contract",
+          "provenanceConfidence" : "exact",
+          "provenanceMethod" : "provider_log",
+          "provider" : "Gemini CLI",
+          "reasoningTokens" : 0,
+          "sessionId" : "session-gemini-contract-1",
+          "totalTokens" : 165,
+          "usageSource" : "provider_log"
+        }
+      ]
+    },
+    {
+      "conversationCount" : 1,
+      "fixtureId" : "gooseBasicSession",
+      "parser" : "GooseParser",
+      "provider" : "Goose",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 50,
+          "cacheReadTokens" : 200,
+          "costNanoUSD" : 10747500,
+          "estimatorVersion" : "",
+          "inputTokens" : 1000,
+          "model" : "claude-sonnet-4",
+          "outputTokens" : 500,
+          "projectName" : "ParserContract",
+          "provenanceConfidence" : "exact",
+          "provenanceMethod" : "provider_log",
+          "provider" : "Goose",
+          "reasoningTokens" : 0,
+          "sessionId" : "goose-contract-1",
+          "totalTokens" : 1750,
+          "usageSource" : "provider_log"
+        }
+      ]
+    },
+    {
+      "conversationCount" : 1,
+      "fixtureId" : "grokBasicSession",
+      "parser" : "GrokParser",
+      "provider" : "xAI",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 0,
+          "cacheReadTokens" : 0,
+          "costNanoUSD" : 255000,
+          "estimatorVersion" : "",
+          "inputTokens" : 150,
+          "model" : "grok-build",
+          "outputTokens" : 150,
+          "projectName" : "ParserContract",
+          "provenanceConfidence" : "exact",
+          "provenanceMethod" : "provider_log",
+          "provider" : "xAI",
+          "reasoningTokens" : 0,
+          "sessionId" : "grok-contract-session-1",
+          "totalTokens" : 300,
           "usageSource" : "provider_log"
         }
       ]
@@ -276,6 +452,32 @@
           "reasoningTokens" : 0,
           "sessionId" : "world-director::cron_tool_heavy_001",
           "totalTokens" : 6762,
+          "usageSource" : "provider_log"
+        }
+      ]
+    },
+    {
+      "conversationCount" : 1,
+      "fixtureId" : "kimiBasicSession",
+      "parser" : "KimiParser",
+      "provider" : "Kimi",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 0,
+          "cacheReadTokens" : 20,
+          "costNanoUSD" : 286000,
+          "estimatorVersion" : "",
+          "inputTokens" : 180,
+          "model" : "kimi-for-coding",
+          "outputTokens" : 70,
+          "projectName" : "workspace-contract",
+          "provenanceConfidence" : "exact",
+          "provenanceMethod" : "provider_log",
+          "provider" : "Kimi",
+          "reasoningTokens" : 0,
+          "sessionId" : "kimi-contract-session-1",
+          "totalTokens" : 270,
           "usageSource" : "provider_log"
         }
       ]
@@ -341,13 +543,76 @@
       "usages" : [
 
       ]
+    },
+    {
+      "conversationCount" : 1,
+      "fixtureId" : "warpBasicSession",
+      "parser" : "WarpParser",
+      "provider" : "Warp",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 0,
+          "cacheReadTokens" : 10,
+          "costNanoUSD" : 1038000,
+          "estimatorVersion" : "",
+          "inputTokens" : 120,
+          "model" : "claude-sonnet-4",
+          "outputTokens" : 45,
+          "projectName" : "ParserContract",
+          "provenanceConfidence" : "exact",
+          "provenanceMethod" : "provider_log",
+          "provider" : "Warp",
+          "reasoningTokens" : 0,
+          "sessionId" : "warp-contract-1",
+          "totalTokens" : 175,
+          "usageSource" : "provider_log"
+        }
+      ]
+    },
+    {
+      "conversationCount" : 1,
+      "fixtureId" : "windsurfBasicSession",
+      "parser" : "WindsurfParser",
+      "provider" : "Windsurf",
+      "usageCount" : 1,
+      "usages" : [
+        {
+          "cacheCreationTokens" : 0,
+          "cacheReadTokens" : 0,
+          "costNanoUSD" : 50000,
+          "estimatorVersion" : "windsurf-v1",
+          "inputTokens" : 8,
+          "model" : "unknown",
+          "outputTokens" : 3,
+          "projectName" : "pc-windsurf-session",
+          "provenanceConfidence" : "low_confidence_estimate",
+          "provenanceMethod" : "heuristic_estimate",
+          "provider" : "Windsurf",
+          "reasoningTokens" : 0,
+          "sessionId" : "pc-windsurf-session",
+          "totalTokens" : 11,
+          "usageSource" : "provider_log"
+        }
+      ]
     }
   ],
   "formatVersion" : 1,
   "providers" : [
+    "Antigravity",
+    "Augment",
     "Claude Code",
+    "Cline",
     "Codex",
+    "Cursor Agent",
     "Factory",
-    "Hermes"
+    "Forge",
+    "Gemini CLI",
+    "Goose",
+    "Hermes",
+    "Kimi",
+    "Warp",
+    "Windsurf",
+    "xAI"
   ]
 }

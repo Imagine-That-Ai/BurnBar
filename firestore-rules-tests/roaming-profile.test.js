@@ -22,6 +22,8 @@ const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080"
 
 const aliceUid = "alice-roaming-profile-uid";
 const bobUid = "bob-roaming-profile-uid";
+const aliceVaultKeyID = `v1_${"a".repeat(32)}`;
+const staleVaultKeyID = `v1_${"b".repeat(32)}`;
 
 function roamingAAD(uid) {
   return `OpenBurnBar-CloudVault-aad-v2|${uid}|roaming_profile|current|sealedPayload|2|OpenBurnBar-RoamingProfile-v1`;
@@ -32,7 +34,7 @@ function sealedPayload(overrides = {}) {
     schemaVersion: 2,
     algorithm: "AES-256-GCM",
     keyVersion: 1,
-    vaultKeyID: `v1_${"a".repeat(32)}`,
+    vaultKeyID: aliceVaultKeyID,
     sealedBoxBase64: "Q2lwaGVydGV4dA==",
     aad: roamingAAD(aliceUid),
     ...overrides,
@@ -80,6 +82,17 @@ async function main() {
   const bobDB = testEnv.authenticatedContext(bobUid).firestore();
   const profilePath = `users/${aliceUid}/roaming_profile/current`;
 
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), `users/${aliceUid}/cloud_vault_state/current`), {
+      uid: aliceUid,
+      vaultKeyID: aliceVaultKeyID,
+      vaultGeneration: 1,
+      status: "active",
+      createdAt: Timestamp.fromMillis(Date.now()),
+      updatedAt: Timestamp.fromMillis(Date.now()),
+    });
+  });
+
   await step("owner can write roaming profile current with roaming AAD", async () => {
     await assertSucceeds(setDoc(doc(aliceDB, profilePath), roamingProfileDoc()));
   });
@@ -105,6 +118,14 @@ async function main() {
     await assertFails(
       setDoc(doc(aliceDB, profilePath), roamingProfileDoc({
         sealedPayload: sealedPayload({ aad: roamingAAD(bobUid) }),
+      }))
+    );
+  });
+
+  await step("rules reject stale vault key ids", async () => {
+    await assertFails(
+      setDoc(doc(aliceDB, profilePath), roamingProfileDoc({
+        sealedPayload: sealedPayload({ vaultKeyID: staleVaultKeyID }),
       }))
     );
   });

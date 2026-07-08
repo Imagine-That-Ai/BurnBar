@@ -3,26 +3,35 @@ import OpenBurnBarCore
 
 // MARK: - Parse Result
 
-struct ParseResult: Sendable {
-    let usages: [TokenUsage]
-    let conversations: [ConversationRecord]
+public struct ParseResult: Sendable {
+    public let usages: [TokenUsage]
+    public let conversations: [ConversationRecord]
+
+    public init(usages: [TokenUsage], conversations: [ConversationRecord]) {
+        self.usages = usages
+        self.conversations = conversations
+    }
 }
 
-struct LogParseOptions: Sendable {
-    var includeConversationBodies: Bool
+public struct LogParseOptions: Sendable {
+    public var includeConversationBodies: Bool
 
-    static let `default` = LogParseOptions(includeConversationBodies: true)
+    public static let `default` = LogParseOptions(includeConversationBodies: true)
+
+    public init(includeConversationBodies: Bool) {
+        self.includeConversationBodies = includeConversationBodies
+    }
 }
 
 // MARK: - Log Parser Protocol
 
-protocol LogParser: LogParserProtocol {
+public protocol LogParser: LogParserProtocol {
     func parse() async throws -> ParseResult
     func parse(options: LogParseOptions) async throws -> ParseResult
 }
 
 extension LogParser {
-    func parse(options: LogParseOptions) async throws -> ParseResult {
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let result = try await parse()
         guard options.includeConversationBodies else {
             return ParseResult(usages: result.usages, conversations: [])
@@ -31,11 +40,11 @@ extension LogParser {
     }
 }
 
-struct ParserConversationCacheScrubber {
+public struct ParserConversationCacheScrubber {
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
 
-    init(
+    public init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live()
     ) {
@@ -43,7 +52,7 @@ struct ParserConversationCacheScrubber {
         self.appPaths = appPaths
     }
 
-    func scrubKnownParserCaches() {
+    public func scrubKnownParserCaches() {
         for cacheURL in knownCacheURLs() {
             scrubCache(at: cacheURL)
         }
@@ -105,18 +114,18 @@ struct ParserConversationCacheScrubber {
 extension FileHandle {
     /// Buffered UTF-8 line reader for log files. Returns a lazy sequence so
     /// parsers do not load and split multi-megabyte logs into memory at startup.
-    func readAllUTF8Lines() -> BufferedLineSequence {
+    public func readAllUTF8Lines() -> BufferedLineSequence {
         BufferedLineSequence(fileHandle: self)
     }
 
-    func readLine() -> String? {
+    public func readLine() -> String? {
         var data = Data()
         var byte = readData(ofLength: 1)
         // EOF before reading any byte should terminate line iteration.
         if byte.isEmpty {
             return nil
         }
-        
+
         while !byte.isEmpty {
             if byte.first == Character("\n").asciiValue {
                 break
@@ -124,15 +133,15 @@ extension FileHandle {
             data.append(byte)
             byte = readData(ofLength: 1)
         }
-        
+
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .newlines)
     }
-    
-    func readLastLine() throws -> String? {
+
+    public func readLastLine() throws -> String? {
         // Read last ~4KB and find last newline
         seek(toFileOffset: max(0, offsetInFile - 4096))
         let data = readData(ofLength: 4096)
-        
+
         guard let content = String(data: data, encoding: .utf8) else { return nil }
         let lines = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
         return lines.last

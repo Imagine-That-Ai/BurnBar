@@ -137,11 +137,14 @@ protection intact. If anything looks off, restore the full snapshot with
 
 ---
 
-## 5. Note on the storage-prune waiver gate
+## 5. Note on the storage architecture gate
 
-The parity-honesty gate `windows-storage-prune-waiver` (in
-`fast-feedback.yml`, see `docs/windows-port/STORAGE_PRUNE_WAIVER.md`) is already
-enforced transitively: it is a `needs:` dependency of `Fast Feedback Gate`, which
-**is** a required context today. So while the Engine lane compiles a pruned
-subset, `main` already refuses a PR that lets "storage is pruned" masquerade as
-parity — no separate enrolment needed for that gate.
+The architecture-honesty gate `windows-storage-architecture` (in
+`fast-feedback.yml`, see WPD-0005 —
+`docs/windows-port/decisions/0005-windows-storage-architecture.md`; it replaced
+the storage-prune waiver gate on 2026-07-06) is already enforced transitively:
+it is a `needs:` dependency of `Fast Feedback Gate`, which **is** a required
+context today. So while the Engine lane compiles the storage-pruned,
+compute-only Engine subset, `main` already refuses a PR that sets the boundary
+flag from a workflow not named in WPD-0005's machine-read block, or that drops
+the C# storage seam's tests — no separate enrolment needed for that gate.

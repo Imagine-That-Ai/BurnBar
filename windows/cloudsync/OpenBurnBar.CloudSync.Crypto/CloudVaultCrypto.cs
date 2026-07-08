@@ -344,6 +344,22 @@ namespace OpenBurnBar.CloudSync.Crypto
         public static string ProjectMemoryContentHash(byte[] data, byte[] keyData) =>
             KeyedHmacHex(data, keyData, "project-memory-content");
 
+        /// <summary>
+        /// Vault-keyed HMAC for Pensieve/memory opaque doc ids — parity with Swift
+        /// <c>pensieveSlugHmac</c> (HKDF info <c>pensieve-dedup:slug</c>).
+        /// </summary>
+        public static string PensieveSlugHmac(string slug, byte[] keyData) =>
+            PensieveKeyedHmacHex(Encoding.UTF8.GetBytes(slug), keyData, "slug");
+
+        private static string PensieveKeyedHmacHex(byte[] data, byte[] keyData, string label)
+        {
+            RequireVaultKey(keyData);
+            var subKey = HkdfDerive(
+                keyData,
+                Array.Empty<byte>(),
+                Encoding.UTF8.GetBytes($"pensieve-dedup:{label}"));
+            return HexString(HMACSHA256.HashData(subKey, data));
+        }
         private static string KeyedHmacHex(byte[] data, byte[] keyData, string purpose)
         {
             RequireVaultKey(keyData);

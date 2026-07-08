@@ -11,7 +11,7 @@ struct SessionDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(SettingsManager.self) private var settingsManager
-    @State private var conversation: ConversationRecord?
+    @State private var conversation: OpenBurnBarCore.ConversationRecord?
     @State private var summaryText: String?
     @State private var summarizing = false
     @State private var summarizeError: String?
@@ -70,7 +70,7 @@ struct SessionDetailView: View {
         // Reset conversation-dependent UI state before async reload to prevent stale state
         // from leaking across rapid session switches (VAL-CTXDETAIL-007, VAL-CTXDETAIL-010).
         // Key by full stableId (provider + sessionId) to handle provider swaps with same sessionId.
-        .onChange(of: ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)) { _, _ in
+        .onChange(of: OpenBurnBarCore.ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)) { _, _ in
             conversation = nil
             summaryText = nil
             summarizeError = nil
@@ -78,9 +78,9 @@ struct SessionDetailView: View {
             contextPackAnchorId = nil
             contextPackAnchorProject = nil
         }
-        .task(id: ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)) {
+        .task(id: OpenBurnBarCore.ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)) {
             await cliBridge.detect()
-            let id = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
+            let id = OpenBurnBarCore.ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
             conversation = try? await dataStore.fetchConversation(id: id)
             summaryText = conversation?.summary
         }
@@ -96,7 +96,7 @@ struct SessionDetailView: View {
 
     // MARK: - View Session Log
 
-    private func viewSessionLogButton(conversation: ConversationRecord, onOpen: @escaping (ConversationJumpTarget) -> Void) -> some View {
+    private func viewSessionLogButton(conversation: OpenBurnBarCore.ConversationRecord, onOpen: @escaping (ConversationJumpTarget) -> Void) -> some View {
         let snippet = conversation.summary?.nonEmpty
             ?? conversation.summaryTitle?.nonEmpty
             ?? conversation.lastAssistantMessage

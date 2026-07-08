@@ -85,11 +85,11 @@ export function quotaAccountRefreshMetadata(snapshot: QuotaSnapshotDoc, now: Dat
 
 function quotaWindowKindFromBucket(window: unknown): QuotaSnapshotMetadataWindowKind {
   if (typeof window !== "string") return "custom";
-  const normalized = window.toLowerCase();
-  if (normalized.includes("hour") || normalized.endsWith("h")) return "rollingHours";
-  if (normalized.includes("day") || normalized.endsWith("d")) return "rollingDays";
-  if (normalized.includes("week")) return "weekly";
+  const normalized = window.toLowerCase().trim();
   if (normalized.includes("month")) return "monthly";
+  if (normalized.includes("hour") || /^\d+(?:\.\d+)?h$/.test(normalized)) return "rollingHours";
+  if (normalized.includes("day") || /^\d+(?:\.\d+)?d$/.test(normalized)) return "rollingDays";
+  if (normalized.includes("week")) return "weekly";
   if (normalized.includes("life")) return "lifetime";
   return "custom";
 }

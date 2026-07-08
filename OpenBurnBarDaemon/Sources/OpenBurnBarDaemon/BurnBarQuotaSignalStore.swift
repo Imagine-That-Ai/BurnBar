@@ -109,7 +109,7 @@ public actor BurnBarQuotaSignalStore {
         namedLike marker: String,
         in headers: [BurnBarQuotaSignalHeader]
     ) -> Int? {
-        for header in headers where header.name.contains(marker) {
+        for header in headers where headerName(header.name, matchesTerminalComponent: marker) {
             if let integer = integerPrefix(from: header.value) {
                 return integer
             }
@@ -121,18 +121,25 @@ public actor BurnBarQuotaSignalStore {
         in headers: [BurnBarQuotaSignalHeader],
         observedAt: Date
     ) -> Date? {
-        for header in headers where header.name.contains("reset") || header.name == "retry-after" {
-            if header.name == "retry-after", let seconds = TimeInterval(header.value) {
-                return observedAt.addingTimeInterval(seconds)
-            }
-            if let seconds = TimeInterval(header.value), seconds > 1_000_000_000 {
-                return Date(timeIntervalSince1970: seconds)
-            }
+        for header in headers where headerName(header.name, matchesTerminalComponent: "reset") || header.name == "retry-after" {
             if let date = iso8601Date(from: header.value) {
                 return date
             }
+            if let seconds = TimeInterval(header.value) {
+                if header.name == "retry-after" || seconds < 1_000_000_000 {
+                    return observedAt.addingTimeInterval(seconds)
+                }
+                return Date(timeIntervalSince1970: seconds)
+            }
+            if let duration = durationInterval(from: header.value) {
+                return observedAt.addingTimeInterval(duration)
+            }
         }
         return nil
+    }
+
+    private static func headerName(_ name: String, matchesTerminalComponent marker: String) -> Bool {
+        name == marker || name.hasSuffix("-\(marker)")
     }
 
     private static func integerPrefix(from raw: String) -> Int? {
@@ -152,6 +159,23 @@ public actor BurnBarQuotaSignalStore {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
         return formatter.date(from: raw)
+    }
+
+    private static func durationInterval(from raw: String) -> TimeInterval? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let units: [(suffix: String, multiplier: TimeInterval)] = [
+            ("ms", 0.001),
+            ("s", 1),
+            ("m", 60),
+            ("h", 3_600),
+            ("d", 86_400)
+        ]
+        for unit in units where trimmed.hasSuffix(unit.suffix) {
+            let numberPart = trimmed.dropLast(unit.suffix.count)
+            guard let value = TimeInterval(numberPart), value >= 0 else { return nil }
+            return value * unit.multiplier
+        }
+        return nil
     }
 
     private func loadSignals() throws -> [BurnBarQuotaSignalRecord] {

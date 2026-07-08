@@ -1,0 +1,1272 @@
+{
+  "observedScenarios": [
+    {
+      "events": [
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "seq": 1,
+          "source": "daemon"
+        },
+        {
+          "kind": "tool.approval.required",
+          "phase": "awaiting_approval",
+          "seq": 2,
+          "source": "daemon"
+        },
+        {
+          "kind": "plan.generated",
+          "phase": "planning",
+          "seq": 3,
+          "source": "daemon"
+        },
+        {
+          "decision": "approve",
+          "kind": "tool.approval.recorded",
+          "phase": "awaiting_approval",
+          "seq": 4,
+          "source": "daemon"
+        },
+        {
+          "kind": "assistant.done",
+          "phase": "completed",
+          "seq": 5,
+          "source": "daemon",
+          "terminal": true
+        }
+      ],
+      "promptID": "hermes-prompt-approval",
+      "scenarioID": "prompt-tool-approval-done"
+    },
+    {
+      "events": [
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "seq": 1,
+          "source": "daemon"
+        },
+        {
+          "kind": "plan.generated",
+          "phase": "planning",
+          "seq": 2,
+          "source": "daemon"
+        },
+        {
+          "kind": "tool.approval.required",
+          "phase": "awaiting_approval",
+          "seq": 3,
+          "source": "daemon"
+        },
+        {
+          "kind": "run.cancel.requested",
+          "phase": "cancelling",
+          "seq": 4,
+          "source": "cli"
+        },
+        {
+          "kind": "assistant.cancelled",
+          "phase": "cancelled",
+          "seq": 5,
+          "source": "daemon",
+          "terminal": true
+        }
+      ],
+      "promptID": "hermes-prompt-cancel",
+      "scenarioID": "cancel-before-terminal"
+    },
+    {
+      "events": [
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "seq": 1,
+          "source": "daemon"
+        },
+        {
+          "kind": "plan.generated",
+          "phase": "planning",
+          "seq": 2,
+          "source": "daemon"
+        },
+        {
+          "kind": "assistant.error",
+          "phase": "failed",
+          "seq": 3,
+          "source": "daemon"
+        },
+        {
+          "kind": "run.retry.requested",
+          "phase": "retrying",
+          "seq": 4,
+          "source": "cli"
+        },
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "seq": 5,
+          "source": "daemon"
+        },
+        {
+          "kind": "plan.generated",
+          "phase": "planning",
+          "seq": 6,
+          "source": "daemon"
+        },
+        {
+          "kind": "assistant.done",
+          "phase": "completed",
+          "seq": 7,
+          "source": "daemon",
+          "terminal": true
+        }
+      ],
+      "promptID": "hermes-prompt-retry",
+      "scenarioID": "retry-after-error"
+    },
+    {
+      "events": [
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "seq": 1,
+          "source": "daemon"
+        },
+        {
+          "kind": "assistant.done",
+          "phase": "completed",
+          "seq": 2,
+          "source": "daemon",
+          "terminal": true
+        },
+        {
+          "kind": "run.persistence.checkpoint",
+          "phase": "completed",
+          "seq": 3,
+          "source": "daemon"
+        },
+        {
+          "kind": "run.list.readback",
+          "phase": "completed",
+          "seq": 4,
+          "source": "cli"
+        },
+        {
+          "kind": "run.get.readback",
+          "phase": "completed",
+          "seq": 5,
+          "source": "cli"
+        },
+        {
+          "kind": "run.poll.readback",
+          "phase": "completed",
+          "seq": 6,
+          "source": "cli"
+        }
+      ],
+      "promptID": "hermes-prompt-persistence",
+      "scenarioID": "persistence-list-readback"
+    }
+  ],
+  "observedScenariosWithProvenance": [
+    {
+      "events": [
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 4,
+                "step": "send prompt through daemon"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 5,
+                "step": "stream assistant/done events"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 6,
+                "step": "request tool approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 7,
+                "step": "render pending approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "approval.respond",
+                "rowIndex": 8,
+                "step": "record approval response"
+              }
+            ],
+            "emittedAt": 805124104.8846295,
+            "eventID": "A067D49A-6D1D-4D4F-A6B7-3D824C2AEAAE",
+            "normalizedSeq": 1,
+            "rawJournalLineNumber": 3,
+            "rawJournalOrdinal": 3,
+            "rawKind": "run_created",
+            "rawOrder": {
+              "emittedAt": 805124104.8846295,
+              "journalLineNumber": 3,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 3,
+              "timelineOrdinal": 3000
+            },
+            "rawPhase": "planning",
+            "runID": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 1,
+          "source": "daemon"
+        },
+        {
+          "kind": "tool.approval.required",
+          "phase": "awaiting_approval",
+          "provenance": {
+            "approvalID": "89DFBFA2-7F93-494C-AE3D-42319D9DB03F",
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 4,
+                "step": "send prompt through daemon"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 5,
+                "step": "stream assistant/done events"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 6,
+                "step": "request tool approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 7,
+                "step": "render pending approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "approval.respond",
+                "rowIndex": 8,
+                "step": "record approval response"
+              }
+            ],
+            "emittedAt": 805124104.8852328,
+            "eventID": "2E2E30AB-A0EA-4B65-B8C1-23435496B105",
+            "normalizedSeq": 2,
+            "rawJournalLineNumber": 4,
+            "rawJournalOrdinal": 4,
+            "rawKind": "approval_requested",
+            "rawOrder": {
+              "emittedAt": 805124104.8852328,
+              "journalLineNumber": 4,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 4,
+              "timelineOrdinal": 4000
+            },
+            "rawPhase": "awaiting_approval",
+            "runID": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 2,
+          "source": "daemon"
+        },
+        {
+          "kind": "plan.generated",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 4,
+                "step": "send prompt through daemon"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 5,
+                "step": "stream assistant/done events"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 6,
+                "step": "request tool approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 7,
+                "step": "render pending approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "approval.respond",
+                "rowIndex": 8,
+                "step": "record approval response"
+              }
+            ],
+            "emittedAt": 805124104.8848045,
+            "eventID": "38216A1A-463C-49F9-B8C0-3E8553D09DF2",
+            "normalizedSeq": 3,
+            "rawJournalLineNumber": 5,
+            "rawJournalOrdinal": 5,
+            "rawKind": "plan_generated",
+            "rawOrder": {
+              "emittedAt": 805124104.8848045,
+              "journalLineNumber": 5,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 5,
+              "timelineOrdinal": 5000
+            },
+            "rawPhase": "planning",
+            "runID": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 3,
+          "source": "daemon"
+        },
+        {
+          "decision": "approve",
+          "kind": "tool.approval.recorded",
+          "phase": "awaiting_approval",
+          "provenance": {
+            "approvalID": "89DFBFA2-7F93-494C-AE3D-42319D9DB03F",
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 4,
+                "step": "send prompt through daemon"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 5,
+                "step": "stream assistant/done events"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 6,
+                "step": "request tool approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 7,
+                "step": "render pending approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "approval.respond",
+                "rowIndex": 8,
+                "step": "record approval response"
+              }
+            ],
+            "emittedAt": 805124104.9364456,
+            "eventID": "742A0CEF-D599-44EC-887F-53A122A3332B",
+            "normalizedSeq": 4,
+            "rawJournalLineNumber": 6,
+            "rawJournalOrdinal": 6,
+            "rawKind": "approval_responded",
+            "rawOrder": {
+              "emittedAt": 805124104.9364456,
+              "journalLineNumber": 6,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 6,
+              "timelineOrdinal": 6000
+            },
+            "rawPhase": "awaiting_approval",
+            "runID": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 4,
+          "source": "daemon"
+        },
+        {
+          "kind": "assistant.done",
+          "phase": "completed",
+          "provenance": {
+            "anchorJournalLineNumber": 6,
+            "artifact": "hermes-run-checkpoints/4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B.json",
+            "attempt": 1,
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 4,
+                "step": "send prompt through daemon"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 5,
+                "step": "stream assistant/done events"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 6,
+                "step": "request tool approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.poll",
+                "rowIndex": 7,
+                "step": "render pending approval"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "approval.respond",
+                "rowIndex": 8,
+                "step": "record approval response"
+              }
+            ],
+            "fileName": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B.json",
+            "normalizedSeq": 5,
+            "rawFileOrdinal": 10,
+            "rawKind": "checkpoint",
+            "rawOrder": {
+              "anchorJournalLineNumber": 6,
+              "checkpointFileOrdinal": 10,
+              "sourceFile": "hermes-run-checkpoints/4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B.json",
+              "sourceOrdinal": 10,
+              "timelineOrdinal": 6500,
+              "updatedAt": 805124104.9398564
+            },
+            "runID": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
+            "sourceFile": "hermes-run-checkpoints/4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B.json",
+            "updatedAt": 805124104.9398564
+          },
+          "seq": 5,
+          "source": "daemon",
+          "terminal": true
+        }
+      ],
+      "promptID": "hermes-prompt-approval",
+      "provenance": {
+        "browserRows": [
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.create",
+            "rowIndex": 4,
+            "step": "send prompt through daemon"
+          },
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.poll",
+            "rowIndex": 5,
+            "step": "stream assistant/done events"
+          },
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.create",
+            "rowIndex": 6,
+            "step": "request tool approval"
+          },
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.poll",
+            "rowIndex": 7,
+            "step": "render pending approval"
+          },
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "approval.respond",
+            "rowIndex": 8,
+            "step": "record approval response"
+          }
+        ],
+        "firstRawOrder": {
+          "emittedAt": 805124104.8846295,
+          "journalLineNumber": 3,
+          "sourceFile": "hermes-run-journal.jsonl",
+          "sourceOrdinal": 3,
+          "timelineOrdinal": 3000
+        },
+        "sortedBy": "raw product emission ordinals"
+      },
+      "scenarioID": "prompt-tool-approval-done"
+    },
+    {
+      "events": [
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 9,
+                "step": "create cancellable run"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.cancel",
+                "rowIndex": 10,
+                "step": "cancel pending run"
+              }
+            ],
+            "emittedAt": 805124104.9993967,
+            "eventID": "124D0506-066A-4CD5-90E9-5C09BFA0063C",
+            "normalizedSeq": 1,
+            "rawJournalLineNumber": 7,
+            "rawJournalOrdinal": 7,
+            "rawKind": "run_created",
+            "rawOrder": {
+              "emittedAt": 805124104.9993967,
+              "journalLineNumber": 7,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 7,
+              "timelineOrdinal": 7000
+            },
+            "rawPhase": "planning",
+            "runID": "FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 1,
+          "source": "daemon"
+        },
+        {
+          "kind": "plan.generated",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 9,
+                "step": "create cancellable run"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.cancel",
+                "rowIndex": 10,
+                "step": "cancel pending run"
+              }
+            ],
+            "emittedAt": 805124104.9995584,
+            "eventID": "78CC6F11-91FE-4F1F-A370-6AA42A0425D6",
+            "normalizedSeq": 2,
+            "rawJournalLineNumber": 8,
+            "rawJournalOrdinal": 8,
+            "rawKind": "plan_generated",
+            "rawOrder": {
+              "emittedAt": 805124104.9995584,
+              "journalLineNumber": 8,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 8,
+              "timelineOrdinal": 8000
+            },
+            "rawPhase": "planning",
+            "runID": "FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 2,
+          "source": "daemon"
+        },
+        {
+          "kind": "tool.approval.required",
+          "phase": "awaiting_approval",
+          "provenance": {
+            "approvalID": "A4C84F18-04EE-4955-8ACA-5FBFA9AD80FC",
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 9,
+                "step": "create cancellable run"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.cancel",
+                "rowIndex": 10,
+                "step": "cancel pending run"
+              }
+            ],
+            "emittedAt": 805124104.9997807,
+            "eventID": "B483B79F-2102-4962-925D-487E76D74785",
+            "normalizedSeq": 3,
+            "rawJournalLineNumber": 9,
+            "rawJournalOrdinal": 9,
+            "rawKind": "approval_requested",
+            "rawOrder": {
+              "emittedAt": 805124104.9997807,
+              "journalLineNumber": 9,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 9,
+              "timelineOrdinal": 9000
+            },
+            "rawPhase": "awaiting_approval",
+            "runID": "FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 3,
+          "source": "daemon"
+        },
+        {
+          "kind": "run.cancel.requested",
+          "phase": "cancelling",
+          "provenance": {
+            "artifact": "cli-hermes-transcript.txt",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 9,
+                "step": "create cancellable run"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.cancel",
+                "rowIndex": 10,
+                "step": "cancel pending run"
+              }
+            ],
+            "command": "openburnbar-cli run cancel FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD --reason linux evidence cancellation",
+            "lineStart": 287,
+            "normalizedSeq": 4,
+            "rawKind": "cli_section",
+            "rawOrder": {
+              "anchorJournalLineNumber": 10,
+              "cliLineStart": 287,
+              "cliSectionIndex": 12,
+              "sourceFile": "cli-hermes-transcript.txt",
+              "sourceOrdinal": 12,
+              "timelineOrdinal": 9900
+            },
+            "runID": "FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD",
+            "section": "run cancel",
+            "sectionIndex": 12,
+            "sourceFile": "cli-hermes-transcript.txt"
+          },
+          "seq": 4,
+          "source": "cli"
+        },
+        {
+          "kind": "assistant.cancelled",
+          "phase": "cancelled",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 9,
+                "step": "create cancellable run"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.cancel",
+                "rowIndex": 10,
+                "step": "cancel pending run"
+              }
+            ],
+            "emittedAt": 805124105.0217574,
+            "eventID": "2ED0F86A-2741-4B17-9671-9C1A5DD04A24",
+            "normalizedSeq": 5,
+            "rawJournalLineNumber": 10,
+            "rawJournalOrdinal": 10,
+            "rawKind": "run_cancelled",
+            "rawOrder": {
+              "emittedAt": 805124105.0217574,
+              "journalLineNumber": 10,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 10,
+              "timelineOrdinal": 10000
+            },
+            "rawPhase": "cancelled",
+            "runID": "FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 5,
+          "source": "daemon",
+          "terminal": true
+        }
+      ],
+      "promptID": "hermes-prompt-cancel",
+      "provenance": {
+        "browserRows": [
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.create",
+            "rowIndex": 9,
+            "step": "create cancellable run"
+          },
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.cancel",
+            "rowIndex": 10,
+            "step": "cancel pending run"
+          }
+        ],
+        "firstRawOrder": {
+          "emittedAt": 805124104.9993967,
+          "journalLineNumber": 7,
+          "sourceFile": "hermes-run-journal.jsonl",
+          "sourceOrdinal": 7,
+          "timelineOrdinal": 7000
+        },
+        "sortedBy": "raw product emission ordinals"
+      },
+      "scenarioID": "cancel-before-terminal"
+    },
+    {
+      "events": [
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 11,
+                "step": "create retry failure"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.retry",
+                "rowIndex": 12,
+                "step": "retry failed run"
+              }
+            ],
+            "emittedAt": 805124105.0596434,
+            "eventID": "7283D084-27BC-4E4C-9B50-98F11A1F7555",
+            "normalizedSeq": 1,
+            "rawJournalLineNumber": 11,
+            "rawJournalOrdinal": 11,
+            "rawKind": "run_created",
+            "rawOrder": {
+              "emittedAt": 805124105.0596434,
+              "journalLineNumber": 11,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 11,
+              "timelineOrdinal": 11000
+            },
+            "rawPhase": "planning",
+            "runID": "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 1,
+          "source": "daemon"
+        },
+        {
+          "kind": "plan.generated",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 11,
+                "step": "create retry failure"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.retry",
+                "rowIndex": 12,
+                "step": "retry failed run"
+              }
+            ],
+            "emittedAt": 805124105.0598302,
+            "eventID": "EE5285DD-B35A-4164-9F19-F83C76332AE8",
+            "normalizedSeq": 2,
+            "rawJournalLineNumber": 12,
+            "rawJournalOrdinal": 12,
+            "rawKind": "plan_generated",
+            "rawOrder": {
+              "emittedAt": 805124105.0598302,
+              "journalLineNumber": 12,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 12,
+              "timelineOrdinal": 12000
+            },
+            "rawPhase": "planning",
+            "runID": "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 2,
+          "source": "daemon"
+        },
+        {
+          "kind": "assistant.error",
+          "phase": "failed",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 11,
+                "step": "create retry failure"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.retry",
+                "rowIndex": 12,
+                "step": "retry failed run"
+              }
+            ],
+            "emittedAt": 805124105.0600299,
+            "eventID": "0246AA59-9CB4-4345-8321-1C5F7B5522C7",
+            "normalizedSeq": 3,
+            "rawJournalLineNumber": 13,
+            "rawJournalOrdinal": 13,
+            "rawKind": "run_failed",
+            "rawOrder": {
+              "emittedAt": 805124105.0600299,
+              "journalLineNumber": 13,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 13,
+              "timelineOrdinal": 13000
+            },
+            "rawPhase": "failed",
+            "runID": "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 3,
+          "source": "daemon"
+        },
+        {
+          "kind": "run.retry.requested",
+          "phase": "retrying",
+          "provenance": {
+            "artifact": "cli-hermes-transcript.txt",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 11,
+                "step": "create retry failure"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.retry",
+                "rowIndex": 12,
+                "step": "retry failed run"
+              }
+            ],
+            "command": "openburnbar-cli run retry 966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+            "lineStart": 338,
+            "normalizedSeq": 4,
+            "rawKind": "cli_section",
+            "rawOrder": {
+              "anchorJournalLineNumber": 14,
+              "cliLineStart": 338,
+              "cliSectionIndex": 14,
+              "sourceFile": "cli-hermes-transcript.txt",
+              "sourceOrdinal": 14,
+              "timelineOrdinal": 13900
+            },
+            "runID": "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+            "section": "run retry",
+            "sectionIndex": 14,
+            "sourceFile": "cli-hermes-transcript.txt"
+          },
+          "seq": 4,
+          "source": "cli"
+        },
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 11,
+                "step": "create retry failure"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.retry",
+                "rowIndex": 12,
+                "step": "retry failed run"
+              }
+            ],
+            "emittedAt": 805124105.0886008,
+            "eventID": "00F8EB3C-EB7B-4C12-B7F5-DD324320FF26",
+            "normalizedSeq": 5,
+            "rawJournalLineNumber": 14,
+            "rawJournalOrdinal": 14,
+            "rawKind": "run_created",
+            "rawOrder": {
+              "emittedAt": 805124105.0886008,
+              "journalLineNumber": 14,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 14,
+              "timelineOrdinal": 14000
+            },
+            "rawPhase": "planning",
+            "runID": "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 5,
+          "source": "daemon"
+        },
+        {
+          "kind": "plan.generated",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 11,
+                "step": "create retry failure"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.retry",
+                "rowIndex": 12,
+                "step": "retry failed run"
+              }
+            ],
+            "emittedAt": 805124105.0887656,
+            "eventID": "6C228987-E98E-44E5-82F3-67D1AD2B0E52",
+            "normalizedSeq": 6,
+            "rawJournalLineNumber": 15,
+            "rawJournalOrdinal": 15,
+            "rawKind": "plan_generated",
+            "rawOrder": {
+              "emittedAt": 805124105.0887656,
+              "journalLineNumber": 15,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 15,
+              "timelineOrdinal": 15000
+            },
+            "rawPhase": "planning",
+            "runID": "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 6,
+          "source": "daemon"
+        },
+        {
+          "kind": "assistant.done",
+          "phase": "completed",
+          "provenance": {
+            "anchorJournalLineNumber": 15,
+            "artifact": "hermes-run-checkpoints/966DC09E-FC36-4373-A01E-CA58EDB5BE92.json",
+            "attempt": 2,
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.create",
+                "rowIndex": 11,
+                "step": "create retry failure"
+              },
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.retry",
+                "rowIndex": 12,
+                "step": "retry failed run"
+              }
+            ],
+            "fileName": "966DC09E-FC36-4373-A01E-CA58EDB5BE92.json",
+            "normalizedSeq": 7,
+            "rawFileOrdinal": 19,
+            "rawKind": "checkpoint",
+            "rawOrder": {
+              "anchorJournalLineNumber": 15,
+              "checkpointFileOrdinal": 19,
+              "sourceFile": "hermes-run-checkpoints/966DC09E-FC36-4373-A01E-CA58EDB5BE92.json",
+              "sourceOrdinal": 19,
+              "timelineOrdinal": 15500,
+              "updatedAt": 805124105.0937189
+            },
+            "runID": "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+            "sourceFile": "hermes-run-checkpoints/966DC09E-FC36-4373-A01E-CA58EDB5BE92.json",
+            "updatedAt": 805124105.0937189
+          },
+          "seq": 7,
+          "source": "daemon",
+          "terminal": true
+        }
+      ],
+      "promptID": "hermes-prompt-retry",
+      "provenance": {
+        "browserRows": [
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.create",
+            "rowIndex": 11,
+            "step": "create retry failure"
+          },
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.retry",
+            "rowIndex": 12,
+            "step": "retry failed run"
+          }
+        ],
+        "firstRawOrder": {
+          "emittedAt": 805124105.0596434,
+          "journalLineNumber": 11,
+          "sourceFile": "hermes-run-journal.jsonl",
+          "sourceOrdinal": 11,
+          "timelineOrdinal": 11000
+        },
+        "sortedBy": "raw product emission ordinals"
+      },
+      "scenarioID": "retry-after-error"
+    },
+    {
+      "events": [
+        {
+          "kind": "prompt.accepted",
+          "phase": "planning",
+          "provenance": {
+            "artifact": "hermes-run-journal.jsonl",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.list",
+                "rowIndex": 13,
+                "step": "persisted transcript state"
+              }
+            ],
+            "emittedAt": 805124104.7754478,
+            "eventID": "0B00C587-0C5C-42B5-AA12-1E6D27B6AF67",
+            "normalizedSeq": 1,
+            "rawJournalLineNumber": 1,
+            "rawJournalOrdinal": 1,
+            "rawKind": "run_created",
+            "rawOrder": {
+              "emittedAt": 805124104.7754478,
+              "journalLineNumber": 1,
+              "sourceFile": "hermes-run-journal.jsonl",
+              "sourceOrdinal": 1,
+              "timelineOrdinal": 1000
+            },
+            "rawPhase": "planning",
+            "runID": "B167CE41-0015-4DFF-BAD1-42B3691968CA",
+            "sourceFile": "hermes-run-journal.jsonl"
+          },
+          "seq": 1,
+          "source": "daemon"
+        },
+        {
+          "kind": "assistant.done",
+          "phase": "completed",
+          "provenance": {
+            "anchorJournalLineNumber": 2,
+            "artifact": "hermes-run-checkpoints/B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+            "attempt": 1,
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.list",
+                "rowIndex": 13,
+                "step": "persisted transcript state"
+              }
+            ],
+            "fileName": "B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+            "normalizedSeq": 2,
+            "rawFileOrdinal": 21,
+            "rawKind": "checkpoint",
+            "rawOrder": {
+              "anchorJournalLineNumber": 2,
+              "checkpointFileOrdinal": 21,
+              "sourceFile": "hermes-run-checkpoints/B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+              "sourceOrdinal": 21,
+              "timelineOrdinal": 2500,
+              "updatedAt": 805124104.7829707
+            },
+            "runID": "B167CE41-0015-4DFF-BAD1-42B3691968CA",
+            "sourceFile": "hermes-run-checkpoints/B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+            "updatedAt": 805124104.7829707
+          },
+          "seq": 2,
+          "source": "daemon",
+          "terminal": true
+        },
+        {
+          "kind": "run.persistence.checkpoint",
+          "phase": "completed",
+          "provenance": {
+            "anchorJournalLineNumber": 2,
+            "artifact": "hermes-run-checkpoints/B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+            "attempt": 1,
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.list",
+                "rowIndex": 13,
+                "step": "persisted transcript state"
+              }
+            ],
+            "fileName": "B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+            "normalizedSeq": 3,
+            "rawFileOrdinal": 21,
+            "rawKind": "checkpoint",
+            "rawOrder": {
+              "anchorJournalLineNumber": 2,
+              "checkpointFileOrdinal": 21,
+              "sourceFile": "hermes-run-checkpoints/B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+              "sourceOrdinal": 21,
+              "timelineOrdinal": 2501,
+              "updatedAt": 805124104.7829707
+            },
+            "runID": "B167CE41-0015-4DFF-BAD1-42B3691968CA",
+            "sourceFile": "hermes-run-checkpoints/B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+            "updatedAt": 805124104.7829707
+          },
+          "seq": 3,
+          "source": "daemon"
+        },
+        {
+          "kind": "run.list.readback",
+          "phase": "completed",
+          "provenance": {
+            "artifact": "cli-hermes-transcript.txt",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.list",
+                "rowIndex": 13,
+                "step": "persisted transcript state"
+              }
+            ],
+            "command": "openburnbar-cli run list",
+            "lineStart": 428,
+            "normalizedSeq": 4,
+            "rawKind": "cli_section",
+            "rawOrder": {
+              "cliLineStart": 428,
+              "cliSectionIndex": 20,
+              "sourceFile": "cli-hermes-transcript.txt",
+              "sourceOrdinal": 20,
+              "timelineOrdinal": 820000
+            },
+            "runID": "B167CE41-0015-4DFF-BAD1-42B3691968CA",
+            "section": "run list persistence tail",
+            "sectionIndex": 20,
+            "sourceFile": "cli-hermes-transcript.txt"
+          },
+          "seq": 4,
+          "source": "cli"
+        },
+        {
+          "kind": "run.get.readback",
+          "phase": "completed",
+          "provenance": {
+            "artifact": "cli-hermes-transcript.txt",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.list",
+                "rowIndex": 13,
+                "step": "persisted transcript state"
+              }
+            ],
+            "command": "openburnbar-cli run get B167CE41-0015-4DFF-BAD1-42B3691968CA",
+            "lineStart": 442,
+            "normalizedSeq": 5,
+            "rawKind": "cli_section",
+            "rawOrder": {
+              "cliLineStart": 442,
+              "cliSectionIndex": 21,
+              "sourceFile": "cli-hermes-transcript.txt",
+              "sourceOrdinal": 21,
+              "timelineOrdinal": 821000
+            },
+            "runID": "B167CE41-0015-4DFF-BAD1-42B3691968CA",
+            "section": "run get persistence readback",
+            "sectionIndex": 21,
+            "sourceFile": "cli-hermes-transcript.txt"
+          },
+          "seq": 5,
+          "source": "cli"
+        },
+        {
+          "kind": "run.poll.readback",
+          "phase": "completed",
+          "provenance": {
+            "artifact": "cli-hermes-transcript.txt",
+            "browserRows": [
+              {
+                "artifact": "packaged-browser-hermes-dom-transcript.json",
+                "method": "run.list",
+                "rowIndex": 13,
+                "step": "persisted transcript state"
+              }
+            ],
+            "command": "openburnbar-cli run poll B167CE41-0015-4DFF-BAD1-42B3691968CA --json",
+            "lineStart": 457,
+            "normalizedSeq": 6,
+            "rawKind": "cli_section",
+            "rawOrder": {
+              "cliLineStart": 457,
+              "cliSectionIndex": 22,
+              "sourceFile": "cli-hermes-transcript.txt",
+              "sourceOrdinal": 22,
+              "timelineOrdinal": 822000
+            },
+            "runID": "B167CE41-0015-4DFF-BAD1-42B3691968CA",
+            "section": "run poll persistence readback",
+            "sectionIndex": 22,
+            "sourceFile": "cli-hermes-transcript.txt"
+          },
+          "seq": 6,
+          "source": "cli"
+        }
+      ],
+      "promptID": "hermes-prompt-persistence",
+      "provenance": {
+        "browserRows": [
+          {
+            "artifact": "packaged-browser-hermes-dom-transcript.json",
+            "method": "run.list",
+            "rowIndex": 13,
+            "step": "persisted transcript state"
+          }
+        ],
+        "firstRawOrder": {
+          "emittedAt": 805124104.7754478,
+          "journalLineNumber": 1,
+          "sourceFile": "hermes-run-journal.jsonl",
+          "sourceOrdinal": 1,
+          "timelineOrdinal": 1000
+        },
+        "sortedBy": "raw product emission ordinals"
+      },
+      "scenarioID": "persistence-list-readback"
+    }
+  ],
+  "platform": "linux",
+  "schema": "openburnbar-hermes-event-order-normalized-observed-v2",
+  "sequencing": {
+    "journalOrder": "hermes-run-journal.jsonl raw line number is authoritative for daemon journal events",
+    "nonJournalOrder": "checkpoint and CLI events carry file/section ordinals plus journal anchors when the raw flow spans artifacts",
+    "rule": "sort each scenario by raw product emission ordinals, then assign seq"
+  }
+}

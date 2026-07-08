@@ -62,9 +62,17 @@ final class RoamingProfileSyncService: CloudSyncDomain, Sendable {
             .document("current")
 
         let local = try await localStore.currentPayload(uid: uid, deviceID: deviceID, context: context)
-        let remoteData = try await document.getData()
-        if let remoteData,
-           let remoteEnvelope = try Self.sealedPayload(from: remoteData["sealedPayload"]) {
+        let remoteEnvelope = try await withCloudSyncRetry(
+            policy: context.retryPolicy,
+            circuitBreaker: context.circuitBreaker,
+            domain: "roaming_profile"
+        ) { () -> CloudVaultSealedPayload? in
+            guard let remoteData = try await document.getData() else {
+                return nil
+            }
+            return try? Self.sealedPayload(from: remoteData["sealedPayload"])
+        }
+        if let remoteEnvelope {
             let remote = try CloudVaultCrypto.openRoamingProfile(remoteEnvelope, keyData: vaultKey, uid: uid)
             if remote.updatedAt >= local.updatedAt {
                 try await localStore.apply(remote, context: context)
@@ -125,16 +133,22 @@ struct DefaultRoamingProfileLocalStore: RoamingProfileLocalStoring {
         let quotaPreferences = await MainActor.run {
             quotaDisplayPreferences(from: context.settingsManager)
         }
-        let routerMode = await MainActor.run {
-            OpenBurnBarDaemonManager.shared.routerMode
+        let (routerMode, quotaSettingsUpdatedAt, ollamaEndpoints) = await MainActor.run {
+            let updatedAt = (context.settingsManager as? SettingsManager)?.quotas.updatedAt
+                ?? Date(timeIntervalSince1970: 0)
+            return (
+                OpenBurnBarDaemonManager.shared.routerMode,
+                updatedAt,
+                Self.roamingOllamaEndpoints(from: OpenBurnBarDaemonManager.shared.providerConfigurations)
+            )
         }
-        let updatedAt = accounts.map(\.updatedAt).max() ?? Date(timeIntervalSince1970: 0)
+        let updatedAt = (accounts.map(\.updatedAt) + [quotaSettingsUpdatedAt]).max() ?? Date(timeIntervalSince1970: 0)
         return RoamingProfilePayload(
             routerMode: routerMode,
             crossProviderFailoverEnabled: !routerMode.usesExactSameModelInvariant,
             accountOrder: accounts.map(\.id),
             providerAccounts: accounts.map(RoamingProfileProviderAccount.init),
-            ollamaEndpoints: [],
+            ollamaEndpoints: ollamaEndpoints,
             equivalenceOverrides: [],
             quotaDisplayPreferences: quotaPreferences,
             updatedAt: updatedAt,
@@ -144,17 +158,60 @@ struct DefaultRoamingProfileLocalStore: RoamingProfileLocalStoring {
 
     func apply(_ payload: RoamingProfilePayload, context: CloudSyncContext) async throws {
         _ = try payload.validatedForCloudVaultSeal()
+        let localDeviceID = await context.deviceId
         for remoteAccount in payload.providerAccounts {
-            if let local = try await context.dataStore.fetchProviderAccount(id: remoteAccount.id),
-               local.updatedAt > remoteAccount.updatedAt {
+            let account = namespacedRemoteAccount(remoteAccount, localDeviceID: localDeviceID)
+            if let local = try await context.dataStore.fetchProviderAccount(id: account.id),
+               local.updatedAt > account.updatedAt {
                 continue
             }
-            try await context.dataStore.upsertProviderAccount(remoteAccount.providerAccountDoc)
+            try await context.dataStore.upsertProviderAccount(account.providerAccountDoc)
         }
         await MainActor.run {
             applyQuotaDisplayPreferences(payload.quotaDisplayPreferences, to: context.settingsManager)
         }
+        await OpenBurnBarDaemonManager.shared.applyRoamingOllamaEndpoints(payload.ollamaEndpoints)
         await OpenBurnBarDaemonManager.shared.setRouterMode(payload.routerMode)
+    }
+
+    static func roamingOllamaEndpoints(
+        from configurations: [OpenBurnBarDaemonProviderConfiguration]
+    ) -> [RoamingOllamaEndpoint] {
+        configurations
+            .filter { isRoamingOllamaProviderID($0.providerID) }
+            .flatMap(\.ollamaEndpoints)
+            .map { endpoint in
+                RoamingOllamaEndpoint(
+                    id: endpoint.id,
+                    baseURL: endpoint.baseURL,
+                    label: endpoint.label,
+                    priority: endpoint.priority
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.priority != rhs.priority { return lhs.priority < rhs.priority }
+                return lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
+            }
+    }
+
+    static func providerOllamaEndpoints(
+        from endpoints: [RoamingOllamaEndpoint]
+    ) throws -> [BurnBarOllamaEndpointConfig] {
+        try BurnBarOllamaEndpointConfig.normalizedList(
+            endpoints.map { endpoint in
+                BurnBarOllamaEndpointConfig(
+                    id: endpoint.id,
+                    baseURL: endpoint.baseURL,
+                    label: endpoint.label,
+                    priority: endpoint.priority,
+                    enabled: true
+                )
+            }
+        )
+    }
+
+    static func isRoamingOllamaProviderID(_ providerID: String) -> Bool {
+        providerID.caseInsensitiveCompare("ollama-local") == .orderedSame
     }
 
     @MainActor
@@ -195,5 +252,107 @@ struct DefaultRoamingProfileLocalStore: RoamingProfileLocalStoring {
             settingsManager.quotas.percentageDisplayMode = mode
         }
         settingsManager.quotas.cumulativeAcrossAccounts = preferences.cumulativeAcrossAccounts
+    }
+
+    private func namespacedRemoteAccount(
+        _ account: RoamingProfileProviderAccount,
+        localDeviceID: String
+    ) -> RoamingProfileProviderAccount {
+        guard account.sourceDeviceID != localDeviceID,
+              account.storageScope == .deviceKeychain || account.storageScope == .localOnly else {
+            return account
+        }
+        let trimmedDeviceID = account.sourceDeviceID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let remoteDeviceID = trimmedDeviceID.isEmpty ? "unknown" : trimmedDeviceID
+        return RoamingProfileProviderAccount(
+            id: "remote-\(remoteDeviceID)-\(account.id)",
+            providerID: account.providerID,
+            label: account.label,
+            identityHint: account.identityHint,
+            status: account.status,
+            credentialKind: account.credentialKind,
+            storageScope: account.storageScope,
+            redactedLabel: account.redactedLabel,
+            sourceDeviceID: account.sourceDeviceID,
+            linkedSwitcherProfileID: account.linkedSwitcherProfileID,
+            isDefault: false,
+            sortKey: account.sortKey,
+            lastValidatedAt: account.lastValidatedAt,
+            lastRefreshAt: account.lastRefreshAt,
+            lastErrorCode: account.lastErrorCode,
+            endpointProfileID: account.endpointProfileID,
+            region: account.region,
+            tokenPlanTier: account.tokenPlanTier,
+            tokenPlanBillingCycle: account.tokenPlanBillingCycle,
+            authMethodID: account.authMethodID,
+            schemaVersion: account.schemaVersion,
+            createdAt: account.createdAt,
+            updatedAt: account.updatedAt
+        )
+    }
+}
+
+extension OpenBurnBarDaemonManager {
+    func applyRoamingOllamaEndpoints(_ endpoints: [RoamingOllamaEndpoint]) async {
+        guard !endpoints.isEmpty else { return }
+        do {
+            try await applyRoamingOllamaEndpointsOrThrow(endpoints)
+        } catch {
+            lastError = error.localizedDescription
+            AppLogger.daemon.error(
+                "roaming_profile.ollama_endpoints.apply_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
+    }
+
+    private func applyRoamingOllamaEndpointsOrThrow(_ endpoints: [RoamingOllamaEndpoint]) async throws {
+        let providerEndpoints = try DefaultRoamingProfileLocalStore.providerOllamaEndpoints(from: endpoints)
+        guard !providerEndpoints.isEmpty else { return }
+
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                throw OpenBurnBarDaemonManagerError.rpcError(
+                    "OpenBurnBar daemon must be healthy before roaming Ollama endpoints can be restored."
+                )
+            }
+        }
+
+        try await performRequiredBusyWork {
+            let socketURL = paths.socketURL
+            let requestConfig = dependencies.requestConfig
+            let updateConfig = dependencies.updateConfig
+            var snapshot = try await daemonRPC {
+                try requestConfig(socketURL)
+            }
+
+            if let index = snapshot.providers.firstIndex(where: {
+                DefaultRoamingProfileLocalStore.isRoamingOllamaProviderID($0.providerID)
+            }) {
+                var settings = snapshot.providers[index]
+                settings.isEnabled = true
+                settings.baseURL = providerEndpoints.first?.baseURL ?? settings.baseURL
+                settings.ollamaEndpoints = providerEndpoints
+                snapshot.providers[index] = settings
+            } else {
+                snapshot.providers.append(
+                    BurnBarProviderSettings(
+                        providerID: "ollama-local",
+                        isEnabled: true,
+                        baseURL: providerEndpoints.first?.baseURL ?? "http://localhost:11434",
+                        preferredModelIDs: [],
+                        ollamaEndpoints: providerEndpoints
+                    )
+                )
+            }
+
+            let snapshotToWrite = snapshot
+            _ = try await daemonRPC {
+                try updateConfig(socketURL, snapshotToWrite)
+            }
+        }
     }
 }

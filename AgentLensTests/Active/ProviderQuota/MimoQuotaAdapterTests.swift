@@ -26,9 +26,9 @@ final class MimoQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .mimo)
+        XCTAssertEqual(snapshot.provider, AgentProvider.mimo.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("pay-as-you-go"))
+        XCTAssertEqual(snapshot.statusMessage?.contains("pay-as-you-go"), true)
     }
 
     func testFetch_tokenPlanRemains_parsesExactBuckets() async throws {
@@ -50,7 +50,7 @@ final class MimoQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .mimo)
+        XCTAssertEqual(snapshot.provider, AgentProvider.mimo.rawValue)
         XCTAssertEqual(snapshot.confidence, .exact)
         XCTAssertFalse(snapshot.buckets.isEmpty)
     }
@@ -70,7 +70,7 @@ final class MimoQuotaAdapterTests: XCTestCase {
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .mimo)
+        XCTAssertEqual(snapshot.provider, AgentProvider.mimo.rawValue)
         XCTAssertEqual(snapshot.confidence, .estimated)
         XCTAssertEqual(snapshot.buckets.first?.limitValue, MimoTokenPlanTier.standard.monthlyCreditLimit)
     }
@@ -130,21 +130,18 @@ final class MimoQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(result, "tp-connector-secret")
     }
 
-    /// Proves the migrated call site degrades gracefully end-to-end: with no
-    /// resolved/env key and a *broken* Keychain behind the connector-key read,
-    /// `fetch` returns the unavailable snapshot rather than throwing.
-    func testFetch_noKeyAndKeychainFault_returnsUnavailableWithoutThrowing() async throws {
-        let backend = MimoFaultInjectingKeychainBackend()
-        backend.readErrors[connectorService] = KeychainStoreError.unhandled(errSecNotAvailable)
-        let service = connectorService
-        let adapter = MimoQuotaAdapter(
-            keychainStoreProvider: { KeychainStore(service: service, legacyServices: [], backend: backend) }
-        )
-        let context = try makeContext(apiKey: nil)
+    /// Proves the lifted call site degrades gracefully end-to-end: with no
+    /// resolved/env key and an absent connector secret, `fetch` returns the
+    /// unavailable snapshot rather than throwing.
+    func testFetch_noKeyAndAbsentConnectorSecret_returnsUnavailableWithoutThrowing() async throws {
+        let secretStore = CountingMimoSecretStore(value: nil)
+        let adapter = MimoQuotaAdapter()
+        let context = try makeContext(apiKey: nil, secretStore: secretStore)
 
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .mimo)
+        XCTAssertGreaterThanOrEqual(secretStore.readCallCount, 1)
+        XCTAssertEqual(snapshot.provider, AgentProvider.mimo.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
     }
 
@@ -152,7 +149,8 @@ final class MimoQuotaAdapterTests: XCTestCase {
         apiKey: String?,
         region: ProviderEndpointRegion = .sgp,
         tier: MimoTokenPlanTier? = nil,
-        billingCycle: MimoTokenPlanBillingCycle = .monthly
+        billingCycle: MimoTokenPlanBillingCycle = .monthly,
+        secretStore: any SecretStore = NoOpSecretStore()
     ) throws -> ProviderQuotaAdapterContext {
         let appPaths = OpenBurnBar.OpenBurnBarAppPaths.live()
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -183,8 +181,31 @@ final class MimoQuotaAdapterTests: XCTestCase {
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
-            resolvedAPIKeys: ["mimo": apiKey]
+            resolvedAPIKeys: ["mimo": apiKey],
+            secretStore: secretStore
         )
+    }
+}
+
+private final class CountingMimoSecretStore: SecretStore, @unchecked Sendable {
+    private let value: String?
+    private let lock = NSLock()
+    private var _readCallCount = 0
+
+    var readCallCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _readCallCount
+    }
+
+    init(value: String?) {
+        self.value = value
+    }
+
+    func string(for account: String, service: String) -> String? {
+        lock.lock()
+        _readCallCount += 1
+        lock.unlock()
+        return value
     }
 }
 

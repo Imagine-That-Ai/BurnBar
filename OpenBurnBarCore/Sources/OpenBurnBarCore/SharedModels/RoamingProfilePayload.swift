@@ -33,6 +33,11 @@ public struct RoamingProfileProviderAccount: Codable, Hashable, Sendable {
     public let lastValidatedAt: Date?
     public let lastRefreshAt: Date?
     public let lastErrorCode: String?
+    public let endpointProfileID: String?
+    public let region: ProviderEndpointRegion?
+    public let tokenPlanTier: MimoTokenPlanTier?
+    public let tokenPlanBillingCycle: MimoTokenPlanBillingCycle?
+    public let authMethodID: String?
     public let schemaVersion: Int
     public let createdAt: Date
     public let updatedAt: Date
@@ -53,6 +58,11 @@ public struct RoamingProfileProviderAccount: Codable, Hashable, Sendable {
         lastValidatedAt: Date? = nil,
         lastRefreshAt: Date? = nil,
         lastErrorCode: String? = nil,
+        endpointProfileID: String? = nil,
+        region: ProviderEndpointRegion? = nil,
+        tokenPlanTier: MimoTokenPlanTier? = nil,
+        tokenPlanBillingCycle: MimoTokenPlanBillingCycle? = nil,
+        authMethodID: String? = nil,
         schemaVersion: Int = 1,
         createdAt: Date,
         updatedAt: Date
@@ -72,6 +82,11 @@ public struct RoamingProfileProviderAccount: Codable, Hashable, Sendable {
         self.lastValidatedAt = lastValidatedAt
         self.lastRefreshAt = lastRefreshAt
         self.lastErrorCode = lastErrorCode
+        self.endpointProfileID = endpointProfileID
+        self.region = region
+        self.tokenPlanTier = tokenPlanTier
+        self.tokenPlanBillingCycle = tokenPlanBillingCycle
+        self.authMethodID = authMethodID
         self.schemaVersion = schemaVersion
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -94,6 +109,11 @@ public struct RoamingProfileProviderAccount: Codable, Hashable, Sendable {
             lastValidatedAt: account.lastValidatedAt,
             lastRefreshAt: account.lastRefreshAt,
             lastErrorCode: account.lastErrorCode,
+            endpointProfileID: account.endpointProfileID,
+            region: account.region,
+            tokenPlanTier: account.tokenPlanTier,
+            tokenPlanBillingCycle: account.tokenPlanBillingCycle,
+            authMethodID: account.authMethodID,
             schemaVersion: account.schemaVersion,
             createdAt: account.createdAt,
             updatedAt: account.updatedAt
@@ -117,6 +137,11 @@ public struct RoamingProfileProviderAccount: Codable, Hashable, Sendable {
             lastValidatedAt: lastValidatedAt,
             lastRefreshAt: lastRefreshAt,
             lastErrorCode: lastErrorCode,
+            endpointProfileID: endpointProfileID,
+            region: region,
+            tokenPlanTier: tokenPlanTier,
+            tokenPlanBillingCycle: tokenPlanBillingCycle,
+            authMethodID: authMethodID,
             schemaVersion: schemaVersion,
             createdAt: createdAt,
             updatedAt: updatedAt

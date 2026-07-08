@@ -6,6 +6,8 @@ using OpenBurnBar.App.Presentation.SessionLogs;
 using OpenBurnBar.Storage;
 using OpenBurnBar.Storage.SessionLogs;
 using Xunit;
+using PresentationSessionLogReadSource = OpenBurnBar.App.Presentation.SessionLogs.StorageSessionLogReadSource;
+using StorageSessionLogAdapter = OpenBurnBar.Storage.SessionLogs.StorageSessionLogReadSource;
 
 namespace OpenBurnBar.App.Presentation.Tests;
 
@@ -19,10 +21,10 @@ namespace OpenBurnBar.App.Presentation.Tests;
 /// </summary>
 public sealed class StorageSessionLogReadSourceTests
 {
-    private static StorageSessionLogReadSource OpenSource(out OpenBurnBarStorage storage)
+    private static StorageSessionLogAdapter OpenSource(out OpenBurnBarStorage storage)
     {
         storage = OpenBurnBarStorage.OpenReadOnly(FixturePath, SqlCipherParameters.FixturePassphrase);
-        return new StorageSessionLogReadSource(storage);
+        return new StorageSessionLogAdapter(storage);
     }
 
     [Fact]
@@ -98,7 +100,7 @@ public sealed class StorageSessionLogReadSourceTests
     [InlineData("   ", "")]
     public void BuildFtsMatch_QuotesTerms_AndStripsPunctuation(string input, string expected)
     {
-        Assert.Equal(expected, StorageSessionLogReadSource.BuildFtsMatch(input));
+        Assert.Equal(expected, PresentationSessionLogReadSource.BuildFtsMatch(input));
     }
 
     // ---- fixture location (walks up to the committed DBByteCompat fixtures) ----
@@ -113,7 +115,7 @@ public sealed class StorageSessionLogReadSourceTests
                 var candidate = Path.Combine(dir.FullName, "AgentLensTests", "Fixtures", "DBByteCompat");
                 if (File.Exists(Path.Combine(candidate, "openburnbar-db-compat-vector.json")))
                 {
-                    var pinned = Path.Combine(candidate, "openburnbar-db-compat-v53.sqlcipher");
+                    var pinned = Path.Combine(candidate, "openburnbar-db-compat-v54.sqlcipher");
                     if (File.Exists(pinned))
                     {
                         return pinned;

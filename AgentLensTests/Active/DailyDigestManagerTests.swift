@@ -363,10 +363,12 @@ final class DailyDigestManagerTests: XCTestCase {
             )
         }
         store.replaceUsages(usages)
+        XCTAssertEqual(usages.count, 100)
 
         measure {
             manager.scheduleDigest(from: store)
         }
+        XCTAssertFalse(mockNotificationCenter.addedRequests.isEmpty)
     }
 }
 

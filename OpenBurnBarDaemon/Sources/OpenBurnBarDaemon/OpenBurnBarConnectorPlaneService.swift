@@ -484,7 +484,7 @@ public actor BurnBarConnectorPlaneService {
         case let string as String:
             return .string(string)
         case let number as NSNumber:
-            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            if ["B", "c"].contains(String(cString: number.objCType)) {
                 return .bool(number.boolValue)
             }
             return .number(number.doubleValue)

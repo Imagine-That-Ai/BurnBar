@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import XCTest
 @testable import OpenBurnBar
+@testable import OpenBurnBarCore
 
 final class OpenBurnBarMigrationTests: XCTestCase {
 

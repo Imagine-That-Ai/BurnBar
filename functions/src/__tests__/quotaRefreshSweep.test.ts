@@ -484,6 +484,32 @@ describe("runQuotaRefreshSweep refresh pass", () => {
     expect(calls.refreshedAccounts).toEqual([duePath, unknownPath]);
   });
 
+  it("bounds stale-selection scans when many older accounts are not due yet", async () => {
+    const db = new FakeSweepDb();
+    for (let i = 0; i < 12; i += 1) {
+      seedAccount(db, "fresh-user", `fresh-${i}`, {
+        lastRefreshAt: `2026-07-04T10:0${i % 10}:00.000Z`,
+        quotaNextRefreshAt: "2026-07-04T11:00:00.000Z",
+      });
+    }
+    const duePath = seedAccount(db, "due-user", "due", {
+      lastRefreshAt: "2026-07-04T10:59:00.000Z",
+      quotaNextRefreshAt: "2026-07-04T10:00:00.000Z",
+    });
+
+    const calls: SweepCalls = { refreshedAccounts: [], refreshedLegacy: [] };
+    await runQuotaRefreshSweep(asSweepDb(db), {
+      ...sweepOptions(db, calls, 2),
+      now: new Date("2026-07-04T10:05:00.000Z"),
+      maxSelectionScanCount: 5,
+    });
+
+    expect(calls.refreshedAccounts).toEqual([]);
+    expect(calls.refreshedAccounts).not.toContain(duePath);
+    const orderedAccountQueries = db.queryLog.filter((entry) => entry.group === "provider_accounts" && entry.ordered);
+    expect(orderedAccountQueries).toHaveLength(3);
+  });
+
   it("runs refreshes through the concurrency pool, not serially", async () => {
     const db = new FakeSweepDb();
     for (let i = 0; i < 8; i += 1) {

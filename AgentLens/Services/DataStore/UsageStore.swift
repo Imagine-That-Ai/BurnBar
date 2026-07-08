@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import GRDB
 import OpenBurnBarCore
 
@@ -983,7 +982,7 @@ final class UsageStore: Sendable {
 
     static func makeModelSummaries(from usages: [TokenUsage]) -> [ModelSummary] {
         let grouped = Dictionary(grouping: usages) {
-            TokenExtractionUtility.normalizeModelKey($0.model)
+            OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey($0.model)
         }
         return grouped.compactMap { key, modelUsages -> ModelSummary? in
             guard !modelUsages.isEmpty else { return nil }
@@ -1008,7 +1007,7 @@ final class UsageStore: Sendable {
 
             return ModelSummary(
                 modelName: key,
-                displayName: TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
+                displayName: OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
                 totalCost: totalCost,
                 totalTokens: totalTokens,
                 totalInputTokens: totalInputTokens,
@@ -1169,16 +1168,7 @@ final class UsageStore: Sendable {
     }
 
     private static func usagePartitionToken(from rawValue: String?) -> String? {
-        guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else { return nil }
-        if trimmed.hasPrefix("acct_sha256_"),
-           trimmed.dropFirst("acct_sha256_".count).count == 24,
-           trimmed.dropFirst("acct_sha256_".count).allSatisfy({ $0.isHexDigit }) {
-            return trimmed
-        }
-        let digest = SHA256.hash(data: Data(trimmed.utf8))
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
-        return "acct_sha256_\(hex.prefix(24))"
+        TokenUsage.providerAccountIdentityPartition(from: rawValue)
     }
 
     private static func decodeUsage(row: Row) -> TokenUsage? {
@@ -1440,7 +1430,7 @@ final class UsageStore: Sendable {
     private static func makeModelSummaries(fromAggregateRows rows: [UsageAggregateRow]) -> [ModelSummary] {
         var models: [String: ModelSummaryAccumulator] = [:]
         for row in rows {
-            let normalized = TokenExtractionUtility.normalizeModelKey(row.model)
+            let normalized = OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey(row.model)
             models[normalized, default: ModelSummaryAccumulator(modelName: normalized)].record(row)
         }
         return models.values
@@ -1705,7 +1695,7 @@ private struct ModelSummaryAccumulator {
     var summary: ModelSummary {
         ModelSummary(
             modelName: modelName,
-            displayName: TokenExtractionUtility.displayNameForModel(displayModelName ?? modelName),
+            displayName: OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(displayModelName ?? modelName),
             totalCost: totalCost,
             totalTokens: totalTokens,
             totalInputTokens: totalInputTokens,

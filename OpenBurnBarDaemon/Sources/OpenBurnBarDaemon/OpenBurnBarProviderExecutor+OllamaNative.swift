@@ -1,7 +1,5 @@
 import OpenBurnBarCore
 import Foundation
-import LocalAuthentication
-import Security
 
 // Ollama native chat API <-> OpenAI-compatible request/response/stream conversion.
 // Extracted from OpenBurnBarProviderExecutor.swift (god-type decomposition) — same module, same isolation, verbatim.

@@ -255,7 +255,7 @@ final class CloudSyncCoordinator {
     // MARK: - Session Log Read
 
     /// Fetches session log manifests from Firestore for the signed-in user.
-    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
+    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await sessionLogSync.fetchCloudSessionLogs(limit: limit)
     }
 

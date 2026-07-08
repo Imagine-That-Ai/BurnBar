@@ -195,8 +195,9 @@ extension BurnBarHTTPGatewayServer {
     }
 
     static func httpStatus(from error: Error) -> Int? {
-        if case let BurnBarProviderExecutorError.upstreamError(status, _) = error {
-            return status
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            return statusAndBody.statusCode
         }
         return nil
     }
@@ -212,8 +213,9 @@ extension BurnBarHTTPGatewayServer {
     }
 
     static func routeLogFailureMessage(from error: Error) -> String {
-        if case let BurnBarProviderExecutorError.upstreamError(statusCode, _) = error {
-            return "OpenBurnBar provider request failed with status \(statusCode)."
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            return "OpenBurnBar provider request failed with status \(statusAndBody.statusCode)."
         }
         return sanitizedFailureMessage(error.localizedDescription) ?? "OpenBurnBar provider request failed."
     }

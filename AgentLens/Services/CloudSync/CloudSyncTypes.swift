@@ -38,7 +38,7 @@ protocol CloudSyncing: AnyObject {
     func downloadRemoteData(uid: String?) async
     func updateLocalDeviceName(_ name: String) async
     func fetchCloudTotal(uid: String?) async
-    func fetchCloudSessionLogs(limit: Int) async throws -> [ConversationRecord]
+    func fetchCloudSessionLogs(limit: Int) async throws -> [OpenBurnBarCore.ConversationRecord]
     func fetchCloudSessionLogBody(docId: String) async throws -> String
     func memorySyncBoundarySnapshot() async -> OpenBurnBarMemorySyncBoundarySnapshot
 }
@@ -56,7 +56,7 @@ extension CloudSyncing {
         await fetchCloudTotal(uid: nil)
     }
 
-    func fetchCloudSessionLogs() async throws -> [ConversationRecord] {
+    func fetchCloudSessionLogs() async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await fetchCloudSessionLogs(limit: 200)
     }
 }
@@ -132,7 +132,7 @@ final class CloudSyncContext: Sendable {
     let circuitBreaker: CloudSyncCircuitBreaker
 
     /// Shared retry policy for transient Firestore failures.
-    let retryPolicy = CloudSyncRetryPolicy()
+    let retryPolicy: CloudSyncRetryPolicy
 
     /// Injectable Firestore gateway. Defaults to live Firestore in production.
     let firestoreGateway: CloudSyncFirestoreGateway
@@ -182,6 +182,7 @@ final class CloudSyncContext: Sendable {
         settingsManager: any SettingsManagerProtocol,
         firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
         circuitBreaker: CloudSyncCircuitBreaker = CloudSyncCircuitBreaker(),
+        retryPolicy: CloudSyncRetryPolicy = CloudSyncRetryPolicy(),
         backupPlanLimits: CloudBackupPlanLimits = .standard
     ) {
         self.dataStore = dataStore
@@ -189,6 +190,7 @@ final class CloudSyncContext: Sendable {
         self.settingsManager = settingsManager
         self.firestoreGateway = firestoreGateway
         self.circuitBreaker = circuitBreaker
+        self.retryPolicy = retryPolicy
         self.backupPlanLimits = backupPlanLimits
     }
 }

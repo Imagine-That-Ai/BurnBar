@@ -131,6 +131,36 @@ final class RoamingProfileSyncServiceTests: XCTestCase {
         XCTAssertTrue(isSuppressed)
     }
 
+    func testRoamingProfilePreservesOllamaEndpointSlots() throws {
+        let endpoints = [
+            BurnBarOllamaEndpointConfig(id: "edge-b", baseURL: "http://127.0.0.1:21435", label: "Edge B", priority: 10),
+            BurnBarOllamaEndpointConfig(id: "edge-a", baseURL: "http://127.0.0.1:21434", label: "Edge A", priority: 0)
+        ]
+        let configurations = [
+            OpenBurnBarDaemonProviderConfiguration(
+                providerID: "ollama-local",
+                provider: nil,
+                displayName: "Ollama",
+                isEnabled: true,
+                baseURL: "http://127.0.0.1:21434",
+                preferredModelIDs: [],
+                preferredCredentialSlotID: nil,
+                credentialSlots: [],
+                ollamaEndpoints: endpoints
+            )
+        ]
+
+        let roamingEndpoints = DefaultRoamingProfileLocalStore.roamingOllamaEndpoints(from: configurations)
+        XCTAssertEqual(roamingEndpoints.map(\.id), ["edge-a", "edge-b"])
+        XCTAssertEqual(roamingEndpoints.map(\.baseURL), ["http://127.0.0.1:21434", "http://127.0.0.1:21435"])
+        XCTAssertEqual(roamingEndpoints.map(\.label), ["Edge A", "Edge B"])
+
+        let restored = try DefaultRoamingProfileLocalStore.providerOllamaEndpoints(from: roamingEndpoints)
+        XCTAssertEqual(restored.map(\.id), ["edge-a", "edge-b"])
+        XCTAssertEqual(restored.map(\.baseURL), ["http://127.0.0.1:21434", "http://127.0.0.1:21435"])
+        XCTAssertTrue(restored.allSatisfy { $0.enabled })
+    }
+
     private static func payload(
         updatedAt seconds: TimeInterval,
         sourceDeviceID: String,

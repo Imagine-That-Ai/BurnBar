@@ -256,17 +256,23 @@ public struct BudgetCredentialIdentity: Hashable, Sendable {
     public let providerID: String
     public let slotID: String
     public let displayLabel: String
+    public let providerAccountID: String?
+    public let providerAccountLabel: String?
     public let billingMode: BudgetBillingMode
 
     public init(
         providerID: String,
         slotID: String,
         displayLabel: String,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil,
         billingMode: BudgetBillingMode = .unknown
     ) {
         self.providerID = providerID
         self.slotID = slotID
         self.displayLabel = displayLabel
+        self.providerAccountID = providerAccountID
+        self.providerAccountLabel = providerAccountLabel
         self.billingMode = billingMode
     }
 

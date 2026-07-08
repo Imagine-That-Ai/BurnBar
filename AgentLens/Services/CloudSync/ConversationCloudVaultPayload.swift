@@ -83,7 +83,7 @@ struct ConversationCloudPrivatePayload: Codable, Equatable, Sendable {
         self.summaryModel = summaryModel
     }
 
-    init(record: ConversationRecord) {
+    init(record: OpenBurnBarCore.ConversationRecord) {
         self.init(
             projectName: record.projectName,
             keyFiles: record.keyFiles,
