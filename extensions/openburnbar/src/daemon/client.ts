@@ -59,14 +59,13 @@ const DEFAULT_BURNBAR_SUPPORT_DIR = join(homedir(), 'Library', 'Application Supp
 const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(homedir(), 'Library', 'LaunchAgents', 'com.openburnbar.daemon.plist');
 const DEFAULT_MAX_IN_FLIGHT = 8;
 
-export interface OpenBurnBarDaemonRuntimePathInput {
+interface OpenBurnBarDaemonRuntimePathInput {
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform | string;
   homeDir?: string;
-  uid?: number;
 }
 
-export interface OpenBurnBarDaemonRuntimePaths {
+interface OpenBurnBarDaemonRuntimePaths {
   socketPath: string;
   authTokenFilePath: string;
   supportDir: string;
@@ -81,13 +80,13 @@ export function resolveOpenBurnBarDaemonRuntimePaths(
   const homeDir = input.homeDir ?? homedir();
   const supportDirOverride = env.OPENBURNBAR_DAEMON_SUPPORT_DIR ?? env.BURNBAR_DAEMON_SUPPORT_DIR;
   const socketPathOverride =
-    env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? env.BURNBAR_DAEMON_SOCKET_PATH ?? env.OPENBURNBAR_SOCKET_PATH;
+    env.OPENBURNBAR_SOCKET_PATH ?? env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? env.BURNBAR_DAEMON_SOCKET_PATH;
   const authTokenFileOverride =
     env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ?? env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE;
 
   if (platform === 'linux') {
-    const dataRoot = env.XDG_DATA_HOME?.trim() || join(homeDir, '.local', 'share');
-    const supportDir = supportDirOverride ?? join(dataRoot, 'openburnbar');
+    const configRoot = env.XDG_CONFIG_HOME?.trim() || join(homeDir, '.config');
+    const supportDir = supportDirOverride ?? join(configRoot, 'OpenBurnBar');
     return {
       socketPath: socketPathOverride ?? join(supportDir, 'openburnbar-daemon.sock'),
       authTokenFilePath: authTokenFileOverride ?? join(supportDir, 'daemon-socket-auth-token'),

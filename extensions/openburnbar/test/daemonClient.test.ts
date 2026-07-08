@@ -30,15 +30,14 @@ describe('OpenBurnBarDaemonClient', () => {
     const paths = resolveOpenBurnBarDaemonRuntimePaths({
       platform: 'linux',
       homeDir: '/home/alberto',
-      uid: 501,
       env: {
-        XDG_DATA_HOME: '/home/alberto/.local/share'
+        XDG_CONFIG_HOME: '/home/alberto/.config'
       }
     });
 
-    expect(paths.socketPath).toBe('/home/alberto/.local/share/openburnbar/openburnbar-daemon.sock');
-    expect(paths.authTokenFilePath).toBe('/home/alberto/.local/share/openburnbar/daemon-socket-auth-token');
-    expect(paths.supportDir).toBe('/home/alberto/.local/share/openburnbar');
+    expect(paths.socketPath).toBe('/home/alberto/.config/OpenBurnBar/openburnbar-daemon.sock');
+    expect(paths.authTokenFilePath).toBe('/home/alberto/.config/OpenBurnBar/daemon-socket-auth-token');
+    expect(paths.supportDir).toBe('/home/alberto/.config/OpenBurnBar');
     expect(paths.launchAgentPlistPath).toBeUndefined();
   });
 
@@ -48,13 +47,13 @@ describe('OpenBurnBarDaemonClient', () => {
       homeDir: '/home/alberto',
       env: {
         OPENBURNBAR_SOCKET_PATH: '/run/openburnbar/daemon.sock',
-        XDG_DATA_HOME: '/home/alberto/.local/share'
+        XDG_CONFIG_HOME: '/home/alberto/.config'
       }
     });
 
     expect(paths.socketPath).toBe('/run/openburnbar/daemon.sock');
-    expect(paths.authTokenFilePath).toBe('/home/alberto/.local/share/openburnbar/daemon-socket-auth-token');
-    expect(paths.supportDir).toBe('/home/alberto/.local/share/openburnbar');
+    expect(paths.authTokenFilePath).toBe('/home/alberto/.config/OpenBurnBar/daemon-socket-auth-token');
+    expect(paths.supportDir).toBe('/home/alberto/.config/OpenBurnBar');
   });
 
   it('VAL-EXT-001: honors Linux daemon socket and support-dir overrides', () => {
