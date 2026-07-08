@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OpenBurnBar
+Comment=Local-first AI agent cost and control dashboard
+Exec=openburnbar-linux-desktop %U
+Icon=dev.openburnbar.OpenBurnBar
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true
+StartupWMClass=OpenBurnBar
+MimeType=x-scheme-handler/openburnbar;

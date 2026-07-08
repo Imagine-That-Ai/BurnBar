@@ -98,6 +98,89 @@ final class OnboardingWizardFlowTests: XCTestCase {
         XCTAssertEqual(ProviderSetupGuide.credentialKindLabel(.plan), "Plan code")
     }
 
+    // MARK: - Flow transitions (OnboardingWizardFlowModel)
+
+    /// "Continue" on the pick stage must not enter the connect queue with an
+    /// empty selection — it routes straight to review ("Skip for now").
+    func testPickContinueWithEmptySelectionSkipsConnectQueue() {
+        XCTAssertEqual(
+            OnboardingWizardFlowModel.stageAfterPickContinue(hasSelection: false),
+            .review
+        )
+        XCTAssertEqual(
+            OnboardingWizardFlowModel.stageAfterPickContinue(hasSelection: true),
+            .connect
+        )
+    }
+
+    /// The connect queue walks every selected provider exactly once (connect
+    /// or skip both advance), then hands off to review — never skipping a
+    /// provider and never overrunning the selection.
+    func testQueueAdvanceWalksEveryProviderThenReview() {
+        XCTAssertEqual(
+            OnboardingWizardFlowModel.queueStepAfterProviderHandled(queueIndex: 0, selectedCount: 3),
+            .connectNext(queueIndex: 1)
+        )
+        XCTAssertEqual(
+            OnboardingWizardFlowModel.queueStepAfterProviderHandled(queueIndex: 1, selectedCount: 3),
+            .connectNext(queueIndex: 2)
+        )
+        XCTAssertEqual(
+            OnboardingWizardFlowModel.queueStepAfterProviderHandled(queueIndex: 2, selectedCount: 3),
+            .review
+        )
+        // Single provider and degenerate empty queue both land on review.
+        XCTAssertEqual(
+            OnboardingWizardFlowModel.queueStepAfterProviderHandled(queueIndex: 0, selectedCount: 1),
+            .review
+        )
+        XCTAssertEqual(
+            OnboardingWizardFlowModel.queueStepAfterProviderHandled(queueIndex: 0, selectedCount: 0),
+            .review
+        )
+    }
+
+    /// The progress capsule is monotonic across the wizard and scales the
+    /// connect span per selected provider so each connection visibly moves it.
+    func testProgressFractionIsMonotonicAndProviderScaled() {
+        XCTAssertEqual(OnboardingWizardFlowModel.progressFraction(stage: .welcome, selectedCount: 0, queueIndex: 0), 0.05)
+        XCTAssertEqual(OnboardingWizardFlowModel.progressFraction(stage: .pick, selectedCount: 0, queueIndex: 0), 0.25)
+        // Degenerate connect stage with no selection pins to the midpoint.
+        XCTAssertEqual(OnboardingWizardFlowModel.progressFraction(stage: .connect, selectedCount: 0, queueIndex: 0), 0.5)
+        // Two providers: the 50% connect span splits into 25% steps.
+        XCTAssertEqual(OnboardingWizardFlowModel.progressFraction(stage: .connect, selectedCount: 2, queueIndex: 0), 0.25)
+        XCTAssertEqual(OnboardingWizardFlowModel.progressFraction(stage: .connect, selectedCount: 2, queueIndex: 1), 0.5)
+        // queueIndex clamps at the selection count — no overshoot past 75%.
+        XCTAssertEqual(OnboardingWizardFlowModel.progressFraction(stage: .connect, selectedCount: 2, queueIndex: 5), 0.75)
+        XCTAssertEqual(OnboardingWizardFlowModel.progressFraction(stage: .review, selectedCount: 2, queueIndex: 2), 0.85)
+        XCTAssertEqual(OnboardingWizardFlowModel.progressFraction(stage: .done, selectedCount: 2, queueIndex: 2), 1.0)
+    }
+
+    /// The pick binding preserves the user's tap order, appends new picks to
+    /// the tail, and drops unpicks without disturbing the remaining order —
+    /// the connect queue walks providers in exactly this order.
+    func testPickSelectionKeepsTapOrderAndAppendsNewPicks() throws {
+        let current: [AgentProvider] = [.cursor, .openAI]
+        let extra = try XCTUnwrap(
+            AgentProvider.allCases.first { !current.contains($0) },
+            "Fixture requires a third provider case"
+        )
+
+        let afterAdd = OnboardingWizardFlowModel.reorderedSelection(
+            current: current,
+            newValue: Set(current + [extra])
+        )
+        XCTAssertEqual(Array(afterAdd.prefix(2)), current, "Existing picks keep their tap order")
+        XCTAssertEqual(afterAdd.last, extra, "New picks append to the tail")
+        XCTAssertEqual(afterAdd.count, 3)
+
+        let afterUnpick = OnboardingWizardFlowModel.reorderedSelection(
+            current: afterAdd,
+            newValue: [current[0], extra]
+        )
+        XCTAssertEqual(afterUnpick, [current[0], extra], "Unpicks drop out without disturbing order")
+    }
+
     private func XCTAssertHostsNonZero<V: View>(
         _ view: V,
         width: CGFloat = 390,

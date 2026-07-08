@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-03T11:38:37.360Z",
+  "generatedAt": "2026-07-06T04:23:35.868Z",
   "profile": "dbus-x11-xvfb-xfce-statusnotifier",
   "package": {
     "name": "open-burn-bar",
@@ -11,21 +11,23 @@
     "display": ":99",
     "xdgSessionType": "x11",
     "desktop": "XFCE",
-    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_6790_1",
-    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_6790_1/Menu",
+    "statusNotifierItem": ":1.14/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1",
+    "menuPath": "/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1/Menu",
     "windowId": "10485763",
     "reopenedWindowId": "10485763"
   },
   "performance": {
-    "appStartMs": 297,
-    "trayClickOpenMs": 32,
-    "ipcHealthRoundTripMs": 3,
-    "trayQuitMs": 109
+    "appStartMs": 314,
+    "trayClickOpenMs": 45,
+    "ipcHealthRoundTripMs": 6,
+    "trayQuitMs": 108
   },
   "evidence": {
     "firstRunScreenshot": "screenshot-linux-desktop-first-run.png",
     "afterTrayOpenScreenshot": "screenshot-linux-desktop-after-tray-open.png",
-    "daemonSocketLog": "daemon-socket-gui-session.log",
+    "packagedRouteTranscript": "packaged-route-session-transcript.json",
+    "runtimePerfSamples": "runtime-perf-samples.jsonl",
+    "daemonSocketLog": "daemon-shell-session.log",
     "trayMenuLayout": "tray-menu-layout.txt",
     "accessibilitySnapshot": "accessibility-tree-linux-desktop.txt"
   }

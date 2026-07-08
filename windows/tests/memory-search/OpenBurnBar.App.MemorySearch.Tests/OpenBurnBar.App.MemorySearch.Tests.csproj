@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-host unit tests for the portable Memory + Search core (Windows port ·
+    memory-search lane).
+
+    Runs on the macOS authoring host today via `dotnet test`: cosine/dot similarity,
+    top-k ranking, score fusion, the deterministic hash embedding, retrieval-health
+    status classification, the memory-extraction prompt builder, the accept/reject
+    policy, the recall-budget math, the response parser, and the secret/PII gate are
+    all framework-free managed code, so no WinUI / Windows runtime is needed. The REAL
+    embedding + LLM NETWORK calls are the adapter (bucket B) and are exercised here
+    only through the injectable seams (fake scorer / fake embedding / fake LLM client).
+
+    Targets net10.0 (the installed runtime) and references the net8.0 engine library —
+    a higher runtime referencing a lower-target library is allowed, and the WinUI app
+    (net8.0-windows) references the very same engine library. Mirrors
+    windows/tests/text-expansion and windows/tests/settings (net10.0, xUnit).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../app/OpenBurnBar.App.MemorySearch/OpenBurnBar.App.MemorySearch.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -8,7 +8,9 @@ const repoRoot = resolve(scriptDir, "../..");
 
 const sourceSpecs = [
   {
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase.swift",
+    // v41+ migrations moved to a split extension file (wave-4 decomposition of
+    // OpenBurnBarDatabase.swift); the v50 marker anchors the PCM-era schema scan.
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationsV41toV51.swift",
     startMarker: 'migrator.registerMigration("v50_project_code_memory_schema")',
   },
   {

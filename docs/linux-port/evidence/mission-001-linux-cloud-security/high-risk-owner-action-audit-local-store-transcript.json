@@ -1,0 +1,51 @@
+{
+  "target": "VAL-CLOUD-002",
+  "source": "appendAuditEventRequired product path with deterministic local Firestore store",
+  "collections": {
+    "unified_audit_log": [
+      {
+        "seq": 0,
+        "ts": "2026-07-04T00:00:00.000Z",
+        "actor": "user:linux",
+        "action": "security.high_risk_owner_action",
+        "domain": "provider_account_delete:anthropic_default",
+        "prevHash": "",
+        "hash": "defc3112c998568ea8dbf069fd3c8f9bb16c21e498217a6f2da14fea6433b30f"
+      },
+      {
+        "seq": 1,
+        "ts": "2026-07-04T00:00:00.000Z",
+        "actor": "user:linux",
+        "action": "security.high_risk_owner_action",
+        "domain": "revoke_all_access:all",
+        "prevHash": "defc3112c998568ea8dbf069fd3c8f9bb16c21e498217a6f2da14fea6433b30f",
+        "hash": "b3a33295c89c71d1e7f0e181f0d8900e3801c9490418033b562860818fc0ed52"
+      }
+    ],
+    "audit_meta": {
+      "head": {
+        "maxSeq": 1,
+        "headHash": "b3a33295c89c71d1e7f0e181f0d8900e3801c9490418033b562860818fc0ed52",
+        "schemaVersion": 1,
+        "updatedAt": {
+          "_seconds": 1783123200,
+          "_nanoseconds": 0
+        }
+      }
+    }
+  },
+  "transactionWrites": [
+    [
+      "users/u1/unified_audit_log/000000000000",
+      "users/u1/audit_meta/head"
+    ],
+    [
+      "users/u1/unified_audit_log/000000000001",
+      "users/u1/audit_meta/head"
+    ]
+  ],
+  "verification": {
+    "valid": true,
+    "verifiedMaxSeq": 1
+  }
+}

@@ -33,13 +33,6 @@ extension BurnBarRunService {
             return
         }
 
-        if run.metadata.boolValue(forKey: .controllerReview) ?? false
-            || run.metadata.boolValue(forKey: .missionExecution) ?? false
-            || run.metadata.boolValue(forKey: .autoTakeover) ?? false {
-            try await executeProviderOnlyRun(for: &run)
-            return
-        }
-
         if run.attempt <= run.plan.failUntilAttempt {
             try transition(
                 &run,
@@ -57,6 +50,13 @@ extension BurnBarRunService {
                 )
             )
             try await writeCheckpoint(for: run)
+            return
+        }
+
+        if run.metadata.boolValue(forKey: .controllerReview) ?? false
+            || run.metadata.boolValue(forKey: .missionExecution) ?? false
+            || run.metadata.boolValue(forKey: .autoTakeover) ?? false {
+            try await executeProviderOnlyRun(for: &run)
             return
         }
 

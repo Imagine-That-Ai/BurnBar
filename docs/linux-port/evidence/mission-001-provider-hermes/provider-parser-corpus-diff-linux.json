@@ -1,0 +1,13 @@
+{
+  "schema": "openburnbar-provider-parser-corpus-diff-v1",
+  "platform": "linux",
+  "sourceFixture": "docs/linux-port/fixtures/provider-parser-canonical-oracle.json",
+  "expectedSource": "docs/linux-port/fixtures/provider-parser-canonical-oracle.json#corpusCases.parserOutput",
+  "observedSource": "OpenBurnBarCanonicalProviderCorpusParser.parseFixture",
+  "observedArtifact": "provider-parser-product-replay-linux.json",
+  "status": "exact_match",
+  "expectedChecksumSHA256": "2422c1f947d2a4dba2fca9be4a96ee03155d2de733cf7e2806a654972fda7726",
+  "observedChecksumSHA256": "2422c1f947d2a4dba2fca9be4a96ee03155d2de733cf7e2806a654972fda7726",
+  "differences": [],
+  "errors": []
+}
