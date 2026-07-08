@@ -54,9 +54,12 @@ function matchingRuleset() {
         parameters: {
           required_approving_review_count:
             desiredJson.required_pull_request_reviews.required_approving_review_count,
-          require_code_owner_review: true,
-          dismiss_stale_reviews_on_push: true,
-          require_last_push_approval: true,
+          require_code_owner_review:
+            desiredJson.required_pull_request_reviews.require_code_owner_reviews === true,
+          dismiss_stale_reviews_on_push:
+            desiredJson.required_pull_request_reviews.dismiss_stale_reviews === true,
+          require_last_push_approval:
+            desiredJson.required_pull_request_reviews.require_last_push_approval === true,
         },
       },
       { type: "required_conversation_resolution", ruleset_id: 42 },
@@ -77,9 +80,12 @@ function matchingClassic() {
     required_pull_request_reviews: {
       required_approving_review_count:
         desiredJson.required_pull_request_reviews.required_approving_review_count,
-      require_code_owner_reviews: true,
-      dismiss_stale_reviews: true,
-      require_last_push_approval: true,
+      require_code_owner_reviews:
+        desiredJson.required_pull_request_reviews.require_code_owner_reviews === true,
+      dismiss_stale_reviews:
+        desiredJson.required_pull_request_reviews.dismiss_stale_reviews === true,
+      require_last_push_approval:
+        desiredJson.required_pull_request_reviews.require_last_push_approval === true,
       bypass_pull_request_allowances: { users: [], teams: [], apps: [] },
     },
     required_conversation_resolution: { enabled: true },
@@ -131,11 +137,13 @@ test("each dangerous mutation reports DRIFT", () => {
     reviewsWiped: (r) => {
       r.rules = r.rules.filter((x) => x.type !== "pull_request");
     },
-    reviewCountZero: (r) => {
-      r.rules.find((x) => x.type === "pull_request").parameters.required_approving_review_count = 0;
+    reviewCountChanged: (r) => {
+      r.rules.find((x) => x.type === "pull_request").parameters.required_approving_review_count =
+        desiredJson.required_pull_request_reviews.required_approving_review_count + 1;
     },
-    codeOwnerOff: (r) => {
-      r.rules.find((x) => x.type === "pull_request").parameters.require_code_owner_review = false;
+    codeOwnerChanged: (r) => {
+      r.rules.find((x) => x.type === "pull_request").parameters.require_code_owner_review =
+        desiredJson.required_pull_request_reviews.require_code_owner_reviews !== true;
     },
     forcePushAllowed: (r) => {
       r.rules = r.rules.filter((x) => x.type !== "non_fast_forward");

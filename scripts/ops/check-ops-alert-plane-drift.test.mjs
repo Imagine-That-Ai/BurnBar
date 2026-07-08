@@ -73,6 +73,22 @@ test("missing / disabled / duplicated / mutated policies report DRIFT", () => {
       p.conditions[0].conditionThreshold.filter += ' AND resource.labels.x="y"';
       return snap;
     },
+    aggregation: (snap) => {
+      const p = snap.find((x) => x.conditions?.[0]?.conditionThreshold);
+      p.conditions[0].conditionThreshold.aggregations = [
+        {
+          alignmentPeriod: "300s",
+          perSeriesAligner: "ALIGN_RATE",
+          crossSeriesReducer: "REDUCE_SUM",
+        },
+      ];
+      return snap;
+    },
+    trigger: (snap) => {
+      const p = snap.find((x) => x.conditions?.[0]?.conditionThreshold);
+      p.conditions[0].conditionThreshold.trigger = { count: 2 };
+      return snap;
+    },
   };
   for (const [label, mutate] of Object.entries(cases)) {
     const result = diffAlertPlane(mutate(manifestSnapshot()), expectedPolicySet());

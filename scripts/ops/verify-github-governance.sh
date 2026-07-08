@@ -28,9 +28,9 @@ export OPENBURNBAR_GOVERNANCE_BRANCH="$BRANCH"
 
 # 1. Branch-protection drift: live protection (ruleset endpoints first, classic
 #    additionally) vs governance/branch-protection.main.json. Fails CLOSED on any
-#    divergence — reviews wiped, admins un-enforced, force-push/deletion enabled,
-#    review count/code-owner/last-push/conversation drift, any bypass actor, or a
-#    required-check set difference in either direction (governance/README.md §Drift).
+#    divergence — required checks, solo-maintainer review settings, admin
+#    enforcement, force-push/deletion, conversation resolution, bypass actors, or
+#    unreadable ruleset details.
 echo "==> branch-protection drift (live vs governance/branch-protection.main.json)"
 OPENBURNBAR_BRANCH_PROTECTION_SOURCE="$BRANCH_PROTECTION_SOURCE" \
   node scripts/ops/check-branch-protection-drift.mjs

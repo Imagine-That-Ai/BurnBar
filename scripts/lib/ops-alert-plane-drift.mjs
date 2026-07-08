@@ -44,6 +44,8 @@ function conditionFingerprint(condition) {
     comparison: t.comparison || null,
     thresholdValue: t.thresholdValue ?? null,
     duration: t.duration || null,
+    aggregations: stableComparable(t.aggregations || []),
+    trigger: stableComparable(t.trigger || null),
   };
 }
 
@@ -60,6 +62,16 @@ function normalizeFilter(filter) {
     .filter(Boolean)
     .sort()
     .join(" AND ");
+}
+
+function stableComparable(value) {
+  if (Array.isArray(value)) return value.map(stableComparable);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, stableComparable(value[key])]),
+  );
 }
 
 /** Sorted list of condition fingerprints (order-independent within a policy). */

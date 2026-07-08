@@ -81,7 +81,7 @@ jobs:
 
   verify:
     needs: detect-secrets
-    if: needs.detect-secrets.outputs.has-gcp-sa-key == 'true'
+    if: github.event_name != 'pull_request' && needs.detect-secrets.outputs.has-gcp-sa-key == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -180,7 +180,7 @@ jobs:
 
   skipped-no-gcp-key:
     needs: detect-secrets
-    if: needs.detect-secrets.outputs.has-gcp-sa-key == 'false'
+    if: github.event_name != 'pull_request' && needs.detect-secrets.outputs.has-gcp-sa-key == 'false'
     runs-on: ubuntu-latest
     steps:
       # Fail CLOSED on the scheduled production run: a missing GCP_SA_KEY there means

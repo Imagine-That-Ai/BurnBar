@@ -3,15 +3,12 @@
  * Fail-closed drift check: LIVE GitHub branch protection for `main` vs the
  * committed source of truth governance/branch-protection.main.json.
  *
- * governance/README.md declared this scheduled, fail-closed job "not wired here";
- * this script + scripts/lib/branch-protection-drift.mjs are that job. If the JSON
- * and live state disagree, the FILE wins and live is the bug (README §top), so any
+ * If the JSON and live state disagree, the FILE wins and live is the bug, so any
  * divergence exits non-zero with a readable diff.
  *
- * LIVE surface (per governance/README.md §Drift check): `main` is enforced by an
- * ORG-LEVEL ruleset, so this reads the RULESET endpoints first and only additionally
- * consults classic branch protection. Reading the classic endpoint alone would miss
- * ruleset-only bypass drift.
+ * LIVE surface: read effective rulesets first and classic branch protection
+ * additionally. Current BurnBar uses classic protection, but reading the classic
+ * endpoint alone would miss ruleset-only bypass drift if a ruleset is added later.
  *
  * Modes:
  *   (default, CI)  Fetch live state with `gh api` and diff. Needs gh auth + repo
@@ -115,16 +112,25 @@ function fetchLive() {
   let bypassActors = [];
   let enforcement = "active";
   for (const id of rulesetIds) {
-    // Try org ruleset first (main is enforced org-level), then repo ruleset.
+    // Try org ruleset first, then repo ruleset.
     let res = gh(`/orgs/${org}/rulesets/${id}`);
+    const orgError = res.stderr;
     if (!res.ok) res = gh(`/repos/${repo}/rulesets/${id}`);
-    if (!res.ok) continue;
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `could not read ruleset ${id} details from org or repo endpoints; org error: ${orgError}; repo error: ${res.stderr}`,
+      };
+    }
     try {
       const rs = JSON.parse(res.stdout);
       if (rs.enforcement && rs.enforcement !== "active") enforcement = rs.enforcement;
       if (Array.isArray(rs.bypass_actors)) bypassActors = bypassActors.concat(rs.bypass_actors);
-    } catch {
-      // ignore an unparseable single ruleset; the diff will still catch missing rules
+    } catch (error) {
+      return {
+        ok: false,
+        error: `unparseable ruleset ${id} detail response: ${error.message}`,
+      };
     }
   }
 
@@ -143,7 +149,9 @@ function fetchLive() {
   return {
     ok: true,
     classic,
-    ruleset: { rules: effectiveRules, bypass_actors: bypassActors, enforcement },
+    ruleset: rulesetIds.length > 0 || bypassActors.length > 0
+      ? { rules: effectiveRules, bypass_actors: bypassActors, enforcement }
+      : null,
   };
 }
 
@@ -227,9 +235,12 @@ function selfTest() {
         required_pull_request_reviews: {
           required_approving_review_count:
             desiredJson.required_pull_request_reviews.required_approving_review_count,
-          require_code_owner_reviews: true,
-          dismiss_stale_reviews: true,
-          require_last_push_approval: true,
+          require_code_owner_reviews:
+            desiredJson.required_pull_request_reviews.require_code_owner_reviews === true,
+          dismiss_stale_reviews:
+            desiredJson.required_pull_request_reviews.dismiss_stale_reviews === true,
+          require_last_push_approval:
+            desiredJson.required_pull_request_reviews.require_last_push_approval === true,
           bypass_pull_request_allowances: { users: [], teams: [], apps: [] },
         },
         required_conversation_resolution: { enabled: true },
@@ -249,14 +260,17 @@ function selfTest() {
     "admins-un-enforced (bypass actor added)": (live) => {
       live.ruleset.bypass_actors = [{ actor_id: 5, actor_type: "Integration", bypass_mode: "always" }];
     },
-    "review-count-dropped-to-zero": (live) => {
-      live.ruleset.rules.find((r) => r.type === "pull_request").parameters.required_approving_review_count = 0;
+    "review-count-changed": (live) => {
+      live.ruleset.rules.find((r) => r.type === "pull_request").parameters.required_approving_review_count =
+        desiredJson.required_pull_request_reviews.required_approving_review_count + 1;
     },
-    "code-owner-reviews-off": (live) => {
-      live.ruleset.rules.find((r) => r.type === "pull_request").parameters.require_code_owner_review = false;
+    "code-owner-reviews-changed": (live) => {
+      live.ruleset.rules.find((r) => r.type === "pull_request").parameters.require_code_owner_review =
+        desiredJson.required_pull_request_reviews.require_code_owner_reviews !== true;
     },
-    "last-push-approval-off": (live) => {
-      live.ruleset.rules.find((r) => r.type === "pull_request").parameters.require_last_push_approval = false;
+    "last-push-approval-changed": (live) => {
+      live.ruleset.rules.find((r) => r.type === "pull_request").parameters.require_last_push_approval =
+        desiredJson.required_pull_request_reviews.require_last_push_approval !== true;
     },
     "force-push-allowed": (live) => {
       live.ruleset.rules = live.ruleset.rules.filter((r) => r.type !== "non_fast_forward");

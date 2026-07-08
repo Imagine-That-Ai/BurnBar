@@ -8,12 +8,12 @@
  * fail CLOSED on any divergence between live protection and that file, and so the
  * pure diff logic is unit-testable OFFLINE with fixtures (no gh/network).
  *
- * Why normalize the ruleset shape too: `main` is enforced by an ORG-LEVEL ruleset
- * whose bypass list excludes the daily-driver account (governance/README.md). The
- * classic `GET .../branches/main/protection` endpoint reflects only classic
- * repo-level protection and can be empty/stale while a ruleset actively enforces
- * `main`. Diffing the branch-protection endpoint alone would MISS ruleset-only
- * bypass drift, so this module accepts either shape and maps both onto the same
+ * Why normalize the ruleset shape too: the current repo uses classic branch
+ * protection, but GitHub rulesets can also enforce `main`. The classic
+ * `GET .../branches/main/protection` endpoint reflects only classic repo-level
+ * protection and can be empty/stale while a ruleset actively enforces `main`.
+ * Diffing the branch-protection endpoint alone would MISS ruleset-only bypass
+ * drift, so this module accepts either shape and maps both onto the same
  * canonical field names before diffing.
  */
 import { readFileSync } from "node:fs";
@@ -60,9 +60,9 @@ export function canonicalizeDesired(desired) {
  * Normalize a LIVE protection payload onto the same shape as canonicalizeDesired.
  * Accepts either the classic branch-protection GET response (fields like
  * `enforce_admins.enabled`) or a ruleset response (an object with a `rules` array,
- * optionally `{ rules, bypass_actors, enforcement }`). When both are supplied, the
- * RULESET is authoritative for enforcement/bypass and its rules are UNIONED with
- * classic protection so ruleset-only bypass drift cannot hide.
+ * optionally `{ rules, bypass_actors, enforcement }`). When a ruleset is present,
+ * ruleset-owned governance fields are verified on that ruleset surface; classic
+ * protection is still accepted when no ruleset is present.
  *
  * @param {object} params
  * @param {object|null} params.classic  classic branch-protection GET response
@@ -80,44 +80,42 @@ export function canonicalizeLive({ classic = null, ruleset = null } = {}) {
     ...rulesetView.requiredStatusCheckContexts,
   ]);
 
-  // A ruleset actively enforcing `main` is authoritative for enforcement/bypass.
+  // When a ruleset is present, verify the ruleset-owned governance fields on
+  // that ruleset surface. Classic protection is still accepted when no ruleset
+  // is present, which matches the current solo-maintainer repo configuration.
   const rulesetActive = rulesetView.present && rulesetView.enforcementActive;
+  const governanceView = rulesetView.present ? rulesetView : classicView;
 
   return {
+    rulesetPresent: rulesetView.present,
+    rulesetPullRequestRules: rulesetView.pullRequestRules,
+    rulesetRequiredStatusCheckRules: rulesetView.requiredStatusCheckRules,
     requiredStatusCheckContexts: contexts,
-    strictRequiredStatusChecks:
-      rulesetView.strictRequiredStatusChecks || classicView.strictRequiredStatusChecks,
-    // Classic `enforce_admins` maps to a ruleset that includes zero bypass actors
-    // (nobody, including admins, may bypass). If either surface enforces admins,
-    // treat admins as enforced.
-    enforceAdmins:
-      (rulesetActive && rulesetView.bypassActors.length === 0) ||
-      classicView.enforceAdmins,
-    reviewsPresent: rulesetView.reviewsPresent || classicView.reviewsPresent,
-    requiredApprovingReviewCount: Math.max(
-      rulesetView.requiredApprovingReviewCount,
-      classicView.requiredApprovingReviewCount,
-    ),
-    requireCodeOwnerReviews:
-      rulesetView.requireCodeOwnerReviews || classicView.requireCodeOwnerReviews,
-    dismissStaleReviews:
-      rulesetView.dismissStaleReviews || classicView.dismissStaleReviews,
-    requireLastPushApproval:
-      rulesetView.requireLastPushApproval || classicView.requireLastPushApproval,
+    strictRequiredStatusChecks: governanceView.strictRequiredStatusChecks,
+    // Classic `enforce_admins` maps to zero bypass actors. If a ruleset is present,
+    // bypass actors mean admins are not fully enforced on that ruleset surface.
+    enforceAdmins: rulesetView.present
+      ? rulesetActive && rulesetView.bypassActors.length === 0
+      : classicView.enforceAdmins,
+    reviewsPresent: governanceView.reviewsPresent,
+    requiredApprovingReviewCount: governanceView.requiredApprovingReviewCount,
+    requireCodeOwnerReviews: governanceView.requireCodeOwnerReviews,
+    dismissStaleReviews: governanceView.dismissStaleReviews,
+    requireLastPushApproval: governanceView.requireLastPushApproval,
     // Bypass drift is a UNION: any bypass actor on EITHER surface is a bypass.
     bypassActors: sortedUnique([
       ...classicView.bypassActors,
       ...rulesetView.bypassActors,
     ]),
-    requireConversationResolution:
-      rulesetView.requireConversationResolution ||
-      classicView.requireConversationResolution,
-    // Force-push / deletion are DISALLOWED when a ruleset rule forbids them
-    // (non_fast_forward / deletion) OR classic protection disables them. Live is
-    // "allowed" only if NEITHER surface forbids it.
-    allowForcePushes:
-      classicView.allowForcePushes && !rulesetView.forbidsForcePush,
-    allowDeletions: classicView.allowDeletions && !rulesetView.forbidsDeletion,
+    requireConversationResolution: governanceView.requireConversationResolution,
+    // Force-push / deletion are disallowed by ruleset rules (non_fast_forward /
+    // deletion) or by classic branch protection, depending on the active surface.
+    allowForcePushes: rulesetView.present
+      ? !rulesetView.forbidsForcePush
+      : classicView.allowForcePushes,
+    allowDeletions: rulesetView.present
+      ? !rulesetView.forbidsDeletion
+      : classicView.allowDeletions,
   };
 }
 
@@ -178,6 +176,8 @@ function normalizeRuleset(ruleset) {
     requireConversationResolution: false,
     forbidsForcePush: false,
     forbidsDeletion: false,
+    pullRequestRules: [],
+    requiredStatusCheckRules: [],
   };
   if (!ruleset) return empty;
 
@@ -198,14 +198,21 @@ function normalizeRuleset(ruleset) {
 
   const byType = new Map();
   for (const rule of rules) {
-    if (rule && typeof rule.type === "string") byType.set(rule.type, rule);
+    if (!rule || typeof rule.type !== "string") continue;
+    const bucket = byType.get(rule.type) || [];
+    bucket.push(rule);
+    byType.set(rule.type, bucket);
   }
 
-  const pr = byType.get("pull_request")?.parameters || null;
-  const checksRule = byType.get("required_status_checks")?.parameters || null;
-  const checks = (checksRule?.required_status_checks || [])
-    .map((c) => c.context)
-    .filter(Boolean);
+  const pullRequestRules = (byType.get("pull_request") || []).map(
+    canonicalRulesetPullRequestRule,
+  );
+  const requiredStatusCheckRules = (byType.get("required_status_checks") || []).map(
+    canonicalRulesetRequiredStatusRule,
+  );
+  const checks = requiredStatusCheckRules.flatMap((rule) => rule.contexts);
+  const pr = aggregatePullRequestRules(pullRequestRules);
+  const checksRule = aggregateStatusRules(requiredStatusCheckRules);
 
   // Ruleset bypass_actors: the daily-driver account (or any actor) present here
   // is drift. We canonicalize each entry to a stable string id.
@@ -217,16 +224,65 @@ function normalizeRuleset(ruleset) {
     present: rules.length > 0 || bypassActors.length > 0 || enforcement !== undefined,
     enforcementActive,
     requiredStatusCheckContexts: sortedUnique(checks),
-    strictRequiredStatusChecks: checksRule?.strict_required_status_checks_policy === true,
+    strictRequiredStatusChecks: checksRule.strictRequiredStatusChecks,
     reviewsPresent: pr !== null,
-    requiredApprovingReviewCount: pr?.required_approving_review_count ?? 0,
-    requireCodeOwnerReviews: pr?.require_code_owner_review === true,
-    dismissStaleReviews: pr?.dismiss_stale_reviews_on_push === true,
-    requireLastPushApproval: pr?.require_last_push_approval === true,
+    requiredApprovingReviewCount: pr?.requiredApprovingReviewCount ?? 0,
+    requireCodeOwnerReviews: pr?.requireCodeOwnerReviews === true,
+    dismissStaleReviews: pr?.dismissStaleReviews === true,
+    requireLastPushApproval: pr?.requireLastPushApproval === true,
     bypassActors,
     requireConversationResolution: byType.has("required_conversation_resolution"),
     forbidsForcePush: byType.has("non_fast_forward"),
     forbidsDeletion: byType.has("deletion"),
+    pullRequestRules,
+    requiredStatusCheckRules,
+  };
+}
+
+function canonicalRulesetPullRequestRule(rule) {
+  const p = rule?.parameters || {};
+  return {
+    rulesetId: rule?.ruleset_id ?? null,
+    requiredApprovingReviewCount: p.required_approving_review_count ?? 0,
+    requireCodeOwnerReviews: p.require_code_owner_review === true,
+    dismissStaleReviews: p.dismiss_stale_reviews_on_push === true,
+    requireLastPushApproval: p.require_last_push_approval === true,
+  };
+}
+
+function canonicalRulesetRequiredStatusRule(rule) {
+  const p = rule?.parameters || {};
+  return {
+    rulesetId: rule?.ruleset_id ?? null,
+    strictRequiredStatusChecks: p.strict_required_status_checks_policy === true,
+    contexts: sortedUnique(
+      (p.required_status_checks || [])
+        .map((check) => check.context)
+        .filter(Boolean),
+    ),
+  };
+}
+
+function aggregatePullRequestRules(rules) {
+  if (rules.length === 0) return null;
+  return {
+    // Count drift is dangerous in both directions for this repo: adding a review
+    // requirement deadlocks solo-maintainer automation; dropping one would be a
+    // security regression if the source of truth ever requires reviews again.
+    requiredApprovingReviewCount: Math.max(
+      ...rules.map((rule) => rule.requiredApprovingReviewCount),
+    ),
+    requireCodeOwnerReviews: rules.some((rule) => rule.requireCodeOwnerReviews),
+    dismissStaleReviews: rules.some((rule) => rule.dismissStaleReviews),
+    requireLastPushApproval: rules.some((rule) => rule.requireLastPushApproval),
+  };
+}
+
+function aggregateStatusRules(rules) {
+  return {
+    strictRequiredStatusChecks: rules.some(
+      (rule) => rule.strictRequiredStatusChecks,
+    ),
   };
 }
 
@@ -305,6 +361,61 @@ export function diffBranchProtection(live, desired) {
   // allow_force_pushes / allow_deletions must both be false. Live=true is drift.
   cmpBool("allowForcePushes", "high");
   cmpBool("allowDeletions", "high");
+
+  if (live.rulesetPresent) {
+    const expectedPullRequestRule = {
+      requiredApprovingReviewCount: desired.requiredApprovingReviewCount,
+      requireCodeOwnerReviews: desired.requireCodeOwnerReviews,
+      dismissStaleReviews: desired.dismissStaleReviews,
+      requireLastPushApproval: desired.requireLastPushApproval,
+    };
+    const mismatchedPullRequestRules = (live.rulesetPullRequestRules || []).filter(
+      (rule) =>
+        rule.requiredApprovingReviewCount !==
+          expectedPullRequestRule.requiredApprovingReviewCount ||
+        rule.requireCodeOwnerReviews !==
+          expectedPullRequestRule.requireCodeOwnerReviews ||
+        rule.dismissStaleReviews !==
+          expectedPullRequestRule.dismissStaleReviews ||
+        rule.requireLastPushApproval !==
+          expectedPullRequestRule.requireLastPushApproval,
+    );
+    if (mismatchedPullRequestRules.length > 0) {
+      differences.push({
+        field: "rulesetPullRequestRules",
+        desired: expectedPullRequestRule,
+        live: mismatchedPullRequestRules,
+        severity: "critical",
+      });
+    }
+
+    const desiredChecks = new Set(desired.requiredStatusCheckContexts);
+    const mismatchedStatusRules = (live.rulesetRequiredStatusCheckRules || []).filter(
+      (rule) => {
+        const ruleChecks = new Set(rule.contexts);
+        const missing = desired.requiredStatusCheckContexts.filter(
+          (context) => !ruleChecks.has(context),
+        );
+        const extra = rule.contexts.filter((context) => !desiredChecks.has(context));
+        return (
+          rule.strictRequiredStatusChecks !== desired.strictRequiredStatusChecks ||
+          missing.length > 0 ||
+          extra.length > 0
+        );
+      },
+    );
+    if (mismatchedStatusRules.length > 0) {
+      differences.push({
+        field: "rulesetRequiredStatusCheckRules",
+        desired: {
+          strictRequiredStatusChecks: desired.strictRequiredStatusChecks,
+          requiredStatusCheckContexts: desired.requiredStatusCheckContexts,
+        },
+        live: mismatchedStatusRules,
+        severity: "high",
+      });
+    }
+  }
 
   // Bypass actors: desired is empty (zero bypass). ANY live bypass actor is
   // critical drift; a set difference in either direction fails.
@@ -393,6 +504,14 @@ export function formatDifferences(result) {
       if (diff.removed.length > 0) {
         lines.push(`  ${tag} bypass actors in file but missing live: ${JSON.stringify(diff.removed)}`);
       }
+    } else if (diff.field === "rulesetPullRequestRules") {
+      lines.push(
+        `  ${tag} ruleset pull_request rule drift: desired=${JSON.stringify(diff.desired)} live=${JSON.stringify(diff.live)}`,
+      );
+    } else if (diff.field === "rulesetRequiredStatusCheckRules") {
+      lines.push(
+        `  ${tag} ruleset required_status_checks rule drift: desired=${JSON.stringify(diff.desired)} live=${JSON.stringify(diff.live)}`,
+      );
     } else {
       lines.push(`  ${tag} ${diff.field}: desired=${JSON.stringify(diff.desired)} live=${JSON.stringify(diff.live)}`);
     }
