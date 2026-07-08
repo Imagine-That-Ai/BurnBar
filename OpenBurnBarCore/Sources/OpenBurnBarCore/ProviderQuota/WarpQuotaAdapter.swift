@@ -264,7 +264,11 @@ public struct WarpQuotaAdapter: ProviderQuotaAdapter {
         for key in keys {
             guard let value = dictionary[key] else { continue }
             if let string = value as? String {
-                if let date = ISO8601DateFormatter().date(from: string) {
+                // Shared lenient parser: accepts fractional-second `resets_at`
+                // values (default ISO8601DateFormatter() rejects them) without a
+                // per-call formatter allocation. Numeric-epoch fallback below is
+                // unaffected: numeric strings never parse as ISO8601.
+                if let date = ThreadSafeISO8601DateFormatter.parse(string) {
                     return date
                 }
                 if let double = Double(string) {

@@ -1,6 +1,9 @@
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
 
 public typealias BurnBarBrowserFetcher = @Sendable (_ url: URL) async throws -> (Data, HTTPURLResponse)
 public typealias BurnBarBrowserOpener = @Sendable (_ url: URL) throws -> Void

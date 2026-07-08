@@ -1,181 +1,187 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const budgetPath = path.join(root, 'budgets/linux-desktop.perf.json');
-const appDir = path.join(root, 'apps/linux-desktop');
-const distJs = path.join(appDir, 'dist/assets');
 const outDir = process.env.OB_EVIDENCE_OUT
   ? path.resolve(process.env.OB_EVIDENCE_OUT)
   : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
-fs.mkdirSync(outDir, { recursive: true });
-
-const budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
 const desktopSessionPath = path.join(outDir, 'linux-desktop-session-report.json');
-const desktopSession = fs.existsSync(desktopSessionPath)
-  ? JSON.parse(fs.readFileSync(desktopSessionPath, 'utf8'))
-  : null;
+const runtimeSamplesPath = path.join(outDir, 'runtime-perf-samples.jsonl');
+const routeTranscriptPath = path.join(outDir, 'packaged-route-session-transcript.json');
 
-function measureMs(fn) {
-  const t0 = performance.now();
-  const value = fn();
-  return { ms: performance.now() - t0, value };
-}
-
-function measureBundleParseMs() {
-  if (!fs.existsSync(distJs)) return null;
-  const files = fs.readdirSync(distJs).filter((f) => f.endsWith('.js'));
-  if (!files.length) return null;
-  const t0 = performance.now();
-  for (const f of files) {
-    fs.readFileSync(path.join(distJs, f), 'utf8');
-  }
-  return performance.now() - t0;
-}
-
-function measureViteBuildMs() {
-  const t0 = performance.now();
-  const r = spawnSync('npm', ['run', 'build'], { cwd: appDir, encoding: 'utf8' });
-  if (r.status !== 0) return null;
-  return performance.now() - t0;
-}
-
-const buildMs = measureViteBuildMs();
-const bundleMs = measureBundleParseMs();
-const routeNav = measureMs(() => {
-  for (let i = 0; i < 5000; i += 1) {
-    const route = ['overview', 'insights', 'database', 'providers', 'projects', 'missions'][i % 6];
-    if (!route) throw new Error('missing route');
-  }
-});
-const chatProgress = measureMs(() => {
-  const chunks = Array.from({ length: 240 }, (_, index) => ({ index, text: `token-${index}` }));
-  return chunks.map((chunk) => chunk.text).join(' ').length;
-});
-const parserRun = measureMs(() => {
-  const files = fs.readdirSync(path.join(root, 'OpenBurnBarDaemon', 'Sources', 'OpenBurnBarDaemon')).slice(0, 80);
-  return files.filter((file) => file.endsWith('.swift')).length;
-});
-const memorySearch = measureMs(() => {
-  const haystack = fs.readFileSync(path.join(root, 'apps/linux-desktop/src/daemonFixture.ts'), 'utf8');
-  return /mission|Hermes|SQLCipher|Recall/g.test(haystack);
-});
-const mediaControl = measureMs(() => {
-  const frames = Array.from({ length: 128 }, (_, index) => ({
-    seq: index,
-    stage: index % 2 === 0 ? 'control' : 'media',
-    ts: Date.now() + index
-  }));
-  return JSON.parse(JSON.stringify(frames)).length;
-});
-const sqliteProbe = measureMs(() => {
-  const r = spawnSync('sqlite3', [
-    ':memory:',
-    "CREATE TABLE perf(id INTEGER PRIMARY KEY, body TEXT); INSERT INTO perf(body) VALUES('openburnbar'),('linux shell'); SELECT count(*) FROM perf WHERE body LIKE '%shell%';"
-  ], { cwd: root, encoding: 'utf8' });
-  return {
-    available: r.status === 0,
-    stdout: r.stdout.trim(),
-    stderr: r.stderr.trim()
-  };
-});
-
-const samples = [
-  {
-    name: 'app.start',
-    ms: desktopSession?.performance?.appStartMs ?? null,
-    source: desktopSession ? 'packaged-tauri-xvfb-window-visible' : 'missing-linux-desktop-session-report'
-  },
-  { name: 'route.navigation', ms: routeNav.ms, source: 'route-state-loop' },
-  {
-    name: 'ipc.health.roundtrip',
-    ms: desktopSession?.performance?.ipcHealthRoundTripMs ?? null,
-    source: desktopSession ? 'packaged-tray-reconnect-to-af-unix-daemon-log' : 'missing-linux-desktop-session-report'
-  },
-  {
-    name: 'tray.click.open',
-    ms: desktopSession?.performance?.trayClickOpenMs ?? null,
-    source: desktopSession ? 'appindicator-dbusmenu-open-to-visible-window' : 'missing-linux-desktop-session-report'
-  },
-  { name: 'chat.firstToken.progress', ms: chatProgress.ms, source: 'progress-chunk-reducer' },
-  {
-    name: 'db.migration.open.query',
-    ms: sqliteProbe.value.available ? sqliteProbe.ms : 0,
-    source: sqliteProbe.value.available ? `sqlite-memory-query:${sqliteProbe.value.stdout}` : `sqlite-unavailable:${sqliteProbe.value.stderr}`
-  },
-  { name: 'parser.incremental.run', ms: parserRun.ms, source: 'swift-source-incremental-file-scan' },
-  { name: 'memory.search', ms: memorySearch.ms, source: 'fixture-index-regex-search' },
-  { name: 'media.control.stage', ms: mediaControl.ms, source: 'control-frame-json-stage' }
+const requiredRows = [
+  'app.start',
+  'route.navigation',
+  'ipc.health.roundtrip',
+  'tray.click.open',
+  'chat.firstToken.progress',
+  'db.migration.open.query',
+  'parser.incremental.run',
+  'memory.search',
+  'media.control.stage'
 ];
 
-const sampleRows = samples.map((sample) => ({
-  generatedAt: new Date().toISOString(),
-  runner: 'linux-desktop-perf-v2',
-  name: sample.name,
-  ms: sample.ms,
-  source: sample.source
-}));
-fs.writeFileSync(
-  path.join(outDir, 'runtime-perf-samples.jsonl'),
-  sampleRows.map((row) => JSON.stringify(row)).join('\n') + '\n'
-);
+fs.mkdirSync(outDir, { recursive: true });
+const budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
+const errors = [];
 
-const verdicts = samples.map((s) => {
-  const limit = budget.thresholdsMs[s.name];
+function readJsonIfPresent(file) {
+  if (!fs.existsSync(file)) return null;
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function readRuntimeSamples() {
+  if (!fs.existsSync(runtimeSamplesPath)) return [];
+  const text = fs.readFileSync(runtimeSamplesPath, 'utf8').trim();
+  if (!text) return [];
+  return text.split(/\n+/).map((line) => JSON.parse(line));
+}
+
+const desktopSession = readJsonIfPresent(desktopSessionPath);
+const routeTranscript = readJsonIfPresent(routeTranscriptPath);
+const runtimeSamples = readRuntimeSamples();
+
+if (!desktopSession) errors.push('missing linux-desktop-session-report.json');
+if (!routeTranscript) errors.push('missing packaged-route-session-transcript.json');
+if (!runtimeSamples.length) errors.push('missing runtime-perf-samples.jsonl rows from packaged Tauri app');
+
+function desktopVerdict(name, ms, source) {
+  const limit = budget.thresholdsMs?.[name];
   return {
-    name: s.name,
-    ms: s.ms,
+    name,
+    ms: typeof ms === 'number' ? ms : null,
     limit,
-    source: s.source,
-    pass: typeof limit === 'number' && typeof s.ms === 'number' ? s.ms <= limit : false
+    source,
+    sampleCount: typeof ms === 'number' ? 1 : 0,
+    measured: typeof ms === 'number',
+    pass: typeof limit === 'number' && typeof ms === 'number' ? ms <= limit : false
   };
-});
+}
 
+function runtimeVerdict(name) {
+  const rows = runtimeSamples.filter((row) => row.name === name && typeof row.ms === 'number');
+  const limit = budget.thresholdsMs?.[name];
+  if (!rows.length) {
+    return {
+      name,
+      ms: null,
+      limit,
+      source: 'missing-packaged-runtime-sample',
+      sampleCount: 0,
+      measured: false,
+      pass: false
+    };
+  }
+  const maxMs = Math.max(...rows.map((row) => row.ms));
+  const sources = [...new Set(rows.map((row) => String(row.source ?? 'unknown')).filter(Boolean))].sort();
+  return {
+    name,
+    ms: maxMs,
+    limit,
+    source: `packaged-tauri-runtime-samples:${sources.join(',')}`,
+    sampleCount: rows.length,
+    measured: true,
+    pass: typeof limit === 'number' ? maxMs <= limit : false
+  };
+}
+
+for (const row of requiredRows) {
+  if (typeof budget.thresholdsMs?.[row] !== 'number') {
+    errors.push(`budget missing threshold for ${row}`);
+  }
+}
+
+const verdicts = [
+  desktopVerdict('app.start', desktopSession?.performance?.appStartMs, 'packaged-tauri-deb-xvfb-window-visible'),
+  runtimeVerdict('route.navigation'),
+  desktopVerdict(
+    'ipc.health.roundtrip',
+    desktopSession?.performance?.ipcHealthRoundTripMs,
+    'packaged-tray-reconnect-to-af-unix-daemon-log'
+  ),
+  desktopVerdict(
+    'tray.click.open',
+    desktopSession?.performance?.trayClickOpenMs,
+    'appindicator-dbusmenu-open-to-visible-window'
+  ),
+  runtimeVerdict('chat.firstToken.progress'),
+  runtimeVerdict('db.migration.open.query'),
+  runtimeVerdict('parser.incremental.run'),
+  runtimeVerdict('memory.search'),
+  runtimeVerdict('media.control.stage')
+];
+
+const forbiddenSourceFragments = [
+  'route-state-loop',
+  'progress-chunk-reducer',
+  'sqlite-memory-query',
+  'swift-source-incremental-file-scan',
+  'fixture-index-regex-search',
+  'control-frame-json-stage'
+];
+
+for (const verdict of verdicts) {
+  if (!verdict.measured) errors.push(`missing measured row for ${verdict.name}`);
+  if (forbiddenSourceFragments.some((fragment) => verdict.source.includes(fragment))) {
+    errors.push(`forbidden placeholder source for ${verdict.name}: ${verdict.source}`);
+  }
+}
+
+const missingMetrics = requiredRows.filter((name) => !verdicts.some((verdict) => verdict.name === name));
+const allPass = errors.length === 0 &&
+  missingMetrics.length === 0 &&
+  verdicts.every((verdict) => verdict.measured && verdict.pass === true);
+
+const generatedAt = new Date().toISOString();
 const report = {
-  generatedAt: new Date().toISOString(),
-  runner: 'linux-desktop-perf-v2',
-  note: 'Budget harness measures built artifacts, app route reducers, and packaged Tauri desktop-session timing when available.',
+  generatedAt,
+  runner: 'linux-desktop-packaged-runtime-perf-v3',
+  note: 'Budget rows are derived from the same packaged Linux desktop smoke run: Xvfb/XFCE .deb session report plus runtime samples emitted by the installed Tauri app through OPENBURNBAR_EVIDENCE_OUT.',
   host: { platform: process.platform, arch: process.arch },
   command: 'node scripts/linux-port/run-perf-budget.mjs',
   budgetFile: path.relative(root, budgetPath),
   measurements: {
-    viteBuildMs: buildMs,
-    distBundleReadMs: bundleMs,
-    desktopSessionReport: desktopSessionPath,
-    desktopSessionPresent: Boolean(desktopSession)
-  },
-  linuxTauriBuild: {
-    attempted: fs.existsSync(path.join(outDir, 'linux-tauri-build-transcript.txt')),
-    transcript: path.relative(root, path.join(outDir, 'linux-tauri-build-transcript.txt'))
+    desktopSessionReport: path.relative(root, desktopSessionPath),
+    desktopSessionPresent: Boolean(desktopSession),
+    desktopSessionGeneratedAt: desktopSession?.generatedAt ?? null,
+    runtimeSamples: path.relative(root, runtimeSamplesPath),
+    runtimeSampleCount: runtimeSamples.length,
+    packagedRouteTranscript: path.relative(root, routeTranscriptPath),
+    packagedRouteCount: routeTranscript?.routeCount ?? null
   },
   budget,
   verdicts,
-  missingMetrics: Object.keys(budget.thresholdsMs).filter((name) => !samples.some((sample) => sample.name === name)),
-  allPass: verdicts.every((v) => v.pass) && Object.keys(budget.thresholdsMs).every((name) => samples.some((sample) => sample.name === name))
+  missingMetrics,
+  errors,
+  allPass
 };
 
+fs.writeFileSync(path.join(outDir, 'perf-budget.json'), JSON.stringify(report, null, 2) + '\n');
+
 const trend = {
-  generatedAt: report.generatedAt,
+  generatedAt,
   runner: report.runner,
   baselinePolicy: budget.trendPolicy,
-  baselineSource: budget.trendPolicy?.baselineSource ?? 'none',
   rows: verdicts.map((verdict) => ({
     name: verdict.name,
     currentMs: verdict.ms,
     thresholdMs: verdict.limit,
+    sampleCount: verdict.sampleCount,
+    source: verdict.source,
     thresholdPass: verdict.pass,
     trendPass: verdict.pass
   })),
-  pass: report.allPass,
-  note: 'No historical Linux trend series is committed for mission-001 yet; trend gate is fail-closed to current threshold rows until a durable baseline appears.'
+  pass: allPass,
+  errors,
+  note: 'Mission-001 has no durable multi-run Linux history yet; trend enforcement is fail-closed to current threshold rows.'
 };
 fs.writeFileSync(path.join(outDir, 'perf-threshold-enforcement.json'), JSON.stringify(trend, null, 2) + '\n');
 
 const macosComparison = {
-  generatedAt: report.generatedAt,
+  generatedAt,
   status: budget.macosComparison?.status ?? 'blocked',
   reason: budget.macosComparison?.reason ?? 'No macOS source shell perf runner exists for this Linux desktop lane.',
   acceptedBlocker: budget.macosComparison?.acceptedBlocker ?? 'VAL-PERF-001-macos-source-comparison-unavailable',
@@ -183,7 +189,5 @@ const macosComparison = {
 };
 fs.writeFileSync(path.join(outDir, 'macos-perf-comparison.json'), JSON.stringify(macosComparison, null, 2) + '\n');
 
-const outFile = path.join(outDir, 'perf-budget.json');
-fs.writeFileSync(outFile, JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report, null, 2));
-process.exit(report.allPass ? 0 : 1);
+process.exit(allPass ? 0 : 1);

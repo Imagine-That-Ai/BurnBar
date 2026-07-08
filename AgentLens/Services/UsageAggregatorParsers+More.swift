@@ -248,7 +248,9 @@ final class ModelFilterParser: LogParser, Sendable {
                 if let message = json["message"] as? [String: Any],
                    message["role"] as? String == "assistant",
                    let ts = json["timestamp"] as? String {
-                    let date = ISO8601DateFormatter().date(from: ts)
+                    // Shared lenient parser: accepts fractional seconds and skips
+                    // the per-line ISO8601DateFormatter allocation.
+                    let date = ThreadSafeISO8601DateFormatter.parse(ts)
                     if startTime == nil { startTime = date }
                     endTime = date
                 }
@@ -268,7 +270,9 @@ final class ModelFilterParser: LogParser, Sendable {
                 cacheReadTokens += extracted.cacheRead
 
                 if let ts = json["timestamp"] as? String {
-                    let date = ISO8601DateFormatter().date(from: ts)
+                    // Shared lenient parser: accepts fractional seconds and skips
+                    // the per-line ISO8601DateFormatter allocation.
+                    let date = ThreadSafeISO8601DateFormatter.parse(ts)
                     if startTime == nil { startTime = date }
                     endTime = date
                 }

@@ -155,6 +155,13 @@ final class CLIProfileStreamFailoverRunnerMattersTests: XCTestCase {
         adapter.setActiveProfileID("primary")
         adapter.setActiveProfileID("primary", for: ProviderID.codex)
         adapter.updateProfile(makeCLIProfile(id: "primary", sortKey: 0))
+
+        // The failed writes must not fabricate state: every read against the
+        // same faulting store still degrades to nil/empty rather than echoing
+        // the value the write pretended to persist.
+        XCTAssertNil(adapter.fetchActiveProfileID(), "Failed setActiveProfileID must not surface as a readable pointer")
+        XCTAssertNil(adapter.fetchActiveProfileID(for: ProviderID.codex), "Failed per-provider write must not surface as a readable pointer")
+        XCTAssertTrue(adapter.fetchAllProfiles().isEmpty, "Failed updateProfile must not materialize a profile")
     }
 
     /// A failed write against a faulting store must not silently mutate a separate

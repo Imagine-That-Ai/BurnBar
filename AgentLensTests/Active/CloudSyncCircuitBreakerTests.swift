@@ -169,6 +169,13 @@ final class CloudSyncCircuitBreakerTests: XCTestCase {
                 }
             }
         }
-        // If we get here without a crash, the actor properly serialized access
+        // If we get here without a crash, the actor properly serialized access.
+        // The breaker must also remain fully serviceable after the storm:
+        // reset() returns it to a known-closed state that admits requests.
+        await breaker.reset()
+        let state = await breaker.state
+        XCTAssertEqual(state, .closed, "Breaker must reset to closed after concurrent stress")
+        let allowed = await breaker.shouldAllowRequest()
+        XCTAssertTrue(allowed, "A reset breaker must admit requests after concurrent stress")
     }
 }

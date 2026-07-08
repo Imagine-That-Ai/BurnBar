@@ -457,12 +457,71 @@ final class UsageAggregatorTests: XCTestCase {
         mockParser.parseResult = ParseResult(usages: [], conversations: [])
 
         let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
+        // recountAll arms the durable (UserDefaults) reconciliation state;
+        // never leak an armed state to other suites.
+        defer { UsageSyncService.orphanReconciliationState = .idle }
         await aggregator.recountAll()
 
         // After recount, usages should be from parser (empty in this case)
         // The old session should be replaced
         XCTAssertEqual(mockParser.parseCallCount, 1)
         XCTAssertTrue(dataStore.usages.isEmpty)
+    }
+
+    func test_recountAll_armsDurableReconciliation_whenRebuildCommits() async throws {
+        let dataStore = try makeTestDataStore()
+        let mockParser = MockParser(provider: .factory)
+        mockParser.parseResult = ParseResult(usages: [], conversations: [])
+        let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
+
+        // The lifecycle state is durable (UserDefaults.standard); pin the
+        // starting point and never leak an armed state to other suites.
+        UsageSyncService.orphanReconciliationState = .idle
+        defer { UsageSyncService.orphanReconciliationState = .idle }
+
+        await aggregator.recountAll()
+
+        XCTAssertNil(aggregator.typedPersistenceError)
+        XCTAssertEqual(
+            UsageSyncService.orphanReconciliationState,
+            .readyForReconciliation,
+            "a committed rebuild must durably arm one-shot reconciliation"
+        )
+    }
+
+    func test_recountRebuildCommitted_gatesOnClearRefreshAndPersist() {
+        XCTAssertTrue(UsageAggregator.recountRebuildCommitted(
+            clearSucceeded: true,
+            refreshApplied: true,
+            typedPersistenceError: nil
+        ))
+        XCTAssertFalse(
+            UsageAggregator.recountRebuildCommitted(
+                clearSucceeded: false,
+                refreshApplied: true,
+                typedPersistenceError: nil
+            ),
+            "a failed table clear must keep reconciliation un-armed"
+        )
+        XCTAssertFalse(
+            UsageAggregator.recountRebuildCommitted(
+                clearSucceeded: true,
+                refreshApplied: false,
+                typedPersistenceError: nil
+            ),
+            "a cancelled/short-circuited refresh must keep reconciliation un-armed"
+        )
+        XCTAssertFalse(
+            UsageAggregator.recountRebuildCommitted(
+                clearSucceeded: true,
+                refreshApplied: true,
+                typedPersistenceError: OpenBurnBarError.database(
+                    "usage_persist_failed",
+                    message: "partial persist"
+                )
+            ),
+            "a partial persist must keep reconciliation un-armed — the table is non-empty but incomplete"
+        )
     }
 }
 
