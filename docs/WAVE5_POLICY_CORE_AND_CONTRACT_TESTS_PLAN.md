@@ -13,7 +13,7 @@ What is actually still forked or broken, in priority order:
 | # | Surface | State | Action this wave |
 |---|---------|-------|------------------|
 | 1 | **Android enforcement** | `BudgetGate.evaluate()` in `android/.../data/budget/BudgetGate.kt` has **zero production callers** — budgets are display-only on Android. Also: no fail-closed on DAO errors, `hardBlockWithFallback` returns plain BLOCK ("not fully wired in v1"). | Contract tests expose the gaps (WS3); fail-closed + fallback implemented in Kotlin; the missing call site is a **named product decision** for Alberto (§4). |
-| 2 | **Android unit tests not in PR CI** | `android-ktlint.yml` is lint-only; the `android` harness job runs post-merge/nightly only. | New PR workflow (WS3, §3.4). |
+| 2 | **Android budget unit tests are now PR-gated** | PR #1396 landed `.github/workflows/android-budget-contract.yml`, which runs the Android budget vector tests on relevant PRs. | Reuse the existing WS3 lane; extend it only when new vectors or budget call sites are added (§3.4). |
 | 3 | **BudgetEnforcement pair** (mac 161 / iOS 192 lines) | Same intent, three real divergences: ledger-failure display (`?? 0` mac vs `?? rule.amountUSD` iOS), cost estimation (`ModelPricing.lookup` mac vs hard-coded $3/$15 iOS), identity hashing byte-identical duplicated. | Hoist the pure parts to Core (§2). |
 | 4 | **Entitlement precedence** | Mac-only logic inside `MacCloudEntitlementStore` (N3-fixed but unextracted); iOS uses a structurally different server-arbitrated model. | Extract mac arbitration as a pure Core function + KAT-style tests (§2.3). Merging the iOS model is **out of scope** (different trust architecture). |
 | 5 | **BudgetSettings / BudgetLedger / BudgetRulesStore pairs** | Architecturally divergent **by design** (GRDB vs Firestore/rollups). Drift gate pins them. | Keep forked. Not debt. |
@@ -59,10 +59,10 @@ Delete/correct the claims at `Core/Budget/BudgetGate.swift:63-66` and `AgentLens
 
 ## 3. WS3 — cross-platform enforcement contract tests
 
-Reuses the repo's strongest existing pattern: the signal-interop KAT convention (canonical fixture + byte-identical per-platform copies + cheap ubuntu pin job + per-platform loaders).
+PR #1396 already landed the first WS3 infrastructure. This wave reuses that repo pattern: canonical fixture + byte-identical per-platform copies + cheap ubuntu pin job + per-platform loaders. Do not recreate the same fixtures, scripts, or workflows; extend the existing artifacts when WS1 adds new pure behavior.
 
 ### 3.1 Canonical fixture
-`tests/fixtures/budget-enforcement/budget-enforcement-vectors.json` + `README.md` (schema doc + regeneration instructions).
+Existing: `tests/fixtures/budget-enforcement/budget-enforcement-vectors.json`, `tests/fixtures/budget-enforcement/README.md`, and `tests/fixtures/budget-enforcement/entitlement-vectors.json`. Add vectors here only when WS1 changes the pure budget or entitlement contract.
 
 Schema (v1):
 ```jsonc
@@ -107,19 +107,19 @@ Required coverage (each row = ≥1 vector; the pin job asserts the matrix is com
 - entitlement vectors (separate `entitlement-vectors.json`, same conventions): active-cloud-wins, lapsed-cloud-invisible, StoreKit-unbound-fails-closed, per-tier max-expiry merge, Ultra⇒Pro⇒Cloud implication
 
 ### 3.2 Consumers
-1. **Core (PR-blocking today):** copy at `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/`, vector-driven test beside `BudgetGateCoreTests.swift`, `Bundle.module` load, fakes of `BudgetRuleProviding`/`BudgetLedgerReading` built from the vector. Runs in `pr-native-fast.yml → swiftpm-native`.
-2. **macOS app (PR-blocking today):** `project.yml` OpenBurnBarTests references the canonical file directly (`buildPhase: resources`, llm-safe-wrap precedent) — no copy; drives the gate through the real `BudgetGate+AgentLens` seam init. Runs in `app-pr-gate.yml`.
-3. **iOS app:** same direct reference in OpenBurnBarMobileTests; drives `BudgetGate+Mobile`. Runs post-merge harness + release gate now; becomes PR-gated when #1383's Mobile gate grows a test step (follow-up, not this wave).
-4. **Android (the point of all this):** copy at `android/app/src/test/resources/budget-enforcement/`, JUnit test in `com.openburnbar.data.budget` using mockk `BudgetDatabaseAccess` fed from the vector. **Expected to fail initially** on fail-closed and fallback vectors — those failures are the WS1-Android work items; the test ships in the same PR as the Kotlin fixes so it lands green.
+1. **Core (PR-blocking today):** existing copy at `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/`, with `BudgetGateContractVectorTests.swift` loading the vector from `Bundle.module`.
+2. **macOS app (PR-blocking today):** extend the existing app-gate resource/test path only if WS1 adds mac-specific seam coverage.
+3. **iOS app:** same contract shape applies; PR-gating is handled by the mobile-gate work rather than by duplicating the WS3 fixture lane.
+4. **Android (PR-blocking for budget changes today):** existing copy at `android/app/src/test/resources/budget-enforcement/`, with `com.openburnbar.data.budget` tests driven from the vector by `.github/workflows/android-budget-contract.yml`.
 5. Windows: out of scope; the checker's copy list leaves room.
 
 Each platform test asserts: vector count > 0, every scope enum value exercised, every vector id unique — a platform that silently loads half the file fails.
 
 ### 3.3 Drift pin
-Extend the signal-KAT ubuntu lane (sibling script modeled on `scripts/ci/check-reverse-interop-fixture.mjs`): sha256 byte-identity of all copies, fail on deletion, structural schema check, **coverage-matrix check** (every scope/behavior/failure-mode row present). Runs on PR + merge_group; <10-min cap. New workflow file (`budget-enforcement-contract.yml`) — precedent says don't append jobs to `fast-feedback.yml`.
+Existing: `scripts/ci/check-budget-enforcement-fixture.mjs` plus `.github/workflows/budget-enforcement-contract.yml`. Keep the current byte-identity, deletion, schema, and coverage-matrix checks as the pin. Extend the script only for new required coverage rows.
 
 ### 3.4 Android PR job
-New `.github/workflows/android-budget-contract.yml`: ubuntu, setup-java 21 temurin + gradle cache, setup-android, `cp android/app/google-services.json.template android/app/google-services.json`, `cd android && ./gradlew :app:testDebugUnitTest --tests "com.openburnbar.data.budget.*" --no-daemon`. Scoped to the budget package (fast, well under the harness `android` job's 25 min). Full-suite Android PR CI is a separate named decision (cost/benefit is Alberto's call); this job closes the contract gap now.
+Existing: `.github/workflows/android-budget-contract.yml` runs setup-java 21 temurin + Gradle cache + Android setup, copies `android/app/google-services.json.template` to `android/app/google-services.json`, and runs `cd android && ./gradlew :app:testDebugUnitTest --tests "com.openburnbar.data.budget.*" --no-daemon` for Android budget changes. Full-suite Android PR CI remains a separate named decision (cost/benefit is Alberto's call); do not add a duplicate budget workflow.
 
 ### 3.5 Tripwire check
 Fixtures under `tests/fixtures/`, `OpenBurnBarCore/Tests/**/Fixtures/`, `android/app/src/test/resources/` trip **nothing** in `check-no-suppressions.sh` (only `budgets/*.json` and `*baseline*.{xml,yml,yaml}` match). Do not name anything `budgets/…json`.
