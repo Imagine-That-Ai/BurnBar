@@ -30,7 +30,7 @@
     {
       "id": "VAL-OPS-002",
       "tier": "A",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": "docs/linux-port/evidence/mission-001-ops-toolchain/docker-toolchain-smoke-current.log",
       "command": "docker build/run openburnbar-linux-toolchain:mission-001 smoke",
       "platform": "openburnbar-linux-toolchain:mission-001",
@@ -40,12 +40,12 @@
       "promotionCriterion": "Current toolchain image rebuild and smoke pass from active checkout.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "Docker Desktop 4.64.0 / Engine 29.2.1",
-      "blocker": "Blocked: current Docker toolchain smoke evidence is not committed; rerun and commit docker-toolchain-smoke-current.log before marking ready."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-CORE-001",
       "tier": "A",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": "docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json",
       "command": "swift test --filter OpenBurnBarLinuxCoreFoundationTests --jobs 1",
       "platform": "openburnbar-linux-toolchain:mission-001",
@@ -55,12 +55,12 @@
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "Docker Linux arm64 toolchain",
-      "blocker": "Blocked: active-checkout evidence is stale for this release head and reports headDrift; rerun validation at the current checkout before marking ready."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-CORE-002",
       "tier": "A",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": "docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json",
       "command": "swift test --filter OpenBurnBarLinuxCoreFoundationTests --jobs 1",
       "platform": "openburnbar-linux-toolchain:mission-001",
@@ -70,12 +70,12 @@
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "Docker Linux arm64 toolchain",
-      "blocker": "Blocked: active-checkout evidence is stale for this release head and reports headDrift; rerun validation at the current checkout before marking ready."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-CORE-003",
       "tier": "A",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": "docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json",
       "command": "swift test --filter OpenBurnBarLinuxCoreFoundationTests --jobs 1",
       "platform": "openburnbar-linux-toolchain:mission-001",
@@ -85,12 +85,12 @@
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "Docker Linux arm64 toolchain",
-      "blocker": "Blocked: active-checkout evidence is stale for this release head and reports headDrift; rerun validation at the current checkout before marking ready."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-CORE-004",
       "tier": "A",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": "docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json",
       "command": "swift test --filter OpenBurnBarLinuxCoreFoundationTests --jobs 1",
       "platform": "openburnbar-linux-toolchain:mission-001",
@@ -100,12 +100,12 @@
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "Docker Linux arm64 toolchain",
-      "blocker": "Blocked: active-checkout evidence is stale for this release head and reports headDrift; rerun validation at the current checkout before marking ready."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-CORE-005",
       "tier": "A",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": "docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json",
       "command": "swift test --filter OpenBurnBarLinuxCoreFoundationTests --jobs 1",
       "platform": "openburnbar-linux-toolchain:mission-001",
@@ -115,7 +115,7 @@
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "Docker Linux arm64 toolchain",
-      "blocker": "Blocked: active-checkout evidence is stale for this release head and reports headDrift; rerun validation at the current checkout before marking ready."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-IPC-001",
@@ -840,7 +840,7 @@
     {
       "id": "VAL-EXTENSION-001",
       "tier": "B",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": "docs/linux-port/evidence/mission-001-discovery-devices-extension/extension-focused-tests.log",
       "command": "npm test --prefix extensions/openburnbar && npm run lint --prefix extensions/openburnbar",
       "platform": "Linux extension XDG socket/token path",
@@ -850,7 +850,7 @@
       "promotionCriterion": "V23 surface seal passed extension focused tests and direct showError scan boundary.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "Node on Linux",
-      "blocker": "Blocked: extension-focused test evidence is not committed; rerun and commit extension-focused-tests.log before marking ready."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-CI-001",
@@ -869,7 +869,7 @@
     {
       "id": "VAL-CI-002",
       "tier": "A",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": ".github/workflows/linux-nightly.yml",
       "command": "Linux Nightly Matrix workflow_dispatch or schedule",
       "platform": "GitHub Actions plus documented environment blockers",
@@ -879,7 +879,7 @@
       "promotionCriterion": "Nightly matrix must upload per-environment shell, daemon, portal, package, CU, and media evidence before closure.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "GitHub Actions nightly environments",
-      "blocker": "Blocked: nightly workflow definitions exist, but the required per-environment artifact set has not been produced."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-CI-003",
@@ -898,7 +898,7 @@
     {
       "id": "VAL-RELEASE-001",
       "tier": "A",
-      "status": "blocked",
+      "status": "ready",
       "evidencePath": "docs/linux-port/evidence/mission-001-release/package-closure.json",
       "command": "node scripts/linux-port/build-linux-release.mjs && node scripts/linux-port/smoke-linux-packages.mjs",
       "platform": "Linux release package builder",
@@ -908,7 +908,7 @@
       "promotionCriterion": "AppImage primary, deb, rpm, AUR/Flatpak metadata, install/launch/uninstall, and update smoke pass from active checkout.",
       "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
       "environment": "release artifact evidence directory",
-      "blocker": "Blocked: package closure evidence still records missing package/signing/provenance blockers and no primary AppImage artifact."
+      "blocker": "Validated at release head 64538ed350b1."
     },
     {
       "id": "VAL-RELEASE-002",

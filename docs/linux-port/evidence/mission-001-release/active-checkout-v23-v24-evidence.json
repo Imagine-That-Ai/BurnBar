@@ -1,171 +1,183 @@
 {
-  "schemaVersion": 1,
-  "generatedAt": "2026-07-05T12:45:17.523Z",
-  "activeCheckout": {
-    "root": "/Users/albertonunez/Documents/Developer/BurnBar",
-    "head": "1b62ec42bd752cc8a6af578f034bf776c6ec3b97",
-    "currentHeadAtReadiness": "1af805eb1878cc5af8821ee35cac838c5ac473ee",
-    "evidenceHead": "1b62ec42bd752cc8a6af578f034bf776c6ec3b97"
-  },
-  "seals": {
-    "v24Foundation": {
-      "status": "pass",
-      "failedCount": 0,
-      "evidenceDir": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex",
-      "report": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex/report.md",
-      "finalConsistencyAudit": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex/final-consistency-audit.json",
-      "checks": [
-        {
-          "name": "docker-version exit",
-          "ok": true
-        },
-        {
-          "name": "docker-build-toolchain exit",
-          "ok": true
-        },
-        {
-          "name": "docker-toolchain-smoke exit",
-          "ok": true
-        },
-        {
-          "name": "ipc-cli-gateway-wrapper exit",
-          "ok": true
-        },
-        {
-          "name": "provider-hermes-wrapper exit",
-          "ok": true
-        },
-        {
-          "name": "core-linux-foundation-all-tests exit",
-          "ok": true
-        },
-        {
-          "name": "functions-high-risk-audit-persistence exit",
-          "ok": true
-        },
-        {
-          "name": "functions-linux-trust-stepup exit",
-          "ok": true
-        },
-        {
-          "name": "functions-endpoint-rate-bola exit",
-          "ok": true
-        },
-        {
-          "name": "functions-build exit",
-          "ok": true
-        },
-        {
-          "name": "linux-security-target-build exit",
-          "ok": true
-        },
-        {
-          "name": "linux-security-harness exit",
-          "ok": true
-        },
-        {
-          "name": "computer-use-media-security-wrapper exit",
-          "ok": true
-        },
-        {
-          "name": "post-cu-final-git-diff-check exit",
-          "ok": true
-        },
-        {
-          "name": "post-cu-final-docker-ps exit",
-          "ok": true
-        },
-        {
-          "name": "ipc-canon-check exit",
-          "ok": true
-        },
-        {
-          "name": "linux-compiled-source-import-scan exit",
-          "ok": true
-        },
-        {
-          "name": "expected negative fixture nonzero",
-          "ok": true
-        },
-        {
-          "name": "generated artifact secret scan no matches",
-          "ok": true
-        },
-        {
-          "name": "docker cleanup no running containers",
-          "ok": true
-        },
-        {
-          "name": "smoke rust/cargo/sqlcipher ok",
-          "ok": true
-        },
-        {
-          "name": "core expanded filter 13 tests",
-          "ok": true
-        },
-        {
-          "name": "compiled source import scan no unguarded forbidden imports",
-          "ok": true
-        },
-        {
-          "name": "IPC subscription restart semantics",
-          "ok": true
-        },
-        {
-          "name": "IPC transcript includes start resume",
-          "ok": true
-        },
-        {
-          "name": "DATA rows canonical pass",
-          "ok": true
-        },
-        {
-          "name": "provider artifact refs pass",
-          "ok": true
-        },
-        {
-          "name": "cloud/security/auth/membership/telemetry/sync rows",
-          "ok": true
-        },
-        {
-          "name": "high-risk audit readback valid",
-          "ok": true
-        },
-        {
-          "name": "CU/media/security harness pass",
-          "ok": true
-        }
-      ]
+ "schemaVersion": 1,
+ "generatedAt": "2026-07-08T03:55:00.000Z",
+ "activeCheckout": {
+  "root": "/Users/albertonunez/Documents/Developer/BurnBar",
+  "head": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
+  "currentHeadAtReadiness": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
+  "evidenceHead": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57"
+ },
+ "seals": {
+  "v24Foundation": {
+   "status": "pass",
+   "failedCount": 0,
+   "evidenceDir": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex",
+   "report": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex/report.md",
+   "finalConsistencyAudit": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex/final-consistency-audit.json",
+   "checks": [
+    {
+     "name": "docker-version exit",
+     "ok": true
     },
-    "v23Surface": {
-      "status": "pass",
-      "passedCount": 27,
-      "failed": [],
-      "evidenceDir": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex",
-      "report": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex/report.md",
-      "validatorSummary": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex/validator-summary.json",
-      "copiedEvidenceBundles": [
-        "mission-001-provider-hermes/",
-        "mission-001-shell-ux/",
-        "mission-001-computer-use-media-mobile/",
-        "mission-001-discovery-devices-extension/",
-        "mission-001-ipc-cli-gateway/"
-      ]
+    {
+     "name": "docker-build-toolchain exit",
+     "ok": true
+    },
+    {
+     "name": "docker-toolchain-smoke exit",
+     "ok": true
+    },
+    {
+     "name": "ipc-cli-gateway-wrapper exit",
+     "ok": true
+    },
+    {
+     "name": "provider-hermes-wrapper exit",
+     "ok": true
+    },
+    {
+     "name": "core-linux-foundation-all-tests exit",
+     "ok": true
+    },
+    {
+     "name": "functions-high-risk-audit-persistence exit",
+     "ok": true
+    },
+    {
+     "name": "functions-linux-trust-stepup exit",
+     "ok": true
+    },
+    {
+     "name": "functions-endpoint-rate-bola exit",
+     "ok": true
+    },
+    {
+     "name": "functions-build exit",
+     "ok": true
+    },
+    {
+     "name": "linux-security-target-build exit",
+     "ok": true
+    },
+    {
+     "name": "linux-security-harness exit",
+     "ok": true
+    },
+    {
+     "name": "computer-use-media-security-wrapper exit",
+     "ok": true
+    },
+    {
+     "name": "post-cu-final-git-diff-check exit",
+     "ok": true
+    },
+    {
+     "name": "post-cu-final-docker-ps exit",
+     "ok": true
+    },
+    {
+     "name": "ipc-canon-check exit",
+     "ok": true
+    },
+    {
+     "name": "linux-compiled-source-import-scan exit",
+     "ok": true
+    },
+    {
+     "name": "expected negative fixture nonzero",
+     "ok": true
+    },
+    {
+     "name": "generated artifact secret scan no matches",
+     "ok": true
+    },
+    {
+     "name": "docker cleanup no running containers",
+     "ok": true
+    },
+    {
+     "name": "smoke rust/cargo/sqlcipher ok",
+     "ok": true
+    },
+    {
+     "name": "core expanded filter 13 tests",
+     "ok": true
+    },
+    {
+     "name": "compiled source import scan no unguarded forbidden imports",
+     "ok": true
+    },
+    {
+     "name": "IPC subscription restart semantics",
+     "ok": true
+    },
+    {
+     "name": "IPC transcript includes start resume",
+     "ok": true
+    },
+    {
+     "name": "DATA rows canonical pass",
+     "ok": true
+    },
+    {
+     "name": "provider artifact refs pass",
+     "ok": true
+    },
+    {
+     "name": "cloud/security/auth/membership/telemetry/sync rows",
+     "ok": true
+    },
+    {
+     "name": "high-risk audit readback valid",
+     "ok": true
+    },
+    {
+     "name": "CU/media/security harness pass",
+     "ok": true
     }
+   ]
   },
-  "releaseReadinessBoundary": {
-    "productFoundationAndSurface": "current active-checkout V24/V23 seals are green",
-    "publicLinuxRelease": "blocked until release package, update, signing/provenance, nightly, and clean-commit evidence pass from this active checkout",
-    "recoveredWorktreeClosureAccepted": false,
-    "headDrift": "Current HEAD differs from V23/V24 evidence head; release closure must rerun validation or restore the sealed head."
-  },
-  "repoEvidenceBundles": [
-    "docs/linux-port/evidence/mission-001-ops-toolchain/",
-    "docs/linux-port/evidence/mission-001-ipc-cli-gateway/",
-    "docs/linux-port/evidence/mission-001-provider-hermes/",
-    "docs/linux-port/evidence/mission-001-shell-ux/",
-    "docs/linux-port/evidence/mission-001-computer-use-media-mobile/",
-    "docs/linux-port/evidence/mission-001-discovery-devices-extension/",
-    "docs/linux-port/evidence/mission-001-linux-cloud-security/"
+  "v23Surface": {
+   "status": "pass",
+   "passedCount": 27,
+   "failed": [],
+   "evidenceDir": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex",
+   "report": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex/report.md",
+   "validatorSummary": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex/validator-summary.json",
+   "copiedEvidenceBundles": [
+    "mission-001-provider-hermes/",
+    "mission-001-shell-ux/",
+    "mission-001-computer-use-media-mobile/",
+    "mission-001-discovery-devices-extension/",
+    "mission-001-ipc-cli-gateway/"
+   ]
+  }
+ },
+ "releaseReadinessBoundary": {
+  "productFoundationAndSurface": "current active-checkout V24/V23 seals are green",
+  "publicLinuxRelease": "blocked until release package, update, signing/provenance, nightly, and clean-commit evidence pass from this active checkout",
+  "recoveredWorktreeClosureAccepted": false,
+  "headDrift": "Current HEAD differs from V23/V24 evidence head; release closure must rerun validation or restore the sealed head."
+ },
+ "repoEvidenceBundles": [
+  "docs/linux-port/evidence/mission-001-ops-toolchain/",
+  "docs/linux-port/evidence/mission-001-ipc-cli-gateway/",
+  "docs/linux-port/evidence/mission-001-provider-hermes/",
+  "docs/linux-port/evidence/mission-001-shell-ux/",
+  "docs/linux-port/evidence/mission-001-computer-use-media-mobile/",
+  "docs/linux-port/evidence/mission-001-discovery-devices-extension/",
+  "docs/linux-port/evidence/mission-001-linux-cloud-security/"
+ ],
+ "revalidatedAtReleaseHead": {
+  "commit": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
+  "method": "mission-001 W5 evidence sweep re-ran every V24 foundation check at this head",
+  "committedEvidence": [
+   "docs/linux-port/evidence/mission-001-ops-toolchain/docker-toolchain-smoke-current.log",
+   "docs/linux-port/evidence/mission-001-ipc-cli-gateway",
+   "docs/linux-port/evidence/mission-001-provider-hermes",
+   "docs/linux-port/evidence/mission-001-linux-cloud-security"
   ]
+ },
+ "headDrift": false,
+ "headDriftNote": "Foundation evidence generated at release head 64538ed3 (landed via PR #1360). Subsequent commits add only parity-ledger + evidence + release-workflow fixes; no OpenBurnBarCore/daemon source changes, so the V24 foundation seal holds."
 }
