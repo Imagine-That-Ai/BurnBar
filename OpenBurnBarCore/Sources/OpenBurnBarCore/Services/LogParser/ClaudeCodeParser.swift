@@ -3,15 +3,15 @@ import OpenBurnBarCore
 
 // MARK: - Claude Code Parser
 
-final class ClaudeCodeParser: LogParser, Sendable {
-    let provider: AgentProvider = .claudeCode
+public final class ClaudeCodeParser: LogParser, Sendable {
+    public let provider: AgentProvider = .claudeCode
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
     private let cacheStore: ParserDiskCacheStore<ClaudeCodeCacheEntry>
     private let projectsDirectoryOverride: URL?
 
-    init(
+    public init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
         projectsDirectoryOverride: URL? = nil
@@ -29,11 +29,11 @@ final class ClaudeCodeParser: LogParser, Sendable {
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
-    func parse(options: LogParseOptions) async throws -> ParseResult {
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let projectsURL = projectsDirectoryOverride
             ?? URL(fileURLWithPath: (provider.logDirectory as NSString).expandingTildeInPath)
         let projectsPath = projectsURL.path
@@ -179,7 +179,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
         return ParseResult(usages: usages, conversations: conversations)
     }
 
-    func decodeProjectName(_ encoded: String) -> String {
+    public func decodeProjectName(_ encoded: String) -> String {
         let decoded = ClaudeCodeProjectPathCodec.decode(encoded)
         let path = decoded.displayPath
 
@@ -192,12 +192,12 @@ final class ClaudeCodeParser: LogParser, Sendable {
         }
 
         if decoded.style == .windows {
-            if path.lowercased().hasPrefix("c:\\users\\") {
-                let components = path.split(separator: "\\")
-                if components.count >= 3 {
-                    let rest = components.dropFirst(3).joined(separator: "\\")
-                    return rest.isEmpty ? "~" : "~\\" + rest
-                }
+            let components = path.split(separator: "\\")
+            if components.count >= 3,
+               components[0].hasSuffix(":"),
+               components[1].lowercased() == "users" {
+                let rest = components.dropFirst(3).joined(separator: "\\")
+                return rest.isEmpty ? "~" : "~\\" + rest
             }
         }
 
