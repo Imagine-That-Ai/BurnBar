@@ -1,0 +1,34 @@
+[
+  {
+    "destination" : "sentry_local_capture",
+    "eventCount" : 1,
+    "eventNames" : [
+      "linux_auth"
+    ],
+    "redactedProperties" : [
+      {
+        "cookie" : "[REDACTED]",
+        "email" : "[REDACTED]",
+        "path" : "[REDACTED]",
+        "prompt" : "[REDACTED]",
+        "token" : "[REDACTED]"
+      }
+    ]
+  },
+  {
+    "destination" : "amplitude_http_v2_local_capture",
+    "eventCount" : 1,
+    "eventNames" : [
+      "linux_auth"
+    ],
+    "redactedProperties" : [
+      {
+        "cookie" : "[REDACTED]",
+        "email" : "[REDACTED]",
+        "path" : "[REDACTED]",
+        "prompt" : "[REDACTED]",
+        "token" : "[REDACTED]"
+      }
+    ]
+  }
+]

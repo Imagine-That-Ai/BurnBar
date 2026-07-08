@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
@@ -759,7 +758,7 @@ public actor ComputerUseRunCoordinator {
     }
 
     private static func sha256Hex(data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        PlatformCrypto.sha256Hex(data)
     }
 
     private static func sha256Hex(string: String) -> String {

@@ -7,12 +7,27 @@
     "signOutRevoked" : "true",
     "tokenCustody" : "secret-service"
   },
+  "authProtocol" : [
+    "xdg-open",
+    "firebase_signInWithIdp",
+    "firebase_refresh_token_revocation"
+  ],
   "cloudSync" : {
     "allowedPath" : "users\/uid-123\/provider_accounts\/provider-1",
     "bolaDenied" : "true",
     "plaintextDenied" : "true",
     "watermarkAfterCommit" : "1800000001000"
   },
+  "cloudSyncLocalStaging" : [
+    "callable_owner_upload_allowed",
+    "rest_patch_transform_update",
+    "rules_owner_mismatch_denied",
+    "rules_plaintext_private_field_denied",
+    "listen_ws_remote_update",
+    "retry_backoff_before_commit",
+    "conflict_remote_newer_wins",
+    "watermark_after_commit"
+  ],
   "cloudSyncTrace" : [
     "owner_upload_allowed",
     "bola_denied",
@@ -22,15 +37,31 @@
   ],
   "membershipArtifacts" : [
     "membership-active.svg",
+    "membership-ui-screenshot-active.svg",
     "membership-cancelled.svg",
+    "membership-ui-screenshot-cancelled.svg",
     "membership-paymentFailed.svg",
-    "membership-offline.svg"
+    "membership-ui-screenshot-paymentFailed.svg",
+    "membership-offline.svg",
+    "membership-ui-screenshot-offline.svg"
+  ],
+  "membershipCacheUpdates" : [
+    "active:active:membership.entitlement_cache.updated",
+    "cancelled:cancelled:membership.entitlement_cache.updated",
+    "paymentFailed:paymentFailed:membership.entitlement_cache.updated",
+    "offline:offline:membership.entitlement_cache.updated"
   ],
   "membershipStates" : [
     "active",
     "cancelled",
     "paymentFailed",
     "offline"
+  ],
+  "redactionSurfaces" : [
+    "daemon_journal",
+    "provider_payload_trace",
+    "crash_error_report",
+    "release_evidence_log"
   ],
   "refusedPlaintextFallback" : true,
   "secretBackends" : [
@@ -49,6 +80,12 @@
     "local_auth_pin:plaintext_refused",
     "audit_signing_key:plaintext_refused"
   ],
+  "secretSetupStatuses" : [
+    "org.freedesktop.secrets:blocked",
+    "kwallet:test_command_fixture",
+    "systemd_credentials:fallback_supported",
+    "tpm2:blocked_optional_hardening"
+  ],
   "telemetry" : {
     "consentDeclinedEventCount" : "0",
     "grantedEmail" : "[REDACTED]",
@@ -65,5 +102,10 @@
       "linux_auth",
       "linux_auth"
     ]
+  },
+  "telemetryControls" : {
+    "countAfterDelete" : "0",
+    "disabledNoNewEvents" : "true",
+    "exportedEvents" : "1"
   }
 }

@@ -1,0 +1,153 @@
+.pet-surface {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.pet-stage {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color var(--motion-ease-standard), box-shadow var(--motion-ease-standard);
+}
+
+.pet-stage[data-pet-runtime='loaded'] {
+  border-style: solid;
+}
+
+.pet-stage--react-wave {
+  border-color: var(--color-mercury-bright);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-mercury-bright) 35%, transparent);
+}
+
+.pet-stage--react-wave-pulse {
+  animation: pet-stage-pulse 0.9s var(--motion-ease-standard) 2;
+}
+
+body.reduced-motion .pet-stage--react-wave-pulse {
+  animation: none;
+}
+
+@keyframes pet-stage-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-mercury-bright) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-mercury-bright) 18%, transparent);
+  }
+}
+
+.pet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.pet-wave-button {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-glass-line);
+  background: var(--color-glass-bg);
+  color: var(--color-text-base);
+  cursor: pointer;
+}
+
+.pet-wave-button:hover {
+  border-color: var(--color-mercury-core);
+}
+
+.pet-wave-button:focus-visible {
+  outline: 2px solid var(--color-mercury-bright);
+  outline-offset: 2px;
+}
+
+.pet-preview-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-mute);
+}
+
+.pet-section-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-bright);
+}
+
+.pet-behavior-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pet-behavior-svg {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  background: var(--color-ink-elevated);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+}
+
+.pet-graph-node-box {
+  fill: var(--color-glass-bg);
+  stroke: var(--color-glass-line);
+  stroke-width: 1;
+}
+
+.pet-graph-node--idle .pet-graph-node-box {
+  stroke: var(--color-mercury-core);
+}
+
+.pet-graph-node--react .pet-graph-node-box {
+  stroke: var(--color-brass-core);
+}
+
+.pet-graph-node--tier .pet-graph-node-box {
+  stroke: var(--color-tier-server-readable);
+}
+
+.pet-graph-node-label {
+  fill: var(--color-text-base);
+  font-family: var(--font-body);
+  font-size: 11px;
+}
+
+.pet-graph-edge {
+  stroke: var(--color-frost-line);
+  stroke-width: 1.5;
+}
+
+.pet-graph-arrowhead {
+  fill: var(--color-frost-line);
+}
+
+.pet-raw-toggle {
+  align-self: flex-start;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-glass-line);
+  background: transparent;
+  color: var(--color-text-mute);
+  cursor: pointer;
+}
+
+.pet-graph {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  background: var(--color-ink-elevated);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-glass-line);
+}

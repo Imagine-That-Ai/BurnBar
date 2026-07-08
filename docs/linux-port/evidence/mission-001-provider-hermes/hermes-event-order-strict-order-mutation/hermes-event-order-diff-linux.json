@@ -1,0 +1,357 @@
+{
+  "differences": [
+    {
+      "actual": [
+        {
+          "events": [
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 1,
+              "source": "daemon"
+            },
+            {
+              "kind": "tool.approval.required",
+              "phase": "awaiting_approval",
+              "seq": 2,
+              "source": "daemon"
+            },
+            {
+              "kind": "plan.generated",
+              "phase": "planning",
+              "seq": 3,
+              "source": "daemon"
+            },
+            {
+              "decision": "approve",
+              "kind": "tool.approval.recorded",
+              "phase": "awaiting_approval",
+              "seq": 4,
+              "source": "daemon"
+            },
+            {
+              "kind": "assistant.done",
+              "phase": "completed",
+              "seq": 5,
+              "source": "daemon",
+              "terminal": true
+            }
+          ],
+          "promptID": "hermes-prompt-approval",
+          "scenarioID": "prompt-tool-approval-done"
+        },
+        {
+          "events": [
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 1,
+              "source": "daemon"
+            },
+            {
+              "kind": "plan.generated",
+              "phase": "planning",
+              "seq": 2,
+              "source": "daemon"
+            },
+            {
+              "kind": "tool.approval.required",
+              "phase": "awaiting_approval",
+              "seq": 3,
+              "source": "daemon"
+            },
+            {
+              "kind": "run.cancel.requested",
+              "phase": "cancelling",
+              "seq": 4,
+              "source": "cli"
+            },
+            {
+              "kind": "assistant.cancelled",
+              "phase": "cancelled",
+              "seq": 5,
+              "source": "daemon",
+              "terminal": true
+            }
+          ],
+          "promptID": "hermes-prompt-cancel",
+          "scenarioID": "cancel-before-terminal"
+        },
+        {
+          "events": [
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 1,
+              "source": "daemon"
+            },
+            {
+              "kind": "plan.generated",
+              "phase": "planning",
+              "seq": 2,
+              "source": "daemon"
+            },
+            {
+              "kind": "assistant.error",
+              "phase": "failed",
+              "seq": 3,
+              "source": "daemon"
+            },
+            {
+              "kind": "run.retry.requested",
+              "phase": "retrying",
+              "seq": 4,
+              "source": "cli"
+            },
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 5,
+              "source": "daemon"
+            },
+            {
+              "kind": "plan.generated",
+              "phase": "planning",
+              "seq": 6,
+              "source": "daemon"
+            },
+            {
+              "kind": "assistant.done",
+              "phase": "completed",
+              "seq": 7,
+              "source": "daemon",
+              "terminal": true
+            }
+          ],
+          "promptID": "hermes-prompt-retry",
+          "scenarioID": "retry-after-error"
+        },
+        {
+          "events": [
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 1,
+              "source": "daemon"
+            },
+            {
+              "kind": "assistant.done",
+              "phase": "completed",
+              "seq": 2,
+              "source": "daemon",
+              "terminal": true
+            },
+            {
+              "kind": "run.persistence.checkpoint",
+              "phase": "completed",
+              "seq": 3,
+              "source": "daemon"
+            },
+            {
+              "kind": "run.list.readback",
+              "phase": "completed",
+              "seq": 4,
+              "source": "cli"
+            },
+            {
+              "kind": "run.get.readback",
+              "phase": "completed",
+              "seq": 5,
+              "source": "cli"
+            },
+            {
+              "kind": "run.poll.readback",
+              "phase": "completed",
+              "seq": 6,
+              "source": "cli"
+            }
+          ],
+          "promptID": "hermes-prompt-persistence",
+          "scenarioID": "persistence-list-readback"
+        }
+      ],
+      "expected": [
+        {
+          "events": [
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 1,
+              "source": "daemon"
+            },
+            {
+              "kind": "plan.generated",
+              "phase": "planning",
+              "seq": 2,
+              "source": "daemon"
+            },
+            {
+              "kind": "tool.approval.required",
+              "phase": "awaiting_approval",
+              "seq": 3,
+              "source": "daemon"
+            },
+            {
+              "decision": "approve",
+              "kind": "tool.approval.recorded",
+              "phase": "awaiting_approval",
+              "seq": 4,
+              "source": "daemon"
+            },
+            {
+              "kind": "assistant.done",
+              "phase": "completed",
+              "seq": 5,
+              "source": "daemon",
+              "terminal": true
+            }
+          ],
+          "promptID": "hermes-prompt-approval",
+          "scenarioID": "prompt-tool-approval-done"
+        },
+        {
+          "events": [
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 1,
+              "source": "daemon"
+            },
+            {
+              "kind": "plan.generated",
+              "phase": "planning",
+              "seq": 2,
+              "source": "daemon"
+            },
+            {
+              "kind": "tool.approval.required",
+              "phase": "awaiting_approval",
+              "seq": 3,
+              "source": "daemon"
+            },
+            {
+              "kind": "run.cancel.requested",
+              "phase": "cancelling",
+              "seq": 4,
+              "source": "cli"
+            },
+            {
+              "kind": "assistant.cancelled",
+              "phase": "cancelled",
+              "seq": 5,
+              "source": "daemon",
+              "terminal": true
+            }
+          ],
+          "promptID": "hermes-prompt-cancel",
+          "scenarioID": "cancel-before-terminal"
+        },
+        {
+          "events": [
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 1,
+              "source": "daemon"
+            },
+            {
+              "kind": "plan.generated",
+              "phase": "planning",
+              "seq": 2,
+              "source": "daemon"
+            },
+            {
+              "kind": "assistant.error",
+              "phase": "failed",
+              "seq": 3,
+              "source": "daemon"
+            },
+            {
+              "kind": "run.retry.requested",
+              "phase": "retrying",
+              "seq": 4,
+              "source": "cli"
+            },
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 5,
+              "source": "daemon"
+            },
+            {
+              "kind": "plan.generated",
+              "phase": "planning",
+              "seq": 6,
+              "source": "daemon"
+            },
+            {
+              "kind": "assistant.done",
+              "phase": "completed",
+              "seq": 7,
+              "source": "daemon",
+              "terminal": true
+            }
+          ],
+          "promptID": "hermes-prompt-retry",
+          "scenarioID": "retry-after-error"
+        },
+        {
+          "events": [
+            {
+              "kind": "prompt.accepted",
+              "phase": "planning",
+              "seq": 1,
+              "source": "daemon"
+            },
+            {
+              "kind": "assistant.done",
+              "phase": "completed",
+              "seq": 2,
+              "source": "daemon",
+              "terminal": true
+            },
+            {
+              "kind": "run.persistence.checkpoint",
+              "phase": "completed",
+              "seq": 3,
+              "source": "daemon"
+            },
+            {
+              "kind": "run.list.readback",
+              "phase": "completed",
+              "seq": 4,
+              "source": "cli"
+            },
+            {
+              "kind": "run.get.readback",
+              "phase": "completed",
+              "seq": 5,
+              "source": "cli"
+            },
+            {
+              "kind": "run.poll.readback",
+              "phase": "completed",
+              "seq": 6,
+              "source": "cli"
+            }
+          ],
+          "promptID": "hermes-prompt-persistence",
+          "scenarioID": "persistence-list-readback"
+        }
+      ],
+      "path": "$"
+    }
+  ],
+  "errors": [
+    "scenario prompt-tool-approval-done raw normalized kind order differs from source oracle: observed=prompt.accepted>tool.approval.required>plan.generated>tool.approval.recorded>assistant.done expected=prompt.accepted>plan.generated>tool.approval.required>tool.approval.recorded>assistant.done"
+  ],
+  "expectedChecksumSHA256": "af712a7b8536cc4100fdc67f08488bb0b248373aa13038f0965736af895b790f",
+  "expectedSource": "docs/linux-port/fixtures/hermes-event-order-source-oracle.json#scenarios",
+  "observedChecksumSHA256": "bdb9fe8c24613662ad92f13ea662c9134d12254689f3662f113f7f9cfec9c7d6",
+  "observedSequencing": "raw product ordinals sorted before seq assignment",
+  "observedSource": "hermes-run-journal.jsonl + hermes-run-checkpoints + cli-hermes-transcript.txt",
+  "platform": "linux",
+  "schema": "openburnbar-hermes-event-order-diff-v3",
+  "sourceFixture": "docs/linux-port/fixtures/hermes-event-order-source-oracle.json",
+  "status": "failed"
+}

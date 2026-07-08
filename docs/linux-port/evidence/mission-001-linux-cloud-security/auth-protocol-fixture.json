@@ -1,0 +1,58 @@
+{
+  "browserLaunch" : {
+    "custody" : "external_browser_no_embedded_webview",
+    "launcher" : "xdg-open",
+    "pkceMethod" : "S256",
+    "redirect" : "127.0.0.1:48175",
+    "urlHost" : "auth.openburnbar.test"
+  },
+  "firebaseRevocation" : {
+    "method" : "POST",
+    "name" : "firebase_refresh_token_revocation",
+    "requestBody" : {
+      "idToken" : "[REDACTED]",
+      "tokenBackend" : "secret-service",
+      "tokenTrustLevel" : "secret_service",
+      "validSince" : "1800000000"
+    },
+    "requestHeaders" : {
+      "content-type" : "application\/json"
+    },
+    "responseBody" : {
+      "localSessionCleared" : "true",
+      "remoteRevocationAttempted" : "true"
+    },
+    "responseStatus" : 200,
+    "url" : "https:\/\/identitytoolkit.googleapis.com\/v1\/accounts:update?key=firebase-api-key-fixture"
+  },
+  "firebaseSignInWithIdp" : {
+    "method" : "POST",
+    "name" : "firebase_signInWithIdp",
+    "requestBody" : {
+      "postBody" : "providerId=google.com&id_token=[REDACTED]",
+      "requestUri" : "http:\/\/127.0.0.1\/callback",
+      "returnIdpCredential" : "false",
+      "returnSecureToken" : "true"
+    },
+    "requestHeaders" : {
+      "content-type" : "application\/json"
+    },
+    "responseBody" : {
+      "expiresIn" : "3600",
+      "firebaseIdToken" : "[REDACTED]",
+      "providerId" : "google.com",
+      "refreshTokenCustody" : "SecretStore metadata only"
+    },
+    "responseStatus" : 200,
+    "url" : "https:\/\/identitytoolkit.googleapis.com\/v1\/accounts:signInWithIdp?key=firebase-api-key-fixture"
+  },
+  "stateMismatchRejected" : true,
+  "tokenCustodyMetadata" : {
+    "backend" : "secret-service",
+    "createdAtMillis" : 1800000000000,
+    "id" : "firebase-refresh-token",
+    "note" : "Secret resolved from secret-service; metadata is non-secret.",
+    "secretClass" : "refresh_token",
+    "trustLevel" : "secret_service"
+  }
+}

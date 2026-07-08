@@ -10,6 +10,8 @@ export function linuxSupportDir(): string {
 export function linuxSocketPath(): string {
   const override = process.env.OPENBURNBAR_SOCKET_PATH?.trim();
   if (override) return override;
+  const runtime = process.env.XDG_RUNTIME_DIR?.trim();
+  if (runtime) return join(runtime, 'openburnbar', 'daemon.sock');
   return join(linuxSupportDir(), 'openburnbar-daemon.sock');
 }
 
