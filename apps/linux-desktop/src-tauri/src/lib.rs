@@ -1143,6 +1143,22 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Installs the process-wide `tracing` subscriber for the desktop shell.
+///
+/// Idempotent: `try_init` returns `Err` if a global subscriber is already set,
+/// which we swallow, so calling this more than once (or alongside a host that
+/// already initialized tracing) is a safe no-op rather than a panic. Verbosity
+/// is controlled by the standard `RUST_LOG` env var (e.g.
+/// `RUST_LOG=openburnbar_linux_desktop=debug`); when unset it defaults to
+/// `info`.
+fn init_tracing() {
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // Discard the result: an existing subscriber (double-init) is not an error.
+    let _ = fmt().with_env_filter(filter).with_target(true).try_init();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Fast-exit CLI flags before booting the GUI: a GTK/WebKit app launched
@@ -1162,6 +1178,14 @@ pub fn run() {
             _ => {}
         }
     }
+
+    // Install the process-wide tracing subscriber so the remote stack's
+    // `tracing::info!/warn!` events (and Tauri/tao/wry diagnostics) actually go
+    // somewhere. Placed after the `--version`/`--help` fast-exit so probe output
+    // stays clean. Verbosity follows the standard `RUST_LOG` env var, defaulting
+    // to `info`; `try_init` makes a double-init (or a host that already set a
+    // subscriber) a no-op instead of a panic.
+    init_tracing();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

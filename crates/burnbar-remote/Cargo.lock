@@ -372,6 +372,8 @@ dependencies = [
  "burnbar-remote-media",
  "burnbar-remote-observability",
  "thiserror 1.0.69",
+ "tracing",
+ "tracing-subscriber",
  "uniffi",
 ]
 
