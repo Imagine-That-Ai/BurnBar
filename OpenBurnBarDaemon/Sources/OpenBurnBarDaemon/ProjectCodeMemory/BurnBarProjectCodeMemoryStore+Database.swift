@@ -171,10 +171,16 @@ extension BurnBarProjectCodeMemoryStore {
                 sectionPath TEXT,
                 text TEXT NOT NULL,
                 contentHash TEXT,
+                ftsRowid INTEGER,
                 createdAt TEXT NOT NULL,
                 updatedAt TEXT NOT NULL
             )
             """,
+            []
+        )
+        try ensureColumn(table: "search_chunks", column: "ftsRowid", definition: "INTEGER")
+        try execute(
+            "CREATE INDEX IF NOT EXISTS search_chunks_document_fts_rowid_idx ON search_chunks(documentID, ftsRowid)",
             []
         )
         try execute(
