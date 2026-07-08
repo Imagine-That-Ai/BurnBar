@@ -68,8 +68,9 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
         }
 
         if let quotaStatus = await quotaLookup(profile),
-           quotaStatus.hardBlocksLaunch,
-           isDepleted(quotaStatus.fiveHourRemainingPercent) || isDepleted(quotaStatus.weeklyRemainingPercent) {
+           quotaStatus.hardBlocksLaunch
+            || isDepleted(quotaStatus.fiveHourRemainingPercent)
+            || isDepleted(quotaStatus.weeklyRemainingPercent) {
             let reason = quotaStatus.statusMessage
                 ?? "\(profile.displayName) has no remaining quota in the current provider window."
             return .quotaExhausted(reason: reason)

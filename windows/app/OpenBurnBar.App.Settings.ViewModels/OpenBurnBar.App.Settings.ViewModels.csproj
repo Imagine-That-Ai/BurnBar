@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Settings view-models (Phase 3 · W7 · Settings lane, parity-100 wave).
+
+    This is the Windows peer of the per-tab macOS Settings view state:
+      AgentLens/Views/Settings/{ModelProxy,AlertsAndNotifications,TextExpansion,
+        Daemon,Account,CloudStore,DevicesAndSync}SettingsView.swift,
+      AgentLens/Views/ComputerUse/ComputerUseSettingsView.swift,
+      AgentLens/Views/Settings/SettingsView.swift (inline PetCompanionSettingsView),
+      AgentLens/Views/Settings/AgentsSettingsView.swift,
+      and their backing stores under AgentLens/Services/Settings/Stores/.
+
+    It targets plain net8.0 — NO Windows TFM, zero P/Invoke, zero UI framework —
+    on purpose: the SAME managed assembly the WinUI shell (net8.0-windows) links is
+    unit-tested on the macOS authoring host today (`dotnet test`). Mirrors the
+    already-proven OpenBurnBar.App.Settings / OpenBurnBar.App.Presentation portable
+    pattern: a higher-runtime test project (net10.0) references this net8.0 library,
+    and the WinUI app (net8.0-windows) references the very same library.
+
+    Everything OS/data-bound is behind an injectable seam (an interface declared
+    here); tests wire in-memory fakes, the WinUI shell wires the real Windows core.
+    The macOS settings model (state + actions + validation) is reproduced faithfully;
+    the WinUI XAML leaf pages that x:Bind these view-models are bucket-B / dev-host-
+    deferred at the XamlCompiler gate.
+
+    Feature cores backing these view-models (all portable net8.0, on main):
+      • windows/computeruse/OpenBurnBar.ComputerUse.Core   (Computer Use trust/mode enums)
+      • windows/app/OpenBurnBar.App.TextExpansion           (snippet model + trigger validator)
+      • windows/app/OpenBurnBar.App.ManagedAgentRuntime     (#1301 Hermes/Pi runtime status)
+      • windows/app/OpenBurnBar.App.CursorConnector         (#1303 Cursor/model-proxy config)
+      • windows/app/OpenBurnBar.App.Presentation            (quota snapshot + Budget domain)
+      • windows/app/OpenBurnBar.App.Settings                (SettingsTab + AgentProvider identity)
+
+    Account / Cloud / DevicesAndSync are data-gated: their live sign-in state comes
+    from the OAuth credential gate (#1304 DesktopOAuthCredentialsProvider.IsSignedIn /
+    FirebaseOAuthSession). This project models the seam (IAccountSessionGate etc.);
+    the WinUI host wires the real provider. Tests drive a fake signed-in state.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.Settings.ViewModels</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.Settings.ViewModels</AssemblyName>
+    <!--
+      Lets the net8.0 library be RESTORED/BUILT by the net10.0 SDK on macOS without
+      a Windows targeting pack. Pure managed library, so no Windows facet is needed.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenBurnBar.App.Settings\OpenBurnBar.App.Settings.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.Presentation\OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.TextExpansion\OpenBurnBar.App.TextExpansion.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.ManagedAgentRuntime\OpenBurnBar.App.ManagedAgentRuntime.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.CursorConnector\OpenBurnBar.App.CursorConnector.csproj" />
+    <ProjectReference Include="..\..\computeruse\OpenBurnBar.ComputerUse.Core\OpenBurnBar.ComputerUse.Core.csproj" />
+  </ItemGroup>
+
+</Project>

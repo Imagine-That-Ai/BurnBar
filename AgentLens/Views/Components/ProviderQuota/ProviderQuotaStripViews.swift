@@ -260,9 +260,9 @@ struct QuotaSourceBadge: View {
 
     private var foreground: Color {
         switch confidence {
-        case .exact: return DesignSystem.Colors.success
-        case .estimated: return DesignSystem.Colors.warning
-        case .unavailable: return DesignSystem.Colors.textMuted
+        case .high: return DesignSystem.Colors.success
+        case .medium: return DesignSystem.Colors.warning
+        case .low, .stale: return DesignSystem.Colors.textMuted
         }
     }
 

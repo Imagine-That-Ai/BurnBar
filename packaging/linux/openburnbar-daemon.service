@@ -1,0 +1,22 @@
+[Unit]
+Description=OpenBurnBar local daemon
+Documentation=https://github.com/Imagine-That-Ai/BurnBar
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/openburnbar-daemon --socket-path %t/openburnbar/daemon.sock --state-directory %h/.local/state/openburnbar
+Restart=on-failure
+RestartSec=5
+Environment=OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS=/usr/bin:/usr/local/bin:/opt/openburnbar/bin
+RuntimeDirectory=openburnbar
+StateDirectory=openburnbar
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/openburnbar %h/.cache/openburnbar %t/openburnbar
+
+[Install]
+WantedBy=default.target

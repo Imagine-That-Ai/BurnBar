@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Claude Code Project Path Fixture Format
 //

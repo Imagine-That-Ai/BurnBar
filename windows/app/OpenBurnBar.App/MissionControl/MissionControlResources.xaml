@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shared converter resources for the Mission Control surfaces. Merged into each mission
+  UserControl so the provider-accent, gauge-role, availability, and cost-tint converters are
+  declared once. Windows-only (the converters touch Microsoft.UI.Xaml); on macOS these are
+  Roslyn syntax-checked and the app build reaches the XamlCompiler gate.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:mc="using:OpenBurnBar.App.MissionControl"
+    xmlns:conv="using:OpenBurnBar.App.Converters">
+
+    <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+    <conv:NegatedBoolToVisibilityConverter x:Key="NegatedBoolToVisibility" />
+    <mc:MissionProviderBrushConverter x:Key="ProviderBrush" />
+    <mc:MissionGaugeRoleBrushConverter x:Key="GaugeRoleBrush" />
+    <mc:MissionAvailabilityBrushConverter x:Key="AvailabilityBrush" />
+    <mc:MissionCostElevatedBrushConverter x:Key="CostElevatedBrush" />
+    <mc:MissionProblemBrushConverter x:Key="ProblemBrush" />
+
+</ResourceDictionary>

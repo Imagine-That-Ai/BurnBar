@@ -36,6 +36,8 @@ private object CredentialTransferConstants {
     const val TOKEN_PREFIX = "obbct_v2"
     const val ENVELOPE_PART_COUNT = 4
     const val ENCRYPTED_PART_INDEX = 3
+    const val TOKEN_PART_COUNT = 3
+    const val SECRET_GROUP_SIZE = 4
 }
 
 internal data class ParsedCredentialTransferToken(
@@ -67,7 +69,7 @@ internal object CredentialTransferCrypto {
     fun formatTransferToken(transferId: String, secret: String): String {
         require(isValidTransferId(transferId)) { "Invalid transfer handle" }
         require(isValidTransferSecret(secret)) { "Invalid transfer secret" }
-        val groupedSecret = secret.chunked(4).joinToString("-")
+        val groupedSecret = secret.chunked(CredentialTransferConstants.SECRET_GROUP_SIZE).joinToString("-")
         return "${CredentialTransferConstants.TOKEN_PREFIX}.$transferId.$groupedSecret"
     }
 
@@ -79,7 +81,7 @@ internal object CredentialTransferCrypto {
         }
 
         val parts = trimmed.split(".")
-        require(parts.size == 3 && parts[0] == CredentialTransferConstants.TOKEN_PREFIX) {
+        require(parts.size == CredentialTransferConstants.TOKEN_PART_COUNT && parts[0] == CredentialTransferConstants.TOKEN_PREFIX) {
             "Invalid transfer token"
         }
         val transferId = parts[1]

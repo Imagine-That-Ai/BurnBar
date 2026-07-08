@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Google Cast integration for the OpenBurnBar Windows port
+    (Phase 4 · Integrations · Google Cast lane).
+
+    This is the DEPENDENCY-FREE, platform-agnostic half of the Cast feature: the
+    CASTV2 protobuf wire framing, the DNS-SD (_googlecast._tcp) mDNS record
+    parse/build, the receiver protocol state machine + payload builders, the
+    reconnect/recovery planner, the discovery merge/dedup, and the setup-wizard
+    state machine + view-model. It has NO Windows / WinUI dependency on purpose —
+    the SAME managed assembly is:
+      • referenced by the net8.0-windows adapter
+        (OpenBurnBar.Integrations.Cast.Windows), which supplies the real TLS
+        socket + live Dnssd browser behind interfaces, AND
+      • unit-tested on the macOS authoring host today via `dotnet test`
+        (windows/tests/integrations-cast), exactly the pattern already proven by
+        the Presentation / Switcher / Dashboard portable libraries.
+
+    Parity sources (macOS AgentLens/Services/Cast/):
+      • CastMessageFraming.swift            -> Protocol/CastMessage.cs + CastFraming.cs
+      • CastChannelClient.swift             -> Protocol/CastReceiverProtocol.cs
+                                               + Protocol/CastInboundRouter.cs
+                                               + Session/CastReceiverStateMachine.cs
+      • CastDevice.swift                    -> Model/CastDevice.cs
+      • CastDiscovery.swift                 -> Discovery/CastTxtRecord.cs
+                                               + Discovery/CastCapabilities.cs
+                                               + Discovery/CastDiscoveryMerge.cs
+                                               + Discovery/DnsWire.cs
+                                               + Discovery/CastMdnsAdvertisement.cs
+                                               + Discovery/DnsSdBrowseQuery.cs
+                                               + Discovery/ICastServiceBrowser.cs
+      • CastReconnectStrategy.swift         -> Session/CastReconnectPlanner.cs
+      • CastTLSConnection.swift             -> Session/ICastSocket.cs (the socket seam)
+      • CastWizardModel.swift               -> Wizard/CastWizardStateMachine.cs
+                                               + Wizard/CastWizardViewModel.cs
+      • HomeAssistantCastRecoveryClient.swift -> Recovery/HomeAssistantRecoveryPayload.cs
+
+    Targets net8.0 so the net8.0-windows adapter can reference it, while the
+    net10.0 test project can reference it too (a lower TFM is consumable by a
+    higher one). TreatWarningsAsErrors keeps the port honest.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Integrations.Cast</RootNamespace>
+    <AssemblyName>OpenBurnBar.Integrations.Cast</AssemblyName>
+  </PropertyGroup>
+
+</Project>

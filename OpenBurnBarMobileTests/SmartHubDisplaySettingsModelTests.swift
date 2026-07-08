@@ -2,6 +2,44 @@ import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
+/// A `Clock` whose `sleep` returns immediately. Injected as the model's
+/// `debounceClock` so debounce-persist tests advance time deterministically
+/// instead of racing the 300 ms debounce window against wall-clock
+/// `Task.sleep` waits (which flaked on slow CI simulators).
+private final class ImmediateClock: Clock, @unchecked Sendable {
+    struct Instant: InstantProtocol {
+        var offset: Duration = .zero
+
+        func advanced(by duration: Duration) -> Instant {
+            Instant(offset: offset + duration)
+        }
+
+        func duration(to other: Instant) -> Duration {
+            other.offset - offset
+        }
+
+        static func < (lhs: Instant, rhs: Instant) -> Bool {
+            lhs.offset < rhs.offset
+        }
+    }
+
+    private let lock = NSLock()
+    private var _now = Instant()
+
+    var now: Instant {
+        lock.withLock { _now }
+    }
+
+    var minimumResolution: Duration { .zero }
+
+    func sleep(until deadline: Instant, tolerance: Duration?) async throws {
+        try Task.checkCancellation()
+        lock.withLock {
+            if deadline > _now { _now = deadline }
+        }
+    }
+}
+
 @MainActor
 final class SmartHubDisplaySettingsModelTests: XCTestCase {
 
@@ -36,10 +74,11 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         let model = SmartHubDisplaySettingsModel(
             enabled: true,
             initialConfig: .default,
-            operations: ops
+            operations: ops,
+            debounceClock: ImmediateClock()
         )
         model.updatePalette(.mercury)
-        try? await Task.sleep(nanoseconds: 400_000_000) // past 300ms debounce
+        await model.flushPendingPersist()
         XCTAssertEqual(ops.lastConfig?.palette, .mercury)
     }
 
@@ -48,10 +87,11 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         let model = SmartHubDisplaySettingsModel(
             enabled: true,
             initialConfig: .default,
-            operations: ops
+            operations: ops,
+            debounceClock: ImmediateClock()
         )
         model.updateTheme(.botanicalCream)
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        await model.flushPendingPersist()
         XCTAssertEqual(ops.lastConfig?.theme, .botanicalCream)
     }
 
@@ -60,12 +100,13 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         let model = SmartHubDisplaySettingsModel(
             enabled: true,
             initialConfig: .default,
-            operations: ops
+            operations: ops,
+            debounceClock: ImmediateClock()
         )
         model.updatePalette(.mercury)
         model.updatePalette(.mercury)
         model.updatePalette(.mercury)
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        await model.flushPendingPersist()
         XCTAssertEqual(ops.lastConfig?.palette, .mercury)
     }
 
@@ -101,10 +142,11 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         let model = SmartHubDisplaySettingsModel(
             enabled: true,
             initialConfig: .default,
-            operations: ops
+            operations: ops,
+            debounceClock: ImmediateClock()
         )
         model.updateAudibleCue(true)
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        await model.flushPendingPersist()
         XCTAssertEqual(ops.lastConfig?.audibleCue, true)
     }
 
@@ -113,10 +155,11 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         let model = SmartHubDisplaySettingsModel(
             enabled: true,
             initialConfig: .default,
-            operations: ops
+            operations: ops,
+            debounceClock: ImmediateClock()
         )
         model.updateIdentifyOnRefresh(true)
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        await model.flushPendingPersist()
         XCTAssertEqual(ops.lastConfig?.identifyOnRefresh, true)
     }
 

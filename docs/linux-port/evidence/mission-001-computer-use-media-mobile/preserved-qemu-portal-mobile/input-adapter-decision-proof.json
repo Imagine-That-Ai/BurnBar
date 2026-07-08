@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-07-04T14:33:04.403Z",
+  "target": "VAL-CU-002",
+  "selectedAdapter": "at-spi2",
+  "rejectedAdapters": [
+    {
+      "adapter": "x11-xtest",
+      "reason": "fallback-only; not accepted for this proof"
+    },
+    {
+      "adapter": "libei/RemoteDesktop",
+      "reason": "not exposed by the accepted wlr stack in current artifacts"
+    },
+    {
+      "adapter": "uinput",
+      "reason": "not selected; AT-SPI2 produced visible target proof without privileged device injection"
+    }
+  ],
+  "atSpiProof": "wayland-atspi-input-adapter-proof.json",
+  "productAuditBinding": "product-input-adapter-audit.json",
+  "passed": true
+}

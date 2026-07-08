@@ -14,6 +14,8 @@ import com.openburnbar.MainActivity
 import kotlinx.coroutines.tasks.await
 
 private const val INCOMING_CALL_CONTEXT_COLLECTION = "incoming_call_contexts"
+private const val MAX_CORRELATION_ID_LENGTH = 128
+private const val MAX_ROUTING_ID_LENGTH = 160
 
 internal data class IncomingCallRouting(
     val connectionId: String,
@@ -152,7 +154,7 @@ private suspend fun resolveIncomingCallContextConnectionId(rawCorrelationId: Str
 
 private fun normalizedCorrelationId(value: String?): String? {
     val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    if (normalized.length > 128) return null
+    if (normalized.length > MAX_CORRELATION_ID_LENGTH) return null
     if (normalized.contains("/")) return null
     if (CONTROL_OR_BIDI_REGEX.containsMatchIn(normalized)) return null
     return normalized
@@ -160,7 +162,7 @@ private fun normalizedCorrelationId(value: String?): String? {
 
 private fun normalizedRoutingId(value: String?): String? {
     val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    if (normalized.length > 160) return null
+    if (normalized.length > MAX_ROUTING_ID_LENGTH) return null
     if (CONTROL_OR_BIDI_REGEX.containsMatchIn(normalized)) return null
     return normalized
 }

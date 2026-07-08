@@ -160,7 +160,7 @@ struct ProviderDashboardQuotaPanel: View {
                 }
 
                 if let active = activeSnapshot ?? snapshot {
-                    QuotaSourceBadge(source: active.source, confidence: active.confidence)
+                    QuotaSourceBadge(source: active.sourceKind, confidence: active.confidence)
                 }
             }
         }

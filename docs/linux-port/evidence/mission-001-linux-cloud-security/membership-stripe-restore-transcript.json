@@ -1,0 +1,32 @@
+[
+  {
+    "checkoutSurface" : "stripe_web_checkout_or_portal",
+    "entitlementID" : "ent_linux_active",
+    "source" : "stripe_checkout",
+    "state" : "active",
+    "uid" : "active",
+    "visualArtifact" : "membership-active.svg"
+  },
+  {
+    "checkoutSurface" : "stripe_web_checkout_or_portal",
+    "entitlementID" : "ent_linux_cancelled",
+    "source" : "stripe_checkout",
+    "state" : "cancelled",
+    "uid" : "cancelled",
+    "visualArtifact" : "membership-cancelled.svg"
+  },
+  {
+    "checkoutSurface" : "stripe_web_checkout_or_portal",
+    "source" : "stripe_checkout",
+    "state" : "paymentFailed",
+    "uid" : "paymentFailed",
+    "visualArtifact" : "membership-paymentFailed.svg"
+  },
+  {
+    "checkoutSurface" : "stripe_web_checkout_or_portal",
+    "source" : "stripe_checkout",
+    "state" : "offline",
+    "uid" : "offline",
+    "visualArtifact" : "membership-offline.svg"
+  }
+]

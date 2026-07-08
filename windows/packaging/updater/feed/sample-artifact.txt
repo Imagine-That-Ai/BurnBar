@@ -1,0 +1,11 @@
+OpenBurnBar Windows updater — SAMPLE artifact fixture.
+
+This deterministic text file stands in for a real installer artifact
+(OpenBurnBar-Setup-<version>.msix) so the committed sample feed
+(appcast-windows.xml + latest-windows.json) carries a REAL Ed25519 signature
+and SHA-256 over concrete bytes, verifiable by the portable updater core.
+
+At release time this is replaced by the actual signed MSIX; here it exists only
+so the committed sample is a genuine, pin-verifiable feed rather than a
+decorative template. Do not edit — the committed feed's length / sha256 /
+edSignature are computed over these exact bytes.

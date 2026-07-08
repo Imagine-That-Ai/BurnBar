@@ -99,6 +99,9 @@ extension ThreadSafeISO8601DateFormatter {
     /// Both formatters are configured once at init and never mutated afterwards;
     /// every parse still happens under the lock because `ISO8601DateFormatter`
     /// is not documented as thread-safe.
+    ///
+    /// ISO8601DateFormatter is not thread-safe; all access runs under a lock.
+    /// sendable-allowlist: locked-formatter-cache
     private final class SyncFormatterCache: @unchecked Sendable {
         // `ISO8601DateFormatter` is not Sendable and is not documented as
         // thread-safe for concurrent parsing, so every parse runs under a lock.

@@ -1,4 +1,5 @@
 import XCTest
+import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -27,6 +28,7 @@ final class BudgetGateMattersTests: XCTestCase {
 
         var rules: [BudgetRule] { allRules }
         var globalRules: [BudgetRule] { allRules.filter { $0.scope == .global } }
+        var organizationRules: [BudgetRule] { allRules.filter { $0.scope == .organization } }
 
         func rules(forCredential providerID: String, accountID: String?) -> [BudgetRule] {
             allRules.filter {
@@ -85,37 +87,78 @@ final class BudgetGateMattersTests: XCTestCase {
         amountUSD: Double = 50,
         providerID: String? = "openrouter",
         accountID: String? = "slot-1",
-        projectName: String? = nil
+        projectName: String? = nil,
+        fallbackCredentialIDs: [String] = [],
+        identifier: String? = nil,
+        label: String = "Test rule",
+        isEnabled: Bool = true
     ) -> BudgetRule {
         BudgetRule(
             id: "rule-\(UUID().uuidString)",
             scope: scope,
+            identifier: identifier,
             providerID: providerID,
             accountID: accountID,
             projectName: projectName,
-            label: "Test rule",
+            label: label,
             amountUSD: amountUSD,
             period: .month,
             behavior: behavior,
-            isEnabled: true
+            fallbackCredentialIDs: fallbackCredentialIDs,
+            isEnabled: isEnabled
         )
     }
 
     private func credential(
         billingMode: BudgetBillingMode = .perUsage,
         providerID: String = "openrouter",
-        slotID: String = "slot-1"
+        slotID: String = "slot-1",
+        displayLabel: String = "Test credential",
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
     ) -> BudgetCredentialIdentity {
         BudgetCredentialIdentity(
             providerID: providerID,
             slotID: slotID,
-            displayLabel: "Test credential",
+            displayLabel: displayLabel,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel,
             billingMode: billingMode
         )
     }
 
     private func makeGate(rules: [BudgetRule], ledger: StubLedger) -> BudgetGate {
         BudgetGate(ruleProvider: FakeRuleProvider(rules: rules), ledger: ledger, warningThreshold: 0.8)
+    }
+
+    private func makeMigratedQueue() throws -> DatabaseQueue {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true)
+        return queue
+    }
+
+    private func insertUsage(
+        into queue: DatabaseQueue,
+        cost: Double,
+        at startTime: Date,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
+    ) async throws {
+        let store = UsageStore(dbQueue: queue)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "budget-gate-\(UUID().uuidString)",
+            projectName: "BudgetGateTest",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: cost,
+            startTime: startTime,
+            endTime: startTime,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel
+        )
+        try await store.insert(usage)
     }
 
     // MARK: - Fail CLOSED: a failed ledger read must not let a request through
@@ -145,18 +188,390 @@ final class BudgetGateMattersTests: XCTestCase {
         guard case .block = decision else {
             XCTFail("Expected .block on unreadable ledger, got \(decision)"); return
         }
-        }
+    }
 
     func test_hardBlockWithFallback_ledgerReadFails_failsClosedToBlock() async {
-        let blocking = rule(behavior: .hardBlockWithFallback)
-        let gate = makeGate(rules: [blocking], ledger: StubLedger(.throwsError))
+        let fallbackRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "anthropic",
+            accountID: "cheap-slot"
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            fallbackCredentialIDs: [fallbackRule.id]
+        )
+        let gate = makeGate(rules: [blocking, fallbackRule], ledger: StubLedger(.throwsError))
 
         let decision = await gate.evaluate(credential: credential(), estimatedCost: 1.0)
 
-        guard case .block = decision else {
+        guard case .block(_, _, _, let fallback) = decision else {
             XCTFail("Expected .block on unreadable ledger, got \(decision)"); return
         }
+        XCTAssertNil(fallback, "Unreadable fallback spend must not be promoted")
+    }
+
+    // MARK: - Phase 4B: hard-block fallback resolution
+
+    func test_hardBlockWithFallback_overBudget_resolvesConfiguredFallbackCredential() async {
+        let fallbackRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "anthropic",
+            accountID: "cheap-slot"
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            fallbackCredentialIDs: [fallbackRule.id]
+        )
+        let gate = makeGate(rules: [blocking, fallbackRule], ledger: StubLedger(.returns(50.0)))
+
+        let decision = await gate.evaluate(credential: credential(), estimatedCost: 1.0)
+
+        guard case .block(let rule, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with fallback, got \(decision)"); return
         }
+        XCTAssertEqual(rule.id, blocking.id)
+        XCTAssertEqual(fallback.providerID, "anthropic")
+        XCTAssertEqual(fallback.slotID, "cheap-slot")
+        XCTAssertEqual(fallback.displayLabel, fallbackRule.displayLabel)
+        XCTAssertEqual(fallback.billingMode, .unknown)
+    }
+
+    func test_hardBlockWithFallback_skipsMissingNonCredentialAndDisabledFallbacks() async {
+        let projectRule = rule(
+            scope: .project,
+            behavior: .warnThenBlock,
+            providerID: nil,
+            accountID: nil,
+            projectName: "demo"
+        )
+        let disabledRule = rule(
+            behavior: .warnThenBlock,
+            providerID: "xai",
+            accountID: "disabled-slot",
+            isEnabled: false
+        )
+        let viableRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "openai",
+            accountID: "fallback-slot"
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            fallbackCredentialIDs: ["missing", projectRule.id, disabledRule.id, viableRule.id]
+        )
+        let gate = makeGate(
+            rules: [blocking, projectRule, disabledRule, viableRule],
+            ledger: StubLedger(.returns(50.0))
+        )
+
+        let decision = await gate.evaluate(credential: credential(), estimatedCost: 1.0)
+
+        guard case .block(_, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with resolved viable fallback, got \(decision)"); return
+        }
+        XCTAssertEqual(fallback.providerID, "openai")
+        XCTAssertEqual(fallback.slotID, "fallback-slot")
+    }
+
+    func test_hardBlockWithFallback_skipsFallbackWhoseOwnCapWouldBlock() async {
+        let exhaustedRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 25,
+            providerID: "anthropic",
+            accountID: "exhausted-slot"
+        )
+        let viableRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "openai",
+            accountID: "fallback-slot"
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            fallbackCredentialIDs: [exhaustedRule.id, viableRule.id]
+        )
+        let ledger = StubLedger(
+            .returns(0),
+            perRule: [
+                blocking.id: .returns(50.0),
+                exhaustedRule.id: .returns(25.0),
+                viableRule.id: .returns(2.0)
+            ]
+        )
+        let gate = makeGate(rules: [blocking, exhaustedRule, viableRule], ledger: ledger)
+
+        let decision = await gate.evaluate(credential: credential(), estimatedCost: 1.0)
+
+        guard case .block(_, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with viable fallback, got \(decision)"); return
+        }
+        XCTAssertEqual(fallback.providerID, "openai")
+        XCTAssertEqual(fallback.slotID, "fallback-slot")
+    }
+
+    func test_hardBlockWithFallback_skipsFallbackBlockedByAnotherMatchingRule() async {
+        let fallbackRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "anthropic",
+            accountID: "shared-slot"
+        )
+        let siblingBlocker = rule(
+            behavior: .hardBlock,
+            amountUSD: 5,
+            providerID: "anthropic",
+            accountID: "shared-slot"
+        )
+        let viableRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "openai",
+            accountID: "fallback-slot"
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            fallbackCredentialIDs: [fallbackRule.id, viableRule.id]
+        )
+        let ledger = StubLedger(
+            .returns(0),
+            perRule: [
+                blocking.id: .returns(50.0),
+                fallbackRule.id: .returns(1.0),
+                siblingBlocker.id: .returns(5.0),
+                viableRule.id: .returns(2.0)
+            ]
+        )
+        let gate = makeGate(
+            rules: [blocking, fallbackRule, siblingBlocker, viableRule],
+            ledger: ledger
+        )
+
+        let decision = await gate.evaluate(credential: credential(), estimatedCost: 1.0)
+
+        guard case .block(_, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with viable fallback, got \(decision)"); return
+        }
+        XCTAssertEqual(fallback.providerID, "openai")
+        XCTAssertEqual(fallback.slotID, "fallback-slot")
+    }
+
+    func test_hardBlockWithFallback_returnsNilWhenGlobalRuleBlocksFallback() async {
+        let fallbackRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "anthropic",
+            accountID: "cheap-slot"
+        )
+        let globalBlocker = rule(
+            scope: .global,
+            behavior: .hardBlock,
+            amountUSD: 5,
+            providerID: nil,
+            accountID: nil
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            fallbackCredentialIDs: [fallbackRule.id]
+        )
+        let ledger = StubLedger(
+            .returns(0),
+            perRule: [
+                blocking.id: .returns(50.0),
+                fallbackRule.id: .returns(1.0),
+                globalBlocker.id: .returns(5.0)
+            ]
+        )
+        let gate = makeGate(rules: [blocking, fallbackRule, globalBlocker], ledger: ledger)
+
+        let decision = await gate.evaluate(credential: credential(), estimatedCost: 1.0)
+
+        guard case .block(_, _, _, let fallback) = decision else {
+            XCTFail("Expected .block without fallback, got \(decision)"); return
+        }
+        XCTAssertNil(fallback)
+    }
+
+    func test_fallbackWithExplicitAccountResolvesWhenBlockingRuleHasEmptyAccount() async {
+        // The blocking rule targets the provider's default slot (empty accountID — synced
+        // rules can carry "" where the editor stores nil). The self-exclusion comparison
+        // normalizes BOTH sides to "default", so a candidate with an explicit, different
+        // account must stay eligible as a fallback (audit wave 4, item 5).
+        let fallbackRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "openrouter",
+            accountID: "backup-slot"
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            providerID: "openrouter",
+            accountID: "",
+            fallbackCredentialIDs: [fallbackRule.id]
+        )
+        let ledger = StubLedger(
+            .returns(0),
+            perRule: [blocking.id: .returns(50.0)]
+        )
+        let gate = makeGate(rules: [blocking, fallbackRule], ledger: ledger)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openrouter",
+                slotID: "",
+                displayLabel: "OpenRouter default",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(let rule, _, _, let fallback?) = decision else {
+            XCTFail("Expected .block with explicit-account fallback, got \(decision)"); return
+        }
+        XCTAssertEqual(rule.id, blocking.id)
+        XCTAssertEqual(fallback.providerID, "openrouter")
+        XCTAssertEqual(fallback.slotID, "backup-slot")
+    }
+
+    func test_fallbackSelfExcludedWhenBothRulesTargetDefaultSlot() async {
+        // Candidate carries a whitespace-only accountID, the blocking rule "" — after
+        // trim+default normalization they are the SAME default slot, so the gate must
+        // never offer the blocked credential as its own fallback (audit wave 4, item 5).
+        let candidateRule = rule(
+            behavior: .warnThenBlock,
+            amountUSD: 100,
+            providerID: "openrouter",
+            accountID: "  "
+        )
+        let blocking = rule(
+            behavior: .hardBlockWithFallback,
+            amountUSD: 50,
+            providerID: "openrouter",
+            accountID: "",
+            fallbackCredentialIDs: [candidateRule.id]
+        )
+        let ledger = StubLedger(
+            .returns(0),
+            perRule: [blocking.id: .returns(50.0)]
+        )
+        let gate = makeGate(rules: [blocking, candidateRule], ledger: ledger)
+
+        let decision = await gate.evaluate(
+            credential: BudgetCredentialIdentity(
+                providerID: "openrouter",
+                slotID: "",
+                displayLabel: "OpenRouter default",
+                billingMode: .perUsage
+            ),
+            estimatedCost: 1.0
+        )
+
+        guard case .block(let rule, _, _, let fallback) = decision else {
+            XCTFail("Expected .block, got \(decision)"); return
+        }
+        XCTAssertEqual(rule.id, blocking.id)
+        XCTAssertNil(fallback, "A default-slot candidate must be excluded as its own fallback")
+    }
+
+    func test_matchingOrganizationRuleIsEvaluatedForCredentialLabel() async {
+        let organization = rule(
+            scope: .organization,
+            behavior: .hardBlock,
+            amountUSD: 50,
+            providerID: nil,
+            accountID: nil,
+            identifier: "Acme Org",
+            label: "Acme Org"
+        )
+        let gate = makeGate(rules: [organization], ledger: StubLedger(.returns(49)))
+
+        let decision = await gate.evaluate(
+            credential: credential(slotID: "acct-a", displayLabel: "Acme Org"),
+            estimatedCost: 2
+        )
+
+        guard case .block(let rule, let used, let limit, _) = decision else {
+            XCTFail("Expected matching organization rule to block, got \(decision)"); return
+        }
+        XCTAssertEqual(rule.id, organization.id)
+        XCTAssertEqual(used, 49)
+        XCTAssertEqual(limit, 50)
+    }
+
+    func test_accountLabelOrganizationRuleBlocksWhenGatewayLabelIsHost() async throws {
+        let now = Date()
+        let queue = try makeMigratedQueue()
+        try await insertUsage(
+            into: queue,
+            cost: 49,
+            at: now,
+            providerAccountID: "acct-a",
+            providerAccountLabel: "Acme Org"
+        )
+
+        let organization = rule(
+            scope: .organization,
+            behavior: .hardBlock,
+            amountUSD: 50,
+            providerID: nil,
+            accountID: nil,
+            identifier: "Acme Org",
+            label: "Acme Org"
+        )
+        let gate = BudgetGate(
+            ruleProvider: FakeRuleProvider(rules: [organization]),
+            ledger: BudgetLedger(dbQueue: queue),
+            warningThreshold: 0.8
+        )
+
+        let decision = await gate.evaluate(
+            credential: credential(slotID: "hashed-api-key", displayLabel: "api.openai.com"),
+            estimatedCost: 2,
+            reference: now.addingTimeInterval(60)
+        )
+
+        guard case .block(let rule, let used, let limit, _) = decision else {
+            XCTFail("Expected account-label organization rule to block with host display label, got \(decision)"); return
+        }
+        XCTAssertEqual(rule.id, organization.id)
+        XCTAssertEqual(used, 49, accuracy: 0.0001)
+        XCTAssertEqual(limit, 50, accuracy: 0.0001)
+    }
+
+    func test_nonMatchingOrganizationRuleIsIgnored() async {
+        let organization = rule(
+            scope: .organization,
+            behavior: .hardBlock,
+            amountUSD: 50,
+            providerID: nil,
+            accountID: nil,
+            identifier: "Acme Org",
+            label: "Acme Org"
+        )
+        let ledger = StubLedger(.throwsError)
+        let gate = makeGate(rules: [organization], ledger: ledger)
+
+        let decision = await gate.evaluate(
+            credential: credential(
+                slotID: "acct-other",
+                displayLabel: "Other Org",
+                providerAccountLabel: "Other Org"
+            ),
+            estimatedCost: 100
+        )
+
+        XCTAssertEqual(decision, .allow)
+        let reads = await ledger.reads()
+        XCTAssertEqual(reads, 0)
+    }
 
     // MARK: - Fail CLOSED but honor the non-blocking contract for .warnOnly
 

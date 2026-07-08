@@ -68,19 +68,36 @@ class AgentCapabilityGrantController(
             )
 
         if (deliveryMode != AgentGrantDeliveryMode.QUEUED) {
-            try {
-                val sender = ensurePhoneControlSender(uid = uid, sourceDeviceId = sourceDeviceId)
-                sender.send(agentGrant = request)
-                return remember(request.pendingReceipt("Sent to your Mac."))
-            } catch (error: FirebaseException) {
-                if (deliveryMode == AgentGrantDeliveryMode.LIVE) throw error
-            } catch (error: GrantError.NoPairedMac) {
-                if (deliveryMode == AgentGrantDeliveryMode.LIVE) throw error
-            }
+            sendLive(uid = uid, sourceDeviceId = sourceDeviceId, request = request, deliveryMode = deliveryMode)
+                ?.let { return it }
         }
 
         queue(uid = uid, request = request)
         return remember(request.pendingReceipt("Mac was unreachable, so this was queued for 5 minutes."))
+    }
+
+    /**
+     * Attempt the live phone-control send. Returns the receipt on success,
+     * null when the failure should fall back to the queue, and rethrows when
+     * the caller demanded live-only delivery.
+     */
+    private suspend fun sendLive(
+        uid: String,
+        sourceDeviceId: String,
+        request: AgentCapabilityGrantRequest,
+        deliveryMode: AgentGrantDeliveryMode,
+    ): AgentCapabilityGrantReceipt? {
+        return try {
+            val sender = ensurePhoneControlSender(uid = uid, sourceDeviceId = sourceDeviceId)
+            sender.send(agentGrant = request)
+            remember(request.pendingReceipt("Sent to your Mac."))
+        } catch (error: FirebaseException) {
+            if (deliveryMode == AgentGrantDeliveryMode.LIVE) throw error
+            null
+        } catch (error: GrantError.NoPairedMac) {
+            if (deliveryMode == AgentGrantDeliveryMode.LIVE) throw error
+            null
+        }
     }
 
     suspend fun sendSystemPermissionRequest(request: PhoneControlSystemPermissionRequest): HermesRealtimeRelaySystemPermissionRequest {

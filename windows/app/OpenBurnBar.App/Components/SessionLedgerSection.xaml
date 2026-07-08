@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Components.SessionLedgerSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of AgentLens/Views/Components/SessionLedgerSection.swift — the searchable,
+      time-bucketed session list. Search matching, bucketing, and grouping all run through the
+      parity-tested SessionLedgerSupport / SessionLedgerBucketExtensions; the grouped rows are
+      built in code-behind. Group-by is a segmented Hour/Day/Week/Month control. Tapping a row
+      raises SessionSelected.
+    -->
+    <StackPanel Spacing="16">
+
+        <!-- Heading. -->
+        <StackPanel Spacing="4">
+            <TextBlock Text="Session Ledger"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            <TextBlock x:Name="Caption"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+        </StackPanel>
+
+        <!-- Empty ledger. -->
+        <TextBlock x:Name="EmptyLedger"
+                   Visibility="Collapsed"
+                   FontSize="12"
+                   Text="No sessions recorded yet."
+                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+
+        <!-- Controls. -->
+        <StackPanel x:Name="Controls" Spacing="12">
+            <Grid ColumnSpacing="8"
+                  Padding="12,10"
+                  CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                  Background="{StaticResource PensieveColorInkElevatedBrush}"
+                  BorderThickness="0.5"
+                  BorderBrush="{StaticResource PensieveColorGlassLineBrush}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <FontIcon Grid.Column="0"
+                          FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                          Glyph="&#xE721;"
+                          FontSize="13"
+                          VerticalAlignment="Center"
+                          Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <TextBox x:Name="SearchBox"
+                         Grid.Column="1"
+                         PlaceholderText="Search path, model, session…"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         TextChanged="OnSearchChanged" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <TextBlock Text="Group by"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <StackPanel x:Name="GroupByHost"
+                            Orientation="Horizontal"
+                            Spacing="0"
+                            Padding="3"
+                            CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                            Background="{StaticResource PensieveColorInkElevatedBrush}" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Grouped rows (built in code-behind). -->
+        <StackPanel x:Name="GroupsHost" Spacing="16" />
+
+        <!-- No-match state. -->
+        <TextBlock x:Name="NoMatches"
+                   Visibility="Collapsed"
+                   FontSize="12"
+                   Text="No matches. Try another path fragment, model name, or session id."
+                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+    </StackPanel>
+</UserControl>

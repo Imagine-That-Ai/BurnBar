@@ -1,5 +1,4 @@
 import XCTest
-import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// Behavioral coverage for the formerly-silent `try?` error-swallows in
@@ -98,7 +97,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         let home = uniqueTempURL(suffix: "-home")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
 
-        let parser = CodexParser(
+        let parser = OpenBurnBar.CodexParser(
             fileManager: .default,
             appPaths: paths,
             homeDirectoryURL: home
