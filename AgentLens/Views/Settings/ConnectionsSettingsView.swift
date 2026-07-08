@@ -1277,7 +1277,7 @@ struct ConnectionsSettingsView: View {
             isCurrentLogin: account.isCurrentLogin,
             hasQuotaWindows: !quotaWindows(for: account).isEmpty,
             authConnected: authInfo.map(isExternalAuthConnected),
-            snapshotSource: snapshot?.source,
+            snapshotSource: snapshot?.sourceKind,
             snapshotConfidence: snapshot?.confidence
         )
 

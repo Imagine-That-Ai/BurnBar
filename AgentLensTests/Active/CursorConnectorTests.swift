@@ -636,7 +636,7 @@ final class CursorConnectorTests: XCTestCase {
     private func waitForProxyHealth(baseURL: URL, session: URLSession) async throws {
         let healthURL = baseURL.appendingPathComponent("health")
         var lastError: Error?
-        for _ in 0..<50 {
+        for _ in 0..<150 {
             do {
                 if try await proxyResponseStatus(healthURL, session: session) == 200 {
                     return

@@ -46,6 +46,10 @@ class MediaFileTransferService(
         const val APPLE_REFERENCE_EPOCH_OFFSET_SECONDS = 978_307_200.0
         const val SAFE_NAME_PREFIX_LENGTH = 48
         const val MAX_EXTENSION_LENGTH = 16
+        const val MIN_VISIBLE_CHARACTER_CODE = 0x20
+        const val DELETE_CHARACTER_CODE = 0x7f
+        const val BYTE_MASK = 0xff
+        const val HEX_RADIX = 16
         val PARENT_DIRECTORY_MARKER = Regex("\\.{2,}")
     }
 
@@ -235,13 +239,13 @@ class MediaFileTransferService(
     }
 
     private fun containsControlCharacter(value: String): Boolean {
-        return value.any { it == '\u0000' || it.code < 0x20 || it.code == 0x7f }
+        return value.any { it == '\u0000' || it.code < MIN_VISIBLE_CHARACTER_CODE || it.code == DELETE_CHARACTER_CODE }
     }
 
     private fun sha256Hex(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         return digest.joinToString(separator = "") { byte ->
-            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+            (byte.toInt() and BYTE_MASK).toString(HEX_RADIX).padStart(2, '0')
         }
     }
 

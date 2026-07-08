@@ -125,7 +125,7 @@ struct SettingsHomeView: View {
 
             LazyVGrid(columns: [
                 GridItem(.flexible(), spacing: DesignSystem.Spacing.sm),
-                GridItem(.flexible(), spacing: DesignSystem.Spacing.sm),
+                GridItem(.flexible(), spacing: DesignSystem.Spacing.sm)
             ], spacing: DesignSystem.Spacing.sm) {
                 statusCard(
                     title: "Daemon",
@@ -224,7 +224,7 @@ struct SettingsHomeView: View {
 
             LazyVGrid(columns: [
                 GridItem(.flexible(), spacing: DesignSystem.Spacing.sm),
-                GridItem(.flexible(), spacing: DesignSystem.Spacing.sm),
+                GridItem(.flexible(), spacing: DesignSystem.Spacing.sm)
             ], spacing: DesignSystem.Spacing.sm) {
                 taskCard(
                     title: "Add an Account",

@@ -1,0 +1,106 @@
+.provider-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-glass-line);
+  background: color-mix(in srgb, var(--color-glass-bg-elevated) 38%, transparent);
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
+  box-shadow: inset 0 1px 0 var(--color-frost-line);
+}
+
+.provider-list-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-1) var(--space-2);
+}
+
+.provider-list-panel-subtitle {
+  margin: 0;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+.provider-list-panel-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-bright);
+}
+
+.provider-list-panel-count {
+  font-size: 0.72rem;
+  color: var(--color-text-mute);
+  white-space: nowrap;
+}
+
+.provider-list-panel-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-2);
+  font-size: 0.8rem;
+}
+
+.provider-list-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.provider-list-panel-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0.45rem var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.provider-list-panel-row:hover {
+  background: color-mix(in srgb, var(--color-glass-line) 35%, transparent);
+}
+
+.provider-list-panel-name {
+  font-size: 0.78rem;
+  color: var(--color-text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-list-panel-cost {
+  font-size: 0.72rem;
+  color: var(--color-text-mute);
+}
+
+.provider-list-panel--skeleton .provider-list-panel-skel-head,
+.provider-list-panel--skeleton .provider-list-panel-skel-row {
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--color-glass-line) 50%, transparent);
+}
+
+.provider-list-panel-skel-head {
+  height: 2rem;
+  margin-bottom: var(--space-3);
+}
+
+.provider-list-panel-skel-row {
+  height: 2.5rem;
+  margin-bottom: var(--space-2);
+}

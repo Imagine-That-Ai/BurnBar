@@ -1,7 +1,10 @@
 import SwiftUI
+import os.log
 import OpenBurnBarCore
 import OpenBurnBarMedia
 import FirebaseAuth
+
+private let hermesSquareLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSquare")
 
 // MARK: - Hermes Square Root (Hermes Square §3 / §6.2)
 //
@@ -1058,7 +1061,7 @@ struct HermesSquareRoot: View {
                     )
                     await inbox.refresh()
                 } catch {
-                    print("Error updating CLI session metadata: \(error)")
+                    hermesSquareLogger.error("Error updating CLI session metadata: \(String(describing: error), privacy: .public)")
                 }
             }
         } else if prefix == "hermes" || prefix == "pi" || prefix == "cliMirror" {

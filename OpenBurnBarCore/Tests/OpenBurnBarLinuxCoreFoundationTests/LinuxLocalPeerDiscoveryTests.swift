@@ -91,10 +91,10 @@ final class LinuxLocalPeerDiscoveryTests: XCTestCase {
         XCTAssertEqual(blockedFirmware.status, .blocked)
         XCTAssertTrue(blockedFirmware.attemptedCommands.contains("busctl introspect org.freedesktop.NetworkManager /org/freedesktop/NetworkManager"))
         XCTAssertTrue(blockedFirmware.attemptedCommands.contains("udevadm info --export-db"))
-        XCTAssertTrue(blockedFirmware.blocker?.contains("NetworkManager DBus service") == true)
-        XCTAssertTrue(blockedFirmware.blocker?.contains("libudev") == true)
-        XCTAssertTrue(blockedFirmware.blocker?.contains("serial device") == true)
-        XCTAssertTrue(blockedFirmware.blocker?.contains("firmware image") == true)
+        XCTAssertTrue(blockedFirmware.blocker?.contains("NetworkManager DBus service") ?? false)
+        XCTAssertTrue(blockedFirmware.blocker?.contains("libudev") ?? false)
+        XCTAssertTrue(blockedFirmware.blocker?.contains("serial device") ?? false)
+        XCTAssertTrue(blockedFirmware.blocker?.contains("firmware image") ?? false)
 
         let attemptedFirmware = BurnBarPixelClockLinuxAdapter.evaluateFirmwareLane(
             prerequisites: BurnBarPixelClockFirmwarePrerequisites(

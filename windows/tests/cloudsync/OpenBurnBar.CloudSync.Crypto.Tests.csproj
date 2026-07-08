@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable byte-parity tests for the portable CloudVault E2EE crypto core
+    (Phase 2 · data & sync / cloud). Runs today via `dotnet test` on the authoring
+    host, the SAME assembly that ships on Windows. Mirrors the proven
+    storage/computeruse/pet test pattern (net10.0, xUnit).
+
+    The committed KAT vector (Fixtures/cloudvault-kat-vectors.json) is produced by
+    Apple CryptoKit on macOS (windows/cloudsync/tools/CloudVaultVectorGen) — the
+    exact primitive stack the production app uses — and self-verified on emit. These
+    tests prove CROSS-PLATFORM byte-parity in BOTH directions:
+
+      * OPEN  — committed CryptoKit-origin sealed bytes -> C# open -> matches the
+                committed plaintext (escrow unwrap, openText v1/v2, openBlob, openPayload,
+                recovery unwrap).
+      * SEAL  — C# seal with the committed pinned nonce / ephemeral scalar ->
+                reproduces the committed CryptoKit sealed bytes EXACTLY (escrow wrap,
+                sealText v1/v2, sealBlob, sealPayload, recovery wrap).
+      * DERIVE — vault-keyed HMAC hashes, vaultKeyID, SHA-256 match the committed hex.
+      * ECDH parity — BouncyCastle X-coordinate == .NET ECDiffieHellman
+                DeriveRawSecretAgreement (== CryptoKit / WebCrypto) for the vector keys.
+      * FAIL-CLOSED — tampered tag / wrong key / relocated-AAD / rejected legacy-v1 AAD
+                all throw CloudVaultCryptoException; no plaintext leaks.
+      * ROUND-TRIP — random-nonce public API seals and re-opens across the surface.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.CloudSync.Crypto.Tests</RootNamespace>
+    <AssemblyName>OpenBurnBar.CloudSync.Crypto.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../cloudsync/OpenBurnBar.CloudSync.Crypto/OpenBurnBar.CloudSync.Crypto.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures/cloudvault-kat-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -135,17 +135,11 @@ internal object PhoneControlSigningIdentityResolver {
     }
 }
 
-class PhoneControlSigningKeyStore private constructor(
+class PhoneControlSigningKeyStore internal constructor(
     context: Context,
     private val hardwareSigningStore: PhoneControlHardwareSigningIdentityStore,
-    _constructorMarker: Unit,
 ) {
-    constructor(context: Context) : this(context, PhoneControlSecureEnclaveKeystore, Unit)
-
-    internal constructor(
-        context: Context,
-        hardwareSigningStore: PhoneControlHardwareSigningIdentityStore,
-    ) : this(context, hardwareSigningStore, Unit)
+    constructor(context: Context) : this(context, PhoneControlSecureEnclaveKeystore)
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 

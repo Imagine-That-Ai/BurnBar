@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable presentation layer (Phase 3 · W7 —
+    SessionLogs + Memory). Runs today via `dotnet test` on the authoring host, the
+    SAME assemblies that ship on Windows. Mirrors the proven storage/theme/ipc test
+    pattern (net10.0, xUnit).
+
+    Coverage:
+      • MemoryReviewInboxModelTests    — the REQUIRED real test of the ported inbox
+        model (bucket loading, quarantine/approved partitioning, approve gating on an
+        unavailable body, reject transition + reload, pagination, error mapping).
+      • SessionLogGroupingTests         — the pure filter + time/provider/project grouping.
+      • TranscriptBlockParserTests      — the pure transcript parser (parity with Swift).
+      • RelativeTimeTests               — the relative-timestamp helper.
+      • StorageSessionLogReadSourceTests — wires the presentation read seam to the REAL
+        SQLCipher DataStore adapter against the committed Mac fixture (VAL-P0-DB-010),
+        proving SessionLogs reads flow from the shared encrypted DB end-to-end.
+      • MissionControl/* — the Mission Control console core: forecast band math, cost/token/
+        duration/relative formatting, kind/depth/approval metadata, the FAB-gauge state machine
+        (arc color + glyph + tick geometry), hero editorial copy, the snapshot builder (phase
+        mapping + health counts + burn-per-hour weighting + project ordering + ticker), the
+        runtime constellation + kind chooser rows, and the console view-model (reactive forecast,
+        canDispatch gating, dispatch clearing the draft, error surfacing). 121 tests.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="../../storage/OpenBurnBar.Storage.SessionLogs/OpenBurnBar.Storage.SessionLogs.csproj" />
+    <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

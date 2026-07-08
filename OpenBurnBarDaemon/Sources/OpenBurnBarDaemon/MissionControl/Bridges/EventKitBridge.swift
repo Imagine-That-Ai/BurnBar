@@ -1,6 +1,7 @@
 import OpenBurnBarCore
-import EventKit
 import Foundation
+#if canImport(EventKit)
+import EventKit
 
 actor BurnBarEventKitBridge {
     static let shared = BurnBarEventKitBridge()
@@ -121,3 +122,20 @@ actor BurnBarEventKitBridge {
             ?? store.calendars(for: .event).first(where: \.allowsContentModifications)
     }
 }
+#else
+actor BurnBarEventKitBridge {
+    static let shared = BurnBarEventKitBridge()
+
+    func apply(
+        action: BurnBarCalendarAction,
+        entry: BurnBarCalendarEntrySnapshot,
+        preferredCalendarName: String?
+    ) async throws -> BurnBarCalendarEntrySnapshot {
+        throw NSError(
+            domain: "BurnBarEventKitBridge",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "Calendar integration is unavailable on Linux."]
+        )
+    }
+}
+#endif

@@ -21,10 +21,9 @@ final class ProviderAvatarTests: XCTestCase {
             let tile = ProviderAvatar(provider: provider, mode: .tile, size: 40)
             let aurora = ProviderAvatar(provider: provider, mode: .aurora, size: 48)
 
-            // Verify body does not crash
-            _ = plain.body
-            _ = tile.body
-            _ = aurora.body
+            XCTAssertHostsNonZero(plain, size: 24)
+            XCTAssertHostsNonZero(tile, size: 40)
+            XCTAssertHostsNonZero(aurora, size: 48)
         }
     }
 
@@ -38,5 +37,20 @@ final class ProviderAvatarTests: XCTestCase {
     func testPiAgentDoesNotReuseHermesLogo() {
         XCTAssertEqual(AgentProvider.piAgent.bundledLogoName, "PiAgentLogo")
         XCTAssertNotEqual(AgentProvider.piAgent.bundledLogoName, AgentProvider.hermes.bundledLogoName)
+    }
+
+    @MainActor
+    private func XCTAssertHostsNonZero<V: View>(
+        _ view: V,
+        size: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let host = UIHostingController(rootView: view)
+        host.view.frame = CGRect(origin: .zero, size: CGSize(width: size, height: size))
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        XCTAssertGreaterThan(host.view.bounds.width, 0, file: file, line: line)
+        XCTAssertGreaterThan(host.view.bounds.height, 0, file: file, line: line)
     }
 }

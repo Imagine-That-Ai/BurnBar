@@ -1,6 +1,11 @@
 import Foundation
-import CryptoKit
+import OpenBurnBarCore
+#if os(Windows)
+#elseif canImport(zlib)
 import zlib
+#elseif canImport(Czlib)
+import Czlib
+#endif
 
 /// Phase 13 audit-export writer.
 ///
@@ -267,8 +272,8 @@ public struct ComputerUseAuditExportWriter {
               let publicKeyBase64 = record.publicKeyBase64,
               let publicKeyData = Data(base64Encoded: publicKeyBase64),
               let signature = Data(base64Encoded: record.signatureBase64),
-              let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKeyData),
-              publicKey.isValidSignature(signature, for: archive) else {
+              let publicKey = try? PlatformCrypto.ed25519PublicKey(rawRepresentation: publicKeyData),
+              (try? PlatformCrypto.verifyEd25519Signature(signature, message: archive, publicKey: publicKey)) == true else {
             throw WriterError.verificationFailed("signature validation failed")
         }
         if let expectedPublicKeyHash = record.publicKeySHA256Hex,
@@ -302,11 +307,128 @@ public struct ComputerUseAuditExportWriter {
     }
 
     private func gzipCompress(_ input: Data) throws -> Data {
-        try zlibTransform(input: input, operation: .deflate)
+        // Emit stored-deflate gzip on every platform so Windows can verify
+        // archives produced by this writer without a native zlib binding.
+        return Self.gzipStoredDeflate(input)
     }
 
     private func gzipDecompress(_ input: Data) throws -> Data {
-        try zlibTransform(input: input, operation: .inflate)
+        #if os(Windows)
+        return try Self.gunzipStoredDeflate(input)
+        #else
+        return try zlibTransform(input: input, operation: .inflate)
+        #endif
+    }
+
+    /// Windows Swift SDKs do not currently ship a zlib development header in
+    /// the default toolchain image. Gzip permits deflate streams made entirely
+    /// of stored (uncompressed) blocks, so every platform emits that portable
+    /// form for cross-platform audit export verification.
+    private static func gzipStoredDeflate(_ input: Data) -> Data {
+        var output = Data([0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff])
+        if input.isEmpty {
+            output.append(0x01)
+            appendLittleEndianUInt16(0, to: &output)
+            appendLittleEndianUInt16(UInt16.max, to: &output)
+        } else {
+            var offset = 0
+            while offset < input.count {
+                let chunkCount = min(65_535, input.count - offset)
+                output.append(offset + chunkCount == input.count ? 0x01 : 0x00)
+                let len = UInt16(chunkCount)
+                appendLittleEndianUInt16(len, to: &output)
+                appendLittleEndianUInt16(~len, to: &output)
+                output.append(input.subdata(in: offset..<(offset + chunkCount)))
+                offset += chunkCount
+            }
+        }
+        appendLittleEndianUInt32(crc32(input), to: &output)
+        appendLittleEndianUInt32(UInt32(truncatingIfNeeded: input.count), to: &output)
+        return output
+    }
+
+    #if os(Windows)
+    private static func gunzipStoredDeflate(_ input: Data) throws -> Data {
+        let bytes = [UInt8](input)
+        guard bytes.count >= 18,
+              bytes[0] == 0x1f,
+              bytes[1] == 0x8b,
+              bytes[2] == 0x08 else {
+            throw WriterError.gzipFailed("invalid gzip header")
+        }
+        let flags = bytes[3]
+        var offset = 10
+        if flags & 0x04 != 0 {
+            guard offset + 2 <= bytes.count else { throw WriterError.gzipFailed("truncated gzip extra header") }
+            let extraLength = Int(bytes[offset]) | (Int(bytes[offset + 1]) << 8)
+            offset += 2 + extraLength
+        }
+        if flags & 0x08 != 0 {
+            while offset < bytes.count, bytes[offset] != 0 { offset += 1 }
+            offset += 1
+        }
+        if flags & 0x10 != 0 {
+            while offset < bytes.count, bytes[offset] != 0 { offset += 1 }
+            offset += 1
+        }
+        if flags & 0x02 != 0 { offset += 2 }
+
+        var output = Data()
+        var finalBlock = false
+        while !finalBlock {
+            guard offset + 5 <= bytes.count - 8 else { throw WriterError.gzipFailed("truncated stored deflate block") }
+            let header = bytes[offset]
+            offset += 1
+            finalBlock = (header & 0x01) == 0x01
+            guard ((header >> 1) & 0x03) == 0 else {
+                throw WriterError.gzipFailed("unsupported deflate block type without zlib")
+            }
+            let len = UInt16(bytes[offset]) | (UInt16(bytes[offset + 1]) << 8)
+            let nlen = UInt16(bytes[offset + 2]) | (UInt16(bytes[offset + 3]) << 8)
+            offset += 4
+            guard nlen == ~len else { throw WriterError.gzipFailed("invalid stored deflate length") }
+            let chunkCount = Int(len)
+            guard offset + chunkCount <= bytes.count - 8 else { throw WriterError.gzipFailed("truncated stored deflate payload") }
+            output.append(contentsOf: bytes[offset..<(offset + chunkCount)])
+            offset += chunkCount
+        }
+        guard offset + 8 <= bytes.count else { throw WriterError.gzipFailed("missing gzip trailer") }
+        let expectedCRC = UInt32(bytes[offset])
+            | (UInt32(bytes[offset + 1]) << 8)
+            | (UInt32(bytes[offset + 2]) << 16)
+            | (UInt32(bytes[offset + 3]) << 24)
+        let expectedSize = UInt32(bytes[offset + 4])
+            | (UInt32(bytes[offset + 5]) << 8)
+            | (UInt32(bytes[offset + 6]) << 16)
+            | (UInt32(bytes[offset + 7]) << 24)
+        guard expectedCRC == crc32(output) else { throw WriterError.gzipFailed("gzip crc mismatch") }
+        guard expectedSize == UInt32(truncatingIfNeeded: output.count) else { throw WriterError.gzipFailed("gzip size mismatch") }
+        return output
+    }
+    #endif
+
+    private static func appendLittleEndianUInt16(_ value: UInt16, to data: inout Data) {
+        data.append(UInt8(value & 0xff))
+        data.append(UInt8((value >> 8) & 0xff))
+    }
+
+    private static func appendLittleEndianUInt32(_ value: UInt32, to data: inout Data) {
+        data.append(UInt8(value & 0xff))
+        data.append(UInt8((value >> 8) & 0xff))
+        data.append(UInt8((value >> 16) & 0xff))
+        data.append(UInt8((value >> 24) & 0xff))
+    }
+
+    private static func crc32(_ data: Data) -> UInt32 {
+        var crc = UInt32.max
+        for byte in data {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 {
+                let mask = 0 &- (crc & 1)
+                crc = (crc >> 1) ^ (0xedb88320 & mask)
+            }
+        }
+        return ~crc
     }
 
     private enum ZlibOperation {
@@ -314,6 +436,7 @@ public struct ComputerUseAuditExportWriter {
         case inflate
     }
 
+    #if !os(Windows)
     private func zlibTransform(input: Data, operation: ZlibOperation) throws -> Data {
         var stream = z_stream()
         let initStatus: Int32
@@ -379,6 +502,7 @@ public struct ComputerUseAuditExportWriter {
             return output
         }
     }
+    #endif
 
     private func write(_ data: Data, into header: inout [UInt8], at offset: Int, length: Int) {
         let bytes = Array(data.prefix(length))
@@ -561,7 +685,7 @@ public struct ComputerUseAuditExportSignerReadback: Codable, Hashable, Sendable 
 public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning {
     public static let algorithmName = "ed25519"
 
-    public let privateKey: Curve25519.Signing.PrivateKey
+    public let privateKey: PlatformEd25519SigningMaterial
     public let signerIdentifier: String
     public let signerKind: String?
     public let trustRoot: String?
@@ -571,13 +695,11 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
         privateKey.publicKey.rawRepresentation.base64EncodedString()
     }
     public var publicKeySHA256Hex: String? {
-        CryptoKit.SHA256.hash(data: privateKey.publicKey.rawRepresentation)
-            .map { String(format: "%02x", $0) }
-            .joined()
+        PlatformCrypto.sha256Hex(privateKey.publicKey.rawRepresentation)
     }
 
     public init(
-        privateKey: Curve25519.Signing.PrivateKey,
+        privateKey: PlatformEd25519SigningMaterial,
         signerIdentifier: String,
         signerKind: String? = "openburnbar_trusted_device",
         trustRoot: String? = "openburnbar-device-local-ed25519-v1"
@@ -589,16 +711,16 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
     }
 
     public func sign(_ data: Data) throws -> Data {
-        try privateKey.signature(for: data)
+        try PlatformCrypto.ed25519Signature(message: data, privateKey: privateKey)
     }
 
     public func signCanonicalPayload(_ payload: Data) throws -> Data {
-        try privateKey.signature(for: payload)
+        try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
     }
 }
 
 internal extension ComputerUseAuditHasher {
     func sha256DigestBytes(of data: Data) -> [UInt8] {
-        Array(CryptoKit.SHA256.hash(data: data))
+        Array(PlatformCrypto.sha256(data))
     }
 }

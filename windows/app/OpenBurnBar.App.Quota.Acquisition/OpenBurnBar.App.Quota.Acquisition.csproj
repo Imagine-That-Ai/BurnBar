@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable quota ACQUISITION layer (Wave 1 item 5 of
+    docs/windows-port/PARITY_100_REMEDIATION_PLAN.md). The four portable parsers
+    under app/OpenBurnBar.App.Presentation/Quota/ transform payloads into
+    ProviderQuotaSnapshot; THIS project supplies the deferred adapter halves that
+    obtain those payloads, portable-first so every seam is provable via
+    `dotnet test` on the macOS authoring host:
+
+      • ClaudeStatuslinePayloadSource   — Mechanism 1: reads + staleness-gates the
+        statusline-hook snapshot file (mirrors ClaudeStatuslineWatcher policy).
+      • ClaudeStatuslineHookInstaller   — installs the .cmd/PowerShell statusline
+        wrapper pair + edits ~/.claude/settings.json, preserving/chaining the
+        user's original statusline (mirrors ClaudeQuotaBridgeManager).
+      • CursorStateDbReader + CursorUsageQuotaSource — Mechanism 2: read-only
+        SQLite read of Cursor's state.vscdb ItemTable auth keys (mirrors
+        CursorCookieExtractor) + the usage-summary HTTP fetch.
+      • CodexUsageQuotaSource           — Mechanism 3: ~/.codex/auth.json bearer +
+        GET chatgpt.com/backend-api/wham/usage (mirrors CodexOAuthQuotaFetcher).
+      • AnthropicRateLimitSource        — Mechanism 4: the 1-token /v1/messages
+        probe + a DelegatingHandler capturing anthropic-ratelimit-* headers
+        (mirrors AnthropicCredentialProbe).
+      • QuotaAcquisitionCoordinator     — fan-in sources → snapshots with the Mac
+        pacing constants (debounce/retry/interval) behind an injectable clock.
+
+    HTTP rides the IQuotaHttpTransport seam (same shape as cloudsync's
+    ICloudSyncHttpTransport); file watching rides IQuotaFileWatcher. The real
+    FileSystemWatcher + %APPDATA% defaults live in the thin
+    OpenBurnBar.App.Quota.Acquisition.Windows sibling.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.Quota.Acquisition</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.Quota.Acquisition</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenBurnBar.App.Presentation\OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="..\..\storage\OpenBurnBar.Storage\OpenBurnBar.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same SQLite stack as storage/ (Core + e_sqlcipher provider — a plaintext
+         state.vscdb opens fine under the sqlcipher build). -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

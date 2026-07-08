@@ -44,12 +44,18 @@ on:
     branches: [main]
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Package.resolved"
       - ".github/workflows/openburnbar-engine-windows.yml"
   pull_request:
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Package.resolved"
       - ".github/workflows/openburnbar-engine-windows.yml"
@@ -66,10 +72,15 @@ env:
   # real location and does not rely on this.
   SWIFT_ROOT: "C:\\Program Files\\Swift"
   # Prune the GRDB-SQLCipher path package + OpenBurnBarData from the Windows graph.
-  # The Engine subset (Core + walking skeleton) never links GRDB, and GRDB-SQLCipher
-  # does not resolve/build off-Apple yet, so leaving it in would fail package
-  # resolution before Core ever compiles. A first-class Windows storage story is
-  # later-phase work; this flag keeps the Phase-1 Engine compile honest and narrow.
+  # PERMANENT ARCHITECTURE per WPD-0005
+  # (docs/windows-port/decisions/0005-windows-storage-architecture.md): on Windows
+  # the Swift Engine is compute-only and storage is owned by the C# seam
+  # (windows/storage/, byte-compat proven per WPD-0004 / VAL-P0-DB-010).
+  # GRDB-SQLCipher does not resolve/build off-Apple, and no Windows Swift storage
+  # target is planned — leaving it in would fail package resolution before Core
+  # ever compiles. Any workflow setting this flag truthy must be named in
+  # WPD-0005's machine-read block (enforced fail-closed by
+  # scripts/ci/verify-windows-storage-architecture.sh in Fast Feedback).
   OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD: "1"
 
 jobs:
@@ -244,6 +255,32 @@ jobs:
         # when all walking-skeleton assertions pass, so this step IS the G1 gate.
         run: swift run --package-path OpenBurnBarCore OpenBurnBarWalkingSkeleton
 
+      # Phase-2 parser path-remap parity (G2). Runs the Foundation-only parity
+      # executable that asserts the parser PATH layer resolves BYTE-IDENTICALLY on
+      # this native Windows host: the Claude Code `~/.claude/projects` codec
+      # (PATH-021) over the committed capture corpus + the `LogPathPlatform`
+      # `%USERPROFILE%`/`%APPDATA%`/`%LOCALAPPDATA%` root remap vs an inline golden.
+      # Exits 0 only when every assertion passes, so this step IS the path-layer G2 gate.
+      - name: Run Phase-2 parser path-remap parity
+        run: swift run --package-path OpenBurnBarCore OpenBurnBarWindowsParserPathParity
+
+      # G2 parser-OUTPUT parity. Runs the LIFTED parsers (ClaudeCode + FactoryDroid)
+      # over the committed ParserContract fixture corpus on this native Windows host
+      # and byte-diffs each parser's token/cost(nano-USD int)/model/session
+      # projection against the macOS golden (`parser-output-golden.json`). Exits 0
+      # only when every fixture is byte-identical, so this step IS the parser-output
+      # G2 gate (Codex + Hermes ride the follow-up SQLite reader seam).
+      - name: Run G2 parser-output parity
+        run: swift run --package-path OpenBurnBarCore OpenBurnBarG2ParserParity
+
+      # Phase-2 C3 / G2 prompt-injection-wrap contract. Runs the committed
+      # `llm-safe-wrap-vectors.json` corpus through `LLMSafeWrapVectorTests` on this
+      # native Windows host and byte-diffs every vector against the macOS oracle.
+      # Exits 0 only when all five XCTest cases pass (full corpus + semantic guards).
+      - name: Run LLM-safe wrap vector contract (C3 / ARM64)
+        run: swift test --package-path OpenBurnBarCore --filter LLMSafeWrapVectorTests
+
+
   # ──────────────────────────────────────────────────────────────────────────
   # ARM64 leg (aarch64-unknown-windows-msvc) on the free `windows-11-arm` runner.
   # Mirrors the x64 `build` job step-for-step, diverging only where the arch
@@ -414,3 +451,25 @@ jobs:
       # only when all walking-skeleton assertions pass.
       - name: Run Phase-1 walking skeleton (ARM64)
         run: swift run --package-path OpenBurnBarCore OpenBurnBarWalkingSkeleton
+
+      # Phase-2 parser path-remap parity (G2), natively on aarch64. Same portable
+      # path-layer byte-diff as the x64 leg — Claude Code codec corpus + the
+      # `LogPathPlatform` root remap golden — proving the parser PATH contract on
+      # ARM64 Windows with no hardware.
+      - name: Run Phase-2 parser path-remap parity (ARM64)
+        run: swift run --package-path OpenBurnBarCore OpenBurnBarWindowsParserPathParity
+
+      # G2 parser-OUTPUT parity, natively on aarch64. Same byte-diff as the x64 leg
+      # — the lifted ClaudeCode + FactoryDroid parsers over the committed fixture
+      # corpus vs the macOS golden — proving the parser OUTPUT contract on ARM64
+      # Windows with no hardware.
+      - name: Run G2 parser-output parity (ARM64)
+        run: swift run --package-path OpenBurnBarCore OpenBurnBarG2ParserParity
+
+      # Phase-2 C3 / G2 prompt-injection-wrap contract. Runs the committed
+      # `llm-safe-wrap-vectors.json` corpus through `LLMSafeWrapVectorTests` on this
+      # native Windows host and byte-diffs every vector against the macOS oracle.
+      # Exits 0 only when all five XCTest cases pass (full corpus + semantic guards).
+      - name: Run LLM-safe wrap vector contract (C3)
+        run: swift test --package-path OpenBurnBarCore --filter LLMSafeWrapVectorTests
+

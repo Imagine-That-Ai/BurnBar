@@ -477,7 +477,7 @@ struct NestHubSettingsCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Identify on refresh")
                         .font(MobileTheme.Typography.body)
-                    Text("Pings the voice routine endpoint so Google can speak the latest totals.")
+                    Text("Pings the voice routine endpoint so the Hub page can speak the latest totals.")
                         .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }

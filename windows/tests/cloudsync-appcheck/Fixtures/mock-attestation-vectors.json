@@ -1,0 +1,30 @@
+{
+  "description": "Cross-platform byte-parity vectors for the Phase-0 MOCK Windows App Check attestation MAC. The C# MockAttestationMac.Sign MUST reproduce every `mac` byte-for-byte, proving parity with the server's signMockAttestation in functions/src/callables/windowsAppCheck.ts.",
+  "algorithm": "mac = lowercase_hex( sha256( `${domain}|${appId}|${nonce}|${issuedAtMs}|${secret}` ) )",
+  "domain": "openburnbar.appcheck.windows.mock.v1",
+  "secret": "openburnbar-windows-appcheck-mock-fixture-secret",
+  "oracle": "Independently generated with openssl (NOT the C# code under test): printf '%s' \"$domain|$appId|$nonce|$issuedAtMs|$secret\" | openssl dgst -sha256. The identical formula is what the Node server computes and constant-time compares.",
+  "vectors": [
+    {
+      "name": "placeholder-app-32hex-nonce",
+      "appId": "1:000000000000:windows:0000000000000000placeholder",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "issuedAtMs": 1700000000000,
+      "mac": "3ba8400316adbdd0a7a88afa21faad6fd3e1df789790b0772b0bcb303f8733b0"
+    },
+    {
+      "name": "placeholder-app-alpha-nonce",
+      "appId": "1:000000000000:windows:0000000000000000placeholder",
+      "nonce": "nonce-AAAAAAAAAAAAAAAAAAAAAAAA",
+      "issuedAtMs": 1751500000000,
+      "mac": "9bb3bf2813adfe902d1480ef3784121ce4180d2e049800158ba1ecaff13b396c"
+    },
+    {
+      "name": "distinct-app-small-issuedAt",
+      "appId": "1:123456789012:windows:abcdefabcdefabcdefabcdef",
+      "nonce": "ZZZZ1111ZZZZ2222ZZZZ3333",
+      "issuedAtMs": 42,
+      "mac": "7842ecd5d3f2cee900225bb06aa845eec2abbba2432a55487aef2197af486042"
+    }
+  ]
+}

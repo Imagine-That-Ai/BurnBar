@@ -5,20 +5,36 @@ This directory holds the worker-owned evidence for the Linux lower-trust cloud/s
 ## Commands
 
 ```bash
-npm --prefix functions exec -- vitest run src/__tests__/appCheckAttestation.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/windowsAppCheckConfig.test.ts src/__tests__/linuxAppCheck.test.ts --reporter=verbose
-npm --prefix functions exec -- vitest run src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/bola/authOnly.bola.test.ts --reporter=verbose
+(cd functions && OPENBURNBAR_LINUX_SECURITY_EVIDENCE_DIR=/Users/albertonunez/Documents/Developer/BurnBar/docs/linux-port/evidence/mission-001-linux-cloud-security npm exec -- vitest run src/__tests__/highRiskOwnerActionAuditPersistence.test.ts --reporter=verbose)
+(cd functions && npm exec -- vitest run src/__tests__/appCheckAttestation.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/highRiskOwnerActionAuditPersistence.test.ts src/__tests__/windowsAppCheckConfig.test.ts src/__tests__/linuxAppCheck.test.ts --reporter=verbose)
+(cd functions && npm exec -- vitest run src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/bola/authOnly.bola.test.ts --reporter=verbose)
 npm --prefix functions run build
-docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace openburnbar-linux-toolchain:mission-001-fts5 swift build --build-path /workspace/OpenBurnBarCore/.build-linux-security --target OpenBurnBarLinuxSecurity
-docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace openburnbar-linux-toolchain:mission-001-fts5 swift run --package-path docs/linux-port/evidence/mission-001-linux-cloud-security/harness --scratch-path /workspace/OpenBurnBarCore/.build-linux-security-harness LinuxSecurityEvidence
+docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace openburnbar-linux-toolchain:mission-001-fts5 swift build --build-path /workspace/OpenBurnBarCore/.build-linux-security --package-path OpenBurnBarCore --target OpenBurnBarLinuxSecurity
+docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace -e OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD=1 openburnbar-linux-toolchain:mission-001-fts5 swift test --build-path /workspace/OpenBurnBarCore/.build-linux-security-only-tests --package-path OpenBurnBarCore --filter OpenBurnBarLinuxSecurityTests
+docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace -e OPENBURNBAR_LINUX_SECURITY_EVIDENCE_DIR=/workspace/docs/linux-port/evidence/mission-001-linux-cloud-security openburnbar-linux-toolchain:mission-001-fts5 swift run --package-path docs/linux-port/evidence/mission-001-linux-cloud-security/harness --scratch-path /workspace/OpenBurnBarCore/.build-linux-security-harness LinuxSecurityEvidence
 ```
 
 ## Observed Results
 
-- Callable trust/step-up tests: 4 files passed, 31 tests passed.
+- High-risk owner audit persistence test: writes `security.high_risk_owner_action` rows through the product `appendAuditEventRequired` path into a deterministic local Firestore store, reads back `users/u1/unified_audit_log/*` and `users/u1/audit_meta/head`, verifies the hash chain, and emits `high-risk-owner-action-audit-local-store-transcript.json`.
+- Callable trust/step-up tests: 5 files passed, including App Check/Linux trust, high-risk owner call-site audit usage, deterministic audit readback, Windows config preservation, and Linux App Check lower-trust classification.
 - Endpoint catalog/rate-limit/BOLA tests: 3 files passed, 12 tests passed.
 - Functions build: `tsc` and cert copy completed.
-- Linux Swift target build: `OpenBurnBarLinuxSecurity` target completed.
-- Linux evidence harness: exited 0 and emitted `linux-security-evidence.json`.
+- Linux Swift target build: `OpenBurnBarLinuxSecurity` target completed without the GRDB-SQLCipher `CSQLite` duplicate-target collision.
+- Isolated Linux security tests: `OpenBurnBarLinuxSecurityTests` ran 11 XCTest cases, 0 failures, under `OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD=1`.
+- Linux evidence harness: exited 0 and emitted the summary plus protocol/readback artifacts for SecretStore setup, PKCE/Firebase auth, Stripe membership checkout/portal/cache/UI states, telemetry controls, redaction surfaces, and local-staging cloud sync.
+
+## Current Artifact Map
+
+| Target | Primary artifacts |
+| --- | --- |
+| `VAL-CLOUD-002` | `high-risk-owner-action-audit-local-store-transcript.json` (`unified_audit_log`, `audit_meta/head`, transaction write batches, verifier result) |
+| `VAL-SEC-001` | `secret-store-setup-proof.json`, `linux-security-evidence.json` (`secretSetupStatuses`, `secretBackends`, high-value negative cases) |
+| `VAL-SEC-004` | `redaction-surface-negative-scan.json`, `redaction-daemon_journal.txt`, `redaction-provider_payload_trace.txt`, `redaction-crash_error_report.txt`, `redaction-release_evidence_log.txt` |
+| `VAL-AUTH-001` | `auth-pkce-signout-transcript.json`, `auth-protocol-fixture.json` |
+| `VAL-MEMBERSHIP-001` | `membership-stripe-protocol-cache-ui-transcript.json`, `membership-stripe-restore-transcript.json`, `membership-*.svg`, `membership-ui-screenshot-*.svg` |
+| `VAL-TELEMETRY-001` | `telemetry-local-capture.json`, `telemetry-controls-transcript.json` |
+| `VAL-DATA-008` | `cloud-sync-request-response-trace.json`, `cloud-sync-local-staging-transcript.json` |
 
 ## Filesystem Inspection
 
@@ -29,3 +45,11 @@ rg -n "fixture-[a-z]+-(secret|token)|sk-ant-[a-z]+|[a-z]+@example\\.com|/home/[a
 ```
 
 The harness source builds sensitive fixture values at runtime and never prints them. The product SecretStore API returns secret metadata for token custody evidence; raw secret values stay in backend memory.
+
+The current generated-artifact scan also covers the transcript and SVG files:
+
+```bash
+rg -n "fixture-[a-z]+-(secret|token)|plaintext-(database_key|signal_identity_key|cloud_vault_key|refresh_token|capability_root|local_auth_pin|audit_signing_key)|sk-ant-[a-z]+|secret123|sessionid|key123|private operator request|alberto@example\\.com|/home/alberto" docs/linux-port/evidence/mission-001-linux-cloud-security/*.json docs/linux-port/evidence/mission-001-linux-cloud-security/*.svg docs/linux-port/evidence/mission-001-linux-cloud-security/*.txt docs/linux-port/evidence/mission-001-linux-cloud-security/blocked-production-evidence.md
+```
+
+It is expected to exit `1` because the generated evidence should not contain any raw seeded secret, token, cookie, prompt, email, or private path.

@@ -1,0 +1,11 @@
+### direct XCTest prompt wrapper
+command=timeout 20 /workspace/OpenBurnBarCore/.build-data-evidence-serial/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.xctest OpenBurnBarLinuxCoreFoundationTests.LLMSafeContentLinuxTests/testPromptInjectionFixtureIsWrappedDefangedAndResealed
+Test Suite 'Selected tests' started at 2026-07-04 17:56:41.861
+Test Suite 'LLMSafeContentLinuxTests' started at 2026-07-04 17:56:41.861
+Test Case 'LLMSafeContentLinuxTests.testPromptInjectionFixtureIsWrappedDefangedAndResealed' started at 2026-07-04 17:56:41.861
+Test Case 'LLMSafeContentLinuxTests.testPromptInjectionFixtureIsWrappedDefangedAndResealed' passed (0.002 seconds)
+Test Suite 'LLMSafeContentLinuxTests' passed at 2026-07-04 17:56:41.863
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 17:56:41.863
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+direct_xctest_exit=0

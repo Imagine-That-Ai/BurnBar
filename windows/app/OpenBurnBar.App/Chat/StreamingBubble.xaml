@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Chat/HermesAtomComponents.swift `HermesRichBubble`
+  — a self-sizing assistant bubble whose per-line breaks are computed by the LANDED
+  Pretext WebView2 host (windows/pretext), exactly like the macOS bubble measures via
+  PretextEngine.prepareRichInline / layoutRichInline. Each resolved line lays its
+  fragments (body / atom chip / mention / inline code) into a horizontal row; a
+  RichTextBlock fallback renders inline until the first Pretext layout resolves (or
+  when no engine is attached), mirroring the SwiftUI `attributedFallback`.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Chat.StreamingBubble"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    HorizontalAlignment="Stretch"
+    SizeChanged="OnSizeChanged">
+
+    <Grid>
+        <!-- Pretext-resolved lines (one horizontal row per wrapped line). -->
+        <StackPanel x:Name="LinesPanel" Orientation="Vertical" Spacing="0" />
+
+        <!-- Inline fallback shown until the first Pretext layout resolves. -->
+        <RichTextBlock x:Name="Fallback"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+    </Grid>
+</UserControl>

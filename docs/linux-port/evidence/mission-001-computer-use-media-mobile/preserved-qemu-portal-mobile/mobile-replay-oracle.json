@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-07-04T15:02:32.272Z",
+  "target": "VAL-MOBILE-001",
+  "candidateAcceptableForContractText": true,
+  "missionAcceptanceRequired": false,
+  "liveMobileSurfaceAvailable": true,
+  "liveLinuxPeerTranscriptProduced": true,
+  "linuxPeerReplayTranscriptProduced": true,
+  "signedReplayValid": true,
+  "hasRequiredFrames": true,
+  "productMobilePanicAuditVerified": true,
+  "backwardCompatibleWireDiff": true,
+  "mediaTraceRows": 0,
+  "boundary": "Replay evidence is compatibility-only; live transcript pass evidence is recorded separately."
+}

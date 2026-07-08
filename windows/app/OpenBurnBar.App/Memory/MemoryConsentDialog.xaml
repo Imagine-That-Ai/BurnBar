@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Memory/MemoryConsentSheet.swift (Phase 3 · W7).
+  First-run consent before OpenBurnBar extracts memories from chats. Mirrors the
+  Swift sheet's icon + headline + four privacy bullets + Enable / Not now decision.
+  A ContentDialog is the Windows analog of the macOS .sheet consent surface; the
+  decision is reported via ContentDialogResult (Primary = enable), and the caller
+  persists the flag — this view holds no settings state (parity with the Swift note).
+-->
+<ContentDialog
+    x:Class="OpenBurnBar.App.Memory.MemoryConsentDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    PrimaryButtonText="Enable"
+    CloseButtonText="Not now"
+    DefaultButton="Primary"
+    Background="{StaticResource PensieveColorGlassBgElevatedBrush}">
+
+    <StackPanel Spacing="16" MinWidth="420">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+            <Border Width="48" Height="48" CornerRadius="24">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#59FA6B06" Offset="0" />
+                        <GradientStop Color="#40FDC42C" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+                <FontIcon Glyph="&#xE8F1;" FontSize="20" Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            </Border>
+            <StackPanel Spacing="4" MaxWidth="330">
+                <TextBlock Text="Remember useful details from your chats?"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <TextBlock Text="OpenBurnBar can quietly note durable facts and preferences as you chat, so future answers pick up where you left off."
+                           FontSize="13"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <FontIcon Glyph="&#xE721;" FontSize="14" Foreground="{StaticResource OBBAccentBrush}" />
+                <TextBlock Text="Extracts lasting facts and preferences locally on this PC."
+                           FontSize="12" TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <FontIcon Glyph="&#xED1A;" FontSize="14" Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                <TextBlock Text="Strips secrets and personal identifiers before anything is stored."
+                           FontSize="12" TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <FontIcon Glyph="&#xE72E;" FontSize="14" Foreground="{StaticResource PensieveColorTierEndToEndBrush}" />
+                <TextBlock Text="Everything is quarantined for your approval before it's ever used."
+                           FontSize="12" TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <FontIcon Glyph="&#xE72E;" FontSize="14" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <TextBlock Text="Nothing leaves your device. Change this anytime in Settings → Privacy."
+                           FontSize="12" TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+        </StackPanel>
+    </StackPanel>
+</ContentDialog>

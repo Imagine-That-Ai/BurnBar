@@ -27,6 +27,8 @@ public final class Locked<T: Sendable>: Sendable {
         try storage.withLockUnchecked(action)
     }
 #else
+    // NSLock-protected mutable storage; safe for concurrent access.
+    // sendable-allowlist: nslock-protected-storage
     private final class Storage: @unchecked Sendable {
         let lock = NSLock()
         var value: T

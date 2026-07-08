@@ -14,16 +14,16 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Legacy reference suites (ADR, not quarantined) | 2 | stable | — |
 | `@MainActor` on I/O facades (listed set) | 3 | 4 | 0 |
 | Empty `catch {}` blocks (app + daemon) | 0 | 0 | 0 |
-| `Task.detached` in `AgentLens/Services/` | 3 | ≤ 10 | 0 |
+| `Task.detached` in `AgentLens/Services/` | 4 | ≤ 10 | 0 |
 | `try?` in `AgentLens/Services/` | 0 | ≤ 120 | ≤ 50 |
 | Unsafe cast assert-zero gate | 0 | 0 | 0 |
 | Knip dead-code budget (`budgets/knip-baseline.json`, functions) | 0 | 0 | 0 |
 | Schema `knownDrift` tokens (`tools/schema-sync/manifest.json`) | 0 | 0 | 0 |
-| `@unchecked Sendable` ratchet (assert-zero gate; 40 documented allowlist exceptions) | 0 | 0 | 0 |
-| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3839 | ≤ 5000 | ≤ 3500 |
+| `@unchecked Sendable` ratchet (assert-zero gate; 45 documented allowlist exceptions) | 0 | 0 | 0 |
+| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3862 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 8 | stable (re-export) | — |
 | `functions/src/types/legacy.ts` LOC | 19 | shrinking (TypeSpec migration) | — |
-| `functions/src/index.ts` LOC | 197 | modularize | — |
+| `functions/src/index.ts` LOC | 204 | modularize | — |
 | `import SwiftUI` in Services/ | 0 | 0 | 0 |
 | Phase 1 security register open items (`docs/governance/PHASE1_SECURITY_REGISTER.md`) | 0 | ≤ 3 | 0 |
 | Rust `unwrap()`/`expect()` in `crates/{burnbar-remote,openburnbar-iroh}` | 0 | 0 | 0 |
@@ -34,8 +34,8 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 |------|-----|
 | `AgentLens/Services/CloudSyncService.swift` | 228 |
 | `AgentLens/Services/Search/` (SearchService + extensions) | 1449 |
-| `AgentLens/Services/UsageAggregator.swift` | 572 |
-| `AgentLens/Services/ProjectionPipeline/` | 1590 |
+| `AgentLens/Services/UsageAggregator.swift` | 574 |
+| `AgentLens/Services/ProjectionPipeline/` | 1611 |
 
 ## Remediation links
 

@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+#
+# OpenBurnBar — winget INSTALLER manifest (signed MSIX channel).
+#
+# CEILING (honest): the InstallerSha256 values below are RELEASE-STAMPED placeholders
+# (64 zero-hex, schema-valid format). The signed MSIX artifacts don't exist until a
+# Windows runner packs + Authenticode/Trusted-Signing signs them with the W0 cert, so
+# the real per-arch SHA256, plus SignatureSha256 and PackageFamilyName (both derived
+# from the signed package), are filled in by the release pipeline. The commented
+# SignatureSha256 / PackageFamilyName lines mark exactly where those land.
+#
+# Auto-update is NOT delegated to winget: OpenBurnBar self-updates from the
+# Ed25519-pinned release feed (parity with macOS Sparkle), so UpgradeBehavior stays
+# 'install' (winget replaces in place) and the pinned-feed updater owns version pull.
+PackageIdentifier: ImagineThat.OpenBurnBar
+PackageVersion: 0.1.0
+Platform:
+  - Windows.Desktop
+MinimumOSVersion: 10.0.17763.0
+InstallerType: msix
+Scope: user
+UpgradeBehavior: install
+InstallModes:
+  - silent
+  - silentWithProgress
+# Metadata mirrored from Package.appxmanifest (windows.protocol + fileTypeAssociation).
+Protocols:
+  - openburnbar
+FileExtensions:
+  - burnbarchat
+  - burnbarpane
+ReleaseDate: "2026-07-04"
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/Imagine-That-Ai/BurnBar/releases/download/v0.1.0/OpenBurnBar-0.1.0-x64.msix
+    InstallerSha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    # SignatureSha256: <sha256 of AppxSignature.p7x from the signed MSIX>
+    # PackageFamilyName: ImagineThat.OpenBurnBar_<publisherHash13>
+  - Architecture: arm64
+    InstallerUrl: https://github.com/Imagine-That-Ai/BurnBar/releases/download/v0.1.0/OpenBurnBar-0.1.0-arm64.msix
+    InstallerSha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    # SignatureSha256: <sha256 of AppxSignature.p7x from the signed MSIX>
+    # PackageFamilyName: ImagineThat.OpenBurnBar_<publisherHash13>
+  - Architecture: x86
+    InstallerUrl: https://github.com/Imagine-That-Ai/BurnBar/releases/download/v0.1.0/OpenBurnBar-0.1.0-x86.msix
+    InstallerSha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    # SignatureSha256: <sha256 of AppxSignature.p7x from the signed MSIX>
+    # PackageFamilyName: ImagineThat.OpenBurnBar_<publisherHash13>
+ManifestType: installer
+ManifestVersion: 1.6.0
