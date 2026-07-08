@@ -669,7 +669,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .accepted)
     }
 
-    func testExistingPeerGrantAutoAcceptRenewsGrantAfterAcceptedMirror() async {
+    func testExistingPeerGrantAutoAcceptRenewsGrantAfterAcceptedMirror() async throws {
         var now = Date(timeIntervalSince1970: 1_700_000_000)
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
