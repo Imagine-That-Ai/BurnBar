@@ -264,7 +264,7 @@ private enum BurnBarRunJournalPrivacyRedactor {
     }
 
     private static func redactText(_ value: String) -> String {
-        var result = PensieveKnowledgeChunker.redactSecrets(value)
+        var result = value
         result = ProviderRoutingPolicy.sanitizedAuditText(result)
         for expression in redactionExpressions {
             let range = NSRange(result.startIndex..<result.endIndex, in: result)

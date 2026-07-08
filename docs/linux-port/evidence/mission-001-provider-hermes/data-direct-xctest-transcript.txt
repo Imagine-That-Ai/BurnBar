@@ -1,0 +1,32 @@
+### direct XCTest data parser/checkpoint
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testCanonicalProviderCorpusParserUsesCorpusInputAndDBObservedRows
+command=timeout 60 /workspace/OpenBurnBarCore/.build-data-evidence-serial/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.xctest OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testCanonicalProviderCorpusParserUsesCorpusInputAndDBObservedRows
+Test Suite 'Selected tests' started at 2026-07-04 17:56:39.952
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 17:56:39.953
+Test Case 'OpenBurnBarDataLinuxTests.testCanonicalProviderCorpusParserUsesCorpusInputAndDBObservedRows' started at 2026-07-04 17:56:39.953
+Test Case 'OpenBurnBarDataLinuxTests.testCanonicalProviderCorpusParserUsesCorpusInputAndDBObservedRows' passed (0.209 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 17:56:40.161
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.209 (0.209) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 17:56:40.161
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.209 (0.209) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderParserIngestionPreservesProvenanceCheckpointsAndWatermarks
+command=timeout 60 /workspace/OpenBurnBarCore/.build-data-evidence-serial/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.xctest OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderParserIngestionPreservesProvenanceCheckpointsAndWatermarks
+Test Suite 'Selected tests' started at 2026-07-04 17:56:40.180
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 17:56:40.181
+Test Case 'OpenBurnBarDataLinuxTests.testProviderParserIngestionPreservesProvenanceCheckpointsAndWatermarks' started at 2026-07-04 17:56:40.181
+Test Case 'OpenBurnBarDataLinuxTests.testProviderParserIngestionPreservesProvenanceCheckpointsAndWatermarks' passed (0.199 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 17:56:40.381
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.199 (0.199) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 17:56:40.381
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.199 (0.199) seconds
+### OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderParserFailureInjectionRollsBackUsageAndCursorState
+command=timeout 60 /workspace/OpenBurnBarCore/.build-data-evidence-serial/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.xctest OpenBurnBarDataTests.OpenBurnBarDataLinuxTests/testProviderParserFailureInjectionRollsBackUsageAndCursorState
+Test Suite 'Selected tests' started at 2026-07-04 17:56:40.401
+Test Suite 'OpenBurnBarDataLinuxTests' started at 2026-07-04 17:56:40.402
+Test Case 'OpenBurnBarDataLinuxTests.testProviderParserFailureInjectionRollsBackUsageAndCursorState' started at 2026-07-04 17:56:40.402
+Test Case 'OpenBurnBarDataLinuxTests.testProviderParserFailureInjectionRollsBackUsageAndCursorState' passed (0.213 seconds)
+Test Suite 'OpenBurnBarDataLinuxTests' passed at 2026-07-04 17:56:40.615
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.213 (0.213) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 17:56:40.615
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.213 (0.213) seconds
+direct_xctest_exit=0

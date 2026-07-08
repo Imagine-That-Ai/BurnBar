@@ -1,0 +1,913 @@
+{
+  "generatedAt": "2026-07-05T12:37:26.986Z",
+  "sourceRunDirectory": "current-product-run",
+  "preservedEvidenceDirectory": "preserved-qemu-portal-mobile",
+  "provenanceManifest": "preserved-qemu-portal-mobile-manifest.json",
+  "targetIds": [
+    "VAL-CU-001",
+    "VAL-CU-002",
+    "VAL-CU-003",
+    "VAL-MEDIA-001",
+    "VAL-MOBILE-001",
+    "VAL-SEC-003"
+  ],
+  "statusSemantics": {
+    "pass": "Current checkout artifact set satisfies the target with contract-matching evidence.",
+    "fail": "The target is not accepted as pass and the script exits nonzero."
+  },
+  "rejectionPolicy": {
+    "fixtureOnlyRowsAcceptedAsPass": false,
+    "staleTmpOnlyRowsAcceptedAsPass": false,
+    "panicSessionMediaSimulatorOnlyAcceptedAsPass": false,
+    "dockerHttpMobileRemoteOnlyAcceptedAsPass": false,
+    "x11OrXtestFallbackAcceptedAsPass": false,
+    "mediaSimulatorTimingOnlyAcceptedAsPass": false
+  },
+  "provenance": {
+    "selectedSourceBundle": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054",
+    "preservedTmpDir": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054",
+    "preservedTmpExisted": true,
+    "preservedTmpCreatedOrRefreshed": false,
+    "currentCheckoutCopy": "preserved-qemu-portal-mobile",
+    "sourceForCheckout": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054"
+  },
+  "statuses": [
+    {
+      "target": "VAL-CU-001",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Wayland portal/PipeWire consent lifecycle passed with approved capture, denial, revoke, and QEMU virtio-gpu provenance.",
+      "prerequisite": null,
+      "evidence": [
+        "preserved-qemu-portal-mobile/portal-evidence-summary.json",
+        "preserved-qemu-portal-mobile/portal-lifecycle.jsonl",
+        "preserved-qemu-portal-mobile/approved-pipewire-frame.png",
+        "preserved-qemu-portal-mobile/approved-pipewire-graph.json",
+        "preserved-qemu-portal-mobile/portal-capture-log.txt",
+        "preserved-qemu-portal-mobile/xdg-portal.log",
+        "preserved-qemu-portal-mobile/xdg-portal-wlr.log"
+      ],
+      "failures": [],
+      "details": {
+        "chooserType": "dmenu",
+        "decisiveSurface": "QEMU aarch64 VM with virtio-gpu DRM, Sway, PipeWire, xdg-desktop-portal, and xdg-desktop-portal-wlr",
+        "approveCreateSessionResponse": 0,
+        "approveSelectSourcesResponse": 0,
+        "approveStartResponse": 0,
+        "denySelectSourcesResponse": 1,
+        "approvedFrame": {
+          "path": "preserved-qemu-portal-mobile/approved-pipewire-frame.png",
+          "sizeBytes": 808726,
+          "sha256": "6cbb7d8e11957c22159277c2d493daa66cd8809da8813b578752345cb335c509",
+          "modifiedAt": "2026-07-05T12:36:05.459Z",
+          "exists": true
+        },
+        "pipeWireGraph": {
+          "path": "preserved-qemu-portal-mobile/approved-pipewire-graph.json",
+          "sizeBytes": 35525,
+          "sha256": "e9c5b9b94dbda45411c8c446a2ab3b83e7bf9fa730091ef8c6a9b3641d705e46",
+          "modifiedAt": "2026-07-05T12:36:05.424Z",
+          "exists": true
+        },
+        "lifecycleEventCount": 19
+      }
+    },
+    {
+      "target": "VAL-CU-002",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "AT-SPI2 Wayland input adapter proof mutated a visible target and bound approved/denied/trust/rate-limit rows to the product audit chain.",
+      "prerequisite": "VAL-CU-001",
+      "evidence": [
+        "preserved-qemu-portal-mobile/wayland-atspi-input-adapter-proof.json",
+        "preserved-qemu-portal-mobile/product-input-adapter-audit.json",
+        "preserved-qemu-portal-mobile/wayland-atspi-target-state.json",
+        "preserved-qemu-portal-mobile/wayland-atspi-before.png",
+        "preserved-qemu-portal-mobile/wayland-atspi-after.png",
+        "preserved-qemu-portal-mobile/wayland-atspi-drive-result.json",
+        "preserved-qemu-portal-mobile/wayland-atspi-input-adapter-command.log"
+      ],
+      "failures": [],
+      "details": {
+        "adapter": "at-spi2",
+        "surface": "Wayland/Sway AT-SPI2 visible GTK target",
+        "visibleTargetState": {
+          "adapterActionName": "click",
+          "adapterDidAction": true,
+          "adapterFoundTarget": true,
+          "adapterRole": "push button",
+          "afterScreenshot": true,
+          "beforeScreenshot": true,
+          "targetClicked": true,
+          "targetLabel": "OpenBurnBar AT-SPI2 Applied",
+          "targetReady": true
+        },
+        "beforeScreenshot": {
+          "path": "preserved-qemu-portal-mobile/wayland-atspi-before.png",
+          "sizeBytes": 16030,
+          "sha256": "5f918fc494b6a70acb77d8021c1a9300850d70e85c61503c74d1034e8773dfbd",
+          "modifiedAt": "2026-07-05T12:36:05.451Z",
+          "exists": true
+        },
+        "afterScreenshot": {
+          "path": "preserved-qemu-portal-mobile/wayland-atspi-after.png",
+          "sizeBytes": 16019,
+          "sha256": "94c4a77aea8332cae046f829fbb7a44ea8c293721a67885695c4d4a0785f43c1",
+          "modifiedAt": "2026-07-05T12:36:05.451Z",
+          "exists": true
+        },
+        "responses": [
+          {
+            "approvalId": "EBEA33AF-D44A-4B53-A579-042E14B93E53",
+            "auditEntryIndex": 1,
+            "auditHeadHashHex": "80e45c54ebd7240fad25a60fa0c7387b4fe891229128d92d0a2c9e72cb6f0533",
+            "denyReason": null,
+            "id": "approved-action",
+            "resultSucceeded": true,
+            "status": "executed"
+          },
+          {
+            "approvalId": null,
+            "auditEntryIndex": 2,
+            "auditHeadHashHex": "5b116fbe67897c1d6b98b9dc3abcaa4fee9a7f6c66a9330cacff3ec2d4949b86",
+            "denyReason": "deny_region",
+            "id": "denied-region",
+            "resultSucceeded": null,
+            "status": "denied"
+          },
+          {
+            "approvalId": null,
+            "auditEntryIndex": 3,
+            "auditHeadHashHex": "f2c5621c7bb1a42b13257ec1c0bf5cc67fc13f6bae2c76a76cffc15811386b28",
+            "denyReason": "accessibility_revoked",
+            "id": "denied-no-permission",
+            "resultSucceeded": null,
+            "status": "denied"
+          },
+          {
+            "approvalId": null,
+            "auditEntryIndex": 4,
+            "auditHeadHashHex": "70598377c2b748f5797e42a37c947f8c48828706cbe90afc3ba8441e35f9fbc2",
+            "denyReason": "session_limit",
+            "id": "rate-limit",
+            "resultSucceeded": null,
+            "status": "denied"
+          }
+        ],
+        "trustMode": {
+          "afterDowngrade": "step",
+          "downgradeAudit": [
+            "trustDowngraded"
+          ],
+          "downgradeOnly": true,
+          "start": "trusted",
+          "unapprovedEscalationAudit": [
+            "trustEscalationRejected"
+          ]
+        },
+        "audit": {
+          "archiveEntryCount": 4,
+          "chainValid": true,
+          "denyReasons": [
+            "accessibility_revoked",
+            "deny_region",
+            "session_limit"
+          ],
+          "entryCount": 5,
+          "fullyVerified": true,
+          "headMarkerValid": true,
+          "headSignatureValid": true,
+          "lastEntryIndex": 4,
+          "requiredActionKindsPresent": {
+            "mac.input.click": true,
+            "mac.input.scroll": true,
+            "mac.input.type": true
+          },
+          "signedHeadHashHex": "70598377c2b748f5797e42a37c947f8c48828706cbe90afc3ba8441e35f9fbc2"
+        },
+        "x11FallbackAcceptedAsPass": false
+      }
+    },
+    {
+      "target": "VAL-CU-003",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Panic halt rows remain fresh and are only accepted after the VAL-CU-002 adapter prerequisite passed.",
+      "prerequisite": "VAL-CU-002",
+      "evidence": [
+        "preserved-qemu-portal-mobile/panic-halt-benchmarks.json",
+        "preserved-qemu-portal-mobile/computer-use-app-runtime-halt.json",
+        "preserved-qemu-portal-mobile/product-computer-use-evidence.json",
+        "preserved-qemu-portal-mobile/platform-limitation-matrix.json"
+      ],
+      "failures": [],
+      "details": {
+        "rows": [
+          {
+            "path": "app-ui",
+            "status": "pass",
+            "durationMs": 35,
+            "budgetMs": 500,
+            "resourcesClosed": true,
+            "closed": [
+              "capture",
+              "input",
+              "media"
+            ],
+            "auditEntry": "panic.halt",
+            "restartReconnect": {
+              "restoredHaltedState": true,
+              "activeResourcesAfterRestore": 0
+            },
+            "evidence": "computer-use-app-runtime-halt.json"
+          },
+          {
+            "path": "daemon-cli",
+            "status": "pass",
+            "durationMs": 3.743,
+            "budgetMs": 500,
+            "resourcesClosed": true,
+            "closed": [
+              "daemonSession",
+              "auditChain",
+              "approvalWaiters"
+            ],
+            "auditEntry": "panic.halt",
+            "auditApprovedBy": "panic",
+            "panicSource": "hotkey",
+            "panicAuditValid": true,
+            "auditHeadSignatureValid": true,
+            "restartReconnect": {
+              "closedSessionVerifiesFromDiskAfterRestart": true,
+              "newCoordinatorCanStartAfterHalt": true,
+              "tamperedArchiveFailsAfterRestart": true,
+              "tamperedClosedSessionFailsAfterRestart": true,
+              "tamperedHeadFailsAfterRestart": true,
+              "tamperedManifestFailsAfterRestart": true
+            },
+            "evidence": "product-computer-use-evidence.json"
+          },
+          {
+            "path": "mobile-remote",
+            "status": "pass",
+            "durationMs": 1.132541,
+            "budgetMs": 500,
+            "resourcesClosed": true,
+            "closed": [
+              "daemonSession",
+              "auditChain",
+              "approvalWaiters"
+            ],
+            "auditEntry": "panic.halt",
+            "auditApprovedBy": "panic",
+            "panicSource": "phone_gesture",
+            "panicAuditValid": true,
+            "auditHeadSignatureValid": true,
+            "restartReconnect": {
+              "closedSessionVerifiesFromDiskAfterRestart": true,
+              "newCoordinatorCanStartAfterHalt": true,
+              "tamperedArchiveFailsAfterRestart": true,
+              "tamperedClosedSessionFailsAfterRestart": true,
+              "tamperedHeadFailsAfterRestart": true,
+              "tamperedManifestFailsAfterRestart": true
+            },
+            "evidence": "product-computer-use-evidence.json"
+          },
+          {
+            "path": "global-system",
+            "status": "blocked",
+            "durationMs": 0,
+            "budgetMs": 500,
+            "resourcesClosed": false,
+            "limitation": "No compositor/global-hotkey service is available in this CI container.",
+            "evidence": "platform-limitation-matrix.json"
+          }
+        ],
+        "globalSystemLimitation": "No compositor/global-hotkey service is available in this CI container.",
+        "prerequisiteSatisfied": true
+      }
+    },
+    {
+      "target": "VAL-MEDIA-001",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Current checkout iroh loopback ALPN/frame proof passed and is bound to Mercury codec/backpressure plus live mobile media/control frames.",
+      "prerequisite": null,
+      "evidence": [
+        "current-product-run/media-iroh-mercury-proof.json",
+        "current-product-run/iroh-loopback-handshake.log",
+        "current-product-run/media-lan-stage-timing.json",
+        "preserved-qemu-portal-mobile/computer-use-media-codec-trace.json",
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe.json"
+      ],
+      "failures": [],
+      "details": {
+        "generatedAt": "2026-07-05T12:37:26.984Z",
+        "target": "VAL-MEDIA-001",
+        "status": "pass",
+        "acceptedAsPass": true,
+        "contractBoundary": "Pass requires current checkout iroh loopback proof plus product Mercury codec/backpressure trace and live mobile media/control transcript. Simulator timing alone is rejected.",
+        "currentCheckoutIrohLoopback": {
+          "command": "docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace/crates/openburnbar-iroh -e CARGO_TARGET_DIR=/tmp/openburnbar-cu-iroh-target openburnbar-linux-toolchain:mission-001 cargo test --test loopback_handshake --locked -- --nocapture",
+          "exitCode": 0,
+          "durationMs": 81457,
+          "log": "current-product-run/iroh-loopback-handshake.log",
+          "acceptedAsPass": true,
+          "proofSurface": "docker-linux-toolchain",
+          "cargoResolution": "docker-locked-online-resolution",
+          "dockerProbeExitCode": 0,
+          "dockerProbeLog": "current-product-run/docker-version-for-media.log",
+          "alpn": "openburnbar/1",
+          "relayMode": "disabled",
+          "transport": "iroh loopback direct addresses",
+          "frameRoundTrip": true
+        },
+        "mercuryProductTrace": {
+          "artifact": "preserved-qemu-portal-mobile/computer-use-media-codec-trace.json",
+          "source": "OpenBurnBarMedia product APIs",
+          "selectedVideoCodec": "h264",
+          "wireVersion": 2,
+          "hevcLimitation": "Linux evidence container has no hardware HEVC encoder; production resolver selected h264 fallback.",
+          "frameSealed": true,
+          "backpressure": {
+            "afterLossBitsPerSecond": 4000000,
+            "afterRecoveryBitsPerSecond": 8000000,
+            "datagramAction": "dropped-delta-for-stale-datagrams",
+            "producerAction": "paused-producer",
+            "startBitsPerSecond": 8000000
+          }
+        },
+        "mobileInteropBinding": {
+          "artifact": "preserved-qemu-portal-mobile/mobile-live-surface-probe.json",
+          "iosSimulatorDescription": "iPhone 17 Pro Max (<IOS_DEVICE_ID>), iOS 27.0 runtime",
+          "linuxPeerDescription": "openburnbar-linux-toolchain:mission-001 container 14a0e2c36585 (obb-mobile-peer-cu002-1783168383984), :8766->8766, host peer linux-peer-regenerated-cu002",
+          "mediaControlViewerFramesObserved": true,
+          "exchangeCount": 12
+        },
+        "rejectedEvidenceKinds": {
+          "mediaSimulatorTimingOnly": true,
+          "irohDependencyFailure": false,
+          "fixtureOnlyRows": true
+        },
+        "failures": []
+      }
+    },
+    {
+      "target": "VAL-MOBILE-001",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Live iOS simulator to Linux peer transcript covers pairing, approval/deny, panic, trust downgrade, media/control frames, and wire diff after VAL-CU-002.",
+      "prerequisite": "VAL-CU-002",
+      "evidence": [
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe.json",
+        "preserved-qemu-portal-mobile/linux-peer-mobile-control-transcript.json",
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe-import.json",
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe.raw.json",
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe.source.json",
+        "preserved-qemu-portal-mobile/mobile-simulator-live-probe.png"
+      ],
+      "failures": [],
+      "details": {
+        "iosSimulatorDescription": "iPhone 17 Pro Max (<IOS_DEVICE_ID>), iOS 27.0 runtime",
+        "androidDeviceDescription": null,
+        "linuxPeerDescription": "openburnbar-linux-toolchain:mission-001 container 14a0e2c36585 (obb-mobile-peer-cu002-1783168383984), :8766->8766, host peer linux-peer-regenerated-cu002",
+        "exchangeCount": 12,
+        "requiredScenarios": [
+          "pairing-auth-request",
+          "pairing-auth-ack",
+          "approval-request",
+          "approval-approve",
+          "approval-deny",
+          "panic-halt",
+          "trust-downgrade",
+          "media-control-viewer-frame",
+          "media-screen-frame",
+          "control-input-intent",
+          "additive-wire-diff",
+          "backward-compatible-close"
+        ],
+        "requiredFrameTypes": [
+          "pairing.auth.request",
+          "pairing.auth.accepted",
+          "control.approval.request",
+          "control.approval.response.approve",
+          "control.approval.response.deny",
+          "control.panic.halt",
+          "control.trust.downgrade",
+          "media.control.viewer.frame",
+          "media.screen.frame",
+          "control.input.intent",
+          "wire.diff.additive.linuxCapabilityMetadata",
+          "session.close.compatible"
+        ],
+        "screenshot": {
+          "path": "preserved-qemu-portal-mobile/mobile-simulator-live-probe.png",
+          "sizeBytes": 109543,
+          "sha256": "77004610c492faa3d8a070d38f6d37f2b728faf0b1f3289559949c9182e3c3e5",
+          "modifiedAt": "2026-07-05T12:36:05.454Z",
+          "exists": true
+        },
+        "dockerHttpOnlyAcceptedAsPass": false
+      }
+    },
+    {
+      "target": "VAL-SEC-003",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Product audit verifier accepted valid session/archive artifacts and rejected chain, head, manifest, and archive tamper cases.",
+      "prerequisite": null,
+      "evidence": [
+        "preserved-qemu-portal-mobile/audit-signing-verification.json",
+        "preserved-qemu-portal-mobile/product-computer-use-evidence.json",
+        "preserved-qemu-portal-mobile/product-audit-evidence.json",
+        "preserved-qemu-portal-mobile/product-cli-audit-verify-daemon-coordinator.log",
+        "preserved-qemu-portal-mobile/product-cli-audit-verify-input-adapter.log",
+        "preserved-qemu-portal-mobile/product-cli-audit-verify-mobile-remote.log"
+      ],
+      "failures": [],
+      "details": {
+        "productSwiftEvidence": {
+          "command": "swift run --package-path /workspace/OpenBurnBarDaemon --scratch-path /tmp/openburnbar-cu-swift-evidence-build OpenBurnBarComputerUseEvidence --output /evidence",
+          "exitCode": 0,
+          "durationMs": 108137,
+          "artifact": "product-computer-use-evidence.json"
+        },
+        "verifierRows": [
+          {
+            "path": "daemon-coordinator",
+            "validExitCode": 0,
+            "archiveValidExitCode": 0,
+            "chainTamperedExitCode": 1,
+            "headTamperedExitCode": 1,
+            "manifestTamperedExitCode": 1,
+            "archiveTamperedExitCode": 1
+          },
+          {
+            "path": "mobile-remote",
+            "validExitCode": 0,
+            "archiveValidExitCode": 0,
+            "chainTamperedExitCode": 1,
+            "headTamperedExitCode": 1,
+            "manifestTamperedExitCode": 1,
+            "archiveTamperedExitCode": 1
+          },
+          {
+            "path": "input-adapter",
+            "validExitCode": 0,
+            "archiveValidExitCode": 0,
+            "chainTamperedExitCode": 1,
+            "headTamperedExitCode": 1,
+            "manifestTamperedExitCode": 1,
+            "archiveTamperedExitCode": 1
+          }
+        ]
+      }
+    }
+  ],
+  "targets": {
+    "VAL-CU-001": {
+      "target": "VAL-CU-001",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Wayland portal/PipeWire consent lifecycle passed with approved capture, denial, revoke, and QEMU virtio-gpu provenance.",
+      "prerequisite": null,
+      "evidence": [
+        "preserved-qemu-portal-mobile/portal-evidence-summary.json",
+        "preserved-qemu-portal-mobile/portal-lifecycle.jsonl",
+        "preserved-qemu-portal-mobile/approved-pipewire-frame.png",
+        "preserved-qemu-portal-mobile/approved-pipewire-graph.json",
+        "preserved-qemu-portal-mobile/portal-capture-log.txt",
+        "preserved-qemu-portal-mobile/xdg-portal.log",
+        "preserved-qemu-portal-mobile/xdg-portal-wlr.log"
+      ],
+      "failures": [],
+      "details": {
+        "chooserType": "dmenu",
+        "decisiveSurface": "QEMU aarch64 VM with virtio-gpu DRM, Sway, PipeWire, xdg-desktop-portal, and xdg-desktop-portal-wlr",
+        "approveCreateSessionResponse": 0,
+        "approveSelectSourcesResponse": 0,
+        "approveStartResponse": 0,
+        "denySelectSourcesResponse": 1,
+        "approvedFrame": {
+          "path": "preserved-qemu-portal-mobile/approved-pipewire-frame.png",
+          "sizeBytes": 808726,
+          "sha256": "6cbb7d8e11957c22159277c2d493daa66cd8809da8813b578752345cb335c509",
+          "modifiedAt": "2026-07-05T12:36:05.459Z",
+          "exists": true
+        },
+        "pipeWireGraph": {
+          "path": "preserved-qemu-portal-mobile/approved-pipewire-graph.json",
+          "sizeBytes": 35525,
+          "sha256": "e9c5b9b94dbda45411c8c446a2ab3b83e7bf9fa730091ef8c6a9b3641d705e46",
+          "modifiedAt": "2026-07-05T12:36:05.424Z",
+          "exists": true
+        },
+        "lifecycleEventCount": 19
+      }
+    },
+    "VAL-CU-002": {
+      "target": "VAL-CU-002",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "AT-SPI2 Wayland input adapter proof mutated a visible target and bound approved/denied/trust/rate-limit rows to the product audit chain.",
+      "prerequisite": "VAL-CU-001",
+      "evidence": [
+        "preserved-qemu-portal-mobile/wayland-atspi-input-adapter-proof.json",
+        "preserved-qemu-portal-mobile/product-input-adapter-audit.json",
+        "preserved-qemu-portal-mobile/wayland-atspi-target-state.json",
+        "preserved-qemu-portal-mobile/wayland-atspi-before.png",
+        "preserved-qemu-portal-mobile/wayland-atspi-after.png",
+        "preserved-qemu-portal-mobile/wayland-atspi-drive-result.json",
+        "preserved-qemu-portal-mobile/wayland-atspi-input-adapter-command.log"
+      ],
+      "failures": [],
+      "details": {
+        "adapter": "at-spi2",
+        "surface": "Wayland/Sway AT-SPI2 visible GTK target",
+        "visibleTargetState": {
+          "adapterActionName": "click",
+          "adapterDidAction": true,
+          "adapterFoundTarget": true,
+          "adapterRole": "push button",
+          "afterScreenshot": true,
+          "beforeScreenshot": true,
+          "targetClicked": true,
+          "targetLabel": "OpenBurnBar AT-SPI2 Applied",
+          "targetReady": true
+        },
+        "beforeScreenshot": {
+          "path": "preserved-qemu-portal-mobile/wayland-atspi-before.png",
+          "sizeBytes": 16030,
+          "sha256": "5f918fc494b6a70acb77d8021c1a9300850d70e85c61503c74d1034e8773dfbd",
+          "modifiedAt": "2026-07-05T12:36:05.451Z",
+          "exists": true
+        },
+        "afterScreenshot": {
+          "path": "preserved-qemu-portal-mobile/wayland-atspi-after.png",
+          "sizeBytes": 16019,
+          "sha256": "94c4a77aea8332cae046f829fbb7a44ea8c293721a67885695c4d4a0785f43c1",
+          "modifiedAt": "2026-07-05T12:36:05.451Z",
+          "exists": true
+        },
+        "responses": [
+          {
+            "approvalId": "EBEA33AF-D44A-4B53-A579-042E14B93E53",
+            "auditEntryIndex": 1,
+            "auditHeadHashHex": "80e45c54ebd7240fad25a60fa0c7387b4fe891229128d92d0a2c9e72cb6f0533",
+            "denyReason": null,
+            "id": "approved-action",
+            "resultSucceeded": true,
+            "status": "executed"
+          },
+          {
+            "approvalId": null,
+            "auditEntryIndex": 2,
+            "auditHeadHashHex": "5b116fbe67897c1d6b98b9dc3abcaa4fee9a7f6c66a9330cacff3ec2d4949b86",
+            "denyReason": "deny_region",
+            "id": "denied-region",
+            "resultSucceeded": null,
+            "status": "denied"
+          },
+          {
+            "approvalId": null,
+            "auditEntryIndex": 3,
+            "auditHeadHashHex": "f2c5621c7bb1a42b13257ec1c0bf5cc67fc13f6bae2c76a76cffc15811386b28",
+            "denyReason": "accessibility_revoked",
+            "id": "denied-no-permission",
+            "resultSucceeded": null,
+            "status": "denied"
+          },
+          {
+            "approvalId": null,
+            "auditEntryIndex": 4,
+            "auditHeadHashHex": "70598377c2b748f5797e42a37c947f8c48828706cbe90afc3ba8441e35f9fbc2",
+            "denyReason": "session_limit",
+            "id": "rate-limit",
+            "resultSucceeded": null,
+            "status": "denied"
+          }
+        ],
+        "trustMode": {
+          "afterDowngrade": "step",
+          "downgradeAudit": [
+            "trustDowngraded"
+          ],
+          "downgradeOnly": true,
+          "start": "trusted",
+          "unapprovedEscalationAudit": [
+            "trustEscalationRejected"
+          ]
+        },
+        "audit": {
+          "archiveEntryCount": 4,
+          "chainValid": true,
+          "denyReasons": [
+            "accessibility_revoked",
+            "deny_region",
+            "session_limit"
+          ],
+          "entryCount": 5,
+          "fullyVerified": true,
+          "headMarkerValid": true,
+          "headSignatureValid": true,
+          "lastEntryIndex": 4,
+          "requiredActionKindsPresent": {
+            "mac.input.click": true,
+            "mac.input.scroll": true,
+            "mac.input.type": true
+          },
+          "signedHeadHashHex": "70598377c2b748f5797e42a37c947f8c48828706cbe90afc3ba8441e35f9fbc2"
+        },
+        "x11FallbackAcceptedAsPass": false
+      }
+    },
+    "VAL-CU-003": {
+      "target": "VAL-CU-003",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Panic halt rows remain fresh and are only accepted after the VAL-CU-002 adapter prerequisite passed.",
+      "prerequisite": "VAL-CU-002",
+      "evidence": [
+        "preserved-qemu-portal-mobile/panic-halt-benchmarks.json",
+        "preserved-qemu-portal-mobile/computer-use-app-runtime-halt.json",
+        "preserved-qemu-portal-mobile/product-computer-use-evidence.json",
+        "preserved-qemu-portal-mobile/platform-limitation-matrix.json"
+      ],
+      "failures": [],
+      "details": {
+        "rows": [
+          {
+            "path": "app-ui",
+            "status": "pass",
+            "durationMs": 35,
+            "budgetMs": 500,
+            "resourcesClosed": true,
+            "closed": [
+              "capture",
+              "input",
+              "media"
+            ],
+            "auditEntry": "panic.halt",
+            "restartReconnect": {
+              "restoredHaltedState": true,
+              "activeResourcesAfterRestore": 0
+            },
+            "evidence": "computer-use-app-runtime-halt.json"
+          },
+          {
+            "path": "daemon-cli",
+            "status": "pass",
+            "durationMs": 3.743,
+            "budgetMs": 500,
+            "resourcesClosed": true,
+            "closed": [
+              "daemonSession",
+              "auditChain",
+              "approvalWaiters"
+            ],
+            "auditEntry": "panic.halt",
+            "auditApprovedBy": "panic",
+            "panicSource": "hotkey",
+            "panicAuditValid": true,
+            "auditHeadSignatureValid": true,
+            "restartReconnect": {
+              "closedSessionVerifiesFromDiskAfterRestart": true,
+              "newCoordinatorCanStartAfterHalt": true,
+              "tamperedArchiveFailsAfterRestart": true,
+              "tamperedClosedSessionFailsAfterRestart": true,
+              "tamperedHeadFailsAfterRestart": true,
+              "tamperedManifestFailsAfterRestart": true
+            },
+            "evidence": "product-computer-use-evidence.json"
+          },
+          {
+            "path": "mobile-remote",
+            "status": "pass",
+            "durationMs": 1.132541,
+            "budgetMs": 500,
+            "resourcesClosed": true,
+            "closed": [
+              "daemonSession",
+              "auditChain",
+              "approvalWaiters"
+            ],
+            "auditEntry": "panic.halt",
+            "auditApprovedBy": "panic",
+            "panicSource": "phone_gesture",
+            "panicAuditValid": true,
+            "auditHeadSignatureValid": true,
+            "restartReconnect": {
+              "closedSessionVerifiesFromDiskAfterRestart": true,
+              "newCoordinatorCanStartAfterHalt": true,
+              "tamperedArchiveFailsAfterRestart": true,
+              "tamperedClosedSessionFailsAfterRestart": true,
+              "tamperedHeadFailsAfterRestart": true,
+              "tamperedManifestFailsAfterRestart": true
+            },
+            "evidence": "product-computer-use-evidence.json"
+          },
+          {
+            "path": "global-system",
+            "status": "blocked",
+            "durationMs": 0,
+            "budgetMs": 500,
+            "resourcesClosed": false,
+            "limitation": "No compositor/global-hotkey service is available in this CI container.",
+            "evidence": "platform-limitation-matrix.json"
+          }
+        ],
+        "globalSystemLimitation": "No compositor/global-hotkey service is available in this CI container.",
+        "prerequisiteSatisfied": true
+      }
+    },
+    "VAL-MEDIA-001": {
+      "target": "VAL-MEDIA-001",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Current checkout iroh loopback ALPN/frame proof passed and is bound to Mercury codec/backpressure plus live mobile media/control frames.",
+      "prerequisite": null,
+      "evidence": [
+        "current-product-run/media-iroh-mercury-proof.json",
+        "current-product-run/iroh-loopback-handshake.log",
+        "current-product-run/media-lan-stage-timing.json",
+        "preserved-qemu-portal-mobile/computer-use-media-codec-trace.json",
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe.json"
+      ],
+      "failures": [],
+      "details": {
+        "generatedAt": "2026-07-05T12:37:26.984Z",
+        "target": "VAL-MEDIA-001",
+        "status": "pass",
+        "acceptedAsPass": true,
+        "contractBoundary": "Pass requires current checkout iroh loopback proof plus product Mercury codec/backpressure trace and live mobile media/control transcript. Simulator timing alone is rejected.",
+        "currentCheckoutIrohLoopback": {
+          "command": "docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace/crates/openburnbar-iroh -e CARGO_TARGET_DIR=/tmp/openburnbar-cu-iroh-target openburnbar-linux-toolchain:mission-001 cargo test --test loopback_handshake --locked -- --nocapture",
+          "exitCode": 0,
+          "durationMs": 81457,
+          "log": "current-product-run/iroh-loopback-handshake.log",
+          "acceptedAsPass": true,
+          "proofSurface": "docker-linux-toolchain",
+          "cargoResolution": "docker-locked-online-resolution",
+          "dockerProbeExitCode": 0,
+          "dockerProbeLog": "current-product-run/docker-version-for-media.log",
+          "alpn": "openburnbar/1",
+          "relayMode": "disabled",
+          "transport": "iroh loopback direct addresses",
+          "frameRoundTrip": true
+        },
+        "mercuryProductTrace": {
+          "artifact": "preserved-qemu-portal-mobile/computer-use-media-codec-trace.json",
+          "source": "OpenBurnBarMedia product APIs",
+          "selectedVideoCodec": "h264",
+          "wireVersion": 2,
+          "hevcLimitation": "Linux evidence container has no hardware HEVC encoder; production resolver selected h264 fallback.",
+          "frameSealed": true,
+          "backpressure": {
+            "afterLossBitsPerSecond": 4000000,
+            "afterRecoveryBitsPerSecond": 8000000,
+            "datagramAction": "dropped-delta-for-stale-datagrams",
+            "producerAction": "paused-producer",
+            "startBitsPerSecond": 8000000
+          }
+        },
+        "mobileInteropBinding": {
+          "artifact": "preserved-qemu-portal-mobile/mobile-live-surface-probe.json",
+          "iosSimulatorDescription": "iPhone 17 Pro Max (<IOS_DEVICE_ID>), iOS 27.0 runtime",
+          "linuxPeerDescription": "openburnbar-linux-toolchain:mission-001 container 14a0e2c36585 (obb-mobile-peer-cu002-1783168383984), :8766->8766, host peer linux-peer-regenerated-cu002",
+          "mediaControlViewerFramesObserved": true,
+          "exchangeCount": 12
+        },
+        "rejectedEvidenceKinds": {
+          "mediaSimulatorTimingOnly": true,
+          "irohDependencyFailure": false,
+          "fixtureOnlyRows": true
+        },
+        "failures": []
+      }
+    },
+    "VAL-MOBILE-001": {
+      "target": "VAL-MOBILE-001",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Live iOS simulator to Linux peer transcript covers pairing, approval/deny, panic, trust downgrade, media/control frames, and wire diff after VAL-CU-002.",
+      "prerequisite": "VAL-CU-002",
+      "evidence": [
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe.json",
+        "preserved-qemu-portal-mobile/linux-peer-mobile-control-transcript.json",
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe-import.json",
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe.raw.json",
+        "preserved-qemu-portal-mobile/mobile-live-surface-probe.source.json",
+        "preserved-qemu-portal-mobile/mobile-simulator-live-probe.png"
+      ],
+      "failures": [],
+      "details": {
+        "iosSimulatorDescription": "iPhone 17 Pro Max (<IOS_DEVICE_ID>), iOS 27.0 runtime",
+        "androidDeviceDescription": null,
+        "linuxPeerDescription": "openburnbar-linux-toolchain:mission-001 container 14a0e2c36585 (obb-mobile-peer-cu002-1783168383984), :8766->8766, host peer linux-peer-regenerated-cu002",
+        "exchangeCount": 12,
+        "requiredScenarios": [
+          "pairing-auth-request",
+          "pairing-auth-ack",
+          "approval-request",
+          "approval-approve",
+          "approval-deny",
+          "panic-halt",
+          "trust-downgrade",
+          "media-control-viewer-frame",
+          "media-screen-frame",
+          "control-input-intent",
+          "additive-wire-diff",
+          "backward-compatible-close"
+        ],
+        "requiredFrameTypes": [
+          "pairing.auth.request",
+          "pairing.auth.accepted",
+          "control.approval.request",
+          "control.approval.response.approve",
+          "control.approval.response.deny",
+          "control.panic.halt",
+          "control.trust.downgrade",
+          "media.control.viewer.frame",
+          "media.screen.frame",
+          "control.input.intent",
+          "wire.diff.additive.linuxCapabilityMetadata",
+          "session.close.compatible"
+        ],
+        "screenshot": {
+          "path": "preserved-qemu-portal-mobile/mobile-simulator-live-probe.png",
+          "sizeBytes": 109543,
+          "sha256": "77004610c492faa3d8a070d38f6d37f2b728faf0b1f3289559949c9182e3c3e5",
+          "modifiedAt": "2026-07-05T12:36:05.454Z",
+          "exists": true
+        },
+        "dockerHttpOnlyAcceptedAsPass": false
+      }
+    },
+    "VAL-SEC-003": {
+      "target": "VAL-SEC-003",
+      "status": "pass",
+      "acceptedAsPass": true,
+      "notClaimedAsPass": false,
+      "reason": "Product audit verifier accepted valid session/archive artifacts and rejected chain, head, manifest, and archive tamper cases.",
+      "prerequisite": null,
+      "evidence": [
+        "preserved-qemu-portal-mobile/audit-signing-verification.json",
+        "preserved-qemu-portal-mobile/product-computer-use-evidence.json",
+        "preserved-qemu-portal-mobile/product-audit-evidence.json",
+        "preserved-qemu-portal-mobile/product-cli-audit-verify-daemon-coordinator.log",
+        "preserved-qemu-portal-mobile/product-cli-audit-verify-input-adapter.log",
+        "preserved-qemu-portal-mobile/product-cli-audit-verify-mobile-remote.log"
+      ],
+      "failures": [],
+      "details": {
+        "productSwiftEvidence": {
+          "command": "swift run --package-path /workspace/OpenBurnBarDaemon --scratch-path /tmp/openburnbar-cu-swift-evidence-build OpenBurnBarComputerUseEvidence --output /evidence",
+          "exitCode": 0,
+          "durationMs": 108137,
+          "artifact": "product-computer-use-evidence.json"
+        },
+        "verifierRows": [
+          {
+            "path": "daemon-coordinator",
+            "validExitCode": 0,
+            "archiveValidExitCode": 0,
+            "chainTamperedExitCode": 1,
+            "headTamperedExitCode": 1,
+            "manifestTamperedExitCode": 1,
+            "archiveTamperedExitCode": 1
+          },
+          {
+            "path": "mobile-remote",
+            "validExitCode": 0,
+            "archiveValidExitCode": 0,
+            "chainTamperedExitCode": 1,
+            "headTamperedExitCode": 1,
+            "manifestTamperedExitCode": 1,
+            "archiveTamperedExitCode": 1
+          },
+          {
+            "path": "input-adapter",
+            "validExitCode": 0,
+            "archiveValidExitCode": 0,
+            "chainTamperedExitCode": 1,
+            "headTamperedExitCode": 1,
+            "manifestTamperedExitCode": 1,
+            "archiveTamperedExitCode": 1
+          }
+        ]
+      }
+    }
+  },
+  "failedTargets": []
+}

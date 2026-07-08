@@ -1,0 +1,192 @@
+.command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: color-mix(in srgb, var(--color-ink-void) 55%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.command-palette {
+  width: 520px;
+  max-width: calc(100vw - var(--space-6));
+  max-height: min(420px, 70vh);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-glass-line);
+  background: color-mix(in srgb, var(--color-glass-bg-elevated) 72%, transparent);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 var(--color-frost-line),
+    0 24px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.command-palette-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-glass-line);
+  background: color-mix(in srgb, var(--color-mercury-wash) 80%, transparent);
+}
+
+.command-palette-search--focused {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--color-brass-core) 35%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-brass-glow) 45%, transparent),
+    0 0 20px color-mix(in srgb, var(--color-brass-glow) 25%, transparent);
+}
+
+.command-palette-search-icon {
+  font-size: 0.85rem;
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+.command-palette-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: var(--color-text-bright);
+  outline: none;
+}
+
+.command-palette-input::placeholder {
+  color: var(--color-text-mute);
+}
+
+.command-palette-clear {
+  border: none;
+  background: transparent;
+  color: var(--color-text-mute);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+
+.command-palette-clear:hover {
+  color: var(--color-text-base);
+  background: var(--color-frost-veil);
+}
+
+.command-palette-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+}
+
+.command-palette-section-label {
+  font-family: var(--font-display);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-mute);
+  padding: var(--space-2) var(--space-4) var(--space-1);
+}
+
+.command-palette-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px var(--space-4);
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: var(--radius-sm);
+  margin: 0 var(--space-1);
+  width: calc(100% - var(--space-2));
+}
+
+.command-palette-row:hover,
+.command-palette-row[data-selected='true'] {
+  background: color-mix(in srgb, var(--color-brass-core) 10%, transparent);
+}
+
+.command-palette-row-icon {
+  width: 1.5rem;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--color-brass-bright);
+  text-align: center;
+}
+
+.command-palette-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.command-palette-row-title {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-palette-row[data-selected='true'] .command-palette-row-title {
+  font-weight: 600;
+}
+
+.command-palette-row-subtitle {
+  font-size: 0.72rem;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-palette-row-shortcut {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--color-text-mute);
+  flex-shrink: 0;
+}
+
+.command-palette-empty {
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--color-text-mute);
+}
+
+.deck-cmdk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.shell-key-capture {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,5 +1,9 @@
 import OpenBurnBarCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 /// Result of one local `codex exec` invocation: the raw exit code plus the

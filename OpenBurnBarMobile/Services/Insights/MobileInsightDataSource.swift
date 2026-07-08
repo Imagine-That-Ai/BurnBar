@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import os.log
 
 /// Mobile adapter: synthesizes `InsightUsageRow`s from the Firestore-
 /// backed rollup summaries on `DashboardStore`.
@@ -9,6 +10,7 @@ import OpenBurnBarCore
 /// Insights can still render when the rollup worker has not caught up yet.
 @MainActor
 final class MobileInsightDataSource: InsightDataSource {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "MobileInsightDataSource")
 
     typealias UsagePageLoader = @MainActor (DateInterval) async throws -> [TokenUsage]
     typealias BenchmarkLoader = @MainActor () async throws -> [InsightDigest.ModelBenchmarkSummary]
@@ -143,6 +145,9 @@ final class MobileInsightDataSource: InsightDataSource {
                 .filter { $0.intersects(window) }
                 .map(Self.insightRow(from:))
         } catch {
+            // Empty fallback keeps Insights rendering, but log it — otherwise a
+            // broken usage loader looks identical to "no usage this window".
+            Self.log.warning("raw usage rows load failed: \(String(describing: error), privacy: .public)")
             return []
         }
     }
@@ -151,6 +156,8 @@ final class MobileInsightDataSource: InsightDataSource {
         do {
             return try await benchmarkLoader()
         } catch {
+            // Benchmarks are a garnish — degrade to none, but leave a trace.
+            Self.log.warning("model benchmarks load failed: \(String(describing: error), privacy: .public)")
             return []
         }
     }

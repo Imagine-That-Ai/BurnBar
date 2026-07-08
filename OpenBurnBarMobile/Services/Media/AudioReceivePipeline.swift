@@ -23,6 +23,8 @@ final class AudioReceivePipeline {
         }
     }
 
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "AudioReceivePipeline")
+
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let mixer = AVAudioMixerNode()
@@ -101,7 +103,12 @@ final class AudioReceivePipeline {
         }
         compressed.packetDescriptions?.update(from: &packetDesc, count: 1)
 
-        let pcm = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: 960)!
+        guard let pcm = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: 960) else {
+            // Allocation failure (memory pressure). Drop this frame — the
+            // converter's built-in Opus PLC conceals the gap on the next one.
+            Self.log.error("audio_receive_pcm_buffer_alloc_failed; dropping frame")
+            return
+        }
         var error: NSError?
         let packetSource = AudioConverterPacketSource(buffer: compressed)
         let inputBlock: AVAudioConverterInputBlock = { [packetSource] packetCount, outStatus in

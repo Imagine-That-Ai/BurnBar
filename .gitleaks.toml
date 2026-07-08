@@ -513,3 +513,47 @@ regexes = [
 paths = [
   '''windows/app/OpenBurnBar\.App/Settings/DataSourceSettingsPage\.xaml\.cs''',
 ]
+
+[[allowlists]]
+description = "Linux-port evidence transcripts: sha256 digests, ed25519 public-key hashes, and signer identifiers captured in committed proof bundles under docs/linux-port/evidence — digests of evidence artifacts, never credential material (the privacy-invariants gate governs PII there separately)"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''[0-9a-f]{24,64}''',
+]
+paths = [
+  '''docs/linux-port/evidence/.*''',
+]
+
+[[allowlists]]
+description = "Linux core-foundation parity fixture: hermesKeySHA256Hex is the digest of a synthetic fixture key generated for the parser-parity oracle"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''[0-9a-f]{24,64}''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/Fixtures/linux-provider-model-parity-fixture\.json''',
+]
+
+[[allowlists]]
+description = "PlatformSupport crypto typealiases (e.g. PlatformEd25519SigningMaterial = Curve25519.Signing.PrivateKey) — Swift type names that pattern-match key keywords, not key material"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''public typealias Platform[A-Za-z0-9]+ =''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformSupport\.swift''',
+]
+
+[[allowlists]]
+description = "Linux-port evidence daemon log transcripts: structured os_log lines (subsystem=com.openburnbar.daemon) captured as gateway/IPC proof — auth-token words appear in error copy, never as real token values"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''subsystem=com\.openburnbar\.daemon''',
+]
+paths = [
+  '''docs/linux-port/evidence/.*''',
+]

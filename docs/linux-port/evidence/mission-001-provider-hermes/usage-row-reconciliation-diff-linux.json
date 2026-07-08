@@ -1,0 +1,27 @@
+{
+  "schema": "openburnbar-provider-usage-row-reconciliation-diff-v1",
+  "platform": "linux",
+  "sourceFixture": "docs/linux-port/fixtures/provider-parser-canonical-oracle.json",
+  "expectedSource": "docs/linux-port/fixtures/provider-parser-canonical-oracle.json#corpusCases.usageRow",
+  "observedSource": "OpenBurnBarLocalDatabase.canonicalProviderUsageRows",
+  "observedIngestionSource": "OpenBurnBarLocalDatabase.ingestProviderParserBatch",
+  "observedArtifact": "provider-parser-product-replay-linux.json",
+  "status": "exact_match",
+  "expectedChecksumSHA256": "0363ae5d10372e0df5734681b4298d5385bba6ccb20f94d38928547d431d6845",
+  "observedChecksumSHA256": "0363ae5d10372e0df5734681b4298d5385bba6ccb20f94d38928547d431d6845",
+  "sampledFields": [
+    "usageSource",
+    "sourceDeviceId",
+    "providerAccountID",
+    "parentRequestID",
+    "startedAt",
+    "endedAt",
+    "costUSD",
+    "provenanceConfidence",
+    "reconciliationKey"
+  ],
+  "rowCount": 5,
+  "warningCount": 1,
+  "differences": [],
+  "errors": []
+}
