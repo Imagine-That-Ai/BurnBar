@@ -438,7 +438,7 @@ jobs:
 
       - name: Restore SwiftPM package cache
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache-new
           key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -447,7 +447,7 @@ jobs:
 
       - name: Restore cargo cache for libsignal FFI
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -528,7 +528,7 @@ jobs:
 
       - name: Restore SwiftPM package cache
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache-new
           key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -537,7 +537,7 @@ jobs:
 
       - name: Restore cargo cache for libsignal FFI
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -626,7 +626,7 @@ jobs:
 
       - name: Restore SwiftPM package cache
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache-new
           key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -635,7 +635,7 @@ jobs:
 
       - name: Restore cargo cache for libsignal FFI
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -709,7 +709,7 @@ jobs:
 
       - name: Restore SwiftPM package cache
         if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache-new
           key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -718,7 +718,7 @@ jobs:
 
       - name: Restore cargo cache for libsignal FFI
         if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -953,7 +953,7 @@ jobs:
         run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
 
       - name: Restore SwiftPM package cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache
           key: release-spm-package-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -961,7 +961,7 @@ jobs:
             release-spm-package-${{ runner.os }}-
 
       - name: Restore cargo cache for libsignal FFI
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
