@@ -2,7 +2,7 @@
  "schemaVersion": 1,
  "generatedAt": "2026-07-08T03:55:00.000Z",
  "activeCheckout": {
-  "root": "/Users/albertonunez/Documents/Developer/BurnBar",
+  "root": "$WORKSPACE",
   "head": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
   "currentHeadAtReadiness": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57",
   "evidenceHead": "64538ed350b1d3bd25ddd1cae1ba67b2a9165c57"
@@ -11,9 +11,9 @@
   "v24Foundation": {
    "status": "pass",
    "failedCount": 0,
-   "evidenceDir": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex",
-   "report": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex/report.md",
-   "finalConsistencyAudit": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w24-20260705-codex/final-consistency-audit.json",
+   "evidenceDir": "$ZENITH_EVIDENCE/validator-active-checkout-after-w24-20260705-codex",
+   "report": "$ZENITH_EVIDENCE/validator-active-checkout-after-w24-20260705-codex/report.md",
+   "finalConsistencyAudit": "$ZENITH_EVIDENCE/validator-active-checkout-after-w24-20260705-codex/final-consistency-audit.json",
    "checks": [
     {
      "name": "docker-version exit",
@@ -141,9 +141,9 @@
    "status": "pass",
    "passedCount": 27,
    "failed": [],
-   "evidenceDir": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex",
-   "report": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex/report.md",
-   "validatorSummary": "/Users/albertonunez/.zenith/projects/20260703T011441Z-user-invoked-zenith-and-goal-mode-for-the-approved-openburnbar-l/.zenith/missions/mission-001/evidence/validator-active-checkout-after-w23-20260705-codex/validator-summary.json",
+   "evidenceDir": "$ZENITH_EVIDENCE/validator-active-checkout-after-w23-20260705-codex",
+   "report": "$ZENITH_EVIDENCE/validator-active-checkout-after-w23-20260705-codex/report.md",
+   "validatorSummary": "$ZENITH_EVIDENCE/validator-active-checkout-after-w23-20260705-codex/validator-summary.json",
    "copiedEvidenceBundles": [
     "mission-001-provider-hermes/",
     "mission-001-shell-ux/",
