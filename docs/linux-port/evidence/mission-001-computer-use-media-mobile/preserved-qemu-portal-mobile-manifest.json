@@ -1,819 +1,819 @@
 {
-  "generatedAt": "2026-07-05T12:36:05.475Z",
+  "generatedAt": "2026-07-08T03:23:45.536Z",
   "label": "current-checkout-copy-of-real-surface-cu-mobile-security-evidence",
-  "directory": "/Users/albertonunez/Documents/Developer/BurnBar/docs/linux-port/evidence/mission-001-computer-use-media-mobile/preserved-qemu-portal-mobile",
+  "directory": "$WORKSPACE/docs/linux-port/evidence/mission-001-computer-use-media-mobile/preserved-qemu-portal-mobile",
   "fileCount": 134,
   "files": [
     {
       "path": "README.md",
       "sizeBytes": 1517,
       "sha256": "648b2f2468069e45a9aefbf41124787bace4e21fe6f4fc6f9c135dfb742e4a4a",
-      "modifiedAt": "2026-07-05T12:36:05.451Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "approved-pipewire-frame.png",
       "sizeBytes": 808726,
       "sha256": "6cbb7d8e11957c22159277c2d493daa66cd8809da8813b578752345cb335c509",
-      "modifiedAt": "2026-07-05T12:36:05.459Z"
+      "modifiedAt": "2026-07-08T03:23:45.529Z"
     },
     {
       "path": "approved-pipewire-graph.json",
       "sizeBytes": 35525,
       "sha256": "e9c5b9b94dbda45411c8c446a2ab3b83e7bf9fa730091ef8c6a9b3641d705e46",
-      "modifiedAt": "2026-07-05T12:36:05.424Z"
+      "modifiedAt": "2026-07-08T03:23:45.514Z"
     },
     {
       "path": "audit-signing-verification.json",
       "sizeBytes": 13442,
       "sha256": "f0d6e7670b537ac6dd0528d04c4db298c3ca4ab2c4dfd83b17d3ab4adb39a593",
-      "modifiedAt": "2026-07-05T12:36:05.422Z"
+      "modifiedAt": "2026-07-08T03:23:45.513Z"
     },
     {
       "path": "chooser-mode.txt",
       "sizeBytes": 5,
       "sha256": "a29d20c44b5b445eb9e43ffc1c136950317ceb9736c1c9464839ee7af3d68cea",
-      "modifiedAt": "2026-07-05T12:36:05.415Z"
+      "modifiedAt": "2026-07-08T03:23:45.510Z"
     },
     {
       "path": "computer-use-adapter-matrix.json",
       "sizeBytes": 4314,
       "sha256": "caf628cd1ad8a82173341e0fb14990a0c7c6d71edcc6c78e44ef27381d26a321",
-      "modifiedAt": "2026-07-05T12:36:05.454Z"
+      "modifiedAt": "2026-07-08T03:23:45.527Z"
     },
     {
       "path": "computer-use-app-runtime-halt.json",
       "sizeBytes": 655,
       "sha256": "4363bc9d844d6a44858eaaab36cffcee9007b705045f706d126ad05824b595b2",
-      "modifiedAt": "2026-07-05T12:36:05.456Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "computer-use-evidence-summary.json",
       "sizeBytes": 2335,
       "sha256": "53130685b07be68e52de4a049d3a2fdfc0b40d9a4c53c3db035ab556fe9819ef",
-      "modifiedAt": "2026-07-05T12:36:05.415Z"
+      "modifiedAt": "2026-07-08T03:23:45.511Z"
     },
     {
       "path": "computer-use-input-policy-replay.json",
       "sizeBytes": 5232,
       "sha256": "a2acda06abcd5fe74d4c96a4e3a217a7e5a8de8249902412d85efffb60ebe65b",
-      "modifiedAt": "2026-07-05T12:36:05.422Z"
+      "modifiedAt": "2026-07-08T03:23:45.513Z"
     },
     {
       "path": "computer-use-media-codec-trace.json",
       "sizeBytes": 958,
       "sha256": "215e6683041dbd234c0134d8380a962e0ccf3258094782d695c4a34554455b5b",
-      "modifiedAt": "2026-07-05T12:36:05.419Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     },
     {
       "path": "computer-use-mobile-protocol-replay.json",
       "sizeBytes": 2837,
       "sha256": "c153c39497ca5532e82b64d59465393de0ef87c8cda2e07f7709ca52ec8d5ca8",
-      "modifiedAt": "2026-07-05T12:36:05.454Z"
+      "modifiedAt": "2026-07-08T03:23:45.527Z"
     },
     {
       "path": "computer-use-model-test.log",
       "sizeBytes": 439,
       "sha256": "03bb65cd1b02687dbdedbbf38811a4e46203adf82e2cd26e09ca229ce6ec24e3",
-      "modifiedAt": "2026-07-05T12:36:05.450Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "computer-use-permission-state-ui.json",
       "sizeBytes": 1237,
       "sha256": "433d077767faf2f1dcf60c323233355bd8770ab2292cafacf8e34b9f339fedb4",
-      "modifiedAt": "2026-07-05T12:36:05.458Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "computer-use-safety-invariants.json",
       "sizeBytes": 351,
       "sha256": "7795f857d44732fec592504878960a80c4121f4618afa53cc84e0c7935c84da9",
-      "modifiedAt": "2026-07-05T12:36:05.456Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "computer-use-target-status-only-run.json",
       "sizeBytes": 5137,
       "sha256": "4e789cd1c6d3f6fae7cb39f60d99b8d0c39f4c096299c43c930338d317a8e230",
-      "modifiedAt": "2026-07-05T12:36:05.456Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "computer-use-target-status.json",
       "sizeBytes": 20700,
       "sha256": "8116aaa64be9c8b720d17738e2f3ae5865ec770c9059e7075d168210eff56ffe",
-      "modifiedAt": "2026-07-05T12:36:05.457Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "dbus-names.txt",
       "sizeBytes": 415,
       "sha256": "92ad75f7cbab746ed5d46752480df94aae7a02268fa5e18240b26aba8a596293",
-      "modifiedAt": "2026-07-05T12:36:05.428Z"
+      "modifiedAt": "2026-07-08T03:23:45.516Z"
     },
     {
       "path": "docker-platform-probe.log",
       "sizeBytes": 595,
       "sha256": "8d8ef4d9d5821c1905e469c29ff0cd1a2d3343dc609f7896f61727f879f26d02",
-      "modifiedAt": "2026-07-05T12:36:05.452Z"
+      "modifiedAt": "2026-07-08T03:23:45.526Z"
     },
     {
       "path": "dri-devices.txt",
       "sizeBytes": 278,
       "sha256": "f3d5f4c8867ac36f40df3e81eaf05a08047d97d9e78e37b041ea2725501a4956",
-      "modifiedAt": "2026-07-05T12:36:05.415Z"
+      "modifiedAt": "2026-07-08T03:23:45.511Z"
     },
     {
       "path": "final-desktop-state.png",
       "sizeBytes": 808726,
       "sha256": "6cbb7d8e11957c22159277c2d493daa66cd8809da8813b578752345cb335c509",
-      "modifiedAt": "2026-07-05T12:36:05.410Z"
+      "modifiedAt": "2026-07-08T03:23:45.510Z"
     },
     {
       "path": "input-adapter-decision-proof.json",
       "sizeBytes": 651,
       "sha256": "c2ec290c4ce4f47ecafe08e65405d806b57654b2f3192a3912d01687081ae832",
-      "modifiedAt": "2026-07-05T12:36:05.449Z"
+      "modifiedAt": "2026-07-08T03:23:45.524Z"
     },
     {
       "path": "linux-peer-mobile-control-transcript.json",
       "sizeBytes": 17747,
       "sha256": "8f7fbb082626d2ecc6296a5b3edbf47a31e2bf98f8f63522469537a319a57c11",
-      "modifiedAt": "2026-07-05T12:36:05.461Z"
+      "modifiedAt": "2026-07-08T03:23:45.529Z"
     },
     {
       "path": "linux-platform-probes.json",
       "sizeBytes": 29485,
       "sha256": "35402fb489e6c0dbcd55e60a7f8a951c852c9a323cc9374519155faa3de57a94",
-      "modifiedAt": "2026-07-05T12:36:05.412Z"
+      "modifiedAt": "2026-07-08T03:23:45.510Z"
     },
     {
       "path": "mobile-live-surface-probe-import.json",
       "sizeBytes": 2309,
       "sha256": "af4050efe951f718a3f17b2bf06a260e31133c57d3165edb7fe576d3d234430a",
-      "modifiedAt": "2026-07-05T12:36:05.449Z"
+      "modifiedAt": "2026-07-08T03:23:45.524Z"
     },
     {
       "path": "mobile-live-surface-probe.json",
       "sizeBytes": 22299,
       "sha256": "95ffd0a7a8259b363e2aa3aff7f8fbec96251acc03badf840d03fff88032758b",
-      "modifiedAt": "2026-07-05T12:36:05.459Z"
+      "modifiedAt": "2026-07-08T03:23:45.529Z"
     },
     {
       "path": "mobile-live-surface-probe.raw.json",
       "sizeBytes": 15209,
       "sha256": "6a733b4b0ae04eb8abbb4b39a813bccf896253e9c577c7e03dcaad9bf9f63a81",
-      "modifiedAt": "2026-07-05T12:36:05.423Z"
+      "modifiedAt": "2026-07-08T03:23:45.514Z"
     },
     {
       "path": "mobile-live-surface-probe.source.json",
       "sizeBytes": 18925,
       "sha256": "ef35bc478d758f27170a3043dd981ef10c6bb191560be68cc1065b68acfda46f",
-      "modifiedAt": "2026-07-05T12:36:05.458Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "mobile-pairing-auth-evidence.json",
       "sizeBytes": 1199,
       "sha256": "1b1a222392ffc41f97ab29c18dddc969861d08fc57938f8089c7429b96688648",
-      "modifiedAt": "2026-07-05T12:36:05.450Z"
+      "modifiedAt": "2026-07-08T03:23:45.524Z"
     },
     {
       "path": "mobile-replay-oracle.json",
       "sizeBytes": 560,
       "sha256": "aeb17a77d3bdaf7bd97ec220e03163317bcccf7c1ae78b075136c97e0972a69b",
-      "modifiedAt": "2026-07-05T12:36:05.460Z"
+      "modifiedAt": "2026-07-08T03:23:45.529Z"
     },
     {
       "path": "mobile-replay-oracle.md",
       "sizeBytes": 1381,
       "sha256": "03f26496ae75bed1f056d9765666364c63bee8006e910bf7adf3e8fdd53b9cfd",
-      "modifiedAt": "2026-07-05T12:36:05.422Z"
+      "modifiedAt": "2026-07-08T03:23:45.513Z"
     },
     {
       "path": "mobile-simulator-live-probe.png",
       "sizeBytes": 109543,
       "sha256": "77004610c492faa3d8a070d38f6d37f2b728faf0b1f3289559949c9182e3c3e5",
-      "modifiedAt": "2026-07-05T12:36:05.454Z"
+      "modifiedAt": "2026-07-08T03:23:45.526Z"
     },
     {
       "path": "panic-halt-benchmarks.json",
       "sizeBytes": 2615,
       "sha256": "a93f81b56016bc7541287c83d77bbf0b586f6fc24b344f31d978ea99d4f3f545",
-      "modifiedAt": "2026-07-05T12:36:05.413Z"
+      "modifiedAt": "2026-07-08T03:23:45.510Z"
     },
     {
       "path": "pipewire.log",
       "sizeBytes": 237,
       "sha256": "75d1976a72e87ccb3a144ad9e0666113ce9b4778a1850227695d391ace5637c4",
-      "modifiedAt": "2026-07-05T12:36:05.424Z"
+      "modifiedAt": "2026-07-08T03:23:45.514Z"
     },
     {
       "path": "platform-limitation-matrix.json",
       "sizeBytes": 1312,
       "sha256": "891942059cd2a96a9fb6cf080f339e352d94631c3fd3dd91802b70cd832cbcb2",
-      "modifiedAt": "2026-07-05T12:36:05.452Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "portal-capture-log.txt",
       "sizeBytes": 1465,
       "sha256": "823b4c20daef9e5bfa6f30261ff478003ef32bfcf48999c52e657e36e2c6ce75",
-      "modifiedAt": "2026-07-05T12:36:05.419Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     },
     {
       "path": "portal-chooser.sh",
       "sizeBytes": 1339,
       "sha256": "63b1be19ad5475c0907d77edf6b19d0fc8dabf407f682f1005a732541108fca6",
-      "modifiedAt": "2026-07-05T12:36:05.417Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     },
     {
       "path": "portal-consent-lifecycle-attempt.json",
       "sizeBytes": 4070,
       "sha256": "acf47c5e5cbc53604385c94caf36f00ef0902d2491b58567c61ce8baa41507d9",
-      "modifiedAt": "2026-07-05T12:36:05.455Z"
+      "modifiedAt": "2026-07-08T03:23:45.527Z"
     },
     {
       "path": "portal-consent-lifecycle-command.log",
       "sizeBytes": 10635,
       "sha256": "22f693eb8317499753e56b65c23e9c127e1b3e80325ee606c5a7ff7f5c7eef11",
-      "modifiedAt": "2026-07-05T12:36:05.458Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "portal-evidence-summary.json",
       "sizeBytes": 6757,
       "sha256": "a3b48f5341d52afb2bf8b5ffb79ed4aeb44250ab126c69d88d40cc0dcb2d8ca6",
-      "modifiedAt": "2026-07-05T12:36:05.453Z"
+      "modifiedAt": "2026-07-08T03:23:45.526Z"
     },
     {
       "path": "portal-lifecycle.jsonl",
       "sizeBytes": 1949,
       "sha256": "2001361d338a51390fac5aea6c6c2816e8973513e95ba3ff9a9d28d746d9e550",
-      "modifiedAt": "2026-07-05T12:36:05.455Z"
+      "modifiedAt": "2026-07-08T03:23:45.527Z"
     },
     {
       "path": "product-audit-evidence.json",
       "sizeBytes": 3722,
       "sha256": "3916dbd397e87b5458dd1fbe8bc04fa044adb34bd4c7b98e87a4b106336606a5",
-      "modifiedAt": "2026-07-05T12:36:05.419Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     },
     {
-      "path": "product-audit-exports/tampered/daemon-coordinator.tar.gz",
+      "path": "product-audit-exports/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered-archive/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz",
       "sizeBytes": 917,
       "sha256": "fe184809a543e316be071dd12df492532343c1a67b3dffbd2d05bb16d29ef809",
-      "modifiedAt": "2026-07-05T12:36:05.428Z"
+      "modifiedAt": "2026-07-08T03:23:45.516Z"
     },
     {
       "path": "product-audit-exports/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz",
       "sizeBytes": 917,
       "sha256": "80776fe1414c713c6be16406e3b4be39653500b4c7ede168832808d5c95180e4",
-      "modifiedAt": "2026-07-05T12:36:05.426Z"
+      "modifiedAt": "2026-07-08T03:23:45.515Z"
     },
     {
       "path": "product-audit-exports/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz.sig.json",
       "sizeBytes": 682,
       "sha256": "8c8d9b47ef2efadb544b43a0d0203ad6581ca67f2055dea680b91f418793f561",
-      "modifiedAt": "2026-07-05T12:36:05.427Z"
+      "modifiedAt": "2026-07-08T03:23:45.515Z"
     },
     {
-      "path": "product-audit-exports/tampered/input-adapter.tar.gz",
+      "path": "product-audit-exports/linux-evidence-input-adapter-IOS-DEVICE-B-tampered-archive/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
       "sizeBytes": 1441,
       "sha256": "2f5b7197cb4c0fab469fa1b43c3f2730ea6e7eb86873b6182f32ed2e3e14ed28",
-      "modifiedAt": "2026-07-05T12:36:05.426Z"
+      "modifiedAt": "2026-07-08T03:23:45.515Z"
     },
     {
       "path": "product-audit-exports/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
       "sizeBytes": 1441,
       "sha256": "3b4a6debab07492a7ef52bc52c2afceed33b6d9b8854b7b74c342033b8f32624",
-      "modifiedAt": "2026-07-05T12:36:05.427Z"
+      "modifiedAt": "2026-07-08T03:23:45.515Z"
     },
     {
       "path": "product-audit-exports/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz.sig.json",
       "sizeBytes": 677,
       "sha256": "62e928e5ed69b8d88b7bed9d4a6e8951bc4203b7050404a3ff7ec15c560f099e",
-      "modifiedAt": "2026-07-05T12:36:05.425Z"
+      "modifiedAt": "2026-07-08T03:23:45.514Z"
     },
     {
-      "path": "product-audit-exports/tampered/mobile-remote.tar.gz",
+      "path": "product-audit-exports/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered-archive/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz",
       "sizeBytes": 933,
       "sha256": "c250dad0818a16d8f53e47c1a7496ae30c0d0cbeec7b70a36851bcf2ff367f85",
-      "modifiedAt": "2026-07-05T12:36:05.425Z"
+      "modifiedAt": "2026-07-08T03:23:45.515Z"
     },
     {
       "path": "product-audit-exports/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz",
       "sizeBytes": 933,
       "sha256": "69a234770b7d0421ad25cb4a7e1067ae792d8442f7c5acf2c7c2e73b3aa75fb3",
-      "modifiedAt": "2026-07-05T12:36:05.427Z"
+      "modifiedAt": "2026-07-08T03:23:45.515Z"
     },
     {
       "path": "product-audit-exports/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz.sig.json",
       "sizeBytes": 677,
       "sha256": "94f63afb3794eb84dea0782b9699665d6af304369d925b40397c71a704f8d8f3",
-      "modifiedAt": "2026-07-05T12:36:05.425Z"
+      "modifiedAt": "2026-07-08T03:23:45.514Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-head-tampered/chain.jsonl",
       "sizeBytes": 487,
       "sha256": "312e9fdd2086487fbd06c15fd1c760f91537b04f50f57396ef009792dea54e9a",
-      "modifiedAt": "2026-07-05T12:36:05.444Z"
+      "modifiedAt": "2026-07-08T03:23:45.522Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-head-tampered/head.json",
       "sizeBytes": 243,
       "sha256": "310baba32ce5ac88a4cf17038960ca6e0c481b6f582b6567c2cb48c009560c36",
-      "modifiedAt": "2026-07-05T12:36:05.444Z"
+      "modifiedAt": "2026-07-08T03:23:45.521Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-head-tampered/manifest.json",
       "sizeBytes": 386,
       "sha256": "96712e6781acf27942eec2ac718f0fbec13fd255fd27fb10de938f27cc8fd0e4",
-      "modifiedAt": "2026-07-05T12:36:05.444Z"
+      "modifiedAt": "2026-07-08T03:23:45.522Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-head-tampered/signed_head.json",
       "sizeBytes": 423,
       "sha256": "f6a71db5de6f00ea8c622991ba98aa29ec9d507d0ced3f7c95459a020e33b561",
-      "modifiedAt": "2026-07-05T12:36:05.445Z"
+      "modifiedAt": "2026-07-08T03:23:45.522Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-manifest-tampered/chain.jsonl",
       "sizeBytes": 487,
       "sha256": "312e9fdd2086487fbd06c15fd1c760f91537b04f50f57396ef009792dea54e9a",
-      "modifiedAt": "2026-07-05T12:36:05.434Z"
+      "modifiedAt": "2026-07-08T03:23:45.518Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-manifest-tampered/head.json",
       "sizeBytes": 217,
       "sha256": "351b448658726c2db61967779f140b44537463fd5c1d40168a404f43d0cf3048",
-      "modifiedAt": "2026-07-05T12:36:05.434Z"
+      "modifiedAt": "2026-07-08T03:23:45.518Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-manifest-tampered/manifest.json",
       "sizeBytes": 463,
       "sha256": "5d85e9443c4a6af6ea2d2cf488fdbe64d775d3398d2bf7faa9fa8e71c3bb6b2e",
-      "modifiedAt": "2026-07-05T12:36:05.434Z"
+      "modifiedAt": "2026-07-08T03:23:45.519Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-manifest-tampered/signed_head.json",
       "sizeBytes": 423,
       "sha256": "f6a71db5de6f00ea8c622991ba98aa29ec9d507d0ced3f7c95459a020e33b561",
-      "modifiedAt": "2026-07-05T12:36:05.434Z"
+      "modifiedAt": "2026-07-08T03:23:45.519Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered/chain.jsonl",
       "sizeBytes": 496,
       "sha256": "23fc159f03c2726223602b10435b7349ea848d6f48aefde607dc295337faafca",
-      "modifiedAt": "2026-07-05T12:36:05.431Z"
+      "modifiedAt": "2026-07-08T03:23:45.517Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered/head.json",
       "sizeBytes": 217,
       "sha256": "351b448658726c2db61967779f140b44537463fd5c1d40168a404f43d0cf3048",
-      "modifiedAt": "2026-07-05T12:36:05.431Z"
+      "modifiedAt": "2026-07-08T03:23:45.517Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered/manifest.json",
       "sizeBytes": 386,
       "sha256": "96712e6781acf27942eec2ac718f0fbec13fd255fd27fb10de938f27cc8fd0e4",
-      "modifiedAt": "2026-07-05T12:36:05.431Z"
+      "modifiedAt": "2026-07-08T03:23:45.517Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered/signed_head.json",
       "sizeBytes": 423,
       "sha256": "f6a71db5de6f00ea8c622991ba98aa29ec9d507d0ced3f7c95459a020e33b561",
-      "modifiedAt": "2026-07-05T12:36:05.431Z"
+      "modifiedAt": "2026-07-08T03:23:45.517Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A/chain.jsonl",
       "sizeBytes": 487,
       "sha256": "312e9fdd2086487fbd06c15fd1c760f91537b04f50f57396ef009792dea54e9a",
-      "modifiedAt": "2026-07-05T12:36:05.448Z"
+      "modifiedAt": "2026-07-08T03:23:45.524Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A/head.json",
       "sizeBytes": 217,
       "sha256": "351b448658726c2db61967779f140b44537463fd5c1d40168a404f43d0cf3048",
-      "modifiedAt": "2026-07-05T12:36:05.448Z"
+      "modifiedAt": "2026-07-08T03:23:45.524Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A/manifest.json",
       "sizeBytes": 386,
       "sha256": "96712e6781acf27942eec2ac718f0fbec13fd255fd27fb10de938f27cc8fd0e4",
-      "modifiedAt": "2026-07-05T12:36:05.448Z"
+      "modifiedAt": "2026-07-08T03:23:45.524Z"
     },
     {
       "path": "product-audit/linux-evidence-daemon-coordinator-IOS-DEVICE-A/signed_head.json",
       "sizeBytes": 423,
       "sha256": "f6a71db5de6f00ea8c622991ba98aa29ec9d507d0ced3f7c95459a020e33b561",
-      "modifiedAt": "2026-07-05T12:36:05.448Z"
+      "modifiedAt": "2026-07-08T03:23:45.524Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered/chain.jsonl",
       "sizeBytes": 2685,
       "sha256": "e9265ef0d1d6cc8ab166804b90facbbb97d8c0b397c7a6ad78b7694311ff0558",
-      "modifiedAt": "2026-07-05T12:36:05.430Z"
+      "modifiedAt": "2026-07-08T03:23:45.516Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered/head.json",
       "sizeBytes": 238,
       "sha256": "dddaa38a8d0fda7a6fa6a02f767df731b45ef64f02f72209bf769a3b7ff46f6f",
-      "modifiedAt": "2026-07-05T12:36:05.429Z"
+      "modifiedAt": "2026-07-08T03:23:45.516Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered/manifest.json",
       "sizeBytes": 426,
       "sha256": "e748d85af57eb4c890a77b8ef86a9757e4d184fe4fe5d89a161f402f50b7b5f9",
-      "modifiedAt": "2026-07-05T12:36:05.430Z"
+      "modifiedAt": "2026-07-08T03:23:45.516Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered/signed_head.json",
       "sizeBytes": 418,
       "sha256": "70fc54e8050b9e57a52b6d1d451138af88e252bd625a77bcd4d52b3cff925dba",
-      "modifiedAt": "2026-07-05T12:36:05.430Z"
+      "modifiedAt": "2026-07-08T03:23:45.517Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered/chain.jsonl",
       "sizeBytes": 2685,
       "sha256": "e9265ef0d1d6cc8ab166804b90facbbb97d8c0b397c7a6ad78b7694311ff0558",
-      "modifiedAt": "2026-07-05T12:36:05.435Z"
+      "modifiedAt": "2026-07-08T03:23:45.519Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered/head.json",
       "sizeBytes": 212,
       "sha256": "20f3e0bdcc6b070601b4d04431eb96b08914ea006566b092fc4c13843f24da48",
-      "modifiedAt": "2026-07-05T12:36:05.435Z"
+      "modifiedAt": "2026-07-08T03:23:45.519Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered/manifest.json",
       "sizeBytes": 508,
       "sha256": "7cddcee1988aed0c62821175f8c0cfd593667f174be6febe58abe35d2bb0a25a",
-      "modifiedAt": "2026-07-05T12:36:05.435Z"
+      "modifiedAt": "2026-07-08T03:23:45.519Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered/signed_head.json",
       "sizeBytes": 418,
       "sha256": "70fc54e8050b9e57a52b6d1d451138af88e252bd625a77bcd4d52b3cff925dba",
-      "modifiedAt": "2026-07-05T12:36:05.436Z"
+      "modifiedAt": "2026-07-08T03:23:45.519Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-tampered/chain.jsonl",
       "sizeBytes": 2694,
       "sha256": "03f8187034de0373aa214280aa012ef6419c41bc1917e868e724853b948f2497",
-      "modifiedAt": "2026-07-05T12:36:05.442Z"
+      "modifiedAt": "2026-07-08T03:23:45.520Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-tampered/head.json",
       "sizeBytes": 212,
       "sha256": "20f3e0bdcc6b070601b4d04431eb96b08914ea006566b092fc4c13843f24da48",
-      "modifiedAt": "2026-07-05T12:36:05.442Z"
+      "modifiedAt": "2026-07-08T03:23:45.520Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-tampered/manifest.json",
       "sizeBytes": 426,
       "sha256": "e748d85af57eb4c890a77b8ef86a9757e4d184fe4fe5d89a161f402f50b7b5f9",
-      "modifiedAt": "2026-07-05T12:36:05.442Z"
+      "modifiedAt": "2026-07-08T03:23:45.520Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B-tampered/signed_head.json",
       "sizeBytes": 418,
       "sha256": "70fc54e8050b9e57a52b6d1d451138af88e252bd625a77bcd4d52b3cff925dba",
-      "modifiedAt": "2026-07-05T12:36:05.442Z"
+      "modifiedAt": "2026-07-08T03:23:45.521Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B/chain.jsonl",
       "sizeBytes": 2685,
       "sha256": "e9265ef0d1d6cc8ab166804b90facbbb97d8c0b397c7a6ad78b7694311ff0558",
-      "modifiedAt": "2026-07-05T12:36:05.446Z"
+      "modifiedAt": "2026-07-08T03:23:45.522Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B/head.json",
       "sizeBytes": 212,
       "sha256": "20f3e0bdcc6b070601b4d04431eb96b08914ea006566b092fc4c13843f24da48",
-      "modifiedAt": "2026-07-05T12:36:05.445Z"
+      "modifiedAt": "2026-07-08T03:23:45.522Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B/manifest.json",
       "sizeBytes": 426,
       "sha256": "e748d85af57eb4c890a77b8ef86a9757e4d184fe4fe5d89a161f402f50b7b5f9",
-      "modifiedAt": "2026-07-05T12:36:05.446Z"
+      "modifiedAt": "2026-07-08T03:23:45.523Z"
     },
     {
       "path": "product-audit/linux-evidence-input-adapter-IOS-DEVICE-B/signed_head.json",
       "sizeBytes": 418,
       "sha256": "70fc54e8050b9e57a52b6d1d451138af88e252bd625a77bcd4d52b3cff925dba",
-      "modifiedAt": "2026-07-05T12:36:05.446Z"
+      "modifiedAt": "2026-07-08T03:23:45.523Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-head-tampered/chain.jsonl",
       "sizeBytes": 489,
       "sha256": "356d78b83e61947ad6779af39a00232777837971c3da9664d90762b94d68460f",
-      "modifiedAt": "2026-07-05T12:36:05.447Z"
+      "modifiedAt": "2026-07-08T03:23:45.523Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-head-tampered/head.json",
       "sizeBytes": 238,
       "sha256": "c0c5abd7bc9a4449d57ffea0a0a0a9dca4ca519843cb32b0b8d15edcd0f447d2",
-      "modifiedAt": "2026-07-05T12:36:05.447Z"
+      "modifiedAt": "2026-07-08T03:23:45.523Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-head-tampered/manifest.json",
       "sizeBytes": 422,
       "sha256": "333b864e52d30f245853ec56ce3ef1a7288b4cc2cdfe1ec8fde98e96f7ba190e",
-      "modifiedAt": "2026-07-05T12:36:05.447Z"
+      "modifiedAt": "2026-07-08T03:23:45.523Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-head-tampered/signed_head.json",
       "sizeBytes": 418,
       "sha256": "407b82ec341563867ef730069b8a9daab5b17b09fa44b1ea970cbca49de41037",
-      "modifiedAt": "2026-07-05T12:36:05.447Z"
+      "modifiedAt": "2026-07-08T03:23:45.523Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-manifest-tampered/chain.jsonl",
       "sizeBytes": 489,
       "sha256": "356d78b83e61947ad6779af39a00232777837971c3da9664d90762b94d68460f",
-      "modifiedAt": "2026-07-05T12:36:05.443Z"
+      "modifiedAt": "2026-07-08T03:23:45.521Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-manifest-tampered/head.json",
       "sizeBytes": 212,
       "sha256": "41a33b083eb6ce7e48a5e69a8e9f1fe8a44e771ce664dba0ceb7077b03a1cdb5",
-      "modifiedAt": "2026-07-05T12:36:05.443Z"
+      "modifiedAt": "2026-07-08T03:23:45.521Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-manifest-tampered/manifest.json",
       "sizeBytes": 504,
       "sha256": "d4b6877308d1b94cae5525d0483e3e7ece65c9f271ca386f4d00a0346b5180bc",
-      "modifiedAt": "2026-07-05T12:36:05.443Z"
+      "modifiedAt": "2026-07-08T03:23:45.521Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-manifest-tampered/signed_head.json",
       "sizeBytes": 418,
       "sha256": "407b82ec341563867ef730069b8a9daab5b17b09fa44b1ea970cbca49de41037",
-      "modifiedAt": "2026-07-05T12:36:05.444Z"
+      "modifiedAt": "2026-07-08T03:23:45.521Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered/chain.jsonl",
       "sizeBytes": 498,
       "sha256": "afda3997e03d3a5f694d94241e99c55acaad2c257128829216f22ebc42775d51",
-      "modifiedAt": "2026-07-05T12:36:05.437Z"
+      "modifiedAt": "2026-07-08T03:23:45.520Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered/head.json",
       "sizeBytes": 212,
       "sha256": "41a33b083eb6ce7e48a5e69a8e9f1fe8a44e771ce664dba0ceb7077b03a1cdb5",
-      "modifiedAt": "2026-07-05T12:36:05.437Z"
+      "modifiedAt": "2026-07-08T03:23:45.520Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered/manifest.json",
       "sizeBytes": 422,
       "sha256": "333b864e52d30f245853ec56ce3ef1a7288b4cc2cdfe1ec8fde98e96f7ba190e",
-      "modifiedAt": "2026-07-05T12:36:05.439Z"
+      "modifiedAt": "2026-07-08T03:23:45.520Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered/signed_head.json",
       "sizeBytes": 418,
       "sha256": "407b82ec341563867ef730069b8a9daab5b17b09fa44b1ea970cbca49de41037",
-      "modifiedAt": "2026-07-05T12:36:05.439Z"
+      "modifiedAt": "2026-07-08T03:23:45.520Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C/chain.jsonl",
       "sizeBytes": 489,
       "sha256": "356d78b83e61947ad6779af39a00232777837971c3da9664d90762b94d68460f",
-      "modifiedAt": "2026-07-05T12:36:05.433Z"
+      "modifiedAt": "2026-07-08T03:23:45.518Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C/head.json",
       "sizeBytes": 212,
       "sha256": "41a33b083eb6ce7e48a5e69a8e9f1fe8a44e771ce664dba0ceb7077b03a1cdb5",
-      "modifiedAt": "2026-07-05T12:36:05.432Z"
+      "modifiedAt": "2026-07-08T03:23:45.517Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C/manifest.json",
       "sizeBytes": 422,
       "sha256": "333b864e52d30f245853ec56ce3ef1a7288b4cc2cdfe1ec8fde98e96f7ba190e",
-      "modifiedAt": "2026-07-05T12:36:05.433Z"
+      "modifiedAt": "2026-07-08T03:23:45.518Z"
     },
     {
       "path": "product-audit/linux-evidence-mobile-remote-IOS-DEVICE-C/signed_head.json",
       "sizeBytes": 418,
       "sha256": "407b82ec341563867ef730069b8a9daab5b17b09fa44b1ea970cbca49de41037",
-      "modifiedAt": "2026-07-05T12:36:05.433Z"
+      "modifiedAt": "2026-07-08T03:23:45.518Z"
     },
     {
       "path": "product-cli-audit-verify-daemon-coordinator.log",
       "sizeBytes": 4423,
       "sha256": "730add7fd3bc08b54c87bbe04fdb510bbe2d46475458a9b00663189ccae7a66a",
-      "modifiedAt": "2026-07-05T12:36:05.414Z"
+      "modifiedAt": "2026-07-08T03:23:45.510Z"
     },
     {
       "path": "product-cli-audit-verify-input-adapter.log",
       "sizeBytes": 4037,
       "sha256": "d4804fc11cc081f8abfba6442158c23b4436b6fdae00d690662386f5a403edc8",
-      "modifiedAt": "2026-07-05T12:36:05.457Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "product-cli-audit-verify-mobile-remote.log",
       "sizeBytes": 4114,
       "sha256": "a05f7c9b07081590e4741e42cb07463e4f8004550b9c5869531185ccc1ccf618",
-      "modifiedAt": "2026-07-05T12:36:05.455Z"
+      "modifiedAt": "2026-07-08T03:23:45.527Z"
     },
     {
       "path": "product-computer-use-evidence.json",
       "sizeBytes": 16857,
       "sha256": "e3eda0f45ccce3bc6b7d60b440704566ab919ee05ea1aabeb7e9c66e0d0899f2",
-      "modifiedAt": "2026-07-05T12:36:05.418Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     },
     {
       "path": "product-computer-use-evidence.log",
       "sizeBytes": 352316,
       "sha256": "ec23e8c9c9d6772206c22fdd8ce4ecefba036503715fa1d5a2e7792821dab89e",
-      "modifiedAt": "2026-07-05T12:36:05.421Z"
+      "modifiedAt": "2026-07-08T03:23:45.513Z"
     },
     {
       "path": "product-input-adapter-audit.json",
       "sizeBytes": 5800,
       "sha256": "2c2d0401c8946edc4da217f737fb287f477cd73edfbbafa91800df981ef7a383",
-      "modifiedAt": "2026-07-05T12:36:05.416Z"
+      "modifiedAt": "2026-07-08T03:23:45.511Z"
     },
     {
       "path": "self-checks.md",
       "sizeBytes": 2229,
       "sha256": "030e59a8de58f148b73d03c5e1938e5587a26bf9f03cc9a4e7868fd213738a26",
-      "modifiedAt": "2026-07-05T12:36:05.453Z"
+      "modifiedAt": "2026-07-08T03:23:45.526Z"
     },
     {
       "path": "sway-outputs.json",
       "sizeBytes": 2,
       "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "modifiedAt": "2026-07-05T12:36:05.453Z"
+      "modifiedAt": "2026-07-08T03:23:45.526Z"
     },
     {
       "path": "sway.log",
       "sizeBytes": 569,
       "sha256": "427177951a3ebd7fccf0eb77764790af6c79f60c0530cbe0ac1cf7407e08200f",
-      "modifiedAt": "2026-07-05T12:36:05.452Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "wayland-atspi-after.png",
       "sizeBytes": 16019,
       "sha256": "94c4a77aea8332cae046f829fbb7a44ea8c293721a67885695c4d4a0785f43c1",
-      "modifiedAt": "2026-07-05T12:36:05.451Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "wayland-atspi-before.png",
       "sizeBytes": 16030,
       "sha256": "5f918fc494b6a70acb77d8021c1a9300850d70e85c61503c74d1034e8773dfbd",
-      "modifiedAt": "2026-07-05T12:36:05.451Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "wayland-atspi-bus-address.txt",
       "sizeBytes": 76,
       "sha256": "f2eba519380dc717e50e7d2f1610b0313c2c6bed303a3bf8e51f076ac2ca6178",
-      "modifiedAt": "2026-07-05T12:36:05.421Z"
+      "modifiedAt": "2026-07-08T03:23:45.513Z"
     },
     {
       "path": "wayland-atspi-bus.log",
       "sizeBytes": 304,
       "sha256": "9c83710a301661726f626bc9d8444ece21a5839b3c1628379aa88274087cbbd8",
-      "modifiedAt": "2026-07-05T12:36:05.457Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "wayland-atspi-drive-result.json",
       "sizeBytes": 312,
       "sha256": "2d04238b6d7c5eedbde5783a36d69e4a200c00aac9c2ebfd425e3f570800aed1",
-      "modifiedAt": "2026-07-05T12:36:05.450Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "wayland-atspi-drive.log",
       "sizeBytes": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "modifiedAt": "2026-07-05T12:36:05.456Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "wayland-atspi-env.txt",
       "sizeBytes": 161,
       "sha256": "fb7fb4f0d090e2d1231cef094d4e11d9526748abd3911438b4eed9af250fee86",
-      "modifiedAt": "2026-07-05T12:36:05.455Z"
+      "modifiedAt": "2026-07-08T03:23:45.527Z"
     },
     {
       "path": "wayland-atspi-exit.txt",
       "sizeBytes": 13,
       "sha256": "186ec06ca102690d8db937276a2e9b716f209586d481b4ab0d058bcff62e09aa",
-      "modifiedAt": "2026-07-05T12:36:05.453Z"
+      "modifiedAt": "2026-07-08T03:23:45.526Z"
     },
     {
       "path": "wayland-atspi-grim.log",
       "sizeBytes": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "modifiedAt": "2026-07-05T12:36:05.416Z"
+      "modifiedAt": "2026-07-08T03:23:45.511Z"
     },
     {
       "path": "wayland-atspi-input-adapter-command.log",
       "sizeBytes": 7727,
       "sha256": "c436d8036d3df1f55263978524982f5d7f0c1ee00bfe9f253bf9d0130fbe4440",
-      "modifiedAt": "2026-07-05T12:36:05.418Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     },
     {
       "path": "wayland-atspi-input-adapter-proof.json",
       "sizeBytes": 7033,
       "sha256": "265516e1575a71b7f4fd9915583048ac5e87c67a1718946fe32a3fbcf107b04a",
-      "modifiedAt": "2026-07-05T12:36:05.450Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "wayland-atspi-install.log",
       "sizeBytes": 17965,
       "sha256": "8cab0292bd7c4ac0428dfeae9e13f1569eef8a5235d37925bd59c920f6f38fcd",
-      "modifiedAt": "2026-07-05T12:36:05.416Z"
+      "modifiedAt": "2026-07-08T03:23:45.511Z"
     },
     {
       "path": "wayland-atspi-session-summary.json",
       "sizeBytes": 275,
       "sha256": "1bc71581a9b602a5f2f6578555e4c2bd7468e738b475629afc1531592d873fe4",
-      "modifiedAt": "2026-07-05T12:36:05.459Z"
+      "modifiedAt": "2026-07-08T03:23:45.529Z"
     },
     {
       "path": "wayland-atspi-sway-outputs.json",
       "sizeBytes": 1247,
       "sha256": "7f13e63cd48c9c0903fdf675a5e1e8a72fbdd1eb31ad85bb26d9b88634e876a5",
-      "modifiedAt": "2026-07-05T12:36:05.416Z"
+      "modifiedAt": "2026-07-08T03:23:45.511Z"
     },
     {
       "path": "wayland-atspi-sway-version.json",
       "sizeBytes": 147,
       "sha256": "ca50ac0f4da287287d6e13e317aa8c088969dfdef18e248025c70cdbfc26d90f",
-      "modifiedAt": "2026-07-05T12:36:05.423Z"
+      "modifiedAt": "2026-07-08T03:23:45.513Z"
     },
     {
       "path": "wayland-atspi-sway.log",
       "sizeBytes": 379,
       "sha256": "39cd0db39d86558833732a544677a629b80661abb3a84794d298a1dab04506bd",
-      "modifiedAt": "2026-07-05T12:36:05.457Z"
+      "modifiedAt": "2026-07-08T03:23:45.528Z"
     },
     {
       "path": "wayland-atspi-target-state.json",
       "sizeBytes": 115,
       "sha256": "c304f338a7e002af623cdc0121e00c3a25e047e42218ec0f32cd52f12b3d6cb5",
-      "modifiedAt": "2026-07-05T12:36:05.455Z"
+      "modifiedAt": "2026-07-08T03:23:45.527Z"
     },
     {
       "path": "wayland-atspi-target.log",
       "sizeBytes": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "modifiedAt": "2026-07-05T12:36:05.418Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     },
     {
       "path": "wayland-desktop-session-profile.json",
       "sizeBytes": 3221,
       "sha256": "3a8c3072b0971b26068667c12081e90c6f9ac54e3f30d8454d7ff538b5532f7a",
-      "modifiedAt": "2026-07-05T12:36:05.418Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     },
     {
       "path": "wayland-desktop-session-profile.md",
       "sizeBytes": 853,
       "sha256": "afabc3c79221cfe59e9682c88b339f32db56d3fca288e0a498c573feba0ee200",
-      "modifiedAt": "2026-07-05T12:36:05.460Z"
+      "modifiedAt": "2026-07-08T03:23:45.529Z"
     },
     {
       "path": "wayland-provisioning-attempt.json",
       "sizeBytes": 1712,
       "sha256": "ccd68e8ec8c1bc437db62ba8cd79ee756f4ee98c79e142dd25b6cb6eea8dbffe",
-      "modifiedAt": "2026-07-05T12:36:05.421Z"
+      "modifiedAt": "2026-07-08T03:23:45.513Z"
     },
     {
       "path": "wayland-provisioning-attempt.log",
       "sizeBytes": 1377,
       "sha256": "b83b2563e0dde4003b2dd5b0ee82949606e38b41c1aed874b4975ee891055de0",
-      "modifiedAt": "2026-07-05T12:36:05.410Z"
+      "modifiedAt": "2026-07-08T03:23:45.509Z"
     },
     {
       "path": "wireplumber.log",
       "sizeBytes": 305,
       "sha256": "8faeabf41f00329a010d17ad608609d3898c8f287f0ead380e0c9c75bf2d7800",
-      "modifiedAt": "2026-07-05T12:36:05.454Z"
+      "modifiedAt": "2026-07-08T03:23:45.527Z"
     },
     {
       "path": "x11-approved-capture.png",
       "sizeBytes": 987,
       "sha256": "f9573a8f7de89c6a5f3ab8b623cd66a58dfc0570ad299ede04901196c02cfdce",
-      "modifiedAt": "2026-07-05T12:36:05.417Z"
+      "modifiedAt": "2026-07-08T03:23:45.511Z"
     },
     {
       "path": "x11-input-transcript.json",
       "sizeBytes": 28452,
       "sha256": "99e65d74034918ba2fb7961d9398b2345f17543c0a09ec1c264736a8935bedbc",
-      "modifiedAt": "2026-07-05T12:36:05.449Z"
+      "modifiedAt": "2026-07-08T03:23:45.524Z"
     },
     {
       "path": "xdg-portal-wlr.log",
       "sizeBytes": 161,
       "sha256": "8487181878875e49e75c1c0186088e105e75c615888d91fa1638bcc3bccb611a",
-      "modifiedAt": "2026-07-05T12:36:05.452Z"
+      "modifiedAt": "2026-07-08T03:23:45.525Z"
     },
     {
       "path": "xdg-portal.log",
       "sizeBytes": 1911,
       "sha256": "f63a7b35a683b21e6ce4e813a932c76a4bfe5dbc31adf3f81d2e5ad88e604d22",
-      "modifiedAt": "2026-07-05T12:36:05.420Z"
+      "modifiedAt": "2026-07-08T03:23:45.512Z"
     }
   ],
   "provenance": {
-    "selectedSourceBundle": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054",
+    "selectedSourceBundle": "worker-cu-qemu-mobile-sec-pass-20260704-1002",
     "preservedTmpDir": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054",
-    "preservedTmpExisted": true,
-    "preservedTmpCreatedOrRefreshed": false,
+    "preservedTmpExisted": false,
+    "preservedTmpCreatedOrRefreshed": true,
     "currentCheckoutCopy": "preserved-qemu-portal-mobile",
     "sourceForCheckout": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054"
   }

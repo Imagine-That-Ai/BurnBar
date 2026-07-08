@@ -15,7 +15,7 @@
     ],
     "journal": "hermes-run-journal.jsonl",
     "mutation": "swap adjacent plan_generated and approval_requested raw journal lines",
-    "runID": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
+    "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
     "schema": "openburnbar-hermes-event-order-strict-mutation-v1",
     "swappedLineNumbers": [
       4,

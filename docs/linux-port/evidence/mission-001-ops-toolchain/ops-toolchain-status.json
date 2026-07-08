@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-07-05T08:24:39.743Z",
-  "activeCheckout": "/Users/albertonunez/Documents/Developer/BurnBar",
+  "activeCheckout": "$WORKSPACE",
   "head": "1b62ec42bd752cc8a6af578f034bf776c6ec3b97",
   "runner": "active-checkout-v20-repair",
   "missingRequiredArtifacts": [],
