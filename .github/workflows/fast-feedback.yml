@@ -223,7 +223,10 @@ jobs:
   agpl-compliance:
     name: AGPL compliance
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # 2026-07-07: was 3, but checkout of the grown tree (~35s) + the
+    # self-test + compliance scripts (~2.5-3m) now straddle that line — GitHub
+    # reports the job timeout as "cancelled", which read as a phantom flake.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
