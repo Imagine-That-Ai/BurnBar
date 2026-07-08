@@ -1,4 +1,5 @@
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
@@ -23,7 +24,12 @@ final class BudgetRulesStore {
     private let forceTestingMode: Bool
 
     private var isTestingMode: Bool {
-        forceTestingMode || Auth.auth().currentUser == nil
+        // `Auth.auth()` traps when no `FirebaseApp` is configured, which is the
+        // intended "auth-disabled" degrade path for OSS/test checkouts and
+        // screenshot mode. Treat an unconfigured Firebase as testing mode so
+        // the store falls back to its in-memory mock rules instead of crashing.
+        // Production always has Firebase configured, so this is inert there.
+        forceTestingMode || FirebaseApp.app() == nil || Auth.auth().currentUser == nil
     }
     #endif
 
