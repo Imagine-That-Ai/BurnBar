@@ -167,6 +167,7 @@ struct BudgetCenterView: View {
                                 .fill(MobileTheme.primaryGradient)
                         )
                 }
+                .accessibilityIdentifier("budget.addGlobalLimit")
 
                 Button {
                     HapticBus.sheetOpen()
@@ -385,6 +386,7 @@ struct BudgetCenterView: View {
                     } label: {
                         Label("Global Rule", systemImage: "globe")
                     }
+                    .accessibilityIdentifier("budget.addGlobalRule")
 
                     Button {
                         HapticBus.sheetOpen()
@@ -409,6 +411,7 @@ struct BudgetCenterView: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(MobileTheme.primaryGradient)
                 }
+                .accessibilityIdentifier("budget.addMenu")
             }
             .padding(.bottom, 4)
 
@@ -946,6 +949,7 @@ struct BudgetRuleEditorSheet: View {
                         set: { rule.label = $0.isEmpty ? nil : $0 }
                     ))
                     .autocorrectionDisabled()
+                    .accessibilityIdentifier("budget.editor.label")
 
                     HStack {
                         Text("Amount")
@@ -1054,6 +1058,7 @@ struct BudgetRuleEditorSheet: View {
                         }
                     }
                     .disabled(saveDisabled)
+                    .accessibilityIdentifier("budget.editor.save")
                 }
             }
         }
