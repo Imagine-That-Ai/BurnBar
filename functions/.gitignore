@@ -20,7 +20,8 @@ npm-debug.log*
 # Committed NON-SECRET runtime configs (public IDs/URLs only; secrets stay in
 # Secret Manager / Actions secrets). The staging file is a fill-in template.
 !.env.burnbar.production
-!.env.burnbar.staging.example
+!.env.burnbar-staging
+!.env.burnbar-staging.example
 
 # Firebase
 .firebase/

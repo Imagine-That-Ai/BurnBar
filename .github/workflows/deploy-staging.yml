@@ -34,7 +34,7 @@ on:
         type: boolean
         default: true
       deploy_functions:
-        description: "Also deploy Cloud Functions to staging (requires functions/.env.burnbar.staging)"
+        description: "Also deploy Cloud Functions to staging (requires functions/.env.burnbar-staging)"
         required: false
         type: boolean
         default: false
@@ -52,6 +52,7 @@ jobs:
     name: Staging preflight (safe no-op until provisioned)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: staging
     permissions:
       contents: read
     outputs:
@@ -189,6 +190,12 @@ jobs:
         if: ${{ env.SHOULD_DEPLOY == 'true' }}
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
 
+      # run-09 F-RR09-001 / F-RR09-007: staging must prove the same live TTL
+      # policies as production before a rules/indexes change is promoted.
+      - name: Verify Firestore TTL policies are live (staging)
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT"
+
       - name: Staging Firestore summary
         if: always()
         run: |
@@ -243,9 +250,9 @@ jobs:
       - name: Require staging functions runtime config
         run: |
           set -euo pipefail
-          if [[ ! -f functions/.env.burnbar.staging ]]; then
-            echo "::error::Missing functions/.env.burnbar.staging."
-            echo "::error::Copy functions/.env.burnbar.staging.example, fill the staging project's values, commit it, then re-run."
+          if [[ ! -f functions/.env.burnbar-staging ]]; then
+            echo "::error::Missing functions/.env.burnbar-staging."
+            echo "::error::Copy functions/.env.burnbar-staging.example, fill the staging project's values, commit it, then re-run."
             exit 1
           fi
 
@@ -269,8 +276,8 @@ jobs:
           SENTRY_DSN: ${{ secrets.STAGING_SENTRY_DSN_FUNCTIONS }}
         run: |
           set -euo pipefail
-          ENV_FILE="functions/.env.burnbar"
-          STAGING_CONFIG="functions/.env.burnbar.staging"
+          ENV_FILE="functions/.env.${FIREBASE_PROJECT}"
+          STAGING_CONFIG="functions/.env.burnbar-staging"
 
           {
             cat "$STAGING_CONFIG"

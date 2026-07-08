@@ -2,7 +2,7 @@
 
 **Status:** SCAFFOLD. The staging project does **not** exist yet. This repo ships
 the wiring (`.firebaserc` `staging` alias, `.github/workflows/deploy-staging.yml`,
-`functions/.env.burnbar.staging.example`) so the staging deploy lane is a **safe
+`functions/.env.burnbar-staging.example`) so the staging deploy lane is a **safe
 no-op** until you complete the provisioning steps below. Nothing here touches
 production (`burnbar`).
 
@@ -70,15 +70,27 @@ gcloud services enable \
   firebasestorage.googleapis.com \
   cloudfunctions.googleapis.com \
   cloudbuild.googleapis.com \
+  cloudscheduler.googleapis.com \
+  cloudtasks.googleapis.com \
   run.googleapis.com \
   artifactregistry.googleapis.com \
   iamcredentials.googleapis.com \
   sts.googleapis.com \
   --project=burnbar-staging
 
-# Create the Firestore database (Native mode) + a default Storage bucket.
-gcloud firestore databases create --location=nam5 --project=burnbar-staging
-gsutil mb -p burnbar-staging "gs://burnbar-staging.appspot.com" || true
+# Create the Firestore database (Native mode) in the accepted production region.
+gcloud firestore databases create --location=us-central1 --project=burnbar-staging
+
+# Create the Firebase Storage default bucket in the same region. Use Firebase
+# Console → Build → Storage → Get started if your local Firebase CLI cannot
+# create the default bucket non-interactively; the bucket name must be the modern
+# default, not the legacy appspot.com bucket.
+gcloud storage buckets create "gs://burnbar-staging.firebasestorage.app" \
+  --project=burnbar-staging \
+  --location=us-central1 \
+  --uniform-bucket-level-access || true
+gcloud storage buckets describe "gs://burnbar-staging.firebasestorage.app" \
+  --project=burnbar-staging >/dev/null
 ```
 
 > If you pick a project id other than `burnbar-staging`, either edit the
@@ -181,10 +193,10 @@ gh variable set STAGING_ENABLED --body true --repo Imagine-That-Ai/BurnBar
 ### 6. Staging functions runtime config (only if deploying functions)
 
 ```bash
-cp functions/.env.burnbar.staging.example functions/.env.burnbar.staging
+cp functions/.env.burnbar-staging.example functions/.env.burnbar-staging
 # Edit: replace every <STAGING-…> placeholder with the staging project's public
 # IDs/URLs. Prefer Stripe TEST-mode price IDs and App Store/APNs Sandbox.
-git add functions/.env.burnbar.staging && git commit  # reviewed PR, like prod
+git add functions/.env.burnbar-staging && git commit  # reviewed PR, like prod
 ```
 
 Also set the staging functions' real secrets in the **staging** project's Secret
@@ -200,13 +212,14 @@ gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar -f dry_run=tru
 # Real rules/indexes/storage deploy to staging:
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar -f dry_run=false
 
-# Include functions once functions/.env.burnbar.staging exists:
+# Include functions once functions/.env.burnbar-staging exists:
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
   -f dry_run=false -f deploy_functions=true
 ```
 
 Approve the `staging` environment when prompted. Confirm the run's summary shows
-the rules emulator tests and the post-deploy drift check green.
+the rules emulator tests, post-deploy drift check, and live TTL verification
+green.
 
 ---
 
@@ -216,8 +229,9 @@ the rules emulator tests and the post-deploy drift check green.
    a branch.
 2. `npm --prefix functions run test:firestore-rules` locally against the emulator.
 3. Push the branch, then run `deploy-staging.yml` with `dry_run=false` — this
-   deploys the branch's rules/indexes to **staging** and drift-checks them
-   against the live staging project.
+   deploys the branch's rules/indexes to **staging**, drift-checks them against
+   the live staging project, and verifies every declared `ttl:true` override is a
+   live TTL policy.
 4. Exercise the change against `burnbar-staging` (console client pointed at the
    staging project, or ad-hoc reads/writes) to confirm intended allow/deny.
 5. Only then merge to `main`. `deploy-firestore.yml` promotes the identical files
