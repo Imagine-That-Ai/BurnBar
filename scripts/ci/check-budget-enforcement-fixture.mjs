@@ -154,13 +154,11 @@ const ENT_COPIES = [
   "tests/fixtures/budget-enforcement/entitlement-vectors.json",
   "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/entitlement-vectors.json",
 ];
-if (existsSync(resolve(REPO, ENT_COPIES[0]))) {
-  const ent = requireByteIdenticalCopies("entitlement-vectors", ENT_COPIES);
-  if (ent && (!Array.isArray(ent.vectors) || ent.vectors.length === 0)) {
-    fail("entitlement-vectors: vectors[] must be a non-empty array");
-  } else if (ent) {
-    ok(`entitlement-vectors: ${ent.vectors.length} vectors`);
-  }
+const ent = requireByteIdenticalCopies("entitlement-vectors", ENT_COPIES);
+if (ent && (!Array.isArray(ent.vectors) || ent.vectors.length === 0)) {
+  fail("entitlement-vectors: vectors[] must be a non-empty array");
+} else if (ent) {
+  ok(`entitlement-vectors: ${ent.vectors.length} vectors`);
 }
 
 if (failures > 0) {
