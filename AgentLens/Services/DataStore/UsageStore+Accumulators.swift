@@ -73,7 +73,7 @@ struct ProviderSummaryAccumulator { // pure-move: was private
     var cacheCreationTokens = 0
     var cacheReadTokens = 0
     var sessionCount = 0
-    var modelData: [String: ModelUsageAccumulator] = [:]
+    fileprivate var modelData: [String: ModelUsageAccumulator] = [:]
     var dominantConfidence: UsageProvenanceConfidence = .unknown
     var dominantMethod: UsageProvenanceMethod = .unknown
     var bestCostSoFar: Double = 0
@@ -185,7 +185,7 @@ struct ModelSummaryAccumulator { // pure-move: was private
     var cacheCreationTokens = 0
     var cacheReadTokens = 0
     var sessionCount = 0
-    var providerData: [AgentProvider: ProviderUsageAccumulator] = [:]
+    fileprivate var providerData: [AgentProvider: ProviderUsageAccumulator] = [:]
 
     mutating func record(_ row: UsageAggregateRow) {
         if displayModelName == nil {
