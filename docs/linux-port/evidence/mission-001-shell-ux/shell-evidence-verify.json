@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-06T04:23:42.171Z",
+  "generatedAt": "2026-07-06T03:15:05.324Z",
   "mode": "full",
-  "evidenceDir": "/Users/albertonunez/Documents/Developer/BurnBar-parity-integration/docs/linux-port/evidence/mission-001-shell-ux",
+  "evidenceDir": "/Users/albertonunez/Documents/Developer/BurnBar/docs/linux-port/evidence/mission-001-shell-ux",
   "targetStatus": {
     "VAL-SHELL-005": {
       "pass": true,
@@ -20,10 +20,20 @@
       "errors": []
     },
     "VAL-PERF-001": {
-      "pass": true,
-      "errors": []
+      "pass": false,
+      "errors": [
+        "perf-budget.json allPass is not true",
+        "perf verdict route.navigation is not measured",
+        "perf verdict route.navigation did not pass threshold",
+        "trend/threshold enforcement did not pass"
+      ]
     }
   },
-  "status": "ok",
-  "errors": []
+  "status": "failed",
+  "errors": [
+    "perf-budget.json allPass is not true",
+    "perf verdict route.navigation is not measured",
+    "perf verdict route.navigation did not pass threshold",
+    "trend/threshold enforcement did not pass"
+  ]
 }

@@ -107,13 +107,35 @@
         </StackPanel>
 
         <!-- Messages (the atom-router) -->
-        <ScrollViewer x:Name="MessageScroller" Grid.Row="1"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollMode="Disabled">
-            <ItemsRepeater x:Name="MessagesRepeater"
-                           ItemsSource="{x:Bind ViewModel.Messages}"
-                           ItemTemplate="{StaticResource MessageSelector}" />
-        </ScrollViewer>
+        <Grid Grid.Row="1">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="10"
+                        Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <FontIcon Glyph="&#xE8F1;"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="28"
+                          Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                <TextBlock Text="No chat backend connected"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           TextAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <TextBlock Text="Connect the Hermes/CLI bridge in Settings → Data Sources, or enable OPENBURNBAR_SAMPLE_MODE=1 for a labeled scripted demo."
+                           TextWrapping="Wrap"
+                           MaxWidth="520"
+                           TextAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+
+            <ScrollViewer x:Name="MessageScroller"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollMode="Disabled">
+                <ItemsRepeater x:Name="MessagesRepeater"
+                               ItemsSource="{x:Bind ViewModel.Messages}"
+                               ItemTemplate="{StaticResource MessageSelector}" />
+            </ScrollViewer>
+        </Grid>
 
         <!-- Composer -->
         <Grid Grid.Row="2" ColumnSpacing="8">
@@ -150,8 +172,8 @@
             </Button>
         </Grid>
 
-        <!-- Offscreen Pretext measurement host (real WebView2 on Windows). -->
-        <WebView2 x:Name="PretextWeb" Grid.Row="0" Width="0" Height="0"
-                  Visibility="Collapsed" IsHitTestVisible="False" />
+        <!-- Optional offscreen Pretext measurement host. Created in code only when WebView2 is enabled. -->
+        <Grid x:Name="PretextHost" Grid.Row="0" Width="0" Height="0"
+              Visibility="Collapsed" IsHitTestVisible="False" />
     </Grid>
 </UserControl>

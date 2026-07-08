@@ -3,8 +3,8 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 
-import { isKernelId } from "@/lib/gl/engine/registry";
-import type { KernelId } from "@/lib/gl/engine/types";
+import { isKernelId } from "@openburnbar/gl-engine/engine/registry";
+import type { KernelId } from "@openburnbar/gl-engine/engine/types";
 
 /**
  * The single source of truth for the console-wide animated backdrop kernel.

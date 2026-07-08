@@ -1,6 +1,8 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Presentation.DataControlCenter;
+using OpenBurnBar.App.Diagnostics;
 
 namespace OpenBurnBar.App.DataControlCenter;
 
@@ -11,16 +13,36 @@ namespace OpenBurnBar.App.DataControlCenter;
 /// </summary>
 public sealed partial class MercuryBasinView : UserControl
 {
-    private readonly MercuryBasinHost _host = new();
+    private MercuryBasinHost? _host;
 
     public MercuryBasinView()
     {
         InitializeComponent();
-        CanvasHostBorder.Child = _host.Control;
+        if (NativeCapability.IsWin2DEnabled(out _))
+        {
+            try
+            {
+                _host = new MercuryBasinHost();
+                CanvasHostBorder.Child = _host.Control;
+            }
+            catch (Exception ex)
+            {
+                AppDiagnostics.LogException("datacontrol.mercury", ex);
+                _host = null;
+                CanvasHostBorder.Child = null;
+            }
+        }
+
         CaptionText.Text = BasinModel.SealedCaption(0);
 
-        Loaded += (_, _) => _host.Fill = Fill;
-        Unloaded += (_, _) => _host.Dispose();
+        Loaded += (_, _) =>
+        {
+            if (_host is not null)
+            {
+                _host.Fill = Fill;
+            }
+        };
+        Unloaded += (_, _) => _host?.Dispose();
     }
 
     /// <summary>The 0…1 sealed-data fraction driving the mercury fill height.</summary>
@@ -52,15 +74,24 @@ public sealed partial class MercuryBasinView : UserControl
     /// <summary>Freeze the swirl for accessibilityReduceMotion.</summary>
     public bool ReduceMotion
     {
-        get => _host.ReduceMotion;
-        set => _host.ReduceMotion = value;
+        get => _host?.ReduceMotion ?? false;
+        set
+        {
+            if (_host is not null)
+            {
+                _host.ReduceMotion = value;
+            }
+        }
     }
 
     private static void OnFillChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is MercuryBasinView view)
         {
-            view._host.Fill = (double)e.NewValue;
+            if (view._host is not null)
+            {
+                view._host.Fill = (double)e.NewValue;
+            }
             if (string.IsNullOrEmpty(view.Caption))
             {
                 view.CaptionText.Text = BasinModel.SealedCaption((double)e.NewValue);

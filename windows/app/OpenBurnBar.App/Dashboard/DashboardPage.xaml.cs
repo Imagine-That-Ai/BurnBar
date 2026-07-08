@@ -1,6 +1,7 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Dashboard.EasterEgg;
 using OpenBurnBar.App.Dashboard.Layout;
 using OpenBurnBar.App.Dashboard.Layouts;
@@ -16,8 +17,8 @@ namespace OpenBurnBar.App.Dashboard;
 /// </summary>
 public sealed partial class DashboardPage : Page
 {
-    private readonly DashboardBackdrop _backdrop = new();
-    private readonly EasterEggCanvasHost _egg = new();
+    private DashboardBackdrop? _backdrop;
+    private EasterEggCanvasHost? _egg;
     private readonly EasterEggController _controller = new();
     private readonly UISettings _uiSettings = new();
 
@@ -25,12 +26,27 @@ public sealed partial class DashboardPage : Page
     {
         InitializeComponent();
 
-        BackdropHost.Children.Add(_backdrop.Control);
-        EggHost.Children.Add(_egg.Control);
+        if (NativeCapability.IsWin2DEnabled(out _))
+        {
+            try
+            {
+                _backdrop = new DashboardBackdrop();
+                _egg = new EasterEggCanvasHost();
+                BackdropHost.Children.Add(_backdrop.Control);
+                EggHost.Children.Add(_egg.Control);
+            }
+            catch (Exception ex)
+            {
+                AppDiagnostics.LogException("dashboard.win2d", ex);
+                _backdrop = null;
+                _egg = null;
+            }
+        }
 
-        Switcher.LayoutChanged += OnLayoutChanged;
-        _controller.EventPresented += OnEventPresented;
-        _egg.Finished += OnEggFinished;
+        if (_egg is not null)
+        {
+            _egg.Finished += OnEggFinished;
+        }
 
         ShowLayout(Switcher.State.Selection);
         Unloaded += OnUnloaded;
@@ -46,7 +62,7 @@ public sealed partial class DashboardPage : Page
     private void ShowLayout(DashboardLayout layout)
     {
         ContentHost.Content = CreateLayoutView(layout);
-        _backdrop.SetLayout(layout);
+        _backdrop?.SetLayout(layout);
         ContentScroll.ChangeView(null, 0, null, true);
     }
 
@@ -75,16 +91,19 @@ public sealed partial class DashboardPage : Page
     }
 
     private void OnEventPresented(object? sender, EasterEggEvent easterEgg) =>
-        _egg.Play(easterEgg, ReduceMotion);
+        _egg?.Play(easterEgg, ReduceMotion);
 
     private void OnEggFinished(object? sender, Guid id) => _controller.EventDidFinish(id);
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        _egg.Finished -= OnEggFinished;
+        if (_egg is not null)
+        {
+            _egg.Finished -= OnEggFinished;
+            _egg.Dispose();
+        }
         _controller.EventPresented -= OnEventPresented;
         Switcher.LayoutChanged -= OnLayoutChanged;
-        _egg.Dispose();
-        _backdrop.Dispose();
+        _backdrop?.Dispose();
     }
 }

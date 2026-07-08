@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T04:23:42.125Z",
+  "generatedAt": "2026-07-06T03:15:05.273Z",
   "runner": "linux-desktop-packaged-runtime-perf-v3",
   "note": "Budget rows are derived from the same packaged Linux desktop smoke run: Xvfb/XFCE .deb session report plus runtime samples emitted by the installed Tauri app through OPENBURNBAR_EVIDENCE_OUT.",
   "host": {
@@ -11,9 +11,9 @@
   "measurements": {
     "desktopSessionReport": "docs/linux-port/evidence/mission-001-shell-ux/linux-desktop-session-report.json",
     "desktopSessionPresent": true,
-    "desktopSessionGeneratedAt": "2026-07-06T04:23:35.868Z",
+    "desktopSessionGeneratedAt": "2026-07-06T03:14:58.760Z",
     "runtimeSamples": "docs/linux-port/evidence/mission-001-shell-ux/runtime-perf-samples.jsonl",
-    "runtimeSampleCount": 41,
+    "runtimeSampleCount": 9,
     "packagedRouteTranscript": "docs/linux-port/evidence/mission-001-shell-ux/packaged-route-session-transcript.json",
     "packagedRouteCount": 16
   },
@@ -45,7 +45,7 @@
   "verdicts": [
     {
       "name": "app.start",
-      "ms": 314,
+      "ms": 336,
       "limit": 2500,
       "source": "packaged-tauri-deb-xvfb-window-visible",
       "sampleCount": 1,
@@ -54,16 +54,16 @@
     },
     {
       "name": "route.navigation",
-      "ms": 2,
+      "ms": null,
       "limit": 120,
-      "source": "packaged-tauri-runtime-samples:packaged-ui-route:account,packaged-ui-route:activity,packaged-ui-route:chat,packaged-ui-route:database,packaged-ui-route:insights,packaged-ui-route:memory,packaged-ui-route:missions,packaged-ui-route:onboarding,packaged-ui-route:overview,packaged-ui-route:pet,packaged-ui-route:projects,packaged-ui-route:providers,packaged-ui-route:settings,packaged-ui-route:support,packaged-ui-route:text-expansion,packaged-ui-route:updates",
-      "sampleCount": 34,
-      "measured": true,
-      "pass": true
+      "source": "missing-packaged-runtime-sample",
+      "sampleCount": 0,
+      "measured": false,
+      "pass": false
     },
     {
       "name": "ipc.health.roundtrip",
-      "ms": 6,
+      "ms": 7,
       "limit": 800,
       "source": "packaged-tray-reconnect-to-af-unix-daemon-log",
       "sampleCount": 1,
@@ -72,7 +72,7 @@
     },
     {
       "name": "tray.click.open",
-      "ms": 45,
+      "ms": 52,
       "limit": 400,
       "source": "appindicator-dbusmenu-open-to-visible-window",
       "sampleCount": 1,
@@ -81,7 +81,7 @@
     },
     {
       "name": "chat.firstToken.progress",
-      "ms": 6.142875,
+      "ms": 6.7442079999999995,
       "limit": 2500,
       "source": "packaged-tauri-runtime-samples:packaged-startup-chat-hermes-daemon-measurement;packaged-af-unix-perf.measure:hermes-chat-stream-progress-operation",
       "sampleCount": 1,
@@ -90,7 +90,7 @@
     },
     {
       "name": "db.migration.open.query",
-      "ms": 2.49875,
+      "ms": 1.5430419999999998,
       "limit": 1200,
       "source": "packaged-tauri-runtime-samples:packaged-startup-db-daemon-measurement;packaged-af-unix-perf.measure:sqlite3-db-fts5-operation",
       "sampleCount": 1,
@@ -99,7 +99,7 @@
     },
     {
       "name": "parser.incremental.run",
-      "ms": 0.929417,
+      "ms": 0.866,
       "limit": 900,
       "source": "packaged-tauri-runtime-samples:packaged-startup-parser-daemon-measurement;packaged-af-unix-perf.measure:provider-jsonl-incremental-parser-operation",
       "sampleCount": 1,
@@ -108,7 +108,7 @@
     },
     {
       "name": "memory.search",
-      "ms": 0.521833,
+      "ms": 0.7518330000000001,
       "limit": 650,
       "source": "packaged-tauri-runtime-samples:packaged-startup-memory-daemon-measurement;packaged-af-unix-perf.measure:memory-search-index-operation",
       "sampleCount": 1,
@@ -117,7 +117,7 @@
     },
     {
       "name": "media.control.stage",
-      "ms": 0.901833,
+      "ms": 0.986333,
       "limit": 500,
       "source": "packaged-tauri-runtime-samples:packaged-startup-media-control-daemon-measurement;packaged-af-unix-perf.measure:media-control-stage-loopback-operation",
       "sampleCount": 1,
@@ -126,6 +126,8 @@
     }
   ],
   "missingMetrics": [],
-  "errors": [],
-  "allPass": true
+  "errors": [
+    "missing measured row for route.navigation"
+  ],
+  "allPass": false
 }

@@ -4,6 +4,7 @@ using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Tray;
+using OpenBurnBar.App.Diagnostics;
 
 namespace OpenBurnBar.App;
 
@@ -33,6 +34,7 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        AppDiagnostics.Install(this);
     }
 
     /// <summary>The single running app instance (WinUI has no typed Application.Current).</summary>
@@ -40,8 +42,15 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         _theme = new ThemeService(_state);
+
+        if (RouteSmokeOptions.Parse(args.Arguments) is { } smoke)
+        {
+            StartRouteSmoke(smoke);
+            return;
+        }
 
         // Windows are created eagerly but stay hidden — the tray owns visibility, exactly like
         // NSStatusItem owning the menu-bar popover on macOS.
@@ -59,6 +68,15 @@ public partial class App : Application
         _tray.Show();
     }
 
+
+    private void StartRouteSmoke(RouteSmokeOptions smoke)
+    {
+        _mainWindow = new MainWindow(_theme!);
+        _mainWindow.Shell.CommandPaletteRequested += (_, _) => OpenCommandPalette();
+        _mainWindow.Activate();
+        _mainWindow.Shell.Navigate(smoke.RouteKey);
+        _ = RouteSmokeHost.CaptureAndExitAsync(_mainWindow, smoke);
+    }
     /// <summary>Open the full main window from the flyout's "Open full window" action.</summary>
     public void ShowMainWindowFromFlyout() => ShowMainWindow();
 

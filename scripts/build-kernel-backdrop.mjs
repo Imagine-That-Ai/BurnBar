@@ -5,7 +5,7 @@
  *   node scripts/build-kernel-backdrop.mjs
  *
  * Bundles `tools/kernel-backdrop/entry.ts` (the standalone bootstrap around
- * `apps/console/lib/gl/engine/`) into the committed minified IIFE at
+ * `packages/gl-engine/src/engine/`) into the committed minified IIFE at
  * `AgentLens/Resources/KernelBackdrop/kernel-backdrop.js`, which the macOS
  * (`KernelBackdropView`) and iOS (`MobileWebGLKernelBackdropView`) apps share
  * verbatim inside a WKWebView. Run this whenever the engine, a kernel, or the
@@ -26,12 +26,12 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = join(ROOT, "tools/kernel-backdrop/entry.ts");
 const OUTFILE = join(ROOT, "AgentLens/Resources/KernelBackdrop/kernel-backdrop.js");
-const REGISTRY = join(ROOT, "apps/console/lib/gl/engine/registry.ts");
+const REGISTRY = join(ROOT, "packages/gl-engine/src/engine/registry.ts");
 const ESBUILD_VERSION = "0.25.5"; // pinned so regenerated bundles stay reproducible
 
 const BANNER =
   "/* GENERATED FILE — do not edit by hand." +
-  " Built from tools/kernel-backdrop/entry.ts + apps/console/lib/gl/engine/." +
+  " Built from tools/kernel-backdrop/entry.ts + packages/gl-engine/src/engine/." +
   " Regenerate: node scripts/build-kernel-backdrop.mjs */";
 
 const args = [

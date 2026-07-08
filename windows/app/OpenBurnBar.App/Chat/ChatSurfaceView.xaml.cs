@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Pretext;
 using OpenBurnBar.Pretext;
 using Windows.System;
@@ -12,14 +13,15 @@ namespace OpenBurnBar.App.Chat;
 
 /// <summary>
 /// Code-behind for the Chat surface. Owns the <see cref="ChatSurfaceViewModel"/>,
-/// boots the offscreen WebView2 Pretext host so the streaming bubbles measure
-/// against the real engine (dev-host-deferred on non-Windows), auto-scrolls to the
+/// boots the optional offscreen WebView2 Pretext host so the streaming bubbles measure
+/// against the real engine when the runtime is available, auto-scrolls to the
 /// newest message, and sends on Enter.
 /// </summary>
 public sealed partial class ChatSurfaceView : UserControl
 {
     private PretextEngine? _engine;
     private WebView2PretextHost? _host;
+    private WebView2? _webView;
 
     public ChatSurfaceView()
     {
@@ -46,6 +48,11 @@ public sealed partial class ChatSurfaceView : UserControl
         }
         _engine?.Dispose();
         _host?.Dispose();
+        if (_webView is not null)
+        {
+            PretextHost.Children.Remove(_webView);
+            _webView = null;
+        }
         _engine = null;
         _host = null;
     }
@@ -56,18 +63,37 @@ public sealed partial class ChatSurfaceView : UserControl
         {
             return;
         }
+        if (!NativeCapability.IsWebView2Enabled(out _))
+        {
+            return;
+        }
+
         try
         {
-            _host = new WebView2PretextHost(PretextWeb);
+            _webView = new WebView2
+            {
+                Width = 0,
+                Height = 0,
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false,
+            };
+            PretextHost.Children.Add(_webView);
+            _host = new WebView2PretextHost(_webView);
             _engine = new PretextEngine(_host);
             await _engine.StartAsync().ConfigureAwait(true);
             ViewModel.PretextEngine = _engine;
             ChatPretextEngineHost.Current = _engine;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            AppDiagnostics.LogException("chat.pretext", ex);
             // Measurement host unavailable (no WebView2 runtime): the bubbles keep
             // their inline fallback layout. Never blocks the surface.
+            if (_webView is not null)
+            {
+                PretextHost.Children.Remove(_webView);
+                _webView = null;
+            }
             _engine = null;
             _host = null;
         }

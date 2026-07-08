@@ -3,8 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 
-import { KERNEL_META } from "@/lib/gl/engine/registry";
-import type { KernelId } from "@/lib/gl/engine/types";
+import { KERNEL_META } from "@openburnbar/gl-engine/engine/registry";
+import type { KernelId } from "@openburnbar/gl-engine/engine/types";
 import { useBackdrop } from "@/lib/useBackdrop";
 import { KernelTile } from "@/components/experimental/KernelTile";
 import { KernelHero } from "@/components/experimental/KernelHero";
