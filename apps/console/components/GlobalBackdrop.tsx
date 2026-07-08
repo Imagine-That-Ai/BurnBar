@@ -34,8 +34,9 @@ export function GlobalBackdrop() {
   // /experimental mounts its own hero canvas plus a full grid of live kernel
   // tiles — layering the global kernel underneath adds one more GL context to
   // a page already at the browser's context limit, for a backdrop that is
-  // ~fully hidden behind the gallery anyway. Ink vars/scrim still publish.
+  // ~fully hidden behind the gallery anyway.
   const suppressKernel = pathname?.startsWith("/experimental") ?? false;
+  const effectiveInkEnabled = inkEnabled && !suppressKernel;
 
   // Keep `resolved` honest when the kernel switches with no GL fallback (the
   // engine only fires onResolve on mount + switch; this covers fast switches).
@@ -47,7 +48,7 @@ export function GlobalBackdrop() {
   // remap (globals.css) and the inspector both work. Cleared off ink routes.
   React.useEffect(() => {
     const body = document.body;
-    if (!inkEnabled) {
+    if (!effectiveInkEnabled) {
       body.setAttribute("data-ink", "off");
       delete body.dataset.kernel;
       return () => {
@@ -76,7 +77,7 @@ export function GlobalBackdrop() {
       delete body.dataset.kernel;
       body.style.removeProperty("--ink-scrim-nav");
     };
-  }, [resolved, inkEnabled]);
+  }, [resolved, effectiveInkEnabled]);
 
   return (
     <>
@@ -90,7 +91,7 @@ export function GlobalBackdrop() {
         />
       )}
       {/* The legibility scrim — only on ink routes, above the kernel, under content. */}
-      {inkEnabled && <div className="ink-scrim" aria-hidden />}
+      {effectiveInkEnabled && <div className="ink-scrim" aria-hidden />}
     </>
   );
 }

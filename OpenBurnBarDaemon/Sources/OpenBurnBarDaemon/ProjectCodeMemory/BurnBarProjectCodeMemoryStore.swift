@@ -204,7 +204,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     static let minimumSemanticCodeCosineScore = 0.20
     /// Bump when the code-store schema changes; surfaced by operator diagnostics so an
     /// operator can confirm which schema generation a daemon's index DB is running.
-    static let schemaVersion = 1
+    static let schemaVersion = 2
 
     let db: OpaquePointer?
     let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.project-code-memory.sqlite")
