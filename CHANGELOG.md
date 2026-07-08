@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
+  `POST /v1/chat/completions` through the shared provider router, relays
+  OpenAI-compatible SSE streams, and records gateway usage events with cache
+  read/creation token fields when providers report them.
 - **Mission fan-out synthesis now launches Phase B second-stage missions** —
   tapping Synthesize on a completed fan-out group queues a sealed, read-only
   Hermes synthesizer mission with the child results as input, then records the
@@ -67,6 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entitlements only when the cloud entitlement document is absent.
 
 ### Fixed
+
+- **iPhone Call Mac action** — replaces the Mercury Live Sheet follow-up stub
+  with real `media.call.invite` signaling over the live paired-Mac control
+  stream, shows pending/ack status on iPhone, and keeps the Mac wake path scoped
+  to the existing PushKit/FCM callable for Mac-originated calls.
 
 - **Recount cloud usage duplication** - makes Mac usage IDs deterministic across
   Recount reparses, removes stale same-device Firestore usage docs, and reports

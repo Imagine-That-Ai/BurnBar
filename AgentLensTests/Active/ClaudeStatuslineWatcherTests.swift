@@ -143,21 +143,35 @@ final class ClaudeStatuslineWatcherTests: XCTestCase {
 
     /// Multiple consecutive stop()s must be safe — and crucially must
     /// not double-close the FD. We can't directly detect FD reuse, but a
-    /// crash or assertion in close() would surface here.
-    func test_watcher_stopIsIdempotent_smokeNoCrash() async throws {
+    /// double-close would poison the descriptor, so the observable
+    /// contract is: after a triple stop(), a restart still delivers
+    /// change events.
+    func test_watcher_stopIsIdempotent_restartStillDelivers() async throws {
         let dir = try makeTemporaryDirectory()
         let file = dir.appendingPathComponent("snap.json")
         try Data("{}".utf8).write(to: file)
 
-        let watcher = ClaudeStatuslineWatcher(url: file) { }
+        var changeCount = 0
+        let watcher = ClaudeStatuslineWatcher(url: file) { changeCount += 1 }
         watcher.start()
         try await Task.sleep(nanoseconds: 50_000_000)
         watcher.stop()
         watcher.stop()
         watcher.stop()
-        // Restart should still work.
+
+        // Restart must still work — and prove it by delivering an event,
+        // which a double-closed/poisoned FD could not.
         watcher.start()
-        watcher.stop()
+        defer { watcher.stop() }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        changeCount = 0
+        try Data(#"{"v":1}"#.utf8).write(to: file)
+
+        let deadline = Date().addingTimeInterval(2)
+        while changeCount == 0 && Date() < deadline {
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTAssertGreaterThanOrEqual(changeCount, 1, "Watcher restarted after repeated stop()s must still deliver change events")
     }
 
     private func makeTemporaryDirectory() throws -> URL {

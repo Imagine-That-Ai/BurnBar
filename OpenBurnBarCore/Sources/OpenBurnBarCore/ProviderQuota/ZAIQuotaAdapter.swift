@@ -134,13 +134,22 @@ public struct ZAIQuotaAdapter: ProviderQuotaAdapter {
         return normalizedZaiHostURL(from: "https://\(trimmed)")
     }
 
-    private func zaiUsageQueryItems() -> [URLQueryItem] {
+    /// Z.ai's usage monitor interprets zone-less `yyyy-MM-dd HH:mm:ss` query
+    /// timestamps in Beijing time (the same assumption pinned for response
+    /// parsing in `FlexibleQuotaBucketNormalizer.zaiDateFormatter`), so the
+    /// window is computed and rendered in Asia/Shanghai, not the device zone.
+    static let zaiQueryTimeZone = TimeZone(identifier: "Asia/Shanghai")
+        ?? TimeZone(secondsFromGMT: 8 * 3600)
+        ?? .current
+
+    func zaiUsageQueryItems(now: Date = Date()) -> [URLQueryItem] {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.timeZone = Self.zaiQueryTimeZone
 
-        let calendar = Calendar.current
-        let now = Date()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = Self.zaiQueryTimeZone
         let start = calendar.date(byAdding: .day, value: -1, to: now) ?? now
         let startWindow = calendar.date(
             bySettingHour: calendar.component(.hour, from: now),

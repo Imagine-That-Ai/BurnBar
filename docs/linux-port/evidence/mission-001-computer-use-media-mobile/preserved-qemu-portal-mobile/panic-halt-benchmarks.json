@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2026-07-04T14:33:09.463Z",
+  "target": "VAL-CU-003",
+  "rows": [
+    {
+      "path": "app-ui",
+      "status": "pass",
+      "durationMs": 35,
+      "budgetMs": 500,
+      "resourcesClosed": true,
+      "closed": [
+        "capture",
+        "input",
+        "media"
+      ],
+      "auditEntry": "panic.halt",
+      "restartReconnect": {
+        "restoredHaltedState": true,
+        "activeResourcesAfterRestore": 0
+      },
+      "evidence": "computer-use-app-runtime-halt.json"
+    },
+    {
+      "path": "daemon-cli",
+      "status": "pass",
+      "durationMs": 3.743,
+      "budgetMs": 500,
+      "resourcesClosed": true,
+      "closed": [
+        "daemonSession",
+        "auditChain",
+        "approvalWaiters"
+      ],
+      "auditEntry": "panic.halt",
+      "auditApprovedBy": "panic",
+      "panicSource": "hotkey",
+      "panicAuditValid": true,
+      "auditHeadSignatureValid": true,
+      "restartReconnect": {
+        "closedSessionVerifiesFromDiskAfterRestart": true,
+        "newCoordinatorCanStartAfterHalt": true,
+        "tamperedArchiveFailsAfterRestart": true,
+        "tamperedClosedSessionFailsAfterRestart": true,
+        "tamperedHeadFailsAfterRestart": true,
+        "tamperedManifestFailsAfterRestart": true
+      },
+      "evidence": "product-computer-use-evidence.json"
+    },
+    {
+      "path": "mobile-remote",
+      "status": "pass",
+      "durationMs": 1.132541,
+      "budgetMs": 500,
+      "resourcesClosed": true,
+      "closed": [
+        "daemonSession",
+        "auditChain",
+        "approvalWaiters"
+      ],
+      "auditEntry": "panic.halt",
+      "auditApprovedBy": "panic",
+      "panicSource": "phone_gesture",
+      "panicAuditValid": true,
+      "auditHeadSignatureValid": true,
+      "restartReconnect": {
+        "closedSessionVerifiesFromDiskAfterRestart": true,
+        "newCoordinatorCanStartAfterHalt": true,
+        "tamperedArchiveFailsAfterRestart": true,
+        "tamperedClosedSessionFailsAfterRestart": true,
+        "tamperedHeadFailsAfterRestart": true,
+        "tamperedManifestFailsAfterRestart": true
+      },
+      "evidence": "product-computer-use-evidence.json"
+    },
+    {
+      "path": "global-system",
+      "status": "blocked",
+      "durationMs": 0,
+      "budgetMs": 500,
+      "resourcesClosed": false,
+      "limitation": "No compositor/global-hotkey service is available in this CI container.",
+      "evidence": "platform-limitation-matrix.json"
+    }
+  ],
+  "cleanupProof": {
+    "appUiClosesCaptureInputMedia": true,
+    "daemonAndMobileRowsUseProductCoordinator": true
+  },
+  "passCount": 3,
+  "blockedCount": 1
+}

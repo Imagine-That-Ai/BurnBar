@@ -1,0 +1,8 @@
+original physical lines: 1985
+wrote OpenBurnBarMobile/Services/HermesGatewayAPI.swift: 553 lines
+wrote OpenBurnBarMobile/Services/HermesGatewayRepository.swift: 133 lines
+wrote OpenBurnBarMobile/Services/HermesGatewayMessageRecord.swift: 520 lines
+wrote OpenBurnBarMobile/Services/HermesGatewayClientRecord.swift: 474 lines
+wrote OpenBurnBarMobile/Services/HermesGatewayApprovalRecord.swift: 144 lines
+wrote OpenBurnBarMobile/Services/HermesGatewayAttachmentRecord.swift: 232 lines
+LOSSLESSNESS OK: all 1985 original lines accounted for (verbatim, exactly once; imports + nilIfEmpty helper replicated per file)

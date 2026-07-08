@@ -1,0 +1,38 @@
+{
+  "generatedAt" : "2026-07-04T14:26:18.097Z",
+  "sessions" : [
+    {
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz",
+      "path" : "daemon-coordinator",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A",
+      "sessionId" : "linux-evidence-daemon-coordinator-IOS-DEVICE-A",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz.sig.json",
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered-archive\/linux-evidence-daemon-coordinator-IOS-DEVICE-A.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-daemon-coordinator-IOS-DEVICE-A-tampered"
+    },
+    {
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz",
+      "path" : "mobile-remote",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C",
+      "sessionId" : "linux-evidence-mobile-remote-IOS-DEVICE-C",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz.sig.json",
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered-archive\/linux-evidence-mobile-remote-IOS-DEVICE-C.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-mobile-remote-IOS-DEVICE-C-tampered"
+    },
+    {
+      "archiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
+      "path" : "input-adapter",
+      "sessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B",
+      "sessionId" : "linux-evidence-input-adapter-IOS-DEVICE-B",
+      "signatureURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz.sig.json",
+      "tamperedArchiveURL" : "\/evidence\/product-audit-exports\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered-archive\/linux-evidence-input-adapter-IOS-DEVICE-B.tar.gz",
+      "tamperedHeadSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-head-tampered",
+      "tamperedManifestSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-manifest-tampered",
+      "tamperedSessionDirectory" : "\/evidence\/product-audit\/linux-evidence-input-adapter-IOS-DEVICE-B-tampered"
+    }
+  ]
+}

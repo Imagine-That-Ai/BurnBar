@@ -776,6 +776,7 @@ struct OnboardingProviderConnectStep: View {
             do {
                 try await subscriptionStore.refreshEntitlement()
             } catch is CancellationError {
+                // User left the step — abandon the connect attempt quietly.
                 return
             } catch {
                 if Task.isCancelled { return }

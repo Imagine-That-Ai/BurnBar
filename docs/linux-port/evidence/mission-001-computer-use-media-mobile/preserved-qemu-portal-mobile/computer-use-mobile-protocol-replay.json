@@ -1,0 +1,89 @@
+{
+  "generatedAt": "2026-07-04T14:24:28.101Z",
+  "lane": "W07LinuxComputerUseMediaMobile",
+  "frames": [
+    {
+      "id": "approval-request",
+      "direction": "linux-to-mobile",
+      "type": "controlApprovalRequest",
+      "protocolVersion": 1,
+      "linuxCapabilityMetadata": {
+        "linuxPeerNodeId": "linux-peer-node",
+        "mobileViewerNodeId": "ios-phone-evidence",
+        "peerPlatform": "linux",
+        "capture": "portal-pipewire",
+        "input": "libei-atspi-uinput-xtest",
+        "approvalSurface": "mobile-approval-controller"
+      },
+      "backwardCompatibility": "additive-capability-only"
+    },
+    {
+      "id": "approval-deny",
+      "direction": "mobile-to-linux",
+      "type": "controlApprovalResponse",
+      "protocolVersion": 1,
+      "linuxCapabilityMetadata": {
+        "linuxPeerNodeId": "linux-peer-node",
+        "decision": "deny",
+        "auditBinding": "controlApprovalRequest.approvalId"
+      },
+      "backwardCompatibility": "additive-capability-only"
+    },
+    {
+      "id": "phone-input",
+      "direction": "mobile-to-linux",
+      "type": "controlInputIntent",
+      "protocolVersion": 1,
+      "linuxCapabilityMetadata": {
+        "linuxPeerNodeId": "linux-peer-node",
+        "trustChange": "downgrade-only",
+        "controlSurface": "linux-peer-input-adapter"
+      },
+      "backwardCompatibility": "additive-capability-only"
+    },
+    {
+      "id": "media-frame",
+      "direction": "linux-to-mobile",
+      "type": "mediaStreamFrame",
+      "protocolVersion": 1,
+      "linuxCapabilityMetadata": {
+        "linuxPeerNodeId": "linux-peer-node",
+        "viewerSurface": "mobile-media-control-viewer",
+        "mediaFrameHeader": "shared-18-byte-v1-with-cursor-extension",
+        "codecFallback": "h264"
+      },
+      "backwardCompatibility": "additive-capability-only"
+    },
+    {
+      "id": "panic-halt",
+      "direction": "mobile-to-linux",
+      "type": "controlPanicHalt",
+      "protocolVersion": 1,
+      "linuxCapabilityMetadata": {
+        "linuxPeerNodeId": "linux-peer-node",
+        "panicPath": "phone-three-finger-long-press",
+        "auditActionKind": "panic.halt"
+      },
+      "backwardCompatibility": "additive-capability-only"
+    }
+  ],
+  "linuxPeerBinding": {
+    "peerNodeId": "linux-peer-node",
+    "approvalSurface": "mobile-approval-controller",
+    "controlSurface": "linux-peer-input-adapter",
+    "mediaViewerSurface": "mobile-media-control-viewer",
+    "panicAuditActionKind": "panic.halt"
+  },
+  "wireDiff": {
+    "removedFields": [],
+    "renamedFields": [],
+    "linuxAdditions": [
+      "linuxCapabilityMetadata"
+    ],
+    "compatible": true
+  },
+  "limits": {
+    "deviceOrSimulatorAttached": false,
+    "acceptedReplayOracle": "signed mobile pairing/auth evidence plus additive wire-frame diff tied to Linux peer metadata"
+  }
+}

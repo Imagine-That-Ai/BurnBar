@@ -1058,6 +1058,133 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testSendCallInviteEmitsPhoneToMacCallFrame() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        try await coordinator.sendCallInvite(
+            requestId: "call-phone-1",
+            uid: "user-1",
+            requesterDisplayName: "Alberto's iPhone",
+            callKind: "video",
+            timeout: 1
+        )
+
+        let sentFrames = await stream.sentFrames
+        let invite = try XCTUnwrap(sentFrames.first { $0.type == .mediaCallInvite })
+        XCTAssertEqual(invite.uid, "user-1")
+        XCTAssertEqual(invite.connectionId, "conn-1")
+        XCTAssertEqual(invite.requestId, "call-phone-1")
+        XCTAssertEqual(invite.media?.callInvite?.requestId, "call-phone-1")
+        XCTAssertEqual(invite.media?.callInvite?.requesterDisplayName, "Alberto's iPhone")
+        XCTAssertEqual(invite.media?.callInvite?.callKind, "video")
+        await coordinator.stop()
+    }
+
+    func testSendCallInviteRejectsStaleUIDWithoutWritingFrame() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        do {
+            try await coordinator.sendCallInvite(
+                requestId: "call-phone-stale",
+                uid: "user-2",
+                requesterDisplayName: "Alberto's iPhone",
+                callKind: "video",
+                timeout: 1
+            )
+            XCTFail("stale auth uid must not send a Call Mac invite")
+        } catch MediaControlStreamCoordinator.ControlStreamError.notLive {
+            // Expected: the live stream belongs to a different uid.
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+
+        let sentFrames = await stream.sentFrames
+        XCTAssertFalse(sentFrames.contains { $0.type == .mediaCallInvite })
+        await coordinator.stop()
+    }
+
+    func testReadLoopForwardsCallAckToInstalledHandler() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+
+        let received = expectation(description: "call ack forwarded")
+        coordinator.callAckHandler = { ack in
+            XCTAssertEqual(ack.requestId, "call-phone-1")
+            XCTAssertEqual(ack.decision, .accepted)
+            XCTAssertEqual(ack.detail, "Mac accepted the call invite")
+            received.fulfill()
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+
+        await stream.pushInbound(HermesRealtimeRelayFrame(
+            type: .mediaCallAck,
+            uid: "user-1",
+            connectionId: "conn-1",
+            requestId: "call-phone-1",
+            media: HermesRealtimeRelayMediaPayload(
+                callAck: HermesRealtimeRelayCallAck(
+                    requestId: "call-phone-1",
+                    decision: .accepted,
+                    detail: "Mac accepted the call invite"
+                )
+            )
+        ))
+
+        await fulfillment(of: [received], timeout: 1.0)
+        XCTAssertNotNil(coordinator.lastInboundAt)
+        await coordinator.stop()
+    }
+
+    func testCallInviteEligibilityBlocksOverlappingInviteWhilePending() {
+        XCTAssertTrue(MercuryLiveSheet.canStartCall(
+            pendingCallRequestID: nil,
+            peerCanPlaceCall: true,
+            controlStreamPhase: .live
+        ))
+        XCTAssertFalse(MercuryLiveSheet.canStartCall(
+            pendingCallRequestID: "call-phone-1",
+            peerCanPlaceCall: true,
+            controlStreamPhase: .live
+        ))
+    }
+
+    func testDisappearDetachPolicyPreservesOutstandingCallAckHandler() {
+        XCTAssertFalse(MercuryLiveSheet.shouldDetachCallAckHandlerOnDisappear(
+            pendingCallRequestID: "call-phone-1"
+        ))
+        XCTAssertTrue(MercuryLiveSheet.shouldDetachCallAckHandlerOnDisappear(
+            pendingCallRequestID: nil
+        ))
+    }
+
     // The wait helpers poll, so generous deadlines cost nothing on the
     // success path — they only bound how long a genuinely broken run
     // takes to report. 1 s deadlines proved too tight on loaded CI

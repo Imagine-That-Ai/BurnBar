@@ -22,6 +22,7 @@
     ".build/**",
     ".vscode-test/**",
     "dist/**",
-    "node_modules/**"
+    "node_modules/**",
+    "src/generated/burnbar-rpc-ipc-canon.generated.ts"
   ]
 }

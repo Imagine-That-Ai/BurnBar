@@ -15,7 +15,6 @@
 // If the answer to any is "no" or "unknown", deprioritize Mission Control expansion
 // and invest in core tracking, search, and sync reliability instead.
 
-import CryptoKit
 import Foundation
 import OpenBurnBarCore
 
@@ -879,7 +878,7 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
         encoder.outputFormatting = [.sortedKeys]
         let payload = EnterprisePacketApprovalFingerprintPayload(packet: packet)
         let data = try encoder.encode(payload)
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return PlatformCrypto.sha256Hex(data)
     }
 
     private func persistEnterprisePolicyBlock(
