@@ -557,3 +557,14 @@ regexes = [
 paths = [
   '''docs/linux-port/evidence/.*''',
 ]
+
+[[allowlists]]
+description = "Historical PR #1196 credential-exposure scanner fixtures were synthetic secret-redaction test strings; current tree removed the literals, and this exception is pinned to the exact old commits and test path"
+condition = "AND"
+commits = [
+  '''a932276d059401f54a15e8e755027fc6a62fd30a''',
+  '''36324c24e287e5d2b5c0a1f4df4aeca8bd236857''',
+]
+paths = [
+  '''AgentLensTests/Active/CredentialExposureScanTests\.swift''',
+]
