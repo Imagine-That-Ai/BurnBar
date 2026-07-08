@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-07-04T14:24:29.966Z",
+  "rows": [
+    {
+      "observedAt": "2026-07-04T14:24:29.392Z",
+      "id": "wayland-portal-pipewire",
+      "target": "VAL-CU-001",
+      "status": "blocked",
+      "reason": "No interactive Wayland session in evidence environment (platform=linux, XDG_SESSION_TYPE=).",
+      "unblock": "Run on GNOME/KDE Wayland with xdg-desktop-portal and PipeWire session bus."
+    },
+    {
+      "observedAt": "2026-07-04T14:24:29.404Z",
+      "id": "xdg-desktop-portal-screencast",
+      "target": "VAL-CU-001",
+      "status": "blocked",
+      "reason": "ScreenCast portal was not reachable on the session bus.",
+      "unblock": "Start an interactive desktop session with xdg-desktop-portal backend."
+    },
+    {
+      "observedAt": "2026-07-04T14:24:29.428Z",
+      "id": "at-spi2",
+      "target": "VAL-CU-002",
+      "status": "blocked",
+      "reason": "AT-SPI2 bus unavailable.",
+      "unblock": "Enable accessibility bus in the desktop session."
+    },
+    {
+      "observedAt": "2026-07-04T14:24:29.434Z",
+      "id": "uinput",
+      "target": "VAL-CU-002",
+      "status": "blocked",
+      "reason": "/dev/uinput missing or not writable by the test user.",
+      "unblock": "Provision uinput group/udev policy for explicit installer-approved input."
+    }
+  ]
+}

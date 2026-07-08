@@ -131,6 +131,7 @@ dpkg-deb --version | head -n 1
 dpkg-buildpackage --version | head -n 1
 fakeroot --version
 rpmbuild --version
+mksquashfs -version | head -n 1
 gpg --version | head -n 1
 patchelf --version
 file --version | head -n 1
@@ -174,6 +175,7 @@ dpkg-query -W -f='${binary:Package}=${Version}\n' \
   dpkg-dev \
   fakeroot \
   rpm \
+  squashfs-tools \
   gnupg \
   patchelf \
   file \

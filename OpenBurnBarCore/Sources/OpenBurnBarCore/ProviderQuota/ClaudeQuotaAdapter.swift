@@ -72,27 +72,23 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - JSONL Scan Cache & Timestamp Parsing
 
-    /// Shared, reused ISO8601 parsers. Claude writes turn timestamps with
+    /// JSONL turn-timestamp parsing. Claude writes turn timestamps with
     /// fractional seconds (e.g. `2026-05-27T08:00:53.077Z`), which the
-    /// *default* `ISO8601DateFormatter` rejects. The previous per-line
+    /// *default* `ISO8601DateFormatter` rejects. The original per-line
     /// `ISO8601DateFormatter().date(from:)` therefore both (a) allocated an
     /// ICU-backed formatter for every assistant line — pure CPU burn that
     /// showed up as the hottest non-idle frame under load — and (b) returned
-    /// `nil`, silently zeroing every JSONL token count. Reusing two configured
-    /// formatters fixes the correctness bug and removes the allocation.
+    /// `nil`, silently zeroing every JSONL token count.
+    ///
+    /// Delegates to `ThreadSafeISO8601DateFormatter.parse(_:)`, which tries
+    /// fractional-seconds first and falls back to the plain internet-date-time
+    /// format using a lock-guarded, process-lifetime formatter pair — no
+    /// per-call allocation, and safe under the concurrent scans this adapter
+    /// runs (a plain `static let ISO8601DateFormatter` would not be, since
+    /// `ISO8601DateFormatter` is not thread-safe).
     private enum JSONLTimestamp {
-        static var fractional: ISO8601DateFormatter {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return formatter
-        }
-        static var plain: ISO8601DateFormatter {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime]
-            return formatter
-        }
         static func date(from text: String) -> Date? {
-            fractional.date(from: text) ?? plain.date(from: text)
+            ThreadSafeISO8601DateFormatter.parse(text)
         }
     }
 

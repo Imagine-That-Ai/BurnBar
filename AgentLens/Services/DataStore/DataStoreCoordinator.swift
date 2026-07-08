@@ -14,10 +14,6 @@ import OpenBurnBarCore
 // should continue to work via the typealias in DataStore.swift.
 // TODO(1.0): Remove the DataStore typealias and update all import sites.
 
-enum DataStoreLegacyChatThread {
-    static let id = "openburnbar-chat-legacy"
-}
-
 @Observable
 @MainActor
 final class DataStoreCoordinator {

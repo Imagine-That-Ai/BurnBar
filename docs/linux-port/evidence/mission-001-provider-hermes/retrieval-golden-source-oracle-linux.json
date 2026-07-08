@@ -1,0 +1,148 @@
+{
+  "schema": "openburnbar-project-memory-retrieval-golden-source-oracle-run-v1",
+  "platform": "linux",
+  "sourceFixture": "docs/linux-port/fixtures/project-memory-retrieval-golden-source-oracle.json",
+  "expectedChecksumSHA256": "63d3d68ba32538a7eb41e5ec3154a8233a1dac366bada5c3bca311f7b53d9dc8",
+  "observedChecksumSHA256": "63d3d68ba32538a7eb41e5ec3154a8233a1dac366bada5c3bca311f7b53d9dc8",
+  "provenance": {
+    "createdFor": "mission-001 data/provider/Hermes canonical oracle repair",
+    "sourceSurface": "daemon/CLI/shell project-memory retrieval contract",
+    "reason": "No prior accepted daemon/CLI/shell retrieval golden existed for remember/index/watch/search/recall/audit/analytics; this product-owned fixture is the canonical source oracle.",
+    "acceptedAsCanonical": true
+  },
+  "observedSource": "live AF_UNIX daemon CLI memory replay + packaged browser memory DOM proof",
+  "observedSourceArtifacts": [
+    "cli-hermes-transcript.txt",
+    "packaged-browser-memory-dom-transcript.json"
+  ],
+  "expected": {
+    "projectFixture": {
+      "rootName": "openburnbar-memory-fixture",
+      "fileCount": 2
+    },
+    "flows": [
+      {
+        "action": "remember",
+        "memoryIDPrefix": "mem_",
+        "scope": "project",
+        "kind": "finding",
+        "tags": [
+          "linux",
+          "golden",
+          "wrapper"
+        ],
+        "confidence": 0.97
+      },
+      {
+        "action": "index",
+        "indexedFileCount": 2,
+        "source": "daemon"
+      },
+      {
+        "action": "watch",
+        "watchMode": "poll",
+        "initialFileCount": 2
+      },
+      {
+        "action": "search",
+        "query": "linuxEvidenceToken",
+        "topSourcePath": "Sources/App.swift",
+        "topSnippetContains": "linuxEvidenceToken"
+      },
+      {
+        "action": "recall",
+        "query": "untrusted code remains quoted",
+        "topMemoryContains": "OPENBURNBAR_UNTRUSTED_CODE_V1 remains quoted and inert",
+        "privateContentLeaked": false
+      },
+      {
+        "action": "audit",
+        "containsActions": [
+          "remember",
+          "recall"
+        ],
+        "source": "daemon"
+      },
+      {
+        "action": "analytics",
+        "minimumRememberCount": 1,
+        "minimumRecallCount": 1
+      }
+    ],
+    "privacy": {
+      "privacyDisabledCacheInspection": {
+        "cacheBodiesPersisted": false,
+        "allowedMetadata": [
+          "path",
+          "hash",
+          "source"
+        ]
+      }
+    }
+  },
+  "observed": {
+    "projectFixture": {
+      "rootName": "openburnbar-memory-fixture",
+      "fileCount": 2
+    },
+    "flows": [
+      {
+        "action": "remember",
+        "memoryIDPrefix": "mem_",
+        "scope": "project",
+        "kind": "finding",
+        "tags": [
+          "linux",
+          "golden",
+          "wrapper"
+        ],
+        "confidence": 0.97
+      },
+      {
+        "action": "index",
+        "indexedFileCount": 2,
+        "source": "daemon"
+      },
+      {
+        "action": "watch",
+        "watchMode": "poll",
+        "initialFileCount": 2
+      },
+      {
+        "action": "search",
+        "query": "linuxEvidenceToken",
+        "topSourcePath": "Sources/App.swift",
+        "topSnippetContains": "linuxEvidenceToken"
+      },
+      {
+        "action": "recall",
+        "query": "untrusted code remains quoted",
+        "topMemoryContains": "OPENBURNBAR_UNTRUSTED_CODE_V1 remains quoted and inert",
+        "privateContentLeaked": false
+      },
+      {
+        "action": "audit",
+        "containsActions": [
+          "remember",
+          "recall"
+        ],
+        "source": "daemon"
+      },
+      {
+        "action": "analytics",
+        "minimumRememberCount": 1,
+        "minimumRecallCount": 1
+      }
+    ],
+    "privacy": {
+      "privacyDisabledCacheInspection": {
+        "cacheBodiesPersisted": false,
+        "allowedMetadata": [
+          "path",
+          "hash",
+          "source"
+        ]
+      }
+    }
+  }
+}

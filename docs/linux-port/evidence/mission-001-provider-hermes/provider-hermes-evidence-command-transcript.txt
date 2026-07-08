@@ -1,0 +1,51 @@
+evidence written to /workspace/.recovered-evidence/provider-hermes-v12-raw-order-20260704T194515Z/ipc-cli-gateway
+wrote /workspace/.recovered-evidence/provider-hermes-v12-raw-order-20260704T194515Z/provider-log-path-matrix.json
+wrote /workspace/.recovered-evidence/provider-hermes-v12-raw-order-20260704T194515Z/provider-discovery-edge-fixture.json
+### preserved provider discovery direct XCTest
+source=/workspace/.recovered-evidence/provider-hermes-v12-raw-order-20260704T194515Z/provider-discovery-direct-xctest-transcript.txt
+note=V7/V9 accepted direct provider-discovery transcript imported into this fresh evidence directory; edge fixture JSON regenerated above.
+command=timeout 20 /workspace/OpenBurnBarCore/.build-data-evidence-serial/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.xctest OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests/testResolveLogSourceUsesLinuxXDGStylePathsForVSCodeProviders
+Test Suite 'Selected tests' started at 2026-07-04 17:56:38.631
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-04 17:56:38.632
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testResolveLogSourceUsesLinuxXDGStylePathsForVSCodeProviders' started at 2026-07-04 17:56:38.632
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testResolveLogSourceUsesLinuxXDGStylePathsForVSCodeProviders' passed (0.003 seconds)
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-04 17:56:38.636
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 17:56:38.636
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+### OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests/testRotationScenarioKeepsDirectoryScopedIdentity
+command=timeout 20 /workspace/OpenBurnBarCore/.build-data-evidence-serial/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.xctest OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests/testRotationScenarioKeepsDirectoryScopedIdentity
+Test Suite 'Selected tests' started at 2026-07-04 17:56:38.664
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-04 17:56:38.666
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testRotationScenarioKeepsDirectoryScopedIdentity' started at 2026-07-04 17:56:38.666
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testRotationScenarioKeepsDirectoryScopedIdentity' passed (0.001 seconds)
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-04 17:56:38.667
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 17:56:38.667
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+### OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests/testSessionIdentityKeyUsesProviderAndStandardizedResolvedDirectory
+command=timeout 20 /workspace/OpenBurnBarCore/.build-data-evidence-serial/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.xctest OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests/testSessionIdentityKeyUsesProviderAndStandardizedResolvedDirectory
+Test Suite 'Selected tests' started at 2026-07-04 17:56:38.694
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-04 17:56:38.695
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testSessionIdentityKeyUsesProviderAndStandardizedResolvedDirectory' started at 2026-07-04 17:56:38.695
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testSessionIdentityKeyUsesProviderAndStandardizedResolvedDirectory' passed (0.001 seconds)
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-04 17:56:38.696
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 17:56:38.696
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+### OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests/testSymlinkedHomeExpansionDoesNotSilentlyRewriteSessionKeyWithoutRealpath
+command=timeout 20 /workspace/OpenBurnBarCore/.build-data-evidence-serial/aarch64-unknown-linux-gnu/debug/OpenBurnBarCorePackageTests.xctest OpenBurnBarLinuxCoreFoundationTests.AgentProviderLogDiscoveryLinuxTests/testSymlinkedHomeExpansionDoesNotSilentlyRewriteSessionKeyWithoutRealpath
+Test Suite 'Selected tests' started at 2026-07-04 17:56:38.719
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' started at 2026-07-04 17:56:38.724
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testSymlinkedHomeExpansionDoesNotSilentlyRewriteSessionKeyWithoutRealpath' started at 2026-07-04 17:56:38.724
+Test Case 'AgentProviderLogDiscoveryLinuxTests.testSymlinkedHomeExpansionDoesNotSilentlyRewriteSessionKeyWithoutRealpath' passed (0.01 seconds)
+Test Suite 'AgentProviderLogDiscoveryLinuxTests' passed at 2026-07-04 17:56:38.734
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.01 (0.01) seconds
+Test Suite 'Selected tests' passed at 2026-07-04 17:56:38.734
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.01 (0.01) seconds
+direct_xctest_exit=0
+exit_code=0
+wrote /workspace/.recovered-evidence/provider-hermes-v12-raw-order-20260704T194515Z/llmsafe-content-linux-fixture.json
+wrote /workspace/.recovered-evidence/provider-hermes-v12-raw-order-20260704T194515Z/contract-status.json
+hermes_event_order_linux=pass
+W04 provider/hermes evidence under /workspace/.recovered-evidence/provider-hermes-v12-raw-order-20260704T194515Z

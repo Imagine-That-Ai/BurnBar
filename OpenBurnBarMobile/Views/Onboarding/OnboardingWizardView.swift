@@ -152,17 +152,11 @@ struct OnboardingWizardView: View {
     }
 
     private var progressFraction: CGFloat {
-        switch stage {
-        case .welcome: return 0.05
-        case .pick:    return 0.25
-        case .connect:
-            guard !selectedProviders.isEmpty else { return 0.5 }
-            let perProvider = 0.5 / CGFloat(selectedProviders.count)
-            let connected = CGFloat(min(queueIndex, selectedProviders.count))
-            return 0.25 + connected * perProvider
-        case .review:  return 0.85
-        case .done:    return 1.0
-        }
+        OnboardingWizardFlowModel.progressFraction(
+            stage: stage,
+            selectedCount: selectedProviders.count,
+            queueIndex: queueIndex
+        )
     }
 
     // MARK: - Stage content
@@ -179,9 +173,10 @@ struct OnboardingWizardView: View {
                         // Keep the user's stable order — append new picks to the
                         // tail, drop unpicks. This way the wizard walks providers
                         // in the order the user tapped them.
-                        let added = newValue.subtracting(selectedProviders)
-                        let kept = selectedProviders.filter { newValue.contains($0) }
-                        selectedProviders = kept + Array(added).sorted { $0.displayName < $1.displayName }
+                        selectedProviders = OnboardingWizardFlowModel.reorderedSelection(
+                            current: selectedProviders,
+                            newValue: newValue
+                        )
                     }
                 ),
                 alreadyConnected: alreadyConnectedSet
@@ -330,12 +325,13 @@ struct OnboardingWizardView: View {
                 title: selectedProviders.isEmpty ? "Skip for now" : "Continue",
                 isEnabled: true
             ) {
-                if selectedProviders.isEmpty {
-                    advance(to: .review)
-                } else {
+                let next = OnboardingWizardFlowModel.stageAfterPickContinue(
+                    hasSelection: !selectedProviders.isEmpty
+                )
+                if next == .connect {
                     queueIndex = 0
-                    advance(to: .connect)
                 }
+                advance(to: next)
             }
         case .review:
             wizardPrimaryButton(title: "Finish") { advance(to: .done) }
@@ -392,11 +388,15 @@ struct OnboardingWizardView: View {
     }
 
     private func advanceQueue() {
-        if queueIndex + 1 < selectedProviders.count {
+        switch OnboardingWizardFlowModel.queueStepAfterProviderHandled(
+            queueIndex: queueIndex,
+            selectedCount: selectedProviders.count
+        ) {
+        case .connectNext(let nextIndex):
             withAnimation(MobileTheme.Animation.gentle) {
-                queueIndex += 1
+                queueIndex = nextIndex
             }
-        } else {
+        case .review:
             advance(to: .review)
         }
     }
@@ -430,6 +430,67 @@ struct OnboardingWizardView: View {
 private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+// MARK: - Flow model
+
+/// Pure flow math behind `OnboardingWizardView`, extracted as a seam so unit
+/// tests can pin stage transitions, queue advancement, and progress math
+/// without hosting the SwiftUI view. Behavior-preserving: every branch is a
+/// verbatim lift from the view code it backs.
+enum OnboardingWizardFlowModel {
+    /// Where the wizard goes after a provider in the connect queue is
+    /// connected or skipped.
+    enum QueueStep: Equatable {
+        case connectNext(queueIndex: Int)
+        case review
+    }
+
+    /// "Continue" on the pick stage: an empty selection skips the connect
+    /// queue entirely and lands on review ("Skip for now"); a non-empty
+    /// selection enters the per-provider connect queue.
+    static func stageAfterPickContinue(hasSelection: Bool) -> OnboardingWizardView.Stage {
+        hasSelection ? .connect : .review
+    }
+
+    /// Advances the connect queue one provider at a time, then hands off
+    /// to review once the last selected provider has been handled.
+    static func queueStepAfterProviderHandled(queueIndex: Int, selectedCount: Int) -> QueueStep {
+        queueIndex + 1 < selectedCount ? .connectNext(queueIndex: queueIndex + 1) : .review
+    }
+
+    /// Progress-capsule fill fraction. The connect stage scales its 50%
+    /// span across the selected providers so each connection visibly moves
+    /// the bar.
+    static func progressFraction(
+        stage: OnboardingWizardView.Stage,
+        selectedCount: Int,
+        queueIndex: Int
+    ) -> CGFloat {
+        switch stage {
+        case .welcome: return 0.05
+        case .pick:    return 0.25
+        case .connect:
+            guard selectedCount > 0 else { return 0.5 }
+            let perProvider = 0.5 / CGFloat(selectedCount)
+            let connected = CGFloat(min(queueIndex, selectedCount))
+            return 0.25 + connected * perProvider
+        case .review:  return 0.85
+        case .done:    return 1.0
+        }
+    }
+
+    /// Keeps the user's stable tap order — existing picks stay in order,
+    /// unpicks drop out, and new picks append to the tail (alphabetical by
+    /// display name when several arrive in one update).
+    static func reorderedSelection(
+        current: [AgentProvider],
+        newValue: Set<AgentProvider>
+    ) -> [AgentProvider] {
+        let added = newValue.subtracting(current)
+        let kept = current.filter { newValue.contains($0) }
+        return kept + Array(added).sorted { $0.displayName < $1.displayName }
     }
 }
 

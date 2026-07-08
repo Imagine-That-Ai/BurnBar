@@ -44,6 +44,9 @@
   --radius-lg: 20px;
   --radius-pill: 999px;
   --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-swirl-seconds: 18;
+  --motion-frost-flip-ms: 520;
+  --font-arcane: 'Fraunces Variable', Georgia, serif;
   --ds-skin: editorial;
   --ds-accent-gradient: linear-gradient(135deg, var(--color-brass-core), var(--color-brass-bright));
 }

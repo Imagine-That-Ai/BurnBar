@@ -530,7 +530,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         if let fullMessage {
             event["fullMessage"] = fullMessage
         }
-        try XCTUnwrap(
+        return try XCTUnwrap(
             CLIAgentMissionSnapshot(
                 documentID: id,
                 data: [

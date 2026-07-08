@@ -52,6 +52,10 @@ final class FlowLayoutTests: XCTestCase {
         // Smoke test by intent: `Layout` protocol conformance is a compile-time
         // contract; runtime SubviewsCollection assertions live in host-view tests.
         // Verify the layout can be used as a Layout value
-        let _: any Layout = layout
+        let erased: any Layout = layout
+        XCTAssertNotNil(erased, "FlowLayout must remain usable as an `any Layout` value")
+        // The type-erased value keeps its concrete configuration (guards
+        // against an accidental conformance-through-wrapper regression).
+        XCTAssertEqual((erased as? FlowLayout)?.horizontalSpacing, layout.horizontalSpacing)
     }
 }
