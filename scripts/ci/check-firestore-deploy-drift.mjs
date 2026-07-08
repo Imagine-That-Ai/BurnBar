@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { rulesSourceForDeploy } from "./firebase-rules-source.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const project = process.env.FIREBASE_PROJECT || process.argv[2] || "burnbar";
 
@@ -22,22 +24,73 @@ function accessToken() {
   }).trim();
 }
 
-async function firebaseRulesGet(path, token) {
-  const response = await fetch(
-    `https://firebaserules.googleapis.com/v1/${path}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "X-Goog-User-Project": process.env.GOOGLE_CLOUD_QUOTA_PROJECT || project,
-      },
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Firebase Rules API ${path} failed: ${response.status} ${await response.text()}`,
-    );
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function firebaseRulesErrorMessage(error) {
+  const messages = [];
+  let cursor = error;
+  while (cursor) {
+    if (typeof cursor.message === "string") messages.push(cursor.message);
+    if (typeof cursor.code === "string") messages.push(cursor.code);
+    cursor = cursor.cause;
   }
-  return response.json();
+  return messages.join(" ");
+}
+
+function isRetryableFirebaseRulesApiError(error) {
+  if (
+    error?.status === 408 ||
+    error?.status === 429 ||
+    (typeof error?.status === "number" && error.status >= 500)
+  ) {
+    return true;
+  }
+  return /fetch failed|UND_ERR_CONNECT_TIMEOUT|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND/i.test(
+    firebaseRulesErrorMessage(error),
+  );
+}
+
+async function firebaseRulesGet(path, token) {
+  const delaysMs = [0, 1_000, 3_000, 7_000, 15_000];
+  for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+    if (delaysMs[attempt] > 0) await sleep(delaysMs[attempt]);
+    try {
+      const response = await fetch(
+        `https://firebaserules.googleapis.com/v1/${path}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "X-Goog-User-Project":
+              process.env.GOOGLE_CLOUD_QUOTA_PROJECT || project,
+          },
+        },
+      );
+      if (!response.ok) {
+        const error = new Error(
+          `Firebase Rules API ${path} failed: ${response.status} ${await response.text()}`,
+        );
+        error.status = response.status;
+        throw error;
+      }
+      return response.json();
+    } catch (error) {
+      if (
+        !isRetryableFirebaseRulesApiError(error) ||
+        attempt === delaysMs.length - 1
+      ) {
+        throw error;
+      }
+      const nextDelayMs = delaysMs[attempt + 1];
+      console.warn(
+        `Firebase Rules API GET ${path} failed transiently; retrying in ${nextDelayMs}ms`,
+      );
+    }
+  }
+  throw new Error(`unreachable Firebase Rules API retry state: GET ${path}`);
 }
 
 async function deployedRulesForRelease(releasePath, fileName, token) {
@@ -145,7 +198,10 @@ function deployedFirestoreIndexes() {
 }
 
 const token = accessToken();
-const localRules = readFileSync(resolve(repoRoot, "firestore.rules"), "utf8");
+const localRules = rulesSourceForDeploy(
+  "firestore.rules",
+  readFileSync(resolve(repoRoot, "firestore.rules"), "utf8"),
+);
 const remoteRules = await deployedRulesForRelease(
   `projects/${project}/releases/cloud.firestore`,
   "firestore.rules",

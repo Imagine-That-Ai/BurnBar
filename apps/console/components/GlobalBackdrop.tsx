@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 
 import { KernelBackdrop } from "@/components/dashboard/KernelBackdrop";
 import { useBackdrop } from "@/lib/useBackdrop";
@@ -29,6 +30,13 @@ import { inkFor, INK_FG, INK_MUTE, INK_DIM, INK_HALO } from "@/lib/kernelInk";
 export function GlobalBackdrop() {
   const { kernelId, inkEnabled } = useBackdrop();
   const [resolved, setResolved] = React.useState<KernelId>(kernelId);
+  const pathname = usePathname();
+  // /experimental mounts its own hero canvas plus a full grid of live kernel
+  // tiles — layering the global kernel underneath adds one more GL context to
+  // a page already at the browser's context limit, for a backdrop that is
+  // ~fully hidden behind the gallery anyway.
+  const suppressKernel = pathname?.startsWith("/experimental") ?? false;
+  const effectiveInkEnabled = inkEnabled && !suppressKernel;
 
   // Keep `resolved` honest when the kernel switches with no GL fallback (the
   // engine only fires onResolve on mount + switch; this covers fast switches).
@@ -40,7 +48,7 @@ export function GlobalBackdrop() {
   // remap (globals.css) and the inspector both work. Cleared off ink routes.
   React.useEffect(() => {
     const body = document.body;
-    if (!inkEnabled) {
+    if (!effectiveInkEnabled) {
       body.setAttribute("data-ink", "off");
       delete body.dataset.kernel;
       return () => {
@@ -69,18 +77,21 @@ export function GlobalBackdrop() {
       delete body.dataset.kernel;
       body.style.removeProperty("--ink-scrim-nav");
     };
-  }, [resolved, inkEnabled]);
+  }, [resolved, effectiveInkEnabled]);
 
   return (
     <>
-      {/* The animated kernel — behind everything, on every route. */}
-      <KernelBackdrop
-        kernelId={kernelId}
-        className="ink-backdrop"
-        onResolve={setResolved}
-      />
+      {/* The animated kernel — behind everything, on every route (except the
+          kernel gallery, which saturates the GL-context budget on its own). */}
+      {!suppressKernel && (
+        <KernelBackdrop
+          kernelId={kernelId}
+          className="ink-backdrop"
+          onResolve={setResolved}
+        />
+      )}
       {/* The legibility scrim — only on ink routes, above the kernel, under content. */}
-      {inkEnabled && <div className="ink-scrim" aria-hidden />}
+      {effectiveInkEnabled && <div className="ink-scrim" aria-hidden />}
     </>
   );
 }
