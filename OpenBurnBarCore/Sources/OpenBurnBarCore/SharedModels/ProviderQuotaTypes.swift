@@ -603,7 +603,20 @@ public extension ProviderQuotaBucket {
         }
 
         let marker = "\(name) \(meta?["label"] ?? "")".lowercased()
-        if ["cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file"].contains(where: marker.contains) {
+        if ["cache", "hit rate", "local model", "cloud model", "installed"].contains(where: marker.contains) {
+            return false
+        }
+        // Short generic words must match whole tokens only: a raw `contains`
+        // check blacklists real quota buckets whose identifiers merely embed
+        // the word — "codex-profile-5h" contains "file", "statusline"
+        // contains "line" — silently hiding genuine percentage signals.
+        let markerTokens = Set(
+            marker.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        )
+        if !markerTokens.isDisjoint(with: [
+            "task", "tasks", "conversation", "conversations",
+            "line", "lines", "file", "files"
+        ]) {
             return false
         }
 

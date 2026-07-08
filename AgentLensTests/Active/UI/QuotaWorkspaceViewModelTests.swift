@@ -298,6 +298,80 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(Set(codexEntries.compactMap { $0.snapshot.accountID }), ["current-codex", "profile-reserve"])
     }
 
+    func test_rebuild_freshDefaultCLILoginIsNotHiddenByDeadProfile() async throws {
+        // A switcher profile whose auth clone expired months ago produces an
+        // unavailable account snapshot. That dead card must not hide the
+        // healthy default CLI login's fresh quota signal.
+        let appSupportRoot = try makeTemporaryDirectory()
+        let home = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: .default)
+        let current = ProviderQuotaSnapshot(
+            provider: .codex,
+            fetchedAt: Date(),
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Pro quota snapshot from the local Codex login session.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 8,
+                    limitValue: 100,
+                    remainingValue: 92,
+                    usedPercent: 8,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+        let dead = ProviderQuotaSnapshot(
+            provider: .codex,
+            accountID: "profile-dead",
+            accountLabel: "Dead Codex Profile",
+            accountStorageScope: .localOnly,
+            fetchedAt: Date(),
+            source: .unavailable,
+            sourceId: "switcher-cli:codex:profile-dead",
+            confidence: .stale,
+            managementURL: nil,
+            statusMessage: "No Codex usage API response or recent local rate-limit snapshot was available.",
+            buckets: []
+        )
+        store.persistSnapshots(
+            [.codex: current],
+            accountSnapshots: [ProviderQuotaSnapshotStore.accountSnapshotKey(dead): dead]
+        )
+
+        let service = ProviderQuotaService(
+            keyStore: makeKeyStore(),
+            providerRuntimeKeyStore: makeRuntimeKeyStore(),
+            appPaths: appPaths,
+            environment: [:],
+            homeDirectoryURL: home,
+            refreshProviders: [.codex]
+        )
+        let viewModel = QuotaWorkspaceViewModel()
+
+        await viewModel.rebuild(
+            quotaService: service,
+            dataStore: try makeDataStore(),
+            providerSpendByID: [:]
+        )
+
+        let codexEntries = viewModel.entries.filter { $0.provider == .codex }
+        XCTAssertEqual(codexEntries.count, 2)
+        XCTAssertEqual(
+            Set(codexEntries.compactMap { $0.snapshot.accountID }),
+            ["current-codex", "profile-dead"]
+        )
+        let currentEntry = try XCTUnwrap(codexEntries.first { $0.snapshot.accountID == "current-codex" })
+        XCTAssertEqual(currentEntry.remainingPercentRounded, 92)
+    }
+
     func test_rebuild_keepsPendingAccountVisibleAlongsideDisplayableAccounts() async throws {
         let appSupportRoot = try makeTemporaryDirectory()
         let home = try makeTemporaryDirectory()

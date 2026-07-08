@@ -1365,6 +1365,83 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.statusMessage?.contains("Max") ?? false)
     }
 
+    func test_claudeRefresh_jsonlPlanCap_readsTierFromLocalClaudeStateFile() async throws {
+        // No bridge, no OAuth credentials at all (production default), but the
+        // local Claude Code state file carries the account's rate-limit tier.
+        // The adapter must annotate JSONL buckets with the published caps so
+        // the card renders percentages instead of "quota not exposed".
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let projectsDir = home
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent("test-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let jsonlURL = projectsDir.appendingPathComponent("session.jsonl")
+        let recentISO = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-60 * 30))
+        // 200K input + 20K output = 220K total — ≈6.25% of the Max-20x 5h cap.
+        let line = """
+        {"timestamp":"\(recentISO)","type":"assistant","message":{"usage":{"input_tokens":200000,"output_tokens":20000}}}
+        """
+        try Data(line.utf8).write(to: jsonlURL)
+
+        let stateJSON = """
+        {"oauthAccount":{"emailAddress":"user@example.com","organizationRateLimitTier":"default_claude_max_20x"}}
+        """
+        try Data(stateJSON.utf8).write(to: home.appendingPathComponent(".claude.json"))
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: makeStubSession { _ in throw URLError(.notConnectedToInternet) }
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
+        XCTAssertEqual(snapshot.confidence, .estimated)
+        let fiveHour = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "claude-five-hour-jsonl" }))
+        XCTAssertEqual(fiveHour.limitValue, 3_520_000)
+        XCTAssertEqual(fiveHour.usedPercent?.rounded(), 6)
+        let sevenDay = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "claude-seven-day-jsonl" }))
+        XCTAssertEqual(sevenDay.limitValue, 30_800_000)
+        XCTAssertTrue(snapshot.hasDisplayableQuotaSignal)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Max 20x") ?? false)
+    }
+
+    func test_claudeRefresh_jsonlWithoutTierStaysTokenCountOnly() async throws {
+        // No credentials and no local state tier: buckets keep raw token
+        // counts (no invented caps) and the snapshot has no displayable
+        // percentage signal.
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let projectsDir = home
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent("test-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let jsonlURL = projectsDir.appendingPathComponent("session.jsonl")
+        let recentISO = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-60 * 30))
+        let line = """
+        {"timestamp":"\(recentISO)","type":"assistant","message":{"usage":{"input_tokens":200000,"output_tokens":20000}}}
+        """
+        try Data(line.utf8).write(to: jsonlURL)
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: makeStubSession { _ in throw URLError(.notConnectedToInternet) }
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        let fiveHour = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "claude-five-hour-jsonl" }))
+        XCTAssertNil(fiveHour.limitValue)
+        XCTAssertNil(fiveHour.usedPercent)
+    }
+
     func test_claudeRefresh_createsAccountSnapshotForSwitcherProfileConfigPath() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

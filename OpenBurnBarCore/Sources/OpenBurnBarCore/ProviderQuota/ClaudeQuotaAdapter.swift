@@ -327,7 +327,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         )) ?? JSONLTokenWindows(fiveHourTokens: 0, sevenDayTokens: 0, latestTimestamp: nil, filesScanned: 0)
 
         if jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0 {
-            return makeJSONLSnapshot(jsonlWindows: jsonlWindows, credentials: workingCredentials, bridgeStatus: postInstallStatus)
+            return makeJSONLSnapshot(
+                jsonlWindows: jsonlWindows,
+                credentials: workingCredentials,
+                bridgeStatus: postInstallStatus,
+                context: context
+            )
         }
 
         if workingCredentials == nil,
@@ -503,11 +508,20 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private func makeJSONLSnapshot(
         jsonlWindows: JSONLTokenWindows,
         credentials: ClaudeOAuthCredentials?,
-        bridgeStatus: ClaudeQuotaBridgeStatus
+        bridgeStatus: ClaudeQuotaBridgeStatus,
+        context: ProviderQuotaAdapterContext
     ) -> ProviderQuotaSnapshot {
         let now = Date()
         let calendar = Calendar.current
+        let localTierMarker: String? = credentials == nil
+            ? Self.localPlanTierMarker(
+                homeDirectoryURL: context.homeDirectoryURL,
+                environment: context.environment,
+                snapshotStore: context.snapshotStore
+            )
+            : nil
         let caps = inferredCaps(from: credentials)
+            ?? localTierMarker.flatMap(Self.planCaps(fromTierMarker:))
 
         var buckets: [ProviderQuotaBucket] = []
         if jsonlWindows.fiveHourTokens > 0 {
@@ -532,7 +546,14 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         }
 
         let confidence: ProviderQuotaConfidence = caps != nil ? .estimated : .exact
-        let planSuffix = credentials.map { " · Plan: \($0.planDisplayName) (inferred caps)" } ?? ""
+        let planSuffix: String
+        if let credentials {
+            planSuffix = " · Plan: \(credentials.planDisplayName) (inferred caps)"
+        } else if let localTierMarker, caps != nil {
+            planSuffix = " · Plan: \(Self.planDisplayName(fromTierMarker: localTierMarker)) (caps from the local Claude Code login)"
+        } else {
+            planSuffix = ""
+        }
         let bridgeNudge = bridgeStatus.state == .ready
             ? ""
             : " Install OpenBurnBar's status line bridge for exact percentages."
@@ -582,9 +603,15 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// render token counts only (still useful, just without percentages).
     private func inferredCaps(from credentials: ClaudeOAuthCredentials?) -> ClaudePlanCaps? {
         guard let credentials else { return nil }
-        let tier = credentials.rateLimitTier.lowercased()
-        let sub = credentials.subscriptionType.lowercased()
-        let combined = tier + " " + sub
+        return Self.planCaps(
+            fromTierMarker: credentials.rateLimitTier + " " + credentials.subscriptionType
+        )
+    }
+
+    /// Map a rate-limit tier / subscription marker (e.g.
+    /// `default_claude_max_20x`, `max`, `pro`) to the published plan caps.
+    private static func planCaps(fromTierMarker marker: String) -> ClaudePlanCaps? {
+        let combined = marker.lowercased()
         if combined.contains("20x") || combined.contains("max_20") {
             return .max20x
         }
@@ -595,6 +622,62 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return .pro
         }
         return nil
+    }
+
+    private static func planDisplayName(fromTierMarker marker: String) -> String {
+        let combined = marker.lowercased()
+        if combined.contains("20x") || combined.contains("max_20") {
+            return "Max 20x"
+        }
+        if combined.contains("max") {
+            return "Max"
+        }
+        if combined.contains("pro") {
+            return "Pro"
+        }
+        return "Claude"
+    }
+
+    /// Plan-tier marker read from the local Claude Code state file
+    /// (`~/.claude.json`, or the scoped profile's `.claude.json` when a
+    /// `CLAUDE_CONFIG_DIR` / `CLAUDE_CONFIG_PATH` scope is present).
+    ///
+    /// Claude Code keeps `oauthAccount.userRateLimitTier` /
+    /// `organizationRateLimitTier` current on login and profile fetches, and
+    /// the file is plain JSON — reading it never touches the Keychain, so it
+    /// cannot trigger a credential prompt. This marker only annotates JSONL
+    /// token counts with published plan caps when no explicit OAuth credential
+    /// was injected; without a cap the JSONL buckets carry raw token counts
+    /// that no quota surface can render as a remaining percentage, leaving the
+    /// card bucketless even after real local CLI usage.
+    static func localPlanTierMarker(
+        homeDirectoryURL: URL,
+        environment: [String: String],
+        snapshotStore: any ProviderQuotaSnapshotPersisting
+    ) -> String? {
+        let baseDirectory: URL
+        if let scopedDirectory = quotaNonEmpty(environment["CLAUDE_CONFIG_DIR"])
+            ?? quotaNonEmpty(environment["CLAUDE_CONFIG_PATH"]) {
+            var url = URL(fileURLWithPath: scopedDirectory)
+            if url.pathExtension.lowercased() == "json" {
+                url.deleteLastPathComponent()
+            }
+            baseDirectory = url
+        } else {
+            baseDirectory = homeDirectoryURL
+        }
+        let stateURL = baseDirectory.appendingPathComponent(".claude.json", isDirectory: false)
+
+        guard let state = try? snapshotStore.readJSONObject(from: stateURL), // try?-ok(no local state, no caps)
+              let account = state["oauthAccount"] as? [String: Any] else {
+            return nil
+        }
+        let markers = [
+            account["userRateLimitTier"] as? String,
+            account["organizationRateLimitTier"] as? String
+        ].compactMap { quotaNonEmpty($0) }
+        guard !markers.isEmpty else { return nil }
+        return markers.joined(separator: " ")
     }
 
     // MARK: - File Discovery
