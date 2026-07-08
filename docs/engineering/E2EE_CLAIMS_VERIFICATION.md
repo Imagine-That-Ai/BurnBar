@@ -1,7 +1,7 @@
 # E2EE / Signal Claim Verification (diligence follow-up #2)
 
-> Verified 2026-07-08 against `origin/main`. **Outcome: the public-facing crypto claims are
-> accurate and CI-gated. No correction was warranted** — this corrects a finding in the
+> Verified 2026-07-08 against `origin/main`. **Outcome: the generated trust-page crypto claims are
+> accurate and CI-gated. No public trust-page correction was warranted** — this corrects a finding in the
 > 2026-07-08 diligence review that was based on the audit snapshot, not `main`.
 
 ## What the diligence review flagged
@@ -20,8 +20,8 @@ explicitly could not confirm the live claim-rendering path.
   flag-OFF … Do not claim 10/10, GA-ready, or production-activated until every gate below is
   closed."*
 
-**But the public claims already say exactly that, and a CI gate enforces it** (the mitigation the
-snapshot didn't show):
+**But the generated trust-page claims already say exactly that, and a CI gate enforces that path**
+(the mitigation the snapshot didn't show):
 - `website/src/data/crypto-claims.generated.ts` — the libsignal claims are caveated in the copy
   itself: device-to-device is *"built on Signal's official open-source library … **wired in today,
   not yet activated in production**; activation comes by staged rollout with instant revert,"* and
@@ -40,17 +40,21 @@ snapshot didn't show):
 
 ## Verdict
 
-The E2EE public-claim risk **is already mitigated on `main`, and unusually well** — caveated copy
-generated from a single source of truth, with a fail-closed CI gate that makes an over-claim
-impossible to ship silently. This is a diligence **asset**, not a gap.
+The generated trust-page E2EE claim risk **is already mitigated on `main`, and unusually well** —
+caveated copy generated from a single source of truth, with a fail-closed CI gate that forces the
+generated trust-page copy to change when libsignal readiness changes. This is a diligence **asset**,
+not a gap. It does not mechanically gate every possible future in-app, mobile, or external claim.
 
 **Correction to the 2026-07-08 report:** downgrade the "E2EE marketing-vs-reality gap" from SERIOUS
-to a POLISH/EXTERNAL item. The in-repo, user-facing claims are correct and gated.
+to a POLISH/EXTERNAL item for the generated trust-page claims. Other in-repo, mobile, or external
+claims still need to mirror this caveated language.
 
 ## Residual action (owned by Alberto — not a code change)
 
 The only remaining exposure is **outside this repo**: ensure investor/pitch/marketing materials use
 the same caveated language ("Signal library wired in, not yet activated in production; live at-rest
-protection is CloudVault AES-256-GCM with keys in Secure Enclave / StrongBox / Keychain"). The repo
-cannot gate copy it doesn't contain. When libsignal activates, the generator will force the in-repo
-copy to change — mirror that change in external materials at the same time.
+protection is CloudVault AES-256-GCM with keys stored through the platform key stores: Keychain and
+AndroidKeyStore"). Do not claim hardware-backed Secure Enclave / StrongBox custody for CloudVault
+keys unless that storage is implemented and verified. The repo cannot gate copy it doesn't contain.
+When libsignal activates, the generator will force the in-repo copy to change — mirror that change in
+external materials at the same time.
