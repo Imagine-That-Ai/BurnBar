@@ -1,0 +1,46 @@
+name: Android Budget Contract
+
+# Wave-5 WS3 — the first PR-time Android unit-test gate. Android unit tests previously
+# ran only post-merge/nightly, so an Android budget-enforcement regression could not fail a
+# PR. This runs the budget-enforcement JUnit package on every PR that touches the Android
+# budget code or the shared contract vectors, closing the "a platform missing a scope fails
+# an audit months later" gap for the Android leg.
+#
+# The vector-consuming JUnit test (com.openburnbar.data.budget.*ContractVectorTest) lands in
+# a follow-up together with the Kotlin fail-closed/fallback gate work; today this job runs
+# the existing com.openburnbar.data.budget suite so the gate exists and is wired.
+
+on:
+  pull_request:
+    paths:
+      - "android/app/src/main/java/com/openburnbar/data/budget/**"
+      - "android/app/src/test/java/com/openburnbar/data/budget/**"
+      - "android/app/src/test/resources/budget-enforcement/**"
+      - "tests/fixtures/budget-enforcement/**"
+      - ".github/workflows/android-budget-contract.yml"
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-budget-contract-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  budget-junit:
+    name: Android budget JUnit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
+      - name: Seed google-services.json (template — no secrets needed for unit tests)
+        run: cp android/app/google-services.json.template android/app/google-services.json
+      - name: Run budget-enforcement unit tests
+        run: cd android && ./gradlew :app:testDebugUnitTest --tests "com.openburnbar.data.budget.*" --no-daemon --stacktrace
