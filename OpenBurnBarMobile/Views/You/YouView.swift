@@ -81,6 +81,7 @@ struct YouView: View {
             }
         }
         .navigationTitle("You")
+        .accessibilityIdentifier("screen.you")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.hidden, for: .navigationBar)
         .task {
@@ -400,6 +401,7 @@ struct YouView: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("you.settingsRow")
     }
 
     // MARK: - Data Vault (pro-gated)
