@@ -74,6 +74,7 @@ struct StreamsView: View {
             }
         }
         .navigationTitle("Streams")
+        .accessibilityIdentifier("screen.streams")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
