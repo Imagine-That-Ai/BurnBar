@@ -176,6 +176,7 @@ actor RefreshOrchestrator {
             await cloudSync.uploadPendingConversations()
             await cloudSync.uploadPendingSessionLogs()
             await cloudSync.syncTextExpansionSnippets()
+            await cloudSync.syncRoamingProfile()
             await cloudSync.syncSharedArtifacts()
         }
 
