@@ -1,1 +1,1 @@
-(<objectpath '/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1/Menu'>,)
+(<objectpath '/org/ayatana/NotificationItem/tray_icon_tray_app_9401_1/Menu'>,)

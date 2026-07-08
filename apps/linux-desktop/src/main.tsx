@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { applyReducedMotionClass } from './a11y.js';
+import { applyReducedMotionClass, wireHiddenAnimationPause } from './a11y.js';
 import { App } from './app/App.js';
 import { readOnboarding } from './onboardingStore.js';
 import { markStart } from './perfMarks.js';
@@ -9,6 +9,7 @@ import { useShellStore } from './state/shellStore.js';
 async function boot(): Promise<void> {
   const end = markStart('app.start');
   applyReducedMotionClass();
+  wireHiddenAnimationPause();
 
   // First run lands on the onboarding wizard unless a deep link is present.
   const ob = readOnboarding();
