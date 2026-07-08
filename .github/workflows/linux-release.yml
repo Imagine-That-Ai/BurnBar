@@ -17,7 +17,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   attestations: write
 
@@ -101,6 +101,28 @@ jobs:
       - name: Verify cosign bundles exist
         run: |
           test -n "$(find docs/linux-port/evidence/mission-001-release -type f -name '*.sigstore.json' -print -quit)"
+
+      - name: Publish Linux GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Linux-specific tag: does not match the macOS/iOS `v*` release trigger,
+          # so publishing here never fires the Apple release pipeline.
+          tag="linux-v${{ inputs.version }}"
+          art=docs/linux-port/evidence/mission-001-release
+          cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/" 2>/dev/null || true
+          mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art" -maxdepth 2 -type f \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
+               -o -name '*.ed25519.sig' -o -name '*.sigstore.json' -o -name '*.spdx.json' \
+               -o -name '*.openvex.json' -o -name '*checksums*.txt' -o -name '*provenance-predicate.json' \
+               -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
+          prerelease=""
+          [ "${{ inputs.allow_prerelease }}" = "true" ] && prerelease="--prerelease"
+          gh release create "$tag" $prerelease \
+            --title "OpenBurnBar Linux ${{ inputs.version }} (aarch64)" \
+            --notes "First OpenBurnBar Linux desktop release — aarch64/ARM64. Signed AppImage (primary), deb, and rpm plus the daemon binary, with Ed25519 detached signatures and keyless Sigstore/cosign attestation bundles. Verify with packaging/linux/openburnbar-linux-ed25519.pub.pem. Prerelease: this build seeds the auto-update chain." \
+            "${assets[@]}"
 
       - name: Upload Linux release evidence
         if: always()
