@@ -6,7 +6,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current active-checkout status as of 2026-07-05:
 
 - V24 foundation and V23 surface validation passed from
-  `/Users/albertonunez/Documents/Developer/BurnBar` at
+  `$WORKSPACE` at
   `1b62ec42bd752cc8a6af578f034bf776c6ec3b97`.
 - The checkout later moved to `1af805eb1878cc5af8821ee35cac838c5ac473ee`;
   release closure must rerun the active-checkout validators at that head or
