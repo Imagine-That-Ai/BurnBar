@@ -7,6 +7,15 @@ public enum OpenBurnBarLinuxPaths {
     public static let defaultSocketFileName = "openburnbar-daemon.sock"
     public static let defaultAuthTokenFileName = "daemon-socket-auth-token"
 
+    /// The current user's home directory. `FileManager.homeDirectoryForCurrentUser` is
+    /// `API_UNAVAILABLE(ios)`, so use `NSHomeDirectory()` — available on iOS, macOS, and
+    /// Linux, and identical for the non-sandboxed daemon/desktop processes that actually
+    /// use these paths. (iOS never resolves these Linux paths at runtime; the OpenBurnBarCore
+    /// module is shared with the mobile app, so this file only has to compile there.)
+    private static var homeDirectoryURL: URL {
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+    }
+
     public static func supportDirectoryURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         if let override = trimmedNonEmpty(environment["OPENBURNBAR_DAEMON_SUPPORT_DIR"])
             ?? trimmedNonEmpty(environment["BURNBAR_DAEMON_SUPPORT_DIR"]) {
@@ -16,7 +25,7 @@ public enum OpenBurnBarLinuxPaths {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent("OpenBurnBar", isDirectory: true)
         }
-        return FileManager.default.homeDirectoryForCurrentUser
+        return homeDirectoryURL
             .appendingPathComponent(".config/OpenBurnBar", isDirectory: true)
     }
 
@@ -25,7 +34,7 @@ public enum OpenBurnBarLinuxPaths {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent(defaultConfigRelativeComponents[0], isDirectory: true)
         }
-        return FileManager.default.homeDirectoryForCurrentUser
+        return homeDirectoryURL
             .appendingPathComponent(".config/openburnbar", isDirectory: true)
     }
 
@@ -41,7 +50,7 @@ public enum OpenBurnBarLinuxPaths {
 
     public static func expandTildeInPath(_ path: String, homeDirectory: URL? = nil) -> String {
         guard path.hasPrefix("~") else { return path }
-        let home = homeDirectory ?? FileManager.default.homeDirectoryForCurrentUser
+        let home = homeDirectory ?? homeDirectoryURL
         if path == "~" {
             return home.path
         }
