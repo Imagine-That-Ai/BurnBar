@@ -28,10 +28,7 @@ DETERMINISTIC_ZIP_TIME="${BURNBAR_REMOTE_AAR_ZIP_TIME:-202401010000.00}"
 
 PROFILE="${BURNBAR_REMOTE_BUILD_PROFILE:-release}"
 PROFILE_FLAG=""
-PROFILE_DIR="release"
-if [[ "${PROFILE}" == "debug" ]]; then
-  PROFILE_DIR="debug"
-else
+if [[ "${PROFILE}" != "debug" ]]; then
   PROFILE_FLAG="--release"
 fi
 
