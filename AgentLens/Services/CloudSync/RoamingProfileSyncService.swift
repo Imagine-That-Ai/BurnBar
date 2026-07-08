@@ -70,7 +70,7 @@ final class RoamingProfileSyncService: CloudSyncDomain, Sendable {
             guard let remoteData = try await document.getData() else {
                 return nil
             }
-            return try? Self.sealedPayload(from: remoteData["sealedPayload"])
+            return try Self.sealedPayload(from: remoteData["sealedPayload"])
         }
         if let remoteEnvelope {
             let remote = try CloudVaultCrypto.openRoamingProfile(remoteEnvelope, keyData: vaultKey, uid: uid)
