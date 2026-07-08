@@ -110,6 +110,7 @@ struct HermesQuickAskCard: View {
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .focused($inputFocused)
                 .onSubmit(send)
+                .accessibilityIdentifier("hermes.quickAsk.input")
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 28))
@@ -118,6 +119,7 @@ struct HermesQuickAskCard: View {
             }
             .buttonStyle(.plain)
             .disabled(input.isEmpty || service.isStreaming)
+            .accessibilityIdentifier("hermes.quickAsk.send")
         }
         .padding(10)
         .background(
