@@ -4,7 +4,7 @@ rules_version = '2';
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
-// - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events
+// - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events, incoming_call_contexts
 // - users/{uid}/agent_grant_authorities, agent_capability_grant_requests
 // - users/{uid}/pi_agent_connections, pi_agent_pairings, pi_agent_relay_requests, pi_agent_audit_events
 // - users/{uid}/provider_account_device_links, runtime_connection_preferences
@@ -339,7 +339,7 @@ service cloud.firestore {
         && pixelClock.port >= 1
         && pixelClock.port <= 65535
         && pixelClock.layout in ["providerDashboard", "quotaCarousel", "burnStatus", "alertsOnly"]
-        && pixelClock.palette in ["emberWhimsy", "mercury", "traffic", "monochrome"]
+        && pixelClock.palette in ["emberWhimsy", "mercury", "traffic", "monochrome", "rainbow"]
         && pixelClock.timePeriod in ["rolling5h", "rolling24h", "rolling7d", "rolling30d"]
         && (!("workingSpinnerStyle" in pixelClock) || pixelClock.workingSpinnerStyle in ["orbit", "chase", "pulse", "scan"])
         && (!("workingSpinnerPrimaryHex" in pixelClock) || (pixelClock.workingSpinnerPrimaryHex is string && pixelClock.workingSpinnerPrimaryHex.matches("^#[0-9A-Fa-f]{6}$")))
@@ -382,7 +382,7 @@ service cloud.firestore {
           "updatedAt"
         ])
         && displayConfig.layout in ["quotaCarousel", "bigTotal", "providerGrid", "singleProvider"]
-        && displayConfig.palette in ["emberWhimsy", "mercury", "forestSage", "monochrome"]
+        && displayConfig.palette in ["emberWhimsy", "mercury", "forestSage", "monochrome", "rainbow"]
         && displayConfig.theme in ["warmCharcoal", "botanicalCream", "oledBlack", "matchSystem"]
         && displayConfig.background in ["dashboard", "ambient", "photoBlend"]
         && displayConfig.brightness is number
@@ -474,6 +474,11 @@ service cloud.firestore {
         && entitlement.expireAt > request.time;
     }
 
+    function activeProMaxOrUltraEntitlementData(entitlement) {
+      return activeProMaxEntitlementData(entitlement)
+        || activeUltraEntitlementData(entitlement);
+    }
+
     function hasActiveHostedQuotaEntitlement(userId) {
       return (
           exists(hostedCloudEntitlementPath(userId))
@@ -485,7 +490,7 @@ service cloud.firestore {
         )
         || (
           exists(burnBarProMaxEntitlementPath(userId))
-          && activePremiumEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
+          && activeProMaxOrUltraEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
         );
     }
 
@@ -569,7 +574,7 @@ service cloud.firestore {
         )
         || (
           exists(burnBarProMaxEntitlementPath(userId))
-          && activeMediaEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
+          && activeProMaxOrUltraEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
         );
     }
 
@@ -608,7 +613,7 @@ service cloud.firestore {
         )
         || (
           exists(burnBarProMaxEntitlementPath(userId))
-          && activeComputerUseEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
+          && activeProMaxOrUltraEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
         );
     }
 
@@ -1312,6 +1317,8 @@ service cloud.firestore {
         && request.resource.data.status in ["online", "offline", "degraded", "unauthorized"]
         && request.resource.data.schemaVersion is int
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
+        && (!("hostInstallationId" in request.resource.data) || (request.resource.data.hostInstallationId is string && request.resource.data.hostInstallationId.size() <= 256))
+        && (!("replacedByConnectionId" in request.resource.data) || (request.resource.data.replacedByConnectionId is string && request.resource.data.replacedByConnectionId.size() <= 256))
         && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion == 3)
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm")
         && (!("realtimeRelayURL" in request.resource.data) || validRealtimeRelayURL(request.resource.data.realtimeRelayURL))
@@ -1948,7 +1955,47 @@ service cloud.firestore {
           );
       }
 
-      function validCliAgentMissionRequest() {
+      function validCliMissionMetadataToken(value, maxSize) {
+        return value is string
+          && value.size() > 0
+          && value.size() <= maxSize
+          && value.matches("^[A-Za-z0-9][A-Za-z0-9_.:-]*$");
+      }
+
+      function validCliMissionKind(value) {
+        return validCliMissionMetadataToken(value, 64);
+      }
+
+      function validCliMissionRuntime(value) {
+        return validCliMissionMetadataToken(value, 80);
+      }
+
+      function validCliMissionSource(value) {
+        return value in [
+          "ios",
+          "android",
+          "mac",
+          "ios-chat",
+          "android-chat",
+          "ios-insights",
+          "android-insights",
+          "mac-insights"
+        ];
+      }
+
+      function validCliMissionDepth(value) {
+        return value in ["light", "standard", "deep", "max"];
+      }
+
+      function validCliMissionDeliveryMode(value) {
+        return value in ["action_only", "full_stream", "muted"];
+      }
+
+      function validCliMissionResumeAction(value) {
+        return value in ["new", "resume", "fork", "forward", "continue"];
+      }
+
+      function validCliAgentMissionRequestKeys() {
         return request.resource.data.keys().hasOnly([
           "id",
           "missionKind",
@@ -1997,7 +2044,11 @@ service cloud.firestore {
           "sealedStateSchemaVersion",
           "sealedStateVaultKeyID",
           "approvedByDeviceId"
-        ])
+        ]);
+      }
+
+      function validCliAgentMissionRequest() {
+        return validCliAgentMissionRequestKeys()
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
         && request.resource.data.contentSealed == true
@@ -2011,23 +2062,31 @@ service cloud.firestore {
           && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedStatePayload)
           && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
         ))
-        && request.resource.data.missionKind is string
-        && request.resource.data.requestedRuntime is string
-        && request.resource.data.source is string
-        && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode is string)
+        && validCliMissionKind(request.resource.data.missionKind)
+        && validCliMissionRuntime(request.resource.data.requestedRuntime)
+        && validCliMissionSource(request.resource.data.source)
+        && (!("deliveryMode" in request.resource.data) || validCliMissionDeliveryMode(request.resource.data.deliveryMode))
         && request.resource.data.status is string
         && request.resource.data.schemaVersion is int
-        && (!("depth" in request.resource.data) || request.resource.data.depth is string)
+        && (!("depth" in request.resource.data) || validCliMissionDepth(request.resource.data.depth))
         && validCliMissionApprovalControls()
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
-        && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime is string)
+        && (!("selectedRuntime" in request.resource.data) || validCliMissionRuntime(request.resource.data.selectedRuntime))
         && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
         && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
         && (!("lastEventSequence" in request.resource.data) || request.resource.data.lastEventSequence is int)
         && (!("siblingIndex" in request.resource.data) || (request.resource.data.siblingIndex is int && request.resource.data.siblingIndex >= 0 && request.resource.data.siblingIndex < 16))
         && (!("siblingCount" in request.resource.data) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
         && (!("isGroupChild" in request.resource.data) || request.resource.data.isGroupChild is bool)
-        && (!("resumeAction" in request.resource.data) || request.resource.data.resumeAction is string)
+        && (!("sourceSkillID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.sourceSkillID, 80))
+        && (!("sourceSurface" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.sourceSurface, 80))
+        && (!("requestedModelID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.requestedModelID, 160))
+        && (!("parentHermesThreadID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.parentHermesThreadID, 160))
+        && (!("clientThreadID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.clientThreadID, 160))
+        && (!("parentSessionID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.parentSessionID, 160))
+        && (!("personaID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.personaID, 160))
+        && (!("groupID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.groupID, 160))
+        && (!("resumeAction" in request.resource.data) || validCliMissionResumeAction(request.resource.data.resumeAction))
         // NOTE: forbidsSealedPlaintextContentFields() is intentionally NOT applied
         // here. cli_agent_mission_requests already pins an exact hasOnly([...])
         // allowlist (above) that contains NO plaintext content field, so the
@@ -2062,6 +2121,32 @@ service cloud.firestore {
           ]);
       }
 
+      function validCliAgentMissionSealedStateUpdate() {
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          "sealedStatePayload",
+          "sealedStateSchemaVersion",
+          "sealedStateVaultKeyID"
+        ])
+        || (
+          request.resource.data.contentSealed == true
+          && request.resource.data.sealedStateSchemaVersion == 1
+          && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
+          && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedStatePayload)
+          && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
+        );
+      }
+
+      function validCliAgentMissionUpdateEnvelope() {
+        return validCliAgentMissionRequestKeys()
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.contentSealed == true
+          && request.resource.data.sealedSchemaVersion == resource.data.sealedSchemaVersion
+          && request.resource.data.vaultKeyID == resource.data.vaultKeyID
+          && request.resource.data.sealedPayload == resource.data.sealedPayload
+          && validCliAgentMissionSealedStateUpdate()
+          && forbidsDirectSignalEnvelope();
+      }
+
       function trustedMissionExecutorDevice(userId) {
         return ("claimedBy" in request.resource.data)
           && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.claimedBy))
@@ -2072,7 +2157,45 @@ service cloud.firestore {
       function validTrustedMissionHostUpdate(userId) {
         return trustedMissionExecutorDevice(userId)
           && (!("claimedBy" in resource.data) || request.resource.data.claimedBy == resource.data.claimedBy)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["events"])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status",
+            "claimedBy",
+            "selectedRuntime",
+            "selectedRuntimeName",
+            "selectedModelID",
+            "sessionId",
+            "approvalRequestId",
+            "approvalStatus",
+            "approvalRequestedAt",
+            "lastEventSequence",
+            "startedAt",
+            "completedAt",
+            "contentSealed",
+            "sealedStatePayload",
+            "sealedStateSchemaVersion",
+            "sealedStateVaultKeyID",
+            "updatedAt",
+            // Legacy plaintext state keys may only disappear as producers migrate
+            // to sealedStatePayload; validCliAgentMissionRequestKeys() still
+            // rejects them if they remain in request.resource.data.
+            "liveSummary",
+            "resultPreview",
+            "errorMessage",
+            "approvalTitle",
+            "approvalMessage",
+            "synthesisSummary"
+          ])
+          && request.resource.data.status is string
+          && request.resource.data.status.size() <= 80
+          && request.resource.data.claimedBy is string
+          && request.resource.data.claimedBy.size() <= 256
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedRuntime"]) || validCliMissionRuntime(request.resource.data.selectedRuntime))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedRuntimeName"]) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 120))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedModelID"]) || validCliMissionMetadataToken(request.resource.data.selectedModelID, 160))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["sessionId"]) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["approvalRequestId"]) || (request.resource.data.approvalRequestId is string && request.resource.data.approvalRequestId.size() <= 160))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["approvalStatus"]) || request.resource.data.approvalStatus in ["pending", "canceled", "cancelled"])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["lastEventSequence"]) || request.resource.data.lastEventSequence is int)
           // The trusted Mac host may REQUEST approval (approvalStatus "pending")
           // but must NOT RESOLVE it. Flipping approvalStatus to approved/rejected
           // is the human decision and must flow through the App-Check-enforced
@@ -2176,7 +2299,7 @@ service cloud.firestore {
         && validCliAgentMissionRequest()
         && validCliAgentMissionCreate();
       allow update: if ownerWritableNonSecret(userId)
-        && validCliAgentMissionRequest()
+        && validCliAgentMissionUpdateEnvelope()
         && (
           validTrustedMissionHostUpdate(userId)
           || validMobileMissionApprovalResponse()
@@ -2340,6 +2463,30 @@ service cloud.firestore {
     // the parent document at dispatch, the Mac listener stamps phase
     // transitions, the phone observes both.
     match /users/{userId}/mission_groups/{groupId} {
+      function validMissionGroupMetadataToken(value, maxSize) {
+        return value is string
+          && value.size() > 0
+          && value.size() <= maxSize
+          && value.matches("^[A-Za-z0-9][A-Za-z0-9_.:-]*$");
+      }
+
+      function validMissionGroupKind(value) {
+        return validMissionGroupMetadataToken(value, 64);
+      }
+
+      function validMissionGroupSource(value) {
+        return value in [
+          "ios",
+          "android",
+          "mac",
+          "ios-chat",
+          "android-chat",
+          "ios-insights",
+          "android-insights",
+          "mac-insights"
+        ];
+      }
+
       function validMissionGroup() {
         return request.resource.data.keys().hasOnly([
           "id", "title", "prompt", "missionKind", "targetProject",
@@ -2373,6 +2520,8 @@ service cloud.firestore {
         && request.resource.data.parallelismLimit >= 1
         && request.resource.data.parallelismLimit <= request.resource.data.childMissionIDs.size()
         && request.resource.data.parallelismLimit <= wandFanOutCap(userId)
+        && validMissionGroupKind(request.resource.data.missionKind)
+        && validMissionGroupSource(request.resource.data.source)
         && request.resource.data.mergeStrategy in ["pick_one", "keep_all", "synthesize"]
         && request.resource.data.phase in ["queued", "fanning_out", "awaiting_merge", "merged", "cancelled", "failed"]
         && request.resource.data.schemaVersion is int;
@@ -3445,11 +3594,16 @@ service cloud.firestore {
           "transport",
           "observedAt",
           "detail",
+          "rollupEligible",
           "schemaVersion",
           "expireAt"
         ])
         && request.resource.data.id is string
         && request.resource.data.id == eventId
+        && request.resource.data.connectionId is string
+        && request.resource.data.connectionId.size() <= 256
+        && request.resource.data.observedAt is string
+        && request.resource.data.observedAt.size() <= 64
         && request.resource.data.eventType in [
           "iroh_stream_opened",
           "iroh_stream_closed",
@@ -3457,12 +3611,26 @@ service cloud.firestore {
           "iroh_pairing_published",
           "iroh_pairing_verified",
           "iroh_pairing_rejected",
-          "iroh_fallback_to_wss"
+          "iroh_fallback_to_wss",
+          "iroh_fallback_to_firestore"
         ]
+        && (!("transport" in request.resource.data) || request.resource.data.transport in ["iroh-direct", "iroh-relay", "wss", "firestore"])
+        && (!("rttMillis" in request.resource.data) || (request.resource.data.rttMillis is int && request.resource.data.rttMillis >= 0 && request.resource.data.rttMillis <= 600000))
+        && (!("detail" in request.resource.data) || (request.resource.data.detail is map && request.resource.data.detail.keys().size() <= 8))
+        && (!("rollupEligible" in request.resource.data) || request.resource.data.rollupEligible == false)
+        && (!("expireAt" in request.resource.data) || request.resource.data.expireAt is timestamp)
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1;
       allow update: if false;
       allow delete: if false;
+    }
+
+    // Short-lived Android incoming-call routing context. Server-only writes;
+    // Android reads by the ephemeral FCM correlation id, then routes
+    // accept/decline locally without exposing stable connection ids to FCM.
+    match /users/{userId}/incoming_call_contexts/{contextId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update, delete: if false;
     }
 
     // --- Mercury media (Phase 2) ---
@@ -3504,6 +3672,7 @@ service cloud.firestore {
         && (!("p95RoundTripMillisBucket" in request.resource.data) || request.resource.data.p95RoundTripMillisBucket in ["lt_50ms", "50_150ms", "150_400ms", "gte_400ms"])
         && (!("p95BitsPerSecondBucket" in request.resource.data) || request.resource.data.p95BitsPerSecondBucket in ["lt_300kbps", "300_600kbps", "600kbps_1mbps", "1_2mbps", "2_4mbps", "4_8mbps", "gte_8mbps"])
         && (!("durationBucket" in request.resource.data) || request.resource.data.durationBucket in ["lt_30s", "30s_2m", "2m_10m", "10m_30m", "30m_60m", "gte_60m"])
+        && (!("freezeCount" in request.resource.data) || (request.resource.data.freezeCount is int && request.resource.data.freezeCount >= 0 && request.resource.data.freezeCount <= 50))
         && !("body" in request.resource.data)
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)
@@ -3673,9 +3842,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Owner-writable daily quota counter. The Mac batches updates every
-    // 30 s during active sessions; the hourly `recomputeMediaQuotaUsage`
-    // Cloud Function reconciles drift from `iroh_audit_events`.
+    // Server-reconciled daily quota counter. Capability enforcement must not
+    // trust client-writable counters; the hourly `recomputeMediaQuotaUsage`
+    // Cloud Function writes this from bounded `media_session_events`; clients
+    // may read their reconciled quota snapshot but cannot write counters.
     match /users/{userId}/media_quota_usage/{day} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if false;
@@ -3889,6 +4059,14 @@ service cloud.firestore {
     }
 
     match /users/{userId}/usage_rollups/{rollupId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // Cloud-Pro monthly allowance meters (fusion/relay/hosted-action). The
+    // owner reads their own meter for the console dashboard ("The Wand" card);
+    // all writes are server-only (admin SDK, which bypasses rules).
+    match /users/{userId}/billing/allowances/months/{monthKey} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
     }
@@ -4468,8 +4646,10 @@ service cloud.firestore {
           "ciphertext",
           "keyVersion",
           "envelopeVersion",
+          "metadataBinding",
           "createdAt"
         ])
+        && request.resource.data.id is string
         && request.resource.data.id == envelopeId
         && request.resource.data.grantId is string
         && request.resource.data.grantId.size() <= 160
@@ -4487,6 +4667,8 @@ service cloud.firestore {
         && request.resource.data.ciphertext.matches("^[A-Za-z0-9+/=_-]*$")
         && request.resource.data.keyVersion is int
         && request.resource.data.envelopeVersion is int
+        && (!("metadataBinding" in request.resource.data) || request.resource.data.metadataBinding == "escrow-credential-aad-v1")
+        && (request.resource.data.envelopeVersion < 2 || request.resource.data.metadataBinding == "escrow-credential-aad-v1")
         && request.resource.data.createdAt is timestamp;
       }
 
@@ -4495,15 +4677,22 @@ service cloud.firestore {
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowEnvelopeDocument();
+      // Sealed credential envelopes are non-deletable from the client; retirement
+      // flows through a server-only path so the escrow history stays intact.
       allow delete: if false;
     }
 
     match /users/{userId}/escrow_audit_events/{eventId} {
+      // Tamper-evidence log: append-only for the owner. Once written, an audit
+      // event cannot be mutated or erased from the client — only server-side
+      // (Admin SDK) reconciliation may touch history. Mirrors the stricter
+      // computer_use_actions header above.
       allow read: if ownsUserNamespace(userId);
       allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields();
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     match /users/{userId}/cloud_profile/{profileId} {

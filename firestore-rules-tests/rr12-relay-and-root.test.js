@@ -236,9 +236,14 @@ async function main() {
       );
     });
 
-    // Hotfix note: production Firebase accepts the cloud-sync identity keys, but
-    // rejects the extra per-field size validators in the current full ruleset.
-    // Reintroduce those bounds in a smaller rules-complexity split.
+    await step("Hermes relay connection rejects oversized hostInstallationId", async () => {
+      await assertFails(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/hermes_connections/${validHermesRelayConnection.id}`),
+          { ...validHermesRelayConnection, hostInstallationId: "h".repeat(257) }
+        )
+      );
+    });
 
     await step("pi relay request WITHOUT sender-auth fields is rejected", async () => {
       const { senderPublicKey, senderDeviceId, senderPeerNodeId, senderCounter, ...unbound } =
