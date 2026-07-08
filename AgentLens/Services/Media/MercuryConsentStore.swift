@@ -1,6 +1,18 @@
 import Combine
 import Foundation
 
+private final class MercuryNotificationObserverToken: @unchecked Sendable {
+    private let observer: NSObjectProtocol
+
+    init(_ observer: NSObjectProtocol) {
+        self.observer = observer
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(observer)
+    }
+}
+
 /// Mac-side Mercury mirror consent ledger.
 ///
 /// A mirror auto-accept grant is scoped to the verified iroh connection and,
@@ -42,7 +54,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
-    private var defaultsObserver: NSObjectProtocol?
+    private var defaultsObserver: MercuryNotificationObserverToken?
 
     init(
         defaults: UserDefaults = .standard,
@@ -68,7 +80,7 @@ final class MercuryConsentStore: ObservableObject {
                 self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
             }
         }
-        defaultsObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: defaults,
             queue: .main
@@ -77,13 +89,8 @@ final class MercuryConsentStore: ObservableObject {
                 self?.reloadRememberAcceptedMirrorPeers()
             }
         }
+        defaultsObserver = MercuryNotificationObserverToken(observer)
         pruneExpired()
-    }
-
-    deinit {
-        if let defaultsObserver {
-            NotificationCenter.default.removeObserver(defaultsObserver)
-        }
     }
 
     var activeGrantCount: Int {
