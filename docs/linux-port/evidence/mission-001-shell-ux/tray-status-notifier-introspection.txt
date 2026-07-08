@@ -1,4 +1,4 @@
-node /org/ayatana/NotificationItem/tray_icon_tray_app_9276_1 {
+node /org/ayatana/NotificationItem/tray_icon_tray_app_9332_1 {
   interface org.freedesktop.DBus.Properties {
     methods:
       Get(in  s interface_name,
@@ -44,16 +44,16 @@ node /org/ayatana/NotificationItem/tray_icon_tray_app_9276_1 {
                        s guide);
       NewTitle();
     properties:
-      readonly s Id = 'tray-icon tray app 9276-1';
+      readonly s Id = 'tray-icon tray app 9332-1';
       readonly s Category = 'ApplicationStatus';
       readonly s Status = 'Active';
-      readonly s IconName = '/tmp/openburnbar-linux-desktop-session/runtime/tray-icon/tray-icon-9276-1-0.png';
+      readonly s IconName = '/tmp/openburnbar-linux-desktop-session/runtime/tray-icon/tray-icon-9332-1-0.png';
       readonly s IconAccessibleDesc = 'icon';
       readonly s AttentionIconName = '';
       readonly s AttentionAccessibleDesc = '';
       readonly s Title = 'openburnbar-linux-desktop';
       readonly s IconThemePath = '/tmp/openburnbar-linux-desktop-session/runtime/tray-icon';
-      readonly o Menu = '/org/ayatana/NotificationItem/tray_icon_tray_app_9276_1/Menu';
+      readonly o Menu = '/org/ayatana/NotificationItem/tray_icon_tray_app_9332_1/Menu';
       readonly s XAyatanaLabel = '';
       readonly s XAyatanaLabelGuide = '';
       readonly u XAyatanaOrderingIndex = 0;
