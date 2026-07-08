@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(CryptoKit)
+import CryptoKit
+#elseif canImport(Crypto)
+import Crypto
+#endif
 
 // MARK: - Usage Provenance Method
 
@@ -118,7 +123,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     }
 
     public init(
-        id: UUID = UUID(),
+        id: UUID? = nil,
         provider: AgentProvider,
         sessionId: String,
         projectName: String,
@@ -150,7 +155,13 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         estimatorVersion: String = "",
         parentRequestID: String? = nil
     ) {
-        self.id = id
+        self.id = id ?? Self.deterministicID(
+            provider: provider,
+            sessionId: sessionId,
+            model: model,
+            sourceDeviceId: sourceDeviceId,
+            providerAccountID: providerAccountID
+        )
         self.provider = provider
         self.sessionId = sessionId
         self.projectName = projectName
@@ -188,6 +199,70 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         self.provenanceConfidence = provenanceConfidence
         self.estimatorVersion = estimatorVersion
         self.parentRequestID = parentRequestID
+    }
+
+    public static func deterministicID(
+        provider: AgentProvider,
+        sessionId: String,
+        model: String,
+        sourceDeviceId: String? = nil,
+        providerAccountID: String? = nil
+    ) -> UUID {
+        let key = deterministicIdentityKey(
+            provider: provider,
+            sessionId: sessionId,
+            model: model,
+            sourceDeviceId: sourceDeviceId,
+            providerAccountID: providerAccountID
+        )
+        return uuidV5(namespace: usageIDNamespace, name: key)
+    }
+
+    public static func deterministicIdentityKey(
+        provider: AgentProvider,
+        sessionId: String,
+        model: String,
+        sourceDeviceId: String? = nil,
+        providerAccountID: String? = nil
+    ) -> String {
+        [
+            provider.rawValue,
+            sessionId,
+            model,
+            sourceDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            providerAccountIdentityPartition(from: providerAccountID) ?? ""
+        ].joined(separator: "\u{1F}")
+    }
+
+    public static func providerAccountIdentityPartition(from rawValue: String?) -> String? {
+        guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("acct_sha256_"),
+           trimmed.dropFirst("acct_sha256_".count).count == 24,
+           trimmed.dropFirst("acct_sha256_".count).allSatisfy({ $0.isHexDigit }) {
+            return trimmed
+        }
+        let digest = SHA256.hash(data: Data(trimmed.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "acct_sha256_\(hex.prefix(24))"
+    }
+
+    private static let usageIDNamespace = UUID(uuidString: "8CB8098C-794D-5D3F-A060-395F6B5BA5D8")!
+
+    private static func uuidV5(namespace: UUID, name: String) -> UUID {
+        var namespaceBytes = namespace.uuid
+        var bytes = withUnsafeBytes(of: &namespaceBytes) { Array($0) }
+        bytes.append(contentsOf: name.utf8)
+        let digest = Insecure.SHA1.hash(data: Data(bytes))
+        var uuidBytes = Array(digest.prefix(16))
+        uuidBytes[6] = (uuidBytes[6] & 0x0F) | 0x50
+        uuidBytes[8] = (uuidBytes[8] & 0x3F) | 0x80
+        return UUID(uuid: (
+            uuidBytes[0], uuidBytes[1], uuidBytes[2], uuidBytes[3],
+            uuidBytes[4], uuidBytes[5], uuidBytes[6], uuidBytes[7],
+            uuidBytes[8], uuidBytes[9], uuidBytes[10], uuidBytes[11],
+            uuidBytes[12], uuidBytes[13], uuidBytes[14], uuidBytes[15]
+        ))
     }
 
     public static func billedTotalTokens(

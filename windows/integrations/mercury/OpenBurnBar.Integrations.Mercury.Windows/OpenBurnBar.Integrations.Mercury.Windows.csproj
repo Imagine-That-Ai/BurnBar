@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows-native Mercury media adapters (Phase 4 · Mercury lane).
+
+    Implements the platform seam interfaces declared in the portable
+    OpenBurnBar.Integrations.Mercury lib
+    (IScreenCaptureSource / IAudioCaptureSource / ICameraCaptureSource /
+    IVideoEncoder / IVoipPushTrigger) using the Windows WinRT projections:
+      • Windows.Graphics.Capture  — screen / window mirror (parity: ScreenCapturePipeline)
+      • Windows.Media.Audio        — WASAPI-backed AudioGraph mic / loopback (parity:
+                                     MicrophoneCapturePipeline)
+      • Windows.Media.Capture      — MediaCapture camera (parity: CameraCapturePipeline)
+      • Windows.Media.Transcoding  — MediaFoundation H.264/HEVC encode (parity: VideoEncoder)
+      • Windows.Networking.PushNotifications — WNS raw push, the APNs-VoIP substitute
+                                     (parity: VoIPCallTrigger)
+
+    VERIFICATION CEILING (honest):
+      • The WinRT PROJECTIONS resolve from the Windows SDK ref pack, so with
+        EnableWindowsTargeting=true this project RESTORES + the C# COMPILES on the
+        macOS authoring host (Roslyn-clean, 0 errors) — the adapter logic is fully
+        type-checked here.
+      • The projected APIs have NO runtime on macOS (no capture devices, no
+        MediaFoundation, no WNS channel), so nothing in this assembly EXECUTES off
+        Windows. Runtime behavior is Windows-CI / dev-host deferred.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Integrations.Mercury.Windows</RootNamespace>
+    <AssemblyName>OpenBurnBar.Integrations.Mercury.Windows</AssemblyName>
+    <!--
+      Lets the project be RESTORED / EVALUATED / COMPILED against the Windows SDK
+      projection ref pack on a non-Windows host (macOS CI authoring) without the
+      NETSDK1100 targeting-pack error. It does NOT provide a Windows RUNTIME.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenBurnBar.Integrations.Mercury\OpenBurnBar.Integrations.Mercury.csproj" />
+  </ItemGroup>
+
+</Project>

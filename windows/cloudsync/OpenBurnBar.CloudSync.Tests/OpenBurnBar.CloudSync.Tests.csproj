@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable Firestore CloudSync gateway (Phase 2 ·
+    data & sync / cloud). Runs today via `dotnet test` on the authoring host — the
+    SAME managed assembly that ships on Windows. Mirrors the proven
+    storage/presentation/ipc test pattern (net10.0, xUnit).
+
+    Coverage:
+      • ModelParityTests          — every ported Firestore model type round-trips
+        BYTE-FOR-BYTE against a committed Swift-Codable vector generated from the
+        REAL OpenBurnBarFirestoreModels structs (sorted-key JSON parity across
+        Swift `JSONEncoder` and the C# CanonicalJson serializer).
+      • FirestoreValueCodecTests  — the Firestore REST typed-value document codec
+        (stringValue/integerValue-as-string/doubleValue/.../mapValue/arrayValue),
+        proven against a committed typed-value document fixture.
+      • FirestoreRestGatewayTests — documents.get / .patch / :commit / :runQuery /
+        .delete request SHAPES + response PARSING via a fake transport, plus the
+        App-Check-required fail-closed refusal. Live round-trip is dev-host-deferred.
+      • CallableEnvelopeTests     — the Firebase callable request `{data}` / response
+        `{result}` / error `{error}` envelope, proven against the real
+        mintWindowsAppCheckToken (AC-011) request/response fixtures.
+      • FakeGatewayTests          — the in-memory gateway port: CRUD, merge, delete,
+        batch, transaction, query filter/order/limit, serverTimestamp normalization,
+        and injected-error semantics (parity with CloudSyncFirestoreFakeGateway).
+      • OfflineQueueTests         — the offline-write-queue state machine (latency
+        compensation, offline buffering, ordered FIFO drain, fail-closed drain).
+      • ListenerSemanticsTests    — the snapshot-listener state machine (initial +
+        change delivery, dedupe, unsubscribe), driven by the FakeGateway.
+      • E2EEFailClosedTests       — the E2EE write guard refuses a plaintext or
+        un-sealed encryption-required write.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.CloudSync/OpenBurnBar.CloudSync.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The committed parity vectors (Swift-Codable model vectors + Firestore
+         typed-value + callable envelope) copied next to the test assembly. -->
+    <Content Include="Fixtures/**/*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Fixtures/%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+
+</Project>

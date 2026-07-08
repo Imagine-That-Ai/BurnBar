@@ -1,0 +1,17 @@
+{
+  "appcastUrl": "https://dl.openburnbar.app/windows/appcast-windows.xml",
+  "build": "1420",
+  "bundleId": "com.openburnbar.app",
+  "channel": "direct-download",
+  "commit": "0000000000000000000000000000000000000000",
+  "createdAt": "2026-07-04T00:00:00Z",
+  "critical": false,
+  "downloadUrl": "https://dl.openburnbar.app/windows/OpenBurnBar-Setup-1.4.2.msix",
+  "edSignature": "ifEH/TU94s2RpLwotSM0VaAV2dFaHZkMMFQyAOEj+NbEfl1+8NQ4jRLQ8A/swq4ktPui02Y6xLKzZ6cTgz25Bg==",
+  "length": 620,
+  "minimumSystemVersion": "10.0.19041",
+  "package": "OpenBurnBar-Setup-1.4.2.msix",
+  "releaseNotesUrl": "https://dl.openburnbar.app/windows/release-metadata.json",
+  "sha256": "d6371904a44a6934b22cbec9eae64095dfa7ad1a1de8e4cddd859cad089487b4",
+  "version": "1.4.2"
+}

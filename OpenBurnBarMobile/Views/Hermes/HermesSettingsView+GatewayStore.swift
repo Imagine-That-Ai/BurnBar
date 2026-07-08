@@ -954,6 +954,10 @@ final class HermesGatewaySettingsStore {
             }
             return try HermesAttachmentLoader.importGatewayOpenedAttachment(opened, threadID: gatewayThreadID)
         } catch {
+            // nil marks the attachment failed in the reply hydration — log the
+            // fetch/download/import failure so it's distinguishable from a seal
+            // mismatch (which returns nil above without throwing).
+            hermesSettingsLogger.warning("gateway attachment open failed id=\(attachmentId, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }

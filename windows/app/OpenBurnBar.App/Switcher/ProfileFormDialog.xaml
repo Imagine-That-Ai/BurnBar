@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherProfileFormView.swift.
+  A create/edit ContentDialog with the OAuth-boundary notice, a Browser/CLI target picker, a
+  display-name field, target-specific fields, and Save/Cancel. Validation + record construction
+  run in the portable SwitcherProfileForm (unit-tested on macOS); this dialog is the WinUI shell
+  that reads/writes those bindings and blocks Save on a validation failure.
+-->
+<ContentDialog
+    x:Class="OpenBurnBar.App.Switcher.ProfileFormDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    PrimaryButtonText="Save"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimary">
+
+    <ScrollViewer>
+        <StackPanel Spacing="12" MinWidth="360">
+
+            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
+                     Message="BurnBar stores only profile references for launching — no credentials or session data is imported." />
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Target" FontSize="12"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <ComboBox x:Name="TargetKindCombo" HorizontalAlignment="Stretch"
+                          SelectionChanged="OnTargetKindChanged">
+                    <ComboBoxItem Content="Browser" />
+                    <ComboBoxItem Content="CLI" />
+                </ComboBox>
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Profile Name (optional)" FontSize="12"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <TextBox x:Name="NameBox" PlaceholderText="Display name" TextChanged="OnNameChanged" />
+                <TextBlock x:Name="DuplicateErrorText" FontSize="11" Foreground="#F85149"
+                           Visibility="Collapsed" />
+            </StackPanel>
+
+            <!-- Browser fields -->
+            <StackPanel x:Name="BrowserPanel" Spacing="8">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Browser" FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <ComboBox x:Name="BrowserTypeCombo" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnBrowserTypeChanged">
+                        <ComboBoxItem Content="Google Chrome" />
+                        <ComboBoxItem Content="Safari" />
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Profile Identifier" FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBox x:Name="ProfileIdentifierBox"
+                             PlaceholderText="e.g. Profile 1, Default"
+                             TextChanged="OnProfileIdentifierChanged" />
+                    <TextBlock Text="For Chrome: the profile folder name. For Safari: the WebKit profile container."
+                               FontSize="11" TextWrapping="Wrap"
+                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- CLI fields -->
+            <StackPanel x:Name="CliPanel" Spacing="8">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="CLI" FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <ComboBox x:Name="CliTypeCombo" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnCliTypeChanged" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Working Directory (optional)" FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBox x:Name="WorkingDirBox" TextChanged="OnWorkingDirChanged" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Additional Arguments (optional)" FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBox x:Name="ArgsBox" PlaceholderText="--verbose --no-color"
+                             TextChanged="OnArgsChanged" />
+                    <TextBlock Text="Space-separated list of arguments."
+                               FontSize="11" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Environment Variables to Pass (optional)" FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBox x:Name="EnvBox" PlaceholderText="HOME, PATH"
+                             TextChanged="OnEnvChanged" />
+                    <TextBlock Text="Comma-separated names. Values are NOT stored."
+                               FontSize="11" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock x:Name="ValidationErrorText" FontSize="11" Foreground="#F85149"
+                       TextWrapping="Wrap" Visibility="Collapsed" />
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

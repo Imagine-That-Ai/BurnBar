@@ -276,6 +276,11 @@ final class PerformanceTests: XCTestCase {
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
             harness.dataStore.replaceUsages(usages)
         }
+
+        // Behavioral guard: the measured write must actually persist —
+        // a silently failing replaceUsages would still "pass" the timing.
+        let persisted = try harness.dataStore.fetchAllUsage()
+        XCTAssertEqual(persisted.count, 1000, "replaceUsages must leave exactly the final 1000-record batch persisted")
     }
 
     func test_performance_databaseRead_fetchAllUsage() throws {
@@ -401,31 +406,50 @@ final class PerformanceTests: XCTestCase {
 
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
             for encoded in encodedPaths {
-                var segments: [String] = []
-                var currentSegment = ""
-                let pathAfterPrefix = String(encoded.dropFirst(7))
-
-                for (index, char) in pathAfterPrefix.enumerated() {
-                    if char == "-" && index + 1 < pathAfterPrefix.count {
-                        let nextIndex = pathAfterPrefix.index(pathAfterPrefix.startIndex, offsetBy: index + 1)
-                        let nextChar = pathAfterPrefix[nextIndex]
-                        if nextChar.isUppercase {
-                            if !currentSegment.isEmpty {
-                                segments.append(currentSegment)
-                            }
-                            currentSegment = ""
-                        } else {
-                            currentSegment.append(char)
-                        }
-                    } else {
-                        currentSegment.append(char)
-                    }
-                }
-                if !currentSegment.isEmpty {
-                    segments.append(currentSegment)
-                }
+                _ = Self.decodeProjectPathSegments(encoded)
             }
         }
+
+        // Behavioral guard: the measured decoder must actually split on
+        // hyphen-before-uppercase boundaries — a no-op loop would still
+        // "pass" the timing above.
+        XCTAssertEqual(
+            Self.decodeProjectPathSegments("-Users-Documents-Developer-BurnBar"),
+            ["Documents", "Developer", "BurnBar"]
+        )
+        XCTAssertFalse(
+            encodedPaths.contains { Self.decodeProjectPathSegments($0).isEmpty },
+            "Every generated fixture path must decode to at least one segment"
+        )
+    }
+
+    /// The exact decoding loop previously inlined in the measured block,
+    /// extracted so the perf test can assert its output too.
+    private static func decodeProjectPathSegments(_ encoded: String) -> [String] {
+        var segments: [String] = []
+        var currentSegment = ""
+        let pathAfterPrefix = String(encoded.dropFirst(7))
+
+        for (index, char) in pathAfterPrefix.enumerated() {
+            if char == "-" && index + 1 < pathAfterPrefix.count {
+                let nextIndex = pathAfterPrefix.index(pathAfterPrefix.startIndex, offsetBy: index + 1)
+                let nextChar = pathAfterPrefix[nextIndex]
+                if nextChar.isUppercase {
+                    if !currentSegment.isEmpty {
+                        segments.append(currentSegment)
+                    }
+                    currentSegment = ""
+                } else {
+                    currentSegment.append(char)
+                }
+            } else {
+                currentSegment.append(char)
+            }
+        }
+        if !currentSegment.isEmpty {
+            segments.append(currentSegment)
+        }
+        return segments
     }
 
     func test_performance_stringProcessing_regexAPIKeyScrubbing() throws {

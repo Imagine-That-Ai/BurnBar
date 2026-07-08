@@ -39,7 +39,7 @@ interface OpenBurnBarAppCheckAttestationClaim {
   boundAtMillis: number;
 }
 
-export type AppCheckTrustClass =
+type AppCheckTrustClass =
   | "apple_attested"
   | "android_play_integrity"
   | "web_recaptcha"
@@ -47,7 +47,7 @@ export type AppCheckTrustClass =
   | "windows_lower_trust"
   | "unknown";
 
-export interface CallableTrustDecision {
+interface CallableTrustDecision {
   appId: string;
   trustClass: AppCheckTrustClass;
 }
@@ -77,7 +77,7 @@ export function appCheckTrustClassForAppId(
   return "unknown";
 }
 
-export function callableTrustDecision(request: CallableRequest): CallableTrustDecision {
+function callableTrustDecision(request: CallableRequest): CallableTrustDecision {
   const appId = readAppIdFromCallableRequest(request);
   if (!appId) {
     throw new functions.HttpsError("unauthenticated", "App Check attestation is required.");

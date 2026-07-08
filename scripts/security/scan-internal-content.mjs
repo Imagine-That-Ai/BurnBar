@@ -121,7 +121,9 @@ function repoRoot() {
 }
 
 function trackedFiles(root) {
-  return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" })
+  // 64 MiB: `git ls-files -z` on this monorepo overflows node's 1 MiB default
+  // (spawnSync git ENOBUFS) once the tracked tree grows past ~20k paths.
+  return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
     .split("\0")
     .filter(Boolean);
 }
@@ -130,7 +132,7 @@ function stagedFiles(root) {
   return execFileSync(
     "git",
     ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
-    { cwd: root, encoding: "utf8" },
+    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   )
     .split("\0")
     .filter(Boolean);

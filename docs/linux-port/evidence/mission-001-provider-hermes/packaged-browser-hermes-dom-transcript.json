@@ -1,0 +1,91 @@
+{
+  "assertions": {
+    "cancellationCovered": true,
+    "promptWrapperRendered": true,
+    "recordedToolApproval": true,
+    "retryCovered": true,
+    "sentPromptThroughDaemon": true,
+    "streamedAssistantAndDoneEvents": true
+  },
+  "dataSource": "live-daemon-backed-tauri-bridge",
+  "generatedAt": "2026-07-04T17:57:07.755Z",
+  "kind": "hermes",
+  "lane": "W04ProviderHermesEngineV4",
+  "proofStatus": "completed",
+  "route": "chat",
+  "rows": [
+    {
+      "method": "daemon.config.update",
+      "result": "{\"snapshot\":{\"providers\":[{\"baseURL\":\"https://api.anthropic.com/v1\",\"credentialSlots\":[],\"customModels\":[],\"disabledAdvertisedModelIDs\":[],\"isEnabled\":false,\"mo",
+      "step": "seed mock provider config"
+    },
+    {
+      "method": "daemon.provider.credential_slot.upsert",
+      "result": "{\"slot\":{\"isEnabled\":true,\"label\":\"Linux mock provider\",\"slotID\":\"linux-mock\",\"status\":\"ready\",\"updatedAt\":804880616.36178},\"snapshot\":{\"providers\":[{\"baseURL\":",
+      "step": "seed mock credential slot"
+    },
+    {
+      "method": "client.attach",
+      "result": "attached=openburnbar-linux-shell",
+      "step": "attach shell client"
+    },
+    {
+      "method": "run.create",
+      "result": "run=03E15C7A-8629-4548-B2C1-0E4992049F54 phase=completed",
+      "step": "send prompt through daemon"
+    },
+    {
+      "method": "run.poll",
+      "result": "runs=1 approvals=0",
+      "step": "stream assistant/done events"
+    },
+    {
+      "method": "run.create",
+      "result": "run=48278B86-04FA-42F1-AB1A-D5415F89F189 phase=awaiting_approval",
+      "step": "request tool approval"
+    },
+    {
+      "method": "run.poll",
+      "result": "runs=1 approvals=1",
+      "step": "render pending approval"
+    },
+    {
+      "method": "approval.respond",
+      "result": "{\"arbitration\":{\"activeClientID\":\"openburnbar-linux-shell\",\"attachedClientIDs\":[\"openburnbar-linux-shell\"]},\"loopState\":{\"iterationCount\":0,\"terminalPending\":fa",
+      "step": "record approval response"
+    },
+    {
+      "method": "run.create",
+      "result": "run=0353ED90-A541-41A1-8DEA-2E06380AC2E9 phase=awaiting_approval",
+      "step": "create cancellable run"
+    },
+    {
+      "method": "run.cancel",
+      "result": "{\"arbitration\":{\"activeClientID\":\"openburnbar-linux-shell\",\"attachedClientIDs\":[\"openburnbar-linux-shell\"]},\"loopState\":{\"iterationCount\":0,\"terminalPending\":fa",
+      "step": "cancel pending run"
+    },
+    {
+      "method": "run.create",
+      "result": "run=5BC83E5C-BDFA-446E-913E-F011CC8C3AAF phase=failed",
+      "step": "create retry failure"
+    },
+    {
+      "method": "run.retry",
+      "result": "{\"arbitration\":{\"activeClientID\":\"openburnbar-linux-shell\",\"attachedClientIDs\":[\"openburnbar-linux-shell\"]},\"loopState\":{\"iterationCount\":0,\"terminalPending\":fa",
+      "step": "retry failed run"
+    },
+    {
+      "method": "run.list",
+      "result": "runs=9 approvals=0",
+      "step": "persisted transcript state"
+    },
+    {
+      "method": "LLMSafeContent",
+      "result": "untrusted fixture is delimiter-wrapped, forged delimiters defanged, secrets redacted",
+      "step": "prompt wrapper enforced"
+    }
+  ],
+  "statusText": "Live Hermes chat/tool approval proof: completed",
+  "stepCount": 14,
+  "surface": "installed-tauri-deb-xvfb-xfce-dom"
+}

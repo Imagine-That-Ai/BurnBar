@@ -181,7 +181,7 @@ final class QuotaWorkspaceViewModel {
             let candidateSnapshots = allAccountSnapshots
                 .filter { snapshot in
                     if snapshot.hasDisplayableQuotaSignal { return true }
-                    return isConnected || snapshot.accountID != nil || snapshot.source != .unavailable
+                    return isConnected || snapshot.accountID != nil || snapshot.sourceKind != .unavailable
                 }
 
             if !candidateSnapshots.isEmpty {
@@ -208,7 +208,7 @@ final class QuotaWorkspaceViewModel {
             }
 
             if let rollup = quotaService.snapshot(for: provider),
-               rollup.hasDisplayableQuotaSignal || isConnected || rollup.source != .unavailable {
+               rollup.hasDisplayableQuotaSignal || isConnected || rollup.sourceKind != .unavailable {
                 let entry = Self.makeEntry(
                     provider: provider,
                     snapshot: rollup,
@@ -298,7 +298,7 @@ final class QuotaWorkspaceViewModel {
             ?? snapshot.sourceId
         let planTierBadge: String? = {
             if provider == .factory {
-                let tier = snapshot.statusMessage.lowercased()
+                let tier = (snapshot.statusMessage ?? "").lowercased()
                 if tier.contains("max") { return "Max" }
                 if tier.contains("plus") { return "Plus" }
                 if tier.contains("pro") { return "Pro" }
@@ -319,7 +319,7 @@ final class QuotaWorkspaceViewModel {
             primaryDisplayableBucket: primary,
             primaryBucket: primary ?? ProviderQuotaBucket(
                 key: "unavailable",
-                label: snapshot.statusMessage,
+                label: snapshot.statusMessage ?? "Unavailable",
                 windowKind: .custom,
                 usedValue: nil,
                 limitValue: nil,
@@ -358,7 +358,10 @@ final class QuotaWorkspaceViewModel {
         }
 
         return order.compactMap { key in
-            snapshotsByIdentity[key]?.min(by: isPreferredSnapshot(_:over:))
+            snapshotsByIdentity[key]?.reduce(nil as ProviderQuotaSnapshot?) { preferred, snapshot in
+                guard let preferred else { return snapshot }
+                return isPreferredSnapshot(snapshot, over: preferred) ? snapshot : preferred
+            }
         }
     }
 
@@ -385,12 +388,6 @@ final class QuotaWorkspaceViewModel {
         _ candidate: ProviderQuotaSnapshot,
         over incumbent: ProviderQuotaSnapshot
     ) -> Bool {
-        let candidateHasSignal = !candidate.displayableQuotaBuckets.isEmpty
-        let incumbentHasSignal = !incumbent.displayableQuotaBuckets.isEmpty
-        if candidateHasSignal != incumbentHasSignal {
-            return candidateHasSignal
-        }
-
         let candidateIsExplicitProfile = isExplicitSwitcherProfileSnapshot(candidate)
         let incumbentIsExplicitProfile = isExplicitSwitcherProfileSnapshot(incumbent)
         if candidateIsExplicitProfile != incumbentIsExplicitProfile {
@@ -401,6 +398,12 @@ final class QuotaWorkspaceViewModel {
         let incumbentIsSyntheticCurrent = isSyntheticCurrentCLISnapshot(incumbent)
         if candidateIsSyntheticCurrent != incumbentIsSyntheticCurrent {
             return !candidateIsSyntheticCurrent
+        }
+
+        let candidateHasSignal = !candidate.displayableQuotaBuckets.isEmpty
+        let incumbentHasSignal = !incumbent.displayableQuotaBuckets.isEmpty
+        if candidateHasSignal != incumbentHasSignal {
+            return candidateHasSignal
         }
 
         return candidate.fetchedAt > incumbent.fetchedAt

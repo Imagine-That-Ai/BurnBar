@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(NaturalLanguage)
 @preconcurrency import NaturalLanguage
+#endif
 
 /// A daemon-owned text embedder for code chunks. The default implementation uses the
 /// OS-provided NaturalLanguage sentence embedding, so the daemon needs no bundled model
@@ -30,6 +32,7 @@ struct NLSentenceEmbeddingProvider: BurnBarCodeEmbeddingProvider {
     let dimension: Int
 
     init() {
+#if canImport(NaturalLanguage)
         // Only the (Sendable) dimension/version are stored. The NLEmbedding model itself
         // is non-Sendable and OS-cached, so it is looked up per call rather than held.
         let dim = NLEmbedding.sentenceEmbedding(for: .english)?.dimension ?? 0
@@ -37,14 +40,22 @@ struct NLSentenceEmbeddingProvider: BurnBarCodeEmbeddingProvider {
         // The dimension is part of the version so a model swap that changes the vector
         // length can never be silently compared against old vectors.
         versionID = "nl-sentence-en-\(dim)"
+#else
+        dimension = 0
+        versionID = "nl-sentence-unavailable"
+#endif
     }
 
     func embed(_ text: String) -> [Float]? {
+#if canImport(NaturalLanguage)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false,
               let model = NLEmbedding.sentenceEmbedding(for: .english),
               let vector = model.vector(for: trimmed) else { return nil }
         return vector.map { Float($0) }
+#else
+        return nil
+#endif
     }
 }
 

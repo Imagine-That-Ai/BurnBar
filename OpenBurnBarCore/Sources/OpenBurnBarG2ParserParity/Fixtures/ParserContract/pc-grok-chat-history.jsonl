@@ -1,0 +1,2 @@
+{"type":"user","content":"How do we gate parser output?"}
+{"type":"assistant","content":"Byte-diff against a committed golden."}

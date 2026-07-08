@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="OpenBurnBar.App.Onboarding.AnalyticsConsentDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Help improve OpenBurnBar"
+    PrimaryButtonText="Enable analytics"
+    CloseButtonText="Not now"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnEnableClicked"
+    CloseButtonClick="OnDeclineClicked">
+
+    <!-- First-run analytics opt-in — peer of AnalyticsConsentPromptView.swift. Off by default. -->
+    <StackPanel Spacing="14" MaxWidth="420">
+        <TextBlock Text="Share privacy-preserving usage analytics so we can see which features matter and where flows break. This is off by default — you can change it anytime in Settings → Privacy."
+                   Opacity="0.75"
+                   FontSize="13"
+                   TextWrapping="Wrap" />
+
+        <StackPanel Spacing="6">
+            <TextBlock Text="• Never your conversations, prompts, API keys, secrets, or file paths"
+                       Opacity="0.65" FontSize="12.5" TextWrapping="Wrap" />
+            <TextBlock Text="• Only feature names, outcomes, and bucketed counts"
+                       Opacity="0.65" FontSize="12.5" TextWrapping="Wrap" />
+            <TextBlock Text="• Sent only after you opt in; stops the moment you turn it off"
+                       Opacity="0.65" FontSize="12.5" TextWrapping="Wrap" />
+        </StackPanel>
+    </StackPanel>
+</ContentDialog>

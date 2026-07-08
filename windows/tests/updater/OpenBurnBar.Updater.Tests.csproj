@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable auto-update core
+    (Phase 5 · W10 · R19). Runs today via `dotnet test` on the authoring host —
+    the SAME assembly that ships on Windows. Mirrors the proven storage /
+    computeruse / cloudsync test pattern (net10.0, xUnit).
+
+    Coverage (all REAL crypto, no mocked verdicts):
+      * Ed25519UpdateSignatureTests — real RFC-8032 sign/verify; wrong-key,
+        tampered-message, wrong-length-signature rejection; base64 pin factory
+        (empty / non-base64 / wrong-length -> null, fail closed).
+      * Sha256DigestTests           — hex digest; constant-time match; mismatch /
+        malformed / wrong-length expected-hex -> false.
+      * UpdateVersionTests          — dotted-numeric parse; 1.4 == 1.4.0.0
+        normalization; 4-part MSIX compare; non-numeric / negative / empty ->
+        TryParse false; ordering + downgrade detection.
+      * AppcastFeedReaderTests      — parse the committed appcast; newest-item
+        selection; missing enclosure/version -> null; malformed XML -> null;
+        XXE / external-DTD rejected.
+      * JsonFeedReaderTests         — parse the committed JSON; wrong root type;
+        missing required field; malformed JSON -> null.
+      * FeedRoundTripTests          — generate (real sign) -> parse -> ACCEPT for
+        BOTH formats; appcast and JSON yield equivalent manifests.
+      * UpdateFeedVerifierTests     — THE crux: valid signed feed accepted;
+        tampered payload rejected; feed sha256 rewritten to match the tampered
+        payload STILL rejected by the pinned Ed25519 (SignatureBeatsRewrittenSha256);
+        wrong-key rejected; downgrade blocked (even with a valid signature);
+        equal-version up-to-date; sha256 mismatch; length mismatch; missing
+        signature; missing sha256; malformed feed -> fail-closed; malformed feed
+        version; TryCreate null on a bad pin; both feed formats; full Decide
+        pipeline.
+      * CommittedSampleFeedTests    — the shipped feed/ sample (appcast +
+        latest-windows.json + sample-artifact.txt + pinned-update-key.pub)
+        verifies end-to-end to UpdateAvailable; a one-byte artifact edit flips it
+        to Rejected(SignatureInvalid).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Updater.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Core/OpenBurnBar.Updater.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Verify the ACTUAL committed sample feed, linked (not copied) so there is
+       one source of truth. -->
+  <ItemGroup>
+    <None Include="../../packaging/updater/feed/appcast-windows.xml" Link="Fixtures/appcast-windows.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../packaging/updater/feed/latest-windows.json" Link="Fixtures/latest-windows.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../packaging/updater/feed/sample-artifact.txt" Link="Fixtures/sample-artifact.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../packaging/updater/feed/pinned-update-key.pub" Link="Fixtures/pinned-update-key.pub" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

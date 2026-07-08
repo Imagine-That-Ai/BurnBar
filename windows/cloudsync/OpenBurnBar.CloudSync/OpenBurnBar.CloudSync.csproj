@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Firestore CloudSync gateway for the OpenBurnBar Windows port
+    (Phase 2 · data & sync / cloud — the CloudSyncFirestoreGateway lane).
+
+    This is the DEPENDENCY-FREE C# port of the macOS CloudSync Firestore seam:
+      • AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift      -> Gateway/ICloudSyncGateway.cs
+      • AgentLens/Services/CloudSync/CloudSyncFirestoreFakeGateway.swift  -> Gateway/FakeCloudSyncGateway.cs
+      • OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/*.swift (14)   -> Models/Firestore*Models.cs
+
+    Off-Apple the macOS build binds the Firebase Firestore SDK (Objective-C /
+    gRPC). Windows has no such SDK, so this library re-implements the SAME gateway
+    abstraction over the Firestore REST/RPC v1 wire protocol
+    (documents.get / documents.patch / documents:commit / documents:runQuery) and
+    the Firebase callable-function HTTPS envelope, behind an IFirestoreRestTransport
+    seam so the HTTP client is swappable and the live authenticated round-trip is
+    dev-host/CI-deferred (there is no Firebase SDK to bind here). A FakeGateway
+    mirrors CloudSyncFirestoreFakeGateway for deterministic tests, and drives the
+    offline-write-queue + snapshot-listener state machines.
+
+    It targets plain net8.0 (no Windows TFM, zero P/Invoke, zero OS calls) on
+    purpose so the SAME managed assembly ships on Windows and is unit-tested on the
+    macOS authoring host today via `dotnet test` — mirroring the proven
+    OpenBurnBar.Pal.Ipc / OpenBurnBar.App.Presentation portable-core pattern.
+    net8.0 is the lowest common TFM so the net8.0-windows WinUI app and the net10.0
+    test project can both reference it.
+
+    Parity proof (windows/cloudsync/OpenBurnBar.CloudSync.Tests): every ported
+    model type round-trips byte-for-byte against a committed Swift-Codable vector
+    (generated from the REAL OpenBurnBarFirestoreModels structs), the Firestore
+    typed-value document codec round-trips against a committed REST-shape vector,
+    the callable request/response/error envelope round-trips, and the FakeGateway
+    drives the offline-queue + listener-semantics state machines. E2EE stays
+    fail-closed: an encrypted-mode write with a missing/empty ciphertext envelope
+    or a co-present plaintext field throws instead of transmitting.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.CloudSync</RootNamespace>
+    <AssemblyName>OpenBurnBar.CloudSync</AssemblyName>
+  </PropertyGroup>
+
+</Project>

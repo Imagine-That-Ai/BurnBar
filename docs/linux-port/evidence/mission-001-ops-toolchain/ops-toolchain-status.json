@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-07-05T08:24:39.743Z",
+  "activeCheckout": "/Users/albertonunez/Documents/Developer/BurnBar",
+  "head": "1b62ec42bd752cc8a6af578f034bf776c6ec3b97",
+  "runner": "active-checkout-v20-repair",
+  "missingRequiredArtifacts": [],
+  "targets": [
+    {
+      "id": "VAL-OPS-001",
+      "status": "pass",
+      "claim": "Fresh active-checkout pre/post isolation status, protected-path inventory, and no-broad-reset transcript are present.",
+      "evidence": [
+        "docs/linux-port/evidence/mission-001-ops-toolchain/w20-pre-isolation-active-checkout-status.txt",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/w21-post-isolation-active-checkout-status.txt",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/protected-path-no-broad-reset-transcript.txt",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/git-diff-check.txt"
+      ]
+    },
+    {
+      "id": "VAL-OPS-002",
+      "status": "pass",
+      "claim": "Toolchain/package/signing/dependency evidence is recorded from the current active checkout and current Linux shell package artifacts.",
+      "evidence": [
+        "docs/linux-port/evidence/mission-001-ops-toolchain/toolchain-source-manifest.txt",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/dependency-lockfile-sha256.txt",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/linux-deb-control.txt",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/linux-deb-contents.txt",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/desktop-package-versions.txt",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/docker-toolchain-version-smoke.log",
+        "docs/linux-port/evidence/mission-001-ops-toolchain/docker-toolchain-fts5-version-smoke.log"
+      ]
+    }
+  ],
+  "toolchainProbeCompletedAt": "2026-07-05T08:28:33.312Z"
+}

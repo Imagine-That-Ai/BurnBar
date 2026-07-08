@@ -1,0 +1,6 @@
+{
+  "error": {
+    "message": "Sign in before requesting a Windows App Check token.",
+    "status": "UNAUTHENTICATED"
+  }
+}

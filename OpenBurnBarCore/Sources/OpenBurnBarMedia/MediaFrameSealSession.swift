@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 import OpenBurnBarCore
 
 /// F7 — media-seal session lifecycle, the F10 control-seal pattern applied to
@@ -29,7 +28,7 @@ public enum MediaFrameSealSession {
         senderCounter: Int64,
         recipientPublicKeyBase64: String,
         senderPrivateKey: HermesRelayPrivateKey
-    ) throws -> (envelope: HermesRealtimeRelayControlSealKeyEnvelope, key: SymmetricKey) {
+    ) throws -> (envelope: HermesRealtimeRelayControlSealKeyEnvelope, key: PlatformSymmetricKey) {
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
         let wrap = try HermesRelayCrypto.sealKeyV3(
             keyData,
@@ -65,7 +64,7 @@ public enum MediaFrameSealSession {
         viewerId: String,
         recipientPrivateKey: HermesRelayPrivateKey,
         pinnedSenderPublicKeyBase64: String
-    ) throws -> SymmetricKey {
+    ) throws -> PlatformSymmetricKey {
         guard let enc = Data(base64Encoded: envelope.encBase64),
               let wrappedKey = Data(base64Encoded: envelope.wrappedKeyBase64) else {
             throw HermesRelayCryptoError.invalidCiphertext
@@ -87,7 +86,7 @@ public enum MediaFrameSealSession {
         return deriveKey(sessionSecret: keyData, connectionID: connectionID)
     }
 
-    private static func deriveKey(sessionSecret: Data, connectionID: String) -> SymmetricKey {
+    private static func deriveKey(sessionSecret: Data, connectionID: String) -> PlatformSymmetricKey {
         MediaFrameAEAD().deriveSessionKey(
             sharedSecret: sessionSecret,
             salt: Data(connectionID.utf8)

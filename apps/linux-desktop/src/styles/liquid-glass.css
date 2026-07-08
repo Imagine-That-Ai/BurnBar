@@ -1,0 +1,45 @@
+/* ── Liquid Glass utility surfaces ───────────────────────────────────────────
+ * Reusable material classes that consume liquid-glass-tokens. Use these for
+ * toolbars, cards, pills, and surfaces instead of hand-rolling blur/tint/border
+ * in every component, so the shell stays visually coherent.
+ */
+
+.glass-toolbar {
+  background: var(--glass-toolbar);
+  border: 1px solid var(--glass-toolbar-stroke);
+  backdrop-filter: var(--glass-toolbar-blur);
+  -webkit-backdrop-filter: var(--glass-toolbar-blur);
+  box-shadow: var(--glass-toolbar-shadow);
+}
+
+.glass-card {
+  background: var(--glass-card);
+  border: 1px solid var(--glass-card-stroke);
+  border-radius: var(--glass-radius-md);
+  backdrop-filter: var(--glass-card-blur);
+  -webkit-backdrop-filter: var(--glass-card-blur);
+  box-shadow: var(--glass-card-shadow);
+}
+
+.glass-pill {
+  background: var(--glass-pill);
+  border: 1px solid var(--glass-pill-stroke);
+  border-radius: var(--glass-radius-pill);
+  backdrop-filter: var(--glass-pill-blur);
+  -webkit-backdrop-filter: var(--glass-pill-blur);
+  box-shadow: var(--glass-pill-shadow);
+}
+
+.glass-surface {
+  background: var(--glass-tint-base);
+  border: 1px solid var(--glass-stroke);
+  backdrop-filter: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-inner-light);
+}
+
+.glass-focus:focus-visible {
+  outline: none;
+  border-color: var(--glass-stroke-bright);
+  background: var(--color-frost-veil);
+}

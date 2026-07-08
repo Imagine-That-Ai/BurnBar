@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable Managed-Agent-Runtime core (Phase 3 ·
+    W7). Runs today via `dotnet test` on the authoring host — the SAME assembly
+    that ships on Windows. Mirrors the proven storage / computeruse / presentation
+    test pattern (net10.0, xUnit).
+
+    Coverage (all REAL, no mocked verdicts):
+      * ManagedAgentRuntimeKindTests        — raw value / display name / default
+                                              gateway URL / open-action label for
+                                              both kinds; status IsReady gating.
+      * PiAgentCommandProfileTests          — the exact Live argument vectors +
+                                              structural value equality.
+      * PiAgentRedisInstanceDecoderTests    — every key alias, both body shapes,
+                                              the online/status fallback ladder,
+                                              URL first-key-wins, empty-id drop,
+                                              malformed-JSON -> empty.
+      * PiAgentRedisHttpDiscoveryTests      — request SHAPE (endpoint, bearer,
+                                              X-Pi-Redis-URL), 2xx-empty / 2xx-full
+                                              / non-2xx / throw branches, and the
+                                              configured-vs-unconfigured messages.
+      * OpenAICompatibleGatewayProbeTests   — /v1/models endpoint + bearer, model
+                                              name from data[0].id else `model`,
+                                              non-2xx / throw -> unavailable.
+      * PiAgentRuntimeAdapterRefreshTests    — CLI-missing short-circuit,
+                                              concurrent probe compose, synthetic
+                                              default vs Redis instances, preferred
+                                              selection, every status-message branch.
+      * PiAgentRuntimeAdapterOpenTests       — gateway already-up path, start-only,
+                                              install+start fallback, detached app
+                                              launch, error capture, IsBusy latch.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.ManagedAgentRuntime.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />
+  </ItemGroup>
+
+</Project>

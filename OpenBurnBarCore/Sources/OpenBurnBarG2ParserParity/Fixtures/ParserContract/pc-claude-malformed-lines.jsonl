@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"Valid line"}}
+INVALID_JSON_LINE
+{"type":"assistant","message":{"role":"assistant","content":"Another valid line","usage":{"input_tokens":10,"output_tokens":20}}}
+{"incomplete": "json"

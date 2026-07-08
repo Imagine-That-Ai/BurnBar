@@ -200,6 +200,10 @@ final class OpenBurnBarDatabaseMattersTests: XCTestCase {
         let database = OpenBurnBarDatabase(databaseQueue: queue)
 
         await WorkingDirectoryBackfillService(batchSize: 1).runIfNeeded(database: database)
+        let unrelatedCount = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM unrelated") ?? -1
+        }
+        XCTAssertEqual(unrelatedCount, 0)
         // Reaching here without hanging or trapping is the assertion: the
         // "successful query returning false" path is treated as a clean skip.
     }

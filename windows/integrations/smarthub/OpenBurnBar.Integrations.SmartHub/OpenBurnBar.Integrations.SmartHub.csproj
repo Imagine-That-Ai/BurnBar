@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable SmartHub bridge + discovery core for the OpenBurnBar Windows port
+    (Phase 4 · integrations lane). This is the DEPENDENCY-FREE half of the
+    SmartHub Nest-Hub bridge and LAN discovery:
+
+      * Bridge/ — the on-device dashboard bridge's REQUEST->RESPONSE core:
+        the HTTP/1.1 request parser, the constant-time bridge-token access
+        control (query token OR bearer header), the /state.json contract
+        renderer (byte-for-byte with the Swift emitter), the snapshot +
+        per-display config models, and the pure route dispatcher. The LIVE
+        socket listener is the only thing that lives in the Net adapter.
+      * Discovery/ — DNS-SD / mDNS record build + parse (RFC 1035 / 2782 / 6763):
+        name encode/decode with compression, PTR/SRV/TXT/A rdata, full message
+        assemble/parse, the OpenBurnBar hub advertisement + browse-and-resolve
+        helpers, and the IPv4 subnet-candidate + LAN-usability math. The live
+        UDP multicast socket lives in the Net adapter; NetService/Bonjour on
+        macOS hides these bytes, so the wire format is authored + proven here.
+
+    It has NO WinUI / Windows / socket dependency on purpose — the SAME managed
+    assembly is referenced by the Net adapter (HttpListener + UdpClient) AND
+    unit-tested on the macOS authoring host today via `dotnet test`
+    (windows/tests/integrations), mirroring the OpenBurnBar.Pal.Ipc portable-core
+    pattern (VAL-P0-CONPTY-018).
+
+    Parity sources (macOS):
+      * AgentLens/Services/SmartHub/SmartHubBridgeServer.swift
+          -> Bridge/BridgeHttpParser.cs + BridgeAccessControl.cs + BridgeRouter.cs
+             + BridgeStateJson.cs + BridgeWireFormat.cs + SmartHubBridgeSnapshot.cs
+      * OpenBurnBarCore/.../SharedModels/SmartHubDisplayConfig.swift
+          -> Bridge/SmartHubDisplayConfig.cs
+      * OpenBurnBarCore/.../SharedModels/SmartHubConfig.swift (SmartHubTimePeriod)
+          -> Bridge/SmartHubTimePeriod.cs
+      * AgentLens/Services/SmartHub/LocalNetworkDiscovery.swift
+          -> Discovery/Ipv4Subnet.cs (portable IPv4/subnet math)
+      * NetService/Bonjour advertise+browse (opaque on macOS)
+          -> Discovery/DnsName.cs + DnsRecords.cs + DnsMessage.cs + MdnsAdvertisement.cs
+
+    Targets net8.0 so a net8.0-windows WinUI app can reference it; net10.0 adapter
+    + tests reference it too. Zero external package references.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Integrations.SmartHub</RootNamespace>
+    <AssemblyName>OpenBurnBar.Integrations.SmartHub</AssemblyName>
+  </PropertyGroup>
+
+</Project>

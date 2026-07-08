@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PetCompanion speech bubble — the desktop pet's chat surface (Windows peer of
+  AgentLens/PetCompanion/Chat/PetChatBubble.swift). It binds to
+  PetChatBubbleViewModel, which REUSES the landed portable Chat state machine
+  (ChatSessionStateMachine) verbatim. Consumes the shared glass tokens
+  (PensieveColorGlassBgElevatedBrush / PensieveRadiusMdCorner). Windows-gated.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Pet.PetChatBubbleView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Border x:Name="BubbleRoot"
+            CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+            Background="{StaticResource PensieveColorGlassBgElevatedBrush}"
+            BorderThickness="1"
+            MaxWidth="320"
+            Padding="12">
+        <Grid RowSpacing="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Latest assistant / streaming text. -->
+            <TextBlock x:Name="TranscriptText"
+                       Grid.Row="0"
+                       TextWrapping="Wrap"
+                       IsTextSelectionEnabled="True"
+                       Text="" />
+
+            <!-- Composer: draft + send. -->
+            <Grid Grid.Row="1" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="DraftBox"
+                         Grid.Column="0"
+                         PlaceholderText="Say something…"
+                         GotFocus="OnDraftFocus"
+                         LostFocus="OnDraftBlur"
+                         TextChanged="OnDraftTextChanged" />
+
+                <Button x:Name="SendButton"
+                        Grid.Column="1"
+                        Content="Send"
+                        Click="OnSendClick" />
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>
