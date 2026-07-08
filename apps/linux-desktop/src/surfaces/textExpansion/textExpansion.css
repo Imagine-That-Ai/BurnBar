@@ -1,0 +1,117 @@
+.te-preview {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-md);
+  background: var(--color-mercury-wash);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.te-preview-title {
+  margin: 0;
+  font-size: 1rem;
+  font-family: var(--font-display);
+  color: var(--color-text-bright);
+}
+
+.te-preview-hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.te-preview-label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.9rem;
+}
+
+.te-preview-input {
+  background: var(--color-ink-elevated);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-base);
+  padding: var(--space-2);
+  font-family: var(--font-body);
+  resize: vertical;
+}
+
+.te-preview-input:focus-visible {
+  border-color: color-mix(in srgb, var(--color-brass-core) 60%, transparent);
+  outline: none;
+}
+
+.te-preview-result {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.te-preview-result-label {
+  font-size: 0.85rem;
+  color: var(--color-text-mute);
+}
+
+.te-preview-output {
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-ink-elevated);
+  border: 1px solid var(--color-glass-line);
+  min-height: 2.5rem;
+}
+
+.te-preview-mark {
+  background: color-mix(in srgb, var(--color-brass-glow) 35%, transparent);
+  color: var(--color-text-bright);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+
+.te-import-export {
+  margin-top: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.te-import-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.te-import-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.te-trigger-hint {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.te-conflict-desc {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.snippet-list li.snippet-disabled {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.snippet-list li.snippet-disabled strong {
+  color: var(--color-text-mute);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .te-preview-mark {
+    transition: none;
+  }
+}
+
+.te-empty-list {
+  margin: var(--space-4) 0 0;
+}

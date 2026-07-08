@@ -1,0 +1,483 @@
+{
+  "generatedAt": "2026-07-04T15:02:32.271Z",
+  "target": "VAL-MOBILE-001",
+  "passed": true,
+  "transcriptKind": "verified-terminal-ios-simulator-to-linux-peer-import",
+  "liveDeviceOrSimulatorTranscript": true,
+  "linuxPeerStartedFirst": true,
+  "exchangeCount": 12,
+  "peer": {
+    "hostPeerNodeId": "linux-peer-regenerated-cu002",
+    "protocol": "HermesRealtimeRelayFrame",
+    "alpn": "openburnbar/1",
+    "transport": "HTTP stand-in from iOS simulator Safari to Dockerized Linux peer"
+  },
+  "peerBinding": {
+    "peerNodeId": "linux-peer-regenerated-cu002",
+    "protocol": "HermesRealtimeRelayFrame",
+    "protocolVersion": 1,
+    "alpn": "openburnbar/1",
+    "capabilityMetadataOnly": true,
+    "removedFields": [],
+    "renamedFields": []
+  },
+  "scenarios": [
+    {
+      "id": "pairing-auth",
+      "passed": true,
+      "frameTypes": [
+        "pairing.auth.request",
+        "pairing.auth.accepted"
+      ]
+    },
+    {
+      "id": "approval-deny",
+      "passed": true,
+      "frameTypes": [
+        "control.approval.request",
+        "control.approval.response.approve",
+        "control.approval.response.deny"
+      ]
+    },
+    {
+      "id": "panic-halt",
+      "passed": true,
+      "frameTypes": [
+        "control.panic.halt"
+      ]
+    },
+    {
+      "id": "trust-downgrade",
+      "passed": true,
+      "frameTypes": [
+        "control.trust.downgrade"
+      ]
+    },
+    {
+      "id": "media-viewer",
+      "passed": true,
+      "frameTypes": [
+        "media.control.viewer.frame",
+        "media.screen.frame"
+      ]
+    },
+    {
+      "id": "backward-compatible-wire-diff",
+      "passed": true,
+      "frameTypes": [
+        "wire.diff.additive.linuxCapabilityMetadata",
+        "session.close.compatible"
+      ]
+    }
+  ],
+  "exchanges": [
+    {
+      "index": 1,
+      "scenario": "pairing-auth-request",
+      "receivedAt": "2026-07-04T12:33:04.711Z",
+      "method": "GET",
+      "path": "/exchange/1?scenario=pairing-auth-request&nonce=1783168384442-0",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "pairing.auth.request",
+        "scenario": "pairing-auth-request",
+        "sequence": 1,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 2,
+      "scenario": "pairing-auth-ack",
+      "receivedAt": "2026-07-04T12:33:06.291Z",
+      "method": "GET",
+      "path": "/exchange/2?scenario=pairing-auth-ack&nonce=1783168385270-1",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "pairing.auth.accepted",
+        "scenario": "pairing-auth-ack",
+        "sequence": 2,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 3,
+      "scenario": "approval-request",
+      "receivedAt": "2026-07-04T12:33:07.252Z",
+      "method": "GET",
+      "path": "/exchange/3?scenario=approval-request&nonce=1783168386032-2",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "control.approval.request",
+        "scenario": "approval-request",
+        "sequence": 3,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 4,
+      "scenario": "approval-approve",
+      "receivedAt": "2026-07-04T12:33:07.378Z",
+      "method": "GET",
+      "path": "/exchange/4?scenario=approval-approve&nonce=1783168386800-3",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "control.approval.response.approve",
+        "scenario": "approval-approve",
+        "sequence": 4,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 5,
+      "scenario": "approval-deny",
+      "receivedAt": "2026-07-04T12:33:08.340Z",
+      "method": "GET",
+      "path": "/exchange/5?scenario=approval-deny&nonce=1783168387561-4",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "control.approval.response.deny",
+        "scenario": "approval-deny",
+        "sequence": 5,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 6,
+      "scenario": "panic-halt",
+      "receivedAt": "2026-07-04T12:33:09.034Z",
+      "method": "GET",
+      "path": "/exchange/6?scenario=panic-halt&nonce=1783168388320-5",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "control.panic.halt",
+        "scenario": "panic-halt",
+        "sequence": 6,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 7,
+      "scenario": "trust-downgrade",
+      "receivedAt": "2026-07-04T12:33:10.100Z",
+      "method": "GET",
+      "path": "/exchange/7?scenario=trust-downgrade&nonce=1783168389094-6",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "control.trust.downgrade",
+        "scenario": "trust-downgrade",
+        "sequence": 7,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 8,
+      "scenario": "media-control-viewer-frame",
+      "receivedAt": "2026-07-04T12:33:10.740Z",
+      "method": "GET",
+      "path": "/exchange/8?scenario=media-control-viewer-frame&nonce=1783168389872-7",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "media.control.viewer.frame",
+        "scenario": "media-control-viewer-frame",
+        "sequence": 8,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 9,
+      "scenario": "media-screen-frame",
+      "receivedAt": "2026-07-04T12:33:11.192Z",
+      "method": "GET",
+      "path": "/exchange/9?scenario=media-screen-frame&nonce=1783168390641-8",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "media.screen.frame",
+        "scenario": "media-screen-frame",
+        "sequence": 9,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 10,
+      "scenario": "control-input-intent",
+      "receivedAt": "2026-07-04T12:33:12.354Z",
+      "method": "GET",
+      "path": "/exchange/10?scenario=control-input-intent&nonce=1783168391419-9",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "control.input.intent",
+        "scenario": "control-input-intent",
+        "sequence": 10,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 11,
+      "scenario": "additive-wire-diff",
+      "receivedAt": "2026-07-04T12:33:12.837Z",
+      "method": "GET",
+      "path": "/exchange/11?scenario=additive-wire-diff&nonce=1783168392182-10",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "wire.diff.additive.linuxCapabilityMetadata",
+        "scenario": "additive-wire-diff",
+        "sequence": 11,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    },
+    {
+      "index": 12,
+      "scenario": "backward-compatible-close",
+      "receivedAt": "2026-07-04T12:33:13.419Z",
+      "method": "GET",
+      "path": "/exchange/12?scenario=backward-compatible-close&nonce=1783168392956-11",
+      "remoteAddress": "192.168.65.1",
+      "headers": {
+        "host": "127.0.0.1:8766",
+        "sec-fetch-dest": "document",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1",
+        "upgrade-insecure-requests": "1",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "accept-language": "en-US,en;q=0.9",
+        "priority": "u=0, i",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive"
+      },
+      "frame": {
+        "protocolVersion": 1,
+        "alpn": "openburnbar/1",
+        "type": "session.close.compatible",
+        "scenario": "backward-compatible-close",
+        "sequence": 12,
+        "linuxCapabilityMetadata": {
+          "platform": "linux",
+          "inputAdapter": "at-spi2",
+          "portalBackend": "xdg-desktop-portal-wlr"
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "importedAt": "2026-07-04T15:02:32.271Z",
+    "sourceProbePath": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054/mobile-live-surface-probe.json",
+    "sourceRawPath": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054/mobile-live-surface-probe.raw.json",
+    "sourceScreenshotPath": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054/mobile-simulator-live-probe.png",
+    "sourceProbeSha256": "ef35bc478d758f27170a3043dd981ef10c6bb191560be68cc1065b68acfda46f",
+    "sourceRawSha256": "6a733b4b0ae04eb8abbb4b39a813bccf896253e9c577c7e03dcaad9bf9f63a81",
+    "sourceScreenshotSha256": "77004610c492faa3d8a070d38f6d37f2b728faf0b1f3289559949c9182e3c3e5",
+    "acceptedTerminalPathAllowance": true,
+    "note": "Imported only because OB_CU_MOBILE_LIVE_PROBE_SOURCE was set; raw fields were re-verified and source artifacts were copied into this fresh bundle."
+  },
+  "contractBoundary": "Live terminal mobile transcript imported under the assignment allowance; original raw exchange log, source probe, and screenshot are copied into this fresh bundle."
+}

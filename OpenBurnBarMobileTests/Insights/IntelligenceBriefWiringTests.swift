@@ -19,9 +19,25 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         let prompt = IntelligenceBriefCitationPrompt.prompt(
             for: InsightCitation(kind: .session(id: "sess-7af2", provider: "anthropic"), label: "sess #7af2")
         )
+        // The prompt IS the routing outcome (the composer routes citation
+        // taps through this string, not a bespoke router), so pin the exact
+        // dispatch contract — the contains checks below stay as secondary
+        // guards with sharper failure messages.
+        XCTAssertEqual(prompt, "Open session sess-7af2 (anthropic) and summarize what drove its cost.")
         XCTAssertTrue(prompt.contains("sess-7af2"), "Session prompt must include session id")
         XCTAssertTrue(prompt.contains("anthropic"), "Session prompt must include provider key")
         XCTAssertTrue(prompt.lowercased().contains("summarize"), "Session prompt should ask for a summary")
+    }
+
+    /// A session citation without a provider must drop the parenthetical
+    /// suffix cleanly instead of rendering a nil/placeholder artifact.
+    func test_citationPrompt_sessionWithoutProviderOmitsSuffix() {
+        XCTAssertEqual(
+            IntelligenceBriefCitationPrompt.prompt(
+                for: InsightCitation(kind: .session(id: "sess-1", provider: nil), label: "sess #1")
+            ),
+            "Open session sess-1 and summarize what drove its cost."
+        )
     }
 
     func test_citationPrompt_modelRoutesToDrillDown() {
@@ -101,10 +117,22 @@ final class IntelligenceBriefWiringTests: XCTestCase {
             XCTAssertFalse(prompt.isEmpty, "Empty prompt for citation kind \(kind)")
             XCTAssertGreaterThan(prompt.count, 12, "Prompt for \(kind) too short to be useful: '\(prompt)'")
         }
+
+        // Routing must also be distinct: two citation kinds collapsing to the
+        // same prompt means a tap silently routes to the wrong follow-up.
+        let prompts = kinds.map {
+            IntelligenceBriefCitationPrompt.prompt(for: InsightCitation(kind: $0, label: "Label"))
+        }
+        XCTAssertEqual(
+            Set(prompts).count,
+            prompts.count,
+            "Citation kinds must not cross-route to the same follow-up prompt"
+        )
     }
 
     // MARK: - Mission launch wiring
 
+    @MainActor
     func test_missionLaunchContractPassesSelectedRuntimeAndKind() throws {
         var captured: (kind: String, runtime: String, prompt: String, options: InsightMissionLaunchOptions)?
         let action = try XCTUnwrap(
@@ -120,10 +148,17 @@ final class IntelligenceBriefWiringTests: XCTestCase {
             fileEditsAllowed: false
         )
 
-        let dispatch: (InsightFollowUpQuestion, String, String, InsightMissionLaunchOptions) -> Void = { question, kind, runtime, options in
-            captured = (kind, runtime, question.question, options)
-        }
-        dispatch(action.followUpQuestion, action.kind.firestoreValue, runtime.firestoreValue, options)
+        // Route through the production seam instead of a test-local closure:
+        // `IntelligenceBriefView` stores the shell-provided handler and its
+        // launchpad invokes it as
+        // (action.followUpQuestion, action.kind.firestoreValue, runtime, options).
+        let view = IntelligenceBriefView(
+            result: IntelligenceBriefFixtures.minimal,
+            onMissionLaunchTap: { question, kind, runtime, options in
+                captured = (kind, runtime, question.question, options)
+            }
+        )
+        view.onMissionLaunchTap(action.followUpQuestion, action.kind.firestoreValue, runtime.firestoreValue, options)
 
         XCTAssertEqual(captured?.kind, "creative")
         XCTAssertEqual(captured?.runtime, "piAgent")
@@ -133,6 +168,70 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertEqual(captured?.options.approvalMode, "risky_only")
         XCTAssertEqual(captured?.options.commandsAllowed, true)
         XCTAssertEqual(captured?.options.fileEditsAllowed, false)
+    }
+
+    /// Shells that don't wire `onMissionLaunchTap` (e.g. embedded previews)
+    /// must degrade to the follow-up compose route — the production fallback
+    /// baked into `IntelligenceBriefView.init` — instead of dropping the tap.
+    @MainActor
+    func test_missionLaunchWithoutShellHandlerFallsBackToFollowUpRoute() throws {
+        var routedQuestions: [String] = []
+        let view = IntelligenceBriefView(
+            result: IntelligenceBriefFixtures.minimal,
+            onFollowUpTap: { routedQuestions.append($0.question) }
+        )
+
+        let action = try XCTUnwrap(
+            InsightMissionLaunchAction.defaultActions.first { $0.kind == .debt }
+        )
+        view.onMissionLaunchTap(
+            action.followUpQuestion,
+            action.kind.firestoreValue,
+            InsightMissionRuntimeTarget.auto.firestoreValue,
+            InsightMissionLaunchOptions(
+                requestedRuntime: InsightMissionRuntimeTarget.auto.firestoreValue,
+                targetProject: nil,
+                depth: "standard",
+                approvalMode: "existing_policy",
+                commandsAllowed: false,
+                fileEditsAllowed: false
+            )
+        )
+
+        XCTAssertEqual(
+            routedQuestions,
+            [action.followUpQuestion.question],
+            "Un-wired mission taps must degrade to the follow-up compose route, not drop on the floor"
+        )
+    }
+
+    /// Every launchpad card routes a distinct mission kind, the launchpad
+    /// covers the full `Kind` case list, and each action ships a
+    /// dispatch-ready follow-up contract (non-empty prompt + the canonical
+    /// mission rationale the composer keys on).
+    func test_missionLaunchActionsRouteDistinctKindsCoveringAllCases() {
+        let actions = InsightMissionLaunchAction.defaultActions
+        XCTAssertEqual(
+            Set(actions.map(\.kind)).count,
+            actions.count,
+            "Each launchpad card must route a distinct mission kind"
+        )
+        XCTAssertEqual(
+            Set(actions.map(\.kind)),
+            Set(InsightMissionLaunchAction.Kind.allCases),
+            "The launchpad must cover every mission kind"
+        )
+        for action in actions {
+            XCTAssertEqual(
+                action.followUpQuestion.rationale,
+                "Turns the current brief into a local-agent mission.",
+                "Kind \(action.kind) must carry the canonical mission rationale"
+            )
+            XCTAssertFalse(
+                action.followUpQuestion.question.isEmpty,
+                "Kind \(action.kind) must ship a non-empty dispatch prompt"
+            )
+        }
     }
 
     func test_missionLaunchContractIncludesAllMobileRemoteControlRuntimes() {

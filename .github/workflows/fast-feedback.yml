@@ -895,6 +895,25 @@ jobs:
       - name: Check Swift twin basenames
         run: bash scripts/ci/check-twin-basenames.sh
 
+  # ── Budget fork drift gate (BudgetGate stays de-forked in OpenBurnBarCore) ──
+  budget-fork-drift:
+    name: Budget fork drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            AgentLens/Services/DataStore
+            OpenBurnBarMobile/Models
+            OpenBurnBarCore/Sources/OpenBurnBarCore/Budget
+            scripts/ci/check-budget-fork-drift.sh
+            scripts/ci/budget-fork-baselines
+
+      - name: Check budget fork drift
+        run: bash scripts/ci/check-budget-fork-drift.sh
+
   # ── Production env hygiene (no checked-in secrets) ─────────────────────────
   env-no-secrets:
     name: Production env has no secrets

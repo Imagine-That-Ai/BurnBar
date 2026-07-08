@@ -1,0 +1,98 @@
+{
+  "predicateType": "https://openburnbar.dev/attestations/linux-release-artifact/v1",
+  "generatedAt": "2026-07-06T10:52:43.424Z",
+  "expectedCosignIdentity": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/v0.1.0",
+  "git": {
+    "commit": "ce1b6abdf3f60a6d13e8d9171d03852dc80db6fc",
+    "branch": "linux/parity2-release-closure",
+    "remote": "https://github.com/Imagine-That-Ai/BurnBar.git",
+    "dirty": false,
+    "dirtyEntries": [],
+    "gitAvailable": true
+  },
+  "version": "0.1.0",
+  "artifacts": [
+    {
+      "type": "deb",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_arm64.deb",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.0_arm64.deb",
+      "size": 7112208,
+      "sha256": "bdd000bef3e4b38074a7d1f81d16974ccba5b0386e54bec9ace968e3e7cec9ea"
+    },
+    {
+      "type": "rpm",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/rpm/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "size": 7113094,
+      "sha256": "9a48f234784a6abffdcdbf06267f4d68518dc129b8a61d23f38c9b38f4fe8d9b"
+    },
+    {
+      "type": "daemon",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/openburnbar-daemon-0.1.0-linux-aarch64",
+      "sourceFile": "OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon",
+      "size": 95050760,
+      "sha256": "64b6344a73a79bf6a798dbf526ac8aa2edc44cba031adb237ce8be784d9c9c94"
+    }
+  ],
+  "metadata": [
+    {
+      "kind": "aur",
+      "file": "packaging/linux/aur/PKGBUILD",
+      "exists": true,
+      "sha256": "cf78deb5bc5a6abd4fff55b1b8f9f5f64c4554e7e254a8d5c3a7f98552e23d82"
+    },
+    {
+      "kind": "flatpak",
+      "file": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",
+      "exists": true,
+      "sha256": "d846628bdb21f775746cfc10b2be7bdd02d294f0aeda30f80e6bc6733d7a8036"
+    },
+    {
+      "kind": "desktopEntry",
+      "file": "packaging/linux/openburnbar.desktop",
+      "exists": true,
+      "sha256": "41db7fa7fcf777bec5ae6ed0dfec50f00550fa5cf91498225944d6f25b557e2a"
+    },
+    {
+      "kind": "autostartEntry",
+      "file": "packaging/linux/autostart/openburnbar.desktop",
+      "exists": true,
+      "sha256": "d5da6de230f5192548eee55f2d8ead103d0ee3699bfe85a99bdc76124e51a4bc"
+    },
+    {
+      "kind": "systemdUserService",
+      "file": "packaging/linux/openburnbar-daemon.service",
+      "exists": true,
+      "sha256": "27cf372301a1ff841334c46c19e06a5c12371487488ae5fcaa27a968687a1293"
+    }
+  ],
+  "checksums": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux-checksums.txt",
+  "sbom": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
+  "vex": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
+  "sourceArchive": {
+    "file": "docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-source-ce1b6abdf3f6.tar",
+    "sha256": "d4b9f2ff60671f69840206bb674ddf2b31a23fd8fcad991bd027889e17e16f64",
+    "represents": "HEAD only"
+  },
+  "signatures": [],
+  "promotionBlocked": true,
+  "blockers": [
+    {
+      "kind": "package-build",
+      "message": "Command failed: npm run tauri:build -- --bundles deb,rpm,appimage",
+      "log": "logs/package-build.log"
+    },
+    {
+      "kind": "missing-artifact",
+      "message": "Required Linux appimage artifact was not produced by Tauri bundle output."
+    },
+    {
+      "kind": "signing-credentials",
+      "message": "OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is not configured; detached package signatures were not produced."
+    },
+    {
+      "kind": "cosign-oidc",
+      "message": "GitHub OIDC request token is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC."
+    }
+  ]
+}

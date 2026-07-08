@@ -1,0 +1,116 @@
+{
+  "generatedAt": "2026-07-04T14:24:28.099Z",
+  "lane": "W07LinuxComputerUseMediaMobile",
+  "adapters": [
+    {
+      "id": "wayland-portal-pipewire",
+      "kind": "capture",
+      "target": "VAL-CU-001",
+      "protocol": "xdg-desktop-portal ScreenCast + PipeWire",
+      "productPath": "Tauri shell -> portal session request -> PipeWire node",
+      "requiresConsent": true,
+      "requiresApproval": true,
+      "status": "probe-required",
+      "unavailableMeans": "blocked evidence row; no global Wayland scraping fallback"
+    },
+    {
+      "id": "x11-scrot-fallback",
+      "kind": "capture",
+      "target": "VAL-CU-001",
+      "protocol": "X11 screenshot fallback",
+      "productPath": "XDG_SESSION_TYPE=x11 -> scoped capture after local approval",
+      "requiresConsent": false,
+      "requiresApproval": true,
+      "status": "probe-required",
+      "unavailableMeans": "degraded capture unavailable until X11 tools are present"
+    },
+    {
+      "id": "libei",
+      "kind": "input",
+      "target": "VAL-CU-002",
+      "protocol": "libei/libeis remote-desktop input",
+      "productPath": "portal-approved input session when compositor exposes libei",
+      "requiresConsent": true,
+      "requiresApproval": true,
+      "status": "probe-required",
+      "unavailableMeans": "blocked evidence row; do not substitute keylogging"
+    },
+    {
+      "id": "at-spi2",
+      "kind": "input",
+      "target": "VAL-CU-002",
+      "protocol": "AT-SPI2 accessibility action adapter",
+      "productPath": "org.a11y.Bus scoped accessibility actions",
+      "requiresConsent": true,
+      "requiresApproval": true,
+      "status": "probe-required",
+      "unavailableMeans": "blocked evidence row when accessibility bus is unavailable"
+    },
+    {
+      "id": "uinput-policy",
+      "kind": "input",
+      "target": "VAL-CU-002",
+      "protocol": "uinput with device permission policy",
+      "productPath": "/dev/uinput only when explicitly provisioned by installer policy",
+      "requiresConsent": true,
+      "requiresApproval": true,
+      "status": "probe-required",
+      "unavailableMeans": "blocked evidence row when /dev/uinput is absent or not writable"
+    },
+    {
+      "id": "x11-xtest",
+      "kind": "input",
+      "target": "VAL-CU-002",
+      "protocol": "XTEST fallback",
+      "productPath": "X11-only xdotool/XTEST action after approval, deny-region, and rate checks",
+      "requiresConsent": false,
+      "requiresApproval": true,
+      "status": "probe-required",
+      "unavailableMeans": "degraded input unavailable when XTEST is missing"
+    },
+    {
+      "id": "audit-signed-head",
+      "kind": "audit",
+      "target": "VAL-SEC-003",
+      "protocol": "SHA-256 chain + Ed25519 signed terminal head",
+      "productPath": "OpenBurnBarComputerUseCore audit schema mirrored by Linux evidence writer",
+      "requiresConsent": false,
+      "requiresApproval": false,
+      "status": "ready",
+      "unavailableMeans": "fail closed; signed head is mandatory"
+    },
+    {
+      "id": "panic-halt",
+      "kind": "halt",
+      "target": "VAL-CU-003",
+      "protocol": "app, daemon CLI, mobile control, system hook",
+      "productPath": "shared session coordinator closes capture, input, media, and audit resources",
+      "requiresConsent": false,
+      "requiresApproval": false,
+      "status": "ready",
+      "unavailableMeans": "platform limitation row for unavailable global hooks"
+    },
+    {
+      "id": "iroh-mercury-media",
+      "kind": "media",
+      "target": "VAL-MEDIA-001",
+      "protocol": "openburnbar/1 + openburnbar/mercury/audio/1",
+      "productPath": "crates/openburnbar-iroh + OpenBurnBarMedia frame codecs",
+      "requiresConsent": false,
+      "requiresApproval": true,
+      "status": "probe-required",
+      "unavailableMeans": "blocked row when no codec/device/LAN surface is available"
+    },
+    {
+      "id": "mobile-control-replay",
+      "kind": "mobile",
+      "target": "VAL-MOBILE-001",
+      "protocol": "HermesRealtimeRelayFrame control.* and media.* frames",
+      "productPath": "iOS/Android phone control senders with additive Linux capability metadata",
+      "requiresConsent": false,
+      "requiresApproval": true,
+      "status": "ready",
+      "unavailableMeans": "use protocol replay when no device is attached"
+    }
+  ]
+}

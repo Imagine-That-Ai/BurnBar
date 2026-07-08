@@ -14,6 +14,7 @@ import OSLog
 struct RootTabView: View {
     #if DEBUG
     private static let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
+    private static let computerUseE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "ComputerUseE2E")
     #endif
 
     let authStore: AuthStore
@@ -487,26 +488,22 @@ struct RootTabView: View {
     private func applyHermesE2EPromptIfNeeded() {
         #if DEBUG
         guard !didApplyHermesE2EPrompt else {
-            print("OpenBurnBarMobile Hermes E2E RootTab skip alreadyApplied")
             Self.hermesE2ELogger.debug("Skipping Hermes E2E prompt because it was already applied")
             return
         }
         let prompt = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_PROMPT"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let prompt, !prompt.isEmpty else {
-            print("OpenBurnBarMobile Hermes E2E RootTab skip emptyPrompt")
             Self.hermesE2ELogger.debug("Skipping Hermes E2E prompt because OPENBURNBAR_E2E_HERMES_PROMPT is empty")
             return
         }
         guard authStore.currentIdentity?.uid != nil else {
-            print("OpenBurnBarMobile Hermes E2E RootTab skip authState=\(authStateLabel(authStore.state))")
             Self.hermesE2ELogger.info("Skipping Hermes E2E prompt because auth state is \(authStateLabel(authStore.state), privacy: .public)")
             return
         }
         let modelID = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_MODEL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let selectedModelID = (modelID?.isEmpty == false) ? modelID! : "default"
-        print("OpenBurnBarMobile Hermes E2E RootTab apply promptCharacters=\(prompt.count) model=\(selectedModelID)")
         Self.hermesE2ELogger.info("Applying Hermes E2E prompt promptCharacters=\(prompt.count, privacy: .public) model=\(selectedModelID, privacy: .public)")
         didApplyHermesE2EPrompt = true
         selection = .hermes
@@ -515,11 +512,9 @@ struct RootTabView: View {
             await hermesService.refreshRuntime()
             hermesService.startNewSession()
             if let modelID, !modelID.isEmpty {
-                print("OpenBurnBarMobile Hermes E2E RootTab selectingModel=\(modelID)")
                 Self.hermesE2ELogger.info("Selecting Hermes E2E model \(modelID, privacy: .public)")
                 hermesService.selectModelIDForAutomation(modelID)
             }
-            print("OpenBurnBarMobile Hermes E2E RootTab send")
             Self.hermesE2ELogger.info("Sending Hermes E2E prompt through selected mobile harness")
             hermesService.sendMessage(prompt)
         }
@@ -531,24 +526,24 @@ struct RootTabView: View {
         guard !didApplyComputerUseE2EProof else { return }
         guard ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_COMPUTER_USE_PROOF"] == "1" else { return }
         guard authStore.currentIdentity?.uid != nil else {
-            print("OpenBurnBarMobile ComputerUseE2E skip auth unavailable")
+            Self.computerUseE2ELogger.info("OpenBurnBarMobile ComputerUseE2E skip auth unavailable")
             return
         }
         didApplyComputerUseE2EProof = true
         Task { @MainActor in
-            print("OpenBurnBarMobile ComputerUseE2E refresh_runtime_start")
+            Self.computerUseE2ELogger.info("OpenBurnBarMobile ComputerUseE2E refresh_runtime_start")
             await hermesService.refreshRuntime()
             if hermesService.selectedConnection.id == HermesConnectionRecord.localDefault.id {
                 let selected = hermesService.connectToSuggestedRelay(refresh: false)
-                print("OpenBurnBarMobile ComputerUseE2E suggested_relay_selected=\(selected) selected=\(hermesService.selectedConnection.id) mode=\(hermesService.selectedConnection.mode.rawValue)")
+                Self.computerUseE2ELogger.info("OpenBurnBarMobile ComputerUseE2E suggested_relay_selected=\(selected, privacy: .public) selected=\(hermesService.selectedConnection.id, privacy: .public) mode=\(hermesService.selectedConnection.mode.rawValue, privacy: .public)")
             } else {
-                print("OpenBurnBarMobile ComputerUseE2E existing_connection selected=\(hermesService.selectedConnection.id) mode=\(hermesService.selectedConnection.mode.rawValue)")
+                Self.computerUseE2ELogger.info("OpenBurnBarMobile ComputerUseE2E existing_connection selected=\(hermesService.selectedConnection.id, privacy: .public) mode=\(hermesService.selectedConnection.mode.rawValue, privacy: .public)")
             }
             selection = .you
             if youPath.isEmpty {
                 youPath.append(YouRoute.computerUse)
             }
-            print("OpenBurnBarMobile ComputerUseE2E opened Agent Watch")
+            Self.computerUseE2ELogger.info("OpenBurnBarMobile ComputerUseE2E opened Agent Watch")
         }
         #endif
     }

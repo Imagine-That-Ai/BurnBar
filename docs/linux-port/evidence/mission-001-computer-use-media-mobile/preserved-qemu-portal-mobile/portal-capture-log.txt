@@ -1,0 +1,52 @@
+### uname -a
+exit_code=0
+Linux 7b4d0d26ad30 6.12.72-linuxkit #1 SMP Wed Feb 25 13:21:17 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+
+
+
+### bash -lc printf "XDG_SESSION_TYPE=%s\nDISPLAY=%s\nWAYLAND_DISPLAY=%s\nXDG_CURRENT_DESKTOP=%s\n" "$XDG_SESSION_TYPE" "$DISPLAY" "$WAYLAND_DISPLAY" "$XDG_CURRENT_DESKTOP"
+exit_code=0
+XDG_SESSION_TYPE=
+DISPLAY=
+WAYLAND_DISPLAY=
+XDG_CURRENT_DESKTOP=
+
+
+
+### bash -lc command -v gdbus || true; command -v pipewire || true; command -v pw-cli || true; command -v wpctl || true; command -v xdotool || true; command -v scrot || true; command -v xdpyinfo || true; command -v Xvfb || true
+exit_code=0
+/usr/bin/gdbus
+/usr/bin/pipewire
+/usr/bin/pw-cli
+/usr/bin/xdotool
+/usr/bin/scrot
+/usr/bin/xdpyinfo
+/usr/bin/Xvfb
+
+
+
+### bash -lc pkg-config --modversion libei-1.0 2>/dev/null || pkg-config --modversion libei 2>/dev/null || true
+exit_code=0
+1.2.1
+
+
+
+### bash -lc test -e /dev/uinput && ls -l /dev/uinput || true
+exit_code=0
+
+
+
+### bash -lc gdbus call --session --dest org.freedesktop.portal.Desktop --object-path /org/freedesktop/portal/desktop --method org.freedesktop.DBus.Properties.Get org.freedesktop.portal.ScreenCast version
+exit_code=1
+
+Error connecting: Cannot autolaunch D-Bus without X11 $DISPLAY
+
+
+### bash -lc pw-cli info 0 || wpctl status || pipewire --version
+exit_code=0
+pipewire
+Compiled with libpipewire 1.0.5
+Linked with libpipewire 1.0.5
+
+Error: "failed to connect: Host is down"
+bash: line 1: wpctl: command not found
