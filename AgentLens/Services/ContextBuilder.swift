@@ -413,7 +413,7 @@ enum ContextBuilder {
         fallbackUsages: [TokenUsage],
         limit: Int
     ) async -> (breakdown: UsageCostBreakdown, isExhaustive: Bool) {
-        if let breakdown = try? await dataStore.fetchUsageCostBreakdown(in: dateRange, limit: limit) {
+        if let breakdown = try? await dataStore.fetchUsageCostBreakdown(in: dateRange, limit: limit) { // try?-ok(fallback to row-limited local aggregate)
             return (breakdown, true)
         }
         return (fallbackUsageCostBreakdown(from: fallbackUsages, limit: limit), false)
@@ -445,14 +445,15 @@ enum ContextBuilder {
 
     private static func sortedCostBuckets(_ costs: [String: Double], limit: Int) -> [UsageCostBucket] {
         guard limit > 0 else { return [] }
-        return costs
-            .map { UsageCostBucket(label: $0.key, cost: $0.value) }
-            .sorted {
-                if $0.cost == $1.cost { return $0.label < $1.label }
-                return $0.cost > $1.cost
-            }
-            .prefix(limit)
-            .map { $0 }
+        return Array(
+            costs
+                .map { UsageCostBucket(label: $0.key, cost: $0.value) }
+                .sorted {
+                    if $0.cost == $1.cost { return $0.label < $1.label }
+                    return $0.cost > $1.cost
+                }
+                .prefix(limit)
+        )
     }
 
     /// Prepares session transcript for on-demand summarization (middle section dropped when very long).

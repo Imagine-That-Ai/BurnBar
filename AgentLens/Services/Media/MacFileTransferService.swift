@@ -486,14 +486,14 @@ final class MacFileTransferService: ObservableObject {
             reason = String(describing: serviceError)
             lastError = .fetchFailed(reason ?? "")
             if let fetchedDestinationURL {
-                try? FileManager.default.removeItem(at: fetchedDestinationURL)
+                try? FileManager.default.removeItem(at: fetchedDestinationURL) // try?-ok(best-effort failed fetch cleanup)
             }
         } catch {
             status = .rejected
             reason = error.localizedDescription
             lastError = .fetchFailed(reason ?? "")
             if let fetchedDestinationURL {
-                try? FileManager.default.removeItem(at: fetchedDestinationURL)
+                try? FileManager.default.removeItem(at: fetchedDestinationURL) // try?-ok(best-effort failed fetch cleanup)
             }
         }
 
@@ -647,7 +647,7 @@ final class MacFileTransferService: ObservableObject {
         let tempURL = url.deletingLastPathComponent()
             .appendingPathComponent(".\(UUID().uuidString).obmfa1-tmp")
         try sealed.write(to: tempURL, options: .atomic)
-        defer { try? FileManager.default.removeItem(at: tempURL) }
+        defer { try? FileManager.default.removeItem(at: tempURL) } // try?-ok(best-effort temp cleanup)
         guard try FileManager.default.replaceItemAt(url, withItemAt: tempURL) != nil else {
             throw Failure.fetchFailed("at-rest seal atomic replace failed")
         }
