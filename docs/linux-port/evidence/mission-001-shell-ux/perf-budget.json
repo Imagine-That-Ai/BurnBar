@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T03:15:05.273Z",
+  "generatedAt": "2026-07-08T08:56:36.761Z",
   "runner": "linux-desktop-packaged-runtime-perf-v3",
   "note": "Budget rows are derived from the same packaged Linux desktop smoke run: Xvfb/XFCE .deb session report plus runtime samples emitted by the installed Tauri app through OPENBURNBAR_EVIDENCE_OUT.",
   "host": {
@@ -13,7 +13,7 @@
     "desktopSessionPresent": true,
     "desktopSessionGeneratedAt": "2026-07-06T03:14:58.760Z",
     "runtimeSamples": "docs/linux-port/evidence/mission-001-shell-ux/runtime-perf-samples.jsonl",
-    "runtimeSampleCount": 9,
+    "runtimeSampleCount": 43,
     "packagedRouteTranscript": "docs/linux-port/evidence/mission-001-shell-ux/packaged-route-session-transcript.json",
     "packagedRouteCount": 16
   },
@@ -54,12 +54,12 @@
     },
     {
       "name": "route.navigation",
-      "ms": null,
+      "ms": 2,
       "limit": 120,
-      "source": "missing-packaged-runtime-sample",
-      "sampleCount": 0,
-      "measured": false,
-      "pass": false
+      "source": "packaged-tauri-runtime-samples:packaged-ui-route:account,packaged-ui-route:activity,packaged-ui-route:chat,packaged-ui-route:database,packaged-ui-route:insights,packaged-ui-route:memory,packaged-ui-route:missions,packaged-ui-route:onboarding,packaged-ui-route:overview,packaged-ui-route:pet,packaged-ui-route:projects,packaged-ui-route:providers,packaged-ui-route:settings,packaged-ui-route:support,packaged-ui-route:text-expansion,packaged-ui-route:updates",
+      "sampleCount": 34,
+      "measured": true,
+      "pass": true
     },
     {
       "name": "ipc.health.roundtrip",
@@ -126,8 +126,6 @@
     }
   ],
   "missingMetrics": [],
-  "errors": [
-    "missing measured row for route.navigation"
-  ],
-  "allPass": false
+  "errors": [],
+  "allPass": true
 }

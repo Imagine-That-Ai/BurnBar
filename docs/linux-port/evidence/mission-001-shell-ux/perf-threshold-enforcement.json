@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T03:15:05.273Z",
+  "generatedAt": "2026-07-08T08:56:36.761Z",
   "runner": "linux-desktop-packaged-runtime-perf-v3",
   "baselinePolicy": {
     "name": "current-threshold-enforced-until-baseline",
@@ -18,12 +18,12 @@
     },
     {
       "name": "route.navigation",
-      "currentMs": null,
+      "currentMs": 2,
       "thresholdMs": 120,
-      "sampleCount": 0,
-      "source": "missing-packaged-runtime-sample",
-      "thresholdPass": false,
-      "trendPass": false
+      "sampleCount": 34,
+      "source": "packaged-tauri-runtime-samples:packaged-ui-route:account,packaged-ui-route:activity,packaged-ui-route:chat,packaged-ui-route:database,packaged-ui-route:insights,packaged-ui-route:memory,packaged-ui-route:missions,packaged-ui-route:onboarding,packaged-ui-route:overview,packaged-ui-route:pet,packaged-ui-route:projects,packaged-ui-route:providers,packaged-ui-route:settings,packaged-ui-route:support,packaged-ui-route:text-expansion,packaged-ui-route:updates",
+      "thresholdPass": true,
+      "trendPass": true
     },
     {
       "name": "ipc.health.roundtrip",
@@ -89,9 +89,7 @@
       "trendPass": true
     }
   ],
-  "pass": false,
-  "errors": [
-    "missing measured row for route.navigation"
-  ],
+  "pass": true,
+  "errors": [],
   "note": "Mission-001 has no durable multi-run Linux history yet; trend enforcement is fail-closed to current threshold rows."
 }
