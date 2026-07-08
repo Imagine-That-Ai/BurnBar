@@ -110,7 +110,7 @@ public struct PinnedAgentGridConfig: Codable, Sendable, Hashable {
         if lastRearrangedAt == nil,
            trimmed == Self.legacyDefaultPinnedURIsBeforeDroidForge {
             // Keep untouched legacy defaults aligned with the current built-in runtime set.
-            trimmed = Self.defaultPinnedURIs
+            trimmed = Array(Self.defaultPinnedURIs.prefix(Self.maxSlots))
         }
         return PinnedAgentGridConfig(
             pinnedURIs: trimmed,
