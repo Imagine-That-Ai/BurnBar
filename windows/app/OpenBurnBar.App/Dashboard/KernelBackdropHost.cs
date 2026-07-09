@@ -5,7 +5,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using OpenBurnBar.App.Diagnostics;
-using OpenBurnBar.App.Theme;
 using Path = System.IO.Path;
 
 namespace OpenBurnBar.App.Dashboard;
@@ -217,11 +216,6 @@ public sealed class KernelBackdropHost : IDisposable
         }
 
         _ = ExecuteScriptAsync(KernelBackdropBridge.SetBackdropActiveScript(active));
-    }
-
-        var env = LiquidGlassEnvironment.Current;
-        string kernel = env.GetString(KernelBackdropPreferences.KernelKey, KernelCatalog.DefaultId);
-        SetKernel(kernel);
     }
 
     private void OnNavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
