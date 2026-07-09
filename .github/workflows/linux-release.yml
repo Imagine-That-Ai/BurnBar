@@ -69,6 +69,12 @@ jobs:
           bash -c "git config --global --add safe.directory /workspace &&
           node scripts/linux-port/smoke-linux-packages.mjs"
 
+      - name: Take ownership of container-generated release evidence
+        # The build/smoke containers run as root and create artifacts/ + sidecars/
+        # owned by root; the later runner steps (attest, publish) write next to
+        # those files, so hand ownership back to the runner user first.
+        run: sudo chown -R "$(id -u):$(id -g)" docs/linux-port/evidence/mission-001-release
+
       - name: Restore SPM resolved files mutated by the Linux build
         # The container Linux build deterministically re-resolves and drops the
         # macOS-only sqlcipher.swift pin, mutating the tracked Package.resolved.
