@@ -6,6 +6,7 @@ import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import type { GatewayProxyRequest, LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useShellStore } from '../../state/shellStore.js';
+import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
 import { ChatSurface } from './ChatSurface.js';
 
 function mockBridge(handlers: {
@@ -18,6 +19,7 @@ function mockBridge(handlers: {
   const bridge: LinuxShellBridge = {
     ...bridgeStubDefaults,
     daemonHealth: async () => ({ ok: true }),
+    runtimeCapabilities: availableRuntimeCapabilities,
     openDashboard: async () => {},
     quitApp: async () => {},
     trayDegraded: async () => false,

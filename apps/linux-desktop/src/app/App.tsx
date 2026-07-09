@@ -49,7 +49,7 @@ export function App() {
       if (!isComputerUsePanicHotkey(event)) return;
       if (!bridge?.computerUsePanicHalt) return;
       event.preventDefault();
-      void bridge.computerUsePanicHalt('*', 'hotkey').catch((error) => {
+      void bridge.computerUsePanicHalt({ sessionId: '*', source: 'hotkey' }).catch((error) => {
         console.error('computer_use_panic_hotkey_failed', error);
       });
     };

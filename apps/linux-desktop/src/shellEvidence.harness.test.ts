@@ -249,7 +249,9 @@ describe('shell evidence harness', () => {
       capture: 'Verified from app.css plus applyReducedMotionClass contract; browser/desktop screenshots are collected by the packaged session.'
     };
     expect(tokenDiff.changed).toEqual(expect.arrayContaining(['--color-ink-void', '--color-brass-core']));
-    expect(stateKinds).toEqual(new Set(['daemon-backed', 'settings-failure', 'local-crud', 'pet-runtime']));
+    expect(stateKinds).toEqual(
+      new Set(['daemon-backed', 'honest-empty', 'settings-failure', 'local-crud', 'pet-runtime'])
+    );
     expect(reducedMotion.cssRulePresent).toBe(true);
 
     const visualMatrix = {

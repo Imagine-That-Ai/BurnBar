@@ -9,6 +9,7 @@ on:
       - "apps/linux-desktop/**"
       - "docs/linux-port/**"
       - "packaging/linux/**"
+      - "schemas/linux-runtime-capability-manifest.schema.json"
       - "scripts/linux-port/**"
       - "tools/linux-toolchain/**"
       - "OpenBurnBarCore/**"
@@ -79,7 +80,9 @@ jobs:
       - name: Verify Linux workflow wiring
         run: |
           node scripts/linux-port/verify-linux-workflow-wiring.mjs
-          node --test scripts/linux-port/verify-linux-workflow-wiring.test.mjs
+          node --test \
+            scripts/linux-port/verify-linux-workflow-wiring.test.mjs \
+            scripts/linux-port/runtime-capability-contract.test.mjs
 
       - name: Install Linux desktop dependencies
         run: npm ci --prefix apps/linux-desktop

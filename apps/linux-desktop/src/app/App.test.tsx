@@ -22,6 +22,8 @@ function resetShell(): void {
     skin: 'editorial',
     bridge: null,
     bridgeReady: true,
+    runtimeCapabilities: null,
+    capabilityError: null,
     fixtureMode: false
   });
 }
@@ -197,7 +199,6 @@ describe('App shell', () => {
     });
     expect(useShellStore.getState().route).toBe('memory');
   });
-
   it('fires daemon-wide Computer Use panic from the emergency hotkey', async () => {
     const computerUsePanicHalt = vi.fn().mockResolvedValue({
       sessionId: '*',
@@ -221,7 +222,7 @@ describe('App shell', () => {
     });
 
     await waitFor(() => {
-      expect(computerUsePanicHalt).toHaveBeenCalledWith('*', 'hotkey');
+      expect(computerUsePanicHalt).toHaveBeenCalledWith({ sessionId: '*', source: 'hotkey' });
     });
   });
 });

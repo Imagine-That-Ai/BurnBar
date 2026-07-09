@@ -14,6 +14,10 @@ import type {
   MissionCreateInput,
   MissionListResult
 } from '../tauriBridge.js';
+import {
+  RUNTIME_CAPABILITY_IDS,
+  type RuntimeCapabilityManifest
+} from '../runtimeCapabilities.js';
 
 // Shared honest-empty defaults for full-shape LinuxShellBridge test mocks.
 // Each lane that extends the bridge contract adds its members here once,
@@ -106,7 +110,43 @@ export const emptyComputerUsePanicHalt = (): Promise<ComputerUsePanicHaltResult>
     source: 'hotkey'
   });
 
+export const makeAvailableRuntimeCapabilityManifest = (): RuntimeCapabilityManifest => ({
+    schemaVersion: 1,
+    catalogVersion: 'test',
+    shellVersion: 'test',
+    daemonVersion: 'test',
+    daemonProtocolVersion: 1,
+    sessionType: 'x11',
+    desktop: 'test',
+    capabilities: RUNTIME_CAPABILITY_IDS.map((id) => ({
+      id,
+      domain:
+        id === 'updates.install'
+          ? 'delivery'
+          : id.startsWith('secrets.') || id === 'native.external-billing'
+            ? 'security'
+            : id.startsWith('computer-use.') ||
+                id === 'media.mercury' ||
+                id === 'smarthub.control' ||
+                id === 'pet.overlay' ||
+                id === 'text-expansion.system' ||
+                id === 'portal.desktop' ||
+                id === 'native.tray' ||
+                id === 'native.notifications'
+              ? 'platform'
+              : 'product',
+      state: 'available',
+      reason: 'Available in the test bridge.',
+      substitute: null,
+      source: 'test-bridge'
+    }))
+  });
+
+export const availableRuntimeCapabilities = (): Promise<RuntimeCapabilityManifest> =>
+  Promise.resolve(makeAvailableRuntimeCapabilityManifest());
+
 export const bridgeStubDefaults = {
+  runtimeCapabilities: availableRuntimeCapabilities,
   gatewayProbe: emptyGatewayProbe,
   gatewayChatStream: emptyGatewayChatStream,
   gatewayChatCancel: emptyGatewayChatCancel,

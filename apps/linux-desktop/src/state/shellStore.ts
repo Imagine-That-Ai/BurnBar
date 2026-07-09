@@ -12,6 +12,7 @@ import { routeFromHash, type ShellRoute } from '../routes.js';
 import { displayLinuxSocketPath } from '../shellPaths.js';
 import { loadShellBridge, type LinuxShellBridge } from '../tauriBridge.js';
 import type { DaemonHealth } from '../daemonClient.js';
+import type { RuntimeCapabilityManifest } from '../runtimeCapabilities.js';
 
 export type ShellSkin = 'editorial' | 'aurora';
 
@@ -66,6 +67,8 @@ export type ShellState = {
   skin: ShellSkin;
   bridge: LinuxShellBridge | null;
   bridgeReady: boolean;
+  runtimeCapabilities: RuntimeCapabilityManifest | null;
+  capabilityError: string | null;
   fixtureMode: boolean;
   setRoute(route: ShellRoute): void;
   syncRouteFromHash(): void;
@@ -99,6 +102,8 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   skin: readPersistedSkin(),
   bridge: null,
   bridgeReady: false,
+  runtimeCapabilities: null,
+  capabilityError: null,
   fixtureMode: false,
 
   setRoute(route) {
@@ -172,10 +177,31 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   async boot() {
     set({ fixtureMode: isDaemonFixtureMode() });
     const bridge = await loadShellBridge();
-    set({ bridge, bridgeReady: true });
-    if (bridge) {
-      const trayDegraded = await bridge.trayDegraded();
-      set({ trayDegraded });
+    if (!bridge) {
+      set({
+        bridge: null,
+        bridgeReady: true,
+        runtimeCapabilities: null,
+        capabilityError: null
+      });
+    } else {
+      const [manifestResult, trayResult] = await Promise.allSettled([
+        bridge.runtimeCapabilities(),
+        bridge.trayDegraded()
+      ]);
+      set({
+        bridge,
+        bridgeReady: true,
+        runtimeCapabilities:
+          manifestResult.status === 'fulfilled' ? manifestResult.value : null,
+        capabilityError:
+          manifestResult.status === 'rejected'
+            ? manifestResult.reason instanceof Error
+              ? manifestResult.reason.message
+              : 'Runtime capability probe failed.'
+            : null,
+        trayDegraded: trayResult.status === 'fulfilled' ? trayResult.value : true
+      });
     }
     await get().refreshHealth();
     for (const operation of REQUIRED_PERF_OPERATIONS) {

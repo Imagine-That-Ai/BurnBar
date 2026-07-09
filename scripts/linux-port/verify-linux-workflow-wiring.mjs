@@ -56,11 +56,29 @@ export function verifyLinuxWorkflowWiring(input) {
     '/usr/bin/openburnbar-cli'
   ]) requireText(input.rustBridge, command, 'native external URL boundary');
   for (const command of [
+    'runtime_capabilities',
+    'RUNTIME_CAPABILITY_CATALOG',
+    'runtime_capability_unknown_evaluator'
+  ]) requireText(input.rustBridge, command, 'native runtime capability contract');
+  for (const command of [
     "invoke<boolean>('gateway_probe')",
     "invoke<void>('gateway_chat_stream'",
     "invoke<void>('gateway_chat_cancel'",
     "invoke<void>('open_external_url'"
   ]) requireText(input.rendererBridge, command, 'renderer native gateway bridge');
+  for (const command of [
+    "invoke<RawJsonValue>('runtime_capabilities')",
+    'decodeRuntimeCapabilityManifest',
+    'runtime_capability_manifest_missing_ids'
+  ]) requireText(input.rendererBridge, command, 'renderer runtime capability contract');
+  for (const command of ['requiredCapability', 'usage.read', 'media.mercury']) {
+    requireText(input.routes, command, 'route capability mapping');
+  }
+  for (const command of ['capabilityBlocksSurface', 'findRuntimeCapability', 'capabilityError']) {
+    requireText(input.surfaceBoundary, command, 'surface capability boundary');
+  }
+  requireText(input.runtimeCatalog, '"schemaVersion": 1', 'runtime capability catalog');
+  requireText(input.runtimeSchema, '"additionalProperties": false', 'runtime capability schema');
   requireText(input.capability, '"core:default"', 'Tauri capability');
   requireText(input.fixturePolicy, 'DAEMON_FIXTURE_AVAILABLE', 'production fixture policy');
   requireText(input.fixturePolicy, "enabled && DAEMON_FIXTURE_AVAILABLE", 'fixture state guard');
@@ -134,8 +152,13 @@ function main() {
       read('apps/linux-desktop/src/surfaces/support/SupportSurface.tsx')
     ].join('\n'),
     desktopPackage: read('apps/linux-desktop/package.json'),
+    runtimeCatalog: read('packaging/linux/runtime-capability-catalog.json'),
+    runtimeSchema: read('schemas/linux-runtime-capability-manifest.schema.json'),
+    routes: read('apps/linux-desktop/src/routes.ts'),
+    surfaceBoundary: read('apps/linux-desktop/src/surfaces/SurfaceRouter.tsx'),
     rendererBridge: [
       read('apps/linux-desktop/src/tauriBridge.ts'),
+      read('apps/linux-desktop/src/runtimeCapabilities.ts'),
       read('apps/linux-desktop/src/state/chatStore.ts'),
       read('apps/linux-desktop/src/chat/gatewayClient.ts')
     ].join('\n')

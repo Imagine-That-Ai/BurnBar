@@ -1,5 +1,9 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import type { DaemonHealth } from './daemonClient.js';
+import {
+  decodeRuntimeCapabilityManifest,
+  type RuntimeCapabilityManifest
+} from './runtimeCapabilities.js';
 import { ENTITLEMENT_DOC_IDS, evaluateEntitlement } from '@openburnbar/entitlements';
 
 // ─────────────────────────── P01: usage summary ───────────────────────────
@@ -479,6 +483,7 @@ export type GatewayProxyRequest = {
 
 export interface LinuxShellBridge {
   daemonHealth(): Promise<DaemonHealth>;
+  runtimeCapabilities(): Promise<RuntimeCapabilityManifest>;
   gatewayProbe(): Promise<boolean>;
   gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
   gatewayChatCancel(requestId: string): Promise<void>;
@@ -539,6 +544,20 @@ export interface LinuxShellBridge {
   notificationConfigUpdate?(config: NotificationConfig): Promise<NotificationConfig>;
   notificationHealth?(): Promise<NotificationHealth>;
   notificationCommand?(command: string, args?: string[]): Promise<NotificationCommandResult>;
+  toolApprovalRespond?(
+    approvalId: string,
+    decision: 'approve' | 'reject' | 'cancel',
+    note?: string
+  ): Promise<void>;
+  memorySetStatus?(
+    action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
+    payload: Record<string, unknown>
+  ): Promise<unknown>;
+  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
+  computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
   sessionEnv(): Promise<SessionEnv>;
   mediaStatus(): Promise<MercuryMediaStatus>;
   mediaSessionState(): Promise<MercuryMediaSessionState>;
@@ -552,7 +571,10 @@ export interface LinuxShellBridge {
     request: MercuryFileTransferActionRequest & { reason?: string }
   ): Promise<MercuryFileTransferActionResponse>;
   mediaFileSend(request: MercuryFileTransferSendRequest): Promise<MercuryFileTransferActionResponse>;
-  computerUsePanicHalt(sessionId?: string, source?: ComputerUsePanicSource): Promise<ComputerUsePanicHaltResult>;
+  computerUsePanicHalt(params?: {
+    sessionId?: string;
+    source?: ComputerUsePanicSource;
+  }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
 }
 
@@ -1574,6 +1596,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
   }
   return {
     daemonHealth: () => invoke<DaemonHealth>('daemon_health'),
+    runtimeCapabilities: async () =>
+      decodeRuntimeCapabilityManifest(await invoke<RawJsonValue>('runtime_capabilities')),
     gatewayProbe: () => invoke<boolean>('gateway_probe'),
     gatewayChatStream: (request, onChunk) => {
       const onEvent = new Channel<string>();
@@ -1725,10 +1749,20 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('memory_review_inbox');
       return mapMemoryReviewInbox(raw);
     },
-    // P07 — daemon.memory.forget; daemon has no approve/reject review-row RPC on Linux.
+    // P07 — reject maps to forget. Approval requires the real memory body and
+    // must use memorySetStatus; never invent an approved placeholder here.
     memoryReviewDecision: async (id, decision) => {
       if (decision === 'rejected') {
-        await invoke<RawJsonValue>('memory_forget', { memoryId: id });
+        await invoke<RawJsonValue>('memory_set_status', {
+          action: 'reject',
+          payload: { memoryID: id }
+        });
+        return;
+      }
+      if (decision === 'approved') {
+        throw new Error(
+          'memoryReviewDecision cannot approve without body text; use memorySetStatus({ text }) from the store.'
+        );
       }
     },
     // P07 — daemon.code.index_status + explore + diagnostics + ops_diagnostics
@@ -1921,7 +1955,27 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         throw e;
       }
     },
-    computerUsePanicHalt: async (sessionId = '*', source = 'hotkey') => {
+    toolApprovalRespond: async (approvalId, decision, note) => {
+      await invoke<RawJsonValue>('tool_approval_respond', {
+        approvalId,
+        decision,
+        note: note ?? null
+      });
+    },
+    memorySetStatus: (action, payload) =>
+      invoke<RawJsonValue>('memory_set_status', { action, payload }),
+    computerUseSessionStart: (params) =>
+      invoke<RawJsonValue>('computer_use_session_start', { params }),
+    computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
+    computerUseApprovalPending: (params) =>
+      invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
+    computerUseApprovalRespond: (params) =>
+      invoke<RawJsonValue>('computer_use_approval_respond', { params }),
+    computerUseAuditExport: (params) =>
+      invoke<RawJsonValue>('computer_use_audit_export', { params: params ?? null }),
+    computerUsePanicHalt: async (params) => {
+      const sessionId = params?.sessionId ?? '*';
+      const source = params?.source ?? 'hotkey';
       const raw = await invoke<RawJsonValue>('computer_use_panic_halt', { sessionId, source });
       return mapComputerUsePanicHalt(raw, source);
     },
