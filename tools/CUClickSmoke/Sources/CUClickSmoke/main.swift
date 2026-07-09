@@ -2,15 +2,106 @@ import Foundation
 import AppKit
 import ApplicationServices
 import CoreGraphics
-import OpenBurnBarComputerUseCore
 
 // MARK: - MacInputController (inlined copy from AgentLens)
 //
 // This CLI is a SwiftPM executable, so it cannot link the AgentLens
 // Xcode target where the real `MacInputController` lives. We inline
-// the minimum subset needed for the smoke test and delegate the
-// virtual-key map + display bounds to `OpenBurnBarComputerUseCore.MacInputCore`
-// (same source of truth the AgentLens version uses).
+// the minimum subset needed for the smoke test.
+
+enum MacInputCore {
+    struct DisplayBounds {
+        let originX: Int
+        let originY: Int
+        let width: Int
+        let height: Int
+    }
+
+    enum Modifier {
+        case command
+        case alternate
+        case control
+        case shift
+        case function
+    }
+
+    static func contains(point: (Int, Int), displays: [DisplayBounds]) -> Bool {
+        displays.contains { display in
+            point.0 >= display.originX
+                && point.0 < display.originX + display.width
+                && point.1 >= display.originY
+                && point.1 < display.originY + display.height
+        }
+    }
+
+    static func modifiers(for raw: [String]) -> Set<Modifier> {
+        var output = Set<Modifier>()
+        for value in raw.map({ $0.lowercased() }) {
+            switch value {
+            case "cmd", "command", "meta": output.insert(.command)
+            case "alt", "option", "alternate": output.insert(.alternate)
+            case "ctrl", "control": output.insert(.control)
+            case "shift": output.insert(.shift)
+            case "fn", "function": output.insert(.function)
+            default: continue
+            }
+        }
+        return output
+    }
+
+    static func virtualKey(for name: String) -> UInt16? {
+        let normalized = name.lowercased()
+        if normalized.count == 1, let scalar = normalized.unicodeScalars.first {
+            switch scalar {
+            case "a": return 0x00
+            case "b": return 0x0B
+            case "c": return 0x08
+            case "d": return 0x02
+            case "e": return 0x0E
+            case "f": return 0x03
+            case "g": return 0x05
+            case "h": return 0x04
+            case "i": return 0x22
+            case "j": return 0x26
+            case "k": return 0x28
+            case "l": return 0x25
+            case "m": return 0x2E
+            case "n": return 0x2D
+            case "o": return 0x1F
+            case "p": return 0x23
+            case "q": return 0x0C
+            case "r": return 0x0F
+            case "s": return 0x01
+            case "t": return 0x11
+            case "u": return 0x20
+            case "v": return 0x09
+            case "w": return 0x0D
+            case "x": return 0x07
+            case "y": return 0x10
+            case "z": return 0x06
+            case "0": return 0x1D
+            case "1": return 0x12
+            case "2": return 0x13
+            case "3": return 0x14
+            case "4": return 0x15
+            case "5": return 0x17
+            case "6": return 0x16
+            case "7": return 0x1A
+            case "8": return 0x1C
+            case "9": return 0x19
+            default: break
+            }
+        }
+        switch normalized {
+        case "space": return 0x31
+        case "escape", "esc": return 0x35
+        case "return", "enter": return 0x24
+        case "tab": return 0x30
+        case "delete", "backspace": return 0x33
+        default: return nil
+        }
+    }
+}
 
 enum CUClickSmokeError: Error, CustomStringConvertible {
     case accessibilityDenied(promptShown: Bool)
@@ -23,6 +114,11 @@ enum CUClickSmokeError: Error, CustomStringConvertible {
     case textEditLaunchFailed
     case textEditProcessMissing
     case textEditResultMismatch(run: Int, path: String, reason: String)
+    case openBurnBarAppMissing(String)
+    case openBurnBarLaunchFailed(String)
+    case openBurnBarProcessMissing(String)
+    case openBurnBarAXReadinessTimeout(String)
+    case screenshotFailed(String)
 
     var description: String {
         switch self {
@@ -39,6 +135,16 @@ enum CUClickSmokeError: Error, CustomStringConvertible {
         case .textEditProcessMissing: return "textedit_process_missing"
         case .textEditResultMismatch(let run, let path, let reason):
             return "textedit_result_mismatch(run=\(run), path=\(path), reason=\(reason))"
+        case .openBurnBarAppMissing(let path):
+            return "openburnbar_app_missing(path=\(path))"
+        case .openBurnBarLaunchFailed(let path):
+            return "openburnbar_launch_failed(path=\(path))"
+        case .openBurnBarProcessMissing(let path):
+            return "openburnbar_process_missing(path=\(path))"
+        case .openBurnBarAXReadinessTimeout(let details):
+            return "openburnbar_ax_readiness_timeout(\(details))"
+        case .screenshotFailed(let path):
+            return "screenshot_failed(path=\(path))"
         }
     }
 }
@@ -60,6 +166,18 @@ func axTrusted(prompt: Bool) -> Bool {
     let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
     let options: [String: Any] = [key: prompt]
     return AXIsProcessTrustedWithOptions(options as CFDictionary)
+}
+
+func screenCaptureTrusted() -> Bool {
+    CGPreflightScreenCaptureAccess()
+}
+
+func jsonBool(_ value: Bool) -> String {
+    value ? "true" : "false"
+}
+
+func printPermissionProbe() {
+    print("{\"axTrusted\":\(jsonBool(axTrusted(prompt: false))),\"screenCapture\":\(jsonBool(screenCaptureTrusted()))}")
 }
 
 func clickAt(x: Int, y: Int, button: Int = 0) throws -> Double {
@@ -404,23 +522,229 @@ func runTextEditScenario(runs: Int) throws {
     }
 }
 
+struct AXSnapshot {
+    var roles: Set<String> = []
+    var texts: Set<String> = []
+    var elementCount = 0
+
+    var summary: String {
+        let roleList = roles.sorted().prefix(10).joined(separator: "|")
+        let textList = texts.sorted().prefix(10).joined(separator: "|")
+        return "elements=\(elementCount), roles=\(roleList), texts=\(textList)"
+    }
+}
+
+func stringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+          let string = value as? String else {
+        return nil
+    }
+    let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+func snapshotAXTree(root: AXUIElement, maxDepth: Int = 8, maxElements: Int = 900) -> AXSnapshot {
+    var snapshot = AXSnapshot()
+    var seen = Set<CFHashCode>()
+
+    func collect(_ element: AXUIElement, depth: Int) {
+        if depth > maxDepth || snapshot.elementCount >= maxElements { return }
+        let key = CFHash(element)
+        if seen.contains(key) { return }
+        seen.insert(key)
+        snapshot.elementCount += 1
+
+        if let role = stringAttribute(element, kAXRoleAttribute) {
+            snapshot.roles.insert(role)
+        }
+        for attribute in [
+            kAXTitleAttribute,
+            kAXDescriptionAttribute,
+            kAXHelpAttribute,
+            kAXRoleDescriptionAttribute,
+            kAXIdentifierAttribute,
+            kAXValueAttribute
+        ] {
+            if let text = stringAttribute(element, attribute) {
+                snapshot.texts.insert(text)
+            }
+        }
+
+        var children: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children) == .success,
+           let elements = children as? [AXUIElement] {
+            for child in elements {
+                collect(child, depth: depth + 1)
+            }
+        }
+    }
+
+    collect(root, depth: 0)
+    return snapshot
+}
+
+func runningOpenBurnBarApp(appURL: URL) -> NSRunningApplication? {
+    let standardized = appURL.standardizedFileURL
+    return NSWorkspace.shared.runningApplications.first { app in
+        if app.bundleIdentifier == "com.openburnbar.app" { return true }
+        if let bundleURL = app.bundleURL?.standardizedFileURL, bundleURL == standardized { return true }
+        return false
+    }
+}
+
+@discardableResult
+func launchOpenBurnBar(appURL: URL) throws -> NSRunningApplication {
+    guard FileManager.default.fileExists(atPath: appURL.path) else {
+        throw CUClickSmokeError.openBurnBarAppMissing(appURL.path)
+    }
+
+    if let existing = runningOpenBurnBarApp(appURL: appURL) {
+        existing.activate(options: [.activateAllWindows])
+        return existing
+    }
+
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    process.arguments = [appURL.path]
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        throw CUClickSmokeError.openBurnBarLaunchFailed(appURL.path)
+    }
+
+    let deadline = Date().addingTimeInterval(20)
+    while Date() < deadline {
+        if let app = runningOpenBurnBarApp(appURL: appURL) {
+            app.activate(options: [.activateAllWindows])
+            return app
+        }
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.2))
+    }
+    throw CUClickSmokeError.openBurnBarProcessMissing(appURL.path)
+}
+
+func systemUIServerStatusItemSnapshot() -> AXSnapshot {
+    guard let systemUIServer = NSWorkspace.shared.runningApplications.first(where: {
+        $0.bundleIdentifier == "com.apple.systemuiserver"
+    }) else {
+        return AXSnapshot()
+    }
+    return snapshotAXTree(root: AXUIElementCreateApplication(systemUIServer.processIdentifier), maxDepth: 10, maxElements: 1_500)
+}
+
+func containsOpenBurnBarStatusItem(_ snapshot: AXSnapshot) -> Bool {
+    snapshot.texts.contains { text in
+        text.localizedCaseInsensitiveContains("OpenBurnBar")
+    }
+}
+
+func containsOpenBurnBarDashboardRoot(_ snapshot: AXSnapshot) -> Bool {
+    let hasApplicationRoot = snapshot.roles.contains(kAXApplicationRole as String)
+    let hasWindow = snapshot.roles.contains(kAXWindowRole as String)
+    let hasKnownRootText = snapshot.texts.contains { text in
+        let lowercased = text.lowercased()
+        return lowercased.contains("openburnbar")
+            || lowercased.contains("dashboard")
+            || lowercased.contains("burn")
+            || lowercased.contains("hermes")
+            || lowercased.contains("settings")
+    }
+    return hasApplicationRoot && (hasWindow || hasKnownRootText)
+}
+
+func captureScreenshot(path: String) throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    process.arguments = ["-x", path]
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        throw CUClickSmokeError.screenshotFailed(path)
+    }
+}
+
+func runOpenBurnBarScenario(appPath: String, evidencePath: String?) throws {
+    if !axTrusted(prompt: false) {
+        let promptShown = !axTrusted(prompt: true)
+        throw CUClickSmokeError.accessibilityDenied(promptShown: promptShown)
+    }
+
+    let appURL = URL(fileURLWithPath: appPath, isDirectory: true)
+    let app = try launchOpenBurnBar(appURL: appURL)
+    defer {
+        app.terminate()
+        let deadline = Date().addingTimeInterval(4)
+        while !app.isTerminated && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        if !app.isTerminated {
+            app.forceTerminate()
+        }
+    }
+
+    var lastAppSnapshot = AXSnapshot()
+    var lastStatusSnapshot = AXSnapshot()
+    let deadline = Date().addingTimeInterval(30)
+    while Date() < deadline {
+        app.activate(options: [.activateAllWindows])
+        lastAppSnapshot = snapshotAXTree(root: AXUIElementCreateApplication(app.processIdentifier))
+        lastStatusSnapshot = systemUIServerStatusItemSnapshot()
+
+        let hasRoot = containsOpenBurnBarDashboardRoot(lastAppSnapshot)
+        let hasStatusItem = containsOpenBurnBarStatusItem(lastStatusSnapshot)
+        if hasRoot || hasStatusItem {
+            print("[cu-click-smoke] openburnbar AX ready root=\(hasRoot) statusItem=\(hasStatusItem)")
+            print("[cu-click-smoke] openburnbar app snapshot \(lastAppSnapshot.summary)")
+            if let evidencePath {
+                try captureScreenshot(path: evidencePath)
+                print("[cu-click-smoke] openburnbar screenshot=\(evidencePath)")
+            }
+            return
+        }
+
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.25))
+    }
+
+    throw CUClickSmokeError.openBurnBarAXReadinessTimeout(
+        "app{\(lastAppSnapshot.summary)} systemuiserver{\(lastStatusSnapshot.summary)}"
+    )
+}
+
 // MARK: - main
 
 let args = CommandLine.arguments
+if args.contains("--probe-permissions") {
+    printPermissionProbe()
+    exit(0)
+}
+
 let runs = args.firstIndex(of: "--runs").flatMap { index -> Int? in
     guard args.count > index + 1 else { return nil }
     return Int(args[index + 1])
 } ?? 1
 
+func argumentValue(_ name: String) -> String? {
+    guard let index = args.firstIndex(of: name), args.count > index + 1 else { return nil }
+    return args[index + 1]
+}
+
 if let scenarioIndex = args.firstIndex(of: "--scenario"), args.count > scenarioIndex + 1 {
     let scenario = args[scenarioIndex + 1]
     print("[cu-click-smoke] AXIsProcessTrusted=\(axTrusted(prompt: false))")
+    print("[cu-click-smoke] CGPreflightScreenCaptureAccess=\(screenCaptureTrusted())")
     do {
         switch scenario {
         case "calculator":
             try runCalculatorScenario(runs: runs)
         case "textedit":
             try runTextEditScenario(runs: runs)
+        case "openburnbar":
+            guard let appPath = argumentValue("--app-path") else {
+                print("[cu-click-smoke] FAIL openburnbar_missing_app_path")
+                exit(4)
+            }
+            try runOpenBurnBarScenario(appPath: appPath, evidencePath: argumentValue("--evidence-path"))
         default:
             print("[cu-click-smoke] FAIL unknown_scenario=\(scenario)")
             exit(4)
