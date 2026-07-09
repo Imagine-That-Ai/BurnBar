@@ -263,8 +263,27 @@ export type MembershipStatus = {
 export type AppVersionInfo = {
   shellVersion: string;
   daemonVersion: string;
-  packageChannel: 'deb' | 'appimage' | 'unknown';
-  updateCheck: string;
+  packageChannel: 'deb' | 'rpm' | 'appimage' | 'unknown';
+  /** Legacy fixture field. Live update truth comes from updateStatus(). */
+  updateCheck?: string;
+};
+export type LinuxUpdateArtifact = {
+  type: 'appimage' | 'deb' | 'rpm' | 'daemon';
+  architecture: 'aarch64' | 'x86_64';
+  url: string;
+  sha256: string;
+  size: number;
+  signatureUrl: string;
+};
+export type LinuxUpdateStatus = {
+  state: 'current' | 'available' | 'unavailable' | 'invalid';
+  currentVersion: string;
+  latestVersion?: string;
+  channel?: 'stable' | 'prerelease' | 'nightly';
+  publishedAt?: string;
+  notes?: string;
+  artifact?: LinuxUpdateArtifact;
+  reason?: string;
 };
 export type DiagnosticsExport = { path: string };
 
@@ -516,8 +535,10 @@ export interface LinuxShellBridge {
   membershipStatus?(): Promise<MembershipStatus>;
   membershipCheckoutUrl?(): Promise<string>;
   openExternalUrl?(url: string): Promise<void>;
+  openUpdateUrl?(url: string): Promise<void>;
   membershipRestore?(): Promise<void>;
   appVersionInfo(): Promise<AppVersionInfo>;
+  updateStatus?(): Promise<LinuxUpdateStatus>;
   exportDiagnostics(): Promise<DiagnosticsExport>;
   configUpdate?(snapshot: ConfigSnapshot): Promise<ConfigSnapshot>;
   providerCredentialSlotUpsert?(params: {
@@ -599,6 +620,12 @@ function str(v: RawJsonValue, fallback = ''): string {
 
 function arr(v: RawJsonValue): RawJsonValue[] {
   return Array.isArray(v) ? v : [];
+}
+
+function obj(v: RawJsonValue): Record<string, RawJsonValue> {
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? v as Record<string, RawJsonValue>
+    : {};
 }
 
 function pick(v: RawJsonValue, ...keys: string[]): RawJsonValue {
@@ -1212,8 +1239,51 @@ function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {
   return {
     shellVersion: str(pick(raw, 'shellVersion', 'shell_version')),
     daemonVersion: str(pick(raw, 'daemonVersion', 'daemon_version')),
-    packageChannel: normalizeChannel(str(pick(raw, 'packageChannel', 'package_channel'), 'unknown')),
-    updateCheck: 'unavailable-in-shell'
+    packageChannel: normalizeChannel(str(pick(raw, 'packageChannel', 'package_channel'), 'unknown'))
+  };
+}
+
+function mapUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
+  const state = str(pick(raw, 'state'));
+  if (!['current', 'available', 'unavailable', 'invalid'].includes(state)) {
+    throw new Error('Native update check returned an invalid state.');
+  }
+  const artifactRaw = obj(pick(raw, 'artifact'));
+  const artifactType = str(pick(artifactRaw, 'type'));
+  const architecture = str(pick(artifactRaw, 'architecture'));
+  const artifact = Object.keys(artifactRaw).length === 0
+    ? undefined
+    : {
+        type: artifactType as LinuxUpdateArtifact['type'],
+        architecture: architecture as LinuxUpdateArtifact['architecture'],
+        url: str(pick(artifactRaw, 'url')),
+        sha256: str(pick(artifactRaw, 'sha256')),
+        size: num(pick(artifactRaw, 'size')),
+        signatureUrl: str(pick(artifactRaw, 'signatureUrl', 'signature_url'))
+      };
+  if (
+    artifact &&
+    (!['appimage', 'deb', 'rpm', 'daemon'].includes(artifact.type) ||
+      !['aarch64', 'x86_64'].includes(artifact.architecture) ||
+      !artifact.url ||
+      !/^[a-f0-9]{64}$/.test(artifact.sha256) ||
+      artifact.size <= 0 ||
+      !artifact.signatureUrl)
+  ) {
+    throw new Error('Native update check returned invalid artifact metadata.');
+  }
+  const channel = str(pick(raw, 'channel'));
+  return {
+    state: state as LinuxUpdateStatus['state'],
+    currentVersion: str(pick(raw, 'currentVersion', 'current_version')),
+    latestVersion: str(pick(raw, 'latestVersion', 'latest_version')) || undefined,
+    channel: ['stable', 'prerelease', 'nightly'].includes(channel)
+      ? channel as LinuxUpdateStatus['channel']
+      : undefined,
+    publishedAt: str(pick(raw, 'publishedAt', 'published_at')) || undefined,
+    notes: str(pick(raw, 'notes')) || undefined,
+    artifact,
+    reason: str(pick(raw, 'reason')) || undefined
   };
 }
 
@@ -1352,6 +1422,7 @@ function mapNotificationCommand(raw: RawJsonValue): NotificationCommandResult {
 function normalizeChannel(s: string): AppVersionInfo['packageChannel'] {
   const lower = s.toLowerCase();
   if (lower.includes('deb')) return 'deb';
+  if (lower.includes('rpm')) return 'rpm';
   if (lower.includes('appimage') || lower.includes('app-image')) return 'appimage';
   return 'unknown';
 }
@@ -1796,6 +1867,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       return mapMembershipCheckoutUrl(raw);
     },
     openExternalUrl: (url) => invoke<void>('open_external_url', { url }),
+    openUpdateUrl: (url) => invoke<void>('open_update_url', { url }),
     // P10 — daemon-side restore hook; callers re-fetch status afterwards.
     membershipRestore: async () => {
       await invoke<RawJsonValue>('membership_restore');
@@ -1804,6 +1876,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     appVersionInfo: async () => {
       const raw = await invoke<RawJsonValue>('app_version_info');
       return mapAppVersionInfo(raw);
+    },
+    updateStatus: async () => {
+      const raw = await invoke<RawJsonValue>('update_status');
+      return mapUpdateStatus(raw);
     },
     // P09 — redacted diagnostics export → file path
     exportDiagnostics: async () => {

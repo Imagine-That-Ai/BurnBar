@@ -68,6 +68,13 @@ function valid() {
       'RUNTIME_CAPABILITY_CATALOG',
       'runtime_capability_unknown_evaluator'
     ].join('\n'),
+    updateFeed: [
+      'PINNED_PUBLIC_KEY_SPKI_SHA256',
+      'verify_strict',
+      'validate_update_artifact_url',
+      'allowed_download_url',
+      'MAX_FEED_BYTES'
+    ].join('\n'),
     capability: '{"permissions":["core:default"]}',
     tauriConfig: '{"csp":"connect-src self ipc: tauri:"}',
     fixturePolicy: 'DAEMON_FIXTURE_AVAILABLE\nenabled && DAEMON_FIXTURE_AVAILABLE',
@@ -77,6 +84,8 @@ function valid() {
       "invoke<void>('gateway_chat_stream'",
       "invoke<void>('gateway_chat_cancel'",
       "invoke<void>('open_external_url'",
+      "invoke<RawJsonValue>('update_status')",
+      "invoke<void>('open_update_url'",
       "invoke<RawJsonValue>('runtime_capabilities')",
       'decodeRuntimeCapabilityManifest',
       'runtime_capability_manifest_missing_ids'
@@ -190,6 +199,20 @@ test('runtime capability catalog, evaluator, bridge, route, and boundary drift f
     ['surfaceBoundary', 'capabilityBlocksSurface'],
     ['runtimeCatalog', '"schemaVersion": 1'],
     ['runtimeSchema', '"additionalProperties": false']
+  ]) {
+    const input = valid();
+    input[field] = input[field].replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${field}:${marker}`);
+  }
+});
+
+test('signed update verification and navigation boundaries cannot be removed', () => {
+  for (const [field, marker] of [
+    ['updateFeed', 'PINNED_PUBLIC_KEY_SPKI_SHA256'],
+    ['updateFeed', 'verify_strict'],
+    ['updateFeed', 'validate_update_artifact_url'],
+    ['rendererBridge', "invoke<RawJsonValue>('update_status')"],
+    ['rendererBridge', "invoke<void>('open_update_url'"]
   ]) {
     const input = valid();
     input[field] = input[field].replace(marker, '');

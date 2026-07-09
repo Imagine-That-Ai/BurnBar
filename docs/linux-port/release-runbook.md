@@ -46,6 +46,36 @@ The current first-release update path is blocked until a previous stable or
 prerelease Linux artifact exists. The smoke script records that blocker instead
 of inventing update success.
 
+### In-app update availability
+
+The packaged shell checks update availability through the native Tauri
+`update_status` command. The renderer does not fetch or authenticate release
+metadata. The command:
+
+- fetches the fixed production URL `https://burnbar.ai/latest-linux.json` over
+  HTTPS with bounded redirects, response sizes, and timeouts;
+- verifies the detached Ed25519 signature with the public key compiled from
+  `packaging/linux/openburnbar-linux-ed25519.pub.pem` and checks its pinned SPKI
+  SHA-256 fingerprint;
+- rejects unknown schema/product/platform/channel values, invalid semantic
+  versions, missing architectures, invalid SHA-256 values, downgrade/replay
+  candidates, and non-allowlisted artifact or signature URLs;
+- chooses an artifact only after matching the installed package channel and
+  CPU architecture; and
+- returns typed `current`, `available`, `unavailable`, or `invalid` state to the
+  renderer without exposing unverified feed fields.
+
+Installation remains package-manager native. A validated update action may
+open only an exact first-party BurnBar download path; it never self-mutates
+distro-owned files. Apt/dnf/AppImage upgrade, restart, and rollback instructions
+remain visible in the Updates and Support surfaces.
+
+The public endpoint currently does not satisfy this contract, so the installed
+application correctly reports **Update metadata rejected**. That is valid
+fail-closed client evidence, not release/update closure. Promotion still
+requires a signed two-architecture feed plus prior-version upgrade and rollback
+evidence for every declared package channel.
+
 ## Signatures and provenance
 
 Local signing verifier support is implemented with Ed25519 detached signatures
@@ -113,9 +143,9 @@ the worktree is dirty, the archive is evidence-only and cannot be promoted.
   Sigstore/cosign bundles are absent without release credentials/OIDC.
 - A previous Linux stable/prerelease artifact does not exist, so update/rollback
   smoke cannot pass yet.
+- `https://burnbar.ai/latest-linux.json` does not yet serve the signed,
+  two-architecture schema required by the native verifier.
 - The active checkout is dirty with Linux-port implementation/evidence changes,
   so release metadata cannot bind to a clean release commit.
 - The nightly matrix workflow exists, but current mission evidence does not
   include fresh GitHub artifacts for every named Linux desktop environment.
-- A previous Linux stable/prerelease artifact does not exist, so update/rollback
-  smoke is a first-release blocker.

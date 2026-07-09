@@ -121,7 +121,7 @@ export const makeAvailableRuntimeCapabilityManifest = (): RuntimeCapabilityManif
     capabilities: RUNTIME_CAPABILITY_IDS.map((id) => ({
       id,
       domain:
-        id === 'updates.install'
+        id === 'updates.check' || id === 'updates.install'
           ? 'delivery'
           : id.startsWith('secrets.') || id === 'native.external-billing'
             ? 'security'

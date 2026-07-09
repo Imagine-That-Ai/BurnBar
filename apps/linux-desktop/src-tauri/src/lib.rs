@@ -18,6 +18,7 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_shell::ShellExt;
 
 mod media;
+mod update_feed;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -947,10 +948,21 @@ fn validate_external_url(raw_url: &str) -> Result<String, String> {
 #[tauri::command]
 fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
     let validated = validate_external_url(&url)?;
+    // reason: tauri-plugin-shell retains this Tauri 2 API while the app keeps URL validation native.
     #[allow(deprecated)]
     app.shell()
         .open(validated, None)
         .map_err(|_| "external_url_open_failed".to_string())
+}
+
+#[tauri::command]
+fn open_update_url(app: AppHandle, url: String) -> Result<(), String> {
+    let validated = update_feed::validate_update_artifact_url(&url)?;
+    // reason: tauri-plugin-shell retains this Tauri 2 API while the app keeps URL validation native.
+    #[allow(deprecated)]
+    app.shell()
+        .open(validated, None)
+        .map_err(|_| "update_url_open_failed".to_string())
 }
 
 #[tauri::command]
@@ -1619,9 +1631,15 @@ fn app_version_info() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "shellVersion": shell_version,
         "daemonVersion": daemon_version,
-        "packageChannel": package_channel,
-        "updateCheck": "unavailable-in-shell"
+        "packageChannel": package_channel
     }))
+}
+
+#[tauri::command]
+async fn update_status() -> update_feed::LinuxUpdateStatus {
+    let package_channel =
+        std::env::var("OPENBURNBAR_PACKAGE_CHANNEL").unwrap_or_else(|_| "unknown".to_string());
+    update_feed::check_linux_update(env!("CARGO_PKG_VERSION"), &package_channel).await
 }
 
 // ───────────────── P09: redacted diagnostics export ─────────────────
@@ -2347,6 +2365,7 @@ pub fn run() {
             gateway_chat_stream,
             gateway_chat_cancel,
             open_external_url,
+            open_update_url,
             open_dashboard,
             quit_app,
             tray_degraded,
@@ -2391,6 +2410,7 @@ pub fn run() {
             membership_checkout_url,
             membership_restore,
             app_version_info,
+            update_status,
             export_diagnostics,
             session_env,
             media_status,

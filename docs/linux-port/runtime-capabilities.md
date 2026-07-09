@@ -19,6 +19,13 @@ recoverable error, and the release ledger remains the authority for promotion.
 - `apps/linux-desktop/src/routes.ts` assigns exactly one required capability to
   every route.
 
+Update availability and update installation are intentionally separate
+capabilities. `updates.check` permits the Updates route to mount and invoke the
+native signed-feed verifier. `updates.install` remains unavailable because
+Linux package ownership belongs to apt, dnf, Flatpak, or the AppImage workflow;
+the app shows the native command and rollback guidance instead of mutating
+package-managed files.
+
 The contract test rejects duplicate or unknown IDs, missing route mappings,
 unknown evaluators, schema drift, and removal of either the native or renderer
 boundary:
@@ -56,6 +63,11 @@ not mounted.
 | `x11-overlay` | X11 session supports the constrained overlay tier; other sessions degrade. |
 | `unavailable` | No safe Linux implementation is shipped yet. |
 
+The `always` evaluator for `updates.check` means the native verifier is compiled
+and callable, not that a public release feed is valid or reachable. Feed
+signature, schema, architecture, channel, and version checks can still return a
+typed fail-closed result.
+
 Daemon-backed evaluators establish the shared runtime prerequisite. Individual
 surfaces must continue to probe their feature RPC and display typed errors;
 daemon health alone must not be treated as proof of end-to-end feature parity.
@@ -91,6 +103,10 @@ For each supported desktop environment:
    confirm focus, screen-reader announcement, and 200 percent zoom behavior.
 7. Verify the production bundle contains no fixture data, bearer token, or
    direct loopback networking marker.
+8. Serve current, newer, offline, malformed, unsigned, tampered, replayed,
+   downgrade, wrong-architecture, and wrong-channel update fixtures to a debug
+   build; confirm only a signed newer compatible release enables the first-party
+   download action.
 
 Required commands:
 
