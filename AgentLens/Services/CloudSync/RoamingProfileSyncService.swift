@@ -86,31 +86,15 @@ final class RoamingProfileSyncService: CloudSyncDomain, Sendable {
             circuitBreaker: context.circuitBreaker,
             domain: "roaming_profile"
         ) {
-            try await document.setData(Self.cloudDocument(payload: local, sealedPayload: sealed, uid: uid), merge: true)
+            try await document.setData(
+                CloudVaultCrypto.roamingProfileCloudDocument(payload: local, sealedPayload: sealed, uid: uid),
+                merge: true
+            )
         }
-    }
-
-    private static func cloudDocument(
-        payload: RoamingProfilePayload,
-        sealedPayload: CloudVaultSealedPayload,
-        uid: String
-    ) -> [String: Any] {
-        [
-            "uid": uid,
-            "schemaVersion": 1,
-            "payloadSchemaVersion": payload.schemaVersion,
-            "sourceDeviceID": payload.sourceDeviceID,
-            "updatedAt": payload.updatedAt,
-            "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
-        ]
     }
 
     private static func sealedPayload(from value: Any?) throws -> CloudVaultSealedPayload? {
-        guard let dictionary = value as? [String: Any] else {
-            return nil
-        }
-        let data = try JSONSerialization.data(withJSONObject: dictionary)
-        return try JSONDecoder().decode(CloudVaultSealedPayload.self, from: data)
+        CloudVaultCrypto.sealedPayload(from: value)
     }
 
     private static func isPermissionDenied(_ error: Error) -> Bool {

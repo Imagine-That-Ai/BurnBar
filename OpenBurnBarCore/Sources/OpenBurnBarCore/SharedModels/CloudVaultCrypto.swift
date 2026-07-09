@@ -524,6 +524,21 @@ public enum CloudVaultCrypto {
         return try payload.validatedForCloudVaultSeal()
     }
 
+    public static func roamingProfileCloudDocument(
+        payload: RoamingProfilePayload,
+        sealedPayload: CloudVaultSealedPayload,
+        uid: String
+    ) -> [String: Any] {
+        [
+            "uid": uid,
+            "schemaVersion": 1,
+            "payloadSchemaVersion": payload.schemaVersion,
+            "sourceDeviceID": payload.sourceDeviceID,
+            "updatedAt": payload.updatedAt,
+            "sealedPayload": sealedPayloadDictionary(sealedPayload)
+        ]
+    }
+
     public static func sealedPayloadDictionary(_ envelope: CloudVaultSealedPayload) -> [String: Any] {
         var dict: [String: Any] = [
             "schemaVersion": envelope.schemaVersion,
