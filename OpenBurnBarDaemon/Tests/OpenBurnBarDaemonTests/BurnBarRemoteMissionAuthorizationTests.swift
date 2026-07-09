@@ -17,6 +17,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
         commandsAllowed: Bool = false,
         fileEditsAllowed: Bool = false,
         additionalCapabilities: [String] = [],
+        personaScope: PersonaScopeEnvelope? = nil,
         requestedRuntime: String? = "hermes",
         requestedModelID: String? = nil,
         approvalMode: String? = "existing_policy",
@@ -38,6 +39,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
                 fileEditsAllowed: fileEditsAllowed,
                 additionalCapabilities: additionalCapabilities
             ),
+            personaScope: personaScope,
             approvalMode: approvalMode,
             approvalStatus: approvalStatus,
             approverDeviceID: nil,
@@ -93,7 +95,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
         XCTAssertEqual(response.deniedReason, .untrustedDevice)
     }
 
-    // MARK: - (b) Approval: shared policy semantics, fail-closed
+    // MARK: - (b) Approval: daemon policy + backend consent, fail-closed
 
     func testApprovalVerdictTable() {
         struct Row {
@@ -118,7 +120,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
                 expected: .authorized, expectedReason: nil, note: "approved satisfies manual_all risky"),
             Row(mode: "definitely_unknown", status: "APPROVED", commands: false, fileEdits: false,
                 expected: .authorized, expectedReason: nil, note: "approved satisfies even unknown modes"),
-            // No decision yet: shared policy decides.
+            // No decision yet: daemon-local policy decides.
             Row(mode: "existing_policy", status: nil, commands: false, fileEdits: false,
                 expected: .authorized, expectedReason: nil, note: "read-only existing_policy runs"),
             Row(mode: nil, status: nil, commands: false, fileEdits: false,
@@ -129,7 +131,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
                 expected: .requiresApproval, expectedReason: nil, note: "commands pause"),
             Row(mode: nil, status: nil, commands: false, fileEdits: true,
                 expected: .requiresApproval, expectedReason: nil, note: "file edits pause"),
-            // Unknown approvalMode fails closed inside the SHARED policy.
+            // Unknown approvalMode fails closed inside the daemon policy.
             Row(mode: "auto_yolo", status: nil, commands: false, fileEdits: false,
                 expected: .requiresApproval, expectedReason: nil, note: "unknown mode fails closed"),
             // Unknown approvalStatus strings are treated as no-decision-yet.
@@ -158,6 +160,37 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
                     response.backendDecision,
                     "\(row.note): only authorized verdicts carry a backend decision"
                 )
+            }
+        }
+    }
+
+    func testMacCLIAssistantBackendsRequireConsentBeforeAuthorization() {
+        struct Row {
+            let runtime: String?
+            let expected: BurnBarRemoteMissionAuthorizationVerdict
+            let note: String
+        }
+        let rows: [Row] = [
+            Row(runtime: "hermes", expected: .authorized, note: "Hermes remains local-safe"),
+            Row(runtime: "codex", expected: .requiresApproval, note: "Codex requires backend consent"),
+            Row(runtime: " claude-code ", expected: .requiresApproval, note: "Claude Code alias requires consent"),
+            Row(runtime: "opencode", expected: .requiresApproval, note: "OpenCode requires consent"),
+            Row(runtime: "auto", expected: .requiresApproval, note: "auto may resolve to a CLI assistant"),
+            Row(runtime: nil, expected: .requiresApproval, note: "absent runtime defaults to auto"),
+            Row(runtime: "future-agent", expected: .requiresApproval, note: "unknown runtime fails closed")
+        ]
+        for row in rows {
+            let response = BurnBarRemoteMissionAuthorizationPolicy.evaluate(
+                makeRequest(
+                    requestedRuntime: row.runtime,
+                    approvalMode: "existing_policy",
+                    approvalStatus: nil
+                )
+            )
+            XCTAssertEqual(response.verdict, row.expected, row.note)
+            if response.verdict == .requiresApproval {
+                XCTAssertNotNil(response.grantCeiling, row.note)
+                XCTAssertNil(response.backendDecision, row.note)
             }
         }
     }
@@ -199,7 +232,32 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
         }
     }
 
-    // MARK: - (d) Fan-out cap per entitlement tier, fail-closed
+    func testPersonaScopeAttenuatesGrantCeiling() throws {
+        let personaScope = PersonaScopeEnvelope(
+            agentURI: "agent://burnbar/codex",
+            personaID: "read-only-reviewer",
+            permitShell: false,
+            permitFileEdits: false,
+            appliedAt: Date(timeIntervalSinceReferenceDate: 42)
+        )
+        let response = BurnBarRemoteMissionAuthorizationPolicy.evaluate(
+            makeRequest(
+                commandsAllowed: true,
+                fileEditsAllowed: true,
+                additionalCapabilities: ["shell_unrestricted"],
+                personaScope: personaScope,
+                requestedRuntime: "hermes",
+                approvalStatus: "approved"
+            )
+        )
+        XCTAssertEqual(response.verdict, .authorized)
+        let ceiling = try XCTUnwrap(response.grantCeiling)
+        XCTAssertFalse(ceiling.commandsAllowed)
+        XCTAssertFalse(ceiling.fileEditsAllowed)
+        XCTAssertEqual(ceiling.additionalCapabilities, [])
+    }
+
+    // MARK: - (d) Daemon-trusted fan-out cap, fail-closed
 
     func testFanOutVerdictTable() {
         struct Row {
@@ -209,17 +267,17 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
             let expectedReason: BurnBarRemoteMissionDenialReason?
         }
         let rows: [Row] = [
-            // Caps mirror WandFanOut: free 1 · cloud 3 · pro 8 · ultra 16.
+            // M2 has no daemon-owned entitlement resolver yet, so caller-
+            // supplied tier text cannot widen beyond the trusted free cap.
             Row(tier: "none", requested: 1, expected: .authorized, expectedReason: nil),
             Row(tier: "none", requested: 2, expected: .denied, expectedReason: .fanOutCapExceeded),
-            Row(tier: "cloud", requested: 3, expected: .authorized, expectedReason: nil),
-            Row(tier: "cloud", requested: 4, expected: .denied, expectedReason: .fanOutCapExceeded),
-            Row(tier: "pro", requested: 8, expected: .authorized, expectedReason: nil),
-            Row(tier: "pro", requested: 9, expected: .denied, expectedReason: .fanOutCapExceeded),
-            Row(tier: "ultra", requested: 16, expected: .authorized, expectedReason: nil),
-            Row(tier: "ultra", requested: 17, expected: .denied, expectedReason: .fanOutCapExceeded),
-            Row(tier: " ULTRA ", requested: 16, expected: .authorized, expectedReason: nil),
-            // Unknown tiers fail CLOSED to the free-tier cap of 1.
+            Row(tier: "cloud", requested: 1, expected: .authorized, expectedReason: nil),
+            Row(tier: "cloud", requested: 2, expected: .denied, expectedReason: .fanOutCapExceeded),
+            Row(tier: "pro", requested: 1, expected: .authorized, expectedReason: nil),
+            Row(tier: "pro", requested: 2, expected: .denied, expectedReason: .fanOutCapExceeded),
+            Row(tier: "ultra", requested: 1, expected: .authorized, expectedReason: nil),
+            Row(tier: "ultra", requested: 2, expected: .denied, expectedReason: .fanOutCapExceeded),
+            Row(tier: " ULTRA ", requested: 2, expected: .denied, expectedReason: .fanOutCapExceeded),
             Row(tier: "enterprise-platinum", requested: 2, expected: .denied, expectedReason: .fanOutCapExceeded),
             Row(tier: "", requested: 2, expected: .denied, expectedReason: .fanOutCapExceeded),
             Row(tier: "enterprise-platinum", requested: 1, expected: .authorized, expectedReason: nil),

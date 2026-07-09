@@ -1175,8 +1175,9 @@ public struct BurnBarRemoteMissionAuthorizeRequest: Codable, Hashable, Sendable 
     public let approvalMode: String?
     public let approvalStatus: String?
     public let approverDeviceID: String?
-    /// Entitlement tier wire name: "none" / "cloud" / "pro" / "ultra".
-    /// Unknown values fail closed to the smallest fan-out cap.
+    /// Caller-reported entitlement tier wire name: "none" / "cloud" / "pro" /
+    /// "ultra". Advisory only; daemon authorization must use daemon-trusted
+    /// entitlement state when deciding fan-out authority.
     public let entitlementTier: String
     /// Sibling count of the mission's Wand fan-out group (1 = solo mission).
     public let requestedFanOutCount: Int

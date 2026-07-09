@@ -10,15 +10,15 @@ import OpenBurnBarCore
 //
 //   (a) trust     — the daemon applies its OWN policy over the GUI-reported
 //                   escrow trust state; unknown states are denied.
-//   (b) approval  — ports the GUI listener's semantics, REUSING the shared
-//                   `InsightMissionApprovalPolicy` (unknown approvalMode fails
-//                   closed inside the shared policy).
+//   (b) approval  — ports the GUI listener's pre-dispatch approval and
+//                   backend-consent semantics locally so the daemon owns the
+//                   policy decision on every platform.
 //   (c) ceiling   — the authorized capability grant is never wider than
 //                   requested; unrecognized capability identifiers are denied
 //                   by default (dropped from the ceiling).
-//   (d) fan-out   — the requested Wand fan-out must fit the entitlement
-//                   tier's parallelism cap; unknown tiers fail closed to the
-//                   smallest cap.
+//   (d) fan-out   — the requested Wand fan-out must fit the daemon-trusted
+//                   entitlement cap. Caller-supplied tier text is advisory
+//                   only and never widens authority.
 //
 // Deliberately stateless and synchronous so every verdict branch is table-
 // testable. Peer authentication + `mission_control` capability attenuation
@@ -62,8 +62,9 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
             )
         }
 
-        // (d) Fan-out — malformed counts are invalid; anything over the tier
-        // cap is refused. Unknown tiers fail closed to the smallest cap.
+        // (d) Fan-out — malformed counts are invalid; anything over the
+        // daemon-trusted cap is refused. M2 has no trusted entitlement store
+        // inside the daemon yet, so it fails closed to the free-tier cap.
         guard request.requestedFanOutCount >= 1 else {
             return BurnBarRemoteMissionAuthorizeResponse(
                 verdict: .denied,
@@ -71,12 +72,12 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
                 detail: "Requested fan-out count \(request.requestedFanOutCount) is not a positive mission count."
             )
         }
-        let cap = fanOutCap(forEntitlementTier: request.entitlementTier)
+        let cap = trustedFanOutCap()
         guard request.requestedFanOutCount <= cap else {
             return BurnBarRemoteMissionAuthorizeResponse(
                 verdict: .denied,
                 deniedReason: .fanOutCapExceeded,
-                detail: "Requested fan-out \(request.requestedFanOutCount) exceeds the cap of \(cap) for tier '\(normalized(request.entitlementTier))'."
+                detail: "Requested fan-out \(request.requestedFanOutCount) exceeds the daemon-trusted cap of \(cap)."
             )
         }
 
@@ -91,17 +92,21 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
         }
 
         // (c) Capability ceiling — computed for every non-denied verdict.
-        let ceiling = grantCeiling(for: request.requestedGrant)
+        let ceiling = grantCeiling(
+            for: request.requestedGrant,
+            personaScope: request.personaScope
+        )
 
         // (b, continued) — anything short of an explicit "approved" consults
-        // the SHARED pre-dispatch approval policy (unknown approvalMode fails
-        // closed inside `InsightMissionApprovalPolicy`).
+        // the daemon's local copy of the pre-dispatch approval policy plus
+        // backend consent for Mac CLI assistants. Unknown approval modes and
+        // unresolved/auto CLI backends fail closed to an approval requirement.
         if approvalStatus != "approved",
-           InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+           requiresPreDispatchApproval(
                approvalMode: request.approvalMode,
                commandsAllowed: request.requestedGrant.commandsAllowed,
                fileEditsAllowed: request.requestedGrant.fileEditsAllowed
-           ) {
+           ) || requiresBackendConsent(forRequestedRuntime: request.requestedRuntime) {
             return BurnBarRemoteMissionAuthorizeResponse(
                 verdict: .requiresApproval,
                 detail: "Pre-dispatch operator approval is required before this mission may execute.",
@@ -119,31 +124,64 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
     /// (c) The authorized ceiling: exactly the requested known capabilities —
     /// never wider — with unrecognized forward-compat identifiers denied.
     static func grantCeiling(
-        for requested: BurnBarRemoteMissionCapabilityGrantRequest
+        for requested: BurnBarRemoteMissionCapabilityGrantRequest,
+        personaScope: PersonaScopeEnvelope?
     ) -> BurnBarRemoteMissionCapabilityGrantRequest {
         BurnBarRemoteMissionCapabilityGrantRequest(
-            commandsAllowed: requested.commandsAllowed,
-            fileEditsAllowed: requested.fileEditsAllowed,
+            commandsAllowed: requested.commandsAllowed && (personaScope?.permitShell ?? true),
+            fileEditsAllowed: requested.fileEditsAllowed && (personaScope?.permitFileEdits ?? true),
             additionalCapabilities: requested.additionalCapabilities.filter {
                 recognizedAdditionalCapabilities.contains(normalized($0))
             }
         )
     }
 
-    /// (d) Wand fan-out cap per entitlement tier — same table as
-    /// `WandFanOut.maxParallel(for:)`; unrecognized tier names fail closed to
-    /// the free-tier cap.
-    static func fanOutCap(forEntitlementTier tier: String) -> Int {
-        switch normalized(tier) {
-        case "ultra":
-            return WandFanOut.maxParallel(for: .ultra)
-        case "pro", "pro_max", "promax":
-            return WandFanOut.maxParallel(for: .pro)
-        case "cloud":
-            return WandFanOut.maxParallel(for: .cloud)
+    /// (d) Trusted Wand fan-out cap. Until M3 wires daemon-owned entitlement
+    /// resolution, the only safe cap is the free-tier cap.
+    static func trustedFanOutCap() -> Int {
+        WandFanOut.maxParallel(for: .none)
+    }
+
+    static func requiresPreDispatchApproval(
+        approvalMode: String?,
+        commandsAllowed: Bool,
+        fileEditsAllowed: Bool
+    ) -> Bool {
+        let riskyExecutionRequested = commandsAllowed || fileEditsAllowed
+        guard !riskyExecutionRequested else {
+            return true
+        }
+
+        switch approvalMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "manual_all":
+            return true
+        case "risky_only", "existing_policy", "read_only", nil, "":
+            return false
         default:
-            // "none", "free", "", and every unknown tier: fail closed.
-            return WandFanOut.maxParallel(for: CloudTier.none)
+            return true
+        }
+    }
+
+    static func requiresBackendConsent(forRequestedRuntime requestedRuntime: String?) -> Bool {
+        let normalizedRuntime = normalized(requestedRuntime ?? "")
+        switch normalizedRuntime {
+        case "hermes":
+            return false
+        case "", "auto":
+            return true
+        case "codex", "claude", "claude-code", "claudecode",
+             "openclaw", "open-claw", "openclaude", "open-claude",
+             "pi", "piagent", "pi-agent",
+             "droid", "factory", "factory-droid", "factorydroid",
+             "forge", "forge-dev", "forgedev",
+             "antigravity", "agy", "google-antigravity", "googleantigravity",
+             "cursoragent", "cursor-agent",
+             "opencode", "ollama",
+             "omp", "ohmypi", "oh-my-pi", "oh my pi",
+             "junie", "grok", "grok-build", "xai", "grok-agent":
+            return true
+        default:
+            return true
         }
     }
 
