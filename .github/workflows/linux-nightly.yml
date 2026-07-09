@@ -18,6 +18,8 @@ jobs:
     name: ${{ matrix.label }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
+    env:
+      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ runner.temp }}/openburnbar-linux-evidence
     strategy:
       fail-fast: false
       matrix:
@@ -47,8 +49,8 @@ jobs:
       - name: Record blocked environment row
         if: matrix.mode == 'blocked'
         run: |
-          mkdir -p docs/linux-port/evidence/mission-001-release/nightly/${{ matrix.label }}
-          cat > docs/linux-port/evidence/mission-001-release/nightly/${{ matrix.label }}/blocked.json <<'JSON'
+          mkdir -p "$OPENBURNBAR_LINUX_EVIDENCE_OUT/nightly/${{ matrix.label }}"
+          cat > "$OPENBURNBAR_LINUX_EVIDENCE_OUT/nightly/${{ matrix.label }}/blocked.json" <<'JSON'
           {
             "label": "${{ matrix.label }}",
             "status": "blocked",
@@ -74,6 +76,7 @@ jobs:
         run: |
           node scripts/linux-port/validate-linux-release-config.mjs
           node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
+          node scripts/linux-port/render-parity-ledger.mjs --check
           node scripts/linux-port/check-linux-docs.mjs
 
       - name: Upload Linux nightly evidence
@@ -81,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
         with:
           name: linux-nightly-${{ matrix.label }}
-          path: docs/linux-port/evidence/
+          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
           if-no-files-found: warn
 
   open-failure-issue:

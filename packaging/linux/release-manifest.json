@@ -5,6 +5,14 @@
   "linuxDesktopPackage": "apps/linux-desktop",
   "primaryArtifact": "appimage",
   "requiredArtifacts": ["appimage", "deb", "rpm", "daemon"],
+  "supportedArchitectures": ["aarch64", "x86_64"],
+  "releaseTagPrefix": "linux-v",
+  "signing": {
+    "publicKey": "packaging/linux/openburnbar-linux-ed25519.pub.pem",
+    "publicKeySpkiSha256": "0e0fd1f52af308d96c71571ef7e94f3e183218abf531760dfcc8ef8e499e5c37",
+    "cosignIssuer": "https://token.actions.githubusercontent.com",
+    "cosignIdentityTemplate": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v{version}"
+  },
   "tailMetadata": {
     "aur": "packaging/linux/aur/PKGBUILD",
     "flatpak": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",

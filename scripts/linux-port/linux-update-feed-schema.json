@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burnbar.ai/schemas/latest-linux.json",
+  "title": "OpenBurnBar Linux update feed",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "product", "platform", "version", "gitCommit", "publishedAt", "channel", "artifacts", "signature"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "product": { "const": "OpenBurnBar" },
+    "platform": { "const": "linux" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "gitCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "channel": { "enum": ["stable", "prerelease", "nightly"] },
+    "artifacts": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "architecture", "url", "sha256", "size", "signatureUrl"],
+        "properties": {
+          "type": { "enum": ["appimage", "deb", "rpm", "daemon"] },
+          "architecture": { "enum": ["aarch64", "x86_64"] },
+          "url": { "type": "string", "format": "uri" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "size": { "type": "integer", "minimum": 1 },
+          "signatureUrl": { "type": "string", "format": "uri" }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "publicKeySpkiSha256", "url"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "publicKeySpkiSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "url": { "type": "string", "format": "uri" }
+      }
+    }
+  }
+}

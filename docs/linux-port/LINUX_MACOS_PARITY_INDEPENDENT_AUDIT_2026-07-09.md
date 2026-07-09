@@ -1,0 +1,1193 @@
+# Linux/macOS Parity Independent Audit
+
+| Audit field | Value |
+|---|---|
+| Date | 2026-07-09 |
+| Gold standard | OpenBurnBar for macOS |
+| Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
+| Audited checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
+
+**Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
+
+## Executive Summary
+
+The Linux app has a substantial foundation: a 19-route Tauri shell, the six
+dashboard layouts, shared daemon RPC access, live usage/quota data, missions,
+database indexing, a Computer Use control surface, packaging for three formats,
+and 375 passing frontend tests. That is meaningful progress. It is not macOS
+product parity.
+
+The active Linux experience is still a mixture of implemented behavior,
+read-only projections, platform substitutes, disabled controls, fixture-backed
+proof, and explicitly missing capabilities. The largest functional gaps are
+secure credential custody, chat workflow depth, Computer Use execution, Mercury
+media, account/cloud/device workflows, session and memory semantics, native
+desktop integrations, and complete onboarding. The largest quality gaps are
+release-integrity validation, real installed-app E2E, accessibility proof,
+multi-desktop support, performance baselines, and visual reliability.
+
+The current parity certification is not trustworthy:
+
+- all four public GitHub prerelease artifacts pass Ed25519 verification, but the
+  checked-in mission-002 candidate/evidence diverges from those public bytes and
+  all four of its recorded artifact/signature pairs fail verification;
+- the strict release verifier checks that signature metadata exists but does
+  not cryptographically verify any artifact;
+- update/rollback evidence is `blocked`, yet the package smoke summary and
+  release verifier report success;
+- `https://burnbar.ai/latest-linux.json` returns HTTP 200 with HTML content
+  rather than signed JSON, while a public ARM64 prerelease exists separately on
+  GitHub;
+- the machine-readable ledger marks all 73 rows ready and claims product parity,
+  but only 9 rows are product-scoped and 64 are historical infrastructure rows;
+  both populations point to `bf829967...`, seven commits behind the audited
+  head, and all 73 explicitly disable HEAD-drift enforcement;
+- the Markdown ledger still says `productParityClaim: false`;
+- one inspected mutable UTM guest had a running app whose executable was marked
+  deleted, two daemon processes, no detected user service, and black screenshot
+  output; package provenance for those live processes was not established, so
+  this is a failed proof surface rather than a generalized package verdict. The
+  six-layout matrix is a static HTML evidence board rather than packaged-app
+  proof.
+
+The correct release posture is therefore:
+
+1. Disable the machine-readable parity claim and correct any public parity claim
+   found during release/public-surface review.
+2. Treat the GitHub build as an ARM64 prerelease, not a stable Linux release.
+3. Repair the certification and installed-runtime baseline before adding more
+   surface area.
+4. Implement parity in the order defined below, with real Linux-native adapters.
+5. Promote only when every required product row is current, reproducible, and
+   exercised in installed packages on the supported desktop matrix.
+
+### What "full parity" means
+
+Parity is outcome and quality parity, not an Apple API clone. Linux-native
+substitutions are expected where they preserve capability, safety, discoverable
+UX, reliability, and supportability:
+
+| macOS mechanism | Linux-native parity mechanism |
+|---|---|
+| `NSStatusItem` and menu-bar popover | StatusNotifierItem/AppIndicator with a rich status window and an icon-only fallback |
+| Keychain/Security.framework | Secret Service/libsecret, KWallet, or explicit systemd credential policy; never plaintext |
+| ServiceManagement login item | `systemd --user` plus XDG autostart fallback |
+| ScreenCaptureKit, AX, CGEvent | xdg-desktop-portal, PipeWire, AT-SPI, libei, constrained X11/XTest, and opt-in uinput |
+| Sparkle/MAS/Homebrew | Signed release metadata plus apt/dnf/Flatpak/AppImage-native update flows |
+| iCloud and StoreKit | Firestore/sealed archive sync and web billing with identical account outcomes |
+| UserNotifications | `org.freedesktop.Notifications` with actionable deep links |
+| Global text expansion | IBus/fcitx input-method integration with secure-field exclusions |
+| Desktop pet overlay | Compositor-capability-driven transparent window with a contained fallback |
+
+Unsupported Linux environments may use a documented Tier C substitute. The UI
+must disclose the substitute before action and must not call it full parity.
+
+## Audit Method And Confidence
+
+This audit compared current source, tests, generated evidence, public delivery
+surfaces, and a running Ubuntu 24.04 ARM64 UTM guest. macOS behavior was treated
+as the gold-standard contract, with its implementation and tests used as the
+oracle. Generated evidence was accepted only when the underlying mechanism and
+live product state were independently reproducible.
+
+### Verification performed
+
+- `npm test --prefix apps/linux-desktop`: **52 files, 375 tests passed**.
+- `npm run build --prefix apps/linux-desktop`: **passed**; the main JavaScript
+  chunk is **621.05 kB** minified and Vite reports a chunk-size warning.
+- `cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml`:
+  **passed**, but contains only **one** Rust unit test.
+- Current source comparison of macOS routes, settings, chat, parser registry,
+  daemon lifecycle, cloud/account, Computer Use, Mercury, SmartHub, text
+  expansion, accessibility, and recovery behavior.
+- Current source comparison of Linux routes, stores, Tauri commands, platform
+  adapters, capability grants, packaging, CI, and evidence generators.
+- Live UTM inspection of process ownership, window state, service installation,
+  daemon multiplicity, X11 capture, and installed executable state.
+- Independent checksum and Ed25519 verification of both the four mission-002
+  local candidate artifacts and the four downloaded public prerelease assets.
+- Live check of `https://burnbar.ai/latest-linux.json` and the public website.
+
+### Release-integrity snapshot
+
+The public `linux-v0.1.0` prerelease assets, detached signatures, and public key
+were downloaded directly from GitHub during this audit. All four public assets
+pass raw Ed25519 verification against public-key SHA-256
+`077ac305e16cf5c86cdcf168d600ea40a5f167ad919fcbc1264c98c12735c930`:
+
+| Public artifact | SHA-256 | Ed25519 |
+|---|---|---|
+| `OpenBurnBar_0.1.0_aarch64.AppImage` | `e545e6e452e054278b66b92af293ba607e8bd7b1c812e37e3d2400ad9183d0f5` | Passed |
+| `OpenBurnBar_0.1.0_arm64.deb` | `0c6f59962bc0820d249e9a520f4f33c68c5aa720a7960d17e3a58b41898c5fd4` | Passed |
+| `OpenBurnBar-0.1.0-1.aarch64.rpm` | `03e1bf42480c592dec0c36ed3ed57a36b13a2de50a9c214bb65b2df96fc2d20e` | Passed |
+| `openburnbar-daemon-0.1.0-linux-aarch64` | `e8c85f6086222c75314b1cdda1ffc84bb72096e98defc409127b0e75f297ea19` | Passed |
+
+The exact mission-002 local artifacts also match their checked-in package
+closure, but all four fail against the local detached signatures. Only the local
+AppImage artifact hash matches its public counterpart; its local signature hash
+does not. The local deb, rpm, and daemon hashes also differ from the published
+assets. Therefore the checked-in mission-002 closure is not a valid reproduction
+of the public prerelease even though `release-verification.json` reports success.
+
+Verification form used for each downloaded public artifact:
+
+```bash
+openssl pkeyutl -verify -pubin \
+  -inkey openburnbar-linux-ed25519.pub.pem \
+  -rawin -in "$artifact" -sigfile "$artifact.ed25519.sig"
+```
+
+This narrows the critical finding to certification integrity: the published
+Ed25519 pairs are valid, while the local evidence bundle is divergent and the
+strict verifier is capable of accepting its invalid pairs. Sigstore identity
+verification, source binding, public feed, and update/rollback remain separate
+required gates and were not made green by the Ed25519 result.
+
+### Status vocabulary
+
+| Status | Meaning |
+|---|---|
+| Parity | Equivalent user outcome is implemented and independently proven. |
+| Near parity | Core outcome exists; bounded polish or edge-case work remains. |
+| Partial | A meaningful subset exists, but a normal macOS workflow cannot be completed. |
+| Substitute | Linux implements a narrower or different behavior under parity-like copy. |
+| Missing | No production implementation exists. |
+| Broken | The shipped/live path is known to fail. |
+| Unproven | Code may exist, but evidence does not prove the product outcome. |
+
+## Parity Matrix
+
+| ID | Area | macOS gold standard | Linux current state | Status | Priority |
+|---|---|---|---|---|---|
+| P-01 | Release integrity | Signed, notarized, release/update path with installed-app proof | Public Ed25519 pairs pass; local closure diverges and fails while verifier reports green; feed/update/rollback remain blocked | Broken | Critical |
+| P-02 | Parity certification | Product inventory tied to release head and real behavior | 73 ready rows, only 9 product rows, evidence seven commits stale, Markdown/JSON disagree | Broken | Critical |
+| P-03 | Installed runtime | Owned app/daemon lifecycle with recovery and one authoritative supervisor | One mutable guest showed a deleted live executable, duplicate daemons, no detected service, and black captures; clean-package lineage is absent | Unproven | Critical |
+| P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Linux workflow publishes ARM64 only | Missing | Critical |
+| P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Core stores still default to Apple Keychain paths; Linux writes can fail closed without a usable backend | Broken | Critical |
+| P-06 | Gateway credential boundary | Native process owns bearer credentials | Gateway bearer token is returned to WebView JavaScript | Partial | Critical |
+| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | UI exposes modes the daemon rejects; no Linux capture/input adapter or action workflow | Partial | Critical |
+| P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Tauri reports `capabilityAvailable: false`; status-only UI | Missing | Critical |
+| P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | 19 routes and seven primaries exist; deep-link and native multi-window behavior thinner | Near parity | Medium |
+| P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | Six React layouts and unit tests exist; installed-app visual proof is absent and current runtime captures are black | Unproven | Medium |
+| P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | Linux UI path registry has 15 rows; shared-parser wiring and full Linux path coverage are inconsistent/unproven, not proven absent | Unproven | High |
+| P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
+| P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Informational localStorage wizard; only daemon retry is active | Broken | High |
+| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
+| P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Status/checkout projection; browser auth must happen elsewhere; preview actions inert | Partial | High |
+| P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Cloud/trusted-device mutation RPCs explicitly absent | Partial | High |
+| P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Recent usage is wrapped as session metadata; no real body/resume/export | Substitute | High |
+| P-18 | Memory review | Quarantined candidates, approve/reject, durable state, audit | Recalled durable memories are labeled approved; review state partly localStorage | Substitute | High |
+| P-19 | Projects | Registered projects, exact associations, detail, management | Read-only cards inferred with fuzzy title matching; no CRUD | Partial | Medium |
+| P-20 | Missions | Full run/task state, approvals, questions, evidence, history, health | List/create/approve works; history/evidence/freshness/questions lag | Partial | Medium |
+| P-21 | Insights | Editorial brief, evidence, citations, follow-ups, comparison, audit | Usage charts and anomaly-like summaries only | Partial | Medium |
+| P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation exists; inspector, snapshot, and recovery depth lag | Partial | Medium |
+| P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Quota-centric provider route; no equivalent model workspace/failover flow | Partial | Medium |
+| P-24 | Settings | 16 searchable tabs with deep links and writable state | 13 tabs; Model Proxy, Computer Use, Pets omitted; several controls read-only | Partial | Medium |
+| P-25 | Updates | Automatic checks, channel, install/restart truth | Package-manager guidance; update check reports unavailable | Partial | High |
+| P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Open/Reconnect/Quit tray only | Partial | High |
+| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | No complete freedesktop notification, deep-link, shortcut, or autostart adapter | Missing | High |
+| P-28 | SmartHub | Discovery, status, allowlisted device actions | Surface calls an optional `runCli` bridge that does not exist | Broken | High |
+| P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Preview-only in-app engine, plaintext localStorage, no normal composer hook | Substitute | High |
+| P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Route-contained point-cloud preview with optimistic capability detection | Partial | High |
+| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | Good ARIA foundation; current scan/tree evidence is synthetic or window-only | Unproven | High |
+| P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Synthetic one-sample probes, no comparable macOS baseline, 621 kB main chunk | Unproven | High |
+| P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Mount/manual refresh bias, synchronous IPC, weak installed-shell soak coverage | Partial | High |
+| P-34 | Security hardening | Native URL/secret/process boundaries | CSP exists, but broad `shell:default`, WebView bearer exposure, release fixture path | Partial | Critical |
+| P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Useful redaction base; copy and save behavior differ; fixture toggle exposed | Partial | Medium |
+| P-36 | Visual/interaction polish | Consistent components, responsive density, animations, native affordances | Some diagnostic/raw JSON surfaces, glyph controls, static/black proof, limited regressions | Unproven | Medium |
+| P-37 | Linux matrix | N/A; macOS supported versions are exercised | Ubuntu GNOME ARM64 only live; KDE, Wayland, wlroots, x86_64 unproven/blocked | Missing | Critical |
+| P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Swift behavior tests omitted; allow-blocked and Make paths can return green; tag/version and evidence-directory wiring disagree | Broken | Critical |
+| P-39 | Cross-platform differential proof | Same contract/corpus compared at the same product version | Later Linux-labeled canonical evidence reuses preexisting fixtures rather than producing a current macOS-vs-Linux diff | Unproven | High |
+| P-40 | Data and Privacy | Vault/export/deletion/retention/recovery/consent/telemetry/panic workflows | Inventory/copy exists, but important controls are read-only or no complete local/account destructive and recovery workflow is proven | Partial | High |
+
+Every matrix row maps to a detailed record containing all six requested fields:
+
+| Matrix row | Detailed gap record |
+|---|---|
+| P-01, P-02 | GAP-001, GAP-023 |
+| P-03 | GAP-002 |
+| P-04, P-37 | GAP-004 |
+| P-05, P-06 | GAP-003 |
+| P-07 | GAP-005 |
+| P-08 | GAP-006 |
+| P-09, P-10 | GAP-025 |
+| P-11 | GAP-007, GAP-024 |
+| P-12 | GAP-026 |
+| P-13 | GAP-008 |
+| P-14 | GAP-009 |
+| P-15, P-16 | GAP-010 |
+| P-17, P-18 | GAP-011 |
+| P-19 | GAP-012A |
+| P-20 | GAP-012B |
+| P-21 | GAP-012C |
+| P-22 | GAP-012D |
+| P-23 | GAP-012E |
+| P-24 | GAP-013, GAP-027 |
+| P-25 | GAP-015 |
+| P-26, P-27 | GAP-014 |
+| P-28 | GAP-016 |
+| P-29 | GAP-017 |
+| P-30 | GAP-018 |
+| P-31 | GAP-019 |
+| P-32, P-33 | GAP-020 |
+| P-34 | GAP-003, GAP-021, GAP-023 |
+| P-35, P-36 | GAP-022 |
+| P-38 | GAP-023 |
+| P-39 | GAP-024 |
+| P-40 | GAP-027 |
+
+## Detailed Gap Register
+
+### GAP-001 - Repair release integrity and parity certification
+
+- **Difference:** macOS release confidence comes from a signed product and a
+  delivery path that can be exercised. Linux's four public Ed25519 artifact pairs
+  pass, but the mission-002 local closure diverges and all four local pairs fail.
+  `verify-linux-release.mjs` checks only recorded signature entries and still
+  reports green. It also accepts blocked update/rollback evidence, does not
+  exercise the live feed, and delegates to a product ledger whose staleness is
+  disabled. The JSON ledger says parity is true while the Markdown ledger says
+  false.
+- **Why it matters:** automation can certify evidence that does not reproduce the
+  public candidate, and every downstream parity claim inherits a false-green
+  gate even though the public Ed25519 pairs themselves are valid.
+- **Recommended solution:** mark the mission-002 local evidence non-promotable
+  and determine why its artifacts/signatures differ from GitHub; verify each
+  artifact byte-for-byte in the release workflow and verifier; add Sigstore
+  identity and source binding; require a current full product inventory,
+  update/rollback, and live-feed success; make contradictions or blocked rows
+  fatal.
+- **Priority:** **Critical**.
+- **Implementation notes:** add Ed25519/minisign/Sigstore verification to
+  `scripts/linux-port/verify-linux-release.mjs`; bind artifact hash, public-key
+  fingerprint, signature, provenance, SBOM, and source commit in one manifest;
+  remove `staleWhenHeadDiffers: false` for Tier A/B product rows; generate the
+  Markdown ledger from JSON; check the public feed's status, MIME type, schema,
+  architecture, hash, version monotonicity, and signature.
+- **QA verification:** reproduce the downloaded GitHub asset hashes and passing
+  Ed25519 checks; assert the current divergent mission-002 bundle fails; mutate
+  one byte in every artifact/sidecar/manifest and assert failure; assert blocked
+  update, stale head, HTML feed, missing architecture, dirty release checkout,
+  and Markdown/JSON disagreement all stop promotion.
+
+### GAP-002 - Establish a healthy installed runtime
+
+- **Difference:** macOS owns its daemon lifecycle, startup recovery, and app
+  executable. One inspected mutable UTM guest had a running deleted executable,
+  two daemons, no detected `systemd --user` unit, and completely black desktop
+  and window captures. The live process/service observation was not captured as
+  package-provenance evidence, so it invalidates that guest as parity proof but
+  does not by itself prove every clean package has the same defect.
+- **Why it matters:** successful unit tests and package contents do not mean the
+  installed product launches, renders, upgrades, or recovers reliably.
+- **Recommended solution:** define one package-owned service/lifecycle model;
+  make upgrades atomic; prevent duplicate daemons; add renderer capability and
+  safe-mode fallback; make onboarding repair ownership drift.
+- **Priority:** **Critical**.
+- **Implementation notes:** ship and enable a versioned user unit or a single
+  socket-activated supervisor; use lock/peer/version checks before daemon start;
+  stop old processes during upgrade; never execute an unlinked binary; detect
+  WebGL2/WebGL1/software-renderer capability and persist an explicit safe-mode
+  choice; distinguish X11 capture failure from an actually blank WebView.
+- **QA verification:** install, launch, upgrade, crash, restart, suspend/resume,
+  logout/login, uninstall, and interrupted-upgrade tests; assert one daemon and
+  one owned executable; validate nonblank canvas pixels and route screenshots
+  under hardware and software rendering.
+
+### GAP-003 - Implement Linux credential custody and contain gateway tokens
+
+- **Difference:** macOS uses Keychain-backed secret stores and keeps privileged
+  credentials in native code. Linux provider and connector services still
+  default to Apple Keychain implementations whose non-Security paths can throw,
+  while Tauri returns a gateway bearer token into WebView JavaScript.
+- **Why it matters:** provider setup, routing, connectors, auth, cloud, and
+  recovery cannot be called reliable or secure; an XSS could obtain the daemon
+  credential.
+- **Recommended solution:** create one injected cross-platform secret-store
+  protocol with read/write/delete/rotate/health/trust metadata; implement Secret
+  Service, KWallet, and an explicit headless systemd-credential policy; proxy
+  authenticated gateway HTTP/SSE through Rust IPC so JavaScript never sees the
+  bearer.
+- **Priority:** **Critical**.
+- **Implementation notes:** wire the Linux custodian into provider, connector,
+  notification, phone-pin, auth, database, and cloud stores; never add plaintext
+  fallback; zero temporary buffers where practical; restrict logs and support
+  exports; add a locked-keyring recovery state.
+- **QA verification:** save/read/rotate/delete every secret on GNOME and KDE
+  across restart; test locked/missing keyring and headless policy; scan config,
+  DB, logs, DOM, JavaScript globals, frontend network traces, crash reports, and
+  diagnostics for tokens.
+
+### GAP-004 - Ship the architectures and desktop environments users have
+
+- **Difference:** the current Linux release workflow produces ARM64 artifacts
+  only, and live evidence covers Ubuntu 24.04 GNOME ARM64. macOS parity is being
+  claimed without x86_64, KDE Wayland, GNOME Wayland, or wlroots proof.
+- **Why it matters:** most desktop Linux users cannot install the current build,
+  and the exact integrations that differ most by compositor remain untested.
+- **Recommended solution:** build signed x86_64 and aarch64 AppImage/deb/rpm
+  artifacts; add Ubuntu GNOME X11/Wayland, Fedora KDE Wayland, and an Arch/wlroots
+  lane; publish an honest support matrix.
+- **Priority:** **Critical**.
+- **Implementation notes:** make release metadata architecture-specific; audit
+  bundled Swift/WebKit/system libraries; prefer native runners for portal,
+  keyring, GPU, tray, and global-input tests; use Flatpak only after portal and
+  sandbox contracts are explicit.
+- **QA verification:** clean install, launch, upgrade, rollback, uninstall,
+  daemon start, tray, keyring, portal, screenshots, and accessibility on both
+  architectures and every supported desktop row.
+
+### GAP-005 - Complete Computer Use rather than exposing unsupported modes
+
+- **Difference:** macOS ships Browser, Agent Watch, and Mac System behavior with
+  approval, audit, and panic paths. Linux presents browser, agent-watch, and
+  system choices, but the daemon rejects non-browser modes, the surface has no
+  real target/action/result workflow, and no Linux capture/input adapter exists.
+- **Why it matters:** this is a safety-sensitive feature. Offering guaranteed-
+  failure modes and unproven panic behavior is both misleading and dangerous.
+- **Recommended solution:** first return a typed runtime capability manifest and
+  hide unsupported modes; complete browser actions over the real Playwright
+  bridge; then build portal/PipeWire capture, AT-SPI inspection, libei input,
+  constrained X11/XTest, and explicitly consented uinput fallback.
+- **Priority:** **Critical**.
+- **Implementation notes:** preserve approval as ground truth; trust elevation
+  remains Mac/desktop local; implement a Linux-native global panic path plus
+  lock/sleep/permission-revocation kill paths; audit every action and terminal
+  entry; capability-gate per compositor and session type.
+- **QA verification:** navigate/click/type/screenshot against real browser
+  targets; exercise manual/step/trusted policy, approval races, denial, audit
+  tampering, lock/sleep, portal revocation, daemon crash, and panic latency on
+  GNOME/KDE/Sway Wayland and X11.
+
+### GAP-006 - Build the Mercury Linux media host
+
+- **Difference:** macOS supports Mercury file transfer, calls, screen share,
+  mirroring, presence, consent, and partner preferences. Linux reports the media
+  capability as absent and renders a status-only surface.
+- **Why it matters:** an entire first-class product family is missing.
+- **Recommended solution:** define shared daemon media contracts over existing
+  iroh/remote-access components; implement PipeWire portal capture, a supported
+  codec pipeline, device presence, and complete consent/session controls.
+- **Priority:** **Critical**.
+- **Implementation notes:** separate transport, media engine, portal capture,
+  codec negotiation, and UI state; allow system-installed codecs where licensing
+  requires it; expose reasoned capability states rather than a Boolean.
+- **QA verification:** Linux-to-macOS/iOS/Android pair/unpair, file send/receive,
+  call, screen share, cancel/reject, packet loss, reconnect, suspend, permission
+  denial/revocation, cleanup, and multi-monitor selection.
+
+### GAP-007 - Make usage/provider coverage authoritative
+
+- **Difference:** macOS registers 27 parsers and combines local logs, APIs,
+  quotas, recount, persistence, projections, and cloud mirroring. Linux's UI
+  path registry has 15 rows and no generated proof that the shared daemon
+  parsers, Linux path discovery, settings, and UI share one complete catalog.
+  The registry count alone does not prove the remaining parser implementations
+  are absent; it proves coverage and wiring are not authoritatively demonstrated.
+- **Why it matters:** missing or mislabeled usage silently breaks the app's core
+  value and makes parity counts unreliable.
+- **Recommended solution:** generate macOS and Linux provider/model/path
+  capabilities from one manifest while allowing platform-specific path rules;
+  reuse identical golden parser/quota fixtures.
+- **Priority:** **High**.
+- **Implementation notes:** include feature flags for local scan, API polling,
+  quota, chat backend, account switching, model catalog, and secret needs; map
+  XDG, symlink, Flatpak, Snap, malformed log, and multi-account cases.
+- **QA verification:** identical input corpus produces equivalent normalized
+  usage, cost, quota, model/provider identity, timestamps, and deduplication on
+  macOS and Linux; every declared provider has path, parser, empty, error, and
+  migration tests.
+
+### GAP-008 - Replace informational onboarding with transactional setup
+
+- **Difference:** macOS onboarding connects providers, scans, requests system
+  permissions, configures chat, and gates completion. Linux advances local state
+  with Continue/Skip; only daemon retry is active and prerequisite acknowledgments
+  are never established by real readback.
+- **Why it matters:** users can finish setup with no service, secret backend,
+  provider data, auth, portal permission, or working tray.
+- **Recommended solution:** make every required step an idempotent action plus
+  verification: install/enable service, unlock/test secret store, discover logs,
+  connect provider/auth, select chat engine, request portals, validate tray and
+  update channel, and run a first-data check.
+- **Priority:** **High**.
+- **Implementation notes:** persist daemon-owned progress, not browser-local
+  assertions; support resume, rollback, diagnostics, distro-specific copy, and
+  explicit optional skips; link failures directly to repair actions.
+- **QA verification:** clean-user journeys on Ubuntu/Fedora; missing daemon,
+  locked keyring, no provider, offline auth, portal denial, icon-only tray,
+  partial completion, app restart, upgrade migration, screen reader, and keyboard.
+
+### GAP-009 - Finish the chat workspace
+
+- **Difference:** macOS supports persisted/searchable threads, twelve backends,
+  model selection, streaming, attachments, citations, tool approvals, panes,
+  desktop grants, resume/export, and pop-out. Linux uses five backend choices,
+  synthesizes two history rows, and disables model, agent, attachment, option,
+  citation, tool-decision, restore, close, and pop-out controls.
+- **Why it matters:** chat is a primary workflow; synthetic history and inert
+  controls create false confidence and data-loss risk.
+- **Recommended solution:** introduce real session-body and chat-thread RPCs,
+  shared backend/model catalog, attachment store/content policy, streaming event
+  contract, citation navigation, approval state machine, resume/export, and a
+  Linux-native secondary window.
+- **Priority:** **High**.
+- **Implementation notes:** keep the daemon authoritative for thread state;
+  reconcile reconnect/cancel/idempotency; do not expose controls until their
+  capability is live; port macOS controller contracts into cross-platform tests.
+- **QA verification:** exact transcript replay, every supported backend/model,
+  image/PDF/text/audio/video attachment, tool approve/reject/race, citation open,
+  cancel/retry, offline/reconnect, restart, pop-out/rejoin, export, and large
+  transcript performance.
+
+### GAP-010 - Complete account, cloud, billing, and trusted devices
+
+- **Difference:** macOS can sign in/link/sign out, manage membership, cloud
+  backup, conflicts, remote access, and trusted devices. Linux mostly projects
+  status and checkout; auth must be completed elsewhere, cloud mutations are
+  absent, and trusted-device mutation is explicitly unavailable.
+- **Why it matters:** cross-device continuity, entitlements, remote workflows,
+  recovery, and paid product behavior cannot be completed in the app.
+- **Recommended solution:** add daemon-owned PKCE/device-code auth with validated
+  callbacks, secure refresh-token custody, sign-out/revocation, App Check,
+  membership, backup/conflict state, trusted-device lifecycle, remote MCP, and
+  safe web billing restore.
+- **Priority:** **High**.
+- **Implementation notes:** external URLs must be HTTPS allowlisted; deep links
+  must validate scheme/host/state; secrets stay native; define conflict and
+  offline semantics before UI; surface Apple-only history honestly.
+- **QA verification:** auth success/cancel/state mismatch/expiry, malicious
+  redirect rejection, restart, sign-out revocation, device add/revoke/transfer,
+  backup/restore/conflict/offline, checkout/restore, entitlement refresh, and
+  clock skew.
+
+### GAP-011 - Replace activity and memory substitutes with true domain state
+
+- **Difference:** macOS exposes indexed session transcripts and a real memory
+  review queue. Linux wraps recent usage as session entries and maps recalled
+  durable memories to approved rows, while some review decisions live in
+  localStorage.
+- **Why it matters:** users cannot inspect or resume actual work, and the memory
+  UI describes semantics the backend does not provide.
+- **Recommended solution:** add session list/body/search/source/resume/export RPCs
+  and a daemon-owned memory quarantine/approve/reject/forget/audit model. Until
+  then, rename recalled memory as durable memory and remove review claims.
+- **Priority:** **High**.
+- **Implementation notes:** preserve exact source/session/project IDs; support
+  local/cloud conflict and missing-body recovery; make review decisions
+  idempotent and auditable; never infer transcript content from usage metadata.
+- **QA verification:** exact replay, full-text search, source filters, export,
+  resume, large pagination, missing/corrupt body, cloud conflict; pending memory
+  create/approve/reject/reload/audit/forget/chat retrieval across devices.
+
+### GAP-012A - Complete Projects
+
+- **Difference:** macOS treats projects as registered domain objects with exact
+  session associations and detail. Linux renders read-only cards derived from
+  session data and fuzzy title matching, with no create/register/edit/delete flow.
+- **Why it matters:** grouping can be wrong, users cannot correct it, and project
+  context cannot reliably drive search, insights, missions, or chat.
+- **Recommended solution:** add daemon-owned project CRUD, exact stable IDs,
+  explicit session reassignment, detail/history, and migration from inferred rows.
+- **Priority:** **Medium**.
+- **Implementation notes:** never use display titles as identity; define deletion
+  and orphan behavior; share the domain schema with macOS; paginate large projects.
+- **QA verification:** create/edit/delete/register/reassign/reload; duplicate
+  names, moved repositories, orphan sessions, cloud/local conflict, 10k sessions,
+  and migration from current fuzzy associations.
+
+### GAP-012B - Complete Missions
+
+- **Difference:** Linux can list, create, and approve mission decisions, but lacks
+  macOS depth for questions, evidence, operating history, freshness, health,
+  cancellation, and recovery.
+- **Why it matters:** users cannot understand or safely operate a long-running
+  mission from Linux when state changes, stalls, or requires intervention.
+- **Recommended solution:** expose typed mission event/history/evidence/question/
+  health RPCs and build actionable stale, blocked, approval, and recovery states.
+- **Priority:** **Medium**.
+- **Implementation notes:** keep ordering and idempotency daemon-owned; separate
+  mission state from transient UI state; preserve evidence IDs and audit links.
+- **QA verification:** create/start/approve/deny/answer/cancel/retry/recover;
+  history ordering, stale/fresh transitions, missing evidence, daemon restart,
+  concurrent decisions, and offline/reconnect.
+
+### GAP-012C - Complete Insights
+
+- **Difference:** macOS insights include editorial analysis, source evidence,
+  citations, follow-ups, comparison, and audit actions. Linux primarily renders
+  usage charts and summary/anomaly projections.
+- **Why it matters:** the Linux surface can show a pattern but cannot establish
+  why it exists or let the user investigate and act on it.
+- **Recommended solution:** add a typed insight document/evidence model, citation
+  navigation, compare periods/providers/models, follow-up actions, and audit state.
+- **Priority:** **Medium**.
+- **Implementation notes:** preserve source IDs and generated-at freshness; make
+  unsupported inference explicit; share calculation and citation fixtures.
+- **QA verification:** evidence-linked insight generation, stale data, missing
+  source, compare filters, follow-up navigation, audit history, keyboard/screen
+  reader, and large-period performance.
+
+### GAP-012D - Complete Database and indexing operations
+
+- **Difference:** Linux has index/watch foundations but lacks macOS inspector,
+  snapshot, deep search, encrypted-store recovery, and equivalent watch UX.
+- **Why it matters:** users cannot diagnose missing sessions, inspect canonical
+  records, recover corruption, or trust that updates are current.
+- **Recommended solution:** add daemon-owned inspect/search/snapshot/watch/rebuild/
+  recovery RPCs with pagination, cancellation, query tracing, and clear encryption
+  state.
+- **Priority:** **Medium**.
+- **Implementation notes:** unify inotify ownership rather than layering another
+  poller; use `OpenBurnBarQueryTracer`; keep raw sensitive content behind explicit
+  reveal/export policy.
+- **QA verification:** search/inspect/snapshot/watch/rebuild/recover; N+1 limits,
+  10k/100k rows, corruption, locked key, permission loss, path move, event burst,
+  cancellation, and restart.
+
+### GAP-012E - Complete provider and model workspaces
+
+- **Difference:** macOS has provider/model deep dives, health, account profiles,
+  catalog, routing, and failover. Linux's provider route is quota-centric and has
+  no equivalent model workspace or full failover workflow.
+- **Why it matters:** users cannot understand availability or control routing
+  when quotas, credentials, models, or providers change.
+- **Recommended solution:** build daemon-owned provider/account/model catalog,
+  health, priority, drain target, routing, and failover contracts with deep links.
+- **Priority:** **Medium**.
+- **Implementation notes:** depend on the shared capability catalog and secure
+  custody; keep policy mutations typed/audited; explain unavailable providers and
+  Linux-specific discovery paths.
+- **QA verification:** catalog refresh, credential/account switching, health
+  degradation, quota exhaustion, manual/automatic failover, drain target,
+  unavailable model, restart persistence, and audit history.
+
+### GAP-013 - Complete and centralize settings
+
+- **Difference:** macOS has 16 searchable settings tabs. Linux has 13 and omits
+  Model Proxy, Computer Use, and Pets from settings; cloud/device/media/privacy
+  controls are incomplete or read-only even when route-level UI exists.
+- **Why it matters:** configuration is scattered, capabilities are hard to
+  discover, and users cannot exercise privacy or operational agency.
+- **Recommended solution:** generate settings metadata from a shared capability
+  schema, provide searchable deep links, add Linux-native detail pages, and back
+  all mutable controls with typed daemon configuration plus readback.
+- **Priority:** **Medium**.
+- **Implementation notes:** unavailable controls must explain the native
+  substitute; store UI navigation locally but product policy in the daemon;
+  preserve distro/compositor-specific help without forking the schema.
+- **QA verification:** search/deep-link every setting, keyboard navigation,
+  persistence/restart, policy conflicts, telemetry opt-out at emission source,
+  unavailable capability copy, and migration from existing localStorage keys.
+
+### GAP-014 - Build native tray, notifications, deep links, shortcuts, and startup
+
+- **Difference:** macOS provides a rich menu-bar experience with live cost,
+  quota, providers, quick switch, chat, freshness, and update state. Linux has an
+  Open/Reconnect/Quit tray and lacks a complete notification, OAuth deep-link,
+  global shortcut, and login-start integration.
+- **Why it matters:** repeated daily workflows, alerts, recovery, auth, and panic
+  controls feel incomplete or cannot work outside the main window.
+- **Recommended solution:** implement StatusNotifier/AppIndicator plus a compact
+  status window, freedesktop notifications, validated deep links, portal/global
+  shortcuts with X11 fallback, and systemd/XDG startup controls.
+- **Priority:** **High**.
+- **Implementation notes:** support GNOME's icon-only limitations; use shared
+  live view models and freshness semantics; never depend on the tray as the sole
+  panic path; handle multi-monitor placement and tray host loss.
+- **QA verification:** icon-only and rich hosts, stale/offline/reconnect state,
+  keyboard/screen-reader navigation, notification actions/relaunch, OAuth return,
+  global panic latency, login start, multi-monitor, and tray crash/recovery.
+
+### GAP-015 - Implement honest update UX
+
+- **Difference:** macOS exposes version, automatic checks, channel, install, and
+  restart behavior. Linux appropriately delegates installation to package
+  mechanisms but cannot check signed availability or present reliable
+  compatibility, restart, and rollback state.
+- **Why it matters:** users cannot tell whether they are secure/current, and
+  shell/daemon version drift can break the app.
+- **Recommended solution:** verify signed release metadata in native code; show
+  installed/channel/latest and daemon compatibility; route actions to apt, dnf,
+  Flatpak, or AppImage semantics; provide restart and rollback guidance.
+- **Priority:** **High**.
+- **Implementation notes:** never self-mutate distro-owned files; protect against
+  downgrade/replay/architecture mismatch; cache a last-known-good signed
+  manifest; couple daemon/schema compatibility to release metadata.
+- **QA verification:** current/update/offline/tampered/replayed/downgrade/mismatched
+  architecture and daemon versions; interrupted deb/rpm/AppImage upgrade,
+  rollback, restart, and feed outage.
+
+### GAP-016 - Replace broken SmartHub command execution
+
+- **Difference:** macOS has typed SmartHub integrations. Linux's surface calls
+  an optional `runCli` bridge that neither the Tauri bridge nor command handler
+  implements, so the production path always errors while fixture mode can hide
+  the failure.
+- **Why it matters:** a visible route is nonfunctional, and adding arbitrary
+  shell execution would create a security regression.
+- **Recommended solution:** expose structured, allowlisted daemon/Tauri commands
+  for discovery, status, test, cast, and supported device actions.
+- **Priority:** **High**.
+- **Implementation notes:** parse Avahi output structurally; validate device IDs,
+  URLs, payload sizes, timeouts, and cancellation; never expose generic shell;
+  reuse shared SmartHub contracts where possible.
+- **QA verification:** real Cast, Home Assistant, AWTRIX, and Pixel Clock devices;
+  escaped names, absent dependency, malformed input, timeout, auth failure,
+  offline/reconnect, cancellation, and command-injection attempts.
+
+### GAP-017 - Make text expansion real and safe
+
+- **Difference:** macOS provides global, accessibility-aware expansion with
+  persistence and sync. Linux stores snippets in plaintext localStorage and only
+  exercises expansion in a preview/test surface, not normal app composers.
+- **Why it matters:** even the claimed in-app substitute is not a daily-use
+  feature, and sensitive snippets lack appropriate custody.
+- **Recommended solution:** first integrate expansion into every app composer and
+  move storage to the encrypted daemon database; then implement an opt-in
+  IBus/fcitx input method with secure-field and application exclusions.
+- **Priority:** **High**.
+- **Implementation notes:** avoid global keylogging; preserve clipboard contents;
+  capability-gate Wayland/X11 behavior; define import/export/sync conflicts and
+  LLM preview privacy.
+- **QA verification:** normal app inputs, GTK/Qt/Electron apps, password/secure
+  fields, excluded apps, clipboard restore, IME composition, Unicode, recursion,
+  import/export, sync, GNOME/KDE Wayland, and X11.
+
+### GAP-018 - Ship a real compositor-aware pet companion
+
+- **Difference:** macOS has an animated desktop companion with overlay behavior
+  and interaction. Linux renders a route-contained point-cloud preview and
+  assumes overlay capability in nearly every environment except GNOME Wayland.
+- **Why it matters:** the visible result is materially less polished and can
+  steal focus or block input when optimistic compositor assumptions are wrong.
+- **Recommended solution:** render the real glTF mesh/material/animation in a
+  separate transparent always-on-top/pass-through window only after capability
+  proof; add summon, selection, chat/file interactions, multi-monitor behavior,
+  and a clearly labeled contained fallback.
+- **Priority:** **High**.
+- **Implementation notes:** maintain a compositor capability matrix; use reduced
+  motion and GPU budgets; do not claim click-through from environment variables
+  alone; isolate crashes from the main app.
+- **QA verification:** GNOME/KDE/Sway Wayland and X11 focus, click-through,
+  topmost, drag, scaling, animation, reduced motion, multi-monitor, hotkey,
+  restart, GPU fallback, and unsupported contained mode.
+
+### GAP-019 - Replace synthetic accessibility evidence with assistive-tech proof
+
+- **Difference:** macOS has broad semantic labels/actions and targeted tests.
+  Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
+  reduced-motion CSS, but its automated scan returns hardcoded rows and its
+  purported AT-SPI proof contains only bus/window properties, not accessible
+  nodes and actions.
+- **Why it matters:** visual/component tests do not prove keyboard completion,
+  screen-reader meaning, focus order, contrast, reflow, or live announcements.
+- **Recommended solution:** run axe on every route and important state; add
+  Playwright keyboard/zoom/forced-colors/reduced-motion checks; exercise the
+  packaged app with Orca and AT-SPI; fix focusable `aria-hidden` elements and any
+  focus rules that remove the indicator.
+- **Priority:** **High**.
+- **Implementation notes:** subscribe to media-query changes, test dynamic
+  state, standardize names/roles/states/errors, and record the actual AT-SPI tree
+  plus action transcript; include hardware/software rendering and high contrast.
+- **QA verification:** zero serious axe violations, every flow keyboard-complete,
+  visible focus, no focus trap, 200% zoom/reflow, Orca names/roles/states/actions,
+  live regions, GNOME High Contrast, reduced motion, and no color-only meaning.
+
+### GAP-020 - Add real reliability, performance, and installed-shell gates
+
+- **Difference:** macOS has cadence, supervisor, startup recovery, prewarming,
+  migration, and frame-budget coverage. Many Linux surfaces refresh on mount or
+  manual action; `apps/linux-desktop/src/state/shellStore.ts:170` runs required
+  daemon performance probes during boot; the Rust suite currently executes one
+  unit test; and the built main chunk is 621.05 kB minified. The daemon probes in
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCObservability.swift:76-139`
+  serialize small hardcoded/in-memory payloads rather than real user workloads,
+  and current evidence has no matched macOS p95/p99 or resource baseline.
+- **Why it matters:** UI stalls, stale data, daemon death, suspend/resume, leaks,
+  and renderer failures will escape the current unit suite.
+- **Recommended solution:** add daemon event subscriptions, lifecycle-aware
+  cadence, cancellable async IPC, bounded backoff, startup recovery, route code
+  splitting, and comparable real-workload budgets. Gate on packaged-shell E2E
+  and Linux Swift behavior tests.
+- **Priority:** **High**.
+- **Implementation notes:** remove diagnostic probes from the critical boot path
+  or run them asynchronously with cache/timeouts; measure cold/warm startup,
+  first meaningful content, route p50/p95/p99, IPC, parser scan, DB query, chat
+  first token excluding upstream, RSS/CPU/GPU, and 30-minute soak/leak behavior.
+- **QA verification:** daemon kill/restart/socket stall, offline/online,
+  suspend/resume, clock change, locked DB/keyring, 10k/100k sessions, large
+  transcript, low-memory, software rendering, 30-minute idle/use soak, and
+  macOS-relative workflow budgets on equivalent hardware.
+
+### GAP-021 - Harden the Tauri command boundary and remove fixture leakage
+
+- **Difference:** macOS uses narrow native service APIs. Linux has CSP, but still
+  grants broad `shell:default`; the support UI exposes a persistent daemon
+  fixture toggle in normal product UI; sensitive operations are not uniformly
+  typed and allowlisted.
+- **Why it matters:** WebView compromise has more process-launch leverage, and
+  users/evidence can silently mistake fake data for live state.
+- **Recommended solution:** remove generic shell capability, expose narrow Rust
+  commands with strict URL/argument allowlists, compile fixtures only into
+  development/evidence builds, and show an unavoidable test-mode banner.
+- **Priority:** **Critical** for bearer/shell containment; **High** for fixture
+  leakage.
+- **Implementation notes:** centralize external URL validation; add command-level
+  authorization and schema validation; make release profiles fail if fixture
+  code or test flags are reachable; record live vs fixture provenance in every
+  evidence artifact.
+- **QA verification:** arbitrary command, local-file URL, unexpected scheme,
+  non-HTTPS host, argument injection, oversized payload, path traversal, and XSS
+  probes all fail; release artifacts have no fixture activation path; debug mode
+  shows a banner on every route and never contaminates release evidence.
+
+### GAP-022 - Finish diagnostics and visual/interaction polish
+
+- **Difference:** macOS provides mature native windows, consistent controls,
+  recovery states, and polished data density. Linux has a strong token base but
+  retains inline styles, Unicode/emoji control glyphs, raw JSON panels, inaccurate
+  save-dialog copy, disabled text controls, and no trustworthy current visual
+  regression set.
+- **Why it matters:** the product reads as an engineering console in several
+  routes and support bundles may not contain the facts needed to recover users.
+- **Recommended solution:** use shared components and iconography, complete
+  loading/empty/error/recovery states, add native save dialogs and privacy tiers,
+  and capture packaged visual regressions at supported sizes and renderers.
+- **Priority:** **Medium**.
+- **Implementation notes:** diagnostics should include redacted daemon/package/
+  renderer/capability/version facts with 0600 permissions; users preview content
+  and choose destination; remove raw JSON from normal flows; keep compact-density
+  and responsive behavior aligned with macOS outcomes, not SwiftUI pixels.
+- **QA verification:** desktop/compact/200% scale screenshots, no clipping or
+  overlap, consistent hover/focus/disabled/error states, dark/high-contrast,
+  save/cancel/permission behavior, corrupted daemon/package mismatch bundles,
+  and token/path/session-content redaction.
+
+### GAP-023 - Make CI and release automation fail closed
+
+- **Difference:** macOS release automation has mature behavioral gates. Linux PR
+  CI builds Swift targets without running their behavior tests; the
+  `--allow-blocked` verifier mode can return success for unrelated failures; the
+  Make release target swallows strict verifier failure; PR artifact paths point
+  at older mission output; and tag-triggered release code consumes a dispatch-
+  only version input. Source-archive and live package behavior are not enforced.
+- **Why it matters:** the repository can report green while testing the wrong
+  output, skipping behavior, or failing the command that is meant to block
+  promotion.
+- **Recommended solution:** split diagnostic reporting from exit status; run all
+  Linux Swift and Cargo tests; run package-launched UI/service E2E; upload only
+  the current evidence directory; derive and validate version from either the
+  dispatch input or tag; require source offer and full closure verification.
+- **Priority:** **Critical**.
+- **Implementation notes:** `--allow-blocked` may downgrade only explicitly
+  classified environmental blockers and must still fail integrity, security,
+  stale-evidence, or structural errors; Make must propagate the strict verifier
+  exit code; tag and manual dispatch paths must share one validated version
+  resolver; generated evidence paths must be single-sourced.
+- **QA verification:** mutation tests for every gate; run both tag and manual
+  dispatch flows; force Swift/Cargo/UI/signature/feed/source/update failures and
+  assert red; assert only a named environmental blocker can produce the
+  documented open-with-blocker state.
+
+### GAP-024 - Build a real current-version differential oracle
+
+- **Difference:** macOS is the gold standard, but current Linux provider/Hermes
+  evidence can promote a Linux-labeled canonical pass from preexisting contract
+  files rather than building and comparing both implementations at the same
+  commit, corpus, and schema.
+- **Why it matters:** shared fixtures can prove internal consistency while the
+  real macOS and Linux products have drifted in parsing, normalization, routes,
+  RPC behavior, or UI outcomes.
+- **Recommended solution:** build the macOS oracle and Linux target from the same
+  release commit, run both over the same versioned corpus and scripted workflows,
+  normalize platform-only fields, and diff domain results and user-visible
+  outcomes directly.
+- **Priority:** **High**.
+- **Implementation notes:** attest binary hashes, OS/runtime, corpus hash, schema
+  version, feature flags, clock/timezone, and normalization rules; keep expected
+  divergences explicit and reviewed; never let a Linux-generated file stand in
+  for the macOS side.
+- **QA verification:** inject a mutation unique to macOS and then one unique to
+  Linux; each must fail the differential job. Repeat for parser output, quota,
+  route inventory, settings, chat/session events, memory decisions, and every
+  shared daemon RPC.
+
+### GAP-025 - Prove dashboard, navigation, and window behavior in the product
+
+- **Difference:** Linux registers 19 routes, aligns the seven primary sections,
+  and implements six React dashboard layouts with unit tests. macOS additionally
+  provides provider/model deep navigation, mature multi-window/pop-out behavior,
+  persisted live layout state, and proven dense content. Linux's current six-
+  layout visual evidence is a static contract board; installed runtime captures
+  are black.
+- **Why it matters:** source and JSDOM tests do not prove that users can see,
+  navigate, resize, restore, deep-link, or use the real packaged dashboard.
+- **Recommended solution:** complete typed deep links and Linux-native secondary
+  windows, then run installed-package navigation and visual regression with live
+  data across all layouts and responsive sizes.
+- **Priority:** **Medium**.
+- **Implementation notes:** preserve route/state on restart; use stable responsive
+  constraints; restore focus after navigation/window close; separate renderer
+  safe mode from layout choice; do not use a static HTML board as product proof.
+- **QA verification:** every route and deep link, back/forward, keyboard commands,
+  layout persistence, pop-out/rejoin, restart, multi-monitor, compact/desktop/200%
+  widths, empty/error/stale/live data, nonblank pixels, and focus restoration.
+
+### GAP-026 - Complete quota account and switching behavior
+
+- **Difference:** Linux has a strong quota read surface, while macOS also ties
+  quota history to provider accounts, switching profiles, drain targets, alerts,
+  and routing decisions.
+- **Why it matters:** users can see exhaustion but cannot complete the response
+  workflow from Linux or verify which account/model will receive new traffic.
+- **Recommended solution:** connect quota rows to the provider/account catalog,
+  expose audited switch/drain/priority actions, and integrate alert thresholds and
+  failover explanations.
+- **Priority:** **Medium**.
+- **Implementation notes:** depend on secure credential custody and provider
+  catalog; keep routing mutations daemon-owned; distinguish stale, unavailable,
+  unknown, and unlimited states; preserve account privacy in diagnostics.
+- **QA verification:** multi-account refresh, quota reset windows, stale/error/
+  unlimited states, switch and rollback, drain target, threshold notification,
+  quota-driven failover, restart persistence, and concurrent clients.
+
+### GAP-027 - Complete Data and Privacy workflows
+
+- **Difference:** macOS Data & Privacy covers vault inventory, export, deletion,
+  recovery, consent, telemetry, and panic controls. Linux exposes inventory and
+  support/privacy copy, but important controls are read-only or incomplete and no
+  equivalent account/local deletion and recovery workflow is proven.
+- **Why it matters:** users lack full control over sensitive transcripts,
+  memories, credentials, analytics, and cloud/local retention; destructive actions
+  without clear scope or recovery can cause irreparable loss.
+- **Recommended solution:** implement daemon-owned privacy policy, scoped export,
+  local/account deletion, retention, recovery, telemetry consent, and panic
+  workflows with explicit previews, confirmations, audit, and cloud coordination.
+- **Priority:** **High**.
+- **Implementation notes:** define deletion scope and retention before UI; use
+  native save/confirmation dialogs, secure erase where meaningful, server-side
+  deletion receipts, export encryption, and recovery-key custody; keep MAS/Apple-
+  only behaviors labeled rather than silently omitted.
+- **QA verification:** export preview/cancel/encrypt/import, telemetry opt-out,
+  local-only deletion, cloud/account deletion, partial failure/retry, retention
+  expiry, recovery success/failure, panic, multi-device propagation, offline
+  queueing, locked keyring, and redaction.
+
+## Linux Parity Implementation Plan
+
+### Architectural target
+
+Parity work should converge on shared contracts and narrow platform adapters,
+not duplicate the macOS app inside React.
+
+1. **Shared product capability manifest**
+   - Provider/model/parser capabilities, settings metadata, RPC versions,
+     platform feature states, and reasoned unavailable/substitute states.
+   - Generated Swift/TypeScript/Rust types and contract tests.
+2. **Daemon-owned domain state**
+   - Sessions, chat, memory review, projects, missions, configuration, secrets,
+     auth, updates, and sync remain authoritative outside the WebView.
+3. **Linux platform services**
+   - `LinuxSecretStore`, `LinuxNativeShell`, `LinuxComputerUseAdapter`,
+     `LinuxMediaHost`, `LinuxUpdateProvider`, and `LinuxCompanionWindow`.
+   - Each exposes capabilities and failure reasons per desktop environment.
+4. **Narrow Tauri boundary**
+   - Typed IPC and Rust/native proxies; no bearer disclosure, arbitrary shell,
+     invented method strings, or unvalidated external URLs.
+5. **Release-head evidence graph**
+   - Every product row binds requirement, implementation, tests, installed-run
+     evidence, environment, artifact hash, and target commit.
+
+### Dependency graph
+
+```text
+truth gates + installed baseline
+  -> secret custody + narrow IPC + capability manifest
+    -> auth/cloud + provider catalog + native shell + updates
+      -> sessions/chat/memory + operational workspaces
+        -> Computer Use + Mercury + SmartHub + text expansion + pet
+          -> accessibility/performance/matrix certification
+            -> stable promotion
+```
+
+### Phase 0 - Stop false green and recover the product baseline
+
+| Task | Depends on | Engineering work | Acceptance criteria |
+|---|---|---|---|
+| LNX-GATE-001 | None | Replace the partial parity ledger with a complete product inventory; bind all Tier A/B evidence to target HEAD; generate Markdown from JSON | Current-head drift, missing row, blocked required row, and contradictory docs fail CI |
+| LNX-REL-VERIFY-001 | LNX-GATE-001 | Repair verifier primitives: cryptographic signature/key/identity checks, closure/source binding, feed schema/live-response checks, and mutation tests; do not publish or sign a candidate yet | Known-bad local signatures, one-byte mutations, HTML feed, stale closure, and missing source fail for the correct reason |
+| LNX-CI-001 | LNX-GATE-001 | Run Linux Swift/Cargo/installed-shell behavior; repair tag/version and evidence-path wiring; propagate every strict exit code | Tag/manual paths and all mutation tests fail closed for the correct reason |
+| LNX-RUN-001 | None | Define package/service ownership, eliminate duplicate daemon starts, add atomic handoff and renderer fallback in development/current ARM package baseline | Development and current-baseline runs are nonblank, use one daemon, recover after crash/restart, and emit package/build provenance |
+| LNX-SEC-001 | None | Implement/inject Secret Service, KWallet, and headless credential backends; remove WebView bearer access | All high-value secrets survive securely; JS/logs/files contain no credential |
+| LNX-IPC-001 | LNX-SEC-001 | Replace broad shell and ad hoc bridges with generated typed commands and native HTTP/SSE proxy | Command-injection/XSS/URL tests fail closed; no production fixture path |
+| LNX-CAP-001 | LNX-IPC-001 | Runtime capability/version manifest for providers, settings, portals, media, CU, native shell, and substitutes | UI never offers an action the runtime is guaranteed to reject |
+| LNX-A11Y-HARNESS-001 | None | Add route-state axe/keyboard/zoom harness and packaged AT-SPI/Orca capture before feature UI work | Every UI PR runs the baseline accessibility contract and stores real node/action evidence |
+| LNX-PERF-HARNESS-001 | None | Define matched macOS/Linux workload protocol, clocks, p50/p95/p99 and resource/soak capture before feature work | Reproducible baseline and provisional budgets exist for startup, navigation, IPC, data, chat, CPU/RSS/GPU |
+
+Every implementation task in every phase owns its permission, recovery, support,
+and known-limitation documentation. The final documentation task is a public
+truth-sync, not the first time behavior is documented.
+
+### Phase 1 - Platform and delivery foundation
+
+| Task | Depends on | Engineering work | Acceptance criteria |
+|---|---|---|---|
+| LNX-PKG-001 | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001 | Dual-architecture AppImage/deb/rpm construction and architecture-aware manifest | Unsigned/local x86_64 and aarch64 lifecycle green on Ubuntu/Fedora before candidate signing |
+| LNX-CHANNEL-001 | LNX-PKG-001, LNX-REL-VERIFY-001 | apt and rpm repository metadata/signing, correct AUR recipe, and a portal-safe Flatpak channel | Each declared channel installs the correct architecture and verifies repository/package metadata; unpromoted channels are explicitly labeled |
+| LNX-EVT-001 | LNX-CAP-001 | Daemon subscriptions, cadence, cancellable IPC, supervisor, recovery, migrations | Kill/stall/suspend/offline tests recover without stale or frozen UI |
+| LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Transactional onboarding with readback and repair | A clean user cannot finish required setup while prerequisites are missing |
+| LNX-AUTH-001 | LNX-SEC-001, LNX-IPC-001 | PKCE/device auth, membership, App Check, sync, trusted devices, safe billing callbacks | Full sign-in/out/device/backup/restore/checkout matrix passes |
+| LNX-NATIVE-001 | LNX-CAP-001 | Tray/status window, notifications, deep links, shortcuts, startup | Repeated native workflows pass on GNOME/KDE and icon-only fallback |
+| LNX-UPD-001 | LNX-PKG-001, LNX-CHANNEL-001, LNX-NATIVE-001 | Signed check, compatibility, package/channel-native install/restart/rollback UX | Tamper/replay/arch/version tests fail; prior-version update and rollback succeed for every declared channel |
+| LNX-CAT-001 | LNX-CAP-001 | Shared provider/model/parser/path manifest and golden fixtures | Equivalent normalized provider results on macOS/Linux |
+| LNX-DIFF-001 | LNX-CAT-001, LNX-CI-001 | Same-commit macOS/Linux binaries run one attested corpus and workflow suite | Mutations on either platform fail the normalized differential oracle |
+
+### Phase 2 - Core workflow parity
+
+| Task | Depends on | Engineering work | Acceptance criteria |
+|---|---|---|---|
+| LNX-SESS-001 | LNX-EVT-001 | Session repository: list/body/search/source/resume/export | Real transcript replay and recovery, no synthetic rows |
+| LNX-CHAT-001 | LNX-SESS-001, LNX-CAT-001 | Backends/models, streaming, attachments, citations, approvals, options, secondary window | Mac-equivalent chat contract suite and installed E2E green |
+| LNX-MEM-001 | LNX-EVT-001 | Real quarantine/review/forget/audit RPCs | Daemon-authoritative decisions persist across restart/devices |
+| LNX-PROJ-001 | LNX-SESS-001 | Project CRUD, exact associations, detail/history, inferred-row migration | Stable-ID project lifecycle and 10k-session migration suite green |
+| LNX-MISSION-001 | LNX-EVT-001 | Mission questions, evidence, history, health, freshness, cancel/recovery | Full mission operating lifecycle survives restart/reconnect |
+| LNX-INSIGHT-001 | LNX-SESS-001, LNX-CAT-001 | Insight evidence/citations, compare, follow-up, and audit | Every insight is source-linked and comparable with stale/error handling |
+| LNX-DB-001 | LNX-EVT-001, LNX-SEC-001 | Inspector, search, snapshots, inotify ownership, rebuild/recovery, query budgets | Search/watch/rebuild/corruption/100k-row suite green without N+1 drift |
+| LNX-PROVIDER-001 | LNX-CAT-001, LNX-SEC-001 | Provider/model deep dives, accounts, health, routing, drain and failover | Catalog, switch, quota-exhaustion and failover lifecycle green |
+| LNX-PRIV-001 | LNX-SEC-001, LNX-AUTH-001, LNX-SESS-001, LNX-MEM-001 | Export, retention, local/account deletion, recovery, consent, telemetry, panic | Scoped destructive/recovery workflows and multi-device propagation green |
+| LNX-SET-001 | LNX-CAP-001, LNX-AUTH-001, LNX-PRIV-001 | Shared settings schema, missing tabs, deep links, writable configuration | Search, persistence, readback, and policy tests green |
+
+### Phase 3 - Native high-complexity features
+
+| Task | Depends on | Engineering work | Acceptance criteria |
+|---|---|---|---|
+| LNX-CU-BROWSER-001 | LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | Real target/action/result Browser CU workflow with native panic/lifecycle | Navigate/type/click/screenshot/approval/panic/audit/restart E2E green |
+| LNX-CU-SYSTEM-001 | LNX-CU-BROWSER-001, LNX-CAP-001, LNX-NATIVE-001 | Portal/PipeWire/AT-SPI/libei plus constrained X11/uinput adapters | Safety and compositor matrix green; unsupported modes hidden |
+| LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | Real two-device matrix green on supported desktops |
+| LNX-IOT-001 | LNX-IPC-001 | Typed SmartHub discovery/action APIs | Real device and hostile-input tests green |
+| LNX-TEXT-001 | LNX-SEC-001, LNX-EVT-001 | App composer integration, encrypted storage/sync, then IBus/fcitx | Secure-field and desktop/input-method matrix green |
+| LNX-PET-001 | LNX-CAP-001, LNX-NATIVE-001 | Real glTF renderer, companion window, capability fallback | Visual, focus, compositor, GPU, and reduced-motion tests green |
+
+### Phase 4 - Quality certification and promotion
+
+| Task | Depends on | Engineering work | Acceptance criteria |
+|---|---|---|---|
+| LNX-REL-CANDIDATE-001 | LNX-PKG-001, LNX-CHANNEL-001, LNX-UPD-001, LNX-REL-VERIFY-001, all product/platform tasks | Build and sign the exact candidate; bind signatures, source, SBOM/VEX/provenance and feed; run real update/rollback | Candidate and public-asset copies verify byte-for-byte; every declared channel updates and rolls back |
+| LNX-A11Y-CERT-001 | LNX-A11Y-HARNESS-001, all UI tasks | Final axe, Playwright, Orca/AT-SPI, keyboard, zoom, high contrast, reduced motion certification | No serious violations; every critical workflow assistive-tech complete |
+| LNX-PERF-CERT-001 | LNX-PERF-HARNESS-001, LNX-EVT-001, all primary workflows | Final cold/warm/tail/resource/soak benchmarks compared with matched macOS outcomes | Agreed p95/resource budgets green with no leaks/regressions |
+| LNX-QA-001 | LNX-REL-CANDIDATE-001, all platform tasks | Exact-candidate packaged E2E on the minimum supported GNOME X11/Wayland, KDE Wayland, wlroots, x86_64/aarch64 matrix | Every minimum-support row is green; only additional environment rows may be publicly scoped out |
+| LNX-DOC-001 | LNX-QA-001, per-feature docs | Final install, permissions, limitations, update/rollback, security, support, and public-site truth-sync | Docs and public site match the exact candidate and supported matrix |
+| LNX-PROMOTE-001 | All tasks | Re-run fail-closed ledger and release graph at final commit | Zero Critical/High gaps; no missing product capability or blocked/stale required row; stable feed promoted |
+
+## Prioritized Roadmap
+
+| Order | Milestone | Included tasks | Exit gate |
+|---|---|---|---|
+| 0 | **Disable false parity** | LNX-GATE-001 | Machine claim is off; public/internal status says ARM64 prerelease; ledger cannot certify current head |
+| 1 | **Trustworthy engineering baseline** | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Bad signatures/feed/evidence fail; development/current baseline is nonblank and single-daemon; early quality gates run |
+| 2 | **Security foundation** | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | Secure credentials; no bearer/shell/fixture exposure; honest capabilities |
+| 3 | **Mainstream install** | LNX-PKG-001, LNX-CHANNEL-001 | Dual architecture and declared package/repository channels install locally |
+| 4 | **Daily-use native foundation** | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, native alerts/tray, update lifecycle, current cross-platform provider truth |
+| 5 | **Core product workflows** | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic transcript/review state; every primary workspace and privacy workflow completes |
+| 6 | **Browser automation parity** | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
+| 7 | **Media and system integration** | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
+| 8 | **Extended features** | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
+| 9 | **Candidate and certification** | LNX-REL-CANDIDATE-001, LNX-A11Y-CERT-001, LNX-PERF-CERT-001, LNX-QA-001, LNX-DOC-001 | Exact signed candidate, assistive-tech, performance, architecture, desktop matrix, and docs green |
+| 10 | **Stable promotion** | LNX-PROMOTE-001 | Zero Critical/High gaps and a current reproducible evidence graph |
+
+### Parallelization and ownership
+
+After Milestone 2, these workstreams can proceed in parallel when their shared
+contracts are frozen:
+
+- delivery: package architectures, update provider, release verification;
+- product data: provider catalog, sessions, projects, missions, insights;
+- native shell: tray, notifications, deep links, startup, global shortcuts;
+- high-complexity platform: Computer Use and Mercury as separate lanes;
+- quality: accessibility/performance harnesses can start early and become gates.
+
+Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Tauri
+`lib.rs`, shared capability schemas, app-wide CSS, and release validators.
+
+## QA Checklist
+
+### Release and supply chain
+
+- [ ] Every AppImage/deb/rpm/daemon artifact verifies against its detached
+  signature and committed/published public-key fingerprint.
+- [ ] One-byte mutation of artifact, signature, provenance, checksum, SBOM, VEX,
+  source archive, or feed fails promotion.
+- [ ] Ledger evidence and artifact provenance target the exact release commit.
+- [ ] A missing, blocked, stale, duplicated, or contradictory product row fails.
+- [ ] Linux Swift, Cargo, frontend, and installed-shell behavior tests run rather
+  than compile-only substitutes.
+- [ ] Manual-dispatch and tag-triggered release paths derive the same validated
+  version and upload the current evidence directory.
+- [ ] Make, scripts, and workflows propagate strict failures; allow-blocked mode
+  cannot hide structural, security, integrity, or stale-evidence failures.
+- [ ] The source archive and source offer are bound to the same commit and
+  verified as part of the artifact closure.
+- [ ] `latest-linux.json` is valid signed JSON with correct MIME type, version,
+  architecture, hashes, URLs, and monotonicity.
+- [ ] x86_64 and aarch64 AppImage/deb/rpm install, launch, upgrade, rollback, and
+  uninstall cleanly.
+- [ ] apt and rpm repository metadata/signing, AUR recipe, and Flatpak manifest
+  install only the declared version/architecture; any unpromoted channel is
+  excluded from public install copy rather than presented as ready.
+- [ ] Release package smoke launches the real GUI and daemon, not only inspects
+  archive contents.
+
+### Installation, service, and onboarding
+
+- [ ] Exactly one package-owned daemon runs and matches the shell/RPC version.
+- [ ] No live process executes a deleted or unowned binary.
+- [ ] Fresh install, login start, logout/login, crash recovery, suspend/resume,
+  interrupted upgrade, downgrade, and uninstall behave correctly.
+- [ ] App window and each route render nonblank under hardware, WebGL1, WebGL2,
+  and supported software fallback.
+- [ ] Onboarding verifies daemon, keyring, provider, auth, portal, tray, renderer,
+  and update channel before required completion.
+- [ ] Every denial/failure offers an idempotent repair path and survives restart.
+
+### Security and privacy
+
+- [ ] Provider, connector, auth, cloud, notification, device, and DB secrets
+  persist through Secret Service/KWallet/systemd credential policy.
+- [ ] Locked/unavailable secret stores fail closed with actionable UI.
+- [ ] No secrets appear in plaintext config, DB, logs, DOM, JS globals, frontend
+  requests, crash reports, screenshots, clipboard, or diagnostics.
+- [ ] WebView JavaScript never receives the gateway bearer.
+- [ ] Arbitrary shell, file URLs, untrusted hosts/schemes, argument injection,
+  traversal, oversized payloads, and hostile deep links are rejected.
+- [ ] Release builds cannot activate fixtures or synthetic evidence modes.
+- [ ] Privacy/telemetry choices are writable, persist, and stop emission at source.
+
+### Core product workflows
+
+- [ ] All declared providers match macOS-normalized parser/quota golden fixtures.
+- [ ] macOS and Linux differential outputs are generated at the same commit from
+  attested binaries and corpus; a platform-specific mutation fails the job.
+- [ ] Provider discovery handles XDG paths, symlinks, sandbox paths, malformed
+  logs, duplicates, multiple accounts, and large histories.
+- [ ] Usage, quota, projections, model/provider identity, alerts, and freshness
+  update without manual navigation refresh.
+- [ ] Real session transcripts replay exactly, search, paginate, export, resume,
+  and recover from missing/corrupt/cloud-conflicted bodies.
+- [ ] Chat supports each declared backend/model, streaming, cancellation,
+  attachments, citations, approvals, restart/reconnect, export, and pop-out.
+- [ ] Memory candidates quarantine, approve, reject, forget, audit, and retrieve
+  from daemon-authoritative state across restart/devices.
+- [ ] Projects support CRUD and exact session association.
+- [ ] Missions expose questions, approvals, evidence, history, health, freshness,
+  cancellation, and recovery.
+- [ ] Insights expose evidence/citations, comparison, follow-up, and audit actions.
+- [ ] Database supports inspect/search/snapshot/watch/recovery without N+1 drift.
+- [ ] Provider/model deep dives support catalog, health, account switching,
+  routing, and failover.
+
+### Account, cloud, and native shell
+
+- [ ] Sign-in/link/sign-out, state validation, expiry, refresh, revocation, offline,
+  and clock-skew cases pass.
+- [ ] Trusted device add/revoke/transfer and credential transfer are secure.
+- [ ] Backup, restore, conflict resolution, remote access, checkout, restore, and
+  entitlement refresh work across restart.
+- [ ] Tray/status UI works in rich and icon-only hosts, with stale/offline states.
+- [ ] Notifications deliver actionable deep links and recover after relaunch.
+- [ ] OAuth deep links, login startup, and global panic work on GNOME/KDE/wlroots.
+
+### Computer Use, media, and extended features
+
+- [ ] Unsupported Computer Use modes are unavailable before session start.
+- [ ] Browser actions, approvals, deny, panic, audit, tamper detection, restart,
+  and permission revocation pass against a real browser.
+- [ ] System capture/input/inspection passes the declared GNOME/KDE/Sway and
+  Wayland/X11 matrix with explicit consent and bounded fallbacks.
+- [ ] All panic paths stop future input within the latency budget.
+- [ ] Mercury pairing, files, calls, screen share, cancel/reject, packet loss,
+  reconnect, suspend, permissions, and cleanup pass on two real devices.
+- [ ] SmartHub uses typed allowlisted commands and passes real device/offline/
+  hostile-input tests.
+- [ ] Text expansion works in app composers and supported IBus/fcitx contexts,
+  excludes secure fields, and restores clipboard/input state.
+- [ ] Pet overlay passes focus, click-through, topmost, animation, scaling,
+  multi-monitor, GPU, reduced-motion, and honest-fallback tests.
+
+### Accessibility, performance, reliability, and polish
+
+- [ ] axe finds no serious violations on every route, important state, modal,
+  loading, empty, error, disabled, and fixture-disabled release state.
+- [ ] Every workflow is keyboard-complete with visible focus and no focus trap.
+- [ ] Orca/AT-SPI exposes correct names, roles, states, actions, order, and live
+  announcements in the installed app.
+- [ ] 200% zoom/reflow, font scaling, GNOME High Contrast, forced colors, reduced
+  motion, and non-color status cues pass.
+- [ ] Cold/warm startup, first meaningful content, route and IPC p50/p95/p99,
+  parser/database scale, chat first token, RSS/CPU/GPU, and 30-minute soak meet
+  agreed macOS-relative budgets.
+- [ ] Daemon kill/restart, socket stall, offline/online, suspend/resume, keyring
+  lock, DB corruption, clock change, low memory, and renderer fallback recover.
+- [ ] Packaged screenshots show no black frames, clipping, overlap, unreadable
+  contrast, raw diagnostic artifacts, or inconsistent interaction states.
+
+### Required promotion matrix
+
+- [ ] Ubuntu 24.04 GNOME X11, x86_64 and aarch64.
+- [ ] Ubuntu 24.04 GNOME Wayland, x86_64 and aarch64.
+- [ ] Fedora KDE Wayland, x86_64 and aarch64 where infrastructure permits.
+- [ ] Arch or equivalent wlroots/Sway row, at minimum x86_64.
+- [ ] Secret Service and KWallet.
+- [ ] AppImage, deb, and rpm package paths.
+- [ ] apt/rpm repository, AUR, and Flatpak rows for every publicly declared
+  channel; undeclared experimental channels remain visibly unpromoted.
+- [ ] Hardware and software renderer paths.
+- [ ] Clean user, upgrade user, offline user, locked-keyring user, and assistive-
+  technology user journeys.
+
+## Promotion Exit Criteria
+
+Linux may be called full parity only when all of the following are true:
+
+1. Zero open Critical or High gaps in this audit.
+2. Every non-negotiable macOS product capability is implemented with an equivalent
+   user outcome on at least one minimum-supported Linux environment. A missing
+   product capability cannot be converted into parity by documenting it away.
+3. The minimum supported environment matrix is declared before certification and
+   fully green. Only additional environments outside that minimum may be publicly
+   scoped out or assigned a documented Tier C substitute.
+4. Product ledger, evidence, artifacts, and public feed target the exact release
+   commit and pass strict verification without exceptions.
+5. Real installed packages, not fixtures/static boards/archive inspection, prove
+   every primary workflow on the required matrix.
+6. macOS/Linux contract fixtures produce equivalent domain results.
+7. Accessibility, performance, reliability, security, update/rollback, and
+   supply-chain gates all pass.
+8. README, website, release notes, support matrix, onboarding copy, known
+   limitations, and operator runbooks match live behavior.
+
+## Evidence Index
+
+Primary current evidence and implementation references:
+
+- macOS route oracle: `AgentLens/Views/Dashboard/DashboardNavigationModel.swift`
+- macOS settings oracle: `AgentLens/Views/Settings/SettingsTab.swift`
+- Linux settings manifest: `apps/linux-desktop/src/surfaces/settings/settingsTabs.ts`
+- Linux chat controls/state: `apps/linux-desktop/src/surfaces/chat/` and
+  `apps/linux-desktop/src/state/chatStore.ts`
+- Linux Tauri capability/commands: `apps/linux-desktop/src-tauri/src/lib.rs`
+- Linux daemon secret stores: `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/`
+- Current ledger: `docs/linux-port/parity-ledger.json` and
+  `docs/linux-port/parity-ledger.md`
+- Ledger validator: `scripts/linux-port/lib/parity-ledger-validate.mjs`
+- Release verifier: `scripts/linux-port/verify-linux-release.mjs`
+- Release evidence: `docs/linux-port/evidence/mission-002-reanchor/`
+- Existing implementation plan and accepted substitutions:
+  `docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`
+- Public prerelease: `https://github.com/Imagine-That-Ai/BurnBar/releases/tag/linux-v0.1.0`
+- Public update-feed target: `https://burnbar.ai/latest-linux.json`
+
+This audit intentionally treats source existence and generated evidence as
+necessary but insufficient. A parity row becomes ready only when its real user
+outcome is reproducible from an installed release artifact on a declared,
+supported Linux environment.
