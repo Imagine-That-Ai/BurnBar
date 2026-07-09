@@ -73,7 +73,7 @@ public sealed partial class AppearanceSettingsPage : Page, ISettingsAnchorTarget
             var entry = KernelCatalog.All[i];
             KernelCombo.Items.Add(new ComboBoxItem
             {
-                Content = entry.Label,
+                Content = KernelCatalog.Label(entry.Id),
                 Tag = entry.Id,
             });
             if (string.Equals(entry.Id, selected, StringComparison.Ordinal))

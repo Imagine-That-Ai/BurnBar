@@ -219,14 +219,6 @@ public sealed class KernelBackdropHost : IDisposable
         _ = ExecuteScriptAsync(KernelBackdropBridge.SetBackdropActiveScript(active));
     }
 
-    /// <summary>Read the live preference and apply kernel selection.</summary>
-    public void ApplyFromPreferences()
-    {
-        if (_isFailed)
-        {
-            return;
-        }
-
         var env = LiquidGlassEnvironment.Current;
         string kernel = env.GetString(KernelBackdropPreferences.KernelKey, KernelCatalog.DefaultId);
         SetKernel(kernel);

@@ -15,7 +15,7 @@
       states applied from code-behind. Tap toggles selection.
     -->
     <Grid>
-        <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" x:Name="PillBorder"
+        <Border Style="{StaticResource LiquidGlassSurfaceStyle}" x:Name="PillBorder"
                 CornerRadius="999"
                 Padding="12,6"
                 Tapped="OnTapped"
