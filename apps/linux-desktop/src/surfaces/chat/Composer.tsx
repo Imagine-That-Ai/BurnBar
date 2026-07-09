@@ -10,7 +10,14 @@ type ComposerProps = {
   onStop: () => void;
 };
 
-export function Composer({ backend, disabled, disabledReason, streaming, onSend, onStop }: ComposerProps) {
+export function Composer({
+  backend,
+  disabled,
+  disabledReason,
+  streaming,
+  onSend,
+  onStop
+}: ComposerProps) {
   const areaId = useId();
   const [draft, setDraft] = useState('');
   const placeholder = composerPlaceholder(backend);
@@ -25,7 +32,7 @@ export function Composer({ backend, disabled, disabledReason, streaming, onSend,
   };
 
   return (
-    <form className="chat-composer" onSubmit={submit}>
+    <form className="chat-composer" data-backend={backend} onSubmit={submit}>
       <div className="chat-composer-inner">
         <div className="chat-composer-row chat-composer-input-row">
           <button
@@ -57,7 +64,12 @@ export function Composer({ backend, disabled, disabledReason, streaming, onSend,
           />
           <div className="chat-composer-send-cluster">
             {streaming ? (
-              <button type="button" className="chat-composer-stop" onClick={onStop} aria-label="Stop generating">
+              <button
+                type="button"
+                className="chat-composer-stop"
+                onClick={onStop}
+                aria-label="Stop generating"
+              >
                 Stop
               </button>
             ) : null}
@@ -66,7 +78,11 @@ export function Composer({ backend, disabled, disabledReason, streaming, onSend,
               className="chat-composer-send"
               disabled={sendDisabled}
               aria-label="Send message"
-              title={sendDisabled ? disabledReason || 'Enter a message before sending' : 'Send message'}
+              title={
+                sendDisabled
+                  ? disabledReason || 'Enter a message before sending'
+                  : 'Send message'
+              }
               onClick={() => submit()}
             >
               <span aria-hidden="true">↑</span>

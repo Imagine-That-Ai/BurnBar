@@ -20,7 +20,7 @@ export type ChatMessage = {
   text: string;
   toolName?: string;
   toolArgsSummary?: string;
-  toolState?: 'proposed' | 'approved' | 'denied' | 'done';
+  toolState?: 'proposed' | 'approved' | 'denied' | 'done' | 'running';
   viaHermes?: boolean;
   memoryCitations?: MemoryCitation[];
 };

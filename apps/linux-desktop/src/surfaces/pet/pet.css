@@ -54,7 +54,10 @@ body.reduced-motion .pet-stage--react-wave-pulse {
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-pill);
   border: 1px solid var(--color-glass-line);
-  background: var(--color-glass-bg);
+  background: var(--glass-panel, color-mix(in srgb, var(--color-glass-bg) 62%, transparent));
+  backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  -webkit-backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  box-shadow: var(--glass-panel-shadow, 0 8px 24px rgba(0,0,0,0.22), inset 0 1px 0 var(--color-frost-line));
   color: var(--color-text-base);
   cursor: pointer;
 }
@@ -92,7 +95,10 @@ body.reduced-motion .pet-stage--react-wave-pulse {
   width: 100%;
   max-width: 360px;
   height: auto;
-  background: var(--color-ink-elevated);
+  background: color-mix(in srgb, var(--color-ink-elevated) 70%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
   border: 1px solid var(--color-glass-line);
   border-radius: var(--radius-sm);
 }
@@ -146,7 +152,10 @@ body.reduced-motion .pet-stage--react-wave-pulse {
   font-family: var(--font-mono);
   font-size: 0.8rem;
   white-space: pre-wrap;
-  background: var(--color-ink-elevated);
+  background: color-mix(in srgb, var(--color-ink-elevated) 70%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
   padding: var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-glass-line);
