@@ -29,10 +29,11 @@
       "Hosted MCP Isolation Proofs (local, deterministic)",
       "Hosted MCP Security Smoke",
       "No new suppressions",
-      "OSV Scanner (open source vulnerabilities)",
-      "PR Native Gate",
-      "PR Windows Gate",
-      "Production Deploy Auth Policy",
+    "OSV Scanner (open source vulnerabilities)",
+    "PR Native Gate",
+    "PR Windows Gate",
+    "PR Windows Full Gate",
+    "Production Deploy Auth Policy",
       "Production env has no secrets",
       "Remote Installer Policy",
       "Rust (fmt + clippy + cargo-deny)",
@@ -67,7 +68,7 @@
     ]
   },
   "_pending_required_status_checks": {
-    "_comment": "PLACEHOLDER — future-required checks that NO workflow emits yet. Do NOT copy these into required_status_checks.contexts (above) or into the live ruleset until the emitting workflow exists and reports the context on 'pull_request'. A required context that is never reported leaves every PR pending forever. Promote each entry into required_status_checks.contexts in the SAME change that lands its workflow. 'diff-coverage (PR)' is the re-armed diff-coverage gate (the prior one was gamed with presence-based carve-outs, then dropped from CI — see DILIGENCE_REPORT_2026-06-11.md).",
+    "_comment": "PLACEHOLDER — future-required checks. Do NOT copy these into required_status_checks.contexts (above) or into the live ruleset until the emitting workflow exists and has reported the context on 'pull_request' at least once. A required context that is never reported leaves every PR pending forever. Promote each entry into required_status_checks.contexts in the SAME change that lands its workflow — or, once the workflow is already merged and observed reporting, in a follow-up operator change to the live ruleset. STATUS 2026-07-08: 'diff-coverage (PR)' is now EMITTED on every PR by the 'diff-coverage-ts' job in .github/workflows/fast-feedback.yml (real v8/istanbul changed-line intersection via scripts/diff-coverage-ts.sh; ≥80%; NO presence-based carve-out — the anti-pattern that gamed the prior gate, DILIGENCE_REPORT_2026-06-11.md §5.1 CG-1). It is kept here (NOT yet in required_status_checks.contexts) on purpose: making it REQUIRED is an operator-only branch-protection/ruleset change. ACTIVATION (operator): after confirming the context has reported green on a real PR, move 'diff-coverage (PR)' from here into required_status_checks.contexts above AND add it to the live org ruleset. NOTE: this job gates only the TypeScript surface (functions + extension); Swift/native diff-coverage runs post-merge/nightly in openburnbar-pr-harness.yml and is NOT yet a PR gate (needs xcodebuild coverage on a PR-triggered macOS lane) — a separate follow-on before a 'diff-coverage (PR)' context could claim whole-repo coverage.",
     "contexts": [
       "diff-coverage (PR)"
     ]

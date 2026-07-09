@@ -102,6 +102,9 @@ jobs:
       - name: Run Firestore rules emulator tests
         run: npm --prefix functions run test:firestore-rules
 
+      - name: Run Storage rules emulator tests
+        run: bash scripts/ci/test-storage-rules.sh
+
   release-extension-gate:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Release Extension and TS Gate

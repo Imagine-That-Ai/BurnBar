@@ -18,6 +18,7 @@ struct CommandDeckPalette: View {
     @State private var query: String = ""
     @State private var selectedIndex: Int = 0
     @State private var sessionResults: [SearchResult] = []
+    @State private var sessionResultsQuery: String = ""
     @State private var recentSessions: [ConversationRecord] = []
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
@@ -35,6 +36,18 @@ struct CommandDeckPalette: View {
         }
         .frame(width: 520, height: 420)
         .background(DesignSystem.Colors.background)
+        .onKeyPress(.upArrow) {
+            moveSelection(by: -1)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            moveSelection(by: 1)
+            return .handled
+        }
+        .onKeyPress(.escape) {
+            dismiss()
+            return .handled
+        }
         .onAppear {
             inputFocused = true
             loadRecents()
@@ -97,7 +110,7 @@ struct CommandDeckPalette: View {
 
     private var displaySessions: [SearchResult] {
         if !trimmedQuery.isEmpty {
-            return sessionResults
+            return sessionResultsQuery == trimmedQuery ? sessionResults : []
         }
         return recentSessions.map { conversation in
             SearchResult(
@@ -173,18 +186,6 @@ struct CommandDeckPalette: View {
                     proxy.scrollTo(newIndex, anchor: .center)
                 }
             }
-        }
-        .onKeyPress(.upArrow) {
-            moveSelection(by: -1)
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            moveSelection(by: 1)
-            return .handled
-        }
-        .onKeyPress(.escape) {
-            dismiss()
-            return .handled
         }
         .focusable()
         .focusEffectDisabled()
@@ -265,8 +266,8 @@ struct CommandDeckPalette: View {
         let target = ConversationJumpTarget(
             conversation: result.conversation,
             snippet: result.snippet,
-            startOffset: 0,
-            endOffset: result.snippet.count,
+            startOffset: result.startOffset,
+            endOffset: result.endOffset,
             source: .retrieval
         )
         pushRecent(query: result.conversation.inferredTaskTitle)
@@ -309,10 +310,13 @@ struct CommandDeckPalette: View {
         let q = trimmedQuery
         guard !q.isEmpty else {
             sessionResults = []
+            sessionResultsQuery = ""
             isSearching = false
             return
         }
 
+        sessionResults = []
+        sessionResultsQuery = q
         isSearching = true
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(200))
@@ -326,8 +330,9 @@ struct CommandDeckPalette: View {
             }
 
             await MainActor.run {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, trimmedQuery == q else { return }
                 sessionResults = Array(results.prefix(10))
+                sessionResultsQuery = q
                 isSearching = false
             }
         }

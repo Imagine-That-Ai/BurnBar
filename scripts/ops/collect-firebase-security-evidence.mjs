@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { rulesSourceForDeploy } from "../ci/firebase-rules-source.mjs";
 import { evaluateFirebaseAppCheckEnforcement } from "../lib/evaluate-firebase-app-check-enforcement.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -418,9 +419,9 @@ function normalizedIndexSpec(raw) {
 }
 
 async function collectRules(project, token) {
-  const localFirestoreRules = readFileSync(
-    resolve(repoRoot, "firestore.rules"),
-    "utf8",
+  const localFirestoreRules = rulesSourceForDeploy(
+    "firestore.rules",
+    readFileSync(resolve(repoRoot, "firestore.rules"), "utf8"),
   );
   const remoteFirestoreRules = await deployedRulesForRelease(
     `projects/${project}/releases/cloud.firestore`,

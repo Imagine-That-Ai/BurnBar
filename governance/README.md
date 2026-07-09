@@ -66,6 +66,32 @@ Keep the JSON and live GitHub protection in sync:
 `_pending_required_status_checks` remains the place for declared future gates that are not emitted
 yet.
 
+### The `diff-coverage (PR)` Pending Gate
+
+`_pending_required_status_checks` holds `diff-coverage (PR)` — the re-armed diff-coverage gate.
+
+As of 2026-07-08 an emitting workflow exists. The `diff-coverage-ts` job in
+[`fast-feedback.yml`](../.github/workflows/fast-feedback.yml) reports the `diff-coverage (PR)`
+check-run on every `pull_request`. It computes real per-line coverage for the changed TypeScript
+surface (functions + extension) from the v8/istanbul `coverage-final.json` and intersects it with the
+added runtime lines of `git diff origin/main HEAD`, failing below 80%
+([`scripts/diff-coverage-ts.sh`](../scripts/diff-coverage-ts.sh)). It has no presence-based fallback:
+the script fails closed with `method: istanbul_evidence_missing` when a changed runtime file has no
+per-line coverage evidence. When no functions/extension TypeScript changed, the job reports a fast
+pass, so the context still resolves on every PR at near-zero cost.
+
+The context stays in `_pending_required_status_checks`, not yet in
+`required_status_checks.contexts`, on purpose: making it required is an operator-only
+branch-protection change, and it should be flipped only after the context is observed reporting green
+on a real PR. Activation: move `diff-coverage (PR)` from `_pending_required_status_checks` into
+`required_status_checks.contexts` in this file and add it to live branch protection in the same
+change.
+
+This gate covers the TypeScript surface only. Swift/native diff coverage
+([`scripts/diff-coverage.sh`](../scripts/diff-coverage.sh)) still runs post-merge/nightly inside
+[`openburnbar-pr-harness.yml`](../.github/workflows/openburnbar-pr-harness.yml), which is not a
+`pull_request` gate.
+
 ## Drift Check
 
 The scheduled/dispatch ops verification lane runs

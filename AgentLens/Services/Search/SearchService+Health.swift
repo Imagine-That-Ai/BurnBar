@@ -36,7 +36,9 @@ extension SearchService {
                 return SearchResult(
                     conversation: conversation,
                     snippet: result.snippet,
-                    rank: result.rerankScore
+                    rank: result.rerankScore,
+                    startOffset: result.startOffset,
+                    endOffset: result.endOffset
                 )
             }
         }
