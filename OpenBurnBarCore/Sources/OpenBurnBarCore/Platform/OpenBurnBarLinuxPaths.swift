@@ -7,15 +7,6 @@ public enum OpenBurnBarLinuxPaths {
     public static let defaultSocketFileName = "openburnbar-daemon.sock"
     public static let defaultAuthTokenFileName = "daemon-socket-auth-token"
 
-    /// The current user's home directory. `FileManager.homeDirectoryForCurrentUser` is
-    /// `API_UNAVAILABLE(ios)`, so use `NSHomeDirectory()` — available on iOS, macOS, and
-    /// Linux, and identical for the non-sandboxed daemon/desktop processes that actually
-    /// use these paths. (iOS never resolves these Linux paths at runtime; the OpenBurnBarCore
-    /// module is shared with the mobile app, so this file only has to compile there.)
-    private static var homeDirectoryURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-    }
-
     public static func supportDirectoryURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         if let override = trimmedNonEmpty(environment["OPENBURNBAR_DAEMON_SUPPORT_DIR"])
             ?? trimmedNonEmpty(environment["BURNBAR_DAEMON_SUPPORT_DIR"]) {
@@ -25,7 +16,7 @@ public enum OpenBurnBarLinuxPaths {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent("OpenBurnBar", isDirectory: true)
         }
-        return homeDirectoryURL
+        return currentHomeDirectory
             .appendingPathComponent(".config/OpenBurnBar", isDirectory: true)
     }
 
@@ -34,7 +25,7 @@ public enum OpenBurnBarLinuxPaths {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent(defaultConfigRelativeComponents[0], isDirectory: true)
         }
-        return homeDirectoryURL
+        return currentHomeDirectory
             .appendingPathComponent(".config/openburnbar", isDirectory: true)
     }
 
@@ -50,7 +41,7 @@ public enum OpenBurnBarLinuxPaths {
 
     public static func expandTildeInPath(_ path: String, homeDirectory: URL? = nil) -> String {
         guard path.hasPrefix("~") else { return path }
-        let home = homeDirectory ?? homeDirectoryURL
+        let home = homeDirectory ?? currentHomeDirectory
         if path == "~" {
             return home.path
         }
@@ -64,5 +55,13 @@ public enum OpenBurnBarLinuxPaths {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static var currentHomeDirectory: URL {
+        #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        #else
+        FileManager.default.homeDirectoryForCurrentUser
+        #endif
     }
 }

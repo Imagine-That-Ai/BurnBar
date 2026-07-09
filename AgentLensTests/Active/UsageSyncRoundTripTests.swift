@@ -382,6 +382,52 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertNotNil(docs[staleDocPath], "orphan cleanup must not run when the replacement upload failed")
     }
 
+    func test_orphanCleanupScansSameDeviceDocsInBoundedPages() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "paged-cleanup-session",
+            projectName: "PagedCleanupProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(60)
+        )
+        try await dataStore.insert(usage)
+
+        for index in 0..<505 {
+            let suffix = String(format: "stale-%04d", index)
+            fakeGateway.setDocumentData([
+                "id": suffix,
+                "deviceId": "test-device-1",
+                "provider": AgentProvider.claudeCode.rawValue,
+                "sessionId": "stale-\(index)",
+                "model": "claude-3-5-sonnet",
+                "startTime": Timestamp(date: baseTime),
+                "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+            ], at: "users/test-uid-1/usage/test-device-1_\(suffix)")
+        }
+        fakeGateway.setDocumentData([
+            "id": "remote-keep",
+            "deviceId": "remote-device-2",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "remote-keep",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: "users/test-uid-1/usage/remote-device-2_stale-keep")
+
+        UsageSyncService.requestOrphanReconciliation()
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        let staleSameDeviceDocs = docs.keys.filter { $0.contains("/test-device-1_stale-") }
+        XCTAssertTrue(staleSameDeviceDocs.isEmpty, "cleanup must continue past the first 500-doc page")
+        XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(usage.id.uuidString)"])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/remote-device-2_stale-keep"])
+    }
+
     func test_orphanCleanup_notRunWhileRecountCompletionPending() async throws {
         let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
         // Simulates a recount that died mid-persist: the local table is
