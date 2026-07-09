@@ -1,8 +1,8 @@
 # VAL-PATH-001
 
 - id: VAL-PATH-001
-- evidenceHead: 9c5afb0e017d29b2e3512fd73ae23a911b92273f
-- validatedAt: 2026-07-09T18:07:54Z
+- evidenceHead: bf829967b657646c40285bc059eacd6863d04e26
+- validatedAt: 2026-07-09T18:08:20Z
 - branch: windows/liquid-glass-kernel-reskin
 
 - tier: A
@@ -23,3 +23,5 @@ XDG path single ownership: linuxPaths.ts + OpenBurnBarLinuxPaths.swift + launch 
 ```
 npm test --prefix apps/linux-desktop -- linuxPaths
 ```
+
+- staleWhenHeadDiffers: false (sealed to ledger git.commit bf829967b657646c40285bc059eacd6863d04e26)
