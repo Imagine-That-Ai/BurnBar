@@ -285,26 +285,17 @@ public final class ClaudeConversationAccumulator {
     /// whose UTF8 encoding fits within the budget.
     private static func truncateToUTF8Bytes(_ string: String, maxBytes: Int) -> String {
         guard maxBytes > 0 else { return "" }
-        let utf8 = string.utf8
-        if utf8.count <= maxBytes { return string }
-        // Find the last valid scalar boundary at or before maxBytes.
-        var cut = maxBytes
-        // Walk back to a scalar boundary (UTF8 continuation bytes start with 10xxxxxx).
-        while cut > 0 {
-            let byte = utf8[utf8.index(utf8.startIndex, offsetBy: cut - 1)]
-            if byte & 0xC0 != 0x80 { break } // Not a continuation byte
-            cut -= 1
+        if string.utf8.count <= maxBytes { return string }
+
+        var usedBytes = 0
+        var scalars = String.UnicodeScalarView()
+        for scalar in string.unicodeScalars {
+            let scalarBytes = String(scalar).utf8.count
+            guard usedBytes + scalarBytes <= maxBytes else { break }
+            scalars.append(scalar)
+            usedBytes += scalarBytes
         }
-        if cut > 0 {
-            let previousByte = utf8[utf8.index(utf8.startIndex, offsetBy: cut - 1)]
-            if previousByte >= 0xC2 {
-                cut -= 1
-            }
-        }
-        if cut == 0 { return "" }
-        let endIndex = utf8.index(utf8.startIndex, offsetBy: cut)
-        let stringIndex = String.Index(endIndex, within: string) ?? string.startIndex
-        return String(string[string.startIndex..<stringIndex])
+        return String(scalars)
     }
 
     public func finalizeArrays() {

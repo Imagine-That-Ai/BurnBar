@@ -16,6 +16,21 @@ final class ClaudeConversationAccumulatorTests: XCTestCase {
         XCTAssertEqual(acc.fullText, "## As")
     }
 
+    func test_keepsCompleteMultibyteScalarAtByteCap() {
+        let acc = ClaudeConversationAccumulator(maxFullTextBytes: 10)
+        let line: [String: Any] = [
+            "type": "user",
+            "timestamp": "2025-06-01T12:00:00Z",
+            "message": ["role": "user", "content": [["type": "text", "text": "éx"]]]
+        ]
+
+        acc.ingest(jsonLine: line)
+        acc.finalizeArrays()
+
+        XCTAssertEqual(acc.fullText, "## You\n\né")
+        XCTAssertEqual(acc.fullText.utf8.count, 10)
+    }
+
     func test_preservesCredentialSnippetAfterFullTextCap() {
         let acc = ClaudeConversationAccumulator(maxFullTextBytes: 80)
         let fillerLine: [String: Any] = [

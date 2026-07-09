@@ -271,25 +271,29 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
 
     private func seedBinaryParserCache(at cacheURL: URL, marker: String) throws {
         let data = try PropertyListSerialization.data(
-            fromPropertyList: parserCacheRoot(marker: marker),
+            fromPropertyList: parserCacheRoot(marker: marker, includeNullUsage: false),
             format: .binary,
             options: 0
         )
         try data.write(to: cacheURL, options: .atomic)
     }
 
-    private func parserCacheRoot(marker: String) -> [String: Any] {
+    private func parserCacheRoot(marker: String, includeNullUsage: Bool = true) -> [String: Any] {
+        var entry: [String: Any] = [
+            "signature": ["size": 1, "modifiedAt": 1],
+            "conversation": [
+                "id": "session",
+                "fullText": marker
+            ]
+        ]
+        if includeNullUsage {
+            entry["usage"] = NSNull()
+        }
+
         [
             "schemaVersion": 2,
             "fileEntries": [
-                "session": [
-                    "signature": ["size": 1, "modifiedAt": 1],
-                    "usage": NSNull(),
-                    "conversation": [
-                        "id": "session",
-                        "fullText": marker
-                    ]
-                ]
+                "session": entry
             ]
         ]
     }

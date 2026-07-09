@@ -307,6 +307,49 @@ describe("OpenBurnBarExtensionController", () => {
     expect(alertDaemonUnreachable).toHaveBeenCalledTimes(1);
   });
 
+  it("VAL-EXT-001: Linux daemon health monitoring alerts with socket path and reconnects cleanly", async () => {
+    const linuxSocketPath = "/run/user/501/openburnbar/openburnbar-daemon.sock";
+    const alertDaemonUnreachable = vi.fn();
+    const client = makeConnectedClient({
+      health: vi
+        .fn()
+        .mockRejectedValueOnce(new Error(`connect ENOENT on ${linuxSocketPath}: no such file or directory`))
+        .mockResolvedValue({
+          ok: true,
+          daemonVersion: "0.1.0",
+          protocolVersion: 1,
+          socketPath: linuxSocketPath
+        })
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        },
+        alertDaemonUnreachable
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    expect(controller.snapshot.connectionStatus).toBe("disconnected");
+    expect(alertDaemonUnreachable).toHaveBeenCalledWith(linuxSocketPath);
+
+    await controller.refresh();
+    expect(controller.snapshot.connectionStatus).toBe("connected");
+    expect(controller.snapshot.health?.socketPath).toBe(linuxSocketPath);
+    expect(alertDaemonUnreachable).toHaveBeenCalledTimes(1);
+  });
+
   it("runs repair and refreshes daemon-backed state", async () => {
     const client = makeConnectedClient({
       health: vi
