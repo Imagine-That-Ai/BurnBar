@@ -59,9 +59,9 @@ public enum CLILaunchAdapter {
 
     // MARK: - Allowlisted Environment Variables
 
-    /// Environment variables that are allowlisted for CLI profile launching.
-    /// These are considered safe as they only affect basic OS behavior,
-    /// not authentication, credentials, or security boundaries.
+    /// Environment variables that may be passed by explicit CLI profile metadata.
+    /// Credentials belong here only when profile-scoped; the ambient baseline below
+    /// must stay free of API keys and tokens.
     ///
     /// NOTE: Values are NOT stored - only the keys. Values are resolved at launch
     /// from the current process environment.
@@ -95,8 +95,13 @@ public enum CLILaunchAdapter {
         "ANTIGRAVITY_HOME",
         "GEMINI_HOME",
         "CURSOR_AGENT_HOME",
-        "CURSOR_AGENT_CONFIG_PATH"
+        "CURSOR_AGENT_CONFIG_PATH",
+        "JUNIE_API_KEY"
     ]
+
+    private static let baselineEnvKeys: Set<String> = allowlistedEnvKeys.subtracting([
+        "JUNIE_API_KEY"
+    ])
 
     // MARK: - Additional Arguments Allowlist
 
@@ -338,6 +343,7 @@ public enum CLILaunchAdapter {
             "\(homeDirectory)/.gemini/bin",
             "\(homeDirectory)/.kimi/bin",
             "\(homeDirectory)/.pi/bin",
+            "\(homeDirectory)/.junie/bin",
             "\(homeDirectory)/.cargo/bin",
             "\(homeDirectory)/.npm-global/bin",
             "\(homeDirectory)/.bun/bin",
@@ -623,6 +629,14 @@ public enum CLILaunchAdapter {
         return allowlistedEnvKeys.contains(key)
     }
 
+    /// Returns true only for keys that are safe in the cross-CLI ambient baseline.
+    /// Profile-scoped credentials such as `JUNIE_API_KEY` may be accepted by
+    /// `filterAllowlistedEnvironment` but must not leak through child-process
+    /// baselines for unrelated agents.
+    public static func isBaselineEnvKeyAllowlisted(_ key: String) -> Bool {
+        return baselineEnvKeys.contains(key)
+    }
+
     /// Filters environment variables to only allowlisted keys.
     /// Values are taken from the current process environment.
     public static func filterAllowlistedEnvironment(
@@ -657,7 +671,7 @@ public enum CLILaunchAdapter {
     ) -> [String: String] {
         var result: [String: String] = [:]
 
-        for key in allowlistedEnvKeys {
+        for key in baselineEnvKeys {
             if let value = baseEnv[key] {
                 let sanitized = sanitizeEnvValue(value)
                 if !sanitized.isEmpty {
@@ -817,6 +831,8 @@ public enum CLILaunchAdapter {
             return ["KIMI_HOME", "KIMI_API_KEY", "MOONSHOT_API_KEY"]
         case .pi:
             return ["PI_HOME", "PI_CONFIG_HOME"]
+        case .junie:
+            return ["JUNIE_HOME"]
         case .omp:
             return ["OMP_HOME", "OMP_CONFIG_HOME"]
         }

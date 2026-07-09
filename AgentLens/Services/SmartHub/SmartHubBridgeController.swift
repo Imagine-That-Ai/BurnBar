@@ -1052,6 +1052,7 @@ final class SmartHubBridgeController {
         case .warp:       return "DDE4EA"
         case .xAI:        return "1A1A1A"
         case .mimo:       return "FF6900"
+        case .junie:      return "48E054"
         }
     }
 

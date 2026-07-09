@@ -40,6 +40,7 @@ extension AssistantRuntimeID {
         case .grok: return .xAI
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
+        case .junie:    return .junie
         case .omp: return .omp
         }
     }
@@ -59,6 +60,7 @@ extension AssistantRuntimeID {
         case .grok: return Color(hex: "111111")
         case .cursorAgent: return Color(hex: "00E5FF")
         case .openClaude: return Color(hex: "D97757")
+        case .junie:    return Color(hex: "48E054")
         case .omp: return Color(hex: "EC4899")
         }
     }
@@ -78,6 +80,7 @@ extension AssistantRuntimeID {
         case .grok: return "CLI agent"
         case .cursorAgent: return "CLI agent"
         case .openClaude: return "CLI agent"
+        case .junie:    return "CLI agent"
         case .omp: return "CLI agent"
         }
     }
@@ -98,6 +101,7 @@ extension AssistantRuntimeID {
         case .xAI: return .grok
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
+        case .junie:      return .junie
         case .omp: return .omp
         default:          return nil
         }
@@ -175,7 +179,7 @@ struct AssistantStatusResolver {
             return RuntimeStatus(hermesService.selectedConnection.status)
         case .pi:
             return RuntimeStatus(piService.selectedConnection.status)
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
             // CLI-style runtimes bridge through the Mac. We use the Hermes
             // relay reachability as a proxy — if Hermes can talk to the Mac,
             // these can too.
@@ -193,7 +197,7 @@ struct AssistantStatusResolver {
         case .pi:
             return piService.selectedConnection.endpointURL.flatMap(host(from:))
                 ?? piService.selectedConnection.displayName
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
             return hermesService.selectedConnection.endpointURL.flatMap(host(from:))
                 ?? hermesService.selectedConnection.displayName
         }
@@ -483,6 +487,7 @@ struct AgentSwitcherSheet: View {
         case .grok: kindCopy = "Grok Build CLI — pick the xAI model it runs on"
         case .cursorAgent: kindCopy = "Cursor Agent CLI â pick the model it runs on"
         case .openClaude: kindCopy = "OpenClaude CLI — pick the model it runs on"
+        case .junie:    kindCopy = "Junie CLI — pick the model it runs on"
         case .omp: kindCopy = "OMP CLI — pick the model it runs on"
         }
         switch origin {

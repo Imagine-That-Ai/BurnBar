@@ -1033,6 +1033,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             (.codex, "codex"),
             (.claude, "claude"),
             (.droid, "droid"),
+            (.junie, "junie"),
             (.forge, "forge"),
             (.antigravity, "agy"),
             (.cursorAgent, "cursor-agent")

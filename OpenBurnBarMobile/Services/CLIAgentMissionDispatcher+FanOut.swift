@@ -378,7 +378,7 @@ extension CLIAgentMissionDispatcher {
         case .openClaw:
             return try OpenClawService.shared.validatedModelIDForMissionDispatch()
                 ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
-        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
             return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
         }
     }
@@ -440,6 +440,12 @@ extension CLIAgentMissionDispatcher {
             return .grok
         case "cursor", "cursor-agent", "cursoragent":
             return .cursorAgent
+        case "openclaude", "open-claude":
+            return .openClaude
+        case "omp", "ohmypi", "oh-my-pi", "oh my pi":
+            return .omp
+        case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie":
+            return .junie
         default:
             return nil
         }

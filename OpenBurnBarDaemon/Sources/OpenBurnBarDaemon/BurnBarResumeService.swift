@@ -326,6 +326,8 @@ final class BurnBarResumeService: @unchecked Sendable {
             return "cursor"
         case "Windsurf", "windsurf":
             return "windsurf"
+        case "Junie", "junie":
+            return "junie"
         default:
             return trimmed.lowercased()
                 .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "_", options: .regularExpression)
@@ -459,6 +461,14 @@ final class BurnBarResumeService: @unchecked Sendable {
                 argv: ["open", "-a", "Windsurf", nonBlank(workingDirectory) ?? hint.path],
                 cleanupPath: hint.cleanup ? hint.path : nil
             )
+        case "junie":
+            // Junie's project association is its working directory; the spawn
+            // applies `workingDirectory` as the process cwd, so no flag needed.
+            // `--prompt` starts the interactive session with the handoff
+            // prompt submitted.
+            var argv = ["junie", "--prompt", prompt]
+            if let model = nonBlank(model) { argv += ["--model", model] }
+            return TargetInvocation(argv: argv, cleanupPath: hint.cleanup ? hint.path : nil)
         default:
             return TargetInvocation(
                 argv: ["open", nonBlank(workingDirectory) ?? hint.path],

@@ -32,8 +32,10 @@
     "Warp",
     "Grok Build",
     "xAI",
-    "MiMo"
+    "MiMo",
+    "Junie"
   ],
+
   "aliases": {
     "claude": "claude_code",
     "claude_code": "claude_code",

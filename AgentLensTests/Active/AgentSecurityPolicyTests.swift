@@ -187,6 +187,59 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertEqual(value(after: "--sandbox", in: args), "workspace-write")
     }
 
+    func test_junieArguments_useHeadlessTaskAndPreserveModelSelection() {
+        let trusted = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 60
+        )
+        let args = CLIArgumentBuilder.junieArguments(
+            prompt: "Ship it",
+            model: "sonnet",
+            capabilityGrant: trusted
+        )
+
+        XCTAssertFalse(args.contains("--prompt"))
+        XCTAssertEqual(value(after: "--model", in: args), "sonnet")
+        XCTAssertEqual(value(after: "--task", in: args), "Ship it")
+    }
+
+    func test_junieArguments_constrainTaskPromptWhenGrantDoesNotAllowWritesOrShell() throws {
+        let readOnly = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: [.workspaceRead],
+            trustMode: .step,
+            now: Date(),
+            duration: 60
+        )
+        let args = CLIArgumentBuilder.junieArguments(
+            prompt: "Inspect this",
+            capabilityGrant: readOnly
+        )
+        let task = try XCTUnwrap(value(after: "--task", in: args))
+        XCTAssertTrue(task.contains("Inspect this"))
+        XCTAssertTrue(task.contains("Do not edit files."))
+        XCTAssertTrue(task.contains("Do not execute shell commands."))
+
+        let trusted = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .junie,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 60
+        )
+        let trustedArgs = CLIArgumentBuilder.junieArguments(
+            prompt: "Ship it",
+            capabilityGrant: trusted
+        )
+        XCTAssertEqual(value(after: "--task", in: trustedArgs), "Ship it")
+    }
+
     // MARK: - T-TOOL-10: restricted shell home-data deny
 
     func test_restrictedShellProfile_deniesHomeDataByDefaultWithExplicitWorkspaceAndToolchainReads() {
