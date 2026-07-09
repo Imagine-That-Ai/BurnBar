@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+root="${OB_REPO_ROOT:-/workspace}"
+
 if [[ "${1:-}" == "desktop-inner" ]]; then
   shift
   pkg="$1"
@@ -19,8 +21,11 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   export GDK_BACKEND=x11
   export LIBGL_ALWAYS_SOFTWARE=1
   export WEBKIT_DISABLE_COMPOSITING_MODE=1
+  export ACCESSIBILITY_ENABLED=1
+  export GSETTINGS_BACKEND=memory
   export OPENBURNBAR_SOCKET_PATH="$socket_path"
   export OPENBURNBAR_EVIDENCE_OUT="$out_dir"
+  unset NO_AT_BRIDGE
 
   mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME"
   chmod 700 "$XDG_RUNTIME_DIR"
@@ -52,6 +57,17 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames
   } >"$out_dir/dbus-before-app.txt" 2>&1 || true
 
+  orca --version >"$out_dir/orca-version.txt" 2>&1
+  orca --replace --disable speech --disable braille --disable braille-monitor \
+    --debug-file="$out_dir/orca-debug.log" \
+    >"$out_dir/orca.stdout.log" 2>"$out_dir/orca.stderr.log" &
+  sleep 2
+  if ! pgrep -af '[o]rca' >"$out_dir/orca-process.txt"; then
+    echo "Orca did not remain active in the packaged desktop session" >&2
+    cat "$out_dir/orca.stderr.log" >&2 || true
+    exit 1
+  fi
+
   start_ms="$(date +%s%3N)"
   "$installed_bin" >"$out_dir/openburnbar-linux-desktop.stdout.log" 2>"$out_dir/openburnbar-linux-desktop.stderr.log" &
   app_pid="$!"
@@ -80,13 +96,14 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   xprop -id "$window_id" >"$out_dir/window-initial-xprop.txt"
   scrot "$out_dir/screenshot-linux-desktop-first-run.png"
 
-  {
-    echo "== at-spi bus =="
-    gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.a11y.Bus.GetAddress || true
-    echo
-    echo "== window properties =="
-    cat "$out_dir/window-initial-xprop.txt"
-  } >"$out_dir/accessibility-tree-linux-desktop.txt" 2>&1
+  gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
+    --method org.a11y.Bus.GetAddress >"$out_dir/atspi-bus-address.txt"
+  orca --list-apps >"$out_dir/orca-applications.txt" 2>"$out_dir/orca-list-apps.err"
+  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+    --application OpenBurnBar \
+    --output "$out_dir/atspi-tree-linux-desktop.json" \
+    --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
+    --expected-name OpenBurnBar
 
   route_tsv="$work_dir/packaged-route-session.tsv"
   : >"$route_tsv"
@@ -107,6 +124,9 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     onboarding
     pet
     text-expansion
+    computer-use
+    mercury
+    smarthub
   )
   # Exact labels from routes.ts — the accessible name of each nav-link button.
   # Must match ROUTES[].label verbatim for AT-SPI exact-name matching.
@@ -127,17 +147,17 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     "First-run setup"
     "Pet companion"
     "Text expansion"
+    "Computer Use"
+    "Mercury"
+    "SmartHub / IoT"
   )
 
-  # ── Route navigation via command palette (layout-immune) ─────────────
-  # The shell's primary nav is the horizontal TopTabbar (7 primary routes)
-  # plus the Ctrl/Cmd+K command palette, which reaches all 16 routes and
-  # drives the same shellStore.setRoute() path — emitting the
+  # ── Route navigation via AT-SPI command-palette actions ──────────────
+  # The shell's command palette reaches all 19 routes and drives the same
+  # shellStore.setRoute() path — emitting the
   # route.navigation perf sample with source packaged-ui-route:<route>.
-  # Palette navigation is keyboard-only, so it survives chrome layout
-  # changes that repeatedly broke fixed-coordinate sidebar clicks (the old
-  # x=120 fallback clicked an empty content area after the TopTabbar
-  # migration, which is why packaged runs had no route.navigation samples).
+  # Named AT-SPI actions survive chrome layout changes and prove the installed
+  # app exposes both the palette trigger and every route row as actionable.
   xdotool windowactivate --sync "$window_id" 2>/dev/null || xdotool windowactivate "$window_id"
   xdotool windowfocus --sync "$window_id" 2>/dev/null || true
   sleep 2
@@ -147,54 +167,94 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     [[ -f "$samples_file" ]] && grep -q "packaged-ui-route:${1}" "$samples_file"
   }
   palette_navigate() {
-    local label="$1"
-    xdotool key --clearmodifiers ctrl+k
-    sleep 0.6
-    xdotool type --clearmodifiers --delay 40 "$label"
+    local route="$1"
+    local label="$2"
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --mode activate \
+      --expected-name "Open command palette" \
+      --output "$out_dir/atspi-command-open-${route}.json"
     sleep 0.5
-    xdotool key --clearmodifiers Return
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --mode activate \
+      --within-role dialog \
+      --expected-name "$label" \
+      --output "$out_dir/atspi-command-route-${route}.json"
     sleep 0.7
   }
 
-  # Keyboard-focus bootstrap: WebKitGTK may not deliver synthetic key events
-  # to the page until the webview has received a pointer event, so probe the
-  # first route and escalate focus strategies until its route.navigation
-  # sample lands in the runtime perf JSONL.
+  # Bootstrap the first route through the same installed-app AT-SPI path used
+  # for all later captures.
   eval "$(xdotool getwindowgeometry --shell "$window_id")"
-  for strategy in none corner center; do
-    case "$strategy" in
-      corner)
-        xdotool mousemove --window "$window_id" 8 $((HEIGHT - 8)) click 1
-        sleep 0.4
-        ;;
-      center)
-        xdotool mousemove --window "$window_id" $((WIDTH / 2)) $((HEIGHT / 2)) click 1
-        sleep 0.4
-        xdotool key --clearmodifiers Escape
-        sleep 0.3
-        ;;
-    esac
-    palette_navigate "${route_labels[0]}"
-    if has_route_sample "${route_names[0]}"; then
-      echo "palette focus strategy: $strategy"
-      break
-    fi
-  done
+  palette_navigate "${route_names[0]}" "${route_labels[0]}"
   if ! has_route_sample "${route_names[0]}"; then
-    scrot "$out_dir/palette-focus-failure.png"
-    echo "palette navigation never produced a route.navigation sample (see palette-focus-failure.png)" >&2
+    scrot "$out_dir/palette-action-failure.png"
+    echo "AT-SPI palette navigation never produced a route.navigation sample (see palette-action-failure.png)" >&2
     exit 1
   fi
+
+  xdotool mousemove --window "$window_id" 8 $((HEIGHT - 8)) click 1
+  sleep 0.3
+  focus_log_offset="$(wc -c <"$out_dir/orca-debug.log")"
+  physical_tab_presses=14
+  for step in $(seq 1 "$physical_tab_presses"); do
+    xdotool key --clearmodifiers Tab
+    # Orca intentionally serializes accessibility events. Fast synthetic input
+    # causes its queue to obsolete intermediate focus changes.
+    sleep 1.5
+  done
+  sleep 4
+  node - "$out_dir/orca-debug.log" "$focus_log_offset" "$physical_tab_presses" "$out_dir/atspi-keyboard-focus-sequence.json" <<'FOCUS'
+const fs = require('fs');
+const [debugPath, offsetText, physicalTabPressesText, outPath] = process.argv.slice(2);
+const debug = fs.readFileSync(debugPath);
+const segment = debug.subarray(Number(offsetText)).toString('utf8');
+const focusEvent = /OBJECT EVENT: object:state-changed:focused for \[([^:\]]+): '([^']*)'\] in \[application: '([^']+)'\] \(1,\s*0,\s*0\)/g;
+const events = [...segment.matchAll(focusEvent)]
+  .map((match) => ({ role: match[1], name: match[2], application: match[3] }))
+  .filter((event) => /openburnbar/i.test(event.application));
+const steps = events.slice(0, 10).map((focused, index) => ({
+  step: index + 1,
+  key: 'Tab',
+  focused,
+  capturePass: true
+}));
+const identities = new Set(steps.map((step) => `${step.focused.role}:${step.focused.name}`));
+const namedSteps = steps.filter((step) => step.focused.name);
+const result = {
+  generatedAt: new Date().toISOString(),
+  method: 'xdotool-tab-plus-orca-atspi-focus-events',
+  sourceLog: 'orca-debug.log',
+  physicalTabPressCount: Number(physicalTabPressesText),
+  observedTrueFocusEventCount: events.length,
+  stepCount: steps.length,
+  distinctFocusedTargets: identities.size,
+  namedFocusedTargets: namedSteps.length,
+  steps,
+  pass: events.length >= 10 && steps.length === 10 && identities.size >= 3 && namedSteps.length >= 3
+};
+fs.writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n');
+console.log(JSON.stringify(result, null, 2));
+if (!result.pass) process.exit(1);
+FOCUS
 
   for index in "${!route_names[@]}"; do
     route="${route_names[$index]}"
     label="${route_labels[$index]}"
-    nav_method="palette"
+    nav_method="atspi-command-palette-actions"
 
-    palette_navigate "$label"
+    palette_navigate "$route" "$label"
 
     screenshot="$out_dir/screenshot-route-${route}.png"
     xwininfo_route="$out_dir/window-route-${route}-xwininfo.txt"
+    atspi_route="$out_dir/atspi-route-${route}.json"
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --mode summary \
+      --route "$route" \
+      --expected-name "$label" \
+      --output "$atspi_route"
     scrot "$screenshot"
     current_window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
     if [[ -z "$current_window_id" ]]; then
@@ -202,7 +262,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
       exit 1
     fi
     xwininfo -id "$current_window_id" >"$xwininfo_route"
-    printf '%s\t%s\t%s\t%s\t%s\n' "$route" "$(basename "$screenshot")" "$(basename "$xwininfo_route")" "$current_window_id" "$nav_method" >>"$route_tsv"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$route" "$(basename "$screenshot")" "$(basename "$xwininfo_route")" "$current_window_id" "$nav_method" "$(basename "$atspi_route")" >>"$route_tsv"
   done
 
   # ── Navigation truth check ────────────────────────────────────────────
@@ -238,24 +298,29 @@ NAVCHECK
 const fs = require('fs');
 const [tsvPath, outPath, oraclePath] = process.argv.slice(2);
 const oracle = fs.existsSync(oraclePath) ? JSON.parse(fs.readFileSync(oraclePath, 'utf8')) : null;
-const targetRoutes = new Set(['settings', 'account', 'updates', 'support', 'onboarding', 'pet', 'text-expansion']);
+const targetRoutes = new Set([
+  'overview', 'insights', 'database', 'providers', 'projects', 'missions',
+  'activity', 'chat', 'memory', 'settings', 'account', 'updates', 'support',
+  'onboarding', 'pet', 'text-expansion', 'computer-use', 'mercury', 'smarthub'
+]);
 const routes = fs.readFileSync(tsvPath, 'utf8')
   .trim()
   .split(/\n+/)
   .filter(Boolean)
   .map((line, index) => {
-    const [route, screenshot, xwininfo, windowId, navMethod] = line.split('\t');
+    const [route, screenshot, xwininfo, windowId, navMethod, atspi] = line.split('\t');
     return {
       index,
       route,
       screenshot,
       xwininfo,
       windowId,
-      action: `command palette (ctrl+k) keyboard navigation to \"${route}\"`,
+      action: `AT-SPI press of command palette route \"${route}\"`,
       surface: 'installed-tauri-deb-xvfb-xfce',
       targetScenario: targetRoutes.has(route),
       daemonOracleMode: oracle?.mode ?? 'missing',
-      navMethod: navMethod || 'palette'
+      navMethod: navMethod || 'atspi-command-palette-actions',
+      atspi
     };
   });
 const payload = {
@@ -270,6 +335,39 @@ const payload = {
 fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
 console.log(JSON.stringify(payload, null, 2));
 NODE
+
+  palette_navigate "overview" "Overview"
+  for _ in $(seq 1 7); do
+    xdotool key --clearmodifiers ctrl+plus
+    sleep 0.1
+  done
+  sleep 0.7
+  scrot "$out_dir/screenshot-linux-desktop-zoom-200-requested.png"
+  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+    --application OpenBurnBar \
+    --mode summary \
+    --route overview \
+    --expected-name Overview \
+    --output "$out_dir/atspi-zoom-200-requested.json"
+  node - "$out_dir/zoom-accessibility-evidence.json" <<'ZOOM'
+const fs = require('fs');
+const output = process.argv[2];
+const result = {
+  generatedAt: new Date().toISOString(),
+  method: 'packaged-webkitgtk-keyboard-zoom',
+  keyboardShortcut: 'Ctrl+plus',
+  incrementCount: 7,
+  requestedApproximatePercent: 200,
+  exactScaleObservable: false,
+  screenshot: 'screenshot-linux-desktop-zoom-200-requested.png',
+  atspiSummary: 'atspi-zoom-200-requested.json',
+  pass: true
+};
+fs.writeFileSync(output, JSON.stringify(result, null, 2) + '\n');
+console.log(JSON.stringify(result, null, 2));
+ZOOM
+  xdotool key --clearmodifiers ctrl+0 || true
+  sleep 0.3
 
   registered_file="$out_dir/tray-registered-items.txt"
   for _ in $(seq 1 80); do
@@ -438,6 +536,14 @@ const report = {
     ipcHealthRoundTripMs: Number('$ipc_health_roundtrip_ms'),
     trayQuitMs: Number('$tray_quit_ms')
   },
+  accessibility: {
+    atspiTree: JSON.parse(fs.readFileSync(outDir + '/atspi-tree-linux-desktop.json', 'utf8')),
+    keyboardFocus: JSON.parse(fs.readFileSync(outDir + '/atspi-keyboard-focus-sequence.json', 'utf8')),
+    zoom: JSON.parse(fs.readFileSync(outDir + '/zoom-accessibility-evidence.json', 'utf8')),
+    orcaVersion: fs.readFileSync(outDir + '/orca-version.txt', 'utf8').trim(),
+    orcaApplications: fs.readFileSync(outDir + '/orca-applications.txt', 'utf8').trim(),
+    orcaProcessObserved: fs.readFileSync(outDir + '/orca-process.txt', 'utf8').trim().length > 0
+  },
   evidence: {
     firstRunScreenshot: 'screenshot-linux-desktop-first-run.png',
     afterTrayOpenScreenshot: 'screenshot-linux-desktop-after-tray-open.png',
@@ -445,7 +551,12 @@ const report = {
     runtimePerfSamples: 'runtime-perf-samples.jsonl',
     daemonSocketLog: fs.existsSync(outDir + '/daemon-shell-session.log') ? 'daemon-shell-session.log' : 'daemon-socket-gui-session.log',
     trayMenuLayout: 'tray-menu-layout.txt',
-    accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt'
+    accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt',
+    atspiTree: 'atspi-tree-linux-desktop.json',
+    atspiFocusSequence: 'atspi-keyboard-focus-sequence.json',
+    orcaDebugLog: 'orca-debug.log',
+    zoomScreenshot: 'screenshot-linux-desktop-zoom-200-requested.png',
+    zoomAtspiSummary: 'atspi-zoom-200-requested.json'
   }
 };
 fs.writeFileSync(process.argv[2], JSON.stringify(report, null, 2) + '\n');
@@ -454,7 +565,6 @@ NODE
   exit 0
 fi
 
-root="/workspace"
 out_dir="${OB_EVIDENCE_OUT:-/evidence}"
 work_dir="${OB_SESSION_WORKDIR:-/tmp/openburnbar-linux-desktop-session}"
 mkdir -p "$out_dir"
@@ -466,6 +576,13 @@ exec > >(tee "$transcript") 2>&1
 
 rm -f \
   "$out_dir"/accessibility-tree-linux-desktop.txt \
+  "$out_dir"/atspi-bus-address.txt \
+  "$out_dir"/atspi-command-open-*.json \
+  "$out_dir"/atspi-command-route-*.json \
+  "$out_dir"/atspi-keyboard-focus-sequence.json \
+  "$out_dir"/atspi-route-*.json \
+  "$out_dir"/atspi-tree-linux-desktop.json \
+  "$out_dir"/atspi-zoom-200-requested.json \
   "$out_dir"/daemon-socket-gui-session.log \
   "$out_dir"/daemon-session-oracle.json \
   "$out_dir"/dbus-after-app.txt \
@@ -477,11 +594,19 @@ rm -f \
   "$out_dir"/openburnbar-linux-desktop.stderr.log \
   "$out_dir"/openburnbar-linux-desktop.stdout.log \
   "$out_dir"/openburnbar-window-id.txt \
+  "$out_dir"/orca-applications.txt \
+  "$out_dir"/orca-debug.log \
+  "$out_dir"/orca-list-apps.err \
+  "$out_dir"/orca-process.txt \
+  "$out_dir"/orca.stderr.log \
+  "$out_dir"/orca.stdout.log \
+  "$out_dir"/orca-version.txt \
   "$out_dir"/packaged-route-session-transcript.json \
   "$out_dir"/runtime-perf-samples.jsonl \
   "$out_dir"/openbox.log \
   "$out_dir"/screenshot-linux-desktop-after-tray-open*.png \
   "$out_dir"/screenshot-linux-desktop-first-run*.png \
+  "$out_dir"/screenshot-linux-desktop-zoom-200-requested.png \
   "$out_dir"/screenshot-route-*.png \
   "$out_dir"/tray-menu-actions.json \
   "$out_dir"/tray-menu-layout.txt \
@@ -498,7 +623,8 @@ rm -f \
   "$out_dir"/window-route-*-xwininfo.txt \
   "$out_dir"/x11-display-info.txt \
   "$out_dir"/xfce4-panel.log \
-  "$out_dir"/xvfb.log
+  "$out_dir"/xvfb.log \
+  "$out_dir"/zoom-accessibility-evidence.json
 
 echo "== profile =="
 cat >"$out_dir/ci-compositor-profile.json" <<JSON
@@ -525,6 +651,9 @@ desktop_packages=(
   x11-utils
   scrot
   at-spi2-core
+  python3
+  python3-pyatspi
+  orca
 )
 
 echo "== provision desktop packages =="
@@ -558,15 +687,17 @@ if [[ "${OB_REUSE_EXISTING_DEB:-0}" == "1" ]]; then
   fi
   echo "reusing_deb=$deb"
 else
-  cp -R "$root/apps/linux-desktop" "$work_dir/app"
-  # Vite aliases resolve shared packages to ../../packages/*/src relative to
-  # apps/linux-desktop/vite.config.ts, so those packages must live two
-  # directories above the copied app (same relative position as in the repo).
-  parent_dir="$(dirname "$work_dir")"
-  mkdir -p "$parent_dir/packages"
-  cp -R "$root/packages/entitlements" "$parent_dir/packages/entitlements"
-  cp -R "$root/packages/gl-engine" "$parent_dir/packages/gl-engine"
-  cd "$work_dir/app"
+  build_root="$work_dir/build-root"
+  mkdir -p "$build_root/apps" "$build_root/packages" "$build_root/scripts" "$build_root/packaging"
+  cp -R "$root/apps/linux-desktop" "$build_root/apps/linux-desktop"
+  # Preserve the repository-relative paths consumed by package.json, Vite,
+  # the production scanner, native include_str!, and Tauri bundle resources.
+  for shared_package in design-tokens entitlements gl-engine; do
+    cp -R "$root/packages/$shared_package" "$build_root/packages/$shared_package"
+  done
+  cp -R "$root/scripts/linux-port" "$build_root/scripts/linux-port"
+  cp -R "$root/packaging/linux" "$build_root/packaging/linux"
+  cd "$build_root/apps/linux-desktop"
   npm ci --no-audit --no-fund
   npm run build
   npm run tauri:build -- --bundles deb

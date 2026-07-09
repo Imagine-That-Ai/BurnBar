@@ -688,6 +688,8 @@ body.reduced-motion .chat-tool-card.is-running {
   flex-wrap: wrap;
   gap: 0.3rem;
   margin-top: 0.5rem;
+  padding: 0;
+  list-style: none;
 }
 
 .chat-memory-citation {

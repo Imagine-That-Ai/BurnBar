@@ -9,6 +9,7 @@ const files = [
   'docs/linux-port/parity-ledger.md',
   'docs/linux-port/factory-pr-handoff.md',
   'docs/linux-port/runtime-capabilities.md',
+  'docs/linux-port/accessibility-validation.md',
   'docs/RELEASE_MACOS.md',
   'docs/security/SUPPLY_CHAIN_PROVENANCE.md',
   'README.md',

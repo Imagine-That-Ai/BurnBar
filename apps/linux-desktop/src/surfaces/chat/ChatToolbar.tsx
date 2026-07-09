@@ -22,7 +22,7 @@ export function ChatToolbar({
   compact: _compact = false
 }: ChatToolbarProps) {
   return (
-    <header className="chat-toolbar" role="toolbar" aria-label="Chat controls">
+    <div className="chat-toolbar" role="toolbar" aria-label="Chat controls">
       <div className="chat-toolbar-primary">
         <BackendStrip
           backend={backend}
@@ -53,6 +53,6 @@ export function ChatToolbar({
         </button>
         {/* Floating HUD controls (pop-out / restore / close) are macOS-only. */}
       </div>
-    </header>
+    </div>
   );
 }
