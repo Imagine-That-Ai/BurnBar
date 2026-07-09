@@ -48,6 +48,18 @@ public sealed record CommunityConsentState(
     string? ManualCityInput = null);
 
 public sealed record CommunityUsageTotal(long TotalTokens, double CostUsd);
+public sealed record CommunityWindowTotals(
+    CommunityUsageTotal Today,
+    CommunityUsageTotal SevenDay,
+    CommunityUsageTotal ThirtyDay,
+    CommunityUsageTotal NinetyDay,
+    CommunityUsageTotal AllTime);
+
+public sealed record CommunityShareSnapshotDoc(
+    CommunityWindowTotals Windows,
+    IReadOnlyDictionary<string, double> ModelMix,
+    IReadOnlyDictionary<string, double> PurposeMix);
+
 
 public sealed record LeaderboardEntry(
     int Rank,
@@ -72,6 +84,10 @@ public sealed record CommunityLeaderboardCard(
     RankMovement? YourMovement);
 
 public sealed record PurposeSlice(string Category, double Share);
+
+public sealed record CommunityLiveData(
+    CommunityShareSnapshotDoc? ShareSnapshot = null,
+    IReadOnlyList<CommunityLeaderboardCard>? Leaderboards = null);
 
 public static class CommunityTierOrder
 {

@@ -39,6 +39,25 @@ export interface PurposeSlice {
   share: number;
 }
 
+export interface CommunityUsageTotal {
+  totalTokens: number;
+  costUSD: number;
+}
+
+export interface CommunityWindowTotals {
+  today: CommunityUsageTotal;
+  sevenDay: CommunityUsageTotal;
+  thirtyDay: CommunityUsageTotal;
+  ninetyDay: CommunityUsageTotal;
+  allTime: CommunityUsageTotal;
+}
+
+export interface CommunityShareSnapshotDoc {
+  windows: CommunityWindowTotals;
+  modelMix: Record<string, number>;
+  purposeMix: Record<string, number>;
+}
+
 export const GEO_TIER_ORDER: GeographyTier[] = ['city', 'region', 'country', 'world'];
 
 export const TIME_WINDOWS: { id: CommunityTimeWindow; label: string }[] = [

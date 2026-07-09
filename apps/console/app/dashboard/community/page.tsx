@@ -17,6 +17,7 @@ import { resolveBrowserCityKey } from "@/lib/community/browserCityLocation";
 import { cityKeyFromManualCityInput } from "@/lib/community/geoCityKey";
 import { deviceGeoKeys } from "@/lib/community/joinPayload";
 import { useBackdrop } from "@/lib/useBackdrop";
+import { useCommunityLiveData } from "@/lib/community/useCommunityLiveData";
 
 function tierTitle(tier: GeographyTier): string {
   switch (tier) {
@@ -40,7 +41,11 @@ export default function CommunityDashboardPage() {
   const [lookingGlassExportState, setLookingGlassExportState] = React.useState<"idle" | "ready" | "error">("idle");
   const [lookingGlassExportUrl, setLookingGlassExportUrl] = React.useState("");
 
-  const view = React.useMemo(() => buildCommunityView(consent, window), [consent, window]);
+  const liveData = useCommunityLiveData(window);
+  const view = React.useMemo(
+    () => buildCommunityView(consent, window, { shareSnapshot: liveData.shareSnapshot, leaderboards: liveData.leaderboards }),
+    [consent, window, liveData.shareSnapshot, liveData.leaderboards],
+  );
   const lookingGlassExport = React.useMemo(
     () => (lookingGlassExportState === "idle" ? view.lookingGlassExport : lookingGlassExportCopy(lookingGlassExportState)),
     [lookingGlassExportState, view.lookingGlassExport],
@@ -71,6 +76,16 @@ export default function CommunityDashboardPage() {
       {view.isPreviewData ? (
         <div className="lg-bar mb-token-4 text-sm text-content-mute">
           {view.statusMessage}
+        </div>
+      ) : null}
+      {liveData.status === "loading" ? (
+        <div className="lg-bar mb-token-4 text-sm text-content-mute">
+          Syncing signed-in Community data…
+        </div>
+      ) : null}
+      {liveData.status === "error" ? (
+        <div className="lg-bar mb-token-4 text-sm text-content-mute">
+          Community sync unavailable: {liveData.errorMessage}
         </div>
       ) : null}
 

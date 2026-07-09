@@ -93,6 +93,7 @@ export function CommunitySurface() {
               ? 'Preview only — cohort chart stays empty until live boards sync.'
               : 'Cohort chart unlocks once a leaderboard tier clears the anonymity threshold.'
             : view.peerCohortTokens.map((v) => v.toLocaleString()).join(' · ')}
+        </p>
       </section>
 
       <section className="community-panel glass-card">

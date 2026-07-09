@@ -73,6 +73,42 @@ describe('community visual states (linux)', () => {
     expect(view.lookingGlassExport.state).toBe('unavailable');
   });
 
+  it('renders live share snapshot and leaderboard docs when host supplies them', () => {
+    const view = buildCommunityView(grantedConsent({ manualCityInput: 'Berlin' }), '30d', {
+      shareSnapshot: {
+        windows: {
+          today: { totalTokens: 100, costUSD: 0.1 },
+          sevenDay: { totalTokens: 700, costUSD: 0.7 },
+          thirtyDay: { totalTokens: 9_000, costUSD: 9 },
+          ninetyDay: { totalTokens: 30_000, costUSD: 30 },
+          allTime: { totalTokens: 100_000, costUSD: 100 },
+        },
+        modelMix: { sonnet: 0.6, opus: 0.4 },
+        purposeMix: { coding: 3, analysis: 1 },
+      },
+      leaderboards: [
+        {
+          tier: 'world',
+          geoLabel: 'World',
+          entries: [
+            { rank: 1, anonId: 'anon-a', totalTokens: 12_000, costUSD: 12, movement: 'up' },
+            { rank: 2, anonId: 'anon-b', totalTokens: 9_000, costUSD: 9, movement: 'same' },
+          ],
+          percentiles: { p50: 5_000, p75: 9_000, p90: 12_000, p99: 20_000 },
+          cohortSize: 12,
+          belowThreshold: false,
+          kThreshold: 10,
+        },
+      ],
+    });
+
+    expect(view.isPreviewData).toBe(false);
+    expect(view.statusMessage).toMatch(/live community data synced/i);
+    expect(view.hero.tokens).toBe(9_000);
+    expect(view.peerCohortTokens).toEqual([12_000, 9_000]);
+    expect(view.purposeBreakdown.map((slice) => slice.category)).toEqual(['coding', 'analysis']);
+  });
+
   it('all_time window id is accepted for view build', () => {
     const view = buildCommunityView(grantedConsent(), 'all_time');
     expect(view.isPreviewData).toBe(true);

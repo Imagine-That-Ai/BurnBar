@@ -5,12 +5,14 @@ namespace OpenBurnBar.App.Community;
 
 /// <summary>
 /// MVVM state for the Community surface — personal hero, leaderboards, consent center.
-/// Live Firestore leaderboards are not wired on Windows yet; opted-in users see explicit preview/empty states.
+/// Hosts may inject signed-in Firestore snapshots through <see cref="ApplyLiveData"/>;
+/// otherwise the surface renders explicit preview/empty states without fabricated ranks.
 /// </summary>
 public sealed class CommunityViewModel : INotifyPropertyChanged
 {
     private readonly CommunityConsentStore _consentStore;
     private CommunityTimeWindow _window = CommunityTimeWindow.ThirtyDay;
+    private CommunityLiveData _liveData = new();
     private long _heroTokens;
     private double _heroCostUsd;
     private double _trendDeltaPct;
@@ -18,9 +20,10 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
     private string _statusMessage = string.Empty;
     private bool _isPreviewData;
 
-    public CommunityViewModel(CommunityConsentStore? consentStore = null)
+    public CommunityViewModel(CommunityConsentStore? consentStore = null, CommunityLiveData? liveData = null)
     {
         _consentStore = consentStore ?? new CommunityConsentStore();
+        _liveData = liveData ?? new CommunityLiveData();
         ReloadFromStore();
         RefreshDerived();
     }
@@ -117,6 +120,12 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
         SetConsent(c => c with { L2Tiers = updated });
     }
 
+
+    public void ApplyLiveData(CommunityLiveData liveData)
+    {
+        _liveData = liveData;
+        RefreshDerived();
+    }
     public void RevokeAllParticipation()
     {
         var declined = ConsentTriState.Declined;
@@ -166,15 +175,27 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
             return;
         }
 
-        HeroTokens = 0;
-        HeroCostUsd = 0;
+        var leaderboards = BuildLiveCards();
+        var primary = leaderboards.FirstOrDefault(card => !card.BelowThreshold && card.Entries.Count > 0) ?? leaderboards.FirstOrDefault();
+        var usage = UsageForCurrentWindow(_liveData.ShareSnapshot);
+        var hasLiveData = _liveData.ShareSnapshot is not null || leaderboards.Any(card => card.Entries.Count > 0 || card.CohortSize > 0);
+
+        HeroTokens = usage.TotalTokens;
+        HeroCostUsd = usage.CostUsd;
         TrendDeltaPct = 0;
-        ModelMixSummary = "Preview only — live leaderboards sync after community preferences save.";
-        StatusMessage = "Preview layout only — no live leaderboard or cohort data is shown on this surface yet.";
-        Leaderboards = BuildPreviewCards();
-        PercentileStrip = new(0, 0, 0, 0);
-        PeerCohortTokens = Array.Empty<double>();
-        PurposeBreakdown = Array.Empty<PurposeSlice>();
+        ModelMixSummary = hasLiveData
+            ? SummarizeModelMix(_liveData.ShareSnapshot?.ModelMix)
+            : "Preview only — live leaderboards sync after community preferences save.";
+        StatusMessage = hasLiveData
+            ? "Live community data synced. Public boards remain anonymous and threshold-gated."
+            : "Preview layout only — no live leaderboard or cohort data is shown on this surface yet.";
+        IsPreviewData = !hasLiveData;
+        Leaderboards = leaderboards;
+        PercentileStrip = primary?.Percentiles ?? new PercentileBands(0, 0, 0, 0);
+        PeerCohortTokens = primary is { BelowThreshold: false }
+            ? primary.Entries.Select(entry => (double)entry.TotalTokens).ToArray()
+            : Array.Empty<double>();
+        PurposeBreakdown = BuildPurposeBreakdown(_liveData.ShareSnapshot);
     }
 
     private IReadOnlyList<CommunityLeaderboardCard> BuildThresholdOnlyCards()
@@ -198,6 +219,17 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
         return cards;
     }
 
+    private IReadOnlyList<CommunityLeaderboardCard> BuildLiveCards()
+    {
+        var fallback = BuildPreviewCards();
+        var byTier = (_liveData.Leaderboards ?? Array.Empty<CommunityLeaderboardCard>())
+            .GroupBy(card => card.Tier)
+            .ToDictionary(group => group.Key, group => group.First());
+        return CommunityTierOrder.Display
+            .Select((tier, index) => byTier.TryGetValue(tier, out var card) ? card : fallback[index])
+            .ToArray();
+    }
+
     private IReadOnlyList<CommunityLeaderboardCard> BuildPreviewCards()
     {
         var cards = new List<CommunityLeaderboardCard>();
@@ -217,6 +249,44 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
         }
 
         return cards;
+    }
+
+    private CommunityUsageTotal UsageForCurrentWindow(CommunityShareSnapshotDoc? snapshot)
+    {
+        if (snapshot is null) return new CommunityUsageTotal(0, 0);
+        return Window switch
+        {
+            CommunityTimeWindow.Today => snapshot.Windows.Today,
+            CommunityTimeWindow.SevenDay => snapshot.Windows.SevenDay,
+            CommunityTimeWindow.ThirtyDay => snapshot.Windows.ThirtyDay,
+            CommunityTimeWindow.NinetyDay => snapshot.Windows.NinetyDay,
+            _ => snapshot.Windows.AllTime,
+        };
+    }
+
+    private static string SummarizeModelMix(IReadOnlyDictionary<string, double>? modelMix)
+    {
+        var entries = (modelMix ?? new Dictionary<string, double>())
+            .Where(pair => double.IsFinite(pair.Value) && pair.Value > 0)
+            .OrderByDescending(pair => pair.Value)
+            .Take(2)
+            .Select(pair => $"{pair.Key} {Math.Round(pair.Value * 100)}%");
+        var summary = string.Join(" · ", entries);
+        return string.IsNullOrWhiteSpace(summary)
+            ? "Live share snapshot synced; model mix appears after usage accrues."
+            : $"Top models: {summary}";
+    }
+
+    private static IReadOnlyList<PurposeSlice> BuildPurposeBreakdown(CommunityShareSnapshotDoc? snapshot)
+    {
+        if (snapshot is null) return Array.Empty<PurposeSlice>();
+        var entries = snapshot.PurposeMix
+            .Where(pair => double.IsFinite(pair.Value) && pair.Value > 0)
+            .OrderByDescending(pair => pair.Value)
+            .ToArray();
+        var total = entries.Sum(pair => pair.Value);
+        if (total <= 0) return Array.Empty<PurposeSlice>();
+        return entries.Select(pair => new PurposeSlice(pair.Key, pair.Value / total)).ToArray();
     }
 
     private string BuildConsentPreview()

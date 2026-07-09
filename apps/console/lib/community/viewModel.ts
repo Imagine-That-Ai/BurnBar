@@ -3,7 +3,10 @@ import { isConsentActive } from "./localConsent";
 import type {
   CommunityConsentDoc,
   CommunityLeaderboardDoc,
+  CommunityShareSnapshotDoc,
   CommunityTimeWindow,
+  CommunityUsageTotal,
+  GeographyTier,
   PercentileBands,
 } from "./types";
 import { GEO_TIER_ORDER } from "./types";
@@ -21,6 +24,11 @@ export type LookingGlassExportState = "idle" | "ready" | "error";
 export type LookingGlassExportCopy = {
   state: LookingGlassExportState;
   message: string;
+};
+
+export type CommunityLiveData = {
+  shareSnapshot?: CommunityShareSnapshotDoc | null;
+  leaderboards?: CommunityLeaderboardDoc[];
 };
 
 export type CommunityViewState = {
@@ -74,13 +82,17 @@ export function lookingGlassExportCopy(state: LookingGlassExportState): LookingG
   }
 }
 
-function thresholdCards(consent: CommunityConsentDoc): CommunityLeaderboardDoc[] {
+function emptyPercentiles(): PercentileBands {
+  return { p50: 0, p75: 0, p90: 0, p99: 0 };
+}
+
+function thresholdCards(consent: CommunityConsentDoc, window: CommunityTimeWindow): CommunityLeaderboardDoc[] {
   return GEO_TIER_ORDER.map((tier) => ({
-    window: "30d",
+    window,
     tier,
     geoKey: resolveGeoDisplayLabel(consent, tier),
     entries: [],
-    percentiles: { p50: 0, p75: 0, p90: 0, p99: 0 },
+    percentiles: emptyPercentiles(),
     cohortSize: 0,
     belowThreshold: true,
     kThreshold: 10,
@@ -88,22 +100,76 @@ function thresholdCards(consent: CommunityConsentDoc): CommunityLeaderboardDoc[]
   }));
 }
 
-function previewLeaderboards(consent: CommunityConsentDoc): CommunityLeaderboardDoc[] {
+function previewLeaderboards(consent: CommunityConsentDoc, window: CommunityTimeWindow): CommunityLeaderboardDoc[] {
   return GEO_TIER_ORDER.map((tier) => ({
-    window: "30d",
+    window,
     tier,
     geoKey: resolveGeoDisplayLabel(consent, tier),
     entries: [],
-    percentiles: { p50: 0, p75: 0, p90: 0, p99: 0 },
+    percentiles: emptyPercentiles(),
     cohortSize: 0,
     belowThreshold: true,
     kThreshold: 10,
     updatedAt: new Date().toISOString(),
   }));
 }
+
+function usageForWindow(snapshot: CommunityShareSnapshotDoc | null | undefined, window: CommunityTimeWindow): CommunityUsageTotal {
+  if (!snapshot) return { totalTokens: 0, costUSD: 0 };
+  switch (window) {
+    case "today":
+      return snapshot.windows.today;
+    case "7d":
+      return snapshot.windows.sevenDay;
+    case "30d":
+      return snapshot.windows.thirtyDay;
+    case "90d":
+      return snapshot.windows.ninetyDay;
+    default:
+      return snapshot.windows.allTime;
+  }
+}
+
+function summarizeModelMix(modelMix: Record<string, number> | undefined): string {
+  const entries = Object.entries(modelMix ?? {})
+    .filter(([, share]) => Number.isFinite(share) && share > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2);
+  if (entries.length === 0) return "Live share snapshot synced; model mix appears after usage accrues.";
+  return `Top models: ${entries.map(([name, share]) => `${name} ${Math.round(share * 100)}%`).join(" · ")}`;
+}
+
+function purposeBreakdown(snapshot: CommunityShareSnapshotDoc | null | undefined): PurposeSlice[] {
+  const entries = Object.entries(snapshot?.purposeMix ?? {})
+    .filter(([, value]) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((sum, [, value]) => sum + value, 0);
+  if (total <= 0) return [];
+  return entries.map(([category, value]) => ({ category, share: value / total }));
+}
+
+function primaryBoard(boards: CommunityLeaderboardDoc[]): CommunityLeaderboardDoc | undefined {
+  return boards.find((board) => !board.belowThreshold && board.entries.length > 0) ?? boards[0];
+}
+
+function liveLeaderboards(
+  consent: CommunityConsentDoc,
+  window: CommunityTimeWindow,
+  live: CommunityLiveData | undefined,
+): CommunityLeaderboardDoc[] {
+  const fallback = previewLeaderboards(consent, window);
+  const byTier = new Map(
+    (live?.leaderboards ?? [])
+      .filter((board) => board.window === window)
+      .map((board) => [board.tier as GeographyTier, board]),
+  );
+  return GEO_TIER_ORDER.map((tier, index) => byTier.get(tier) ?? fallback[index]);
+}
+
 export function buildCommunityView(
   consent: CommunityConsentDoc,
-  _window: CommunityTimeWindow,
+  window: CommunityTimeWindow,
+  live?: CommunityLiveData,
 ): CommunityViewState {
   if (!isConsentActive(consent.l2Rankings)) {
     return {
@@ -113,8 +179,8 @@ export function buildCommunityView(
         trendDeltaPct: 0,
         modelMixSummary: "Opt in to L2 rankings to preview your share snapshot.",
       },
-      leaderboards: thresholdCards(consent),
-      percentiles: { p50: 0, p75: 0, p90: 0, p99: 0 },
+      leaderboards: thresholdCards(consent, window),
+      percentiles: emptyPercentiles(),
       peerCohortTokens: [],
       purposeBreakdown: [],
       consentPreview: `L1 ${consent.l1Analytics} · L2 ${consent.l2Rankings} · L3 ${consent.l3LookingGlass} · Location ${consent.locationConsent}`,
@@ -126,21 +192,30 @@ export function buildCommunityView(
     };
   }
 
+  const leaderboards = liveLeaderboards(consent, window, live);
+  const board = primaryBoard(leaderboards);
+  const usage = usageForWindow(live?.shareSnapshot, window);
+  const hasLiveData = Boolean(live?.shareSnapshot) || leaderboards.some((candidate) => candidate.entries.length > 0 || candidate.cohortSize > 0);
+
   return {
     hero: {
-      tokens: 0,
-      costUSD: 0,
+      tokens: usage.totalTokens,
+      costUSD: usage.costUSD,
       trendDeltaPct: 0,
-      modelMixSummary: "Preview only — live leaderboards sync after community preferences save.",
+      modelMixSummary: hasLiveData
+        ? summarizeModelMix(live?.shareSnapshot?.modelMix)
+        : "Preview only — live leaderboards sync after community preferences save.",
     },
-    leaderboards: previewLeaderboards(consent),
-    percentiles: { p50: 0, p75: 0, p90: 0, p99: 0 },
-    peerCohortTokens: [],
-    purposeBreakdown: [],
+    leaderboards,
+    percentiles: board?.percentiles ?? emptyPercentiles(),
+    peerCohortTokens: board && !board.belowThreshold ? board.entries.map((entry) => entry.totalTokens) : [],
+    purposeBreakdown: purposeBreakdown(live?.shareSnapshot),
     consentPreview: `L1 ${consent.l1Analytics} · L2 ${consent.l2Rankings} · L3 ${consent.l3LookingGlass} · Location ${consent.locationConsent}`,
     showInvite: false,
-    isPreviewData: true,
-    statusMessage: "Preview layout only — no live leaderboard or cohort data is shown on this surface yet.",
+    isPreviewData: !hasLiveData,
+    statusMessage: hasLiveData
+      ? "Live community data synced. Public boards remain anonymous and threshold-gated."
+      : "Preview layout only — no live leaderboard or cohort data is shown on this surface yet.",
     cityConfidenceCopy: cityConfidenceCopy(consent),
     lookingGlassExport: lookingGlassExportCopy("idle"),
   };

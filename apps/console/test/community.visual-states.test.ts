@@ -79,6 +79,45 @@ describe("community visual states (console)", () => {
     expect(view.hero.modelMixSummary).toMatch(/preview only/i);
   });
 
+  it("renders live share snapshot and leaderboard docs when signed-in data exists", () => {
+    const view = buildCommunityView(grantedConsent({ manualCityInput: "Portland" }), "30d", {
+      shareSnapshot: {
+        windows: {
+          today: { totalTokens: 100, costUSD: 0.1 },
+          sevenDay: { totalTokens: 700, costUSD: 0.7 },
+          thirtyDay: { totalTokens: 12_500, costUSD: 12.5 },
+          ninetyDay: { totalTokens: 30_000, costUSD: 30 },
+          allTime: { totalTokens: 100_000, costUSD: 100 },
+        },
+        modelMix: { "claude-opus": 0.7, "gpt-4.1": 0.3 },
+        purposeMix: { coding: 8, research: 2 },
+      },
+      leaderboards: [
+        {
+          window: "30d",
+          tier: "world",
+          geoKey: "world",
+          entries: [
+            { rank: 1, anonId: "anon-a", totalTokens: 20_000, costUSD: 20, movement: "up" },
+            { rank: 2, anonId: "anon-b", totalTokens: 12_500, costUSD: 12.5, movement: "same" },
+          ],
+          percentiles: { p50: 10_000, p75: 15_000, p90: 20_000, p99: 25_000 },
+          cohortSize: 12,
+          belowThreshold: false,
+          kThreshold: 10,
+          updatedAt: "2026-07-09T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(view.isPreviewData).toBe(false);
+    expect(view.statusMessage).toMatch(/live community data synced/i);
+    expect(view.hero.tokens).toBe(12_500);
+    expect(view.hero.modelMixSummary).toContain("claude-opus 70%");
+    expect(view.peerCohortTokens).toEqual([20_000, 12_500]);
+    expect(view.purposeBreakdown.map((slice) => slice.category)).toEqual(["coding", "research"]);
+  });
+
   it("all_time window id is accepted for view build", () => {
     const view = buildCommunityView(grantedConsent(), "all_time");
     expect(view.isPreviewData).toBe(true);
