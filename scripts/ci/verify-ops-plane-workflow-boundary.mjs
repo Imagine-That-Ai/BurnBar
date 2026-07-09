@@ -85,6 +85,9 @@ if (source) {
   if (!skipped) fail("ops-plane workflow must define skipped-no-gcp-key");
 
   if (detect) {
+    if (!/if:\s*github\.event_name\s*!=\s*'pull_request'/u.test(detect)) {
+      fail("detect-secrets must be skipped on pull_request so PRs never enter the production environment");
+    }
     if (!hasLine(detect, "environment:\\s*production")) {
       fail("detect-secrets must bind the production environment before probing production secrets");
     }
@@ -103,8 +106,12 @@ if (source) {
     if (!/needs:\s*detect-secrets/u.test(verify)) {
       fail("verify must depend on detect-secrets");
     }
-    if (!/if:\s*needs\.detect-secrets\.outputs\.has-gcp-sa-key\s*==\s*'true'/u.test(verify)) {
-      fail("verify must run only when detect-secrets reports the production GCP credential is available");
+    if (
+      !/if:\s*github\.event_name\s*!=\s*'pull_request'\s*&&\s*needs\.detect-secrets\.outputs\.has-gcp-sa-key\s*==\s*'true'/u.test(
+        verify,
+      )
+    ) {
+      fail("verify must run only off PR events and when detect-secrets reports the production GCP credential is available");
     }
     if (!hasLine(verify, "environment:\\s*production")) {
       fail("verify must bind the production environment");
@@ -121,8 +128,12 @@ if (source) {
     if (!/needs:\s*detect-secrets/u.test(skipped)) {
       fail("skipped-no-gcp-key must depend on detect-secrets");
     }
-    if (!/if:\s*needs\.detect-secrets\.outputs\.has-gcp-sa-key\s*==\s*'false'/u.test(skipped)) {
-      fail("skipped-no-gcp-key must run only when detect-secrets reports the credential is unavailable");
+    if (
+      !/if:\s*github\.event_name\s*!=\s*'pull_request'\s*&&\s*needs\.detect-secrets\.outputs\.has-gcp-sa-key\s*==\s*'false'/u.test(
+        skipped,
+      )
+    ) {
+      fail("skipped-no-gcp-key must run only off PR events and when detect-secrets reports the credential is unavailable");
     }
     for (const marker of [
       '${{ github.event_name }}',

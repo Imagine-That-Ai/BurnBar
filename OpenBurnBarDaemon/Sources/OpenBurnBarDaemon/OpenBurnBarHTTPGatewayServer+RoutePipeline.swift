@@ -134,6 +134,14 @@ extension BurnBarHTTPGatewayServer {
                         formatFamily: formatFamily,
                         route: route
                     )
+                    await recordQuotaSignalIfAvailable(
+                        headers: relay.headers,
+                        route: route,
+                        requestPath: logContext.requestPath,
+                        endpoint: logContext.endpoint,
+                        httpStatus: relay.httpStatus,
+                        streamed: true
+                    )
                     let attemptStatus: BurnBarProxyRouteFinalStatus = relay.interrupted ? .interrupted : .exact
                     routeLogAttempts.append(routeAttempt(
                         sequence: routeLogAttempts.nextSequence,
@@ -175,6 +183,14 @@ extension BurnBarHTTPGatewayServer {
                 formatFamily: formatFamily,
                 route: route
             )
+            await recordQuotaSignalIfAvailable(
+                headers: response.headers,
+                route: route,
+                requestPath: logContext.requestPath,
+                endpoint: logContext.endpoint,
+                httpStatus: response.statusCode,
+                streamed: false
+            )
             await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
             routeLogAttempts.append(routeAttempt(
                 sequence: routeLogAttempts.nextSequence,
@@ -206,6 +222,17 @@ extension BurnBarHTTPGatewayServer {
         } catch {
             lastError = error
             lastFailedRoute = route
+            if let providerError = error as? BurnBarProviderExecutorError,
+               !providerError.upstreamHeaders.isEmpty {
+                await recordQuotaSignalIfAvailable(
+                    headers: providerError.upstreamHeaders,
+                    route: route,
+                    requestPath: logContext.requestPath,
+                    endpoint: logContext.endpoint,
+                    httpStatus: Self.httpStatus(from: error),
+                    streamed: false
+                )
+            }
             routeLogAttempts.append(routeAttempt(
                 sequence: routeLogAttempts.nextSequence,
                 startedAt: attemptStartedAt,
@@ -453,6 +480,10 @@ extension BurnBarHTTPGatewayServer {
 
                 if let lastError,
                    shouldFailOverProviderError(lastError) {
+                    let returnProviderFailure = shouldReturnFinalProviderFailure(
+                        lastError,
+                        requestedModel: requestedModel
+                    )
                     if let attemptDegrade = descriptor.attemptDegrade,
                        let degraded = await attemptDegrade(
                            degradeRequest(requestedCanonicalModelID: requiredCanonicalModelID)
@@ -469,8 +500,13 @@ extension BurnBarHTTPGatewayServer {
                         finalStatus: .failed,
                         httpStatus: Self.httpStatus(from: lastError),
                         attempts: routeLogAttempts.attempts,
-                        failureMessage: "Exact model fail-closed after provider failure."
+                        failureMessage: returnProviderFailure
+                            ? Self.routeLogFailureMessage(from: lastError)
+                            : "Exact model fail-closed after provider failure."
                     )
+                    if returnProviderFailure {
+                        return .buffered(providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute))
+                    }
                     return .buffered(exactModelFailClosedResponse(canonicalModelID: requiredCanonicalModelID))
                 }
 
@@ -554,7 +590,9 @@ extension BurnBarHTTPGatewayServer {
         route: BurnBarProviderRoute?
     ) -> GatewayHTTPResponse {
         if let providerError = error as? BurnBarProviderExecutorError,
-           case .upstreamError(let statusCode, let body) = providerError {
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            let statusCode = statusAndBody.statusCode
+            let body = statusAndBody.body
             if let route {
                 let contextualMessage = BurnBarGatewayModelHealthStore.routeFailureMessage(
                     modelID: modelID,
@@ -580,6 +618,12 @@ extension BurnBarHTTPGatewayServer {
             )
         }
         return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
+    }
+
+    func shouldReturnFinalProviderFailure(_ error: Error, requestedModel: GatewayRequestedModel) -> Bool {
+        guard requestedModel.accountID != nil else { return false }
+        guard let providerError = error as? BurnBarProviderExecutorError else { return false }
+        return providerError.upstreamStatusAndBody != nil
     }
 
     func shouldPreferContextualProviderError(body: String, statusCode: Int) -> Bool {

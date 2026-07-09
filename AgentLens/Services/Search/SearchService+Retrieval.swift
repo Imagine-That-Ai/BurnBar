@@ -327,7 +327,7 @@ extension SearchService {
 
             // Batch preload conversations to eliminate N+1 queries during scoring.
             // Extract all unique conversation sourceIDs from the candidate set.
-            var conversationCache: [String: ConversationRecord?] = [:]
+            var conversationCache: [String: OpenBurnBarCore.ConversationRecord?] = [:]
             let conversationSourceIDs = Set(boundedChunkIDs.compactMap { chunkID -> String? in
                 guard let chunk = chunkMap[chunkID],
                       let document = documentMap[chunk.documentID],
@@ -360,7 +360,7 @@ extension SearchService {
                     continue
                 }
 
-                let conversation: ConversationRecord?
+                let conversation: OpenBurnBarCore.ConversationRecord?
                 if document.sourceKind == .conversation {
                     conversation = conversationCache[document.sourceID] ?? nil
                 } else {

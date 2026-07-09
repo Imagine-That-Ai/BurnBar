@@ -6,6 +6,7 @@ import FirebaseCore
 import FirebaseFunctions
 import Foundation
 @preconcurrency import GoogleSignIn
+import OpenBurnBarCore
 import OSLog
 import Security
 
@@ -587,12 +588,12 @@ final class AccountManager {
     // MARK: - Device UUID
 
     private static func loadOrCreateDeviceId() -> String {
-        OpenBurnBarMigration.migrateUserDefaults()
-        let key = OpenBurnBarIdentity.deviceIDKey
+        OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
+        let key = OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey
         if let stored = UserDefaults.standard.string(forKey: key) {
             return stored
         }
-        for legacyKey in OpenBurnBarIdentity.legacyDeviceIDKeys {
+        for legacyKey in OpenBurnBarCore.OpenBurnBarIdentity.legacyDeviceIDKeys {
             if let stored = UserDefaults.standard.string(forKey: legacyKey) {
                 UserDefaults.standard.set(stored, forKey: key)
                 return stored

@@ -171,7 +171,7 @@ extension ChatSessionController {
         let attachmentTokens = history.reduce(0) { partial, message in
             partial + message.attachments.reduce(0) { $0 + $1.estimatedTokenCost }
         }
-        return TokenExtractionUtility.estimatedTokenCount(for: contentChars, charsPerToken: 3.5) + attachmentTokens
+        return OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: contentChars, charsPerToken: 3.5) + attachmentTokens
     }
 
     nonisolated static func promptSystemWrapperTokenReserve(

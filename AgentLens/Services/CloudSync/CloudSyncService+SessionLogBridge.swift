@@ -34,7 +34,7 @@ extension CloudSyncService {
 
     /// Fetches session log manifests from Firestore for the signed-in user.
     /// Returns ConversationRecords with empty fullText; body is fetched lazily via fetchCloudSessionLogBody(docId:).
-    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
+    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [OpenBurnBarCore.ConversationRecord] {
         let context = CloudSyncContext(
             dataStore: dataStore,
             accountManager: accountManager,
@@ -43,7 +43,7 @@ extension CloudSyncService {
         return try await SessionLogSyncService(context: context).fetchCloudSessionLogs(limit: limit)
     }
 
-    func searchCloudSessionLogs(query: String, limit: Int = 50) async throws -> [ConversationRecord] {
+    func searchCloudSessionLogs(query: String, limit: Int = 50) async throws -> [OpenBurnBarCore.ConversationRecord] {
         let accountReady = await MainActor.run {
             (accountManager.isFirebaseAvailable, accountManager.isSignedIn)
         }
@@ -136,7 +136,7 @@ extension CloudSyncService {
         }
     }
 
-    /// Builds a `ConversationRecord` from one encrypted-search hit, returning `nil`
+    /// Builds a `OpenBurnBarCore.ConversationRecord` from one encrypted-search hit, returning `nil`
     /// (skipping the hit) whenever the hit is malformed or any present sealed field
     /// fails authentication. Never returns a record carrying an unauthenticated
     /// title/snippet, so a cloud-side forgery cannot masquerade as a real result.
@@ -148,7 +148,7 @@ extension CloudSyncService {
         _ hit: [String: Any],
         vaultKey: Data,
         uid: String
-    ) -> ConversationRecord? {
+    ) -> OpenBurnBarCore.ConversationRecord? {
         guard let rawProvider = hit["provider"] as? String,
               let provider = AgentProvider(rawValue: rawProvider),
               let documentID = hit["documentID"] as? String else { return nil }
@@ -193,7 +193,7 @@ extension CloudSyncService {
         case .tampered: return nil
         }
 
-        return ConversationRecord(
+        return OpenBurnBarCore.ConversationRecord(
             id: hit["sourceID"] as? String ?? documentID,
             provider: provider,
             sessionId: documentID,

@@ -65,10 +65,12 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .providerModelVariantUpsert, .providerModelVariantRemove,
              .providerModelAliasUpsert, .providerModelAliasRemove,
              .providerCustomModelUpsert, .providerCustomModelRemove,
-             .providerModelDisplayNameSet, .providerModelDisplayNameClear:
+             .providerModelDisplayNameSet, .providerModelDisplayNameClear,
+             .quotaSignalsClear:
             return .config
         case .usageRecord, .usageRecent,
-             .proxyRouteLogRecent, .proxyRouteLogClear, .perfMeasure:
+             .proxyRouteLogRecent, .proxyRouteLogClear,
+             .quotaSignalsRecent, .perfMeasure:
             return .observability
         case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
             return .membership

@@ -987,6 +987,12 @@ jobs:
       - name: Verify ops-plane workflow boundary
         run: node scripts/ci/verify-ops-plane-workflow-boundary.mjs
 
+      - name: Self-test branch-protection drift gate
+        run: node --test scripts/ops/check-branch-protection-drift.test.mjs
+
+      - name: Self-test ops alert-plane drift gate
+        run: node --test scripts/ops/check-ops-alert-plane-drift.test.mjs
+
       - name: Self-test PR harness aggregate gates
         run: node scripts/ci/verify-pr-harness-aggregate-gates.test.mjs
 

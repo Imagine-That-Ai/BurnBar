@@ -17,7 +17,7 @@ struct SessionLogsView: View {
     /// Fallback when usage-derived `sessionModelMap` has no model (e.g. in-app Hermes chat).
     var preferredChatModelKey: String?
 
-    @State var allLogs: [ConversationRecord] = []
+    @State var allLogs: [OpenBurnBarCore.ConversationRecord] = []
     @State var searchText = ""
     @State var sourceFilter: SessionLogSourceFilter = .all
     @State var groupMode: SessionLogGroupMode = .time
@@ -38,7 +38,7 @@ struct SessionLogsView: View {
     @State var knownDevices: [DeviceRecord] = []
     @State var sessionModelMap: [String: String] = [:]
     @State var iconPickerDeviceId: String?
-    @State var selectedDetailLog: ConversationRecord?
+    @State var selectedDetailLog: OpenBurnBarCore.ConversationRecord?
     @State var resumeRequest: SessionResumeRequest?
     @State var isExporting = false
     /// Explicit ticker bumped once per `allLogs` assignment (in `loadLogs`).

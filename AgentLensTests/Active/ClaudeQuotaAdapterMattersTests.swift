@@ -19,7 +19,7 @@ final class ClaudeQuotaAdapterMattersTests: XCTestCase {
         try fileManager.createDirectory(at: profileDir, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: homeDir, withIntermediateDirectories: true)
 
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempRoot)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: tempRoot)
         store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
     }
 

@@ -336,6 +336,46 @@ extension BurnBarProviderRouter {
                 continue
             }
 
+            if configuration.provider.local, configuration.ollamaEndpoints.isEmpty == false {
+                let endpointRoutes = configuration.ollamaEndpoints
+                    .filter { endpoint in
+                        BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
+                            slot: endpoint.slot,
+                            providerID: configuration.provider.id,
+                            hasCredential: true,
+                            providerEnabled: configuration.settings.isEnabled,
+                            now: now
+                        )
+                    }
+                    .sorted { lhs, rhs in
+                        if lhs.endpoint.priority != rhs.endpoint.priority {
+                            return lhs.endpoint.priority < rhs.endpoint.priority
+                        }
+                        return lhs.endpoint.id < rhs.endpoint.id
+                    }
+
+                for endpointRoute in endpointRoutes {
+                    routes.append(
+                        BurnBarProviderRoute(
+                            providerID: configuration.provider.id,
+                            providerDisplayName: configuration.provider.displayName,
+                            credentialSlotID: endpointRoute.slot.slotID,
+                            credentialSlotLabel: endpointRoute.slot.label,
+                            baseURL: endpointRoute.endpoint.baseURL,
+                            requestedModel: modelName,
+                            resolvedModelID: resolvedModel.id,
+                            canonicalModelID: resolvedModel.canonicalModelID,
+                            apiKey: endpointRoute.apiKey ?? "",
+                            pricing: resolvedModel.pricing,
+                            modelCapabilityClassID: resolvedModel.capabilityClassID,
+                            formatFamily: formatFamily,
+                            endpointProfileID: endpointRoute.slot.endpointProfileID
+                        )
+                    )
+                }
+                continue
+            }
+
             if let apiKey = effectiveAPIKey(for: configuration) {
                 let resolvedEndpoint = ProviderRouteEndpointResolver.resolve(
                     providerID: configuration.provider.id,

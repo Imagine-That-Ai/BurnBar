@@ -45,7 +45,7 @@ struct RetrievalFilters {
     var dateRange: ClosedRange<Date>?
     var ownership: RetrievalOwnershipFilter
     var sourceIDs: Set<String>?
-    var conversationSources: Set<ConversationSourceType>?
+    var conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?
 
     init(
         provider: AgentProvider? = nil,
@@ -54,7 +54,7 @@ struct RetrievalFilters {
         dateRange: ClosedRange<Date>? = nil,
         ownership: RetrievalOwnershipFilter = .any,
         sourceIDs: Set<String>? = nil,
-        conversationSources: Set<ConversationSourceType>? = nil
+        conversationSources: Set<OpenBurnBarCore.ConversationSourceType>? = nil
     ) {
         self.provider = provider
         self.projectName = projectName
@@ -143,7 +143,7 @@ struct RetrievalResult: Identifiable, Sendable {
     let lexicalRank: Double?
     let semanticScore: Double?
     let rerankScore: Double
-    let conversation: ConversationRecord?
+    let conversation: OpenBurnBarCore.ConversationRecord?
 
     var id: String { chunkID }
 }

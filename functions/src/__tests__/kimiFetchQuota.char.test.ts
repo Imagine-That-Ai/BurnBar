@@ -12,15 +12,15 @@
  * exact errorCode/errorMessage on the failure path).
  *
  * `kimiAdapter` reaches the network only through `providerFetch` ->
- * `resilientFetch`, so we mock `../resilienceHelpers.js` and route per-URL.
+ * `providerResilientFetch`, so we mock `../resilienceHelpers.js` and route per-URL.
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const resilientFetch = vi.fn();
+const providerResilientFetch = vi.fn();
 
 vi.mock("../resilienceHelpers.js", () => ({
-  resilientFetch,
+  providerResilientFetch,
 }));
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -36,7 +36,7 @@ describe("kimiAdapter.fetchQuota characterization (U11)", () => {
   });
 
   it("returns a failure result with auth_failed when /v1/models rejects the key", async () => {
-    resilientFetch.mockImplementation(async (_label: string, url: string | URL) => {
+    providerResilientFetch.mockImplementation(async (_provider: string, _label: string, url: string | URL) => {
       const u = String(url);
       if (u.endsWith("/v1/models")) {
         return jsonResponse(401, { error: { message: "Invalid API key." } });
@@ -55,7 +55,7 @@ describe("kimiAdapter.fetchQuota characterization (U11)", () => {
   });
 
   it("produces a high-confidence account_balance bucket from a full balance payload", async () => {
-    resilientFetch.mockImplementation(async (_label: string, url: string | URL) => {
+    providerResilientFetch.mockImplementation(async (_provider: string, _label: string, url: string | URL) => {
       const u = String(url);
       if (u.endsWith("/v1/models")) {
         return jsonResponse(200, { data: [{ id: "kimi-k2" }, { id: "moonshot-v1-8k" }] });
@@ -99,7 +99,7 @@ describe("kimiAdapter.fetchQuota characterization (U11)", () => {
   });
 
   it("falls back to a models bucket (medium confidence) when balance data is unusable", async () => {
-    resilientFetch.mockImplementation(async (_label: string, url: string | URL) => {
+    providerResilientFetch.mockImplementation(async (_provider: string, _label: string, url: string | URL) => {
       const u = String(url);
       if (u.endsWith("/v1/models")) {
         return jsonResponse(200, { data: [{ id: "kimi-k2" }, { id: "moonshot-v1-8k" }, { id: "moonshot-v1-32k" }] });

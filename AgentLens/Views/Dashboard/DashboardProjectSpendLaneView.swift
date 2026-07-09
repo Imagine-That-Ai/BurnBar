@@ -200,7 +200,7 @@ struct ProjectSpendCard: View {
 
     private var topModelsLine: String {
         let models = summary.modelBreakdown.prefix(3).map { model in
-            "\(TokenExtractionUtility.displayNameForModel(model.modelName)) \(model.cost.formatAsCost())"
+            "\(OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(model.modelName)) \(model.cost.formatAsCost())"
         }
         return models.joined(separator: " · ")
     }

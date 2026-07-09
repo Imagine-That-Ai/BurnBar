@@ -2889,7 +2889,7 @@ private final class SpySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter,
         var fetchAllProfilesCallCount = 0
         var lastFetchedProfileID: String?
     }
-    private let spyState = Locked(SpyState())
+    private let spyState = OpenBurnBarCore.Locked(SpyState())
 
     var fetchProfileCallCount: Int { spyState.withLock { $0.fetchProfileCallCount } }
     var fetchAllProfilesCallCount: Int { spyState.withLock { $0.fetchAllProfilesCallCount } }

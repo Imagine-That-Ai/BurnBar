@@ -152,7 +152,7 @@ extension DataStore {
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
-        conversationSources: Set<ConversationSourceType>? = nil
+        conversationSources: Set<OpenBurnBarCore.ConversationSourceType>? = nil
     ) async throws -> Int {
         let cleaned = patterns
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -208,7 +208,7 @@ extension DataStore {
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
-        conversationSources: Set<ConversationSourceType>? = nil,
+        conversationSources: Set<OpenBurnBarCore.ConversationSourceType>? = nil,
         limit: Int = 12
     ) async throws -> [ConversationJumpTarget] {
         let cleanedPatterns = Array(
@@ -267,7 +267,7 @@ extension DataStore {
         guard !candidateIDs.isEmpty else { return [] }
 
         // Phase 2: Fetch full records only for the candidate IDs.
-        let conversations = try await actor.dbQueue.read { db -> [ConversationRecord] in
+        let conversations = try await actor.dbQueue.read { db -> [OpenBurnBarCore.ConversationRecord] in
             let placeholders = Array(repeating: "?", count: candidateIDs.count).joined(separator: ", ")
             let sql = """
             SELECT * FROM conversations
@@ -327,7 +327,7 @@ extension DataStore {
         patterns: [String],
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
-        conversationSources: Set<ConversationSourceType>? = nil
+        conversationSources: Set<OpenBurnBarCore.ConversationSourceType>? = nil
     ) async throws -> [ConversationProviderOccurrence] {
         let cleanedPatterns = Array(
             Set(
@@ -412,7 +412,7 @@ extension DataStore {
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
-        conversationSources: Set<ConversationSourceType>? = nil,
+        conversationSources: Set<OpenBurnBarCore.ConversationSourceType>? = nil,
         limit: Int = 12
     ) async throws -> CredentialExposureScanResult {
         let boundedLimit = max(1, min(limit, 200))
@@ -457,7 +457,7 @@ extension DataStore {
 
                         totalMatches += 1
                         if jumpTargets.count < boundedLimit {
-                            let conversation = try await actor.dbQueue.read { db -> ConversationRecord? in
+                            let conversation = try await actor.dbQueue.read { db -> OpenBurnBarCore.ConversationRecord? in
                                 try ConversationStore.fetchConversationRow(db, id: item.id)
                             }
                             guard let conversation else { continue }

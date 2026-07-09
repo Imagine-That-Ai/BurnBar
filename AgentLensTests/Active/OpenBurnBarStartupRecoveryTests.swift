@@ -13,7 +13,7 @@ final class OpenBurnBarStartupRecoveryTests: XCTestCase {
     }
 
     func test_failureDiagnostics_includeStoragePathsAndError() {
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: URL(fileURLWithPath: "/tmp/openburnbar-tests"))
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: URL(fileURLWithPath: "/tmp/openburnbar-tests"))
         let error = NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError, userInfo: [
             NSLocalizedDescriptionKey: "Permission denied"
         ])
@@ -33,7 +33,7 @@ final class OpenBurnBarStartupRecoveryTests: XCTestCase {
     }
 
     func test_databaseSidecarURLs_includePrimaryWalAndShm() {
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: URL(fileURLWithPath: "/tmp/openburnbar-tests"))
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: URL(fileURLWithPath: "/tmp/openburnbar-tests"))
 
         XCTAssertEqual(paths.databaseSidecarURLs.map(\.lastPathComponent), [
             "openburnbar.sqlite",
@@ -132,17 +132,17 @@ final class OpenBurnBarStartupRecoveryTests: XCTestCase {
         )
     }
 
-    private func makePaths() throws -> OpenBurnBarAppPaths {
+    private func makePaths() throws -> OpenBurnBar.OpenBurnBarAppPaths {
         let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         addTeardownBlock { [fileManager] in
             try? fileManager.removeItem(at: root)
         }
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: root)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: root)
         try fileManager.createDirectory(at: paths.supportDirectory, withIntermediateDirectories: true)
         return paths
     }
 
-    private func seedDatabaseSidecars(paths: OpenBurnBarAppPaths, namesAndContents: [String: String]) throws {
+    private func seedDatabaseSidecars(paths: OpenBurnBar.OpenBurnBarAppPaths, namesAndContents: [String: String]) throws {
         for (name, content) in namesAndContents {
             try content.write(
                 to: paths.supportDirectory.appendingPathComponent(name),

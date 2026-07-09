@@ -93,7 +93,7 @@ final class WindowManager: ObservableObject {
             backing: .buffered,
             defer: false
         )
-        window.title = OpenBurnBarIdentity.productName
+        window.title = OpenBurnBarCore.OpenBurnBarIdentity.productName
         // Keep a real title for the Window menu / accessibility; hide the redundant title text
         // in the title bar now that the in-toolbar brand mark carries the product name.
         window.titleVisibility = .hidden

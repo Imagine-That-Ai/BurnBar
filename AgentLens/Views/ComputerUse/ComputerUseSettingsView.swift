@@ -1048,7 +1048,7 @@ struct ComputerUseSettingsView: View {
     }
 
     private func auditSessionDirectory(sessionId: String) -> URL {
-        OpenBurnBarAppPaths.live().supportDirectory
+        OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
             .appendingPathComponent("computer-use-audit", isDirectory: true)
             .appendingPathComponent(sessionId, isDirectory: true)
     }

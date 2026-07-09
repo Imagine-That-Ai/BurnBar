@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Controller Settings
 
@@ -28,7 +29,7 @@ final class ControllerSettings {
         didSet {
             secretPersistence.persist(
                 controllerTelegramBotToken,
-                account: OpenBurnBarIdentity.controllerTelegramBotTokenAccount,
+                account: OpenBurnBarCore.OpenBurnBarIdentity.controllerTelegramBotTokenAccount,
                 legacyDefaultsKey: SettingsSecretDefaultsKey.controllerTelegramBotToken
             )
         }
@@ -75,7 +76,7 @@ final class ControllerSettings {
         }
         self.controllerTelegramEnabled = persistence.bool(forKey: "controllerTelegramEnabled")
         self.controllerTelegramBotToken = secretPersistence.load(
-            account: OpenBurnBarIdentity.controllerTelegramBotTokenAccount,
+            account: OpenBurnBarCore.OpenBurnBarIdentity.controllerTelegramBotTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.controllerTelegramBotToken
         )
         self.controllerTelegramChatID = persistence.string(forKey: "controllerTelegramChatID")
