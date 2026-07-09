@@ -161,3 +161,62 @@ README/JSON/transcript style used by `docs/linux-port/evidence/`.
 | `scripts/macmini/run-remote-ui-tests.sh` | Controller build/copy/queue/poll/pull entrypoint |
 | `scripts/test-openburnbar-ui.sh` | Canonical local/remote UI test wrapper |
 | `tools/CUClickSmoke` | AX/CGEvent permission probe and real-app smoke CLI |
+
+## Validated bring-up (2026-07-09, Tikkas-Mac-mini, macOS 27.0, Xcode 27.0)
+
+The bridge was brought up end-to-end against a real Mac mini over Tailscale. The
+AX real-app smoke passed green (exit 0): the controller drove the mini, which
+launched the real `OpenBurnBar.app` with `--uitest`, opened the dashboard, and
+asserted **176 live AX elements including `AXWindow`**. Evidence transcript:
+`docs/macos-ui-automation/evidence/mission-001-macmini-lane/ax-smoke-transcript.txt`.
+
+### One-time manual gates on the mini (cannot be scripted — SIP/TCC)
+
+Run once, in the mini's own GUI session (Screen Sharing is fine):
+
+1. **Remote Login** — System Settings → General → Sharing → Remote Login → On.
+   Enrol the controller key: `ssh-copy-id -i ~/.ssh/openburnbar_mini.pub <user>@<mini>`.
+2. **Gatekeeper** — ad-hoc test products are unnotarized; macOS 27 blocks their
+   launch ("… is damaged and can't be opened"). Disable assessment:
+   `sudo spctl --master-disable`, **then** confirm in System Settings → Privacy &
+   Security → Security → "Allow applications from: Anywhere". `spctl --status`
+   must read `assessments disabled`.
+3. **Developer Mode** — `sudo DevToolsSecurity -enable`.
+4. **No sleep** — `sudo pmset -a sleep 0 displaysleep 0`.
+5. **Accessibility grant** — the AX-smoke tool needs to control the Mac. After
+   `bootstrap-mini.sh` builds `CUClickSmoke` natively at
+   `~/OpenBurnBarUIRunner/bin/CUClickSmoke`, enable it in System Settings →
+   Privacy & Security → Accessibility. (Screen Recording is optional; screenshot
+   evidence is best-effort and the run passes without it.)
+
+### Gotchas proven during bring-up (baked into the scripts)
+
+- **Cross-machine code signing.** Products built with `CODE_SIGNING_ALLOWED=NO`
+  carry linker ad-hoc signatures without `get-task-allow`; testmanagerd SIGKILLs
+  such runners ("signal kill before establishing connection"). The controller
+  ad-hoc-signs every product (deepest-first, `get-task-allow` on `.app`s) before
+  rsync — see `adhoc_sign_products` in `scripts/macmini/lib.sh`.
+- **`CUClickSmoke` is built natively on the mini**, never pushed as a controller
+  binary: a transferred ad-hoc binary trips Gatekeeper, and re-signing a granted
+  binary changes its cdhash and voids the Accessibility grant. The native build
+  is path-keyed, so the grant survives rebuilds at the same path.
+- **AX smoke runs via direct SSH, not the LaunchAgent queue.** TCC attributes an
+  ad-hoc CLI tool's Accessibility grant to the *responsible* process; under the
+  LaunchAgent that resolves to the daemon's parent (`axTrusted=false`). A direct
+  `ssh` exec keeps `CUClickSmoke` responsible while `open` still launches the app
+  into the console GUI session where its window is AX-visible.
+- **Menu-bar app has no window by default.** `--uitest` /
+  `OPENBURNBAR_UITEST=1` deterministically opens the dashboard and dismisses
+  first-run modals; `CUClickSmoke` sets both when launching.
+
+### Known limitation — headless XCUITest Accessibility
+
+The XCUITest target builds and produces a valid, `get-task-allow`-signed
+`OpenBurnBarUITests-Runner.app`, but the XCTest runner additionally requires an
+Accessibility grant that macOS will only bind through the GUI, and ad-hoc runner
+signatures change per build. On this bring-up the runner reached launch but hung
+"before establishing connection" pending that grant. The AX real-app smoke is the
+proven-green lane; making XCUITest green headlessly needs a stable signing
+identity for the runner so its Accessibility grant persists — tracked as
+follow-up. Both layers share the same target, scheme, accessibility identifiers,
+and `--uitest` hook.
