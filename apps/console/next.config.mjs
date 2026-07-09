@@ -19,11 +19,11 @@ const csp = [
   // Google Fonts webfont files come from fonts.gstatic.com.
   "font-src 'self' data: https://fonts.gstatic.com",
   // api2.amplitude.com (US) / api.eu.amplitude.com (EU) are the opt-in analytics
-  // egress endpoints (Amplitude Browser SDK). They are only ever contacted AFTER
-  // the member opts in; pre-consent the SDK is never loaded. The same origins
-  // must also be present in firebase.json's `console` hosting target, since a
-  // static export does not apply these next.config headers in production.
-  "connect-src 'self' https://apis.google.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com https://www.gstatic.com https://api2.amplitude.com https://api.eu.amplitude.com",
+  // egress endpoints. Sentry ingest origins are direct browser crash-report
+  // endpoints when NEXT_PUBLIC_SENTRY_DSN is configured. The same origins must
+  // also be present in firebase.json's `console` hosting target, since a static
+  // export does not apply these next.config headers in production.
+  "connect-src 'self' https://apis.google.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com https://www.gstatic.com https://api2.amplitude.com https://api.eu.amplitude.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
   "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://appleid.apple.com https://www.google.com/recaptcha/",
   "frame-ancestors 'none'",
   "form-action 'self'",
@@ -63,4 +63,9 @@ const nextConfig = {
   },
 };
 
+// ── Sentry (observability) ────────────────────────────────────────────────────
+// Runtime init lives in instrumentation-client.ts / instrumentation.ts and is
+// gated on NEXT_PUBLIC_SENTRY_DSN, so a no-DSN build is a clean no-op. We do not
+// use the Next Sentry build wrapper here: it pulls in the Sentry CLI package,
+// whose source-available license is intentionally blocked by dependency review.
 export default nextConfig;
