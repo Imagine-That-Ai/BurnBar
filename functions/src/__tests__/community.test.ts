@@ -149,6 +149,7 @@ describe("recheckConsent", () => {
   it("parses granted and declined tri-states; city requires locationConsent", async () => {
     seedDoc(store, CommunityPaths.consent("alice"), {
       l1Analytics: "granted",
+      l2Rankings: "granted",
       l2Tiers: {
         world: "granted",
         country: "declined",
@@ -171,6 +172,7 @@ describe("recheckConsent", () => {
 
   it("enables city tier only when city and locationConsent are granted", async () => {
     seedDoc(store, CommunityPaths.consent("bob"), {
+      l2Rankings: "granted",
       l2Tiers: { world: "declined", country: "declined", region: "declined", city: "granted" },
       locationConsent: "granted",
     });
@@ -178,6 +180,30 @@ describe("recheckConsent", () => {
     const snap = await recheckConsent(db, "bob");
     expect(snap.l2City).toBe(true);
     expect(snap.l2Rankings).toBe(true);
+  });
+
+  it("fails closed when tier grants exist without the top-level L2 gate", async () => {
+    seedDoc(store, CommunityPaths.consent("carol"), {
+      l2Tiers: { world: "granted", country: "granted", region: "declined", city: "declined" },
+      locationConsent: "granted",
+    });
+    seedDoc(store, CommunityPaths.consent("dave"), {
+      l2Rankings: "declined",
+      l2Tiers: { world: "granted", country: "granted", region: "declined", city: "declined" },
+      locationConsent: "granted",
+    });
+
+    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    await expect(recheckConsent(db, "carol")).resolves.toMatchObject({
+      l2Rankings: false,
+      l2World: false,
+      l2Country: false,
+    });
+    await expect(recheckConsent(db, "dave")).resolves.toMatchObject({
+      l2Rankings: false,
+      l2World: false,
+      l2Country: false,
+    });
   });
 });
 
@@ -208,6 +234,7 @@ describe("collectValidParticipants anonId privacy", () => {
 
   it("skips share_snapshot with L2 consent when profile lacks anonId (never publishes uid)", async () => {
     seedDoc(store, CommunityPaths.consent(LEAK_UID), {
+      l2Rankings: "granted",
       l2Tiers: { world: "granted", country: "declined", region: "declined", city: "declined" },
     });
     seedDoc(store, CommunityPaths.shareSnapshot(LEAK_UID), {
@@ -227,6 +254,7 @@ describe("collectValidParticipants anonId privacy", () => {
 
   it("skips when profile exists but anonId is absent", async () => {
     seedDoc(store, CommunityPaths.consent(LEAK_UID), {
+      l2Rankings: "granted",
       l2Tiers: { world: "granted", country: "declined", region: "declined", city: "declined" },
     });
     seedDoc(store, CommunityPaths.profile(LEAK_UID), {
@@ -250,6 +278,7 @@ describe("collectValidParticipants anonId privacy", () => {
   it("includes participant when profile has anonId distinct from Firebase uid", async () => {
     const anonId = "a1b2c3d4e5f67890";
     seedDoc(store, CommunityPaths.consent(LEAK_UID), {
+      l2Rankings: "granted",
       l2Tiers: { world: "granted", country: "declined", region: "declined", city: "declined" },
     });
     seedDoc(store, CommunityPaths.profile(LEAK_UID), { anonId, schemaVersion: COMMUNITY_SCHEMA_VERSION });
@@ -274,6 +303,7 @@ describe("collectValidParticipants anonId privacy", () => {
     const malformedUid = "malformed-share-snapshot";
     for (const uid of [staleUid, malformedUid]) {
       seedDoc(store, CommunityPaths.consent(uid), {
+        l2Rankings: "granted",
         l2Tiers: { world: "granted", country: "declined", region: "declined", city: "declined" },
       });
       seedDoc(store, CommunityPaths.profile(uid), { anonId: `${uid}-anon`, schemaVersion: COMMUNITY_SCHEMA_VERSION });
@@ -443,6 +473,7 @@ describe("updateCommunityProfile geo normalization", () => {
 
   it("persists normalizeGeoKey output for manual geo overrides when tiers are granted", async () => {
     seedDoc(store, CommunityPaths.consent(ALICE_UID), {
+      l2Rankings: "granted",
       l2Tiers: { world: "granted", country: "granted", region: "granted", city: "granted" },
       locationConsent: "granted",
     });
@@ -476,6 +507,7 @@ describe("updateCommunityProfile geo normalization", () => {
 
   it("ignores manual geo overrides that normalize to empty", async () => {
     seedDoc(store, CommunityPaths.consent(ALICE_UID), {
+      l2Rankings: "granted",
       l2Tiers: { world: "granted", country: "granted", region: "granted", city: "granted" },
       locationConsent: "granted",
     });

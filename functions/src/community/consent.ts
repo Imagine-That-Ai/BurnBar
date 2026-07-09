@@ -81,10 +81,7 @@ export async function recheckConsent(db: CommunityFirestoreReader, uid: string):
 
   const tiers = data.l2Tiers;
   const tierData = isRecord(tiers) ? tiers : {};
-  const hasLegacyTierGrant =
-    data.l2Rankings === undefined &&
-    (isGranted(tierData.world) || isGranted(tierData.country) || isGranted(tierData.region) || isGranted(tierData.city));
-  const topLevelL2Granted = isGranted(data.l2Rankings) || hasLegacyTierGrant;
+  const topLevelL2Granted = isGranted(data.l2Rankings);
 
   const l2World = topLevelL2Granted && isGranted(tierData.world);
   const l2Country = topLevelL2Granted && isGranted(tierData.country);

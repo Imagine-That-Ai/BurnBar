@@ -291,6 +291,7 @@ interface UpdateProfileInput {
 type CommunityTierGrants = Record<string, string>;
 
 function communityTierGrants(consent: Record<string, unknown>): CommunityTierGrants {
+  if (consent.l2Rankings !== "granted") return {};
   const tiers = consent.l2Tiers;
   if (!tiers || typeof tiers !== "object" || Array.isArray(tiers)) return {};
   const out: CommunityTierGrants = {};
