@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -165,6 +166,162 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         XCTAssertFalse(message.contains(providerToken))
         XCTAssertFalse(message.lowercased().contains("bearer abcdef"))
         XCTAssertLessThanOrEqual(message.count, 420)
+    }
+
+    // MARK: - M1 characterization (split-brain remediation, Phase 2)
+    //
+    // These tables pin the CURRENT verdict behavior of the GUI mission
+    // authority's pure decision functions (`CLIAgentMissionRuntimePlanner`),
+    // so the daemon-side `daemon.mission.authorizeRemote` port (M2) and the
+    // later routing changes (M3 shadow mode, M4 enforcement) are provably
+    // behavior-preserving. A row change here is a mission-security policy
+    // change, not a test update. The Firestore-coupled halves of the GUI
+    // authority (LiveCLIAgentMissionDeviceTrustChecker, shouldPauseForApproval)
+    // cannot be pinned as pure tables — their verdict semantics are mirrored
+    // by the daemon authorizer's own tables in OpenBurnBarDaemonTests.
+
+    private func backend(_ chatBackend: ChatBackendID) -> CLIAgentMissionBackend {
+        CLIAgentMissionBackend(chatBackend: chatBackend)
+    }
+
+    func testCharacterization_M1_MacCLIAssistantConsentTable() {
+        // Every chat backend: only Hermes runs remote missions without the
+        // Mac CLI-assistant consent toggle.
+        let consentExempt: Set<ChatBackendID> = [.hermes]
+        for chatBackend in ChatBackendID.allCases {
+            XCTAssertEqual(
+                CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(
+                    backend: backend(chatBackend)
+                ),
+                !consentExempt.contains(chatBackend),
+                "consent requirement drifted for \(chatBackend.rawValue)"
+            )
+        }
+
+        // Raw (non-ChatBackendID) runtimes: opencode/ollama require consent;
+        // anything else falls through to no consent requirement.
+        struct RawRow { let raw: String; let expected: Bool }
+        let rawRows: [RawRow] = [
+            RawRow(raw: "opencode", expected: true),
+            RawRow(raw: "ollama", expected: true),
+            RawRow(raw: " OpenCode ", expected: true),
+            RawRow(raw: "grok", expected: false),
+            RawRow(raw: "mystery-runtime", expected: false)
+        ]
+        for row in rawRows {
+            XCTAssertEqual(
+                CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(
+                    backend: CLIAgentMissionBackend(rawValue: row.raw, displayName: row.raw)
+                ),
+                row.expected,
+                "raw runtime consent drifted for '\(row.raw)'"
+            )
+        }
+    }
+
+    func testCharacterization_M1_RequiresPreDispatchApprovalTable() {
+        // The GUI pre-dispatch approval verdict = shared InsightMissionApprovalPolicy
+        // OR the per-backend Mac CLI-assistant consent requirement.
+        struct Row {
+            let mode: String?
+            let commands: Bool
+            let fileEdits: Bool
+            let backend: CLIAgentMissionBackend
+            let expected: Bool
+            let note: String
+        }
+        let hermes = backend(.hermes)
+        let codex = backend(.codex)
+        let rows: [Row] = [
+            // Hermes (consent-exempt): verdict is purely the shared policy.
+            Row(mode: nil, commands: false, fileEdits: false, backend: hermes, expected: false,
+                note: "hermes read-only default mode dispatches without approval"),
+            Row(mode: "existing_policy", commands: false, fileEdits: false, backend: hermes, expected: false,
+                note: "hermes read-only existing_policy dispatches without approval"),
+            Row(mode: "manual_all", commands: false, fileEdits: false, backend: hermes, expected: true,
+                note: "manual_all pauses hermes"),
+            Row(mode: "existing_policy", commands: true, fileEdits: false, backend: hermes, expected: true,
+                note: "commands pause hermes"),
+            Row(mode: nil, commands: false, fileEdits: true, backend: hermes, expected: true,
+                note: "file edits pause hermes"),
+            Row(mode: "definitely_not_a_mode", commands: false, fileEdits: false, backend: hermes, expected: true,
+                note: "unknown approvalMode fails closed for hermes"),
+            // Codex (consent-required): ALWAYS requires approval, even for the
+            // safest mission shape — the consent branch dominates.
+            Row(mode: "existing_policy", commands: false, fileEdits: false, backend: codex, expected: true,
+                note: "codex requires approval even read-only"),
+            Row(mode: nil, commands: false, fileEdits: false, backend: codex, expected: true,
+                note: "codex requires approval with absent mode"),
+            // Raw runtime without consent requirement behaves like hermes.
+            Row(mode: nil, commands: false, fileEdits: false,
+                backend: CLIAgentMissionBackend(rawValue: "grok", displayName: "Grok Build"), expected: false,
+                note: "consent-exempt raw runtime follows shared policy only"),
+            Row(mode: nil, commands: false, fileEdits: false,
+                backend: CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode"), expected: true,
+                note: "opencode requires consent-driven approval")
+        ]
+        for row in rows {
+            var data: [String: Any] = [
+                "commandsAllowed": row.commands,
+                "fileEditsAllowed": row.fileEdits
+            ]
+            if let mode = row.mode {
+                data["approvalMode"] = mode
+            }
+            XCTAssertEqual(
+                CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: row.backend),
+                row.expected,
+                row.note
+            )
+        }
+    }
+
+    func testCharacterization_M1_CapabilityGrantIsNeverWiderThanRequested() {
+        // The app-side capability grant built for spawned CLI missions:
+        // workspaceRead is the unconditional baseline; shell and workspaceWrite
+        // are granted ONLY when the mission document requested them. Absent
+        // keys are non-grants (fail closed), and no other capability is ever
+        // added.
+        struct Row {
+            let commands: Bool?
+            let fileEdits: Bool?
+            let expected: Set<AgentDesktopCapability>
+        }
+        let rows: [Row] = [
+            Row(commands: nil, fileEdits: nil, expected: [.workspaceRead]),
+            Row(commands: false, fileEdits: false, expected: [.workspaceRead]),
+            Row(commands: true, fileEdits: false, expected: [.workspaceRead, .shell]),
+            Row(commands: false, fileEdits: true, expected: [.workspaceRead, .workspaceWrite]),
+            Row(commands: true, fileEdits: true, expected: [.workspaceRead, .shell, .workspaceWrite])
+        ]
+        for row in rows {
+            var data: [String: Any] = [:]
+            if let commands = row.commands { data["commandsAllowed"] = commands }
+            if let fileEdits = row.fileEdits { data["fileEditsAllowed"] = fileEdits }
+            let grant = CLIAgentMissionRuntimePlanner.capabilityGrant(for: backend(.codex), data: data)
+            XCTAssertEqual(
+                grant.capabilities,
+                row.expected,
+                "grant width drifted for commands=\(String(describing: row.commands)) fileEdits=\(String(describing: row.fileEdits))"
+            )
+            XCTAssertEqual(grant.trustMode, .manual, "mission grants must stay manual-trust")
+            XCTAssertTrue(
+                grant.capabilities.isDisjoint(with: [
+                    .desktopBrowser, .desktopSystemInput, .desktopScreenshot,
+                    .accessibilityInspect, .desktopFileExport, .shellUnrestricted
+                ]),
+                "mission grants must never include desktop/HID capabilities"
+            )
+        }
+
+        // The working directory flows from targetProject verbatim (tilde-expanded).
+        let withWorkspace = CLIAgentMissionRuntimePlanner.capabilityGrant(
+            for: backend(.codex),
+            data: ["targetProject": "/tmp/mission-workspace"]
+        )
+        XCTAssertEqual(withWorkspace.workspaceRootPath, "/tmp/mission-workspace")
+        let withoutWorkspace = CLIAgentMissionRuntimePlanner.capabilityGrant(for: backend(.codex), data: [:])
+        XCTAssertNil(withoutWorkspace.workspaceRootPath)
     }
 
     @MainActor

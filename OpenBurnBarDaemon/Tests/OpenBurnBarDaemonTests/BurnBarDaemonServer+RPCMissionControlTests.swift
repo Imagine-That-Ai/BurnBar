@@ -51,6 +51,10 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
         // Mutation fixtures.
         var questionAnswerResult: BurnBarQuestionAnswerResponse?
         var followupMutationResult: BurnBarFollowupMutationResponse?
+        // M1 characterization fixtures: mission approve/dispatch verdicts.
+        var missionMutationResult: BurnBarMissionMutationResponse?
+        var missionApproveError: Error?
+        var missionDispatchError: Error?
 
         // Captured request shapes.
         private(set) var lastQuestionsListRequest: BurnBarQuestionsListRequest?
@@ -187,7 +191,14 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
         }
 
         func missionApprove(_ request: BurnBarMissionApproveRequest) async throws -> BurnBarMissionMutationResponse {
-            throw StubError(label: "missionApprove unexpected")
+            record("missionApprove")
+            if let missionApproveError {
+                throw missionApproveError
+            }
+            guard let missionMutationResult else {
+                throw StubError(label: "missionApprove unexpected")
+            }
+            return missionMutationResult
         }
 
         func missionCancel(_ request: BurnBarMissionCancelRequest) async throws -> BurnBarMissionMutationResponse {
@@ -195,7 +206,14 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
         }
 
         func missionDispatchPacket(_ request: BurnBarMissionDispatchPacketRequest) async throws -> BurnBarMissionMutationResponse {
-            throw StubError(label: "missionDispatchPacket unexpected")
+            record("missionDispatchPacket")
+            if let missionDispatchError {
+                throw missionDispatchError
+            }
+            guard let missionMutationResult else {
+                throw StubError(label: "missionDispatchPacket unexpected")
+            }
+            return missionMutationResult
         }
 
         func missionRecordResult(_ request: BurnBarMissionRecordResultRequest) async throws -> BurnBarMissionMutationResponse {
@@ -533,4 +551,122 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
         XCTAssertEqual(result.followup, snoozed)
         XCTAssertNil(result.runtimeSnapshot)
     }
+
+    // MARK: - M1 characterization: mission verdict plumbing
+    //
+    // Split-brain remediation Phase 2 (M1): the handler layer must forward
+    // mission approve/dispatch verdicts and verdict ERRORS from the mission
+    // control service without rewriting, swallowing, or substituting them —
+    // the daemon service is the authority; the RPC layer is plumbing. Pinned
+    // before M2 adds `daemon.mission.authorizeRemote` beside these methods.
+
+    private func makeMission(id: String, approved: Bool, now: Date) -> BurnBarMissionSnapshot {
+        BurnBarMissionSnapshot(
+            id: BurnBarMissionID(rawValue: id),
+            projectSlug: "apollo",
+            title: "Mission \(id)",
+            summary: "Characterize verdict plumbing.",
+            status: approved ? .approved : .awaitingApproval,
+            recommendation: .review,
+            createdAt: now,
+            updatedAt: now,
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: approved,
+                approvedAt: approved ? now : nil,
+                approvedBy: approved ? "operator" : nil
+            )
+        )
+    }
+
+    func testCharacterization_M1_MissionApproveAndDispatchForwardServiceVerdicts() async throws {
+        let now = Date(timeIntervalSince1970: 1_710_011_000)
+        let service = StubMissionControlService(now: now)
+        let approved = makeMission(id: "mission-verdict-1", approved: true, now: now)
+        service.missionMutationResult = BurnBarMissionMutationResponse(mission: approved)
+        let server = makeServer(service: service)
+
+        let approveResponse: BurnBarRPCResponseEnvelope<BurnBarMissionMutationResponse> = try await invoke(
+            server,
+            method: .missionApprove,
+            params: BurnBarMissionApproveRequest(
+                missionID: approved.id,
+                actor: "operator",
+                note: "table"
+            )
+        )
+        XCTAssertNil(approveResponse.error)
+        XCTAssertEqual(approveResponse.result?.mission, approved)
+
+        let dispatchResponse: BurnBarRPCResponseEnvelope<BurnBarMissionMutationResponse> = try await invoke(
+            server,
+            method: .missionDispatchPacket,
+            params: BurnBarMissionDispatchPacketRequest(
+                missionID: approved.id,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-verdict-1"),
+                    missionID: approved.id,
+                    workerName: "worker",
+                    objective: "Forward the verdict",
+                    status: .queued
+                )
+            )
+        )
+        XCTAssertNil(dispatchResponse.error)
+        XCTAssertEqual(dispatchResponse.result?.mission, approved)
+        XCTAssertEqual(service.calls, ["missionApprove", "missionDispatchPacket"])
+    }
+
+    func testCharacterization_M1_MissionVerdictErrorsPropagateUntouched() async throws {
+        // Table: each service-side verdict error must surface from the handler
+        // AS the original typed error (responseData converts it later); the
+        // handler must not catch, downgrade, or fabricate a success envelope.
+        let now = Date(timeIntervalSince1970: 1_710_011_100)
+        let missionID = BurnBarMissionID(rawValue: "mission-verdict-err")
+        let verdictErrors: [(String, BurnBarMissionControlError)] = [
+            ("not approved", .missionNotApproved(missionID)),
+            ("terminal", .missionTerminal(missionID, .cancelled)),
+            ("readiness fail-closed", .executionReadinessFailed(missionID, .runtimeUnavailable, "no gate")),
+            ("enterprise blocked", .enterprisePolicyBlocked(missionID, .approvalRequiredByMode, "needs stamp"))
+        ]
+
+        for (label, verdictError) in verdictErrors {
+            let service = StubMissionControlService(now: now)
+            service.missionDispatchError = verdictError
+            let server = makeServer(service: service)
+
+            let request = BurnBarRPCRequestEnvelopeWithParams(
+                id: "dispatch-verdict-error",
+                method: BurnBarRPCMethod.missionDispatchPacket,
+                authToken: "test-token",
+                params: BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-verdict-err"),
+                        missionID: missionID,
+                        workerName: "worker",
+                        objective: "Propagate the verdict error",
+                        status: .queued
+                    )
+                )
+            )
+            let requestData = try JSONEncoder().encode(request)
+            do {
+                _ = try await server.handleMissionControlRPC(
+                    method: .missionDispatchPacket,
+                    decoder: JSONDecoder(),
+                    requestData: requestData
+                )
+                XCTFail("\(label): the handler must propagate the service verdict error")
+            } catch let error as BurnBarMissionControlError {
+                XCTAssertEqual(
+                    error.errorDescription,
+                    verdictError.errorDescription,
+                    "\(label): the verdict error must propagate untouched"
+                )
+            }
+        }
+    }
+
 }
