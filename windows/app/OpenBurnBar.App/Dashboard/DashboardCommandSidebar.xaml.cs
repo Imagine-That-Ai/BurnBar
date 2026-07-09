@@ -138,7 +138,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
             title: "All Providers",
             subtitle: $"{_snapshot.SessionCount} session{(_snapshot.SessionCount == 1 ? string.Empty : "s")}",
             metric: _snapshot.OverviewMetricLabel,
-            accent: null,
+            accent: Color.FromArgb(0xFF, 0xC9, 0xA2, 0x4A),
             glyph: "\uE80A"));
 
         if (_mode == DashboardCommandViewMode.Agents)
