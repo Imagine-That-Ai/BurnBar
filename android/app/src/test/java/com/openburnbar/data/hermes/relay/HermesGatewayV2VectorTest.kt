@@ -27,7 +27,7 @@ private const val X963_POINT_BYTES = 65
  * `ikm = ECDH(r, eph) ‖ ECDH(r, S_pinned)`) against the canonical vector the
  * Swift suite emits in `HermesGatewayWireVector.json`. The gateway envelopes
  * are produced by the Swift source of truth at
- * `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift`;
+ * `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift`;
  * any drift in the v2 derivation (IKM order, empty salt, `info` key shapes, or
  * sender-binding) fails this test immediately.
  *

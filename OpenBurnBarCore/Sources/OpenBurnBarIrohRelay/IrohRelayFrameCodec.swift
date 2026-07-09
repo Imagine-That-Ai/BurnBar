@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Length-prefixed JSON codec for `HermesRealtimeRelayFrame`. The Rust crate
 /// writes `[u32 big-endian length][JSON payload]` onto the iroh QUIC stream;

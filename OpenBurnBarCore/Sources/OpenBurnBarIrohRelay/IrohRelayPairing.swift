@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Pairing record published by the Mac host to `hermes_connections/{id}`.
 /// iOS reads it, verifies the Ed25519 signature, then dials the iroh NodeAddr.

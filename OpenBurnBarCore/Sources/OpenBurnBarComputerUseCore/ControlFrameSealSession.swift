@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// F10 — one shared implementation of the control-seal session lifecycle so
 /// the phone (establish + seal) and the Mac (open + unseal) cannot drift:

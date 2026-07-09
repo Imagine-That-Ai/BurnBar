@@ -138,7 +138,12 @@ packageTargets.append(contentsOf: [
     .target(
         name: "OpenBurnBarRemoteAccessAgentCore",
         dependencies: [
-            .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
+            .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
+            // Phase-1 K2: the privileged-input binaries reach the OpenBurnBarCore
+            // package ONLY through this target. Depend on the UI-free kernel
+            // explicitly (for `Locked`) instead of transitively pulling the
+            // SwiftUI/AppKit OpenBurnBarCore target through ComputerUseCore.
+            .product(name: "OpenBurnBarKernel", package: "OpenBurnBarCore")
         ],
         linkerSettings: [
             .unsafeFlags([

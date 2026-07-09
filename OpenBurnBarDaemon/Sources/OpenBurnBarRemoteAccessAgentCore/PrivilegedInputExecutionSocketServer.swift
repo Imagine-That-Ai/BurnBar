@@ -1,6 +1,6 @@
 import Darwin
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 /// UNIX-domain socket front-end for the privileged input-execution leaf.
