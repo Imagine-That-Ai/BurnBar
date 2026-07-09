@@ -435,31 +435,6 @@ struct AgentBrandZoneView: View {
         }
     }
 
-    private func forwardContextSnapshot() async -> AgentForwardContextSnapshot? {
-        guard let runtime = identity.runtimeID else { return nil }
-        switch runtime {
-        case .hermes, .pi:
-            guard let thread = MobileChatHistoryStore.shared.threads(for: runtime).first else { return nil }
-            let preview = thread.preview.nilIfEmpty ?? thread.messages.last?.text.nilIfEmpty ?? "No preview available."
-            return AgentForwardContextSnapshot(
-                title: thread.title.nilIfEmpty ?? "(untitled)",
-                preview: preview,
-                sourceLabel: "mobile thread",
-                updatedAt: thread.updatedAt
-            )
-        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
-            guard let cliRuntime = CLIAgentRuntime(assistant: runtime) else { return nil }
-            await cliReader.refresh()
-            guard let session = cliReader.sessions(for: cliRuntime).first else { return nil }
-            return AgentForwardContextSnapshot(
-                title: session.title.nilIfEmpty ?? "(untitled)",
-                preview: session.preview.nilIfEmpty ?? "No preview available.",
-                sourceLabel: "Mac mirrored session",
-                updatedAt: session.updatedAt
-            )
-        }
-    }
-
     private func performForward(to destination: AgentIdentity, note: String) async -> String {
         let prompt = AgentBrandQuickActionComposer.forwardPrompt(
             source: identity,
@@ -499,31 +474,6 @@ struct AgentBrandZoneView: View {
             return "Forwarded to \(destination.displayName). Mission queued (\(missionID))."
         case .failed(let message):
             return "Forward failed: \(message)"
-        }
-    }
-
-    private func performSubscriptionAction(_ action: AgentBrandSubscribeSheet.Action) async -> String {
-        do {
-            switch action {
-            case .subscribe(let cadence, let deliveryMode):
-                let topic = try await subscriptionTopicStore.subscribe(
-                    agent: identity,
-                    cadence: cadence,
-                    deliveryMode: deliveryMode
-                )
-                return "Subscribed to \(topic.displayName)."
-            case .unsubscribe:
-                try await subscriptionTopicStore.unsubscribe(agentURI: identity.id)
-                return "Unsubscribed from \(identity.displayName) updates."
-            case .setMuted(let muted):
-                try await subscriptionTopicStore.setMuted(agentURI: identity.id, muted: muted)
-                return muted ? "Muted \(identity.displayName) updates." : "Unmuted \(identity.displayName) updates."
-            case .setDeliveryMode(let deliveryMode):
-                try await subscriptionTopicStore.setDeliveryMode(agentURI: identity.id, deliveryMode: deliveryMode)
-                return "\(identity.displayName) delivery set to \(deliveryMode.displayName.lowercased())."
-            }
-        } catch {
-            return error.localizedDescription
         }
     }
 

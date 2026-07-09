@@ -440,6 +440,12 @@ extension CLIAgentMissionDispatcher {
             return .grok
         case "cursor", "cursor-agent", "cursoragent":
             return .cursorAgent
+        case "openclaude", "open-claude":
+            return .openClaude
+        case "omp", "ohmypi", "oh-my-pi", "oh my pi":
+            return .omp
+        case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie":
+            return .junie
         default:
             return nil
         }

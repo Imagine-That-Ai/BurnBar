@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `junie` CLI switcher/launch profile (`~/.local/bin/junie`, `JUNIE_HOME`,
   `JUNIE_API_KEY`), conservative auth discovery off `~/.junie` (sessions or API
   key — the config dir alone is created before sign-in), chat backend + stream
-  runner routing (`junie --prompt`), onboarding scan/add support, daemon
+  runner routing (`junie --task`), onboarding scan/add support, daemon
   resume-handoff target, mission-planner fallback membership, and mobile
   runtime/tile/transcript surfaces. Junie mirrors Droid's posture: mirrored +
   archived to mobile, handoff-only (not native-resume eligible).

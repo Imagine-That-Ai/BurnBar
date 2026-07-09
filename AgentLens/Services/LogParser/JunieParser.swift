@@ -407,7 +407,7 @@ final class JunieParser: LogParser, Sendable {
     }
 
     private static func decodeJSONObject(from data: Data) -> [String: BurnBarJSONValue]? {
-        try? JSONDecoder().decode([String: BurnBarJSONValue].self, from: data)
+        try? JSONDecoder().decode([String: BurnBarJSONValue].self, from: data) // try?-ok(malformed Junie metadata skipped)
     }
 
     private func firstString(in dictionary: [String: BurnBarJSONValue], keys: [String]) -> String? {

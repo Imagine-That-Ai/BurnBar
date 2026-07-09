@@ -525,7 +525,7 @@ enum CLIAgentMissionRuntimePlanner {
         case "cursor-agent", "cursoragent": return .cursorAgent
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "pi", "piagent", "pi-agent": return .pi
-        case "junie", "jetbrains-junie": return .junie
+        case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie": return .junie
         default: return .codex
         }
     }
