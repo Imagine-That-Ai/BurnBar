@@ -42,7 +42,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
-    private var defaultsObservationTask: Task<Void, Never>?
+    private var defaultsObserver: NSObjectProtocol?
 
     init(
         defaults: UserDefaults = .standard,
@@ -68,10 +68,17 @@ final class MercuryConsentStore: ObservableObject {
                 self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
             }
         }
-        defaultsObservationTask = Task { @MainActor [weak self] in
-            for await _ in NotificationCenter.default.notifications(
-                named: UserDefaults.didChangeNotification
-            ) {
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self, weak defaults] notification in
+            if let changedDefaults = notification.object as? UserDefaults,
+               let defaults,
+               changedDefaults !== defaults {
+                return
+            }
+            Task { @MainActor [weak self] in
                 self?.reloadRememberAcceptedMirrorPeers()
             }
         }
@@ -79,7 +86,9 @@ final class MercuryConsentStore: ObservableObject {
     }
 
     deinit {
-        defaultsObservationTask?.cancel()
+        if let defaultsObserver {
+            NotificationCenter.default.removeObserver(defaultsObserver)
+        }
     }
 
     var activeGrantCount: Int {
