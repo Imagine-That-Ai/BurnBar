@@ -93,12 +93,6 @@ final class CommunityConsentStore: ObservableObject {
         resolvedRegionKey = Self.loadOptional(defaults, key: Self.geoRegionKey)
     }
 
-    func isGranted(_ ladder: CommunityConsentLadder) -> Bool { ladder == .granted }
-
-    var hasAnyL2TierGranted: Bool {
-        [l2World, l2Country, l2Region, l2City].contains(.granted)
-    }
-
     func tierConsent(_ tier: FirestoreGeographyTier) -> CommunityConsentLadder {
         switch tier {
         case .world: return l2World

@@ -82,6 +82,10 @@ struct CommunityConsentCenter: View {
         .onAppear {
             handleDraft = service.profile?.handle ?? ""
         }
+        .onChange(of: service.profile?.handle) { handle in
+            guard handleDraft.isEmpty else { return }
+            handleDraft = handle ?? ""
+        }
     }
 
     private var tierToggles: some View {

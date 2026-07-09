@@ -47,14 +47,6 @@ data class CommunityConsentDraft(
     val locationConsent: ConsentTriState = ConsentTriState.UNSET,
     val resolvedCityKey: String? = null,
 ) {
-    fun hasAnyL2TierGranted(): Boolean = l2Rankings == ConsentTriState.GRANTED &&
-        (
-            l2World == ConsentTriState.GRANTED ||
-                l2Country == ConsentTriState.GRANTED ||
-                l2Region == ConsentTriState.GRANTED ||
-                l2City == ConsentTriState.GRANTED
-            )
-
     fun toJoinPayload(handle: String? = null, countryCode: String? = null, regionKey: String? = null, cityKey: String? = resolvedCityKey): Map<String, Any?> {
         val payload = mutableMapOf<String, Any?>(
             "l1Analytics" to l1Analytics.wireValue(),
@@ -132,10 +124,6 @@ class CommunityConsentStore(private val context: Context) {
             draft.resolvedCityKey?.let { prefs[KEY_RESOLVED_CITY] = it }
                 ?: run { prefs.remove(KEY_RESOLVED_CITY) }
         }
-    }
-
-    suspend fun update(mutator: (CommunityConsentDraft) -> CommunityConsentDraft) {
-        replace(mutator(draft.first()))
     }
 
     /** When city tier + coarse location consent are on, resolve OS city and persist on the draft. */

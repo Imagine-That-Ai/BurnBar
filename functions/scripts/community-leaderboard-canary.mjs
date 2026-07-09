@@ -247,8 +247,8 @@ export async function main(argv = process.argv) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
+  main().catch(() => {
+    console.error("Community leaderboard canary failed; inspect the preceding operation logs.");
     process.exit(1);
   });
 }

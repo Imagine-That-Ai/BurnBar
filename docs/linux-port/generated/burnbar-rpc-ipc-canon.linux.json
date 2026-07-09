@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 100,
+  "methodCount": 101,
   "methods": [
     {
       "id": "approval.respond",
@@ -520,6 +520,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
       "result": "Codable response for daemon.mission.approve",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.mission.authorizeRemote",
+      "caseName": "missionAuthorizeRemote",
+      "domain": "mission_control",
+      "capability": "mission_control",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.mission.authorizeRemote",
       "error": "BurnBarRPCError"
     },
     {

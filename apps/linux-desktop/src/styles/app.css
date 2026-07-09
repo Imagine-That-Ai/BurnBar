@@ -279,9 +279,15 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
 .offline-notice p { margin: 0; }
 
 /* ------------------------------------------------------------ onboarding */
-/* Liquid-glass first-run wizard styles live in surfaces/onboarding.css
- * (imported by OnboardingSurface). Do not reintroduce bare step-rail rules
- * here — the wizard is a self-contained glass plate over the kernel. */
+.step-rail { display: flex; gap: var(--space-2); margin: var(--space-3) 0 0; }
+.step-dot { width: 26px; height: 4px; border-radius: 2px; background: var(--color-glass-line-bright); transition: background 200ms var(--motion-ease-standard); }
+.step-dot.done { background: color-mix(in srgb, var(--color-brass-core) 65%, transparent); }
+.step-dot.active { background: var(--ds-accent-gradient); }
+.step-dot.skipped { background: color-mix(in srgb, var(--color-tier-server-readable) 55%, transparent); }
+.step-progress { margin: var(--space-3) 0 0; color: var(--color-text-mute); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0; }
+.retry-feedback { margin: 0; }
+.setup-complete { display: grid; gap: var(--space-2); margin-top: var(--space-4); padding: var(--space-4); border-radius: var(--radius-sm); border: 1px solid color-mix(in srgb, var(--color-tier-end-to-end) 40%, var(--color-glass-line)); background: color-mix(in srgb, var(--color-tier-end-to-end) 10%, transparent); }
+.setup-complete h3, .setup-complete p { margin: 0; }
 
 /* --------------------------------------------------------- failure states */
 
