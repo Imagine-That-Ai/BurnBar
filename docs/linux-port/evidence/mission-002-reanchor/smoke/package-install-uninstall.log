@@ -20,18 +20,18 @@ cwd=.
 exit_code=0
 ### stdout
  new Debian package, version 2.0.
- size 27893280 bytes: control archive=457 bytes.
-     245 bytes,     9 lines      control
-     246 bytes,     3 lines      md5sums
+ size 53975410 bytes: control archive=344 bytes.
+     330 bytes,    10 lines      control
  Package: open-burn-bar
  Version: 0.1.0
- Architecture: arm64
- Installed-Size: 16238
- Maintainer: OpenBurnBar
+ Section: utils
  Priority: optional
- Depends: libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0
- Description: OpenBurnBar Linux desktop shell
-  (none)
+ Architecture: arm64
+ Maintainer: OpenBurnBar <ops@openburnbar.dev>
+ Installed-Size: 237244
+ Depends: libc6
+ Description: OpenBurnBar Linux desktop + daemon (product parity payload)
+  Ships openburnbar-daemon, launch wrapper, systemd user unit, and Swift runtime.
 
 ### stderr
 
@@ -40,83 +40,546 @@ exit_code=0
 cwd=.
 exit_code=0
 ### stdout
-drwxr-xr-x burnbar/burnbar   0 2026-07-09 18:09 ./
-drwxr-xr-x burnbar/burnbar   0 2026-07-09 18:09 ./usr/
-drwxr-xr-x burnbar/burnbar   0 2026-07-09 18:09 ./usr/bin/
--rwxr-xr-x burnbar/burnbar 97396968 2026-07-09 18:09 ./usr/bin/openburnbar-daemon
--rwxr-xr-x burnbar/burnbar 16566232 2026-07-09 04:38 ./usr/bin/openburnbar-linux-desktop
-drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:09 ./usr/lib/
-drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:09 ./usr/lib/systemd/
-drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:09 ./usr/lib/systemd/user/
--rw-r--r-- burnbar/burnbar     1753 2026-07-09 18:09 ./usr/lib/systemd/user/openburnbar-daemon.service
-drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:09 ./usr/libexec/
--rwxr-xr-x burnbar/burnbar     6320 2026-07-09 18:09 ./usr/libexec/openburnbar-daemon-launch
-drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/
-drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/applications/
--rw-r--r-- burnbar/burnbar      220 2026-07-09 04:38 ./usr/share/applications/OpenBurnBar.desktop
-drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/icons/
-drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/icons/hicolor/
-drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/icons/hicolor/256x256/
-drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/icons/hicolor/256x256/apps/
--rw-r--r-- burnbar/burnbar    25018 2026-07-09 04:38 ./usr/share/icons/hicolor/256x256/apps/openburnbar-linux-desktop.png
+drwxrwxr-x burnbar/burnbar   0 2026-07-09 18:18 ./
+drwxrwxr-x burnbar/burnbar   0 2026-07-09 18:18 ./opt/
+drwxrwxr-x burnbar/burnbar   0 2026-07-09 18:18 ./opt/openburnbar/
+drwxrwxr-x burnbar/burnbar   0 2026-07-09 18:18 ./opt/openburnbar/lib/
+-rwxr-xr-x burnbar/burnbar 1576520 2026-07-09 18:18 ./opt/openburnbar/lib/libsqlcipher.so
+-rwxr-xr-x burnbar/burnbar 1576520 2026-07-09 18:18 ./opt/openburnbar/lib/libsqlcipher.so.0
+-rwxr-xr-x burnbar/burnbar 1576520 2026-07-09 18:18 ./opt/openburnbar/lib/libsqlcipher.so.0.8.6
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:54 ./opt/openburnbar/lib/swift/
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/Cxx.swiftmodule/
+-rw-r--r-- burnbar/burnbar     149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar   15168 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar   12004 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar   15168 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar  122880 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/
+-rw-r--r-- burnbar/burnbar     149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar    5535 2025-03-30 16:57 ./opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar    5520 2025-03-30 16:57 ./opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar    5535 2025-03-30 16:57 ./opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   65412 2025-03-30 16:57 ./opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/Distributed.swiftmodule/
+-rw-r--r-- burnbar/burnbar     149 2025-03-30 16:58 ./opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar   22694 2025-03-30 16:58 ./opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar   78056 2025-03-30 16:58 ./opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar   22694 2025-03-30 16:58 ./opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   88236 2025-03-30 16:58 ./opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:31 ./opt/openburnbar/lib/swift/Foundation.swiftmodule/
+-rw-r--r-- burnbar/burnbar  284944 2025-03-30 17:25 ./opt/openburnbar/lib/swift/Foundation.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar 4912040 2025-03-30 17:25 ./opt/openburnbar/lib/swift/Foundation.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:31 ./opt/openburnbar/lib/swift/FoundationEssentials.swiftmodule/
+-rw-r--r-- burnbar/burnbar  281928 2025-03-30 17:23 ./opt/openburnbar/lib/swift/FoundationEssentials.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar 4395720 2025-03-30 17:23 ./opt/openburnbar/lib/swift/FoundationEssentials.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:31 ./opt/openburnbar/lib/swift/FoundationInternationalization.swiftmodule/
+-rw-r--r-- burnbar/burnbar  154736 2025-03-30 17:24 ./opt/openburnbar/lib/swift/FoundationInternationalization.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar 1758772 2025-03-30 17:24 ./opt/openburnbar/lib/swift/FoundationInternationalization.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:31 ./opt/openburnbar/lib/swift/FoundationNetworking.swiftmodule/
+-rw-r--r-- burnbar/burnbar   53648 2025-03-30 17:26 ./opt/openburnbar/lib/swift/FoundationNetworking.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar  746808 2025-03-30 17:26 ./opt/openburnbar/lib/swift/FoundationNetworking.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:31 ./opt/openburnbar/lib/swift/FoundationXML.swiftmodule/
+-rw-r--r-- burnbar/burnbar     380 2025-03-30 17:25 ./opt/openburnbar/lib/swift/FoundationXML.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar  321212 2025-03-30 17:25 ./opt/openburnbar/lib/swift/FoundationXML.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/Glibc.swiftmodule/
+-rw-r--r-- burnbar/burnbar     149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar   18197 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar   18660 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar   18197 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   93636 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/Observation.swiftmodule/
+-rw-r--r-- burnbar/burnbar     149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar    5010 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar    6396 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar    3402 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   51968 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/
+-rw-r--r-- burnbar/burnbar     149 2025-03-30 16:59 ./opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar  204349 2025-03-30 16:59 ./opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar  265716 2025-03-30 16:59 ./opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar  204329 2025-03-30 16:59 ./opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar 1144508 2025-03-30 16:59 ./opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar       0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/Swift.swiftmodule/
+-rw-r--r-- burnbar/burnbar     149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar 1875503 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar 3815708 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar 1856000 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar 15028504 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar      966 2025-03-30 16:57 ./opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar      384 2025-03-30 16:57 ./opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar      966 2025-03-30 16:57 ./opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   180600 2025-03-30 16:57 ./opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/Synchronization.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar   243285 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar   247932 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar   243285 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   564584 2025-03-30 16:57 ./opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:54 ./opt/openburnbar/lib/swift/Testing.swiftmodule/
+-rw-r--r-- burnbar/burnbar   104716 2025-03-30 17:54 ./opt/openburnbar/lib/swift/Testing.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar   614788 2025-03-30 17:54 ./opt/openburnbar/lib/swift/Testing.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/_Backtracing.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar    46547 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar    20332 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar     6233 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   395928 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar     4151 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar      380 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar     4151 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar    21984 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/_Concurrency.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar   225276 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar   341316 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar   223580 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   600684 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/_Differentiation.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar   107395 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar     7760 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar   107395 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar  1142064 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:31 ./opt/openburnbar/lib/swift/_FoundationCollections.swiftmodule/
+-rw-r--r-- burnbar/burnbar   338328 2025-03-30 17:22 ./opt/openburnbar/lib/swift/_FoundationCollections.swiftmodule/aarch64.swiftdoc
+-rw-r--r-- burnbar/burnbar  2021424 2025-03-30 17:22 ./opt/openburnbar/lib/swift/_FoundationCollections.swiftmodule/aarch64.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/_RegexParser.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:58 ./opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar    79488 2025-03-30 16:58 ./opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar   104756 2025-03-30 16:58 ./opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar    78530 2025-03-30 16:58 ./opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   410860 2025-03-30 16:58 ./opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:59 ./opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar    34379 2025-03-30 16:59 ./opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar    56324 2025-03-30 16:59 ./opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar    22864 2025-03-30 16:59 ./opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar   472468 2025-03-30 16:59 ./opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:21 ./opt/openburnbar/lib/swift/_Volatile.swiftmodule/
+-rw-r--r-- burnbar/burnbar      149 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+-rw-r--r-- burnbar/burnbar     2897 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+-rw-r--r-- burnbar/burnbar     3708 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+-rw-r--r-- burnbar/burnbar     2897 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+-rw-r--r-- burnbar/burnbar    23228 2025-03-30 16:57 ./opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+drwxr-xr-x burnbar/burnbar        0 2025-03-30 17:31 ./opt/openburnbar/lib/swift/aarch64/
+-rw-r--r-- burnbar/burnbar    42048 2025-03-30 17:03 ./opt/openburnbar/lib/swift/aarch64/Dispatch.swiftdoc
+-rw-r--r-- burnbar/burnbar   404296 2025-03-30 17:03 ./opt/openburnbar/lib/swift/aarch64/Dispatch.swiftmodule
+-rw-r--r-- burnbar/burnbar    15365 2025-03-30 16:42 ./opt/openburnbar/lib/swift/aarch64/SwiftGlibc.h
+-rw-r--r-- burnbar/burnbar    75608 2025-03-30 17:30 ./opt/openburnbar/lib/swift/aarch64/XCTest.swiftdoc
+-rw-r--r-- burnbar/burnbar   288780 2025-03-30 17:30 ./opt/openburnbar/lib/swift/aarch64/XCTest.swiftmodule
+-rw-r--r-- burnbar/burnbar     2269 2025-03-30 16:42 ./opt/openburnbar/lib/swift/aarch64/glibc.modulemap
+-rw-r--r-- burnbar/burnbar     6440 2025-03-30 16:42 ./opt/openburnbar/lib/swift/aarch64/swiftrt.o
+-rw-r--r-- burnbar/burnbar    71056 2025-03-30 17:03 ./opt/openburnbar/lib/swift/libBlocksRuntime.so
+-rw-r--r-- burnbar/burnbar  9096184 2025-03-30 17:25 ./opt/openburnbar/lib/swift/libFoundation.so
+-rw-r--r-- burnbar/burnbar  9626408 2025-03-30 17:24 ./opt/openburnbar/lib/swift/libFoundationEssentials.so
+-rw-r--r-- burnbar/burnbar  3932176 2025-03-30 17:24 ./opt/openburnbar/lib/swift/libFoundationInternationalization.so
+-rw-r--r-- burnbar/burnbar  1841992 2025-03-30 17:26 ./opt/openburnbar/lib/swift/libFoundationNetworking.so
+-rw-r--r-- burnbar/burnbar   509704 2025-03-30 17:25 ./opt/openburnbar/lib/swift/libFoundationXML.so
+-rw-r--r-- burnbar/burnbar  2612000 2025-03-30 17:54 ./opt/openburnbar/lib/swift/libTesting.so
+-rw-r--r-- burnbar/burnbar   571544 2025-03-30 17:30 ./opt/openburnbar/lib/swift/libXCTest.so
+-rw-r--r-- burnbar/burnbar 39029296 2025-03-30 17:23 ./opt/openburnbar/lib/swift/lib_FoundationICU.so
+-rw-r--r-- burnbar/burnbar  5994736 2025-03-30 16:42 ./opt/openburnbar/lib/swift/lib_InternalSwiftStaticMirror.so
+-rw-r--r-- burnbar/burnbar      105 2025-03-30 16:18 ./opt/openburnbar/lib/swift/libcxxshim.h
+-rw-r--r-- burnbar/burnbar      141 2025-03-30 16:18 ./opt/openburnbar/lib/swift/libcxxshim.modulemap
+-rw-r--r-- burnbar/burnbar      986 2025-03-30 16:18 ./opt/openburnbar/lib/swift/libcxxstdlibshim.h
+-rw-r--r-- burnbar/burnbar   465264 2025-03-30 17:03 ./opt/openburnbar/lib/swift/libdispatch.so
+-rw-r--r-- burnbar/burnbar      315 2025-03-30 16:41 ./opt/openburnbar/lib/swift/libstdcxx.h
+-rw-r--r-- burnbar/burnbar     2150 2025-03-30 16:41 ./opt/openburnbar/lib/swift/libstdcxx.modulemap
+-rwxr-xr-x burnbar/burnbar  9535648 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswiftCore.so
+-rwxr-xr-x burnbar/burnbar   148188 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswiftCxx.a
+-rwxr-xr-x burnbar/burnbar   169744 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswiftCxxStdlib.a
+-rw-r--r-- burnbar/burnbar   361112 2025-03-30 17:03 ./opt/openburnbar/lib/swift/libswiftDispatch.so
+-rwxr-xr-x burnbar/burnbar   228640 2025-03-30 16:59 ./opt/openburnbar/lib/swift/libswiftDistributed.so
+-rwxr-xr-x burnbar/burnbar   106128 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswiftGlibc.so
+-rwxr-xr-x burnbar/burnbar   114136 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswiftObservation.so
+-rwxr-xr-x burnbar/burnbar   207560 2025-03-30 16:59 ./opt/openburnbar/lib/swift/libswiftRegexBuilder.so
+-rwxr-xr-x burnbar/burnbar  1230736 2025-03-30 16:42 ./opt/openburnbar/lib/swift/libswiftRemoteMirror.so
+-rwxr-xr-x burnbar/burnbar   434464 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswiftSwiftOnoneSupport.so
+-rwxr-xr-x burnbar/burnbar   136256 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswiftSynchronization.so
+-rwxr-xr-x burnbar/burnbar  1255216 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswift_Backtracing.so
+-rwxr-xr-x burnbar/burnbar    74824 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswift_Builtin_float.so
+-rwxr-xr-x burnbar/burnbar  1019072 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswift_Concurrency.so
+-rwxr-xr-x burnbar/burnbar   682144 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswift_Differentiation.so
+-rwxr-xr-x burnbar/burnbar  1667584 2025-03-30 16:59 ./opt/openburnbar/lib/swift/libswift_RegexParser.so
+-rwxr-xr-x burnbar/burnbar  1193248 2025-03-30 16:59 ./opt/openburnbar/lib/swift/libswift_StringProcessing.so
+-rwxr-xr-x burnbar/burnbar    75048 2025-03-30 16:58 ./opt/openburnbar/lib/swift/libswift_Volatile.so
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:18 ./usr/
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:18 ./usr/bin/
+-rwxr-xr-x burnbar/burnbar 97396968 2026-07-09 18:18 ./usr/bin/openburnbar-daemon
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:18 ./usr/lib/
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:18 ./usr/lib/systemd/
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:18 ./usr/lib/systemd/user/
+-rw-r--r-- burnbar/burnbar     1753 2026-07-09 18:18 ./usr/lib/systemd/user/openburnbar-daemon.service
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:18 ./usr/libexec/
+-rwxr-xr-x burnbar/burnbar     6320 2026-07-09 18:18 ./usr/libexec/openburnbar-daemon-launch
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:18 ./usr/share/
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:18 ./usr/share/applications/
+-rw-r--r-- burnbar/burnbar      504 2026-07-09 18:18 ./usr/share/applications/dev.openburnbar.OpenBurnBar.desktop
 
 ### stderr
 
 
-## dpkg -i /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb
+## assert deb contains openburnbar-daemon-launch
 cwd=.
-exit_code=2
+exit_code=0
 ### stdout
-
+found openburnbar-daemon-launch
 ### stderr
-dpkg: error: requested operation requires superuser privilege
 
 
-## dpkg -r open-burn-bar
+## assert deb contains openburnbar-daemon binary
 cwd=.
-exit_code=2
+exit_code=0
 ### stdout
+found openburnbar-daemon
+### stderr
+
+
+## assert deb contains openburnbar-daemon.service
+cwd=.
+exit_code=0
+### stdout
+found openburnbar-daemon.service
+### stderr
+
+
+## assert deb contains Swift runtime under opt/openburnbar/lib/swift
+cwd=.
+exit_code=0
+### stdout
+found opt/openburnbar/lib/swift
+### stderr
+
+
+## sudo dpkg -i /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb
+cwd=.
+exit_code=0
+### stdout
+(Reading database ... 172523 files and directories currently installed.)
+Preparing to unpack .../OpenBurnBar_0.1.0_arm64.deb ...
+Unpacking open-burn-bar (0.1.0) over (0.1.0) ...
+Setting up open-burn-bar (0.1.0) ...
+Processing triggers for gnome-menus (3.36.0-1.1ubuntu3) ...
+Processing triggers for desktop-file-utils (0.27-2build1) ...
+Processing triggers for hicolor-icon-theme (0.17-2) ...
 
 ### stderr
-dpkg: error: requested operation requires superuser privilege
+
+
+## sudo dpkg -r open-burn-bar
+cwd=.
+exit_code=0
+### stdout
+(Reading database ... 172690 files and directories currently installed.)
+Removing open-burn-bar (0.1.0) ...
+Processing triggers for gnome-menus (3.36.0-1.1ubuntu3) ...
+Processing triggers for desktop-file-utils (0.27-2build1) ...
+
+### stderr
+dpkg: warning: while removing open-burn-bar, directory '/opt/openburnbar/lib' not empty so not removed
 
 
 ## rpm -qip /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm
 cwd=.
-exit_code=1
+exit_code=0
 ### stdout
+Name        : open-burn-bar
+Version     : 0.1.0
+Release     : 1
+Architecture: aarch64
+Install Date: (not installed)
+Group       : default
+Size        : 242455207
+License     : unknown
+Signature   : (none)
+Source RPM  : open-burn-bar-0.1.0-1.src.rpm
+Build Date  : Thu Jul  9 18:18:47 2026
+Build Host  : openburnbar-linux
+Relocations : / 
+Packager    : <burnbar@openburnbar-linux>
+Vendor      : none
+URL         : http://example.com/no-uri-given
+Summary     : OpenBurnBar Linux desktop + daemon (product parity payload)
+Description :
+OpenBurnBar Linux desktop + daemon (product parity payload)
 
 ### stderr
 
 
 ## rpm -qlp /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm
 cwd=.
-exit_code=1
+exit_code=0
 ### stdout
+/opt/openburnbar/lib/libsqlcipher.so
+/opt/openburnbar/lib/libsqlcipher.so.0
+/opt/openburnbar/lib/libsqlcipher.so.0.8.6
+/opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/Cxx.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/CxxStdlib.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/Distributed.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/Foundation.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/Foundation.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/FoundationEssentials.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/FoundationEssentials.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/FoundationInternationalization.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/FoundationInternationalization.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/FoundationNetworking.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/FoundationNetworking.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/FoundationXML.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/FoundationXML.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/Glibc.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/Observation.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/RegexBuilder.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/Swift.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/SwiftOnoneSupport.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/Synchronization.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/Testing.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/Testing.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/_Backtracing.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/_Builtin_float.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/_Concurrency.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/_Differentiation.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/_FoundationCollections.swiftmodule/aarch64.swiftdoc
+/opt/openburnbar/lib/swift/_FoundationCollections.swiftmodule/aarch64.swiftmodule
+/opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/_RegexParser.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/_StringProcessing.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.abi.json
+/opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.private.swiftinterface
+/opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.swiftdoc
+/opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.swiftinterface
+/opt/openburnbar/lib/swift/_Volatile.swiftmodule/aarch64-unknown-linux-gnu.swiftmodule
+/opt/openburnbar/lib/swift/aarch64/Dispatch.swiftdoc
+/opt/openburnbar/lib/swift/aarch64/Dispatch.swiftmodule
+/opt/openburnbar/lib/swift/aarch64/SwiftGlibc.h
+/opt/openburnbar/lib/swift/aarch64/XCTest.swiftdoc
+/opt/openburnbar/lib/swift/aarch64/XCTest.swiftmodule
+/opt/openburnbar/lib/swift/aarch64/glibc.modulemap
+/opt/openburnbar/lib/swift/aarch64/swiftrt.o
+/opt/openburnbar/lib/swift/libBlocksRuntime.so
+/opt/openburnbar/lib/swift/libFoundation.so
+/opt/openburnbar/lib/swift/libFoundationEssentials.so
+/opt/openburnbar/lib/swift/libFoundationInternationalization.so
+/opt/openburnbar/lib/swift/libFoundationNetworking.so
+/opt/openburnbar/lib/swift/libFoundationXML.so
+/opt/openburnbar/lib/swift/libTesting.so
+/opt/openburnbar/lib/swift/libXCTest.so
+/opt/openburnbar/lib/swift/lib_FoundationICU.so
+/opt/openburnbar/lib/swift/lib_InternalSwiftStaticMirror.so
+/opt/openburnbar/lib/swift/libcxxshim.h
+/opt/openburnbar/lib/swift/libcxxshim.modulemap
+/opt/openburnbar/lib/swift/libcxxstdlibshim.h
+/opt/openburnbar/lib/swift/libdispatch.so
+/opt/openburnbar/lib/swift/libstdcxx.h
+/opt/openburnbar/lib/swift/libstdcxx.modulemap
+/opt/openburnbar/lib/swift/libswiftCore.so
+/opt/openburnbar/lib/swift/libswiftCxx.a
+/opt/openburnbar/lib/swift/libswiftCxxStdlib.a
+/opt/openburnbar/lib/swift/libswiftDispatch.so
+/opt/openburnbar/lib/swift/libswiftDistributed.so
+/opt/openburnbar/lib/swift/libswiftGlibc.so
+/opt/openburnbar/lib/swift/libswiftObservation.so
+/opt/openburnbar/lib/swift/libswiftRegexBuilder.so
+/opt/openburnbar/lib/swift/libswiftRemoteMirror.so
+/opt/openburnbar/lib/swift/libswiftSwiftOnoneSupport.so
+/opt/openburnbar/lib/swift/libswiftSynchronization.so
+/opt/openburnbar/lib/swift/libswift_Backtracing.so
+/opt/openburnbar/lib/swift/libswift_Builtin_float.so
+/opt/openburnbar/lib/swift/libswift_Concurrency.so
+/opt/openburnbar/lib/swift/libswift_Differentiation.so
+/opt/openburnbar/lib/swift/libswift_RegexParser.so
+/opt/openburnbar/lib/swift/libswift_StringProcessing.so
+/opt/openburnbar/lib/swift/libswift_Volatile.so
+/usr/bin/openburnbar-daemon
+/usr/lib/.build-id
+/usr/lib/.build-id/26
+/usr/lib/.build-id/26/549e98bbe3dc48a9ebea3760a0f205cc720930
+/usr/lib/.build-id/2d
+/usr/lib/.build-id/2d/d2a5445404373de2e08e5d1d10ba5da41ea577
+/usr/lib/.build-id/2d/d2a5445404373de2e08e5d1d10ba5da41ea577.1
+/usr/lib/.build-id/2d/d2a5445404373de2e08e5d1d10ba5da41ea577.2
+/usr/lib/.build-id/40
+/usr/lib/.build-id/40/54809a682f19c7375e259658cfeb97ce01961e
+/usr/lib/.build-id/48
+/usr/lib/.build-id/48/7c91ec6acec5bca0e6220b23c9c1dc3538c0b3
+/usr/lib/.build-id/4a
+/usr/lib/.build-id/4a/650891437c7e6728a418ea7cf484a0002b3d4f
+/usr/lib/.build-id/55
+/usr/lib/.build-id/55/b39af11ccec302492b3a23dec30a99f54f72bb
+/usr/lib/.build-id/70
+/usr/lib/.build-id/70/419dd0d49e529614286b8b5977d42e7d63b3df
+/usr/lib/.build-id/8f
+/usr/lib/.build-id/8f/0c8c997258aee823f1fcb658adaa6fc45135a7
+/usr/lib/.build-id/90
+/usr/lib/.build-id/90/d0eb3d55c4f8f1f4879f0d6b86439ecdc75610
+/usr/lib/.build-id/98
+/usr/lib/.build-id/98/51957e749e60f7c76328c7d0b1cc9d3bfe2745
+/usr/lib/.build-id/a5
+/usr/lib/.build-id/a5/081283920f034a2df6937df6ddcae7363fdb42
+/usr/lib/.build-id/af
+/usr/lib/.build-id/af/b14b821b634f62c3dddb7a798e8acf25335e21
+/usr/lib/.build-id/c0
+/usr/lib/.build-id/c0/10ff06d7bc22d63bba17ff7e5980470e4b4a2f
+/usr/lib/.build-id/c9
+/usr/lib/.build-id/c9/0d20c027c5ef48d7825c124a3029327c9effc6
+/usr/lib/.build-id/d7
+/usr/lib/.build-id/d7/89f8698c855df1d2f82e0ae95d1d1aa68afcda
+/usr/lib/.build-id/e2
+/usr/lib/.build-id/e2/4aa69acb777f0eacc80b3cd49f4b4b6e1c6576
+/usr/lib/.build-id/ef
+/usr/lib/.build-id/ef/db34fe074cf140d8f8d54e6bf19dc64e4481e4
+/usr/lib/systemd/user/openburnbar-daemon.service
+/usr/libexec/openburnbar-daemon-launch
+/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop
 
 ### stderr
 
 
 ## assert rpm contains openburnbar-daemon-launch
 cwd=.
-exit_code=1
+exit_code=0
 ### stdout
-
-### stderr
-rpm package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)
-
-## rpm -i --nodeps /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm
-cwd=.
-exit_code=1
-### stdout
-
+found openburnbar-daemon-launch
 ### stderr
 
 
-## rpm -e open-burn-bar
+## assert rpm contains openburnbar-daemon binary
 cwd=.
-exit_code=1
+exit_code=0
+### stdout
+found openburnbar-daemon
+### stderr
+
+
+## assert rpm contains Swift runtime under /opt/openburnbar/lib/swift
+cwd=.
+exit_code=0
+### stdout
+found /opt/openburnbar/lib/swift
+### stderr
+
+
+## sudo rpm -i --nodeps --force /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm
+cwd=.
+exit_code=0
 ### stdout
 
+### stderr
+rpm: RPM should not be used directly install RPM packages, use Alien instead!
+rpm: However assuming you know what you are doing...
+
+
+## sudo rpm -e open-burn-bar
+cwd=.
+exit_code=0
+### stdout
+
+### stderr
+rpm: RPM should not be used directly install RPM packages, use Alien instead!
+rpm: However assuming you know what you are doing...
+
+
+## /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/openburnbar-daemon-0.1.0-linux-aarch64 --help
+cwd=.
+exit_code=0
+### stdout
+Usage: OpenBurnBarDaemon [OPTIONS]
+
+Options:
+  --socket-path PATH          Unix socket path for RPC
+  --index-database-path PATH  SQLite database path for search
+  --version VERSION            Daemon version string
+  --gateway-enable             Enable the HTTP gateway
+  --gateway-host HOST          Gateway bind host (default 127.0.0.1)
+  --gateway-port PORT          Gateway port (default 8317)
+  --gateway-auth-token TOKEN   Bearer token for gateway auth
+  --gateway-auth-token-file PATH
+                               Read gateway auth token from file (avoids ps exposure)
+
+  --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
+  --socket-auth-token-file PATH
+                               Read socket auth token from file (avoids ps exposure)
+
+Environment overrides:
+  OPENBURNBAR_DAEMON_SOCKET_PATH
+  OPENBURNBAR_DAEMON_VERSION
+  OPENBURNBAR_INDEX_DATABASE_PATH
+  OPENBURNBAR_GATEWAY_ENABLED=1
+  OPENBURNBAR_GATEWAY_HOST
+  OPENBURNBAR_GATEWAY_PORT
+  OPENBURNBAR_GATEWAY_AUTH_TOKEN
+
+  OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN
+
+### stderr
+
+
+## assert daemon binary responds to --help
+cwd=.
+exit_code=0
+### stdout
+found socket-path
 ### stderr
 

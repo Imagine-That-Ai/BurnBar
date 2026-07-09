@@ -123,6 +123,39 @@ for (const smoke of ['package-install-uninstall.log', 'package-update-rollback.l
     fail('required package smoke log is missing', { file: relative(path.join(smokeDir, smoke)) });
   }
 }
+// Fail closed on package content asserts — log existence alone is not green.
+const smokeSummaryPath = path.join(smokeDir, 'package-smoke-summary.json');
+const smokeInstallLog = path.join(smokeDir, 'package-install-uninstall.log');
+if (fs.existsSync(smokeSummaryPath)) {
+  const smokeSummary = readJson(smokeSummaryPath);
+  if (smokeSummary.passed !== true || (smokeSummary.failedCount ?? 0) > 0) {
+    fail('package smoke summary is not green (content/install asserts failed).', {
+      file: relative(smokeSummaryPath),
+      failedCount: smokeSummary.failedCount ?? null,
+      failed: (smokeSummary.failed ?? []).slice(0, 10)
+    });
+  }
+} else if (fs.existsSync(smokeInstallLog)) {
+  const logBody = fs.readFileSync(smokeInstallLog, 'utf8');
+  const assertFails = [...logBody.matchAll(/^## (assert [^\n]+)\n(?:cwd=.*\n)?exit_code=([1-9]\d*)/gm)];
+  if (assertFails.length > 0) {
+    fail('package-install-uninstall.log contains failing asserts; re-run smoke-linux-packages.mjs until exit 0.', {
+      file: relative(smokeInstallLog),
+      failingAsserts: assertFails.map((m) => ({ command: m[1], exitCode: Number(m[2]) })).slice(0, 20)
+    });
+  }
+  // Also require rpm/deb launch script evidence in the log body when those artifacts exist.
+  const needsRpm = (closure.artifacts ?? []).some((a) => a.type === 'rpm');
+  const needsDeb = (closure.artifacts ?? []).some((a) => a.type === 'deb');
+  if (needsDeb && !/assert deb contains openburnbar-daemon-launch[\s\S]*?exit_code=0/.test(logBody)) {
+    fail('deb launch-script assert did not pass in smoke log.', { file: relative(smokeInstallLog) });
+  }
+  if (needsRpm && !/assert rpm contains openburnbar-daemon-launch[\s\S]*?exit_code=0/.test(logBody)) {
+    fail('rpm launch-script assert did not pass in smoke log.', { file: relative(smokeInstallLog) });
+  }
+} else {
+  fail('package smoke summary/log missing; cannot prove package content asserts.');
+}
 
 const gitStatus = runStep('git', ['status', '--porcelain=v1']).stdout.split('\n').filter(Boolean);
 const unexpectedDirty = gitStatus.filter((entry) => {

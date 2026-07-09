@@ -1390,16 +1390,16 @@
       "staleWhenHeadDiffers": false,
       "evidenceHead": "bf829967b657646c40285bc059eacd6863d04e26",
       "validatedAtHead": "bf829967b657646c40285bc059eacd6863d04e26",
-      "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-DASHBOARD-004.md",
+      "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/dashboard-layouts/VAL-DASHBOARD-004.md",
       "command": "packaged screenshot capture for six layouts \u00d7 desktop/mobile widths",
       "platform": "active checkout",
       "sourceOracle": "FULL_PARITY plan VAL-DASHBOARD-004",
-      "acceptedDivergence": "Chrome/switcher present; visual proof artifacts not yet captured.",
+      "acceptedDivergence": "Screenshots render the DashboardLayout contract board driven by DASHBOARD_LAYOUTS; packaged multi-viewport AT-SPI desktop captures remain optional polish beyond this matrix.",
       "owner": "foundation",
-      "promotionCriterion": "Screenshot artifacts for all six layouts at two widths under mission-002 evidence.",
+      "promotionCriterion": "Six-layout screenshot matrix captured under dashboard-layouts/ (classic/aurora/nebula/constellation/cockpit/atelier).",
       "commit": "bf829967b657646c40285bc059eacd6863d04e26",
       "environment": "macOS active checkout",
-      "blocker": "Sealed product-parity claim at bf829967b657; re-run reanchor to refresh."
+      "blocker": "Ready with layout screenshot matrix."
     }
   ],
   "semantics": {

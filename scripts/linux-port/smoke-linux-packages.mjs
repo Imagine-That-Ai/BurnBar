@@ -15,52 +15,111 @@ if (!fs.existsSync(closurePath)) {
 
 const closure = readJson(closurePath);
 const steps = [];
+
+function assertContains(command, haystack, needle, stderr) {
+  const ok = typeof haystack === 'string' && haystack.includes(needle);
+  steps.push({
+    command,
+    cwd: '.',
+    exitCode: ok ? 0 : 1,
+    stdout: ok ? `found ${needle}` : '',
+    stderr: ok ? '' : stderr
+  });
+  return ok;
+}
+
 for (const artifact of closure.artifacts ?? []) {
   const full = path.join(repoRoot, artifact.file);
+  if (!fs.existsSync(full)) {
+    steps.push({
+      command: `assert artifact exists ${artifact.type}`,
+      cwd: '.',
+      exitCode: 1,
+      stdout: '',
+      stderr: `missing artifact file: ${artifact.file}`
+    });
+    continue;
+  }
   if (artifact.type === 'deb') {
     steps.push(runStep('dpkg-deb', ['--info', full]));
     const contents = runStep('dpkg-deb', ['--contents', full]);
     steps.push(contents);
     // Unit ExecStart=/usr/libexec/openburnbar-daemon-launch must ship in the package.
-    if (!contents.stdout.includes('openburnbar-daemon-launch')) {
-      steps.push({
-        command: 'assert deb contains openburnbar-daemon-launch',
-        cwd: '.',
-        exitCode: 1,
-        stdout: '',
-        stderr: 'deb package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)'
-      });
+    assertContains(
+      'assert deb contains openburnbar-daemon-launch',
+      contents.stdout,
+      'openburnbar-daemon-launch',
+      'deb package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)'
+    );
+    assertContains(
+      'assert deb contains openburnbar-daemon binary',
+      contents.stdout,
+      'openburnbar-daemon',
+      'deb package missing /usr/bin/openburnbar-daemon'
+    );
+    assertContains(
+      'assert deb contains openburnbar-daemon.service',
+      contents.stdout,
+      'openburnbar-daemon.service',
+      'deb package missing systemd user unit'
+    );
+    assertContains(
+      'assert deb contains Swift runtime under opt/openburnbar/lib/swift',
+      contents.stdout,
+      'opt/openburnbar/lib/swift',
+      'deb package missing Swift runtime at /opt/openburnbar/lib/swift'
+    );
+    // Prefer sudo when non-root (guest packaging smoke).
+    const dpkgInstall = runStep('sudo', ['dpkg', '-i', full]);
+    if (dpkgInstall.exitCode !== 0) {
+      steps.push(runStep('dpkg', ['-i', full]));
+    } else {
+      steps.push(dpkgInstall);
     }
-    if (!contents.stdout.includes('openburnbar-daemon.service')) {
-      steps.push({
-        command: 'assert deb contains openburnbar-daemon.service',
-        cwd: '.',
-        exitCode: 1,
-        stdout: '',
-        stderr: 'deb package missing systemd user unit'
-      });
-    }
-    steps.push(runStep('dpkg', ['-i', full]));
     // Derive the real package name from the artifact so uninstall targets the
     // exact installed package (Tauri names it `open-burn-bar`, not `openburnbar`).
     const debName = runStep('dpkg-deb', ['-f', full, 'Package']).stdout.trim() || 'open-burn-bar';
-    steps.push(runStep('dpkg', ['-r', debName]));
+    const dpkgRemove = runStep('sudo', ['dpkg', '-r', debName]);
+    if (dpkgRemove.exitCode !== 0) {
+      steps.push(runStep('dpkg', ['-r', debName]));
+    } else {
+      steps.push(dpkgRemove);
+    }
   } else if (artifact.type === 'rpm') {
     steps.push(runStep('rpm', ['-qip', full]));
     const listing = runStep('rpm', ['-qlp', full]);
     steps.push(listing);
-    if (!listing.stdout.includes('openburnbar-daemon-launch')) {
-      steps.push({
-        command: 'assert rpm contains openburnbar-daemon-launch',
-        cwd: '.',
-        exitCode: 1,
-        stdout: '',
-        stderr: 'rpm package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)'
-      });
+    assertContains(
+      'assert rpm contains openburnbar-daemon-launch',
+      listing.stdout,
+      'openburnbar-daemon-launch',
+      'rpm package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)'
+    );
+    assertContains(
+      'assert rpm contains openburnbar-daemon binary',
+      listing.stdout,
+      'openburnbar-daemon',
+      'rpm package missing /usr/bin/openburnbar-daemon'
+    );
+    assertContains(
+      'assert rpm contains Swift runtime under /opt/openburnbar/lib/swift',
+      listing.stdout,
+      '/opt/openburnbar/lib/swift',
+      'rpm package missing Swift runtime at /opt/openburnbar/lib/swift'
+    );
+    const rpmInstall = runStep('sudo', ['rpm', '-i', '--nodeps', '--force', full]);
+    if (rpmInstall.exitCode !== 0) {
+      steps.push(runStep('rpm', ['-i', '--nodeps', '--force', full]));
+    } else {
+      steps.push(rpmInstall);
     }
-    steps.push(runStep('rpm', ['-i', '--nodeps', full]));
     const rpmName = runStep('rpm', ['-qp', '--queryformat', '%{NAME}', full]).stdout.trim() || 'open-burn-bar';
-    steps.push(runStep('rpm', ['-e', rpmName]));
+    const rpmErase = runStep('sudo', ['rpm', '-e', rpmName]);
+    if (rpmErase.exitCode !== 0) {
+      steps.push(runStep('rpm', ['-e', rpmName]));
+    } else {
+      steps.push(rpmErase);
+    }
   } else if (artifact.type === 'appimage') {
     fs.chmodSync(full, 0o755);
     steps.push(runStep(full, ['--appimage-extract']));
@@ -70,6 +129,16 @@ for (const artifact of closure.artifacts ?? []) {
     // Remove the extraction dir so the release verifier's clean-worktree check
     // binds to the committed release commit.
     fs.rmSync(path.join(repoRoot, 'squashfs-root'), { recursive: true, force: true });
+  } else if (artifact.type === 'daemon') {
+    fs.chmodSync(full, 0o755);
+    const help = runStep(full, ['--help']);
+    steps.push(help);
+    assertContains(
+      'assert daemon binary responds to --help',
+      `${help.stdout}\n${help.stderr}`,
+      'socket-path',
+      'daemon binary --help did not print expected usage'
+    );
   }
 }
 
@@ -101,6 +170,15 @@ const update = {
 writeJson(path.join(smokeDir, 'package-update-rollback.json'), update);
 fs.writeFileSync(path.join(smokeDir, 'package-update-rollback.log'), `${JSON.stringify(update, null, 2)}\n`, 'utf8');
 
-const failed = steps.find((step) => step.exitCode !== 0);
-console.log(JSON.stringify({ steps: steps.length, failed: failed ?? null, update }, null, 2));
-process.exit(failed ? failed.exitCode : 0);
+const failed = steps.filter((step) => step.exitCode !== 0);
+const summary = {
+  steps: steps.length,
+  failedCount: failed.length,
+  failed: failed.slice(0, 20),
+  update,
+  passed: failed.length === 0
+};
+writeJson(path.join(smokeDir, 'package-smoke-summary.json'), summary);
+console.log(JSON.stringify(summary, null, 2));
+// Fail closed: any assert/install failure is a hard smoke failure.
+process.exit(failed.length === 0 ? 0 : 1);
