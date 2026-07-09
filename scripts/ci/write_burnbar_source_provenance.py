@@ -35,7 +35,7 @@ REQUIRED_SOURCE_PATHS = [
     "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
     "OpenBurnBarCore/Package.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
-    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/SignalEnvelopeAAD.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SignalEnvelopeAAD.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalPreKeyGenerator.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift",

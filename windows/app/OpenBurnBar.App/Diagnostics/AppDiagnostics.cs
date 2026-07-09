@@ -5,6 +5,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using System.Text;
 using Microsoft.UI.Xaml;
+using OpenBurnBar.App.Configuration;
 namespace OpenBurnBar.App.Diagnostics;
 
 /// <summary>
@@ -21,13 +22,7 @@ public static class AppDiagnostics
     {
         get
         {
-            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (string.IsNullOrWhiteSpace(local))
-            {
-                local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local");
-            }
-
-            return Path.Combine(local, "OpenBurnBar", "logs");
+            return RuntimePaths.AppDataSubdirectory("logs");
         }
     }
 

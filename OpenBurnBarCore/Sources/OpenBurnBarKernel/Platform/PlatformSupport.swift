@@ -49,16 +49,16 @@ internal enum PlatformCryptoError: Error {
     case canonicalEncodingFailed(String)
 }
 
-internal typealias PlatformAESGCMSealedBox = (
+public typealias PlatformAESGCMSealedBox = (
     nonce: Data,
     ciphertext: Data,
     tag: Data,
     combined: Data
 )
 
-internal struct PlatformHPKESealedBox: Sendable {
-    let encapsulatedKey: Data
-    let ciphertext: Data
+public struct PlatformHPKESealedBox: Sendable {
+    public let encapsulatedKey: Data
+    public let ciphertext: Data
 }
 
 public enum PlatformCrypto {
@@ -177,7 +177,7 @@ public enum PlatformCrypto {
         hexString(try hmacSHA256(data, keyData: keyData))
     }
 
-    static func sealAESGCMDetached(
+    public static func sealAESGCMDetached(
         plaintext: Data,
         keyData: Data,
         authenticating: Data? = nil
@@ -189,7 +189,7 @@ public enum PlatformCrypto {
         )
     }
 
-    static func sealAESGCMDetached(
+    public static func sealAESGCMDetached(
         plaintext: Data,
         key: SymmetricKey,
         authenticating: Data? = nil
@@ -235,7 +235,7 @@ public enum PlatformCrypto {
         ).combined
     }
 
-    static func openAESGCMDetached(
+    public static func openAESGCMDetached(
         nonce: Data,
         ciphertext: Data,
         tag: Data,
@@ -251,7 +251,7 @@ public enum PlatformCrypto {
         )
     }
 
-    static func openAESGCMDetached(
+    public static func openAESGCMDetached(
         nonce: Data,
         ciphertext: Data,
         tag: Data,
@@ -452,7 +452,7 @@ public enum PlatformCrypto {
         }
     }
 
-    static func hpkeSealP256SHA256AESGCM256(
+    public static func hpkeSealP256SHA256AESGCM256(
         plaintext: Data,
         recipientPublicKey: PlatformP256KeyAgreementPublicKey,
         info: Data,
@@ -472,7 +472,7 @@ public enum PlatformCrypto {
         )
     }
 
-    static func hpkeOpenP256SHA256AESGCM256(
+    public static func hpkeOpenP256SHA256AESGCM256(
         ciphertext: Data,
         recipientPrivateKey: PlatformP256KeyAgreementPrivateKey,
         info: Data,
@@ -492,51 +492,51 @@ public enum PlatformCrypto {
 }
 
 #if canImport(OSLog)
-internal struct PlatformLogger: Sendable {
+public struct PlatformLogger: Sendable {
     private let logger: Logger
 
-    init(subsystem: String, category: String) {
+    public init(subsystem: String, category: String) {
         self.logger = Logger(subsystem: subsystem, category: category)
     }
 
-    func debug(_ message: String) {
+    public func debug(_ message: String) {
         logger.debug("\(message, privacy: .public)")
     }
 
-    func info(_ message: String) {
+    public func info(_ message: String) {
         logger.info("\(message, privacy: .public)")
     }
 
-    func notice(_ message: String) {
+    public func notice(_ message: String) {
         logger.notice("\(message, privacy: .public)")
     }
 
-    func warning(_ message: String) {
+    public func warning(_ message: String) {
         logger.warning("\(message, privacy: .public)")
     }
 
-    func error(_ message: String) {
+    public func error(_ message: String) {
         logger.error("\(message, privacy: .public)")
     }
 
-    func fault(_ message: String) {
+    public func fault(_ message: String) {
         logger.fault("\(message, privacy: .public)")
     }
 }
 #else
-internal struct PlatformLogger: Sendable {
-    init(subsystem: String, category: String) {}
+public struct PlatformLogger: Sendable {
+    public init(subsystem: String, category: String) {}
 
-    func debug(_ message: String) {}
+    public func debug(_ message: String) {}
 
-    func info(_ message: String) {}
+    public func info(_ message: String) {}
 
-    func notice(_ message: String) {}
+    public func notice(_ message: String) {}
 
-    func warning(_ message: String) {}
+    public func warning(_ message: String) {}
 
-    func error(_ message: String) {}
+    public func error(_ message: String) {}
 
-    func fault(_ message: String) {}
+    public func fault(_ message: String) {}
 }
 #endif

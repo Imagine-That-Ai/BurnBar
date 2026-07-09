@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Theme;
@@ -97,6 +98,8 @@ public sealed partial class AppShell : UserControl
                 Glyph = destination.Glyph,
             },
         };
+        AutomationProperties.SetAutomationId(item, $"Shell.NavItem.{destination.Key}");
+        AutomationProperties.SetName(item, destination.Title);
         item.Click += (_, _) => Navigate(destination.Key);
         return item;
     }

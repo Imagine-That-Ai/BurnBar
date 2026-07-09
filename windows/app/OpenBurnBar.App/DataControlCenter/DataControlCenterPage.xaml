@@ -13,7 +13,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     RequestedTheme="Dark"
-    Background="{StaticResource PensieveColorInkBaseBrush}">
+    Background="{StaticResource PensieveColorInkBaseBrush}"
+    AutomationProperties.AutomationId="RouteRoot.dataControlCenter">
 
     <local:DataControlCenterView x:Name="Workbench" />
 </Page>

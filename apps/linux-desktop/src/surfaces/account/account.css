@@ -19,7 +19,10 @@
   padding: var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-glass-line);
-  background: var(--color-glass-bg);
+  background: var(--glass-panel, color-mix(in srgb, var(--color-glass-bg) 62%, transparent));
+  backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  -webkit-backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  box-shadow: var(--glass-panel-shadow, 0 8px 24px rgba(0,0,0,0.22), inset 0 1px 0 var(--color-frost-line));
 }
 
 .account-hero-icon {
@@ -67,7 +70,10 @@
   padding: 4px var(--space-3);
   border-radius: var(--radius-pill);
   border: 1px solid var(--color-frost-line);
-  background: var(--color-mercury-wash);
+  background: color-mix(in srgb, var(--color-mercury-wash) 85%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
   color: var(--color-text-bright);
   font-size: 0.85rem;
   font-family: var(--font-mono);

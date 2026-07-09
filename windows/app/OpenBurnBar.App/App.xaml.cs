@@ -23,9 +23,9 @@ namespace OpenBurnBar.App;
 /// </summary>
 public partial class App : Application
 {
-    private readonly AppStatePersistence _state = new();
     private readonly GlobalHotkeyService _hotkey = new();
 
+    private AppStatePersistence? _state;
     private ThemeService? _theme;
     private TrayIcon? _tray;
     private MainWindow? _mainWindow;
@@ -34,6 +34,7 @@ public partial class App : Application
 
     public App()
     {
+        AutomationLaunchOptions.Parse(Environment.CommandLine)?.ApplyEnvironment();
         AppDiagnostics.Install(this);
         InitializeComponent();
     }
@@ -43,6 +44,8 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var automation = AutomationLaunchOptions.Parse(args.Arguments) ?? AutomationLaunchOptions.Parse(Environment.CommandLine);
+        automation?.ApplyEnvironment();
         AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
@@ -50,7 +53,9 @@ public partial class App : Application
         // Production Liquid Glass prefs (registry) — InMemory is reserved for unit tests.
         LiquidGlassEnvironment.Current = new LiquidGlassEnvironment(new RegistryLiquidGlassPreferenceStore());
 
+        _state = new AppStatePersistence();
         _theme = new ThemeService(_state);
+        automation?.WriteLaunchMarker();
 
         if ((RouteSmokeOptions.Parse(args.Arguments) ?? RouteSmokeOptions.Parse(Environment.CommandLine)) is { } smoke)
         {
@@ -59,9 +64,15 @@ public partial class App : Application
             return;
         }
 
+        if (automation?.MainWindow == true)
+        {
+            ShowMainWindow();
+            return;
+        }
+
         // Windows are created eagerly but stay hidden — the tray owns visibility, exactly like
         // NSStatusItem owning the menu-bar popover on macOS.
-        _flyout = new FlyoutWindow(_state);
+        _flyout = new FlyoutWindow(State);
         _theme.Register(_flyout);
 
         // The flyout is the always-alive window, so anchor the global Ctrl+K hotkey there.
@@ -92,7 +103,7 @@ public partial class App : Application
 
     private void ToggleFlyout()
     {
-        _flyout ??= new FlyoutWindow(_state);
+        _flyout ??= new FlyoutWindow(State);
         _flyout.ToggleNearTray();
     }
 
@@ -154,4 +165,7 @@ public partial class App : Application
         _mainWindow?.Close();
         Exit();
     }
+
+    private AppStatePersistence State =>
+        _state ?? throw new InvalidOperationException("App state was requested before launch initialization completed.");
 }
