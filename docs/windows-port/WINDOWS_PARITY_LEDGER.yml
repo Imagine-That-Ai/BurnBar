@@ -620,67 +620,167 @@ rows:
   notes: Alberto E1 — make PR Windows Full Gate required. Parity ledger scanner is the Phase 0 honesty gate. Reclassified
     WPD-0008 host-gated residual.
   revive_trigger: See docs/windows-port/decisions/0008-host-gated-f1-residuals.md revive table for ci-windows-full-gate
+- id: mercury-media
+  macos_route: media
+  macos_capability: Mercury media (calls, screen share, file transfer)
+  windows_route: media
+  windows_capability: Integrations tree / Media settings residual; live adapters host-gated
+  status: DeferredApproved
+  revive_trigger: Live Mercury call/screen-share/file-transfer proof on Win11; see WPD-0008/0010 and master plan H8
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
+  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  tests:
+  - windows/tests/shell/NavCatalogTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Settings
+  owner_lane: wave-h8-integrations
+  notes: F1 H8 residual; not silent gap. Reclassified DeferredApproved.
+- id: cast-smarthub
+  macos_route: cast
+  macos_capability: Cast + SmartHub device actions
+  windows_route: cast
+  windows_capability: Partial unit parity; live mDNS/device actions host-gated
+  status: DeferredApproved
+  revive_trigger: Live Cast/SmartHub pairing + device action proof on Windows; WPD-0008
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
+  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  tests:
+  - windows/tests/shell/NavCatalogTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Settings
+  owner_lane: wave-h8-integrations
+  notes: F1 H8 residual DeferredApproved.
+- id: home-assistant
+  macos_route: homeAssistant
+  macos_capability: Home Assistant client
+  windows_route: homeAssistant
+  windows_capability: Client tests may exist; live device proof outstanding
+  status: DeferredApproved
+  revive_trigger: Live Home Assistant device control proof on Windows; WPD-0008
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
+  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  tests:
+  - windows/tests/shell/NavCatalogTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Settings
+  owner_lane: wave-h8-integrations
+  notes: F1 H8 residual DeferredApproved.
+- id: text-expansion
+  macos_route: textExpansion
+  macos_capability: Global text expansion + SendInput
+  windows_route: textExpansion
+  windows_capability: Portable core tests; SendInput host proof outstanding
+  status: DeferredApproved
+  revive_trigger: Global keyboard hook + SendInput host proof on Win11; WPD-0008
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
+  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  tests:
+  - windows/tests/shell/NavCatalogTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Settings
+  owner_lane: wave-h8-integrations
+  notes: F1 H8 residual DeferredApproved.
+- id: cursor-connector
+  macos_route: cursorConnector
+  macos_capability: CursorConnector runtime / proxy
+  windows_route: cursorConnector
+  windows_capability: Windows proxy process not Real until live proof
+  status: DeferredApproved
+  revive_trigger: Live CursorConnector proxy + workspace trust proof on Windows; WPD-0008
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
+  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  tests:
+  - windows/tests/shell/NavCatalogTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Settings
+  owner_lane: wave-h8-integrations
+  notes: F1 H8 residual DeferredApproved.
+- id: daily-digest-notifications
+  macos_route: dailyDigest
+  macos_capability: DailyDigest, notifications, launch-at-login
+  windows_route: dailyDigest
+  windows_capability: OS notification / autostart residual for H8
+  status: DeferredApproved
+  revive_trigger: Live DailyDigest + toast + launch-at-login proof on Win11; WPD-0008
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
+  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  tests:
+  - windows/tests/shell/NavCatalogTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Budget
+  owner_lane: wave-h8-integrations
+  notes: F1 H8 residual DeferredApproved.
+- id: settings-s1-s2-tabs
+  macos_route: settings
+  macos_capability: Settings tabs S1–S2 full depth beyond General/Updates/DataPrivacy/Appearance
+  windows_route: settings
+  windows_capability: Multiple SettingsTab defaults still SettingsPlaceholderPage (H6 residual)
+  status: DeferredApproved
+  revive_trigger: No SettingsPlaceholderPage for S0–S2; WinUI bind Engine Room FinishLine*; render smoke on VM; WPD-0010
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
+  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  tests:
+  - windows/tests/settings
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Settings/SettingsPage.xaml.cs
+  owner_lane: wave-h6-settings
+  notes: nav-settings covers shell; this row tracks H6 placeholder death explicitly.
 f1_coverage_register:
 - subsystem: mercury-media
-  macos_surfaces:
-  - Mercury calls
-  - screen share
-  - file transfer
-  windows_status: future_row
-  note: Integrations tree exists; no ledger row — add when H8 proofs start.
+  ledger_row: mercury-media
+  windows_status: DeferredApproved
+  revive_trigger: Live Mercury proofs on Win11; WPD-0008/0010
 - subsystem: cast-smarthub
-  macos_surfaces:
-  - Cast
-  - SmartHub
-  windows_status: future_row
-  note: Unit parity partial; host proof outstanding.
+  ledger_row: cast-smarthub
+  windows_status: DeferredApproved
+  revive_trigger: Live Cast/SmartHub proofs; WPD-0008
 - subsystem: home-assistant
-  macos_surfaces:
-  - Home Assistant
-  windows_status: future_row
-  note: Client tests exist; live device proof outstanding.
+  ledger_row: home-assistant
+  windows_status: DeferredApproved
+  revive_trigger: Live HA device proof; WPD-0008
 - subsystem: text-expansion
-  macos_surfaces:
-  - Text Expansion global hotkey
-  windows_status: future_row
-  note: Portable core tests; SendInput host proof outstanding.
+  ledger_row: text-expansion
+  windows_status: DeferredApproved
+  revive_trigger: SendInput host proof; WPD-0008
 - subsystem: pet-companion
-  macos_surfaces:
-  - Pet overlay
-  - glTF host
-  windows_status: future_row
-  note: Behavior tests exist; live overlay host proof outstanding.
+  ledger_row: pet-companion
+  windows_status: DeferredApproved
+  revive_trigger: Live overlay host proof; WPD-0010
 - subsystem: cursor-connector
-  macos_surfaces:
-  - CursorConnector runtime
-  windows_status: future_row
-  note: Windows proxy process not Real until live proof.
+  ledger_row: cursor-connector
+  windows_status: DeferredApproved
+  revive_trigger: Live proxy proof; WPD-0008
 - subsystem: daily-digest-notifications
-  macos_surfaces:
-  - DailyDigest
-  - notifications
-  - launch-at-login
-  windows_status: future_row
-  note: OS integration residual for H8.
+  ledger_row: daily-digest-notifications
+  windows_status: DeferredApproved
+  revive_trigger: Toast + autostart proof; WPD-0008
 - subsystem: computer-use-desktop
-  macos_surfaces:
-  - Computer Use desktop loop
-  windows_status: Blocked
-  note: Ledger row computer-use-loop already Blocked; host-gated.
+  ledger_row: computer-use-loop
+  windows_status: DeferredApproved
+  revive_trigger: SendInput/UIA/WGC + kill-switch host evidence; WPD-0008
 - subsystem: settings-placeholder-tabs
-  macos_surfaces:
-  - Settings tabs beyond General/Updates/DataPrivacy
-  windows_status: future_row
-  note: H6 placeholder death; Engine Room FinishLine* VM-only until WinUI bind.
-- id: wpd-0008-host
-  status: DeferredApproved
-  note: Host-gated F1 residuals WPD-0008
-- id: wpd-0009-f2
-  status: DeferredApproved
-  note: F2 True 1:1 workstreams WPD-0009
-- id: wpd-0010-depth
-  status: DeferredApproved
-  note: F1 surface depth residuals WPD-0010
+  ledger_row: settings-s1-s2-tabs
+  windows_status: DeferredApproved
+  revive_trigger: S0–S2 no placeholder; Engine Room bind; WPD-0010
+- subsystem: nav-chat
+  ledger_row: nav-chat
+  windows_status: DeferredApproved
+  revive_trigger: Configured Win11 streams live tokens via CliJson driver; WPD-0010
+- subsystem: nav-database
+  ledger_row: nav-database
+  windows_status: Real
+  note: IA-2 DatabasePage
+- subsystem: nav-projects
+  ledger_row: nav-projects
+  windows_status: Real
+  note: IA-4 ProjectsPage
 finish_line_note: 100% parity = F2 True 1:1 (WPD-0009). F1 Ship Peer is the default launch target; rows may be DeferredApproved
   under WPD-0008/0009/0010 until host proofs or F2 workstreams land.
 f2_workstream_register:

@@ -53,31 +53,35 @@
 
 > **Status authority:** production-parity status is owned by
 > [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml). The Status column below
-> mirrors ledger vocabulary only (`Real` / `Substituted` / `DeferredApproved` /
-> `Blocked`). **Authored is not a valid status.**
+> must match the YAML (`Real` / `DeferredApproved` / `Blocked`). **Authored** and
+> stale **Substituted** cells are forbidden when the ledger has moved on.
+> **100% parity** = **F2 True 1:1** (`finish_line: F2_True_1to1`, WPD-0009). F1 depth
+> residuals use **WPD-0010**; host gates use **WPD-0008**.
 
 **Seams:** `NavCatalog` + `SurfacePageResolver` / `SurfaceRouteMap` (`windows/app/OpenBurnBar.App/Shell/`).  
-**Catalog:** **14** keys in `NavCatalog.All` (incl. IA-1 `database` + `projects` deferred disclosure); **+1** auxiliary `elderWand` (Command Palette only) = **15** navigable keys total.
+**Catalog:** **14** keys in `NavCatalog.All` (incl. product `database` → `DatabasePage`, `projects` → `ProjectsPage`); **+1** auxiliary `elderWand` (Command Palette only) = **15** navigable keys total.
 
 | # | Nav key | macOS counterpart | Windows page / host | Primary tests | Data backend | Status (ledger) | Evidence / PR |
 |---|---------|-------------------|---------------------|---------------|--------------|-----------------|----------------|
-| 1 | `dashboard` | `DashboardMainRoute.overview` | `DashboardPage` | `OpenBurnBar.App.Dashboard.Tests` | SQLCipher when configured; empty-state / sample only under `OPENBURNBAR_SAMPLE_MODE` | **Substituted** (`nav-dashboard`) | ledger; **#1256** |
-| 2 | `chat` | `DashboardMainRoute.chat` | `ChatHostPage` + Pretext host | `presentation/Chat/*Tests.cs` | Scripted/Unavailable drivers without live Hermes/ConPTY proof | **Blocked** (`nav-chat`) | design/0005; TONIGHT C1/C4 |
-| 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights/*Tests.cs` + `tests/insights` | Empty widgets when sample mode off; live rollup incomplete | **Substituted** (`nav-insights`) | ledger; H0 audit |
-| 4 | `quota` | `DashboardMainRoute.quota` | `QuotaWorkspacePage` | `OpenBurnBar.App.Quota.Tests` + acquisition tests | Live coordinator preferred; parsers Real on separate row | **Substituted** (`nav-quota`); parsers **Real** (`quota-portable-parsers`) | evidence/quota; **#1250** |
-| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | presentation + storage tests | SQLCipher read seam; unconfigured → `SessionLogEmptySource` (honest empty) | **Substituted** (`nav-session-logs`) | evidence/storage; **#1267** |
-| 6 | `memory` | `DashboardMainRoute.memoryReview` | `MemoryPage` | `MemoryReviewInboxModelTests.cs` | Cloud when credentials; App Check/OAuth still Blocked | **Substituted** (`nav-memory`) | ledger; **#1267** |
-| 7 | `missionControl` | `DashboardMainRoute.missions` | `MissionControlPage` | `presentation/MissionControl/*Tests.cs` | Firestore host or empty host; DemoHost sample-only | **Substituted** (`nav-missions`) | WPD-0006 |
-| 8 | `budget` | Settings Budget + `BudgetLedger` | `BudgetPage` | `presentation/Budget/*Tests.cs` | In-memory / SQLCipher stores; cloud budget incomplete | **Substituted** (`nav-budget`) | ledger |
-| 9 | `dataControlCenter` | Data & Privacy workbench | `DataControlCenterPage` | DCC + `CloudSyncCallableHubTests` | 9 callables wired via injectable transport; live auth WS-D | **Substituted** (`nav-data-control-center`) | ledger |
-| 10 | `switcher` | `AccountSwitcherSettingsView` | `SwitcherHostPage` | presentation + store round-trip | SqlCipher store proven; sample fallback must not be default | **Substituted** (`nav-switcher`) | evidence/storage |
-| 11 | `onboarding` | Onboarding wizard | `OnboardingPage` | `OpenBurnBar.App.Onboarding.Tests` | Portable wizard + DB config; host proof outstanding | **Substituted** (`nav-onboarding`) | ledger |
-| 12 | `settings` | Settings shell + tabs | `SettingsPage` tree | `OpenBurnBar.App.Settings.Tests` | Placeholder residual + DataGated OAuth tabs remain | **Substituted** (`nav-settings`) | ledger |
-| 13 | `elderWand` | Analysis Models | `ElderWandPage` (palette) | `presentation/ElderWand*Tests.cs` | Empty without sample mode; drift D8 | **Substituted** (`nav-elder-wand`) | ledger |
-| 14 | `database` | `DashboardMainRoute.database` | `SurfaceStubPage` (IA-1 disclosure) | `windows/tests/shell/NavCatalogTests.cs` | Route key only; depth deferred | **Blocked** (`nav-database`) | master plan H5 |
-| 15 | `projects` | `DashboardMainRoute.projects` | `SurfaceStubPage` (IA-1 disclosure) | `windows/tests/shell/NavCatalogTests.cs` | Route key only; depth deferred | **Blocked** (`nav-projects`) | master plan H5; WPD-0003 |
+| 1 | `dashboard` | `DashboardMainRoute.overview` | `DashboardPage` | `OpenBurnBar.App.Dashboard.Tests` | SQLCipher when configured; sample only under `OPENBURNBAR_SAMPLE_MODE` | **DeferredApproved** (`nav-dashboard`, WPD-0010) | ledger |
+| 2 | `chat` | `DashboardMainRoute.chat` | `ChatHostPage` + `CliJsonLineChatStreamDriver` factory | `tests/chat` + `presentation/Chat` | Portable stream-json parser; live ConPTY host attach residual | **DeferredApproved** (`nav-chat`, WPD-0010) | evidence/f1-chat; H3 mapping |
+| 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights` + `tests/insights` | H0 empty/hybrid honesty; live engine residual | **DeferredApproved** (`nav-insights`, WPD-0010) | H0 audit |
+| 4 | `quota` | `DashboardMainRoute.quota` | `QuotaWorkspacePage` | quota + acquisition tests | Parsers **Real** separately; surface depth residual | **DeferredApproved** (`nav-quota`, WPD-0010); parsers **Real** | evidence/quota |
+| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | presentation + storage tests | SQLCipher seam; unconfigured → `SessionLogEmptySource` | **DeferredApproved** (`nav-session-logs`, WPD-0010) | evidence/storage |
+| 6 | `memory` | `DashboardMainRoute.memoryReview` | `MemoryPage` | MemoryReviewInboxModelTests | Cloud when credentials; OAuth/App Check residual | **DeferredApproved** (`nav-memory`, WPD-0010) | ledger |
+| 7 | `missionControl` | `DashboardMainRoute.missions` | `MissionControlPage` | MissionControl tests | Firestore or empty host; DemoHost sample-only | **DeferredApproved** (`nav-missions`, WPD-0010) | WPD-0006 |
+| 8 | `budget` | Settings Budget | `BudgetPage` | presentation/Budget | Portable stores; cloud budget residual | **DeferredApproved** (`nav-budget`, WPD-0010) | ledger |
+| 9 | `dataControlCenter` | Data & Privacy | `DataControlCenterPage` | DCC + callable hub tests | Injectable transport; live auth residual | **DeferredApproved** (`nav-data-control-center`, WPD-0010) | ledger |
+| 10 | `switcher` | Account switcher | `SwitcherHostPage` | presentation + store tests | Encrypted store proven; sample not default | **DeferredApproved** (`nav-switcher`, WPD-0010) | evidence/storage |
+| 11 | `onboarding` | Onboarding wizard | `OnboardingPage` | Onboarding tests | Portable wizard; host first-run residual | **DeferredApproved** (`nav-onboarding`, WPD-0010) | ledger |
+| 12 | `settings` | Settings shell | `SettingsPage` tree | Settings tests | Placeholder tabs tracked as `settings-s1-s2-tabs` | **DeferredApproved** (`nav-settings` + `settings-s1-s2-tabs`, WPD-0010) | ledger |
+| 13 | `elderWand` | Analysis Models | `ElderWandPage` (palette) | ElderWand tests | Empty without sample; fusion is F2 | **DeferredApproved** (`nav-elder-wand`, WPD-0010) | ledger |
+| 14 | `database` | `DashboardMainRoute.database` | **`DatabasePage`** (IA-2 System browse) | shell + presentation Database tests | Session-log SQLCipher seam; honest empty | **Real** (`nav-database`) | evidence/f1-ia |
+| 15 | `projects` | `DashboardMainRoute.projects` | **`ProjectsPage`** (IA-4 list-level) | shell + presentation Projects tests | Group by project name; WPD-0003 static-parse deferred | **Real** (`nav-projects`) | evidence/f1-ia; WPD-0003 |
 
-**Resolver ground truth:** all `NavCatalog.All` keys (incl. IA-1 `database`/`projects`) + 1 `NavCatalog.Auxiliary` key (`elderWand`) map in `SurfacePageResolver.cs`. `database`/`projects` intentionally resolve to `SurfaceStubPage` as deferred disclosure (not Real). Unknown keys also fall through to the stub.
+**Resolver ground truth:** every `NavCatalog.All` key + auxiliary `elderWand` maps through `SurfaceRouteMap` → `SurfacePageResolver`. **`database` → `DatabasePage`**, **`projects` → `ProjectsPage`** (product pages, not stubs). Unknown keys fall through to `SurfaceStubPage`. Product logical names are fail-closed completeness-checked at resolver load.
+
+**H8 integrations** (Mercury, Cast/SmartHub, Home Assistant, text expansion, CursorConnector, DailyDigest, settings S1–S2 tabs) are ledger rows **DeferredApproved** under WPD-0008/0010 — see `f1_coverage_register` and `docs/windows-port/evidence/f1-h8/integrations-deferred.md`.
 
 ---
 
