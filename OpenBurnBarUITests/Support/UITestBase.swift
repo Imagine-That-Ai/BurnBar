@@ -91,27 +91,4 @@ class UITestBase: XCTestCase {
         XCTAssertEqual(result, .completed, "Expected element to become hittable: \(element)", file: file, line: line)
         return element
     }
-
-    /// Waits for an element to report a selected state (radio/segmented value of
-    /// 1, a "selected" trait, or isSelected).
-    @discardableResult
-    func waitForSelected(_ element: XCUIElement, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if isSelectedValue(element) { return true }
-            _ = element.waitForExistence(timeout: 0.3)
-        }
-        return isSelectedValue(element)
-    }
-
-    func isSelectedValue(_ element: XCUIElement) -> Bool {
-        if element.isSelected { return true }
-        if let value = element.value as? String {
-            return value == "1" || value.localizedCaseInsensitiveContains("selected")
-        }
-        if let value = element.value as? Int { return value == 1 }
-        if let value = element.value as? Bool { return value }
-        return false
-    }
 }
-
