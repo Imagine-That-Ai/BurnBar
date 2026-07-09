@@ -285,13 +285,6 @@
   cursor: not-allowed;
 }
 
-/* Hide macOS-only floating chrome stubs — they read as broken UI */
-.chat-toolbar-actions .chat-toolbar-icon[title*='Pop out'],
-.chat-toolbar-actions .chat-toolbar-icon[title*='Restore'],
-.chat-toolbar-actions .chat-toolbar-icon[title*='Close chat'] {
-  display: none;
-}
-
 /* ── Backend strip (logo capsules) ───────────────────────────────────────── */
 
 .chat-backend-strip {
@@ -408,10 +401,6 @@
   font-size: var(--chat-tiny);
   background: transparent;
   color: var(--chat-text-muted);
-}
-
-.chat-backend-context {
-  display: none; /* declutter — macOS keeps this out of the dense strip */
 }
 
 /* ── Message stream ──────────────────────────────────────────────────────── */

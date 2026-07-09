@@ -125,7 +125,6 @@
   backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
   box-shadow: var(--glass-inner-light);
-  transition: var(--glass-transition);
 }
 
 .glass-list-row:hover {
