@@ -28,6 +28,10 @@ public static class SurfacePageResolver
         "elderWand" => typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
         "onboarding" => typeof(OpenBurnBar.App.Onboarding.OnboardingPage),
         "settings" => typeof(OpenBurnBar.App.Settings.Winui.SettingsPage),
+        // IA-1: macOS primary routes registered for palette/switcher parity. They resolve to
+        // SurfaceStubPage as explicit deferred disclosure (not Real) until IA-2+ depth.
+        "database" => typeof(SurfaceStubPage),
+        "projects" => typeof(SurfaceStubPage),
         _ => typeof(SurfaceStubPage),
     };
 }

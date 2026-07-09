@@ -32,8 +32,10 @@
   <ItemGroup>
     <Compile Include="../../app/OpenBurnBar.App/Shell/AppStatePersistence.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Shell/RouteSmokeOptions.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/NavDestination.cs" />
     <Compile Include="AppStatePersistenceTests.cs" />
     <Compile Include="RouteSmokeOptionsTests.cs" />
+    <Compile Include="NavCatalogTests.cs" />
   </ItemGroup>
 
 </Project>

@@ -39,6 +39,18 @@ public sealed class DaemonSettingsViewModelTests
     }
 
     [Fact]
+    public void FinishLine_DefaultsToF1ShipPeer_WithScopeRows()
+    {
+        var vm = new DaemonSettingsViewModel();
+        Assert.Contains("F1", vm.FinishLineDefault);
+        Assert.Contains("Ship Peer", vm.FinishLineDefault);
+        Assert.Contains("F1 or F2", vm.FinishLineExplainer);
+        Assert.NotEmpty(vm.FinishLineScope);
+        Assert.Contains(vm.FinishLineScope, r => r.Area.Contains("Chat", System.StringComparison.Ordinal));
+        Assert.Contains(vm.FinishLineScope, r => r.F2TrueOneToOne.Contains("gateway", System.StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void VisibleRows_DefaultToEveryCapability()
     {
         var vm = new DaemonSettingsViewModel();

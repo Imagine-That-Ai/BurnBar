@@ -10,7 +10,28 @@
 
 ---
 
-## 0. G5 exit rubric (from master plan §7.3)
+## 0. Finish lines: F1 Ship Peer vs F2 True 1:1
+
+> **Never claim “100% parity” without naming F1 or F2.** Default launch target is **F1**.
+> Canonical execution plan: [`WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md`](WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md).
+> Engine Room (Daemon settings) surfaces the same table via `WindowsFinishLineScope`.
+
+| Area | F1 — Ship Peer (default) | F2 — True 1:1 |
+|------|--------------------------|---------------|
+| Local peer desktop | Log ingest, quota, budget, storage, session logs, dashboard, insights, memory, DCC, onboarding, switcher, tray, settings | F1 plus deferred Mac-complete depth |
+| Chat | Production `IChatStreamDriver` for configured CLI backends | Hermes/Pi gateway-backed multi-client chat |
+| Cloud / auth | Desktop OAuth, Firestore, App Check, CloudVault live, trusted device | Same plane + F2-only connectors |
+| Computer Use | Windows desktop loop + audit + kill switch | Plus browser/Playwright path |
+| Mission Control | Firestore **dispatch client** | Local DAG execution / planner / headless runs |
+| Daemon / Model Proxy | WPD-0006 matrix + deferred disclosure | Live local HTTP gateway + model proxy |
+| Projects depth | IA route + list-level peer; lexical disclosure | Full project-code static parser (WPD-0003) |
+| Distribution | Signed MSIX, update proof, winget/Store-ready metadata, evidence bundle | Same bar after F2 product work |
+
+**H0 honesty (2026-07-09):** production Insights paths gate `InsightSampleData` behind `OPENBURNBAR_SAMPLE_MODE`; audit: [`evidence/h0-honesty/sample-path-audit-2026-07-09.md`](evidence/h0-honesty/sample-path-audit-2026-07-09.md).
+
+---
+
+## 0.1 G5 exit rubric (from master plan §7.3)
 
 | Criterion | Evidence location in this bundle |
 |-----------|----------------------------------|
@@ -35,9 +56,9 @@
 |---|---------|-------------------|---------------------|---------------|--------------|-----------------|----------------|
 | 1 | `dashboard` | `DashboardMainRoute.overview` | `DashboardPage` | `OpenBurnBar.App.Dashboard.Tests` | SQLCipher when configured; empty-state / sample only under `OPENBURNBAR_SAMPLE_MODE` | **Substituted** (`nav-dashboard`) | ledger; **#1256** |
 | 2 | `chat` | `DashboardMainRoute.chat` | `ChatHostPage` + Pretext host | `presentation/Chat/*Tests.cs` | Scripted/Unavailable drivers without live Hermes/ConPTY proof | **Blocked** (`nav-chat`) | design/0005; TONIGHT C1/C4 |
-| 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights/*Tests.cs` | Empty KPI honest path; live rollup incomplete | **Substituted** (`nav-insights`) | ledger |
+| 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights/*Tests.cs` + `tests/insights` | Empty widgets when sample mode off; live rollup incomplete | **Substituted** (`nav-insights`) | ledger; H0 audit |
 | 4 | `quota` | `DashboardMainRoute.quota` | `QuotaWorkspacePage` | `OpenBurnBar.App.Quota.Tests` + acquisition tests | Live coordinator preferred; parsers Real on separate row | **Substituted** (`nav-quota`); parsers **Real** (`quota-portable-parsers`) | evidence/quota; **#1250** |
-| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | presentation + storage tests | SQLCipher read seam; sample fallback still present in composition | **Substituted** (`nav-session-logs`) | evidence/storage; **#1267** |
+| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | presentation + storage tests | SQLCipher read seam; unconfigured → `SessionLogEmptySource` (honest empty) | **Substituted** (`nav-session-logs`) | evidence/storage; **#1267** |
 | 6 | `memory` | `DashboardMainRoute.memoryReview` | `MemoryPage` | `MemoryReviewInboxModelTests.cs` | Cloud when credentials; App Check/OAuth still Blocked | **Substituted** (`nav-memory`) | ledger; **#1267** |
 | 7 | `missionControl` | `DashboardMainRoute.missions` | `MissionControlPage` | `presentation/MissionControl/*Tests.cs` | Firestore host or empty host; DemoHost sample-only | **Substituted** (`nav-missions`) | WPD-0006 |
 | 8 | `budget` | Settings Budget + `BudgetLedger` | `BudgetPage` | `presentation/Budget/*Tests.cs` | In-memory / SQLCipher stores; cloud budget incomplete | **Substituted** (`nav-budget`) | ledger |
@@ -46,8 +67,10 @@
 | 11 | `onboarding` | Onboarding wizard | `OnboardingPage` | `OpenBurnBar.App.Onboarding.Tests` | Portable wizard + DB config; host proof outstanding | **Substituted** (`nav-onboarding`) | ledger |
 | 12 | `settings` | Settings shell + tabs | `SettingsPage` tree | `OpenBurnBar.App.Settings.Tests` | Placeholder residual + DataGated OAuth tabs remain | **Substituted** (`nav-settings`) | ledger |
 | 13 | `elderWand` | Analysis Models | `ElderWandPage` (palette) | `presentation/ElderWand*Tests.cs` | Empty without sample mode; drift D8 | **Substituted** (`nav-elder-wand`) | ledger |
+| 14 | `database` | `DashboardMainRoute.database` | `SurfaceStubPage` (IA-1 disclosure) | `windows/tests/shell/NavCatalogTests.cs` | Route key only; depth deferred | **Blocked** (`nav-database`) | master plan H5 |
+| 15 | `projects` | `DashboardMainRoute.projects` | `SurfaceStubPage` (IA-1 disclosure) | `windows/tests/shell/NavCatalogTests.cs` | Route key only; depth deferred | **Blocked** (`nav-projects`) | master plan H5; WPD-0003 |
 
-**Resolver ground truth:** all 12 `NavCatalog.All` keys + 1 `NavCatalog.Auxiliary` key (elderWand) = **13/13** map to real `Page` types in `SurfacePageResolver.cs`.  is only the `_ ` catch-all for unknown keys (**#1267** integration).
+**Resolver ground truth:** all `NavCatalog.All` keys (incl. IA-1 `database`/`projects`) + 1 `NavCatalog.Auxiliary` key (`elderWand`) map in `SurfacePageResolver.cs`. `database`/`projects` intentionally resolve to `SurfaceStubPage` as deferred disclosure (not Real). Unknown keys also fall through to the stub.
 
 ---
 

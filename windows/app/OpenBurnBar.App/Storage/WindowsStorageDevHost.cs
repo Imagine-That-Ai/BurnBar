@@ -87,7 +87,7 @@ internal static class WindowsStorageDevHost
     public static ISessionLogReadSource CreateSessionLogReadSource()
     {
         var (path, passphrase) = ResolveCredentials();
-        Func<ISessionLogReadSource> fallback = SessionLogSampleData.CreateReadSource;
+        Func<ISessionLogReadSource> fallback = SessionLogEmptySource.CreateReadSource;
 
         if (path is not null && passphrase is not null)
         {

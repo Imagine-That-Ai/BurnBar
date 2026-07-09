@@ -14,6 +14,13 @@ namespace OpenBurnBar.App.Presentation.Tests.Insights;
 /// </summary>
 public sealed class InsightsBuiltInTemplatesTests
 {
+    public InsightsBuiltInTemplatesTests()
+    {
+        // Gallery unit tests exercise sample-backed templates; production default is empty.
+        InsightsBuiltInTemplates.SampleFallbackEnabled = true;
+        InsightsBuiltInTemplates.RealDataResolver = null;
+    }
+
     [Fact]
     public void All_ContainsEightUniqueTemplates()
     {
@@ -80,10 +87,35 @@ public sealed class InsightsBuiltInTemplatesTests
     }
 
     [Fact]
-    public void Instantiate_CarriesSampleDataForRendering()
+    public void Instantiate_CarriesSampleDataForRendering_WhenSampleFallbackEnabled()
     {
+        InsightsBuiltInTemplates.SampleFallbackEnabled = true;
         InsightCanvas canvas = InsightsBuiltInTemplates.Find("cost-audit-7d")!.Instantiate();
         Assert.All(canvas.Widgets, w => Assert.NotNull(w.Data));
+        Assert.Contains(canvas.Widgets, w => w.Data is RankingData or TimeSeriesData or DistributionData);
+    }
+
+    [Fact]
+    public void ProductionDefault_DoesNotFabricateSampleSeriesForNonKpiWidgets()
+    {
+        try
+        {
+            InsightsBuiltInTemplates.SampleFallbackEnabled = false;
+            InsightsBuiltInTemplates.RealDataResolver = null;
+
+            InsightCanvas canvas = InsightsBuiltInTemplates.Find("cost-audit-7d")!.Instantiate();
+            Assert.All(
+                canvas.Widgets.Where(w => w.Kind != InsightWidgetKind.KpiTile),
+                w => Assert.IsType<EmptyData>(w.Data));
+            Assert.DoesNotContain(
+                canvas.Widgets,
+                w => w.Data is RankingData or TimeSeriesData or DistributionData or ScatterData or NarrativeData or RecommendationData);
+        }
+        finally
+        {
+            InsightsBuiltInTemplates.SampleFallbackEnabled = true;
+            InsightsBuiltInTemplates.RealDataResolver = null;
+        }
     }
 
     [Fact]
@@ -91,6 +123,7 @@ public sealed class InsightsBuiltInTemplatesTests
     {
         try
         {
+            InsightsBuiltInTemplates.SampleFallbackEnabled = true;
             _ = InsightsBuiltInTemplates.All.Count;
             InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
                 kind == InsightWidgetKind.KpiTile
@@ -116,6 +149,7 @@ public sealed class InsightsBuiltInTemplatesTests
         finally
         {
             InsightsBuiltInTemplates.RealDataResolver = null;
+            InsightsBuiltInTemplates.SampleFallbackEnabled = true;
         }
     }
 

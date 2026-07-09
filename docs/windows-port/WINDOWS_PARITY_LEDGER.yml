@@ -21,6 +21,9 @@
 
 version: 1
 updated: "2026-07-09"
+# Default product finish line (master plan §1). Never claim 100% without F1 or F2.
+finish_line: F1_Ship_Peer
+finish_line_doc: docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md
 schema_id: windows-parity-ledger-v1
 
 # macOS Command Deck primary sections (DashboardMainRoute.primarySections).
@@ -89,16 +92,19 @@ rows:
     macos_route: insights
     macos_capability: "DashboardMainRoute.insights editorial brief"
     windows_route: insights
-    windows_capability: "InsightsPage + CloudSyncInsightSource / empty KPI states"
+    windows_capability: "InsightsPage + CloudSyncInsightSource; production empty non-KPI; sample only under OPENBURNBAR_SAMPLE_MODE"
     status: Substituted
     evidence:
       - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+      - docs/windows-port/evidence/h0-honesty/sample-path-audit-2026-07-09.md
     tests:
       - windows/tests/presentation/Insights
+      - windows/tests/insights
     blocking_paths:
       - windows/app/OpenBurnBar.App/Insights
+      - windows/app/OpenBurnBar.App.Presentation/Insights
     owner_lane: wave-2-production-data
-    notes: "Empty-state honest without sample mode; live rollup evidence still incomplete."
+    notes: "H0: InsightSampleData impossible on production paths unless sample mode on. Live rollup/engine evidence still incomplete — not Real."
 
   - id: nav-quota
     macos_route: quota
@@ -121,10 +127,11 @@ rows:
     macos_route: sessionLogs
     macos_capability: "DashboardMainRoute.sessionLogs indexed conversations"
     windows_route: sessionLogs
-    windows_capability: "SessionLogsHostPage + SQLCipher read seam (B2) with sample fallback only in sample mode"
+    windows_capability: "SessionLogsHostPage + SQLCipher read seam (B2); unconfigured → SessionLogEmptySource (honest empty)"
     status: Substituted
     evidence:
       - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
+      - docs/windows-port/evidence/h0-honesty/sample-path-audit-2026-07-09.md
     tests:
       - windows/tests/presentation
       - windows/storage/OpenBurnBar.Storage.Tests
@@ -132,7 +139,7 @@ rows:
       - windows/app/OpenBurnBar.App/SessionLogs
       - windows/app/OpenBurnBar.App.Presentation/SessionLogs
     owner_lane: wave-2-production-data
-    notes: "Storage-backed path exists; WindowsStorageDevHost still carries sample fallback seams — not Real until production composition never names SampleData types as default."
+    notes: "H0 rename: SessionLogEmptySource is honest empty (not demo fiction). Not Real until live SQLCipher host evidence on Windows."
 
   - id: nav-memory
     macos_route: memoryReview
@@ -171,34 +178,37 @@ rows:
   - id: nav-database
     macos_route: database
     macos_capability: "DashboardMainRoute.database — browse tracked sessions"
-    windows_route: "(none — no NavCatalog key)"
-    windows_capability: "No dedicated Database destination; partial coverage via sessionLogs + Data Source settings"
+    windows_route: database
+    windows_capability: "IA-1 NavCatalog key + SurfaceStubPage deferred disclosure (not Real depth)"
     status: Blocked
     evidence:
       - docs/windows-port/WINDOWS_PARITY_LEDGER.md
+      - docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md
     tests:
-      - windows/app/OpenBurnBar.App/Shell/NavDestination.cs
+      - windows/tests/shell/NavCatalogTests.cs
     blocking_paths:
       - windows/app/OpenBurnBar.App/Shell/NavDestination.cs
       - windows/app/OpenBurnBar.App/Shell/SurfacePageResolver.cs
     owner_lane: wave-1-route-settings-parity
-    notes: "macOS primary section has no Windows peer route. Must add mapping or explicit DeferredApproved WPD before any Real claim."
+    notes: "IA-1 route scaffolding present; surface is explicit deferred disclosure stub. Blocked until IA-2+ System/Story depth with evidence — not Real."
 
   - id: nav-projects
     macos_route: projects
     macos_capability: "DashboardMainRoute.projects — group by project"
-    windows_route: "(none — no NavCatalog key)"
-    windows_capability: "No dedicated Projects destination; Mission Control exposes KnownProjects/RecentProjects chips only"
+    windows_route: projects
+    windows_capability: "IA-1 NavCatalog key + SurfaceStubPage deferred disclosure; Mission Control project chips only elsewhere"
     status: Blocked
     evidence:
       - docs/windows-port/WINDOWS_PARITY_LEDGER.md
+      - docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md
     tests:
-      - windows/app/OpenBurnBar.App/Shell/NavDestination.cs
+      - windows/tests/shell/NavCatalogTests.cs
     blocking_paths:
       - windows/app/OpenBurnBar.App/Shell/NavDestination.cs
+      - windows/app/OpenBurnBar.App/Shell/SurfacePageResolver.cs
       - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionSnapshotBuilder.cs
     owner_lane: wave-1-route-settings-parity
-    notes: "macOS primary section missing as top-level Windows nav. Project chips inside Mission Control are not full parity."
+    notes: "IA-1 route scaffolding present; surface is explicit deferred disclosure stub. WPD-0003 full static parser is F2/revive — not Real."
 
   - id: nav-budget
     macos_route: budget

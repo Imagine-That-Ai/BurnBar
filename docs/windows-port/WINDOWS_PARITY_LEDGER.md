@@ -2,7 +2,8 @@
 
 **Machine source of truth:** [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml)  
 **Scanner:** [`scripts/ci/verify-windows-parity-ledger.py`](../../scripts/ci/verify-windows-parity-ledger.py)  
-**Updated:** 2026-07-09 (Phase 0 / Wave 1 + review harden)
+**Updated:** 2026-07-09 (Phase 0 + H0 honesty / IA-1 scaffolding)  
+**Finish line:** **F1 Ship Peer** default (`finish_line: F1_Ship_Peer` in YAML). F2 is post-F1 unless product overrides.
 
 ## Why this exists
 
@@ -46,7 +47,7 @@ Exact patterns live in `FORBIDDEN_TOKEN_PATTERNS` in the scanner. Summary:
 | `DemoHost` | `*DemoHost*` demo hosts |
 | `MockAttestationProducer` | Mock App Check producer |
 | `dev-host` | Dev-host-only posture (case-insensitive) |
-| `Stub` | `\bStub[A-Z]\w*\b` / `\bSurfaceStub\w*\b` (e.g. `StubCliStream`, `StubFirebaseIdTokenSource`) |
+| `Stub` | `\bStub\b`, `\bStub[A-Z]\w*\b`, `\bIStub\w*\b`, `\bSurfaceStub\w*\b` (e.g. bare `Stub`, `StubCliStream`, `IStubTokenSource`, `StubFirebaseIdTokenSource`) |
 | `Placeholder` | `SettingsPlaceholderPage`, `PlaceholderCard`, `PLACEHOLDER` |
 | `deferred` | Compound only: `host-deferred`, `CI-deferred`, `adapter-deferred`, `dev-host/CI-deferred`, … — **not** prose “none are deferred” |
 | `Unavailable` | Production substitutes: `UnavailableChatStreamDriver`, `UnavailableHost`, `UnavailableSource`, `UnavailableDriver`, `UnavailableService`, `UnavailableClient` — **not** domain enums like `ProviderQuotaSourceKind.Unavailable` |

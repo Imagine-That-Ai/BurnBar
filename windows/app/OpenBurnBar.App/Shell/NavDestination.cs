@@ -40,19 +40,26 @@ public sealed class NavDestination
 }
 
 /// <summary>
-/// The canonical, ordered set of the 12 top-level surfaces the shell exposes. Kept in one
+/// The canonical, ordered set of top-level surfaces the shell exposes. Kept in one
 /// place so the NavigationView, the Command Palette, and later the real pages all agree.
 /// Glyphs are Segoe MDL2 Assets code points (approximate; final icon parity is a design pass).
 /// </summary>
 public static class NavCatalog
 {
-    /// <summary>The 12 destinations named in the W6-SHELL lane, in sidebar order.</summary>
+    /// <summary>
+    /// Sidebar/menu destinations in switcher order. Includes IA-1 route keys
+    /// <c>database</c> and <c>projects</c> (macOS primary sections) which resolve to an
+    /// explicit deferred-disclosure surface until IA-2+ depth lands — not fake Real pages.
+    /// </summary>
     public static IReadOnlyList<NavDestination> All { get; } = new List<NavDestination>
     {
         new("dashboard",         "Dashboard",          "All providers + models",          "\uE80F"),
         new("chat",              "Chat",               "Full-canvas chat",                "\uE8BD"),
         new("insights",          "Insights",           "Editorial brief & anomalies",     "\uE9D2"),
         new("quota",             "Quota",              "Subscriptions & limits",          "\uE9D9"),
+        // IA-1: macOS primary-section keys (Command Deck) — honest deferred disclosure only.
+        new("database",          "Database",           "Browse tracked sessions · depth deferred (IA-1)", "\uE8F1"),
+        new("projects",          "Projects",           "Group by project · depth deferred (IA-1)",        "\uE8B7"),
         new("sessionLogs",       "Session Logs",       "Indexed conversations",           "\uE81C"),
         new("memory",            "Memory",             "Review what OpenBurnBar learned", "\uEA37"),
         new("missionControl",    "Mission Control",    "Active runs & tasks",             "\uE7C1"),
@@ -66,8 +73,8 @@ public static class NavCatalog
     /// <summary>
     /// Secondary surfaces that are resolvable + navigable but are NOT sidebar rows — the Windows
     /// analog of macOS surfaces gated behind a Settings leaf / chat-header entry rather than one of
-    /// the 12 top-level nav destinations. Kept out of <see cref="All"/> so the 12-row sidebar +
-    /// Ctrl 1..9 parity holds; surfaced through the Command Palette so they stay reachable, and
+    /// the primary nav destinations. Kept out of <see cref="All"/> so Ctrl 1..9 primary shortcuts
+    /// stay scannable; surfaced through the Command Palette so they stay reachable, and
     /// resolved by <see cref="SurfacePageResolver"/> the same as any destination.
     ///
     /// Elder Wand (<c>.gatedFeature(.elderWand)</c>, macOS "Analysis Models") is the first: reached

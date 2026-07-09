@@ -1,6 +1,7 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.Insights;
 using OpenBurnBar.App.Presentation.Dashboard;
 
@@ -17,15 +18,12 @@ public sealed partial class InsightsPage : Page
     {
         // Install before InitializeComponent(): the XAML tree constructs TemplateGalleryView,
         // and its constructor materializes InsightsBuiltInTemplates.All immediately.
-        // The composed provider prefers local SQLCipher token_usage, then the signed-in
-        // cloud usage feed (users/{uid}/usage), so KPI tiles show live cloud aggregates
-        // when the local DB is empty but a session exists — the payoff of the #1304 gate.
+        // Production default is honest empty data; sample series only when opt-in.
+        InsightsBuiltInTemplates.SampleFallbackEnabled = RuntimeDataMode.SampleModeEnabled;
         var dashboardSummary = new Lazy<DashboardUsageSummary>(
             OpenBurnBar.App.Dashboard.DashboardUsageProvider.Load);
         InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
-            kind == InsightWidgetKind.KpiTile
-                ? CloudSyncInsightSource.ResolveKpi(kind, seed, dashboardSummary.Value)
-                : null;
+            CloudSyncInsightSource.Resolve(kind, seed, dashboardSummary.Value);
 
         InitializeComponent();
         GalleryView.TemplateSelected += OnTemplateSelected;
@@ -61,7 +59,10 @@ public sealed partial class InsightsPage : Page
         GalleryView.Visibility = Visibility.Collapsed;
         CanvasScroller.Visibility = Visibility.Visible;
         BackButton.Visibility = Visibility.Visible;
-        SampleChip.Visibility = Visibility.Visible;
+        // Sample chip only when the user explicitly opted into labeled demo data.
+        SampleChip.Visibility = RuntimeDataMode.SampleModeEnabled
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void OnBackClick(object sender, RoutedEventArgs e)
