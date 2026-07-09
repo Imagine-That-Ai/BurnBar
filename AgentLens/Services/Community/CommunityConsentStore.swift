@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 /// Tri-state community consent — L1 private analytics, L2 rankings (per geography tier), L3 Looking Glass.
 ///

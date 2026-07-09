@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 struct CommunityView: View {
     let dashboard: DashboardStore
@@ -334,8 +335,8 @@ struct CommunityView: View {
     private var heroTrendDelta: String? {
         guard dashboard.dailyPoints.count >= 2 else { return nil }
         let last = dashboard.dailyPoints.suffix(2)
-        let a = Double(last.first?.tokens ?? 0)
-        let b = Double(last.last?.tokens ?? 0)
+        let a = last.first?.value ?? 0
+        let b = last.last?.value ?? 0
         guard a > 0 else { return nil }
         let pct = ((b - a) / a) * 100
         return String(format: "%+.0f%% vs prior day", pct)
@@ -384,10 +385,10 @@ struct CommunityView: View {
     private func peerBars(user: Double, p50: Double, p75: Double, p90: Double) -> some View {
         let maxVal = max(user, p50, p75, p90, 1)
         return VStack(alignment: .leading, spacing: 8) {
-            peerBarRow("You", user / maxVal, MobileTheme.ember)
-            peerBarRow("p50", p50 / maxVal, MobileTheme.Colors.textMuted)
-            peerBarRow("p75", p75 / maxVal, MobileTheme.Colors.textMuted.opacity(0.8))
-            peerBarRow("p90", p90 / maxVal, MobileTheme.Colors.textMuted.opacity(0.6))
+            peerBarRow("You", fraction: user / maxVal, color: MobileTheme.ember)
+            peerBarRow("p50", fraction: p50 / maxVal, color: MobileTheme.Colors.textMuted)
+            peerBarRow("p75", fraction: p75 / maxVal, color: MobileTheme.Colors.textMuted.opacity(0.8))
+            peerBarRow("p90", fraction: p90 / maxVal, color: MobileTheme.Colors.textMuted.opacity(0.6))
         }
     }
 

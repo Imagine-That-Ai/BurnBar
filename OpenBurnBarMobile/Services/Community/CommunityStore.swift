@@ -2,6 +2,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 enum CommunityTimeWindow: String, CaseIterable, Identifiable, Sendable {
     case today

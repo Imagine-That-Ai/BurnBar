@@ -123,3 +123,32 @@ public extension Int {
         return tokenFormatter.string(from: NSNumber(value: self)) ?? "\(self)"
     }
 }
+
+public extension Int64 {
+    /// Session-level and detail views: K / short M.
+    func formatAsTokens() -> String {
+        if self >= 1_000_000_000 { return String(format: "%.2fB", Double(self) / 1_000_000_000) }
+        if self >= 1_000_000 { return String(format: "%.1fM", Double(self) / 1_000_000) }
+        if self >= 1_000 { return String(format: "%.1fK", Double(self) / 1_000) }
+        return tokenFormatter.string(from: NSNumber(value: self)) ?? "\(self)"
+    }
+
+    /// High-volume totals: auto-scale to millions or billions.
+    func formatAsTokenVolume() -> String {
+        if self >= 1_000_000_000 {
+            return String(format: "%.2fB", Double(self) / 1_000_000_000)
+        }
+        if self >= 1_000_000 {
+            return String(format: "%.2fM", Double(self) / 1_000_000)
+        }
+        if self >= 1_000 {
+            return String(format: "%.1fK", Double(self) / 1_000)
+        }
+        return tokenFormatter.string(from: NSNumber(value: self)) ?? "\(self)"
+    }
+
+    /// Raw comma-separated tokens (no K/M compacting).
+    func formatAsTokensRaw() -> String {
+        tokenFormatter.string(from: NSNumber(value: self)) ?? "\(self)"
+    }
+}

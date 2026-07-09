@@ -3,6 +3,7 @@ import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 enum CommunityServiceError: LocalizedError {
     case notSignedIn

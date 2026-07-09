@@ -1,5 +1,7 @@
 import Foundation
+import OpenBurnBarAnalytics
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 #if canImport(Combine)
 import Combine
 #endif
@@ -174,11 +176,11 @@ final class CommunityConsentStore: ObservableObject {
 
     func joinPayload(
         profile: FirestoreCommunityProfileDoc?
-    ) -> [String: Any] {
+    ) -> [String: String] {
         func wire(_ state: FirestoreConsentTriState) -> String {
             state == .granted ? "granted" : "declined"
         }
-        var payload: [String: Any] = [
+        var payload: [String: String] = [
             "l1Analytics": wire(l1Analytics),
             "l2Rankings": wire(l2Rankings),
             "l2World": wire(l2Tiers.world),

@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 /// Swift port of `functions/src/community/classifier.ts` — metadata-only purpose labels.
 /// `MODEL_BIAS` is an **ordered** list; iterate in array order and break at the first substring match.
@@ -158,12 +159,12 @@ enum ModelPurposeClassifier {
                 .map { (label: $0.key, share: $0.value) }
         }
         guard !modelSummaries.isEmpty else { return [] }
-        let total = Double(modelSummaries.reduce(0) { $0 + $1.totalTokens })
+        let total = Double(modelSummaries.reduce(0) { $0 + $1.tokens })
         guard total > 0 else { return [] }
         return modelSummaries.prefix(6).map { summary in
             let signals = Signals(keywords: [summary.model], model: summary.model)
             let cat = classify(signals).category
-            return (label: cat.rawValue, share: Double(summary.totalTokens) / total)
+            return (label: cat.rawValue, share: Double(summary.tokens) / total)
         }
     }
 }

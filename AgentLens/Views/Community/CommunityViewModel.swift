@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 @MainActor
 final class CommunityViewModel: ObservableObject {

@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 struct CommunityLeaderboardCard: View {
     let tier: FirestoreGeographyTier

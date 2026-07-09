@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 struct CommunityConsentCenter: View {
     @ObservedObject var consentStore: CommunityConsentStore

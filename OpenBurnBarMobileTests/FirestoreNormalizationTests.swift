@@ -442,6 +442,36 @@ final class FirestoreNormalizationTests: XCTestCase {
                         "legacy meta-only docs must still surface resetsAt on the bucket")
     }
 
+    func testQuotaSnapshotConfidenceAliasesDecodeThroughProductionNormalizer() throws {
+        let fixtures: [(name: String, raw: String?, expected: ProviderQuotaConfidence)] = [
+            ("estimated", "estimated", .medium),
+            ("unavailable", "unavailable", .stale),
+            ("unsupported", "default", .stale),
+            ("missing", nil, .stale)
+        ]
+
+        for fixture in fixtures {
+            var doc = Self.desktopSyncedQuotaDoc
+            if let raw = fixture.raw {
+                doc["confidence"] = raw
+            } else {
+                doc.removeValue(forKey: "confidence")
+            }
+
+            let snap = repo.decodeQuotaSnapshot(
+                from: doc,
+                docID: "cursor_confidence_\(fixture.name)"
+            )
+
+            XCTAssertNotNil(snap, "Expected \(fixture.name) confidence fixture to decode")
+            XCTAssertEqual(
+                snap?.confidence,
+                fixture.expected,
+                "Expected raw confidence \(fixture.raw ?? "nil") to normalize to \(fixture.expected.rawValue)"
+            )
+        }
+    }
+
     /// Bug B regression. Firestore-native docs carry `resetsAt` as a
     /// top-level Timestamp on the bucket; `sanitizeForJSON` flattens that
     /// to a `timeIntervalSinceReferenceDate` Double. The normalizer used
