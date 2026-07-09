@@ -40,6 +40,7 @@ assert.match(launchGateSource, /prove:paid-tier/);
 assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
 assert.match(launchGateSource, /firestoreDisasterRecovery/);
 assert.match(launchGateSource, /alertDeliverability/);
+assert.match(launchGateSource, /openburnbar-hosted-mcp/);
 assert.match(launchGateSource, /HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS/);
 assert.doesNotMatch(
   launchGateSource,

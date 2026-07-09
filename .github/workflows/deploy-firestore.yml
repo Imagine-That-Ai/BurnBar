@@ -18,6 +18,10 @@ on:
       - "scripts/ci/check-firestore-deploy-drift.mjs"
       - "scripts/ci/deploy-firebase-rules-releases.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
+      - "firestore-rules-tests/package.json"
+      - "firestore-rules-tests/package-lock.json"
+      - "firestore-rules-tests/storage-rules.test.js"
+      - "scripts/ci/test-storage-rules.sh"
   schedule:
     - cron: "15 11 * * 1"
   workflow_dispatch:
@@ -62,6 +66,9 @@ jobs:
 
       - name: Run Firestore rules emulator tests
         run: npm --prefix functions run test:firestore-rules
+
+      - name: Run Storage rules emulator tests
+        run: bash scripts/ci/test-storage-rules.sh
 
       - name: Prepare Firebase deploy config and CLI before auth
         run: |

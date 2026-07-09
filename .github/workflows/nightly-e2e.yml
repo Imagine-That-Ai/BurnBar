@@ -78,18 +78,17 @@ jobs:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: bash ./scripts/ci/inject-firebase-config-android.sh
 
-      # Android instrumented E2E is an HONEST, EXPLICIT GAP, not coverage.
-      # The previous ANDROID_E2E_ENABLED-gated steps were dead code: the repo
-      # variable never existed, so the smokes skipped silently on every run
-      # while reading as coverage (diligence 2026-06-10/11; tech-debt H9). The
-      # dead steps and their unset var are deleted here so the gap is visible.
-      # The scripts still exist (scripts/e2e/android-iroh-chat.sh,
-      # android-mercury-call.sh); arming them needs a validated emulator lane on
-      # macOS runners (boot + budget) — tracked as a follow-up, not silently
-      # gated behind an unset variable.
-      - name: Android instrumented E2E gap (explicit)
-        if: env.HAS_ANDROID_SECRETS == 'true'
-        run: echo "::warning title=Android instrumented E2E not run::Android instrumented smokes are an explicit gap in this lane — they have never run in CI. Arming them requires a validated macOS emulator lane (see scripts/e2e/android-*.sh)."
+      - name: Use Android Firebase template when secret is unavailable
+        if: env.HAS_ANDROID_SECRETS != 'true'
+        run: cp android/app/google-services.json.template android/app/google-services.json
+
+      - name: Android iroh chat instrumented E2E
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: arm64-v8a
+          script: ./scripts/e2e/android-iroh-chat.sh
 
   commercial-launch-gate:
     runs-on: ubuntu-latest

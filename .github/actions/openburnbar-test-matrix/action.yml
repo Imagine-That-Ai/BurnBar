@@ -142,6 +142,11 @@ runs:
       shell: bash
       run: npm --prefix functions run test:firestore-rules
 
+    - name: Run Storage rules emulator tests
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: bash scripts/ci/test-storage-rules.sh
+
     - name: Run iOS mobile unit tests
       if: inputs.enable_mobile == 'true'
       shell: bash
