@@ -32,6 +32,21 @@ describe('VAL-RPC-002 bridge behavior', () => {
     return b;
   }
 
+  it('runtimeCapabilities invokes and validates the native manifest', async () => {
+    const { makeAvailableRuntimeCapabilityManifest } = await import('./testing/bridgeStubs.js');
+    const manifest = makeAvailableRuntimeCapabilityManifest();
+    invoke.mockResolvedValueOnce(manifest);
+    const b = await bridge();
+    await expect(b.runtimeCapabilities()).resolves.toEqual(manifest);
+    expect(invoke).toHaveBeenCalledWith('runtime_capabilities');
+  });
+
+  it('runtimeCapabilities rejects malformed native data', async () => {
+    invoke.mockResolvedValueOnce({ schemaVersion: 1, capabilities: [] });
+    const b = await bridge();
+    await expect(b.runtimeCapabilities()).rejects.toThrow(/missing_ids/);
+  });
+
   it('toolApprovalRespond success path invokes tool_approval_respond', async () => {
     invoke.mockResolvedValueOnce({ ok: true });
     const b = await bridge();

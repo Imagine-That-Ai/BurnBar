@@ -5,6 +5,7 @@ import { fixtureSessionList } from '../../daemonFixture.js';
 import type { GatewayProxyRequest, LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useShellStore } from '../../state/shellStore.js';
+import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
 import { ChatSurface } from './ChatSurface.js';
 
 function mockBridge(handlers: {
@@ -16,6 +17,7 @@ function mockBridge(handlers: {
   const emptyList = async (): Promise<SessionListResult> => ({ sessions: [], nextCursor: null });
   const bridge: LinuxShellBridge = {
     daemonHealth: async () => ({ ok: true }),
+    runtimeCapabilities: availableRuntimeCapabilities,
     openDashboard: async () => {},
     quitApp: async () => {},
     trayDegraded: async () => false,

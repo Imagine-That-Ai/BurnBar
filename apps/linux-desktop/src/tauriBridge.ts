@@ -1,5 +1,9 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import type { DaemonHealth } from './daemonClient.js';
+import {
+  decodeRuntimeCapabilityManifest,
+  type RuntimeCapabilityManifest
+} from './runtimeCapabilities.js';
 import { ENTITLEMENT_DOC_IDS, evaluateEntitlement } from '@openburnbar/entitlements';
 
 // ─────────────────────────── P01: usage summary ───────────────────────────
@@ -375,6 +379,7 @@ export type GatewayProxyRequest = {
 
 export interface LinuxShellBridge {
   daemonHealth(): Promise<DaemonHealth>;
+  runtimeCapabilities(): Promise<RuntimeCapabilityManifest>;
   gatewayProbe(): Promise<boolean>;
   gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
   gatewayChatCancel(requestId: string): Promise<void>;
@@ -1299,6 +1304,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
   }
   return {
     daemonHealth: () => invoke<DaemonHealth>('daemon_health'),
+    runtimeCapabilities: async () =>
+      decodeRuntimeCapabilityManifest(await invoke<RawJsonValue>('runtime_capabilities')),
     gatewayProbe: () => invoke<boolean>('gateway_probe'),
     gatewayChatStream: (request, onChunk) => {
       const onEvent = new Channel<string>();

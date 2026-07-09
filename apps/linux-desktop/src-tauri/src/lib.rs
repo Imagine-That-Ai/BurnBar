@@ -590,14 +590,10 @@ fn daemon_health() -> DaemonHealth {
     probe_daemon_health()
 }
 
-fn trusted_openburnbar_cli() -> Result<PathBuf, String> {
+fn trusted_root_owned_executable(candidates: &[&str]) -> Option<PathBuf> {
     use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 
-    for path in [
-        "/usr/bin/openburnbar-cli",
-        "/usr/local/bin/openburnbar-cli",
-        "/opt/openburnbar/bin/openburnbar-cli",
-    ] {
+    for path in candidates {
         let candidate = PathBuf::from(path);
         let metadata = match fs::symlink_metadata(&candidate) {
             Ok(metadata) => metadata,
@@ -616,9 +612,198 @@ fn trusted_openburnbar_cli() -> Result<PathBuf, String> {
         {
             continue;
         }
-        return Ok(candidate);
+        return Some(candidate);
     }
-    Err("trusted_openburnbar_cli_unavailable".to_string())
+    None
+}
+
+fn trusted_openburnbar_cli() -> Result<PathBuf, String> {
+    trusted_root_owned_executable(&[
+        "/usr/bin/openburnbar-cli",
+        "/usr/local/bin/openburnbar-cli",
+        "/opt/openburnbar/bin/openburnbar-cli",
+    ])
+    .ok_or_else(|| "trusted_openburnbar_cli_unavailable".to_string())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeCapabilityCatalog {
+    schema_version: u32,
+    catalog_version: String,
+    capabilities: Vec<RuntimeCapabilityDefinition>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeCapabilityDefinition {
+    id: String,
+    domain: String,
+    evaluator: String,
+    unavailable_reason: String,
+    substitute: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeCapabilityEntry {
+    id: String,
+    domain: String,
+    state: String,
+    reason: String,
+    substitute: Option<String>,
+    source: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeCapabilityManifest {
+    schema_version: u32,
+    catalog_version: String,
+    shell_version: String,
+    daemon_version: Option<String>,
+    daemon_protocol_version: Option<u32>,
+    session_type: Option<String>,
+    desktop: Option<String>,
+    capabilities: Vec<RuntimeCapabilityEntry>,
+}
+
+const RUNTIME_CAPABILITY_CATALOG: &str =
+    include_str!("../../../../packaging/linux/runtime-capability-catalog.json");
+
+fn evaluate_runtime_capability(
+    definition: RuntimeCapabilityDefinition,
+    health: &DaemonHealth,
+    session_type: Option<&str>,
+    has_session_bus: bool,
+) -> Result<RuntimeCapabilityEntry, String> {
+    let available = |reason: &str, source: &str| {
+        (
+            "available".to_string(),
+            reason.to_string(),
+            source.to_string(),
+        )
+    };
+    let unavailable = || {
+        (
+            "unavailable".to_string(),
+            definition.unavailable_reason.clone(),
+            "runtime-probe".to_string(),
+        )
+    };
+    let (state, reason, source) = match definition.evaluator.as_str() {
+        "always" => available("Implemented by the native Linux shell.", "compiled-shell-contract"),
+        "daemon" if health.ok => available("Supported by the connected daemon.", "daemon-health"),
+        "daemon" => unavailable(),
+        "gateway" if health.ok && health.gateway_enabled == Some(true) => {
+            available("The authenticated loopback gateway is enabled.", "daemon-health")
+        }
+        "gateway" => unavailable(),
+        "trusted-cli" if trusted_openburnbar_cli().is_ok() => {
+            available("A trusted packaged CLI is installed.", "root-owned-package-path")
+        }
+        "trusted-cli" => unavailable(),
+        "secret-service"
+            if has_session_bus
+                && trusted_root_owned_executable(&[
+                    "/usr/bin/secret-tool",
+                    "/usr/local/bin/secret-tool",
+                    "/bin/secret-tool",
+                ])
+                .is_some() =>
+        {
+            available("Secret Service tooling and a session bus are present.", "native-tool-probe")
+        }
+        "secret-service" => unavailable(),
+        "kwallet"
+            if has_session_bus
+                && trusted_root_owned_executable(&[
+                    "/usr/bin/kwallet-query",
+                    "/usr/local/bin/kwallet-query",
+                    "/bin/kwallet-query",
+                ])
+                .is_some() =>
+        {
+            available("KWallet tooling and a session bus are present.", "native-tool-probe")
+        }
+        "kwallet" => unavailable(),
+        "portal" if has_session_bus => (
+            "degraded".to_string(),
+            "A session bus is present; each portal grant still requires a live request and user consent."
+                .to_string(),
+            "desktop-session-probe".to_string(),
+        ),
+        "portal" => unavailable(),
+        "tray" if !TRAY_INIT_FAILED.load(Ordering::Relaxed) => {
+            available("The native tray item initialized.", "tauri-tray-runtime")
+        }
+        "tray" => unavailable(),
+        "x11-overlay" if session_type == Some("x11") => {
+            available("The X11 session supports the constrained overlay tier.", "desktop-session-probe")
+        }
+        "x11-overlay" => (
+            "degraded".to_string(),
+            definition.unavailable_reason.clone(),
+            "desktop-session-probe".to_string(),
+        ),
+        "unavailable" => unavailable(),
+        unknown => return Err(format!("runtime_capability_unknown_evaluator:{unknown}")),
+    };
+    Ok(RuntimeCapabilityEntry {
+        id: definition.id,
+        domain: definition.domain,
+        state,
+        reason,
+        substitute: definition.substitute,
+        source,
+    })
+}
+
+fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> {
+    let catalog: RuntimeCapabilityCatalog = serde_json::from_str(RUNTIME_CAPABILITY_CATALOG)
+        .map_err(|error| format!("runtime_capability_catalog_invalid:{error}"))?;
+    if catalog.schema_version != 1 {
+        return Err("runtime_capability_schema_unsupported".to_string());
+    }
+    let health = probe_daemon_health();
+    let session_type = std::env::var("XDG_SESSION_TYPE")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let has_session_bus = std::env::var("DBUS_SESSION_BUS_ADDRESS")
+        .ok()
+        .is_some_and(|value| !value.trim().is_empty());
+    let capabilities = catalog
+        .capabilities
+        .into_iter()
+        .map(|definition| {
+            evaluate_runtime_capability(
+                definition,
+                &health,
+                session_type.as_deref(),
+                has_session_bus,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(RuntimeCapabilityManifest {
+        schema_version: catalog.schema_version,
+        catalog_version: catalog.catalog_version,
+        shell_version: env!("CARGO_PKG_VERSION").to_string(),
+        daemon_version: health.daemon_version,
+        daemon_protocol_version: health.protocol_version,
+        session_type,
+        desktop,
+        capabilities,
+    })
+}
+
+#[tauri::command]
+async fn runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> {
+    tauri::async_runtime::spawn_blocking(evaluate_runtime_capabilities)
+        .await
+        .map_err(|error| format!("runtime_capability_probe_join_failed:{error}"))?
 }
 
 fn integration_label(kind: &str) -> &'static str {
@@ -1940,6 +2125,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             daemon_health,
+            runtime_capabilities,
             gateway_probe,
             gateway_chat_stream,
             gateway_chat_cancel,
@@ -2137,5 +2323,30 @@ mod tests {
         assert!(source.contains("/usr/local/bin/openburnbar-cli"));
         assert!(source.contains("/opt/openburnbar/bin/openburnbar-cli"));
         assert!(!source.contains("Command::new(\"openburnbar-cli\")"));
+    }
+
+    #[test]
+    fn runtime_capability_catalog_has_unique_ids_and_known_evaluators() {
+        let catalog: RuntimeCapabilityCatalog =
+            serde_json::from_str(RUNTIME_CAPABILITY_CATALOG).unwrap();
+        assert_eq!(catalog.schema_version, 1);
+        let mut ids = std::collections::HashSet::new();
+        for capability in catalog.capabilities {
+            assert!(ids.insert(capability.id));
+            assert!(matches!(
+                capability.evaluator.as_str(),
+                "always"
+                    | "daemon"
+                    | "gateway"
+                    | "trusted-cli"
+                    | "secret-service"
+                    | "kwallet"
+                    | "portal"
+                    | "tray"
+                    | "x11-overlay"
+                    | "unavailable"
+            ));
+        }
+        assert!(ids.len() >= 20);
     }
 }

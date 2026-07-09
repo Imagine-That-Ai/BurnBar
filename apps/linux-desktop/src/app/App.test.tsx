@@ -21,6 +21,8 @@ function resetShell(): void {
     skin: 'editorial',
     bridge: null,
     bridgeReady: true,
+    runtimeCapabilities: null,
+    capabilityError: null,
     fixtureMode: false
   });
 }

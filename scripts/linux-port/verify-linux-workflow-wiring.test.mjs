@@ -45,7 +45,10 @@ function valid() {
       'open_external_url',
       'external_url_host_refused',
       'trusted_openburnbar_cli',
-      '/usr/bin/openburnbar-cli'
+      '/usr/bin/openburnbar-cli',
+      'runtime_capabilities',
+      'RUNTIME_CAPABILITY_CATALOG',
+      'runtime_capability_unknown_evaluator'
     ].join('\n'),
     capability: '{"permissions":["core:default"]}',
     tauriConfig: '{"csp":"connect-src self ipc: tauri:"}',
@@ -55,8 +58,15 @@ function valid() {
       "invoke<boolean>('gateway_probe')",
       "invoke<void>('gateway_chat_stream'",
       "invoke<void>('gateway_chat_cancel'",
-      "invoke<void>('open_external_url'"
-    ].join('\n')
+      "invoke<void>('open_external_url'",
+      "invoke<RawJsonValue>('runtime_capabilities')",
+      'decodeRuntimeCapabilityManifest',
+      'runtime_capability_manifest_missing_ids'
+    ].join('\n'),
+    runtimeCatalog: '{"schemaVersion": 1}',
+    runtimeSchema: '{"additionalProperties": false}',
+    routes: 'requiredCapability\nusage.read\nmedia.mercury',
+    surfaceBoundary: 'capabilityBlocksSurface\nfindRuntimeCapability\ncapabilityError'
   };
 }
 
@@ -152,4 +162,19 @@ test('generic shell, renderer network, and production fixture activation drift f
   const ambientPathCommand = valid();
   ambientPathCommand.rustBridge += '\nCommand::new("openburnbar-cli")';
   assert.equal(verifyLinuxWorkflowWiring(ambientPathCommand).passed, false);
+});
+
+test('runtime capability catalog, evaluator, bridge, route, and boundary drift fail', () => {
+  for (const [field, marker] of [
+    ['rustBridge', 'runtime_capabilities'],
+    ['rendererBridge', 'decodeRuntimeCapabilityManifest'],
+    ['routes', 'requiredCapability'],
+    ['surfaceBoundary', 'capabilityBlocksSurface'],
+    ['runtimeCatalog', '"schemaVersion": 1'],
+    ['runtimeSchema', '"additionalProperties": false']
+  ]) {
+    const input = valid();
+    input[field] = input[field].replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${field}:${marker}`);
+  }
 });
