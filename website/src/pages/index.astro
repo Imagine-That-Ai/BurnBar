@@ -22,9 +22,17 @@ const previewProviders = PROVIDERS_PRIMARY.filter((p) =>
   )
 );
 const surfaceShowcase = SURFACES.filter((s) =>
-  ["macos", "linux", "ios", "cursor", "daemon", "cli", "widgets", "smart-display", "android"].includes(
-    s.id
-  )
+  [
+    "macos",
+    "linux",
+    "ios",
+    "cursor",
+    "daemon",
+    "cli",
+    "widgets",
+    "smart-display",
+    "android"
+  ].includes(s.id)
 );
 
 // Provider counts come from the data so headline copy can never drift.
