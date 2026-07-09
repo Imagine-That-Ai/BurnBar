@@ -86,14 +86,27 @@ if ($Direct) {
 $runnerPath = Join-Path $OutputDirectory "run-harness-task.ps1"
 $exitPath = Join-Path $OutputDirectory "exit-code.txt"
 $consolePath = Join-Path $OutputDirectory "harness-console.log"
-$quotedArgs = ($harnessArgs | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' }) -join " "
+$argsPath = Join-Path $OutputDirectory "harness-args.json"
+
+function ConvertTo-PowerShellSingleQuotedLiteral {
+    param([Parameter(Mandatory = $true)][string]$Value)
+    return "'" + ($Value -replace "'", "''") + "'"
+}
+
+Set-Content -LiteralPath $argsPath -Encoding UTF8 -Value ($harnessArgs | ConvertTo-Json -Depth 4)
+
+$repoRootLiteral = ConvertTo-PowerShellSingleQuotedLiteral $RepoRoot
+$argsPathLiteral = ConvertTo-PowerShellSingleQuotedLiteral $argsPath
+$consolePathLiteral = ConvertTo-PowerShellSingleQuotedLiteral $consolePath
+$exitPathLiteral = ConvertTo-PowerShellSingleQuotedLiteral $exitPath
 Set-Content -LiteralPath $runnerPath -Encoding UTF8 -Value @"
 `$ErrorActionPreference = "Stop"
-Set-Location "$RepoRoot"
+Set-Location -LiteralPath $repoRootLiteral
 try {
     `$previousErrorActionPreference = `$ErrorActionPreference
     `$ErrorActionPreference = "Continue"
-    `$dotnetOutput = & dotnet $quotedArgs 2>&1
+    `$harnessArgs = @(Get-Content -LiteralPath $argsPathLiteral -Raw | ConvertFrom-Json)
+    `$dotnetOutput = & dotnet @harnessArgs 2>&1
     `$code = `$LASTEXITCODE
     `$dotnetOutput | ForEach-Object {
         if (`$_ -is [System.Management.Automation.ErrorRecord]) {
@@ -101,14 +114,14 @@ try {
         } else {
             `$_.ToString()
         }
-    } | Set-Content -LiteralPath "$consolePath" -Encoding UTF8
+    } | Set-Content -LiteralPath $consolePathLiteral -Encoding UTF8
     `$ErrorActionPreference = `$previousErrorActionPreference
 } catch {
     `$ErrorActionPreference = "Continue"
     `$code = 1
-    `$_.Exception.ToString() | Tee-Object -FilePath "$consolePath" -Append
+    `$_.Exception.ToString() | Tee-Object -FilePath $consolePathLiteral -Append
 }
-Set-Content -LiteralPath "$exitPath" -Value `$code -Encoding ASCII
+Set-Content -LiteralPath $exitPathLiteral -Value `$code -Encoding ASCII
 exit `$code
 "@
 
