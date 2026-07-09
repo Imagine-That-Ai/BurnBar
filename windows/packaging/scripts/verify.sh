@@ -119,7 +119,7 @@ PY
 
 echo "== SOFT: full JSON-Schema validation (jsonschema, if available) =="
 if python3 -c "import jsonschema" 2>/dev/null; then
-  python3 - "$pkg_root" <<'PY'
+  if ! python3 - "$pkg_root" <<'PY'
 import json, sys, urllib.request, glob
 root = sys.argv[1]
 import jsonschema, yaml
@@ -149,14 +149,16 @@ except jsonschema.ValidationError as e:
     print(f"FAIL jsonschema portable-layout: {e.message}", file=sys.stderr); bad=1
 sys.exit(bad)
 PY
-  [ $? -ne 0 ] && fail=1
+  then
+    fail=1
+  fi
 else
   skip "jsonschema not importable (structural rules above already ran as the hard gate)"
 fi
 
 echo "== SOFT: nuspec NuGet-core XSD validation =="
 xsd_tmp="$(mktemp)"
-if curl -sSL --max-time 15 -o "$xsd_tmp" "https://raw.githubusercontent.com/NuGet/NuGet.Client/dev/src/NuGet.Core/NuGet.Packaging/compiler/resources/nuspec.xsd" 2>/dev/null && [ -s "$xsd_tmp" ]; then
+if curl -fsSL --max-time 15 -o "$xsd_tmp" "https://raw.githubusercontent.com/NuGet/NuGet.Client/dev/src/NuGet.Core/NuGet.Packaging/compiler/resources/nuspec.xsd" 2>/dev/null && [ -s "$xsd_tmp" ]; then
   ns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd"
   sed "s|{0}|$ns|g" "$xsd_tmp" > "${xsd_tmp}.ns"
   core_tmp="$(mktemp).nuspec"

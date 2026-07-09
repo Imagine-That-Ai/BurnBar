@@ -10,6 +10,11 @@ package → sign the update feed → SBOM + OpenVEX + Sigstore — adapted to Wi
   version (the `portable-verify` job enforces version consistency at tag time), **or**
 - `workflow_dispatch` with a `version` input.
 
+Manual dispatch has an `allow_unsigned` switch for Windows-runner build/package validation only. It
+lets the workflow publish the WinUI app, stage portable zips, and try MSIX packaging up to the
+signing boundary without Authenticode or update-feed signing. It is rejected for `windows-v*` tag
+releases: real tags must have Azure Trusted Signing plus the pinned update-feed key configured.
+
 ## Jobs
 
 1. **resolve-release** — derive `X.Y.Z` from the tag/input.
@@ -42,8 +47,16 @@ pipeline therefore signs **and timestamps in one step** (`timestamp-rfc3161`) an
 | `WINDOWS_CODESIGN_AZURE_CLIENT_SECRET` | Service-principal secret (auth) |
 | `WINDOWS_UPDATE_SIGNING_KEY` | **base64 of the 32-byte Ed25519 private seed** — the pinned update key's private half. Independent of Authenticode. |
 
-The cert-dependent steps are gated on these secrets and emit a `::warning:: deferred` when unset,
-so the workflow is a faithful production pipeline that no-ops until the **W0** cert lands.
+| Variable | Purpose |
+| --- | --- |
+| `WINDOWS_UPDATE_PUBLIC_KEY` | The matching public key (`publicKeyBase64`) the updater pins; release CI confirms it matches `WINDOWS_UPDATE_SIGNING_KEY`. |
+
+The signed-release path is fail-closed. `scripts/ci/verify-windows-release-signing-preflight.sh`
+runs before build/signing and exits with a specific error if the Azure identity validation is still
+pending (`WINDOWS_CODESIGN_CERT_PROFILE_NAME` missing), if the Trusted Signing secrets are partial,
+if `WINDOWS_UPDATE_SIGNING_KEY` is absent, or if `WINDOWS_UPDATE_PUBLIC_KEY` is absent. The only
+path that can continue unsigned is an explicit manual `allow_unsigned` dry-run, and that path never
+applies to `windows-v*` tag releases.
 
 ## Update-key management
 
@@ -54,12 +67,14 @@ dotnet run --project windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool -- gen-key
 ```
 
 - Store `privateKeyBase64` as the `WINDOWS_UPDATE_SIGNING_KEY` secret (release-only).
-- Pin `publicKeyBase64` into the shipped app as the trusted update key (see
-  `OpenBurnBar.Dist.UpdateFeed.PinnedUpdateKey`). An all-zero placeholder pin is **rejected**
+- Store `publicKeyBase64` as the `WINDOWS_UPDATE_PUBLIC_KEY` repo variable and pin that same value
+  into the shipped app as the trusted update key (see `OpenBurnBar.Dist.UpdateFeed.PinnedUpdateKey`).
+  An all-zero placeholder pin is **rejected**
   (fail-closed), so a build that forgets to inject the real pin trusts *no* updates.
 
 The release only needs the private secret — it recovers the public pin with
-`derive-pubkey --private-key-env WINDOWS_UPDATE_SIGNING_KEY` and self-verifies the feed under it.
+`derive-pubkey --private-key-env WINDOWS_UPDATE_SIGNING_KEY`, checks it equals
+`WINDOWS_UPDATE_PUBLIC_KEY`, and self-verifies the feed under it.
 
 ## macOS ↔ Windows parity
 
@@ -74,7 +89,9 @@ The release only needs the private secret — it recovers the public pin with
 
 ## Deferred (needs the W0 cert + Windows runner)
 
-- Real MSIX/EXE build + Authenticode signing (`azure/trusted-signing-action`).
+- Real signed MSIX/EXE release (`azure/trusted-signing-action`) until Azure identity validation is
+  accepted and `WINDOWS_CODESIGN_CERT_PROFILE_NAME` is set. Unsigned manual dry-runs can still prove
+  the build/package path up to that boundary.
 - winget manifest + Microsoft Store submission (a follow-up channel on top of the signed zip).
 - Bumping `windows/app/OpenBurnBar.App/app.manifest` `assemblyIdentity version` to the release
   version at tag time (the version-consistency gate enforces this once the tag is cut).
