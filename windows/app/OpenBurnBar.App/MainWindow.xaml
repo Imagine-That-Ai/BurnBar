@@ -5,14 +5,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:shell="using:OpenBurnBar.App.Shell"
     xmlns:theme="using:OpenBurnBar.App.Theme"
-    Title="OpenBurnBar"
-    RequestedTheme="Dark">
+    Title="OpenBurnBar">
 
     <!--
       Root is intentionally transparent so Mica/Acrylic (LiquidGlass.ApplyWindowBackdrop)
-      shows through. Dark Pensieve is forced for shell parity with macOS.
+      shows through. ThemeService sets RequestedTheme=Dark on this root for Pensieve parity.
     -->
-    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent">
+    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent" RequestedTheme="Dark">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
