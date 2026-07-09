@@ -14,8 +14,8 @@ import OpenBurnBarCore
 /// 2. Joins once at finalize time (single O(n) allocation).
 /// 3. Caps total `fullText` byte count at `maxFullTextBytes` (default 1MB).
 ///    Once the cap is reached, subsequent text fragments are counted for
-///    word/message metrics but not appended to `fullText`. This bounds peak
-///    memory regardless of session length.
+///    word/message metrics, while bounded credential-match snippets from
+///    overflow text are retained so security scans do not lose recall.
 public final class ClaudeConversationAccumulator {
     public private(set) var fullText = ""
     public private(set) var firstUserText: String?
@@ -38,13 +38,18 @@ public final class ClaudeConversationAccumulator {
     private var fullTextParts: [String] = []
     private var fullTextByteCount: Int = 0
     private var fullTextCapped = false
+    private var credentialOverflowSnippetByteCount = 0
     /// Maximum byte count for `fullText`. Once exceeded, new text fragments
-    /// are counted for metrics but not appended. 1MB covers ~200K words,
+    /// are counted for metrics but not fully appended. 1MB covers ~200K words,
     /// sufficient for relevance search on any conversation.
     let maxFullTextBytes: Int
+    /// Bounded extra transcript surface reserved for credential-looking text
+    /// that appears after `maxFullTextBytes`.
+    let maxCredentialOverflowSnippetBytes: Int
 
-    public init(maxFullTextBytes: Int = 1 << 20) {
+    public init(maxFullTextBytes: Int = 1 << 20, maxCredentialOverflowSnippetBytes: Int = 64 << 10) {
         self.maxFullTextBytes = maxFullTextBytes
+        self.maxCredentialOverflowSnippetBytes = maxCredentialOverflowSnippetBytes
     }
 
     public func ingest(jsonLine: [String: Any]) {
@@ -178,18 +183,25 @@ public final class ClaudeConversationAccumulator {
             let partBytes = formatted.utf8.count
             if fullTextByteCount + partBytes > maxFullTextBytes {
                 // Cap reached: append what fits (truncated to the byte budget)
-                // and mark as capped. Subsequent calls skip the append.
+                // and mark as capped. Subsequent calls keep only credential
+                // snippets needed by the exposure scanner.
                 let remaining = maxFullTextBytes - fullTextByteCount
+                var unappendedText = formatted
                 if remaining > 0 {
-                    let truncated = Self.truncateToUTF8Bytes(text, maxBytes: remaining)
+                    let truncated = Self.truncateToUTF8Bytes(formatted, maxBytes: remaining)
                     fullTextParts.append(truncated)
                     fullTextByteCount += truncated.utf8.count
+                    let tailStart = formatted.index(formatted.startIndex, offsetBy: truncated.count)
+                    unappendedText = String(formatted[tailStart...])
                 }
+                appendCredentialOverflowSnippets(from: unappendedText)
                 fullTextCapped = true
             } else {
                 fullTextParts.append(formatted)
                 fullTextByteCount += partBytes
             }
+        } else {
+            appendCredentialOverflowSnippets(from: formatted)
         }
 
         let words = text.split { $0.isWhitespace || $0.isNewline }.filter { !$0.isEmpty }.count
@@ -205,6 +217,64 @@ public final class ClaudeConversationAccumulator {
             }
         }
     }
+
+    private func appendCredentialOverflowSnippets(from text: String) {
+        guard text.isEmpty == false,
+              credentialOverflowSnippetByteCount < maxCredentialOverflowSnippetBytes,
+              Self.credentialExposureRegexes.isEmpty == false else { return }
+
+        let nsText = text as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        var seenRanges = Set<String>()
+
+        for regex in Self.credentialExposureRegexes {
+            let matches = regex.matches(in: text, range: fullRange)
+            for match in matches {
+                let rangeKey = "\(match.range.location):\(match.range.length)"
+                guard seenRanges.insert(rangeKey).inserted else { continue }
+                appendCredentialOverflowSnippet(Self.credentialOverflowSnippet(text: nsText, matchRange: match.range))
+            }
+        }
+    }
+
+    private func appendCredentialOverflowSnippet(_ snippet: String) {
+        let remaining = maxCredentialOverflowSnippetBytes - credentialOverflowSnippetByteCount
+        guard remaining > 0 else { return }
+
+        let formatted = "## Security Scan Overflow\n\n\(snippet)"
+        let clipped = Self.truncateToUTF8Bytes(formatted, maxBytes: remaining)
+        guard clipped.isEmpty == false else { return }
+
+        fullTextParts.append(clipped)
+        credentialOverflowSnippetByteCount += clipped.utf8.count
+    }
+
+    private static func credentialOverflowSnippet(text: NSString, matchRange: NSRange, radius: Int = 160) -> String {
+        let start = max(0, matchRange.location - radius)
+        let end = min(text.length, matchRange.location + matchRange.length + radius)
+        let snippetRange = NSRange(location: start, length: max(0, end - start))
+        let raw = text.substring(with: snippetRange)
+        let compact = raw
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var prefix = ""
+        var suffix = ""
+        if start > 0 { prefix = "..." }
+        if end < text.length { suffix = "..." }
+        return prefix + compact + suffix
+    }
+
+    private static let credentialExposureRegexes: [NSRegularExpression] = {
+        let patterns = [
+            #"(?i)\b[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?TOKEN|TOKEN|SECRET|PASSWORD)\b\s*[:=]\s*["']?[A-Za-z0-9_\-./+=]{8,}"#,
+            #"\bsk-[A-Za-z0-9]{16,}\b"#,
+            #"\bAIza[0-9A-Za-z\-_]{16,}\b"#,
+            #"\bgh[pousr]_[A-Za-z0-9]{20,}\b"#
+        ]
+        return patterns.compactMap { try? NSRegularExpression(pattern: $0) } // try?-ok(literal regex compile)
+    }()
 
     /// Truncates a string to at most `maxBytes` UTF-8 bytes without splitting
     /// a multi-byte scalar. Returns a substring of the first complete scalars

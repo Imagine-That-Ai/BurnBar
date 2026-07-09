@@ -15,6 +15,26 @@ extension UsageStore {
         }
     }
 
+    func fetchUsage(in dateRange: ClosedRange<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await dbQueue.read { db -> [TokenUsage] in
+            try Self.fetchUsageRows(db: db, dateRange: dateRange, limit: limit)
+        }
+    }
+
+    func fetchUsageCostBreakdown(in dateRange: ClosedRange<Date>, limit: Int = 20) async throws -> UsageCostBreakdown {
+        try await dbQueue.read { db in
+            let aggregateRows = try Self.fetchUsageAggregateRows(db: db, dateRange: dateRange)
+            let totals = Self.usageTotals(from: aggregateRows)
+            return UsageCostBreakdown(
+                sessionCount: totals.sessionCount,
+                totalTokens: totals.tokens,
+                totalCost: totals.cost,
+                modelCosts: Self.costBuckets(from: aggregateRows, label: \.model, limit: limit),
+                projectCosts: try Self.fetchProjectCostBuckets(db: db, dateRange: dateRange, limit: limit)
+            )
+        }
+    }
+
     func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
         let calendar = Calendar.current
         let now = Date()

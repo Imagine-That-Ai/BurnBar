@@ -275,6 +275,8 @@ struct HermesSquareRoot: View {
             syncMercuryPeer(peer)
         }
         .onDisappear {
+            searchReindexTask?.cancel()
+            searchReindexTask = nil
             mercuryPeerSource.stop()
         }
         .sheet(isPresented: $isShowingDiscover) {

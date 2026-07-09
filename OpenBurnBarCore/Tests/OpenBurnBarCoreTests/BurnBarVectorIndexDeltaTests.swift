@@ -236,11 +236,31 @@ final class BurnBarVectorIndexDeltaTests: XCTestCase {
         delta.append(key: 2, vector: [0.0, 1.0], chunkID: "c2")
         XCTAssertEqual(delta.appendedCount, 2)
 
-        // Tombstone an appended key — should remove from appended, not add to tombstoned.
+        // Tombstone an appended key: remove the delta copy and keep a
+        // tombstone so any stale base snapshot copy stays hidden.
         delta.tombstone(key: 1)
         XCTAssertEqual(delta.appendedCount, 1)
-        XCTAssertEqual(delta.tombstonedCount, 0)
+        XCTAssertEqual(delta.tombstonedCount, 1)
         XCTAssertFalse(delta.isEmpty)
+    }
+
+    func test_delta_reAddThenTombstone_filtersStaleBaseResult() throws {
+        let baseVectors: [(key: UInt64, vector: [Float], chunkID: String)] = [
+            (1, [1.0, 0.0, 0.0], "chunk-1"),
+            (2, [0.9, 0.1, 0.0], "chunk-2")
+        ]
+        let (snapshot, dir) = try buildSnapshot(vectors: baseVectors, dimensions: 3)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let overlay = BurnBarVectorIndexDeltaOverlay(baseSnapshot: snapshot)
+
+        var delta = BurnBarVectorIndexDelta(dimensions: 3, distanceMetric: .cosine)
+        delta.append(key: 1, vector: [0.0, 1.0, 0.0], chunkID: "chunk-1")
+        delta.tombstone(key: 1)
+        overlay.updateDelta(delta)
+
+        let candidates = try overlay.candidates(for: [1.0, 0.0, 0.0], limit: 2)
+        XCTAssertEqual(candidates.map(\.chunkID), ["chunk-2"])
     }
 
     // MARK: - Parity: delta overlay vs. full rebuild

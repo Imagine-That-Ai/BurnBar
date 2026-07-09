@@ -925,11 +925,9 @@ jobs:
     needs: [path-filter]
     if: >-
       github.event_name != 'pull_request' &&
-      needs.path-filter.outputs.hermes_iroh == 'true' &&
-      vars.ANDROID_E2E_ENABLED == 'true'
+      needs.path-filter.outputs.hermes_iroh == 'true'
     runs-on: macos-26
     timeout-minutes: 45
-    continue-on-error: true
     env:
       ALLOW_ANDROID_FIREBASE_SECRET_RUN: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}

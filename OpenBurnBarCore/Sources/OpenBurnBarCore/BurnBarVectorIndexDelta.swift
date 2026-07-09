@@ -80,9 +80,8 @@ public struct BurnBarVectorIndexDelta: Sendable {
         if let idx = appended.firstIndex(where: { $0.key == key }) {
             appended.remove(at: idx)
             chunkIDByKey.removeValue(forKey: key)
-        } else {
-            tombstoned.insert(key)
         }
+        tombstoned.insert(key)
     }
 
     public var appendedCount: Int { appended.count }
