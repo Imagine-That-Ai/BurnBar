@@ -204,6 +204,57 @@ public sealed class CloudSyncInsightSourceRuntimeTests
     }
 
     [Fact]
+    public void SampleMode_WithLive_ChipAndEmptyCopy_DoNotClaimSamplePreview()
+    {
+        try
+        {
+            EnableSampleMode();
+            var live = new DashboardUsageSummary(1, 1, 1, HasData: true, DashboardUsageOrigin.Local);
+            var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
+
+            Assert.False(CloudSyncInsightSource.InstallsSamplePayloads(live));
+            Assert.False(CloudSyncInsightSource.ShowsSamplePreviewChip(live));
+            Assert.True(CloudSyncInsightSource.InstallsSamplePayloads(empty));
+            Assert.True(CloudSyncInsightSource.ShowsSamplePreviewChip(empty));
+
+            EmptyData hybridEmpty = Assert.IsType<EmptyData>(
+                CloudSyncInsightSource.Resolve(InsightWidgetKind.BarRanking, seed: 16, live));
+            // Must not use sample-mode "Demo data is labeled" copy when samples were withheld.
+            Assert.DoesNotContain("Demo data is labeled", hybridEmpty.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Connect", hybridEmpty.Reason, StringComparison.OrdinalIgnoreCase);
+
+            // Unmapped KPI under live still uses connect/engine reason, not demo-labeled copy.
+            EmptyData unmappedKpi = Assert.IsType<EmptyData>(
+                CloudSyncInsightSource.ResolveKpi(InsightWidgetKind.KpiTile, seed: 3, live));
+            Assert.DoesNotContain("Demo data is labeled", unmappedKpi.Reason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            ClearSampleMode();
+        }
+    }
+
+    [Fact]
+    public void SampleMode_WithoutLive_EmptyCopy_MentionsLabeledDemo()
+    {
+        try
+        {
+            EnableSampleMode();
+            // Sample path installs RankingData, not EmptyData — empty copy only when not installing samples.
+            // Production empty with sample mode off uses connect wording; sample+no-live uses sample payloads.
+            ClearSampleMode();
+            var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
+            EmptyData noSample = Assert.IsType<EmptyData>(
+                CloudSyncInsightSource.Resolve(InsightWidgetKind.BarRanking, seed: 1, empty));
+            Assert.Contains("Connect", noSample.Reason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            ClearSampleMode();
+        }
+    }
+
+    [Fact]
     public void Composition_SampleFallbackFalse_ResolverEmptySummary_YieldsEmptyNonKpi()
     {
         // Mirrors InsightsPage production wiring without WinUI.

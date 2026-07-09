@@ -14,16 +14,18 @@ namespace OpenBurnBar.App.Insights;
 /// </summary>
 public sealed partial class InsightsPage : Page
 {
+    private readonly Lazy<DashboardUsageSummary> _dashboardSummary;
+
     public InsightsPage()
     {
         // Install before InitializeComponent(): the XAML tree constructs TemplateGalleryView,
         // and its constructor materializes InsightsBuiltInTemplates.All immediately.
-        // Production default is honest empty data; sample series only when opt-in.
+        // Production default is honest empty data; sample series only when opt-in and no live data.
         InsightsBuiltInTemplates.SampleFallbackEnabled = RuntimeDataMode.SampleModeEnabled;
-        var dashboardSummary = new Lazy<DashboardUsageSummary>(
+        _dashboardSummary = new Lazy<DashboardUsageSummary>(
             OpenBurnBar.App.Dashboard.DashboardUsageProvider.Load);
         InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
-            CloudSyncInsightSource.Resolve(kind, seed, dashboardSummary.Value);
+            CloudSyncInsightSource.Resolve(kind, seed, _dashboardSummary.Value);
 
         InitializeComponent();
         GalleryView.TemplateSelected += OnTemplateSelected;
@@ -59,8 +61,9 @@ public sealed partial class InsightsPage : Page
         GalleryView.Visibility = Visibility.Collapsed;
         CanvasScroller.Visibility = Visibility.Visible;
         BackButton.Visibility = Visibility.Visible;
-        // Sample chip only when the user explicitly opted into labeled demo data.
-        SampleChip.Visibility = RuntimeDataMode.SampleModeEnabled
+        // Sample chip only when sample payloads were actually installed — not when sample
+        // mode is on but hybrid withheld fiction because live usage is present.
+        SampleChip.Visibility = CloudSyncInsightSource.ShowsSamplePreviewChip(_dashboardSummary.Value)
             ? Visibility.Visible
             : Visibility.Collapsed;
     }

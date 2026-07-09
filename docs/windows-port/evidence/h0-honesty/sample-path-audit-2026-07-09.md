@@ -38,11 +38,13 @@
 
 ## Test guards added (H0)
 
-- `CloudSyncInsightSourceRuntimeTests` — production mode non-KPI never sample series
-- `InsightsBuiltInTemplatesTests.ProductionDefault_DoesNotFabricateSampleSeriesForNonKpiWidgets`
+- `CloudSyncInsightSourceRuntimeTests` — production non-KPI never sample series; hybrid sample+live; sample chip/copy honesty; composition path
+- `InsightsBuiltInTemplatesTests.ProductionDefault_DoesNotFabricateSampleSeries_AndKpisAreEmptyChrome`
+- `InsightsBuiltInTemplatesTests.SampleFallbackEnabled_DefaultsFalse_FailClosed`
 - `InsightEmptyDataTests`
 - `SessionLogEmptySourceTests`
 - `DaemonSettingsViewModelTests.FinishLine_DefaultsToF1ShipPeer_WithScopeRows`
+- Shell `NavCatalogTests` + `SurfaceRouteMap` product-logical completeness
 
 ## Not claimed Real by this audit
 

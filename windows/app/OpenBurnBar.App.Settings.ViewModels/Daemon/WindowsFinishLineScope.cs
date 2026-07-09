@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace OpenBurnBar.App.Settings.ViewModels.Daemon;
 
 /// <summary>
-/// One row of the F1 Ship Peer vs F2 True 1:1 scope table shown in Engine Room
-/// (and mirrored in the certification bundle). Source: master plan §1 / strategy V2.
+/// One row of the F1 Ship Peer vs F2 True 1:1 scope table for Engine Room / certification
+/// (portable ViewModel + docs; WinUI Daemon tab bind is H6 residual). Source: master plan §1.
 /// </summary>
 public sealed record WindowsFinishLineScopeRow(
     string Area,
@@ -12,8 +12,9 @@ public sealed record WindowsFinishLineScopeRow(
     string F2TrueOneToOne);
 
 /// <summary>
-/// Static F1/F2 finish-line vocabulary for the Engine Room settings surface.
-/// Product default is F1; F2 is an explicit post-F1 program unless product overrides.
+/// Static F1/F2 finish-line vocabulary (exit criteria, not current-build claims).
+/// Consumed by <see cref="DaemonSettingsViewModel"/> and the certification bundle.
+/// WinUI Engine Room binding remains H6 residual.
 /// </summary>
 public static class WindowsFinishLineScope
 {

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace OpenBurnBar.App.Shell;
 
@@ -7,29 +9,49 @@ namespace OpenBurnBar.App.Shell;
 /// Unknown keys and intentional IA-1 deferred routes (<c>database</c>, <c>projects</c>)
 /// resolve to <see cref="SurfaceStubPage"/> (honest disclosure, not fake Real). Logical
 /// names live in <see cref="SurfaceRouteMap"/> so shell unit tests can pin registration
-/// without WinUI.
+/// without WinUI. Static construction fails if a product logical name lacks a typeof arm.
 /// </summary>
 public static class SurfacePageResolver
 {
-    /// <summary>The real page type for a destination key, or the stub when deferred/unknown.</summary>
-    public static Type Resolve(string key) => SurfaceRouteMap.LogicalPageType(key) switch
+    private static readonly IReadOnlyDictionary<string, Type> LogicalToType =
+        new ReadOnlyDictionary<string, Type>(new Dictionary<string, Type>(StringComparer.Ordinal)
+        {
+            ["BudgetPage"] = typeof(OpenBurnBar.App.Budget.BudgetPage),
+            ["QuotaWorkspacePage"] = typeof(OpenBurnBar.App.Quota.QuotaWorkspacePage),
+            ["InsightsPage"] = typeof(OpenBurnBar.App.Insights.InsightsPage),
+            ["SessionLogsHostPage"] = typeof(OpenBurnBar.App.SessionLogs.SessionLogsHostPage),
+            ["DashboardPage"] = typeof(OpenBurnBar.App.Dashboard.DashboardPage),
+            ["MissionControlPage"] = typeof(OpenBurnBar.App.MissionControl.MissionControlPage),
+            ["DataControlCenterPage"] = typeof(OpenBurnBar.App.DataControlCenter.DataControlCenterPage),
+            ["ChatHostPage"] = typeof(OpenBurnBar.App.Chat.ChatHostPage),
+            ["SwitcherHostPage"] = typeof(OpenBurnBar.App.Switcher.SwitcherHostPage),
+            ["MemoryPage"] = typeof(OpenBurnBar.App.Memory.MemoryPage),
+            // Elder Wand is Auxiliary (palette), not a sidebar row.
+            ["ElderWandPage"] = typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
+            ["OnboardingPage"] = typeof(OpenBurnBar.App.Onboarding.OnboardingPage),
+            ["SettingsPage"] = typeof(OpenBurnBar.App.Settings.Winui.SettingsPage),
+            [SurfaceRouteMap.DeferredStubPage] = typeof(SurfaceStubPage),
+        });
+
+    static SurfacePageResolver()
     {
-        "BudgetPage" => typeof(OpenBurnBar.App.Budget.BudgetPage),
-        "QuotaWorkspacePage" => typeof(OpenBurnBar.App.Quota.QuotaWorkspacePage),
-        "InsightsPage" => typeof(OpenBurnBar.App.Insights.InsightsPage),
-        "SessionLogsHostPage" => typeof(OpenBurnBar.App.SessionLogs.SessionLogsHostPage),
-        "DashboardPage" => typeof(OpenBurnBar.App.Dashboard.DashboardPage),
-        "MissionControlPage" => typeof(OpenBurnBar.App.MissionControl.MissionControlPage),
-        "DataControlCenterPage" => typeof(OpenBurnBar.App.DataControlCenter.DataControlCenterPage),
-        "ChatHostPage" => typeof(OpenBurnBar.App.Chat.ChatHostPage),
-        "SwitcherHostPage" => typeof(OpenBurnBar.App.Switcher.SwitcherHostPage),
-        "MemoryPage" => typeof(OpenBurnBar.App.Memory.MemoryPage),
-        // Elder Wand is Auxiliary (palette), not a sidebar row.
-        "ElderWandPage" => typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
-        "OnboardingPage" => typeof(OpenBurnBar.App.Onboarding.OnboardingPage),
-        "SettingsPage" => typeof(OpenBurnBar.App.Settings.Winui.SettingsPage),
-        // IA-1 deferred disclosure + unknown keys.
-        SurfaceRouteMap.DeferredStubPage => typeof(SurfaceStubPage),
-        _ => typeof(SurfaceStubPage),
-    };
+        // Fail closed on dual-map desync: every SurfaceRouteMap product logical name must bind.
+        SurfaceRouteMap.AssertWinUiBindingsCoverProductLogicalNames(LogicalToType.Keys);
+    }
+
+    /// <summary>Logical page names that have a WinUI <see cref="Type"/> binding (incl. stub).</summary>
+    public static IReadOnlyCollection<string> BoundLogicalPageNames => LogicalToType.Keys;
+
+    /// <summary>The real page type for a destination key, or the stub when deferred/unknown.</summary>
+    public static Type Resolve(string key)
+    {
+        string logical = SurfaceRouteMap.LogicalPageType(key);
+        if (LogicalToType.TryGetValue(logical, out Type? pageType))
+        {
+            return pageType;
+        }
+
+        // Should be unreachable when static ctor completeness holds; keep fail-closed stub.
+        return typeof(SurfaceStubPage);
+    }
 }

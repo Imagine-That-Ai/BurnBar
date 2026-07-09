@@ -66,7 +66,33 @@ public sealed class NavCatalogTests
             else
             {
                 Assert.NotEqual(SurfaceRouteMap.DeferredStubPage, logical);
+                // Non-stub catalog keys must land on a product logical name WinUI must bind.
+                Assert.Contains(logical, SurfaceRouteMap.ProductLogicalPageNames);
             }
         }
+    }
+
+    [Fact]
+    public void ProductLogicalPageNames_IsNonEmpty_AndExcludesStub()
+    {
+        Assert.NotEmpty(SurfaceRouteMap.ProductLogicalPageNames);
+        Assert.DoesNotContain(SurfaceRouteMap.DeferredStubPage, SurfaceRouteMap.ProductLogicalPageNames);
+        Assert.Contains("InsightsPage", SurfaceRouteMap.ProductLogicalPageNames);
+        Assert.Contains("DashboardPage", SurfaceRouteMap.ProductLogicalPageNames);
+    }
+
+    [Fact]
+    public void AssertWinUiBindingsCoverProductLogicalNames_FailsWhenMissing()
+    {
+        var incomplete = new[] { "BudgetPage" }; // missing most product names
+        var ex = Assert.Throws<System.InvalidOperationException>(
+            () => SurfaceRouteMap.AssertWinUiBindingsCoverProductLogicalNames(incomplete));
+        Assert.Contains("missing WinUI bindings", ex.Message, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AssertWinUiBindingsCoverProductLogicalNames_PassesWhenComplete()
+    {
+        SurfaceRouteMap.AssertWinUiBindingsCoverProductLogicalNames(SurfaceRouteMap.ProductLogicalPageNames);
     }
 }

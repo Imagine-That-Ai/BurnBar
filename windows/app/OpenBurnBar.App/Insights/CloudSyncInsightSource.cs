@@ -18,13 +18,28 @@ namespace OpenBurnBar.App.Insights;
 /// <see cref="InsightSampleData"/> — unwired kinds stay empty so demos cannot
 /// mix real KPI spend with fabricated series under one Sample chip.</item>
 /// <item>When sample mode is on and there is no live usage, every kind may use
-/// labeled sample generators.</item>
+/// labeled sample generators. The Sample preview chip is appropriate only then.</item>
 /// <item>Production (sample mode off) always returns <see cref="InsightEmptyData"/>
 /// when live KPI seeds are unavailable.</item>
 /// </list>
 /// </summary>
 public static class CloudSyncInsightSource
 {
+    /// <summary>
+    /// True when this source will install deterministic sample payloads for the given summary
+    /// (sample mode on and no live usage).
+    /// </summary>
+    public static bool InstallsSamplePayloads(DashboardUsageSummary summary) =>
+        RuntimeDataMode.SampleModeEnabled && !summary.HasData;
+
+    /// <summary>
+    /// Whether the canvas Sample chip should show "Sample data preview". Only when sample
+    /// payloads are actually installed — not when sample mode is on but hybrid withheld samples
+    /// because live usage is present.
+    /// </summary>
+    public static bool ShowsSamplePreviewChip(DashboardUsageSummary summary) =>
+        InstallsSamplePayloads(summary);
+
     /// <summary>
     /// Resolve any widget kind against a pre-loaded usage summary under the current
     /// runtime data mode. Callers load the summary from <c>DashboardUsageProvider</c>
@@ -38,15 +53,12 @@ public static class CloudSyncInsightSource
         }
 
         // Fail-closed hybrid: live data present ⇒ no fabricated non-KPI series.
-        if (RuntimeDataMode.SampleModeEnabled && !summary.HasData)
+        if (InstallsSamplePayloads(summary))
         {
             return InsightSampleData.ForKind(kind, seed);
         }
 
-        return InsightEmptyData.ForKind(
-            kind,
-            seed,
-            RuntimeDataMode.EmptyStateDetail("SQLCipher usage database / Insights engine"));
+        return InsightEmptyData.ForKind(kind, seed, EmptyReason(summary, "SQLCipher usage database / Insights engine"));
     }
 
     /// <summary>
@@ -82,11 +94,11 @@ public static class CloudSyncInsightSource
                 _ => InsightEmptyData.ForKind(
                     InsightWidgetKind.KpiTile,
                     seed,
-                    RuntimeDataMode.EmptyStateDetail("SQLCipher usage database")),
+                    EmptyReason(summary, "SQLCipher usage database")),
             };
         }
 
-        if (RuntimeDataMode.SampleModeEnabled)
+        if (InstallsSamplePayloads(summary))
         {
             return InsightSampleData.ForKind(kind, seed);
         }
@@ -94,6 +106,9 @@ public static class CloudSyncInsightSource
         return InsightEmptyData.ForKind(
             InsightWidgetKind.KpiTile,
             seed,
-            RuntimeDataMode.EmptyStateDetail("SQLCipher usage database"));
+            EmptyReason(summary, "SQLCipher usage database"));
     }
+
+    private static string EmptyReason(DashboardUsageSummary summary, string configuredSource) =>
+        RuntimeDataMode.EmptyStateDetail(configuredSource, hasLiveData: summary.HasData);
 }

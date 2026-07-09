@@ -32,7 +32,7 @@ keeps the math testable off a GPU.
 | Mode | Behavior |
 | --- | --- |
 | Production (`OPENBURNBAR_SAMPLE_MODE` unset/false) | KPI tiles use live SQLCipher/cloud summary when present; otherwise `InsightEmptyData` (`EmptyData` chrome — no `$0` fake zero). Non-KPI widgets stay empty until the Insights engine path. |
-| Sample mode (`OPENBURNBAR_SAMPLE_MODE=1`) | Labeled `InsightSampleData` generators may fill widgets **only when there is no live usage summary**. If live data is present, KPIs stay live and unwired kinds stay empty (fail-closed hybrid — no mixed real KPI + fabricated series). Sample chip visible only in sample mode. |
+| Sample mode (`OPENBURNBAR_SAMPLE_MODE=1`) | Labeled `InsightSampleData` generators fill widgets **only when there is no live usage summary**. If live data is present, KPIs stay live and unwired kinds stay empty (fail-closed hybrid). **Sample chip** shows only when sample payloads were actually installed (`sample mode && !HasData`) — not on hybrid live sessions. Empty-tile copy under hybrid uses connect/engine wording, not “demo is labeled.” |
 
 Composition root: `InsightsPage` installs `CloudSyncInsightSource.Resolve` as
 `InsightsBuiltInTemplates.RealDataResolver` and sets `SampleFallbackEnabled` from
