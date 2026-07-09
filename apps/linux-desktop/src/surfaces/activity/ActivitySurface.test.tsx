@@ -104,7 +104,9 @@ function mockBridge(handlers: {
     }),
     exportDiagnostics: async () => ({ path: '/tmp/diag.zip' }),
     sessionEnv: async () => ({}),
-    gatewayAuthToken: async () => null,
+    gatewayProbe: async () => false,
+    gatewayChatStream: async () => undefined,
+    gatewayChatCancel: async () => undefined,
     mediaStatus: async () => ({ capabilityAvailable: false, pairedDevices: [] }),
     integrationsStatus: async () => ({ integrations: [] })
   };

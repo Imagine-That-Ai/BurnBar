@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarLinuxSecurity
 import Foundation
 #if canImport(LocalAuthentication)
 import LocalAuthentication
@@ -35,9 +36,14 @@ public actor BurnBarInMemoryConnectorSecretStore: BurnBarConnectorSecretStoring 
 
 public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring {
     private let service: String
+    private let linuxSecretCustodian: LinuxSecretCustodian
 
-    public init(service: String = "com.openburnbar.connector-plane") {
+    public init(
+        service: String = "com.openburnbar.connector-plane",
+        linuxSecretCustodian: LinuxSecretCustodian = LinuxSecretStoreFactory.production()
+    ) {
         self.service = service
+        self.linuxSecretCustodian = linuxSecretCustodian
     }
 
     public func secret(for connector: BurnBarConnectorKind) async throws -> String? {
@@ -69,6 +75,15 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
         }
         return String(data: data, encoding: .utf8)
+#elseif os(Linux)
+        do {
+            return try linuxSecretCustodian.requireHighValueSecret(
+                id: "\(service):connector.\(connector.rawValue).credential",
+                secretClass: .connectorCredential
+            ).secret
+        } catch LinuxSecretStoreError.missingSecret(_) {
+            return nil
+        }
 #else
         return nil
 #endif
@@ -112,6 +127,21 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
             guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
+        }
+#elseif os(Linux)
+        let id = "\(service):connector.\(connector.rawValue).credential"
+        if let normalized = secret?.trimmingCharacters(in: .whitespacesAndNewlines),
+           normalized.isEmpty == false {
+            _ = try linuxSecretCustodian.storeHighValueSecret(
+                normalized,
+                id: id,
+                secretClass: .connectorCredential
+            )
+        } else {
+            try linuxSecretCustodian.deleteHighValueSecret(
+                id: id,
+                secretClass: .connectorCredential
+            )
         }
 #else
         throw NSError(

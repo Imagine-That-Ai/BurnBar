@@ -1,16 +1,21 @@
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
+use tauri::ipc::Channel;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+use tauri_plugin_shell::ShellExt;
 
 mod media;
 
@@ -89,12 +94,28 @@ struct IntegrationsStatusPayload {
     integrations: Vec<IntegrationStatusRow>,
 }
 
-fn linux_support_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        let trimmed = xdg.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed).join("openburnbar");
+/// First non-empty trimmed env value among the given keys (VAL-PATH-001 parity with TS/Swift).
+fn first_non_empty_env(keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
         }
+    }
+    None
+}
+
+fn linux_support_dir() -> PathBuf {
+    if let Some(override_dir) = first_non_empty_env(&[
+        "OPENBURNBAR_DAEMON_SUPPORT_DIR",
+        "BURNBAR_DAEMON_SUPPORT_DIR",
+    ]) {
+        return PathBuf::from(override_dir);
+    }
+    if let Some(xdg) = first_non_empty_env(&["XDG_DATA_HOME"]) {
+        return PathBuf::from(xdg).join("openburnbar");
     }
     std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -103,58 +124,315 @@ fn linux_support_dir() -> PathBuf {
 }
 
 fn linux_socket_path() -> PathBuf {
-    if let Ok(override_path) = std::env::var("OPENBURNBAR_SOCKET_PATH") {
-        let trimmed = override_path.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
-        }
+    if let Some(override_path) = first_non_empty_env(&[
+        "OPENBURNBAR_SOCKET_PATH",
+        "OPENBURNBAR_DAEMON_SOCKET_PATH",
+        "BURNBAR_DAEMON_SOCKET_PATH",
+    ]) {
+        return PathBuf::from(override_path);
     }
-    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
-        let trimmed = runtime_dir.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed)
-                .join("openburnbar")
-                .join("daemon.sock");
-        }
+    if let Some(runtime_dir) = first_non_empty_env(&["XDG_RUNTIME_DIR"]) {
+        return PathBuf::from(runtime_dir)
+            .join("openburnbar")
+            .join("daemon.sock");
     }
     linux_support_dir().join("openburnbar-daemon.sock")
 }
 
+/// Read socket auth token; refuse world/group-readable files (mode must be 0600 or tighter).
 fn read_auth_token() -> Option<String> {
-    let path = linux_support_dir().join("daemon-socket-auth-token");
-    fs::read_to_string(path)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    read_token_file_secure(&linux_support_dir().join("daemon-socket-auth-token"))
+}
+
+/// Read a token file only when it is a regular file with mode 0600 or tighter.
+fn read_token_file_secure(path: &std::path::Path) -> Option<String> {
+    use std::os::unix::fs::FileTypeExt;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .open(path)
+        .ok()?;
+    let meta = file.metadata().ok()?;
+    let ft = meta.file_type();
+    if !ft.is_file()
+        || ft.is_fifo()
+        || ft.is_socket()
+        || ft.is_block_device()
+        || ft.is_char_device()
+    {
+        eprintln!(
+            "openburnbar: refusing token path {} (not a regular file)",
+            path.display()
+        );
+        return None;
+    }
+    let mode = meta.permissions().mode() & 0o777;
+    if mode & 0o077 != 0 {
+        eprintln!(
+            "openburnbar: refusing token file {} with mode {:o} (require 0600 or tighter)",
+            path.display(),
+            mode
+        );
+        return None;
+    }
+    if meta.uid() != unsafe { libc::geteuid() } || meta.nlink() != 1 {
+        eprintln!(
+            "openburnbar: refusing token file {} with invalid owner or link count",
+            path.display()
+        );
+        return None;
+    }
+    if meta.len() > 16_384 {
+        eprintln!(
+            "openburnbar: refusing oversized token file {}",
+            path.display()
+        );
+        return None;
+    }
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).ok()?;
+    let token = contents.trim().to_string();
+    (!token.is_empty()).then_some(token)
 }
 
 fn read_gateway_auth_token() -> Option<String> {
+    // Prefer file-based token (0600); env is last-resort for CI/dev only.
+    if let Ok(path) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN_FILE") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            if let Some(token) = read_token_file_secure(std::path::Path::new(trimmed)) {
+                return Some(token);
+            }
+        }
+    }
+    if let Some(token) = read_token_file_secure(&linux_support_dir().join("gateway-auth-token")) {
+        return Some(token);
+    }
     if let Ok(token) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN") {
         let trimmed = token.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());
         }
     }
-    if let Ok(path) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN_FILE") {
-        let trimmed = path.trim();
-        if !trimmed.is_empty() {
-            if let Ok(token) = fs::read_to_string(trimmed) {
-                let token = token.trim();
-                if !token.is_empty() {
-                    return Some(token.to_string());
-                }
-            }
-        }
+    None
+}
+
+const GATEWAY_MAX_MESSAGES: usize = 256;
+const GATEWAY_MAX_CONTENT_BYTES: usize = 1_048_576;
+const GATEWAY_MAX_RESPONSE_BYTES: usize = 16_777_216;
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayProxyMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayProxyRequest {
+    request_id: String,
+    model: String,
+    messages: Vec<GatewayProxyMessage>,
+}
+
+static GATEWAY_CANCELLATIONS: OnceLock<
+    Mutex<HashMap<String, tokio_util::sync::CancellationToken>>,
+> = OnceLock::new();
+
+fn gateway_cancellations() -> &'static Mutex<HashMap<String, tokio_util::sync::CancellationToken>> {
+    GATEWAY_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn validate_gateway_request(request: &GatewayProxyRequest) -> Result<(), String> {
+    let request_id_is_valid = !request.request_id.is_empty()
+        && request.request_id.len() <= 128
+        && request
+            .request_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+    if !request_id_is_valid {
+        return Err("gateway_invalid_request_id".into());
     }
-    fs::read_to_string(linux_support_dir().join("gateway-auth-token"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+
+    let model = request.model.trim();
+    if model.is_empty() || model.len() > 256 {
+        return Err("gateway_invalid_model".into());
+    }
+    if request.messages.is_empty() || request.messages.len() > GATEWAY_MAX_MESSAGES {
+        return Err("gateway_invalid_message_count".into());
+    }
+    let content_bytes = request.messages.iter().try_fold(0usize, |total, message| {
+        if !matches!(
+            message.role.as_str(),
+            "system" | "user" | "assistant" | "tool"
+        ) {
+            return Err("gateway_invalid_message_role".to_string());
+        }
+        total
+            .checked_add(message.content.len())
+            .ok_or_else(|| "gateway_request_too_large".to_string())
+    })?;
+    if content_bytes > GATEWAY_MAX_CONTENT_BYTES {
+        return Err("gateway_request_too_large".into());
+    }
+    Ok(())
+}
+
+fn gateway_endpoint_from_health(health: &DaemonHealth, path: &str) -> Result<reqwest::Url, String> {
+    if !health.ok || health.gateway_enabled != Some(true) {
+        return Err("gateway_disabled".into());
+    }
+    let host = health.gateway_host.as_deref().unwrap_or("127.0.0.1");
+    if !matches!(host, "127.0.0.1" | "::1" | "localhost") {
+        return Err("gateway_non_loopback_host_refused".into());
+    }
+    let port = health
+        .gateway_port
+        .filter(|port| *port > 0)
+        .ok_or("gateway_missing_port")?;
+    let authority = if host == "::1" {
+        format!("[::1]:{port}")
+    } else {
+        format!("{host}:{port}")
+    };
+    let url = reqwest::Url::parse(&format!("http://{authority}{path}"))
+        .map_err(|_| "gateway_invalid_endpoint".to_string())?;
+    if url.scheme() != "http"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("gateway_invalid_endpoint".into());
+    }
+    Ok(url)
+}
+
+fn gateway_http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(120))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| format!("gateway_client_init:{error}"))
 }
 
 #[tauri::command]
-fn gateway_auth_token() -> Option<String> {
-    read_gateway_auth_token()
+async fn gateway_probe() -> Result<bool, String> {
+    let health = probe_daemon_health();
+    let url = gateway_endpoint_from_health(&health, "/health")?;
+    let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
+    let response = gateway_http_client()?
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|error| format!("gateway_unreachable:{error}"))?;
+    Ok(response.status().is_success())
+}
+
+async fn run_gateway_chat_stream(
+    request: &GatewayProxyRequest,
+    on_event: &Channel<String>,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<(), String> {
+    validate_gateway_request(request)?;
+    let health = probe_daemon_health();
+    let url = gateway_endpoint_from_health(&health, "/v1/chat/completions")?;
+    let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
+    let body = serde_json::json!({
+        "model": request.model.trim(),
+        "stream": true,
+        "stream_options": { "include_usage": true },
+        "messages": &request.messages,
+    });
+    let send = gateway_http_client()?
+        .post(url)
+        .bearer_auth(token)
+        .header(reqwest::header::ACCEPT, "text/event-stream")
+        .json(&body)
+        .send();
+    let response = tokio::select! {
+        _ = cancellation.cancelled() => return Err("gateway_aborted".into()),
+        result = send => result.map_err(|error| format!("gateway_unreachable:{error}"))?,
+    };
+
+    let status = response.status();
+    if !status.is_success() {
+        let detail = response.text().await.unwrap_or_default();
+        let bounded = detail.chars().take(4096).collect::<String>();
+        return Err(format!("gateway_http:{}:{bounded}", status.as_u16()));
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    if !content_type
+        .split(';')
+        .next()
+        .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("text/event-stream"))
+    {
+        return Err("gateway_invalid_content_type".into());
+    }
+
+    let mut total_bytes = 0usize;
+    let mut stream = response.bytes_stream();
+    loop {
+        let next = tokio::select! {
+            _ = cancellation.cancelled() => return Err("gateway_aborted".into()),
+            next = stream.next() => next,
+        };
+        let Some(chunk) = next else { break };
+        let bytes = chunk.map_err(|error| format!("gateway_stream_interrupted:{error}"))?;
+        total_bytes = total_bytes
+            .checked_add(bytes.len())
+            .ok_or("gateway_response_too_large")?;
+        if total_bytes > GATEWAY_MAX_RESPONSE_BYTES {
+            return Err("gateway_response_too_large".into());
+        }
+        let text = String::from_utf8(bytes.to_vec()).map_err(|_| "gateway_invalid_utf8")?;
+        on_event
+            .send(text)
+            .map_err(|_| "gateway_renderer_disconnected".to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn gateway_chat_stream(
+    request: GatewayProxyRequest,
+    on_event: Channel<String>,
+) -> Result<(), String> {
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    {
+        let mut requests = gateway_cancellations()
+            .lock()
+            .map_err(|_| "gateway_cancellation_registry_poisoned")?;
+        if requests.contains_key(&request.request_id) {
+            return Err("gateway_duplicate_request_id".into());
+        }
+        requests.insert(request.request_id.clone(), cancellation.clone());
+    }
+
+    let result = run_gateway_chat_stream(&request, &on_event, &cancellation).await;
+    if let Ok(mut requests) = gateway_cancellations().lock() {
+        requests.remove(&request.request_id);
+    }
+    result
+}
+
+#[tauri::command]
+fn gateway_chat_cancel(request_id: String) -> Result<(), String> {
+    let requests = gateway_cancellations()
+        .lock()
+        .map_err(|_| "gateway_cancellation_registry_poisoned")?;
+    if let Some(cancellation) = requests.get(&request_id) {
+        cancellation.cancel();
+    }
+    Ok(())
 }
 
 fn probe_daemon_health() -> DaemonHealth {
@@ -313,20 +591,38 @@ fn call_daemon_perf_measure(name: &str) -> Result<(bool, String, Option<String>)
 
 #[tauri::command]
 fn daemon_health() -> DaemonHealth {
-    if let Ok(output) = Command::new("openburnbar-cli")
-        .args(["health", "--json"])
-        .output()
-    {
-        if output.status.success() {
-            if let Ok(mut parsed) = serde_json::from_slice::<DaemonHealth>(&output.stdout) {
-                if parsed.socket_path.is_none() {
-                    parsed.socket_path = Some(linux_socket_path().display().to_string());
-                }
-                return parsed;
-            }
-        }
-    }
     probe_daemon_health()
+}
+
+fn trusted_openburnbar_cli() -> Result<PathBuf, String> {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+
+    for path in [
+        "/usr/bin/openburnbar-cli",
+        "/usr/local/bin/openburnbar-cli",
+        "/opt/openburnbar/bin/openburnbar-cli",
+    ] {
+        let candidate = PathBuf::from(path);
+        let metadata = match fs::symlink_metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        let file_type = metadata.file_type();
+        if !file_type.is_file()
+            || file_type.is_symlink()
+            || file_type.is_fifo()
+            || file_type.is_socket()
+            || file_type.is_block_device()
+            || file_type.is_char_device()
+            || metadata.uid() != 0
+            || metadata.nlink() != 1
+            || metadata.permissions().mode() & 0o022 != 0
+        {
+            continue;
+        }
+        return Ok(candidate);
+    }
+    Err("trusted_openburnbar_cli_unavailable".to_string())
 }
 
 fn integration_label(kind: &str) -> &'static str {
@@ -426,23 +722,50 @@ fn map_parity_row(row: DeviceParityRow) -> Option<IntegrationStatusRow> {
 
 #[tauri::command]
 fn integrations_status() -> Result<IntegrationsStatusPayload, String> {
-    let output = Command::new("openburnbar-cli")
+    let cli = trusted_openburnbar_cli()?;
+    let output = Command::new(cli)
         .args(["devices", "parity", "--json"])
         .output()
-        .map_err(|e| format!("openburnbar-cli devices parity --json unavailable: {e}"))?;
+        .map_err(|_| "openburnbar_cli_launch_failed".to_string())?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            "openburnbar-cli devices parity --json failed".to_string()
-        } else {
-            stderr
-        });
+        return Err("openburnbar_cli_integrations_failed".to_string());
     }
     let rows = serde_json::from_slice::<Vec<DeviceParityRow>>(&output.stdout)
         .map_err(|e| format!("Invalid devices parity JSON: {e}"))?;
     Ok(IntegrationsStatusPayload {
         integrations: rows.into_iter().filter_map(map_parity_row).collect(),
     })
+}
+
+fn validate_external_url(raw_url: &str) -> Result<String, String> {
+    if raw_url.len() > 2_048 {
+        return Err("external_url_too_long".to_string());
+    }
+    let url = reqwest::Url::parse(raw_url).map_err(|_| "external_url_invalid".to_string())?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(url.port(), None | Some(443))
+    {
+        return Err("external_url_origin_refused".to_string());
+    }
+    let allowed_host = matches!(
+        url.host_str(),
+        Some("checkout.stripe.com" | "billing.stripe.com" | "buy.stripe.com")
+    );
+    if !allowed_host {
+        return Err("external_url_host_refused".to_string());
+    }
+    Ok(url.to_string())
+}
+
+#[tauri::command]
+fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
+    let validated = validate_external_url(&url)?;
+    #[allow(deprecated)]
+    app.shell()
+        .open(validated, None)
+        .map_err(|_| "external_url_open_failed".to_string())
 }
 
 #[tauri::command]
@@ -460,8 +783,7 @@ fn quit_app(app: AppHandle) {
 }
 
 static TRAY_INIT_FAILED: AtomicBool = AtomicBool::new(false);
-const COMPUTER_USE_PANIC_SHORTCUTS: [&str; 2] =
-    ["Ctrl+Alt+Super+Period", "Ctrl+Alt+Shift+Period"];
+const COMPUTER_USE_PANIC_SHORTCUTS: [&str; 2] = ["Ctrl+Alt+Super+Period", "Ctrl+Alt+Shift+Period"];
 
 #[tauri::command]
 fn tray_degraded() -> bool {
@@ -533,8 +855,7 @@ fn request_computer_use_panic_halt(
 
 fn trigger_computer_use_panic_hotkey() {
     thread::spawn(|| {
-        if let Err(error) = request_computer_use_panic_halt("*".to_string(), "hotkey".to_string())
-        {
+        if let Err(error) = request_computer_use_panic_halt("*".to_string(), "hotkey".to_string()) {
             eprintln!("computer_use_global_panic_hotkey_failed: {error}");
         }
     });
@@ -558,7 +879,9 @@ fn register_computer_use_panic_shortcuts(app: &AppHandle) {
             let base = Modifiers::CONTROL | Modifiers::ALT;
             let meta_chord = base | Modifiers::SUPER;
             let shift_chord = base | Modifiers::SHIFT;
-            if shortcut.matches(meta_chord, Code::Period) || shortcut.matches(shift_chord, Code::Period) {
+            if shortcut.matches(meta_chord, Code::Period)
+                || shortcut.matches(shift_chord, Code::Period)
+            {
                 trigger_computer_use_panic_hotkey();
             }
         })
@@ -1119,11 +1442,16 @@ fn app_version_info() -> Result<serde_json::Value, String> {
 // ───────────────── P09: redacted diagnostics export ─────────────────
 // Writes a JSON bundle to the support dir. Redaction is structural: this
 // command only persists shell/health metadata — it never reads provider
-// payloads, tokens, or socket auth material.
+// payloads, tokens, or socket auth material. File mode is 0600.
 #[tauri::command]
 fn export_diagnostics() -> Result<serde_json::Value, String> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
     let dir = linux_support_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Ensure support dir is owner-only when possible.
+    let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -1152,7 +1480,14 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
         ]
     });
     let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| e.to_string())?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({ "path": path.display().to_string() }))
 }
 
@@ -1166,9 +1501,7 @@ fn session_env() -> serde_json::Value {
     })
 }
 
-// ───────────────── P12: Mercury media status ─────────────────
-// Wire: proposed daemon.media.status. Current Linux daemons may reject this as
-// unknown; the TS bridge maps that rejection to the capability-absent state.
+// ───────────────── P12: Mercury media ─────────────────
 #[tauri::command]
 fn media_status() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.media.status", None)
@@ -1322,8 +1655,7 @@ fn start_media_session_poll_loop(app: AppHandle) {
                         capability_absent = false;
                         let phase = media_phase(&state);
                         let request_id = media_request_id(&state);
-                        let phase_changed = phase != last_phase;
-                        if phase_changed {
+                        if phase != last_phase {
                             let _ = app.emit("media-call-state-changed", state.clone());
                         }
                         if matches!(phase.as_deref(), Some("ringing") | Some("incoming"))
@@ -1335,8 +1667,8 @@ fn start_media_session_poll_loop(app: AppHandle) {
                         last_phase = phase;
                         last_request_id = request_id;
                     }
-                    Err(e) => {
-                        let lower = e.to_lowercase();
+                    Err(error) => {
+                        let lower = error.to_lowercase();
                         let is_absent = lower.contains("unknown")
                             || lower.contains("unsupported")
                             || lower.contains("not implemented")
@@ -1348,7 +1680,7 @@ fn start_media_session_poll_loop(app: AppHandle) {
                                 serde_json::json!({
                                     "phase": "capability-absent",
                                     "capabilityAbsent": true,
-                                    "error": e
+                                    "error": error
                                 }),
                             );
                         }
@@ -1358,6 +1690,386 @@ fn start_media_session_poll_loop(app: AppHandle) {
             }
         })
         .expect("failed to spawn media session poll loop");
+}
+
+// ───────────────── Tool approval respond ─────────────────
+// Wire: approval.respond (BurnBarRPCMethod.approvalRespond)
+// Params: BurnBarApprovalRespondRequest { response: BurnBarApprovalResponse }
+// respondedAt is Foundation reference-date seconds (f64), matching the extension.
+#[tauri::command]
+fn tool_approval_respond(
+    approval_id: String,
+    decision: String,
+    note: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let decision = match decision.as_str() {
+        "approve" | "reject" | "cancel" => decision,
+        other => {
+            return Err(format!(
+                "approval decision must be approve|reject|cancel, got {other}"
+            ))
+        }
+    };
+    if approval_id.trim().is_empty() {
+        return Err("approvalID is required".into());
+    }
+    let responded_at = foundation_reference_date_seconds();
+    call_daemon_method(
+        "approval.respond",
+        Some(serde_json::json!({
+            "response": {
+                "approvalID": approval_id,
+                "clientID": "linux-shell",
+                "decision": decision,
+                "note": note,
+                "respondedAt": responded_at
+            }
+        })),
+    )
+}
+
+// ───────────────── Memory set status ─────────────────
+// Wire: remember → daemon.memory.remember, reject/forget → daemon.memory.forget,
+// audit → daemon.memory.audit_trail. "approve" is an alias for remember and
+// requires non-empty text/body (fail-closed; never invent placeholder text).
+#[tauri::command]
+fn memory_set_status(
+    action: String,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    match action.as_str() {
+        "approve" | "remember" => {
+            let text = payload
+                .get("text")
+                .and_then(|v| v.as_str())
+                .or_else(|| payload.get("body").and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if text.is_empty() {
+                return Err(
+                    "memory remember requires non-empty text/body (fail-closed; no placeholder)".into(),
+                );
+            }
+            // Reject invented placeholder patterns from older shell versions.
+            if text.starts_with("approved:") {
+                return Err(
+                    "memory remember refuses invented approved:<id> placeholders".into(),
+                );
+            }
+            call_daemon_method(
+                "daemon.memory.remember",
+                Some(serde_json::json!({
+                    "text": text,
+                    "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "kind": payload.get("kind").and_then(|v| v.as_str()).unwrap_or("note"),
+                    "scope": payload.get("scope").and_then(|v| v.as_str()).unwrap_or("personal"),
+                    "tags": payload.get("tags").cloned().unwrap_or_else(|| serde_json::json!([])),
+                    "confidence": payload.get("confidence").and_then(|v| v.as_f64()).unwrap_or(1.0),
+                    "sourcePath": payload.get("sourcePath").cloned().unwrap_or(serde_json::Value::Null)
+                })),
+            )
+        }
+        "reject" | "forget" => {
+            let memory_id = payload
+                .get("memoryID")
+                .or_else(|| payload.get("memoryId"))
+                .or_else(|| payload.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if memory_id.is_empty() {
+                return Err("memory reject requires memoryID".into());
+            }
+            call_daemon_method(
+                "daemon.memory.forget",
+                Some(serde_json::json!({
+                    "memoryID": memory_id,
+                    "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "requireCloudDelete": payload.get("requireCloudDelete").and_then(|v| v.as_bool()).unwrap_or(false)
+                })),
+            )
+        }
+        "audit" => call_daemon_method(
+            "daemon.memory.audit_trail",
+            Some(serde_json::json!({
+                "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                "limit": payload.get("limit").and_then(|v| v.as_u64()).unwrap_or(50)
+            })),
+        ),
+        other => Err(format!(
+            "memory_set_status action must be approve|reject|audit (or remember|forget), got {other}"
+        )),
+    }
+}
+
+// ───────────────── Computer Use wrappers ─────────────────
+// Wire bodies MUST match BurnBarComputerUseContracts.swift exactly.
+// Params are typed allowlisted structs (deny_unknown_fields).
+
+const CU_MAX_ARGS_BYTES: usize = 64 * 1024;
+const CU_CLIENT_ID: &str = "linux-shell";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseSessionStartParams {
+    /// ComputerUseMode raw: agent_watch | browser | system
+    mode: String,
+    /// ComputerUseTrustMode raw: manual | step | trusted
+    trust_mode: String,
+    #[serde(default)]
+    scope_rule_ids: Vec<String>,
+    phone_viewer_node_id: Option<String>,
+    mac_host_node_id: Option<String>,
+    action_cap: Option<u32>,
+    session_timeout_seconds: Option<u32>,
+    /// BurnBarClientID; defaults to linux-shell
+    client_id: Option<String>,
+    run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseInvokeParams {
+    session_id: String,
+    /// BurnBarToolInvocation — required nested object (not flat tool/args).
+    invocation: ComputerUseInvocationParams,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseInvocationParams {
+    call_id: String,
+    run_id: String,
+    tool: String,
+    #[serde(default)]
+    arguments: serde_json::Value,
+    requested_by: Option<String>,
+    /// Foundation reference-date seconds when provided; shell fills if absent.
+    requested_at: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseApprovalPendingParams {
+    session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseApprovalRespondParams {
+    session_id: Option<String>,
+    /// HermesRealtimeRelayApprovalResponse fields (nested under `response` on the wire).
+    approval_id: String,
+    decision: String,
+    responded_by: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseAuditExportParams {
+    session_id: String,
+    include_screenshots: Option<bool>,
+    anchor_open_timestamps: Option<bool>,
+}
+
+fn validate_cu_mode(mode: &str) -> Result<(), String> {
+    match mode {
+        "agent_watch" | "browser" | "system" => Ok(()),
+        other => Err(format!(
+            "computer use mode must be agent_watch|browser|system, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_trust_mode(mode: &str) -> Result<(), String> {
+    match mode {
+        "manual" | "step" | "trusted" => Ok(()),
+        other => Err(format!(
+            "computer use trustMode must be manual|step|trusted, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_approval_decision(decision: &str) -> Result<(), String> {
+    match decision {
+        "approve" | "reject" | "reject_and_halt" => Ok(()),
+        other => Err(format!(
+            "computer use approval decision must be approve|reject|reject_and_halt, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_panic_source(source: &str) -> Result<(), String> {
+    match source {
+        "hotkey"
+        | "phone_gesture"
+        | "mac_lock"
+        | "remote_config"
+        | "accessibility_revoked"
+        | "stalled"
+        | "revoked" => Ok(()),
+        other => Err(format!(
+            "computer use panic source must be a ComputerUsePanicSource raw value, got {other}"
+        )),
+    }
+}
+
+fn cap_json_value_size(value: &serde_json::Value, label: &str) -> Result<(), String> {
+    let encoded = serde_json::to_vec(value).map_err(|e| e.to_string())?;
+    if encoded.len() > CU_MAX_ARGS_BYTES {
+        return Err(format!(
+            "{label} exceeds {CU_MAX_ARGS_BYTES} byte shell cap (got {})",
+            encoded.len()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn computer_use_session_start(
+    params: ComputerUseSessionStartParams,
+) -> Result<serde_json::Value, String> {
+    validate_cu_mode(&params.mode)?;
+    validate_cu_trust_mode(&params.trust_mode)?;
+    let client_id = params
+        .client_id
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    // ComputerUseSessionStartRequest — required: mode, trustMode, clientID (+ defaults).
+    call_daemon_method(
+        "daemon.computer_use.session.start",
+        Some(serde_json::json!({
+            "mode": params.mode,
+            "trustMode": params.trust_mode,
+            "scopeRuleIds": params.scope_rule_ids,
+            "phoneViewerNodeId": params.phone_viewer_node_id,
+            "macHostNodeId": params.mac_host_node_id,
+            "actionCap": params.action_cap.unwrap_or(50),
+            "sessionTimeoutSeconds": params.session_timeout_seconds.unwrap_or(1800),
+            "clientID": client_id,
+            "runID": params.run_id
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_invoke(params: ComputerUseInvokeParams) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_invoke requires sessionId".into());
+    }
+    let inv = &params.invocation;
+    if inv.call_id.trim().is_empty() || inv.run_id.trim().is_empty() || inv.tool.trim().is_empty() {
+        return Err("computer_use_invoke.invocation requires callID, runID, and tool".into());
+    }
+    cap_json_value_size(&inv.arguments, "invocation.arguments")?;
+    let requested_by = inv
+        .requested_by
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    let requested_at = inv
+        .requested_at
+        .unwrap_or_else(foundation_reference_date_seconds);
+    // ComputerUseInvokeRequest { sessionId, invocation: BurnBarToolInvocation }
+    call_daemon_method(
+        "daemon.computer_use.invoke",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "invocation": {
+                "callID": inv.call_id,
+                "runID": inv.run_id,
+                "tool": inv.tool,
+                "arguments": inv.arguments,
+                "requestedBy": requested_by,
+                "requestedAt": requested_at
+            }
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_approval_pending(
+    params: Option<ComputerUseApprovalPendingParams>,
+) -> Result<serde_json::Value, String> {
+    // ComputerUseApprovalPendingRequest { sessionId? } — no limit field.
+    let session_id = params.and_then(|p| p.session_id);
+    call_daemon_method(
+        "daemon.computer_use.approval.pending",
+        Some(serde_json::json!({ "sessionId": session_id })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_approval_respond(
+    params: ComputerUseApprovalRespondParams,
+) -> Result<serde_json::Value, String> {
+    validate_cu_approval_decision(&params.decision)?;
+    if params.approval_id.trim().is_empty() {
+        return Err("computer_use_approval_respond requires approvalId".into());
+    }
+    let responded_by = params
+        .responded_by
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    // ComputerUseApprovalRespondRequest { sessionId?, response: HermesRealtimeRelayApprovalResponse }
+    call_daemon_method(
+        "daemon.computer_use.approval.respond",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "response": {
+                "approvalId": params.approval_id,
+                "decision": params.decision,
+                "respondedBy": responded_by,
+                "respondedAt": foundation_reference_date_seconds(),
+                "note": params.note
+            }
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_panic_halt(
+    session_id: Option<String>,
+    source: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let session_id = session_id.unwrap_or_else(|| "*".to_string());
+    let source = source.unwrap_or_else(|| "hotkey".to_string());
+    if session_id.trim().is_empty() {
+        return Err("computer_use_panic_halt requires sessionId".into());
+    }
+    validate_cu_panic_source(&source)?;
+    request_computer_use_panic_halt(session_id, source)
+}
+
+#[tauri::command]
+fn computer_use_audit_export(
+    params: ComputerUseAuditExportParams,
+) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_audit_export requires sessionId".into());
+    }
+    // ComputerUseAuditExportRequest { sessionId, includeScreenshots, anchorOpenTimestamps }
+    call_daemon_method(
+        "daemon.computer_use.audit_export",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "includeScreenshots": params.include_screenshots.unwrap_or(true),
+            "anchorOpenTimestamps": params.anchor_open_timestamps.unwrap_or(false)
+        })),
+    )
+}
+
+/// Apple Foundation reference-date seconds since 2001-01-01 UTC.
+/// Matches extension `toBurnBarTimestamp`: `Date.now()/1000 - 978307200`.
+fn foundation_reference_date_seconds() -> f64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    unix - 978_307_200.0
 }
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -1445,7 +2157,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             daemon_health,
-            gateway_auth_token,
+            gateway_probe,
+            gateway_chat_stream,
+            gateway_chat_cancel,
+            open_external_url,
             open_dashboard,
             quit_app,
             tray_degraded,
@@ -1502,7 +2217,14 @@ pub fn run() {
             media_file_accept,
             media_file_decline,
             media_file_send,
+            tool_approval_respond,
+            memory_set_status,
+            computer_use_session_start,
+            computer_use_invoke,
+            computer_use_approval_pending,
+            computer_use_approval_respond,
             computer_use_panic_halt,
+            computer_use_audit_export,
             integrations_status
         ])
         .setup(|app| {
@@ -1552,6 +2274,98 @@ mod tests {
         assert_eq!(method, "daemon.mission.cancel");
         assert_eq!(params["missionID"], "m-43");
         assert_eq!(params["actor"], "linux-shell");
+    }
+
+    #[test]
+    fn gateway_endpoint_is_fixed_to_loopback_health_authority() {
+        let mut health = DaemonHealth {
+            ok: true,
+            gateway_enabled: Some(true),
+            gateway_host: Some("127.0.0.1".into()),
+            gateway_port: Some(8642),
+            ..Default::default()
+        };
+        let endpoint = gateway_endpoint_from_health(&health, "/v1/chat/completions").unwrap();
+        assert_eq!(
+            endpoint.as_str(),
+            "http://127.0.0.1:8642/v1/chat/completions"
+        );
+
+        health.gateway_host = Some("api.example.com".into());
+        assert_eq!(
+            gateway_endpoint_from_health(&health, "/v1/chat/completions").unwrap_err(),
+            "gateway_non_loopback_host_refused"
+        );
+        health.gateway_host = Some("127.0.0.1@evil.example".into());
+        assert!(gateway_endpoint_from_health(&health, "/health").is_err());
+    }
+
+    #[test]
+    fn gateway_proxy_request_validation_is_bounded_and_role_allowlisted() {
+        let valid = GatewayProxyRequest {
+            request_id: "request-123".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "hello".into(),
+            }],
+        };
+        assert!(validate_gateway_request(&valid).is_ok());
+
+        let invalid_role = GatewayProxyRequest {
+            request_id: "request-124".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "developer".into(),
+                content: "hello".into(),
+            }],
+        };
+        assert_eq!(
+            validate_gateway_request(&invalid_role).unwrap_err(),
+            "gateway_invalid_message_role"
+        );
+
+        let invalid_id = GatewayProxyRequest {
+            request_id: "../../escape".into(),
+            model: "hermes".into(),
+            messages: valid.messages,
+        };
+        assert_eq!(
+            validate_gateway_request(&invalid_id).unwrap_err(),
+            "gateway_invalid_request_id"
+        );
+    }
+
+    #[test]
+    fn external_url_validation_is_https_and_stripe_host_allowlisted() {
+        assert_eq!(
+            validate_external_url("https://checkout.stripe.com/c/pay/cs_live_123").unwrap(),
+            "https://checkout.stripe.com/c/pay/cs_live_123"
+        );
+        assert_eq!(
+            validate_external_url("https://buy.stripe.com/test_123?prefilled_email=a%40b.test")
+                .unwrap(),
+            "https://buy.stripe.com/test_123?prefilled_email=a%40b.test"
+        );
+        for refused in [
+            "http://checkout.stripe.com/c/pay/cs_live_123",
+            "https://checkout.stripe.com.evil.example/c/pay/cs_live_123",
+            "https://user@checkout.stripe.com/c/pay/cs_live_123",
+            "https://127.0.0.1/c/pay/cs_live_123",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+        ] {
+            assert!(validate_external_url(refused).is_err(), "{refused}");
+        }
+    }
+
+    #[test]
+    fn trusted_cli_candidates_are_fixed_absolute_package_paths() {
+        let source = include_str!("lib.rs");
+        assert!(source.contains("/usr/bin/openburnbar-cli"));
+        assert!(source.contains("/usr/local/bin/openburnbar-cli"));
+        assert!(source.contains("/opt/openburnbar/bin/openburnbar-cli"));
+        assert!(!source.contains("Command::new(\"openburnbar-cli\")"));
     }
 
     #[test]

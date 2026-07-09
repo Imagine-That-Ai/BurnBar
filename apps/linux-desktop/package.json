@@ -6,7 +6,7 @@
   "description": "OpenBurnBar Linux desktop shell (Tauri + WebView)",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node ../../scripts/linux-port/verify-linux-production-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "tauri:dev": "tauri dev",
@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0",
-    "@tauri-apps/plugin-shell": "^2.2.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "zustand": "5.0.5"

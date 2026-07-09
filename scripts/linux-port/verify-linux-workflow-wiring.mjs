@@ -40,6 +40,31 @@ export function verifyLinuxWorkflowWiring(input) {
     'Executed 1 test',
     'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked'
   ]) requireText(input.nativeTests, command, 'native test runner');
+  for (const command of [
+    'gateway_probe',
+    'gateway_chat_stream',
+    'gateway_chat_cancel',
+    '.bearer_auth(token)',
+    'gateway_non_loopback_host_refused',
+    'Policy::none()'
+  ]) requireText(input.rustBridge, command, 'native gateway credential boundary');
+  for (const command of [
+    'validate_external_url',
+    'open_external_url',
+    'external_url_host_refused',
+    'trusted_openburnbar_cli',
+    '/usr/bin/openburnbar-cli'
+  ]) requireText(input.rustBridge, command, 'native external URL boundary');
+  for (const command of [
+    "invoke<boolean>('gateway_probe')",
+    "invoke<void>('gateway_chat_stream'",
+    "invoke<void>('gateway_chat_cancel'",
+    "invoke<void>('open_external_url'"
+  ]) requireText(input.rendererBridge, command, 'renderer native gateway bridge');
+  requireText(input.capability, '"core:default"', 'Tauri capability');
+  requireText(input.fixturePolicy, 'DAEMON_FIXTURE_AVAILABLE', 'production fixture policy');
+  requireText(input.fixturePolicy, "enabled && DAEMON_FIXTURE_AVAILABLE", 'fixture state guard');
+  requireText(input.desktopPackage, 'verify-linux-production-bundle.mjs', 'production bundle gate');
 
   requireOrder(input.release, [
     'Verify product parity at release HEAD',
@@ -64,6 +89,28 @@ export function verifyLinuxWorkflowWiring(input) {
   if (input.pr.includes('mission-001-release') || input.nightly.includes('mission-001-release')) {
     failures.push('PR/nightly workflows may not write or upload sealed mission-001 evidence.');
   }
+  if (/\#\[tauri::command\][\s\S]{0,120}fn\s+gateway_auth_token/.test(input.rustBridge)) {
+    failures.push('a Tauri command may not return the gateway bearer token to the renderer.');
+  }
+  for (const forbidden of ['gatewayAuthToken', 'bearerToken', 'Authorization']) {
+    if (input.rendererBridge.includes(forbidden)) {
+      failures.push(`renderer gateway code may not contain credential surface: ${forbidden}`);
+    }
+  }
+  for (const forbidden of ['shell:default', 'shell:allow-execute', 'shell:allow-spawn']) {
+    if (input.capability.includes(forbidden)) {
+      failures.push(`Tauri WebView capability may not grant generic process access: ${forbidden}`);
+    }
+  }
+  if (/connect-src[^;]*(?:https?:\/\/|wss?:\/\/)/.test(input.tauriConfig)) {
+    failures.push('renderer CSP may not grant direct HTTP or WebSocket network access.');
+  }
+  if (/\bfetch\s*\(/.test(input.rendererBridge)) {
+    failures.push('renderer gateway code may not issue direct network requests.');
+  }
+  if (input.rustBridge.includes('Command::new("openburnbar-cli")')) {
+    failures.push('native commands may not resolve openburnbar-cli through ambient PATH.');
+  }
   const releaseTarget = input.makefile.split('release-linux:')[1]?.split('\n\n')[0] ?? '';
   if (releaseTarget.includes('|| true')) failures.push('release-linux Make target may not swallow failures.');
 
@@ -77,7 +124,21 @@ function main() {
     nightly: read('.github/workflows/linux-nightly.yml'),
     release: read('.github/workflows/linux-release.yml'),
     makefile: read('Makefile'),
-    nativeTests: read('scripts/linux-port/run-linux-native-tests.sh')
+    nativeTests: read('scripts/linux-port/run-linux-native-tests.sh'),
+    rustBridge: read('apps/linux-desktop/src-tauri/src/lib.rs'),
+    capability: read('apps/linux-desktop/src-tauri/capabilities/default.json'),
+    tauriConfig: read('apps/linux-desktop/src-tauri/tauri.conf.json'),
+    fixturePolicy: [
+      read('apps/linux-desktop/src/daemonFixture.ts'),
+      read('apps/linux-desktop/src/state/shellStore.ts'),
+      read('apps/linux-desktop/src/surfaces/support/SupportSurface.tsx')
+    ].join('\n'),
+    desktopPackage: read('apps/linux-desktop/package.json'),
+    rendererBridge: [
+      read('apps/linux-desktop/src/tauriBridge.ts'),
+      read('apps/linux-desktop/src/state/chatStore.ts'),
+      read('apps/linux-desktop/src/chat/gatewayClient.ts')
+    ].join('\n')
   });
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.passed ? 0 : 1);

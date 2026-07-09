@@ -1,5 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
-import { open as openExternal } from '@tauri-apps/plugin-shell';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import type { DaemonHealth } from './daemonClient.js';
 import { ENTITLEMENT_DOC_IDS, evaluateEntitlement } from '@openburnbar/entitlements';
 
@@ -465,11 +464,24 @@ export type IntegrationStatus = {
 };
 export type IntegrationsStatus = { integrations: IntegrationStatus[] };
 
+export type GatewayProxyMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+};
+
+export type GatewayProxyRequest = {
+  requestId: string;
+  model: string;
+  messages: GatewayProxyMessage[];
+};
+
 // ─────────────────────────── Bridge contract ──────────────────────────────
 
 export interface LinuxShellBridge {
   daemonHealth(): Promise<DaemonHealth>;
-  gatewayAuthToken(): Promise<string | null>;
+  gatewayProbe(): Promise<boolean>;
+  gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
+  gatewayChatCancel(requestId: string): Promise<void>;
   openDashboard(): Promise<void>;
   quitApp(): Promise<void>;
   trayDegraded(): Promise<boolean>;
@@ -1562,7 +1574,13 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
   }
   return {
     daemonHealth: () => invoke<DaemonHealth>('daemon_health'),
-    gatewayAuthToken: () => invoke<string | null>('gateway_auth_token'),
+    gatewayProbe: () => invoke<boolean>('gateway_probe'),
+    gatewayChatStream: (request, onChunk) => {
+      const onEvent = new Channel<string>();
+      onEvent.onmessage = onChunk;
+      return invoke<void>('gateway_chat_stream', { request, onEvent });
+    },
+    gatewayChatCancel: (requestId) => invoke<void>('gateway_chat_cancel', { requestId }),
     openDashboard: () => invoke<void>('open_dashboard'),
     quitApp: () => invoke<void>('quit_app'),
     trayDegraded: () => invoke<boolean>('tray_degraded'),
@@ -1743,7 +1761,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('membership_checkout_url');
       return mapMembershipCheckoutUrl(raw);
     },
-    openExternalUrl: (url) => openExternal(url),
+    openExternalUrl: (url) => invoke<void>('open_external_url', { url }),
     // P10 — daemon-side restore hook; callers re-fetch status afterwards.
     membershipRestore: async () => {
       await invoke<RawJsonValue>('membership_restore');

@@ -22,6 +22,12 @@ import type {
 } from './tauriBridge.js';
 import { ENTITLEMENT_DOC_IDS } from '@openburnbar/entitlements';
 
+export function fixtureActivationAllowed(input: { development: boolean; explicitlyEnabled: boolean }): boolean {
+  return input.development || input.explicitlyEnabled;
+}
+
+export const DAEMON_FIXTURE_AVAILABLE = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DAEMON_FIXTURE === '1';
+
 export type DaemonRouteFixture = {
   route: string;
   label: string;
@@ -120,7 +126,7 @@ export function fixtureIntegrationsStatus(): IntegrationsStatus {
 }
 
 export function isDaemonFixtureMode(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (!DAEMON_FIXTURE_AVAILABLE || typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
   if (params.get('daemonFixture') === '1') return true;
   try {
@@ -161,6 +167,10 @@ export function fixtureMercuryMediaStatus(): MercuryMediaStatus {
 }
 
 export function setDaemonFixtureMode(enabled: boolean): void {
+  if (!DAEMON_FIXTURE_AVAILABLE) {
+    localStorage.removeItem('openburnbar.linux.daemonFixture');
+    return;
+  }
   localStorage.setItem('openburnbar.linux.daemonFixture', enabled ? '1' : '0');
 }
 

@@ -55,6 +55,17 @@ export const emptyMemoryReviewInbox = (): Promise<MemoryReviewInbox> =>
 
 export const emptyMemoryReviewDecision = (): Promise<void> => Promise.resolve();
 
+export const emptyMemorySetStatus = async (
+  _action: string,
+  _payload: Record<string, unknown>
+): Promise<unknown> => ({ ok: true });
+
+export const emptyToolApprovalRespond = async (): Promise<void> => {};
+
+export const emptyComputerUse = async (
+  _params?: Record<string, unknown>
+): Promise<unknown> => ({ ok: false, reason: 'stub' });
+
 export const emptyDatabaseWorkspaceStatus = (): Promise<DatabaseWorkspaceStatus> =>
   Promise.resolve({
     sourceLabel: 'test stub',
@@ -83,7 +94,9 @@ export const emptyDatabaseWorkspaceStatus = (): Promise<DatabaseWorkspaceStatus>
 export const emptyDatabaseIndexAction = (): Promise<DatabaseIndexActionResult> =>
   Promise.resolve({ projectID: 'test-project', projectRoot: '/tmp/test', indexedFiles: 0 });
 
-export const emptyGatewayAuthToken = (): Promise<string | null> => Promise.resolve(null);
+export const emptyGatewayProbe = (): Promise<boolean> => Promise.resolve(false);
+export const emptyGatewayChatStream = (): Promise<void> => Promise.resolve();
+export const emptyGatewayChatCancel = (): Promise<void> => Promise.resolve();
 
 export const emptyComputerUsePanicHalt = (): Promise<ComputerUsePanicHaltResult> =>
   Promise.resolve({
@@ -94,8 +107,9 @@ export const emptyComputerUsePanicHalt = (): Promise<ComputerUsePanicHaltResult>
   });
 
 export const bridgeStubDefaults = {
-  gatewayAuthToken: emptyGatewayAuthToken,
-  computerUsePanicHalt: emptyComputerUsePanicHalt,
+  gatewayProbe: emptyGatewayProbe,
+  gatewayChatStream: emptyGatewayChatStream,
+  gatewayChatCancel: emptyGatewayChatCancel,
   mediaStatus: emptyMediaStatus,
   mediaSessionState: emptyMediaSessionState,
   mediaAcceptCall: emptyMediaAction,
@@ -110,6 +124,14 @@ export const bridgeStubDefaults = {
   missionCreate: emptyMissionCreate,
   memoryReviewInbox: emptyMemoryReviewInbox,
   memoryReviewDecision: emptyMemoryReviewDecision,
+  memorySetStatus: emptyMemorySetStatus,
+  toolApprovalRespond: emptyToolApprovalRespond,
+  computerUseSessionStart: emptyComputerUse,
+  computerUseInvoke: emptyComputerUse,
+  computerUseApprovalPending: emptyComputerUse,
+  computerUseApprovalRespond: emptyComputerUse,
+  computerUsePanicHalt: emptyComputerUsePanicHalt,
+  computerUseAuditExport: emptyComputerUse,
   databaseWorkspaceStatus: emptyDatabaseWorkspaceStatus,
   databaseIndexProject: emptyDatabaseIndexAction,
   databaseWatchProject: emptyDatabaseIndexAction

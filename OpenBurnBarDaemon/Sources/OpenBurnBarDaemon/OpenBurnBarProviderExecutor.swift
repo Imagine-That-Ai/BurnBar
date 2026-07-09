@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarLinuxSecurity
 import Foundation
 #if canImport(FoundationNetworking)
 @preconcurrency import FoundationNetworking
@@ -1078,6 +1079,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private let hermesCredentialPoolURL: URL?
     private let claudeCodeCredentialsURL: URL?
     private let claudeOAuthRefreshSession: URLSession
+    private let linuxSecretCustodian: LinuxSecretCustodian
 
     public init(
         service: String = BurnBarKeychainSecretStore.defaultService,
@@ -1087,7 +1089,8 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         claudeCodeCredentialsURL: URL? = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/.credentials.json", isDirectory: false),
         fallbackSecretFileURL: URL? = BurnBarDaemonPaths.defaultProviderSecretContinuityURL,
-        claudeOAuthRefreshSession: URLSession = .shared
+        claudeOAuthRefreshSession: URLSession = .shared,
+        linuxSecretCustodian: LinuxSecretCustodian = LinuxSecretStoreFactory.production()
     ) {
         self.service = service
         self.legacyServices = legacyServices ?? (
@@ -1096,6 +1099,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         self.hermesCredentialPoolURL = hermesCredentialPoolURL
         self.claudeCodeCredentialsURL = claudeCodeCredentialsURL
         self.claudeOAuthRefreshSession = claudeOAuthRefreshSession
+        self.linuxSecretCustodian = linuxSecretCustodian
         if let fallbackSecretFileURL {
             // Legacy continuity vaults were plaintext JSON. They are no longer
             // trusted as a credential source; best-effort scrub stale copies.
@@ -1317,6 +1321,15 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded?.isEmpty == false ? decoded : nil
+#elseif os(Linux)
+        do {
+            return try linuxSecretCustodian.requireHighValueSecret(
+                id: "\(service):\(account)",
+                secretClass: .providerCredential
+            ).secret
+        } catch LinuxSecretStoreError.missingSecret(_) {
+            return nil
+        }
 #else
         return nil
 #endif
@@ -1372,6 +1385,22 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
+        }
+#elseif os(Linux)
+        let account = "provider.\(providerID).apiKey"
+        let id = "\(service):\(account)"
+        if let normalized = secret?.trimmingCharacters(in: .whitespacesAndNewlines),
+           normalized.isEmpty == false {
+            _ = try linuxSecretCustodian.storeHighValueSecret(
+                normalized,
+                id: id,
+                secretClass: .providerCredential
+            )
+        } else {
+            try linuxSecretCustodian.deleteHighValueSecret(
+                id: id,
+                secretClass: .providerCredential
+            )
         }
 #else
         throw NSError(
