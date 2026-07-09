@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// F7 — media-seal session lifecycle, the F10 control-seal pattern applied to
 /// the media lane:

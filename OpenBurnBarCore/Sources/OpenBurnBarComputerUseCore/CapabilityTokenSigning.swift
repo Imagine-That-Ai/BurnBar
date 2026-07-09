@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Ed25519 signing and verification for `CapabilityToken` payloads.
 ///

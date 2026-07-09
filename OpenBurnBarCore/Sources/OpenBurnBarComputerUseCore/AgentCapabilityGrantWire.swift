@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 public enum AgentCapabilityGrantWireError: Error, Equatable, Sendable {
     case unsupportedRuntime(String)

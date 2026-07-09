@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 public extension AgentDesktopCapability {
     /// F2 — capabilities whose *individual actions* demand a fresh biometric
