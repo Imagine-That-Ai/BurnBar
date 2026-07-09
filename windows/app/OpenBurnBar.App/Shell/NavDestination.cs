@@ -4,14 +4,13 @@ using System.Linq;
 namespace OpenBurnBar.App.Shell;
 
 /// <summary>
-/// One sidebar destination in the WinUI <c>NavigationView</c> app frame — the Windows
-/// analog of a macOS <c>NavigationSplitView</c> sidebar row / <c>DashboardMainRoute</c>
+/// One top-level app destination — the Windows peer of a macOS
+/// <c>DashboardMainRoute</c> / Command Deck section
 /// (<c>AgentLens/Views/Dashboard/DashboardNavigationModel.swift</c>).
 ///
-/// Phase 3 W6-SHELL ships the frame with all 12 destinations <b>stubbed</b>: selecting one
-/// navigates a content <c>Frame</c> to a placeholder that names the surface. The real
-/// surfaces (Buckets A/B/C of the Phase-3 plan) replace those placeholders one by one; the
-/// catalog here is the stable seam they plug into.
+/// These are <b>not</b> the Dashboard Command sidebar rows (those are Overview /
+/// providers / models, owned by <c>DashboardCommandSidebar</c>). Catalog entries
+/// feed the section switcher menu + Command Palette.
 /// </summary>
 public sealed class NavDestination
 {

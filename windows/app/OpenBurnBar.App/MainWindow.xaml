@@ -44,7 +44,7 @@
             </Grid>
         </Border>
 
-        <!-- The NavigationView app frame (12 destinations + content Frame). -->
+        <!-- Command Deck shell (section switcher + content). Dashboard owns Command sidebar. -->
         <shell:AppShell x:Name="ShellControl" Grid.Row="1" />
     </Grid>
 </Window>

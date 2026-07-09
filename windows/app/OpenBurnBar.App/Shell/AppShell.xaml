@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  AppShell — WinUI NavigationView frame (macOS NavigationSplitView analogue).
-  Dark Pensieve + Liquid Glass chrome: translucent pane, glass header toolbar,
-  interactive Search + circle Appearance. Content frame stays transparent so
-  page/kernel/Mica layers show through.
+  AppShell — macOS DashboardView chrome parity (not a permanent left destination rail).
+
+  macOS structure (DashboardView + DashboardToolbarContent):
+    • Toolbar / Command Deck: brand · section switcher menu · ⌘K · appearance
+    • NavigationSplitView lives INSIDE the Dashboard page (Command sidebar | detail)
+    • Other sections replace the detail frame; they are NOT left-nav rows
+
+  Windows: same idea — top Command Deck + full-width content frame.
+  Destinations live in the section menu (DashboardSectionSwitcher peer).
 -->
 <UserControl
     x:Class="OpenBurnBar.App.Shell.AppShell"
@@ -15,69 +20,123 @@
     mc:Ignorable="d"
     RequestedTheme="Dark">
 
-    <NavigationView x:Name="Nav"
-                    Background="Transparent"
-                    IsBackButtonVisible="Collapsed"
-                    IsSettingsVisible="False"
-                    PaneDisplayMode="Left"
-                    OpenPaneLength="240"
-                    IsPaneToggleButtonVisible="True"
-                    SelectionChanged="Nav_SelectionChanged">
+    <Grid Background="Transparent" RowSpacing="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <NavigationView.Header>
-            <Border Style="{StaticResource LiquidGlassToolbarStyle}"
-                    theme:LiquidGlass.Surface="True"
-                    Margin="0,0,0,6">
-                <theme:LiquidGlassGroup>
-                    <Grid ColumnSpacing="8" Padding="4,2,4,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+        <!-- Command Deck toolbar (macOS .toolbar navigation + primaryAction) -->
+        <Border Grid.Row="0"
+                Style="{StaticResource LiquidGlassToolbarStyle}"
+                theme:LiquidGlass.Surface="True"
+                Margin="10,6,10,4">
+            <Grid ColumnSpacing="10" Padding="6,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                        <TextBlock x:Name="HeaderTitle"
-                                   Grid.Column="0"
-                                   VerticalAlignment="Center"
-                                   FontSize="20"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <!-- Brand mark -->
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Center"
+                            Margin="4,0,8,0">
+                    <Border Width="10" Height="10" CornerRadius="5"
+                            Background="{StaticResource OBBAccentBrush}" />
+                    <TextBlock Text="OpenBurnBar"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                </StackPanel>
 
-                        <Button Grid.Column="1"
+                <!-- Section switcher (macOS DashboardSectionSwitcher Menu) -->
+                <DropDownButton x:Name="SectionSwitcher"
+                                Grid.Column="1"
                                 Style="{StaticResource LiquidGlassInteractiveStyle}"
                                 theme:LiquidGlass.Interactive="True"
-                                Click="Palette_Click"
-                                ToolTipService.ToolTip="Command palette (Ctrl+K)">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE721;"
-                                          Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                                <TextBlock Text="Search"
-                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                                <TextBlock Text="Ctrl K"
-                                           Opacity="0.55"
-                                           FontSize="11"
-                                           VerticalAlignment="Center"
-                                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                            </StackPanel>
-                        </Button>
+                                VerticalAlignment="Center"
+                                ToolTipService.ToolTip="Switch section">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon x:Name="SectionGlyph"
+                                  FontFamily="Segoe MDL2 Assets"
+                                  FontSize="12"
+                                  Glyph="&#xE80F;"
+                                  Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock x:Name="SectionTitle"
+                                   Text="Dashboard"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  FontSize="10"
+                                  Glyph="&#xE70D;"
+                                  Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout x:Name="SectionMenu" Placement="Bottom" />
+                    </DropDownButton.Flyout>
+                </DropDownButton>
 
-                        <Button Grid.Column="2"
-                                Style="{StaticResource LiquidGlassCircleButtonStyle}"
-                                theme:LiquidGlass.CircleButtonDiameter="30"
-                                ToolTipService.ToolTip="Appearance">
-                            <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;"
-                                      Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                            <Button.Flyout>
-                                <Flyout x:Name="AppearanceFlyout" Opening="AppearanceFlyout_Opening">
-                                    <theme:AppearanceModeControl x:Name="AppearanceControl" MinWidth="300" />
-                                </Flyout>
-                            </Button.Flyout>
-                        </Button>
-                    </Grid>
-                </theme:LiquidGlassGroup>
-            </Border>
-        </NavigationView.Header>
+                <!-- Spacer -->
+                <Border Grid.Column="2" />
 
-        <Frame x:Name="ContentFrame" Background="Transparent" />
-    </NavigationView>
+                <!-- Command palette (⌘K / Ctrl+K) -->
+                <Button Grid.Column="3"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}"
+                        theme:LiquidGlass.Interactive="True"
+                        Click="Palette_Click"
+                        ToolTipService.ToolTip="Command palette (Ctrl+K)">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE721;"
+                                  Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock Text="Search"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock Text="Ctrl K"
+                                   Opacity="0.55"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
+                </Button>
+
+                <!-- Appearance -->
+                <Button Grid.Column="4"
+                        Style="{StaticResource LiquidGlassCircleButtonStyle}"
+                        theme:LiquidGlass.CircleButtonDiameter="30"
+                        ToolTipService.ToolTip="Appearance">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;"
+                              Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <Button.Flyout>
+                        <Flyout x:Name="AppearanceFlyout" Opening="AppearanceFlyout_Opening">
+                            <theme:AppearanceModeControl x:Name="AppearanceControl" MinWidth="300" />
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+
+                <!-- Overflow: footer destinations (Settings) -->
+                <Button Grid.Column="5"
+                        Style="{StaticResource LiquidGlassCircleButtonStyle}"
+                        theme:LiquidGlass.CircleButtonDiameter="30"
+                        ToolTipService.ToolTip="More">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE712;"
+                              Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <Button.Flyout>
+                        <MenuFlyout x:Name="OverflowMenu" Placement="Bottom" />
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Full-bleed content (Dashboard owns its own Command sidebar) -->
+        <Frame x:Name="ContentFrame"
+               Grid.Row="1"
+               Background="Transparent" />
+    </Grid>
 </UserControl>

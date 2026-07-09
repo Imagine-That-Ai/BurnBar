@@ -1,20 +1,21 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Dashboard.EasterEgg;
 using OpenBurnBar.App.Dashboard.Layout;
 using OpenBurnBar.App.Dashboard.Layouts;
+using OpenBurnBar.App.Presentation.Dashboard;
 using OpenBurnBar.App.Theme;
 using Windows.UI.ViewManagement;
 
 namespace OpenBurnBar.App.Dashboard;
 
 /// <summary>
-/// Code-behind for the Dashboard surface. Owns the WebGL2 kernel backdrop (when enabled),
-/// the Win2D swarm fallback, the easter-egg overlay canvas, and the scroll-reversal
-/// controller. Kernel host is constructed lazily when the preference is enabled at runtime.
-/// Visibility is resolved by <see cref="KernelBackdropSelection"/>; Win2D stays visible until kernel Ready.
+/// Dashboard surface — macOS <c>DashboardView</c> parity:
+/// NavigationSplitView with Command sidebar (<c>DashboardSidebarView</c>) + concept detail.
+/// Owns WebGL2 kernel / Win2D swarm layers, layout switcher, and easter-egg overlay.
 /// </summary>
 public sealed partial class DashboardPage : Page
 {
@@ -27,6 +28,8 @@ public sealed partial class DashboardPage : Page
     private bool _kernelEnabled;
     /// <summary>True only after an attempted kernel construction failed (not "never tried").</summary>
     private bool _kernelConstructionFailed;
+    private DashboardCommandSnapshot _commandSnapshot = DashboardCommandSnapshot.Empty;
+    private DashboardCommandSelection _commandSelection = DashboardCommandSelection.Overview();
 
     public DashboardPage()
     {
@@ -69,6 +72,8 @@ public sealed partial class DashboardPage : Page
         }
 
         Switcher.LayoutChanged += OnLayoutChanged;
+        CommandSidebar.SelectionChanged += OnCommandSelectionChanged;
+        CommandSidebar.ViewModeChanged += OnCommandViewModeChanged;
         _controller.EventPresented += OnEventPresented;
         if (_egg is not null)
         {
@@ -78,8 +83,51 @@ public sealed partial class DashboardPage : Page
         LiquidGlassEnvironment.PreferencesChanged += OnGlassPreferencesChanged;
         ActualThemeChanged += OnActualThemeChanged;
 
+        LoadCommandSnapshot();
         ShowLayout(Switcher.State.Selection);
         Unloaded += OnUnloaded;
+    }
+
+    private void LoadCommandSnapshot()
+    {
+        // Sample-mode fills the Command rail the same way macOS sample usage fills
+        // dashboardProviderSummaries. Live SQLCipher aggregation lands with the
+        // usage-window seam; until then empty is honest when sample mode is off.
+        _commandSnapshot = RuntimeDataMode.SampleModeEnabled
+            ? DashboardCommandSampleData.Snapshot()
+            : DashboardCommandSnapshot.Empty;
+        CommandSidebar.ApplySnapshot(_commandSnapshot);
+        ApplyDetailChrome();
+    }
+
+    private void OnCommandSelectionChanged(object? sender, DashboardCommandSelection selection)
+    {
+        _commandSelection = selection;
+        ApplyDetailChrome();
+    }
+
+    private void OnCommandViewModeChanged(object? sender, DashboardCommandViewMode mode)
+    {
+        _commandSelection = DashboardCommandSelection.Overview();
+        ApplyDetailChrome();
+    }
+
+    private void ApplyDetailChrome()
+    {
+        if (_commandSelection.IsOverview)
+        {
+            DetailTitle.Text = "Overview";
+            DetailSubtitle.Text = _commandSnapshot.Origin == DashboardUsageOrigin.Sample
+                ? "Sample · all providers"
+                : "All providers + models";
+        }
+        else
+        {
+            DetailTitle.Text = _commandSelection.Title;
+            DetailSubtitle.Text = _commandSelection.Kind == "provider"
+                ? "Provider deep dive"
+                : "Model deep dive";
+        }
     }
 
     private bool IsDark => ActualTheme == ElementTheme.Dark;
@@ -253,6 +301,8 @@ public sealed partial class DashboardPage : Page
         ActualThemeChanged -= OnActualThemeChanged;
         _controller.EventPresented -= OnEventPresented;
         Switcher.LayoutChanged -= OnLayoutChanged;
+        CommandSidebar.SelectionChanged -= OnCommandSelectionChanged;
+        CommandSidebar.ViewModeChanged -= OnCommandViewModeChanged;
         if (_kernel is not null)
         {
             _kernel.Ready -= OnKernelReady;
