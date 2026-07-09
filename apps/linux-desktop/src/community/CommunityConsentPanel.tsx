@@ -10,6 +10,7 @@ type Props = {
   onChange: (next: CommunityConsentState) => void;
   onRevoke: () => void;
   statusMessage?: string;
+  exportStatusMessage?: string;
 };
 
 function TriToggle({
@@ -29,7 +30,7 @@ function TriToggle({
   );
 }
 
-export function CommunityConsentPanel({ consent, onChange, onRevoke, statusMessage }: Props) {
+export function CommunityConsentPanel({ consent, onChange, onRevoke, statusMessage, exportStatusMessage }: Props) {
   const patch = (partial: Partial<CommunityConsentState>) =>
     onChange({ ...consent, ...partial, updatedAt: new Date().toISOString() });
 
@@ -46,6 +47,7 @@ export function CommunityConsentPanel({ consent, onChange, onRevoke, statusMessa
     <section className="community-panel glass-card" aria-labelledby="community-consent-title">
       <h3 id="community-consent-title">Consent center</h3>
       <p className="community-muted">{statusMessage}</p>
+      {exportStatusMessage ? <p className="community-muted">{exportStatusMessage}</p> : null}
       <div className="community-consent-grid">
         <TriToggle label="L1 analytics" value={consent.l1Analytics} onCycle={() => patch({ l1Analytics: cycleTriState(consent.l1Analytics) })} />
         <TriToggle label="L2 rankings" value={consent.l2Rankings} onCycle={() => patch({ l2Rankings: cycleTriState(consent.l2Rankings) })} />

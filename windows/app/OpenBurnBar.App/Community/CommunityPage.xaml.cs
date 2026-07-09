@@ -69,6 +69,7 @@ public sealed partial class CommunityPage : Page
             : string.Join(" · ", _viewModel.PurposeBreakdown.Select(p => $"{p.Category} {p.Share:P0}"));
 
         ConsentPreviewText.Text = _viewModel.ConsentPreviewSummary;
+        CityConfidenceText.Text = _viewModel.CityConfidenceCopy;
         StatusText.Text = _viewModel.StatusMessage;
 
         LeaderboardHost.Children.Clear();

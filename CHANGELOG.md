@@ -48,15 +48,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Swift/Kotlin/TS/C# — infers session purpose (ui/backend/logic/writing/
     research/debugging/orchestration/other) from metadata signals, with
     user correction biasing and golden-fixture cross-platform parity tests.
-  - **Looking Glass Mode** (L3) — richer private traces + JSONL export bundles
-    via signed Storage URLs. (Parquet format is planned, not yet shipped.)
+  - **Looking Glass Mode** (L3) — richer private traces with JSONL default
+    and typed Parquet bundle exports via signed Storage URLs.
   - **Transactional handle uniqueness** via `community_handles/{handleLower}`
     doc-ID claims — atomic, no TOCTOU race, no collectionGroup scan.
   - **Schema**: TypeSpec-first in `tools/schema-sync/typespec/domains/community.tsp`,
-    emitting TS/Swift/Kotlin.
+    emitting generated TS/Swift/Kotlin contracts, including share snapshots.
   - **Geography**: timezone/locale-derived country + region keys (no location
-    permission needed). OS coarse-location pipeline for city tier (CoreLocation,
-    ACCESS_COARSE_LOCATION, Windows.Devices.Geolocation) is planned.
+    permission needed), OS/browser/manual coarse city-key pipelines for city
+    tier, and city-confidence copy across all Community surfaces.
+  - **Ops readiness**: Community canary/post-merge checks, real-device
+    permission-validation checklist, visual-state snapshots, stale public-board
+    cleanup, and a documented kill switch / rollback runbook.
   - See `docs/COMMUNITY.md` for full architecture, ranking algorithm,
     k-anonymity thresholds, geo fallback ladder, and platform UI map.
 

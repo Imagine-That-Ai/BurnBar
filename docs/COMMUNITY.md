@@ -113,6 +113,17 @@ Aggregation rejects malformed or implausible share snapshots before ranking: mis
 - Client-side reverse-geocode → keys only (`countryCode`, `regionKey`, `cityKey`). Never raw coordinates.
 - The OS prompt appears only when enabling the city tier.
 
+### City-confidence copy
+
+Every Community surface shows the source of its city confidence before or near the city-tier control:
+
+- **No city lookup:** city tier is off; country/region may still derive from timezone/locale.
+- **Paused:** city tier is on but coarse/approximate location is unset or declined; broader tiers keep working.
+- **Approximate OS location:** Apple, Android, and Windows resolve a canonical city key on save; raw coordinates never leave the device.
+- **Manual-only desktop/browser fallback:** Web and Linux use a manual city label only; they never send browser or desktop coordinates to a reverse-geocoder. Both store only canonical geo keys.
+
+The copy is intentionally user-facing, not diagnostic: it explains confidence and privacy source without exposing coordinates, provider internals, or exact geocoder output.
+
 ## Model-Purpose Classifier
 
 Canonical TS reference: `functions/src/community/classifier.ts`. Ported to Swift/Kotlin/C#.
@@ -174,6 +185,10 @@ Personal hero (tokens/cost/model mix/trend delta)
 
 Empty states invite opt-in without pressure. Threshold states explain "needs N more burners in {city}".
 
+City-confidence copy appears beside the consent center/hero on every surface so users understand whether a city rank is based on approximate OS location, a manual city label, or no city lookup.
+
+Looking Glass export copy has explicit idle/ready/error states. Ready copy states the 15-minute link lifetime; error copy states that no traces left the device.
+
 ## Test Strategy
 
 | Area | Location | Coverage |
@@ -183,6 +198,64 @@ Empty states invite opt-in without pressure. Threshold states explain "needs N m
 | Swift | `AgentLensTests/` + `OpenBurnBarMobileTests/` | Consent store, classifier goldens, render states (opted-out/empty/threshold/live), revocation UI |
 | Kotlin JVM | `android/app/src/test/` | Consent store, classifier goldens, snapshot merge, Compose screen states |
 | Schema | `./tools/schema-sync/check-drift.sh` | TypeSpec canon parity, hand-mirror drift, Community golden fixture mirror drift |
+| Ops scripts | `functions/scripts/community-leaderboard-canary.mjs`, `functions/scripts/community-postmerge-check.mjs` | Synthetic authenticated reads for threshold/live boards, revoked anonId exclusion, active participant counts, below-threshold grouping, stale public board cleanup reporting |
+| Real-device validation | `scripts/e2e/community-permission-validation.mjs` | Android/iOS/macOS/Windows denied/granted/unavailable location-permission checklist and evidence paths |
+| Visual states | `apps/console/test/community.visual-states.test.ts`, `apps/linux-desktop/src/community/community.visual-states.test.tsx` | Opted-out, below-threshold, live, revoked/local-paused, Looking Glass ready/error, city-confidence copy snapshots |
+
+## Operator Runbook
+
+### Scheduled cadence
+
+- `aggregateCommunityLeaderboards` runs every 60 minutes in `FUNCTIONS_REGION`.
+- `cleanupStaleCommunityLeaderboards` runs every 24 hours as a safety net. Normal aggregation also deletes stale public boards after a successful generation.
+- Public docs are expected to be stale by up to one aggregation interval plus scheduler jitter. This is a product tradeoff that keeps cost bounded and avoids real-time social pressure.
+
+### Public-doc rollback
+
+1. Set `OPENBURNBAR_COMMUNITY_PUBLIC_READS_ENABLED=false` or the matching Remote Config value so Firestore rules fail closed for `community_leaderboards`.
+2. Leave owner reads intact; private `users/{uid}/community/*` docs remain readable by their owner.
+3. If a bad public generation shipped, run `cd functions && npm run community:postmerge-check -- --project <project> --stale-hours 0 --delete-stale` after confirming the rollback window. This deletes public leaderboard docs only; it does not touch consent, profiles, share snapshots, traces, or exports.
+4. Re-enable public reads only after `npm run community:canary` passes against known threshold/live docs.
+
+### Kill switch
+
+- `OPENBURNBAR_COMMUNITY_KILL_SWITCH=true` or `community_kill_switch=true` disables joins, profile updates, Looking Glass exports, and aggregation.
+- Cleanup paths and owner reads stay available so operators can unwind public docs without trapping users.
+- After clearing the kill switch, run one manual aggregation or wait for the next hourly sweep, then run the canary.
+
+### Threshold and debug queries
+
+```bash
+# Synthetic public-read canary; requires Firebase Web API key and ADC/Admin auth.
+cd functions
+FIREBASE_PROJECT=<project> FIREBASE_WEB_API_KEY=<web-api-key> \
+  npm run community:canary -- \
+  --threshold-doc <window>_<tier>_<geoKey> \
+  --live-doc <window>_<tier>_<geoKey> \
+  --revoked-anon-id <anon-id-known-revoked>
+
+# Post-merge aggregate report; dry-run by default.
+cd functions
+npm run community:postmerge-check -- --project <project>
+
+# Optional stale public-board cleanup after review.
+cd functions
+npm run community:postmerge-check -- --project <project> --delete-stale
+```
+
+The post-merge report prints active Community participants, share snapshots, revoked tombstones, below-threshold public boards grouped by `window/tier`, total public boards, stale public boards eligible for cleanup, and stale public boards actually cleaned.
+
+### Real-device UI validation
+
+```bash
+# Print the full Android/iOS/macOS/Windows matrix without mutating devices.
+node scripts/e2e/community-permission-validation.mjs --platform all --mode all
+
+# Execute safe automated Android/macOS setup steps where available.
+node scripts/e2e/community-permission-validation.mjs --platform android --mode denied --execute
+```
+
+Capture the screenshot/log paths printed by the script for denied, granted, and unavailable states. Permission prompts that cannot be controlled programmatically on physical iOS/macOS/Windows remain explicit manual checklist steps.
 
 ## Validation
 

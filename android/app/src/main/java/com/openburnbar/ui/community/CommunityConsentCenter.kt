@@ -111,6 +111,12 @@ fun CommunityConsentCenter(
                             )
                         },
                     )
+                    Text(
+                        text = cityConfidenceCopy(draft),
+                        style = AuroraType.caption,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = AuroraSpacing.LG.dp),
+                    )
                 }
             }
 
@@ -181,4 +187,17 @@ private fun CommunityTriStateRow(icon: ImageVector, label: String, subtitle: Str
     }
 }
 
+
+private fun cityConfidenceCopy(draft: CommunityConsentDraft): String {
+    if (draft.l2Rankings != ConsentTriState.GRANTED || draft.l2City != ConsentTriState.GRANTED) {
+        return "City confidence: no city lookup. Country and region can use locale/timezone; world ranking needs no location."
+    }
+    if (draft.locationConsent != ConsentTriState.GRANTED) {
+        return "City confidence: city rank is paused until approximate location is granted; broader tiers still use locale/timezone."
+    }
+    if (draft.resolvedCityKey != null) {
+        return "City confidence: Android approximate location resolved a city key. BurnBar stores only the key, never raw coordinates."
+    }
+    return "City confidence: Android approximate location resolves on save; raw coordinates never leave this device."
+}
 private fun tierFromToggle(on: Boolean): ConsentTriState = if (on) ConsentTriState.GRANTED else ConsentTriState.DECLINED

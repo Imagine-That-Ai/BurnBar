@@ -91,6 +91,9 @@
                 <StackPanel Spacing="12">
                     <TextBlock Text="Consent center" FontWeight="SemiBold" />
                     <TextBlock x:Name="ConsentPreviewText" TextWrapping="WrapWholeWords" />
+                    <TextBlock x:Name="CityConfidenceText"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                               TextWrapping="WrapWholeWords" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="L1 analytics" Click="OnL1Click" />
                         <Button Content="L2 rankings" Click="OnL2Click" />

@@ -306,3 +306,14 @@ export const updateCommunityProfile = (payload: UpdateCommunityProfileRequest) =
 
 export const revokeCommunityParticipation = () =>
   call<Record<string, never>, { ok: boolean }>("revokeCommunityParticipation", {});
+
+export interface ExportLookingGlassBundleResponse {
+  signedUrl?: string;
+  downloadUrl: string;
+  traceCount: number;
+  format: string;
+  expiresIn: number;
+}
+
+export const exportLookingGlassBundle = (format: "jsonl" | "parquet" = "jsonl") =>
+  call<{ format: "jsonl" | "parquet" }, ExportLookingGlassBundleResponse>("exportLookingGlassBundle", { format });

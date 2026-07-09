@@ -87,6 +87,7 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
     public IReadOnlyList<PurposeSlice> PurposeBreakdown { get; private set; } = Array.Empty<PurposeSlice>();
 
     public string ConsentPreviewSummary { get; private set; } = string.Empty;
+    public string CityConfidenceCopy { get; private set; } = string.Empty;
 
     public bool ShowInviteEmptyState { get; private set; } = true;
 
@@ -152,6 +153,7 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
             PeerCohortTokens = Array.Empty<double>();
             PurposeBreakdown = Array.Empty<PurposeSlice>();
             ConsentPreviewSummary = BuildConsentPreview();
+            CityConfidenceCopy = BuildCityConfidenceCopy();
             return;
         }
 
@@ -172,6 +174,7 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
         PeerCohortTokens = new[] { 120_000d, 185_000, 240_000, 310_000, 420_000, 580_000 };
         PurposeBreakdown = BuildPurposeBreakdown();
         ConsentPreviewSummary = BuildConsentPreview();
+        CityConfidenceCopy = BuildCityConfidenceCopy();
         StatusMessage = string.Empty;
     }
 
@@ -298,6 +301,22 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
     {
         var c = Consent;
         return $"L1 {c.L1Analytics.Label()} · L2 {c.L2Rankings.Label()} · L3 {c.L3LookingGlass.Label()} · Location {c.LocationConsent.Label()}";
+    }
+
+    private string BuildCityConfidenceCopy()
+    {
+        var c = Consent;
+        if (!c.L2Rankings.IsActive() || !c.L2Tiers.City.IsActive())
+        {
+            return "City confidence: no city lookup. Country and region can use locale/timezone; world ranking needs no location.";
+        }
+
+        if (!c.LocationConsent.IsActive())
+        {
+            return "City confidence: city rank is paused until approximate location is granted; broader tiers still use locale/timezone.";
+        }
+
+        return "City confidence: Windows approximate location resolves on save; BurnBar stores only the city key, never raw coordinates.";
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>

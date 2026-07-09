@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Banner } from '../components/Banner.js';
 import { CommunityConsentPanel } from './CommunityConsentPanel.js';
 import { CommunityLeaderboardCards } from './CommunityLeaderboardCards.js';
-import { buildCommunityView } from './communityModel.js';
+import { LOCAL_PARTICIPATION_PAUSED_COPY, buildCommunityView } from './communityModel.js';
 import {
   defaultCommunityConsent,
   readCommunityConsent,
@@ -50,6 +50,7 @@ export function CommunitySurface() {
           </div>
         </div>
         <p className="community-muted">{view.hero.modelMixSummary}</p>
+        <p className="community-muted">{view.cityConfidenceCopy}</p>
       </header>
 
       <section className="community-panel glass-card">
@@ -107,6 +108,7 @@ export function CommunitySurface() {
         consent={consent}
         onChange={persistConsent}
         statusMessage={view.consentPreview}
+        exportStatusMessage={view.lookingGlassExport.message}
         onRevoke={() => {
           const declined = defaultCommunityConsent();
           declined.l1Analytics = 'declined';
@@ -115,7 +117,7 @@ export function CommunitySurface() {
           declined.locationConsent = 'declined';
           declined.l2Tiers = { world: 'declined', country: 'declined', region: 'declined', city: 'declined' };
           persistConsent(declined);
-          setStatusMessage('Participation paused locally. Sync revoke when signed in online.');
+          setStatusMessage(LOCAL_PARTICIPATION_PAUSED_COPY);
         }}
       />
       {statusMessage ? <p className="community-muted">{statusMessage}</p> : null}

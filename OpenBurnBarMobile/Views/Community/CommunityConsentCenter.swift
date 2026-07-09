@@ -46,7 +46,7 @@ struct CommunityConsentCenter: View {
                         set: { consent.setLocation($0) }
                     )
                 )
-                Text("BurnBar uses your approximate city to show you on local leaderboards. We never store coordinates — only the city name.")
+                Text(cityConfidenceCopy)
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
                 if let city = consent.resolvedCityKey,
@@ -111,6 +111,19 @@ struct CommunityConsentCenter: View {
         } message: {
             Text("Your profile and rankings are tombstoned. You can opt in again later.")
         }
+    }
+
+    private var cityConfidenceCopy: String {
+        guard consent.l2Rankings == .granted, consent.tierState(.city) == .granted else {
+            return "City confidence: no city lookup. Country and region can use locale/timezone; world ranking needs no location."
+        }
+        guard consent.locationConsent == .granted else {
+            return "City confidence: city rank is paused until approximate location is granted; broader tiers still use locale/timezone."
+        }
+        if consent.resolvedCityKey != nil {
+            return "City confidence: approximate iOS location resolved a city key. BurnBar stores only the key, never raw coordinates."
+        }
+        return "City confidence: approximate iOS location resolves on save; raw coordinates never leave this device."
     }
 
     private var tierLadder: some View {

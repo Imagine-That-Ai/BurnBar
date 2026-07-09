@@ -17,6 +17,16 @@ export type CommunityHero = {
   modelMixSummary: string;
 };
 
+export type LookingGlassExportState = 'idle' | 'ready' | 'error';
+
+export type LookingGlassExportCopy = {
+  state: LookingGlassExportState;
+  message: string;
+};
+
+export const LOCAL_PARTICIPATION_PAUSED_COPY =
+  'Participation paused locally. Sync revoke when signed in online.';
+
 export type CommunityViewState = {
   hero: CommunityHero;
   leaderboards: CommunityLeaderboardCard[];
@@ -26,7 +36,11 @@ export type CommunityViewState = {
   consentPreview: string;
   showInvite: boolean;
   statusMessage: string;
+  cityConfidenceCopy: string;
+  lookingGlassExport: LookingGlassExportCopy;
 };
+
+
 
 function geoLabel(tier: GeographyTier): string {
   switch (tier) {
@@ -40,6 +54,43 @@ function geoLabel(tier: GeographyTier): string {
       return 'Global';
   }
 }
+
+export function cityConfidenceCopy(consent: CommunityConsentState): string {
+  const cityRequested = isConsentActive(consent.l2Rankings) && isConsentActive(consent.l2Tiers.city);
+  if (!cityRequested) {
+    return 'City confidence: no city lookup. Country and region can use locale/timezone; world ranking needs no location.';
+  }
+  if (!isConsentActive(consent.locationConsent)) {
+    return 'City confidence: city rank is paused until city consent and a manual city label are provided; broader tiers still use locale/timezone.';
+  }
+  if (consent.manualCityInput?.trim()) {
+    return 'City confidence: manual city label only; BurnBar stores the canonical city key, never raw coordinates.';
+  }
+  return 'City confidence: manual city label required; BurnBar does not reverse-geocode desktop/browser coordinates.';
+}
+
+export function lookingGlassExportCopy(state: LookingGlassExportState): LookingGlassExportCopy {
+  switch (state) {
+    case 'ready':
+      return {
+        state,
+        message:
+          'Looking Glass export ready: download link expires in 15 minutes and never feeds leaderboards.',
+      };
+    case 'error':
+      return {
+        state,
+        message: 'Looking Glass export failed: no traces left the device; try again after reconnecting.',
+      };
+    default:
+      return {
+        state,
+        message:
+          'Looking Glass export: grant L3 to create a private bundle; leaderboard rankings never use traces.',
+      };
+  }
+}
+
 
 function thresholdCards(): CommunityLeaderboardCard[] {
   return GEO_TIER_ORDER.map((tier) => ({
@@ -148,6 +199,8 @@ export function buildCommunityView(
       consentPreview: consentPreview(consent),
       showInvite: true,
       statusMessage: '',
+      cityConfidenceCopy: cityConfidenceCopy(consent),
+      lookingGlassExport: lookingGlassExportCopy('idle'),
     };
   }
 
@@ -163,5 +216,7 @@ export function buildCommunityView(
     consentPreview: consentPreview(consent),
     showInvite: false,
     statusMessage: '',
+    cityConfidenceCopy: cityConfidenceCopy(consent),
+    lookingGlassExport: lookingGlassExportCopy('idle'),
   };
 }

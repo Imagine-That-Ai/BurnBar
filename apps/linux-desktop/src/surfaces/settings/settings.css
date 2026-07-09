@@ -509,6 +509,8 @@
   color: var(--color-text-bright);
   text-decoration: underline;
   outline: none;
+}
+
 .settings-inline-form {
   display: block;
 }

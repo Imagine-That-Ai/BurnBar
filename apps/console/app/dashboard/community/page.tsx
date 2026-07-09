@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { buildCommunityView } from "@/lib/community/viewModel";
+import { buildCommunityView, lookingGlassExportCopy } from "@/lib/community/viewModel";
 import {
   cycleTriState,
   defaultCommunityConsent,
@@ -11,7 +11,7 @@ import {
 } from "@/lib/community/localConsent";
 import type { CommunityConsentDoc, CommunityTimeWindow, GeographyTier } from "@/lib/community/types";
 import { GEO_TIER_ORDER, TIME_WINDOWS } from "@/lib/community/types";
-import { joinCommunity, revokeCommunityParticipation } from "@/lib/api";
+import { exportLookingGlassBundle, joinCommunity, revokeCommunityParticipation } from "@/lib/api";
 import { buildJoinCommunityRequest } from "@/lib/community/joinPayload";
 import { resolveBrowserCityKey } from "@/lib/community/browserCityLocation";
 import { cityKeyFromManualCityInput } from "@/lib/community/geoCityKey";
@@ -37,8 +37,14 @@ export default function CommunityDashboardPage() {
   const [window, setWindow] = React.useState<CommunityTimeWindow>("30d");
   const [status, setStatus] = React.useState("");
   const [syncing, setSyncing] = React.useState(false);
+  const [lookingGlassExportState, setLookingGlassExportState] = React.useState<"idle" | "ready" | "error">("idle");
+  const [lookingGlassExportUrl, setLookingGlassExportUrl] = React.useState("");
 
   const view = React.useMemo(() => buildCommunityView(consent, window), [consent, window]);
+  const lookingGlassExport = React.useMemo(
+    () => (lookingGlassExportState === "idle" ? view.lookingGlassExport : lookingGlassExportCopy(lookingGlassExportState)),
+    [lookingGlassExportState, view.lookingGlassExport],
+  );
 
   const frostStyle = { "--lg-frost": "0.35" } as React.CSSProperties;
 
@@ -68,6 +74,7 @@ export default function CommunityDashboardPage() {
         <p className="font-mono text-2xl">{view.hero.tokens.toLocaleString()} tokens</p>
         <p className="text-content-mute">${view.hero.costUSD.toFixed(2)} estimated · Δ {view.hero.trendDeltaPct}%</p>
         <p className="text-sm text-content-mute">{view.hero.modelMixSummary}</p>
+        <p className="text-sm text-content-mute">{view.cityConfidenceCopy}</p>
       </section>
 
       <section className="lg-bar mb-token-4 flex flex-wrap gap-token-2">
@@ -138,6 +145,12 @@ export default function CommunityDashboardPage() {
       <section className="lg-card p-token-4">
         <h3>Consent center</h3>
         <p className="mb-token-3 text-sm text-content-mute">{view.consentPreview}</p>
+        <p className="mb-token-3 text-sm text-content-mute">{lookingGlassExport.message}</p>
+        {lookingGlassExportUrl ? (
+          <a className="btn-outline mb-token-3 inline-flex" href={lookingGlassExportUrl}>
+            Download Looking Glass export
+          </a>
+        ) : null}
         <div className="flex flex-wrap gap-token-2">
           {(
             [
@@ -222,6 +235,32 @@ export default function CommunityDashboardPage() {
         >
           Save &amp; sync to community
         </button>
+        {consent.l3LookingGlass === "granted" ? (
+          <button
+            type="button"
+            className="btn-outline mt-token-4"
+            disabled={syncing}
+            onClick={() => {
+              void (async () => {
+                setSyncing(true);
+                try {
+                  const exportResult = await exportLookingGlassBundle("jsonl");
+                  setLookingGlassExportUrl(exportResult.downloadUrl);
+                  setLookingGlassExportState("ready");
+                  setStatus(`Looking Glass export contains ${exportResult.traceCount} trace(s).`);
+                } catch {
+                  setLookingGlassExportUrl("");
+                  setLookingGlassExportState("error");
+                  setStatus("Could not export Looking Glass bundle. Consent, traces, or sign-in may be missing.");
+                } finally {
+                  setSyncing(false);
+                }
+              })();
+            }}
+          >
+            Export Looking Glass bundle
+          </button>
+        ) : null}
         <button
           type="button"
           className="btn-outline mt-token-4"
