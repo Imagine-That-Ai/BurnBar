@@ -21,6 +21,7 @@ extension AppDelegate {
             button.title = OpenBurnBarStatusItemBrandMark.menuBarTitle
             button.toolTip = "OpenBurnBar"
             button.setAccessibilityLabel("OpenBurnBar")
+            button.setAccessibilityIdentifier(OBBAccessibilityID.menuBarStatusItem)
             button.target = self
             button.action = #selector(handleStatusItemClick(_:))
             button.sendAction(on: OpenBurnBarStatusItemClick.primaryActionMask)

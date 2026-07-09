@@ -223,6 +223,7 @@ struct ComputerUseSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
+        .accessibilityIdentifier(OBBAccessibilityID.computerUseSettingsRoot)
         .onAppear {
             configureModels()
             entitlement.start()

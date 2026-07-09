@@ -34,6 +34,7 @@ extension DashboardView {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .accessibilityIdentifier(OBBAccessibilityID.dashboardLayoutSwitcher)
                 .onChange(of: viewMode) { _, _ in
                     withAnimation(DesignSystem.Animation.standard) {
                         routeHistory.removeAll()
