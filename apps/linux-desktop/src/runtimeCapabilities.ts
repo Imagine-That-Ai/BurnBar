@@ -13,6 +13,7 @@ export const RUNTIME_CAPABILITY_IDS = [
   'smarthub.control',
   'settings.read',
   'account.read',
+  'updates.check',
   'updates.install',
   'support.export',
   'onboarding.repair',

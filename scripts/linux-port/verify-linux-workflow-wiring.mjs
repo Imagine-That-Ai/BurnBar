@@ -77,10 +77,19 @@ export function verifyLinuxWorkflowWiring(input) {
     'runtime_capability_unknown_evaluator'
   ]) requireText(input.rustBridge, command, 'native runtime capability contract');
   for (const command of [
+    'PINNED_PUBLIC_KEY_SPKI_SHA256',
+    'verify_strict',
+    'validate_update_artifact_url',
+    'allowed_download_url',
+    'MAX_FEED_BYTES'
+  ]) requireText(input.updateFeed, command, 'native signed update boundary');
+  for (const command of [
     "invoke<boolean>('gateway_probe')",
     "invoke<void>('gateway_chat_stream'",
     "invoke<void>('gateway_chat_cancel'",
-    "invoke<void>('open_external_url'"
+    "invoke<void>('open_external_url'",
+    "invoke<RawJsonValue>('update_status')",
+    "invoke<void>('open_update_url'"
   ]) requireText(input.rendererBridge, command, 'renderer native gateway bridge');
   for (const command of [
     "invoke<RawJsonValue>('runtime_capabilities')",
@@ -163,6 +172,7 @@ function main() {
     makefile: read('Makefile'),
     nativeTests: read('scripts/linux-port/run-linux-native-tests.sh'),
     rustBridge: read('apps/linux-desktop/src-tauri/src/lib.rs'),
+    updateFeed: read('apps/linux-desktop/src-tauri/src/update_feed.rs'),
     capability: read('apps/linux-desktop/src-tauri/capabilities/default.json'),
     tauriConfig: read('apps/linux-desktop/src-tauri/tauri.conf.json'),
     fixturePolicy: [

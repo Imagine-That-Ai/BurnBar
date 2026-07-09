@@ -601,6 +601,18 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-015 - Implement honest update UX
 
+**Implementation update (2026-07-09): partially closed in the implementation
+branch.** The Linux shell now performs the availability check in native Rust,
+pins the release-signing public key and SPKI fingerprint, verifies detached
+Ed25519 signatures, validates schema/product/platform/channel/semantic version,
+requires both supported architectures, rejects downgrade/replay and untrusted
+URLs, and exposes only typed validated state to the renderer. The installed
+`.deb` route was exercised through AT-SPI and correctly rendered **Update
+metadata rejected** against the currently invalid public endpoint. The
+package-manager-owned install/rollback lifecycle, signed public feed,
+two-architecture artifacts, and prior-version upgrade/rollback evidence remain
+open; this row is therefore still **Partial**, not closed.
+
 - **Difference:** macOS exposes version, automatic checks, channel, install, and
   restart behavior. Linux appropriately delegates installation to package
   mechanisms but cannot check signed availability or present reliable

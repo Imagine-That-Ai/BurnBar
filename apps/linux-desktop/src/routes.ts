@@ -44,7 +44,7 @@ export const ROUTES: RouteMeta[] = [
   { id: 'smarthub', label: 'SmartHub / IoT', group: 'dashboard', description: 'Device control through openburnbar-cli devices iot.', requiredCapability: 'smarthub.control' },
   { id: 'settings', label: 'Settings', group: 'system', description: 'Linux paths, Secret Service, telemetry, and privacy.', requiredCapability: 'settings.read' },
   { id: 'account', label: 'Account & sync', group: 'system', description: 'Lower-trust cloud identity and encrypted sync posture.', requiredCapability: 'account.read' },
-  { id: 'updates', label: 'Updates', group: 'system', description: 'Package channel and restart guidance.', requiredCapability: 'updates.install' },
+  { id: 'updates', label: 'Updates', group: 'system', description: 'Verified package channel and restart guidance.', requiredCapability: 'updates.check' },
   { id: 'support', label: 'Support & diagnostics', group: 'system', description: 'Redacted diagnostics export and reconnect tools.', requiredCapability: 'support.export' },
   { id: 'onboarding', label: 'First-run setup', group: 'system', description: 'Linux onboarding wizard (daemon, secrets, DE limits).', requiredCapability: 'onboarding.repair' },
   { id: 'pet', label: 'Pet companion', group: 'system', description: 'Overlay tier matrix and degraded draggable mode.', requiredCapability: 'pet.overlay' },

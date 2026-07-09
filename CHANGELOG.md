@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux signed update availability** - adds a native Tauri update verifier
+  with a pinned Ed25519 public key and fingerprint, strict signed-feed schema,
+  semantic-version/channel/architecture checks, bounded HTTPS fetching, and
+  first-party artifact URL validation. The Updates surface now distinguishes
+  current, available, offline, and rejected metadata states while keeping
+  installation and rollback under the owning Linux package manager.
 - **Linux accessibility evidence gate** - audits every desktop route plus
   degraded capability states with axe, captures live AT-SPI names, roles,
   states, and actions from the installed package, and requires Orca discovery,
