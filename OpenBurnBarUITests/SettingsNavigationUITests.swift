@@ -4,7 +4,9 @@ final class SettingsNavigationUITests: UITestBase {
     func testSettingsRowsNavigateToComputerUseSurface() {
         launchApp(openSettings: true)
 
-        waitFor(element(OBBAccessibilityID.settingsRoot), timeout: 20)
+        // `settings.sidebar` is the real, unambiguous "settings is open" anchor;
+        // the settings root identifier sits on a SwiftUI container that does not
+        // emit its own AX element.
         waitFor(element(OBBAccessibilityID.settingsSidebar), timeout: 20)
 
         let expectedRows = [

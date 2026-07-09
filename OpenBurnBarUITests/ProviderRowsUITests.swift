@@ -4,18 +4,20 @@ final class ProviderRowsUITests: UITestBase {
     func testAgentsSettingsShowsProviderRows() {
         launchApp(openSettings: true)
 
-        waitFor(element(OBBAccessibilityID.settingsRoot), timeout: 20)
+        // Anchor on the real sidebar element; the settings root identifier is on
+        // a SwiftUI container that does not emit its own AX element.
+        waitFor(element(OBBAccessibilityID.settingsSidebar), timeout: 20)
         waitForHittable(element(OBBAccessibilityID.settingsRow("agents")), timeout: 10).tap()
 
-        let providerRows = [
-            OBBAccessibilityID.providersRow("Claude Code"),
-            OBBAccessibilityID.providersRow("OpenAI"),
-            OBBAccessibilityID.providersRow("Codex")
-        ]
+        // Match any provider row by identifier prefix rather than hardcoding
+        // provider names — the app tags rows with providerID.rawValue.
+        let anyProviderRow = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "providers.row."))
+            .firstMatch
 
         XCTAssertTrue(
-            providerRows.contains { element($0).waitForExistence(timeout: 15) },
-            "Expected at least one canonical provider row to render in Agents settings"
+            anyProviderRow.waitForExistence(timeout: 20),
+            "Expected at least one provider row to render in Agents settings"
         )
     }
 }
