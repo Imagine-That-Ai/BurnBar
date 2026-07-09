@@ -604,9 +604,15 @@ func launchOpenBurnBar(appURL: URL) throws -> NSRunningApplication {
         return existing
     }
 
+    // OpenBurnBar is a menu-bar app; without the UI-test hook it shows no
+    // window and the AX tree stays empty. `--uitest` (and the matching env)
+    // deterministically opens the dashboard and dismisses first-run modals.
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = [appURL.path]
+    process.arguments = ["-n", appURL.path, "--args", "--uitest"]
+    var childEnv = ProcessInfo.processInfo.environment
+    childEnv["OPENBURNBAR_UITEST"] = "1"
+    process.environment = childEnv
     try process.run()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
@@ -696,9 +702,17 @@ func runOpenBurnBarScenario(appPath: String, evidencePath: String?) throws {
         if hasRoot || hasStatusItem {
             print("[cu-click-smoke] openburnbar AX ready root=\(hasRoot) statusItem=\(hasStatusItem)")
             print("[cu-click-smoke] openburnbar app snapshot \(lastAppSnapshot.summary)")
+            // Screenshot evidence is best-effort: it needs Screen Recording
+            // permission, which is optional for the automation itself. AX
+            // readiness above is the real pass condition, so a missing grant
+            // must not fail the scenario.
             if let evidencePath {
-                try captureScreenshot(path: evidencePath)
-                print("[cu-click-smoke] openburnbar screenshot=\(evidencePath)")
+                do {
+                    try captureScreenshot(path: evidencePath)
+                    print("[cu-click-smoke] openburnbar screenshot=\(evidencePath)")
+                } catch {
+                    print("[cu-click-smoke] WARN screenshot skipped (grant Screen Recording for evidence): \(error)")
+                }
             }
             return
         }
