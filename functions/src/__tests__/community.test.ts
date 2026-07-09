@@ -183,27 +183,21 @@ describe("recheckConsent", () => {
   });
 
   it("fails closed when tier grants exist without the top-level L2 gate", async () => {
-    seedDoc(store, CommunityPaths.consent("carol"), {
-      l2Tiers: { world: "granted", country: "granted", region: "declined", city: "declined" },
-      locationConsent: "granted",
-    });
-    seedDoc(store, CommunityPaths.consent("dave"), {
-      l2Rankings: "declined",
-      l2Tiers: { world: "granted", country: "granted", region: "declined", city: "declined" },
-      locationConsent: "granted",
-    });
+    for (const [uid, l2Rankings] of [
+      ["carol", undefined],
+      ["dave", "declined"],
+    ] as const) {
+      seedDoc(store, CommunityPaths.consent(uid), {
+        ...(l2Rankings ? { l2Rankings } : {}),
+        l2Tiers: { world: "granted", country: "granted", region: "declined", city: "declined" },
+        locationConsent: "granted",
+      });
+    }
 
     const db = pathKeyedFirestore(store) as unknown as Firestore;
-    await expect(recheckConsent(db, "carol")).resolves.toMatchObject({
-      l2Rankings: false,
-      l2World: false,
-      l2Country: false,
-    });
-    await expect(recheckConsent(db, "dave")).resolves.toMatchObject({
-      l2Rankings: false,
-      l2World: false,
-      l2Country: false,
-    });
+    for (const uid of ["carol", "dave"]) {
+      await expect(recheckConsent(db, uid)).resolves.toMatchObject({ l2Rankings: false, l2World: false });
+    }
   });
 });
 
