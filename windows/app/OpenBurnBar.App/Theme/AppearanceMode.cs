@@ -45,7 +45,9 @@ public static class AppearanceModeExtensions
         AppearanceMode.Light => ElementTheme.Light,
         AppearanceMode.Dark => ElementTheme.Dark,
         AppearanceMode.HighContrast => ElementTheme.Default,
-        _ => ElementTheme.Default,
+        // System → Dark: Pensieve is dark-first on macOS/Linux; Windows must not fall
+        // back to light Fluent white plates when the OS is in light mode.
+        _ => ElementTheme.Dark,
     };
 
     /// <summary>

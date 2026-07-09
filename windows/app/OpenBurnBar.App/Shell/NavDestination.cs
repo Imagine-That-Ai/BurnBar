@@ -4,14 +4,13 @@ using System.Linq;
 namespace OpenBurnBar.App.Shell;
 
 /// <summary>
-/// One sidebar destination in the WinUI <c>NavigationView</c> app frame — the Windows
-/// analog of a macOS <c>NavigationSplitView</c> sidebar row / <c>DashboardMainRoute</c>
+/// One top-level app destination — the Windows peer of a macOS
+/// <c>DashboardMainRoute</c> / Command Deck section
 /// (<c>AgentLens/Views/Dashboard/DashboardNavigationModel.swift</c>).
 ///
-/// Phase 3 W6-SHELL ships the frame with all 12 destinations <b>stubbed</b>: selecting one
-/// navigates a content <c>Frame</c> to a placeholder that names the surface. The real
-/// surfaces (Buckets A/B/C of the Phase-3 plan) replace those placeholders one by one; the
-/// catalog here is the stable seam they plug into.
+/// These are <b>not</b> the Dashboard Command sidebar rows (those are Overview /
+/// providers / models, owned by <c>DashboardCommandSidebar</c>). Catalog entries
+/// feed the section switcher menu + Command Palette.
 /// </summary>
 public sealed class NavDestination
 {
@@ -58,7 +57,7 @@ public static class NavCatalog
         new("memory",            "Memory",             "Review what OpenBurnBar learned", "\uEA37"),
         new("missionControl",    "Mission Control",    "Active runs & tasks",             "\uE7C1"),
         new("budget",            "Budget",             "Spend rules & limits",            "\uE8C7"),
-        new("dataControlCenter", "Data Control Center","Local & synced data",             "\uE964"),
+        new("dataControlCenter", "Data & Privacy",     "Govern every data domain",        "\uE964"),
         new("switcher",          "Switcher",           "Accounts & sign-in",              "\uE748"),
         new("onboarding",        "Onboarding",         "First-run setup",                 "\uE897"),
         new("settings",          "Settings",           "Preferences & configuration",     "\uE713", isFooter: true),

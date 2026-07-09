@@ -4,19 +4,20 @@
   AgentLens/Views/Settings/GeneralSettingsView.swift + AppearanceModePickerView.swift,
   built from CommunityToolkit SettingsCard/SettingsExpander rows. Every row is x:Named
   and registered under its SettingsAnchor so a search result deep-links straight to the
-  exact control (Theme, Skin, Liquid Glass Transparency, …). Surfaces/text consume the
-  Pensieve design tokens; the wrapper uses the Liquid-Glass surface shim.
+  exact control. Liquid Glass Transparency + kernel backdrop bind to LiquidGlassEnvironment.
 -->
 <Page
     x:Class="OpenBurnBar.App.Settings.Winui.AppearanceSettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    Background="Transparent">
 
-    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}">
+    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}" Background="Transparent">
         <StackPanel Spacing="6" MaxWidth="720" HorizontalAlignment="Left">
 
             <TextBlock
@@ -28,41 +29,80 @@
                 Foreground="{StaticResource PensieveColorTextMuteBrush}"
                 Text="Theme, skin, glass, and the animated backdrops." />
 
-            <tk:SettingsCard x:Name="ThemeCard" Header="Theme" Description="System, Light, or Dark appearance">
-                <tk:SettingsCard.HeaderIcon>
-                    <FontIcon Glyph="&#xE771;" />
-                </tk:SettingsCard.HeaderIcon>
-                <ComboBox SelectedIndex="0">
-                    <ComboBoxItem Content="System" />
-                    <ComboBoxItem Content="Light" />
-                    <ComboBoxItem Content="Dark" />
-                </ComboBox>
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="ThemeCard" Header="Theme" Description="System, Light, or Dark appearance">
+                    <tk:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE771;" />
+                    </tk:SettingsCard.HeaderIcon>
+                    <ComboBox x:Name="ThemeCombo" SelectedIndex="0" SelectionChanged="ThemeCombo_SelectionChanged">
+                        <ComboBoxItem Content="System" />
+                        <ComboBoxItem Content="Light" />
+                        <ComboBoxItem Content="Dark" />
+                    </ComboBox>
+                </tk:SettingsCard>
+            </Border>
 
-            <tk:SettingsCard x:Name="SkinCard" Header="App Skin" Description="Aurora ember look, or the Editorial paper console skin">
-                <ComboBox SelectedIndex="0">
-                    <ComboBoxItem Content="Aurora" />
-                    <ComboBoxItem Content="Editorial" />
-                </ComboBox>
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="SkinCard" Header="App Skin" Description="Aurora ember look, or the Editorial paper console skin">
+                    <ComboBox SelectedIndex="0">
+                        <ComboBoxItem Content="Aurora" />
+                        <ComboBoxItem Content="Editorial" />
+                    </ComboBox>
+                </tk:SettingsCard>
+            </Border>
 
-            <tk:SettingsCard x:Name="GlassCard" Header="Liquid Glass Transparency"
-                             Description="Make glass surfaces clearer or frostier than the system default">
-                <Slider x:Name="GlassSlider" Minimum="0" Maximum="100" Value="50" Width="220" />
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="12">
+                <StackPanel Spacing="8">
+                    <tk:SettingsCard x:Name="GlassCard" Header="Liquid Glass Transparency"
+                                     Description="Make glass surfaces clearer or frostier than the system default"
+                                     Background="Transparent" BorderThickness="0">
+                        <Slider x:Name="GlassSlider"
+                                Minimum="-100"
+                                Maximum="100"
+                                Value="0"
+                                Width="220"
+                                ValueChanged="GlassSlider_ValueChanged" />
+                    </tk:SettingsCard>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="GlassValueLabel"
+                                   Grid.Column="0"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Opacity="0.7"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                                   Text="System" />
+                        <ToggleSwitch x:Name="ContentSurfacesToggle"
+                                      Grid.Column="1"
+                                      Header="Content glass"
+                                      OnContent="On"
+                                      OffContent="Off"
+                                      Toggled="ContentSurfacesToggle_Toggled" />
+                    </Grid>
+                </StackPanel>
+            </Border>
 
-            <tk:SettingsCard x:Name="MenuBarCard" Header="Menu Bar Visibility" Description="Show the OpenBurnBar icon in the menu bar">
-                <ToggleSwitch IsOn="True" />
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="MenuBarCard" Header="Menu Bar Visibility" Description="Show the OpenBurnBar icon in the menu bar">
+                    <ToggleSwitch IsOn="True" />
+                </tk:SettingsCard>
+            </Border>
 
-            <tk:SettingsCard x:Name="LaunchAtLoginCard" Header="Launch at Login" Description="Start OpenBurnBar automatically when you sign in">
-                <ToggleSwitch />
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="LaunchAtLoginCard" Header="Launch at Login" Description="Start OpenBurnBar automatically when you sign in">
+                    <ToggleSwitch />
+                </tk:SettingsCard>
+            </Border>
 
-            <tk:SettingsCard x:Name="PremiumSotaCard" Header="Premium SOTA UX"
-                             Description="Enable cinematic spring physics and specular button shimmers">
-                <ToggleSwitch IsOn="True" />
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="PremiumSotaCard" Header="Premium SOTA UX"
+                                 Description="Enable cinematic spring physics and specular button shimmers">
+                    <ToggleSwitch IsOn="True" />
+                </tk:SettingsCard>
+            </Border>
 
             <TextBlock
                 Margin="0,10,0,2"
@@ -70,61 +110,67 @@
                 Foreground="{StaticResource PensieveColorTextBaseBrush}"
                 Text="Backdrops" />
 
-            <tk:SettingsCard x:Name="SwarmBackgroundCard" Header="Swarm Background"
-                             Description="Active, reconverging token-ember swarms with logo formation">
-                <ToggleSwitch />
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="SwarmBackgroundCard" Header="Swarm Background"
+                                 Description="Active, reconverging token-ember swarms with logo formation">
+                    <ToggleSwitch />
+                </tk:SettingsCard>
+            </Border>
 
-            <tk:SettingsCard x:Name="ConstellationCard" Header="Constellation Style"
-                             Description="Calm, slow background where one crest or provider logo resolves from coloured dots">
-                <ToggleSwitch />
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="ConstellationCard" Header="Constellation Style"
+                                 Description="Calm, slow background where one crest or provider logo resolves from coloured dots">
+                    <ToggleSwitch />
+                </tk:SettingsCard>
+            </Border>
 
-            <tk:SettingsCard x:Name="KernelBackdropCard" Header="Window Backdrop"
-                             Description="Live WebGL2 dashboard backdrop with a static native fallback">
-                <ToggleSwitch />
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="KernelBackdropCard" Header="Window Backdrop"
+                                 Description="Live WebGL2 dashboard backdrop with a static native fallback">
+                    <ToggleSwitch x:Name="KernelEnabledToggle" Toggled="KernelEnabledToggle_Toggled" />
+                </tk:SettingsCard>
+            </Border>
 
-            <tk:SettingsCard x:Name="BackdropKernelCard" Header="Backdrop Kernel"
-                             Description="Choose which animated field renders behind the dashboard">
-                <ComboBox SelectedIndex="0">
-                    <ComboBoxItem Content="Fluid Aurora" />
-                    <ComboBoxItem Content="Mesh" />
-                    <ComboBoxItem Content="Moiré" />
-                    <ComboBoxItem Content="Plasma" />
-                    <ComboBoxItem Content="Lattice" />
-                </ComboBox>
-            </tk:SettingsCard>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsCard x:Name="BackdropKernelCard" Header="Backdrop Kernel"
+                                 Description="Choose which animated field renders behind the dashboard">
+                    <ComboBox x:Name="KernelCombo"
+                              MinWidth="200"
+                              SelectionChanged="KernelCombo_SelectionChanged" />
+                </tk:SettingsCard>
+            </Border>
 
-            <tk:SettingsExpander x:Name="DesktopWallpaperExpander"
-                                 Header="Desktop Swarm Wallpaper"
-                                 Description="Render the live swarm as your desktop wallpaper">
-                <ToggleSwitch x:Name="DesktopWallpaperEnabledToggle" />
-                <tk:SettingsExpander.Items>
-                    <tk:SettingsCard x:Name="WallpaperBackgroundCard" Header="Wallpaper Background"
-                                     Description="macOS Desktop, neutral darks, or the swarm palettes">
-                        <ComboBox SelectedIndex="0">
-                            <ComboBoxItem Content="Aurora" />
-                            <ComboBoxItem Content="Crimson" />
-                            <ComboBoxItem Content="Cyberpunk" />
-                            <ComboBoxItem Content="Moss" />
-                            <ComboBoxItem Content="Solar" />
-                        </ComboBox>
-                    </tk:SettingsCard>
-                    <tk:SettingsCard x:Name="WallpaperSpeedCard" Header="Wallpaper Speed"
-                                     Description="How quickly the desktop swarm drifts, reforms, and cycles">
-                        <Slider Minimum="0" Maximum="100" Value="50" Width="220" />
-                    </tk:SettingsCard>
-                    <tk:SettingsCard x:Name="WallpaperGlyphsCard" Header="Customize Provider Glyphs"
-                                     Description="Which provider logos render in the wallpaper cycle">
-                        <Button Content="Choose…" />
-                    </tk:SettingsCard>
-                    <tk:SettingsCard x:Name="WallpaperClickCycleCard" Header="Click Desktop to Cycle Shapes"
-                                     Description="Click empty desktop space to inspect swarm symbols">
-                        <ToggleSwitch />
-                    </tk:SettingsCard>
-                </tk:SettingsExpander.Items>
-            </tk:SettingsExpander>
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
+                <tk:SettingsExpander x:Name="DesktopWallpaperExpander"
+                                     Header="Desktop Swarm Wallpaper"
+                                     Description="Render the live swarm as your desktop wallpaper">
+                    <ToggleSwitch x:Name="DesktopWallpaperEnabledToggle" />
+                    <tk:SettingsExpander.Items>
+                        <tk:SettingsCard x:Name="WallpaperBackgroundCard" Header="Wallpaper Background"
+                                         Description="macOS Desktop, neutral darks, or the swarm palettes">
+                            <ComboBox SelectedIndex="0">
+                                <ComboBoxItem Content="Aurora" />
+                                <ComboBoxItem Content="Crimson" />
+                                <ComboBoxItem Content="Cyberpunk" />
+                                <ComboBoxItem Content="Moss" />
+                                <ComboBoxItem Content="Solar" />
+                            </ComboBox>
+                        </tk:SettingsCard>
+                        <tk:SettingsCard x:Name="WallpaperSpeedCard" Header="Wallpaper Speed"
+                                         Description="How quickly the desktop swarm drifts, reforms, and cycles">
+                            <Slider Minimum="0" Maximum="100" Value="50" Width="220" />
+                        </tk:SettingsCard>
+                        <tk:SettingsCard x:Name="WallpaperGlyphsCard" Header="Customize Provider Glyphs"
+                                         Description="Which provider logos render in the wallpaper cycle">
+                            <Button Content="Choose…" Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                        </tk:SettingsCard>
+                        <tk:SettingsCard x:Name="WallpaperClickCycleCard" Header="Click Desktop to Cycle Shapes"
+                                         Description="Click empty desktop space to inspect swarm symbols">
+                            <ToggleSwitch />
+                        </tk:SettingsCard>
+                    </tk:SettingsExpander.Items>
+                </tk:SettingsExpander>
+            </Border>
 
         </StackPanel>
     </ScrollViewer>

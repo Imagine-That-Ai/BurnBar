@@ -111,6 +111,12 @@ extension DataStore {
         try await actor.searchIndexStore.fetchChunks(ids: ids)
     }
 
+    /// Round-4 perf sweep: combined chunk + document fetch via a single JOIN.
+    /// Eliminates one DB round-trip in the SearchService hydration path.
+    func fetchSearchChunksWithDocuments(ids: [String]) async throws -> [(chunk: SearchChunkRecord, document: SearchDocumentRecord)] {
+        try await actor.searchIndexStore.fetchChunksWithDocuments(ids: ids)
+    }
+
     func fetchSearchChunks(sourceKind: SearchSourceKind, sourceID: String) async throws -> [SearchChunkRecord] {
         try await actor.searchIndexStore.fetchChunks(sourceKind: sourceKind, sourceID: sourceID)
     }
@@ -147,6 +153,10 @@ extension DataStore {
     }
 
     /// Sums non-overlapping substring occurrence counts of each pattern in `conversations.fullText` (case-insensitive).
+    ///
+    /// Round-4 perf sweep: delegates to `ConversationStore` for a single-scan
+    /// SQL query. The previous implementation ran one full-table scan per
+    /// pattern; the collapsed version computes all pattern counts in one pass.
     func countOccurrencesInConversationFullText(
         patterns: [String],
         provider: AgentProvider? = nil,
@@ -154,53 +164,13 @@ extension DataStore {
         dateRange: ClosedRange<Date>? = nil,
         conversationSources: Set<OpenBurnBarCore.ConversationSourceType>? = nil
     ) async throws -> Int {
-        let cleaned = patterns
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard cleaned.isEmpty == false else { return 0 }
-
-        var total = 0
-        for raw in cleaned {
-            let pattern = raw.lowercased()
-            guard pattern.isEmpty == false else { continue }
-            let count = try await actor.dbQueue.read { db -> Int in
-                var sql = """
-                SELECT COALESCE(SUM(
-                    (LENGTH(COALESCE(c.fullText,'')) - LENGTH(REPLACE(LOWER(COALESCE(c.fullText,'')), ?, ''))) / LENGTH(?)
-                ), 0)
-                FROM conversations AS c
-                WHERE c.deletedAt IS NULL
-                """
-                var args: [any DatabaseValueConvertible] = [pattern, pattern]
-                if let provider {
-                    sql += " AND c.provider = ?"
-                    args.append(provider.rawValue)
-                }
-                if let projectName {
-                    sql += " AND c.projectName = ?"
-                    args.append(projectName)
-                }
-                if let range = dateRange {
-                    sql += """
-                     AND COALESCE(c.endTime, c.startTime, c.fileModifiedAt, c.indexedAt) >= ?
-                     AND COALESCE(c.startTime, c.endTime, c.fileModifiedAt, c.indexedAt) <= ?
-                    """
-                    args.append(range.lowerBound)
-                    args.append(range.upperBound)
-                }
-                if let sources = conversationSources, sources.isEmpty == false {
-                    let rawValues = sources.map(\.rawValue)
-                    let placeholders = Array(repeating: "?", count: rawValues.count).joined(separator: ", ")
-                    sql += " AND c.sourceType IN (\(placeholders))"
-                    args.append(contentsOf: rawValues)
-                }
-                let value = try Int64.fetchOne(db, sql: sql, arguments: StatementArguments(args)) ?? 0
-                return Int(value)
-            }
-            total += count
-        }
-
-        return total
+        try await actor.conversationStore.countOccurrencesInConversationFullText(
+            patterns: patterns,
+            provider: provider,
+            projectName: projectName,
+            dateRange: dateRange,
+            conversationSources: conversationSources
+        )
     }
 
     func findConversationFullTextMatches(
@@ -428,7 +398,10 @@ extension DataStore {
         var offset = 0
 
         while jumpTargets.count < boundedLimit {
-            let batch = try await actor.conversationStore.fetchTranscriptScanBatch(
+            // Round-4 perf sweep: use SQL-side pre-filter to skip conversations
+            // that don't contain any credential indicator substring before
+            // loading their fullText into Swift memory.
+            let batch = try await actor.conversationStore.fetchTranscriptScanBatchWithCredentialPreFilter(
                 provider: provider,
                 projectName: projectName,
                 dateRange: dateRange,

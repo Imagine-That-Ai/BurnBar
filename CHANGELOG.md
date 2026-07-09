@@ -27,6 +27,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round-4 performance sweep** — state-of-the-art throughput, latency,
+  memory, and energy improvements across macOS and iOS with no feature or
+  visual changes:
+  - **ParserDiskCache binary plist** (A1): switched from pretty-printed
+    JSON to binary plist with dual-read fallback for backward
+    compatibility. ~3–5× faster encoding, ~2–3× smaller cache files.
+  - **SearchQueryCache bounded LRU + metrics** (A2): replaced unbounded
+    dictionary with bounded LRU cache (256 entries) with eviction and
+    observability via `OpenBurnBarMetrics`.
+  - **Daemon connection back-pressure** (A3): capped simultaneously
+    in-flight connection handlers via `BurnBarConnectionGate` to prevent
+    FD exhaustion under load.
+  - **Single-scan SQL occurrence counts** (A4): collapsed N full-table
+    scans into one for `countOccurrencesInConversationFullText`.
+  - **SearchService hydration JOIN collapse** (A5): merged two DB
+    round-trips (chunks + documents) into a single JOIN query.
+  - **iOS TrendAtlasCard memoization** (A6): cached digest/insights
+    recomputation behind input-hash check via `DigestCacheStore`.
+  - **iOS HermesSquareRoot rollback cache** (A7): hoisted filter+sort
+    out of `body` into a `.onChange`-rebuilt `@State` cache.
+  - **Incremental HNSW delta segments** (B1): LSM-tree "base + delta"
+    overlay (`BurnBarVectorIndexDeltaOverlay`) eliminates full O(n log n)
+    HNSW rebuilds on every projection cycle; bounded delta with
+    compaction threshold. The overlay is wired into
+    `VectorSemanticCandidateProvider`'s snapshot lifecycle — when chunks
+    are added/updated/deleted, a delta is computed via a cheap metadata
+    scan (`fetchChunkEmbeddingKeys`) plus an O(k) vector fetch for only
+    the changed chunkIDs, avoiding the full rebuild. Compaction triggers
+    when changes exceed `max(2000, baseSize / 5)`. Delta metrics are
+    surfaced in `SemanticRetrievalHealthDetails`.
+  - **Streaming Claude JSONL bounded accumulator** (B2): replaced O(n²)
+    string concatenation with array-based join-once-at-finalize and 1 MB
+    `maxFullTextBytes` cap; added `maxLineBytes` guard to
+    `BufferedLineSequence` for pathological inputs.
+  - **SQL-side credential scan pre-filter** (B3): `INSTR`-based WHERE
+    clauses skip conversations without credential indicators before
+    loading `fullText` into Swift memory.
 - **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
   `POST /v1/chat/completions` through the shared provider router, relays
   OpenAI-compatible SSE streams, and records gateway usage events with cache

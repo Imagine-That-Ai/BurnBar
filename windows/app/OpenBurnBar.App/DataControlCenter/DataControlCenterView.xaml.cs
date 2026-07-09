@@ -8,15 +8,14 @@ using Microsoft.UI.Xaml.Media;
 using OpenBurnBar.App.Presentation.DataControlCenter;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using Windows.UI;
 
 namespace OpenBurnBar.App.DataControlCenter;
 
 /// <summary>
-/// The Data &amp; Privacy Control Center surface (Windows). A tier-grouped NavigationView sidebar +
-/// governance toolbar + mercury Basin + sortable inventory + domain inspector, all bound to the
-/// portable <see cref="DataControlCenterViewModel"/>. Until a real Firebase-backed hub is injected
-/// (dev-host-deferred), the view-model runs against the signed-out hub — the surface still renders
-/// the registry-seeded inventory and shows the calm "Sign in…" copy.
+/// Data &amp; Privacy Control Center (Windows) — layout lockstep with macOS
+/// <c>DataControlCenterView</c>: domain sidebar + plan footer, detail toolbar,
+/// Basin above inventory table, trailing inspector.
 /// </summary>
 public sealed partial class DataControlCenterView : UserControl
 {
@@ -33,13 +32,8 @@ public sealed partial class DataControlCenterView : UserControl
         Loaded += OnLoaded;
     }
 
-    /// <summary>
-    /// Supplies the top-level window handle so the export file picker can target the app window
-    /// (required for unpackaged WinUI). Set by the host that places this surface.
-    /// </summary>
     public Func<IntPtr>? WindowHandleProvider { get; set; }
 
-    /// <summary>Inject a real hub-backed view-model (e.g. the Firebase callable hub on the dev host).</summary>
     public void SetViewModel(DataControlCenterViewModel viewModel)
     {
         _viewModel.PropertyChanged -= OnViewModelChanged;
@@ -51,7 +45,7 @@ public sealed partial class DataControlCenterView : UserControl
     private void BindViewModel()
     {
         _viewModel.PropertyChanged += OnViewModelChanged;
-        BuildNav();
+        BuildDomainSidebar();
         RefreshInventory();
     }
 
@@ -63,8 +57,6 @@ public sealed partial class DataControlCenterView : UserControl
             Select(DataDomains.All[0].Id);
         }
     }
-
-    // ── View-model → UI ──────────────────────────────────────────────────────────────────────
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -92,6 +84,7 @@ public sealed partial class DataControlCenterView : UserControl
 
     private void RenderState()
     {
+        BuildDomainSidebar();
         RefreshInventory();
         UpdateBasin();
         UpdateErrorBanner();
@@ -136,45 +129,106 @@ public sealed partial class DataControlCenterView : UserControl
     {
         (PlanSummary.Text, PlanGlyph.Glyph) = _viewModel.Tier switch
         {
-            AccountPlanTier.Ultra => ("Ultra plan", ""),
-            AccountPlanTier.Pro => ("Cloud Pro plan", ""),
-            _ => ("Free plan", ""),
+            AccountPlanTier.Ultra => ("Ultra plan", "\uE7B6"),
+            AccountPlanTier.Pro => ("Cloud Pro plan", "\uE946"),
+            _ => ("Free plan", "\uE753"),
         };
     }
 
-    // ── Navigation (tier-grouped sidebar) ────────────────────────────────────────────────────
+    // ── Domain sidebar (tier sections) ────────────────────────────────────────
 
-    private void BuildNav()
+    private void BuildDomainSidebar() =>
+        RebuildDomainSidebarAsElements(_viewModel.SelectedId);
+
+    private void RebuildDomainSidebarAsElements(string? selectedId)
     {
-        DomainNav.MenuItems.Clear();
+        DomainList.Items.Clear();
+        DomainList.ItemTemplate = null;
+        DomainList.ItemTemplateSelector = null;
+
         foreach (var section in _viewModel.TierSections)
         {
-            DomainNav.MenuItems.Add(new NavigationViewItemHeader { Content = TierDisplay.Label(section.Tier) });
+            Color accent = TierDisplay.AccentColor(section.Tier);
+            var header = new TextBlock
+            {
+                Text = TierDisplay.Label(section.Tier).ToUpperInvariant(),
+                FontSize = 10,
+                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                CharacterSpacing = 100,
+                Foreground = new SolidColorBrush(accent),
+                Margin = new Thickness(8, 12, 8, 4),
+                IsHitTestVisible = false,
+            };
+            DomainList.Items.Add(header);
+
             foreach (var row in section.Rows)
             {
-                DomainNav.MenuItems.Add(new NavigationViewItem
+                var rowPanel = new Grid { Tag = row.Id, ColumnSpacing = 10 };
+                rowPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                rowPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var icon = new FontIcon
                 {
-                    Content = row.Title,
-                    Tag = row.Id,
-                    Icon = new FontIcon
-                    {
-                        FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                        Glyph = DomainGlyphMap.Glyph(row.Id),
-                        Foreground = new SolidColorBrush(TierDisplay.AccentColor(section.Tier)),
-                    },
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    Glyph = DomainGlyphMap.Glyph(row.Id),
+                    FontSize = 13,
+                    Foreground = new SolidColorBrush(accent),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Width = 20,
+                };
+                Grid.SetColumn(icon, 0);
+
+                var textStack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+                textStack.Children.Add(new TextBlock
+                {
+                    Text = row.Title,
+                    FontSize = 12,
+                    FontWeight = Microsoft.UI.Text.FontWeights.Medium,
+                    Foreground = (Brush)Application.Current.Resources["PensieveColorTextBaseBrush"],
+                    TextTrimming = TextTrimming.CharacterEllipsis,
                 });
+                if (row.HasRecords)
+                {
+                    textStack.Children.Add(new TextBlock
+                    {
+                        Text = $"{row.Count} records",
+                        FontSize = 10,
+                        Foreground = (Brush)Application.Current.Resources["PensieveColorTextMuteBrush"],
+                    });
+                }
+
+                Grid.SetColumn(textStack, 1);
+                rowPanel.Children.Add(icon);
+                rowPanel.Children.Add(textStack);
+                DomainList.Items.Add(rowPanel);
+
+                if (selectedId == row.Id)
+                {
+                    DomainList.SelectedItem = rowPanel;
+                }
             }
         }
     }
 
-    private void OnDomainSelected(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private void OnDomainListSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_syncingSelection || args.SelectedItem is not NavigationViewItem { Tag: string id })
+        if (_syncingSelection)
         {
             return;
         }
 
-        Select(id, fromNav: true);
+        if (DomainList.SelectedItem is FrameworkElement { Tag: string id })
+        {
+            Select(id, fromNav: true);
+        }
+        else if (DomainList.SelectedItem is TextBlock)
+        {
+            // Header selected — reselect previous domain row
+            if (_viewModel.SelectedId is { } keep)
+            {
+                SelectNavItem(keep);
+            }
+        }
     }
 
     private void OnInventorySelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -218,17 +272,15 @@ public sealed partial class DataControlCenterView : UserControl
 
     private void SelectNavItem(string id)
     {
-        foreach (var item in DomainNav.MenuItems)
+        foreach (var item in DomainList.Items)
         {
-            if (item is NavigationViewItem { Tag: string tag } nvi && tag == id)
+            if (item is FrameworkElement { Tag: string tag } fe && tag == id)
             {
-                DomainNav.SelectedItem = nvi;
+                DomainList.SelectedItem = fe;
                 return;
             }
         }
     }
-
-    // ── Sort ─────────────────────────────────────────────────────────────────────────────────
 
     private void OnSortHeaderClick(object sender, RoutedEventArgs e)
     {
@@ -241,7 +293,7 @@ public sealed partial class DataControlCenterView : UserControl
     private void UpdateSortGlyphs()
     {
         var descriptor = _viewModel.SortDescriptor;
-        string chevron = descriptor.Direction == SortDirection.Ascending ? "" : "";
+        string chevron = descriptor.Direction == SortDirection.Ascending ? "\uE70E" : "\uE70D";
         SetSortGlyph(SortDomain, descriptor, SortColumn.Domain, chevron);
         SetSortGlyph(SortTier, descriptor, SortColumn.Tier, chevron);
         SetSortGlyph(SortRecords, descriptor, SortColumn.Records, chevron);
@@ -251,8 +303,6 @@ public sealed partial class DataControlCenterView : UserControl
 
     private static void SetSortGlyph(FontIcon icon, SortDescriptor descriptor, SortColumn column, string chevron) =>
         icon.Glyph = descriptor.Column == column ? chevron : string.Empty;
-
-    // ── Toolbar ──────────────────────────────────────────────────────────────────────────────
 
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await _viewModel.RefreshUsageAsync();
 
@@ -265,8 +315,6 @@ public sealed partial class DataControlCenterView : UserControl
         var dialog = new PanicRevokeDialog(_viewModel) { XamlRoot = XamlRoot };
         await dialog.ShowAsync();
     }
-
-    // ── Dialogs + export ─────────────────────────────────────────────────────────────────────
 
     private async Task ShowRecoveryDialogAsync()
     {
@@ -283,12 +331,7 @@ public sealed partial class DataControlCenterView : UserControl
     private async Task ExportAsync(IReadOnlyList<string>? domains)
     {
         string? json = await _viewModel.ExportDataAsync(domains);
-        if (json is null)
-        {
-            return;
-        }
-
-        if (WindowHandleProvider is null)
+        if (json is null || WindowHandleProvider is null)
         {
             return;
         }
@@ -318,3 +361,4 @@ public sealed partial class DataControlCenterView : UserControl
         }
     }
 }
+

@@ -18,7 +18,7 @@
     mc:Ignorable="d"
     AutomationProperties.AutomationId="RouteRoot.switcher">
 
-    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Background="Transparent">
         <switcher:SwitcherSettingsView x:Name="SwitcherView" />
     </Grid>
 </Page>

@@ -201,6 +201,24 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         let fetchedEmbeddingChunkIDs = try await store.fetchChunkEmbeddings(embeddingVersionID: "version-1").map(\.chunkID)
         XCTAssertEqual(fetchedEmbeddingChunkIDs, ["chunk-1"])
 
+        let manyEmbeddings = (0..<1_100).map { index in
+            ChunkEmbeddingRecord(
+                chunkID: String(format: "chunk-many-%04d", index),
+                embeddingVersionID: "version-1",
+                vectorBlob: Data([UInt8(index % 255)]),
+                createdAt: now,
+                updatedAt: now
+            )
+        }
+        for embedding in manyEmbeddings {
+            try await store.upsertChunkEmbedding(embedding)
+        }
+        let fetchedManyEmbeddings = try await store.fetchChunkEmbeddings(
+            chunkIDs: manyEmbeddings.map(\.chunkID),
+            embeddingVersionID: "version-1"
+        )
+        XCTAssertEqual(fetchedManyEmbeddings.map(\.chunkID), manyEmbeddings.map(\.chunkID))
+
         let snapshot = VectorIndexSnapshotRecord(
             embeddingVersionID: "version-1",
             backendID: "usearch_hnsw_v1",

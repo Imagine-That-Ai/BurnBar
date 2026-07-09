@@ -3,6 +3,7 @@
     x:Class="OpenBurnBar.App.Onboarding.OnboardingProviderPill"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -14,11 +15,8 @@
       states applied from code-behind. Tap toggles selection.
     -->
     <Grid>
-        <Border x:Name="PillBorder"
+        <Border Style="{StaticResource LiquidGlassSurfaceStyle}" x:Name="PillBorder"
                 CornerRadius="999"
-                Background="{StaticResource OBBSurfaceBrush}"
-                BorderBrush="{StaticResource OBBStrokeBrush}"
-                BorderThickness="0.5"
                 Padding="12,6"
                 Tapped="OnTapped"
                 PointerEntered="OnPointerEntered"

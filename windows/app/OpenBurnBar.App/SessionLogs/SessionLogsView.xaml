@@ -14,6 +14,7 @@
     x:Class="OpenBurnBar.App.SessionLogs.SessionLogsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:slvm="using:OpenBurnBar.App.Presentation.SessionLogs"
     xmlns:local="using:OpenBurnBar.App.SessionLogs"
     xmlns:conv="using:OpenBurnBar.App.Converters"
@@ -28,7 +29,7 @@
         <CollectionViewSource x:Name="GroupedLogs" IsSourceGrouped="True" ItemsPath="Logs" />
     </UserControl.Resources>
 
-    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Background="Transparent">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="340" />
             <ColumnDefinition Width="1" />
@@ -76,12 +77,9 @@
             </StackPanel>
 
             <!-- Search -->
-            <Border Grid.Row="1"
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Grid.Row="1"
                     Margin="20,0,20,8"
                     CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                    Background="{StaticResource OBBSurfaceBrush}"
-                    BorderBrush="{StaticResource OBBStrokeBrush}"
-                    BorderThickness="1"
                     Padding="12,2">
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
