@@ -15,11 +15,13 @@
 # Build
 build/
 build-derived/
+.lane-modulecache/
 Vendor/OpenBurnBarIroh.xcframework/
 Vendor/OpenBurnBarSignalFfi.xcframework/
 Vendor/BurnBarRemote.xcframework/
 build_ios/
 DerivedData/
+*.pcm
 *.ipa
 *.dSYM.zip
 *.dSYM
@@ -278,6 +280,13 @@ node_modules/
 **/bin/
 **/obj/
 .lane-logs/
+
+# Agent-factory build artifacts — must never be committed (see chore/purge-build-artifacts).
+# 483MB of Swift precompiled module cache (.pcm) + factory lane logs had been tracked.
+.lane-logs*/
+.lane-modulecache/
+*.pcm
+.tmp-*
 
 # Ledger-referenced Linux-port evidence logs (VAL-OPS-002, VAL-EXTENSION-001):
 # these two .log files are release-gate proof and must be committed despite *.log.

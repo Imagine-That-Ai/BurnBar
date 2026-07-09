@@ -24,6 +24,8 @@ const requiredConsoleCsp = {
     "https://content-firebaseappcheck.googleapis.com",
     "https://www.google.com",
     "https://www.gstatic.com",
+    "https://*.ingest.sentry.io",
+    "https://*.ingest.us.sentry.io",
   ],
   "frame-src": [
     "https://*.firebaseapp.com",

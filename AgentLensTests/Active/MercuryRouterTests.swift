@@ -669,6 +669,33 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .accepted)
     }
 
+    func testExistingPeerGrantAutoAcceptRenewsGrantAfterAcceptedMirror() async throws {
+        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        let (router, sink, consentStore) = makeRouterWithConsentStore(
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            clock: { now }
+        )
+        consentStore.rememberAcceptedMirrorPeers = true
+        consentStore.rememberAcceptedPeer(
+            connectionId: "c",
+            viewerDeviceId: "iphone-1",
+            controlAuthorityPeerNodeId: "ios-peer",
+            remotePeerNodeId: "ios-peer",
+            requesterName: "Alberto's iPhone",
+            now: now
+        )
+        let firstExpiry = try XCTUnwrap(consentStore.grants.first?.expiresAt)
+
+        now = now.addingTimeInterval(200 * 24 * 60 * 60)
+        await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
+
+        XCTAssertNil(router.pendingRequest)
+        let renewedExpiry = try XCTUnwrap(consentStore.grants.first?.expiresAt)
+        XCTAssertGreaterThan(renewedExpiry, firstExpiry)
+        let frames = await sink.frames
+        XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
+    }
+
     func testExistingPeerGrantDoesNotAutoAcceptWhenTransportPeerDiffers() async {
         let (router, sink) = makeRouter(consent: true)
 

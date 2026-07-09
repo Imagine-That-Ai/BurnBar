@@ -19,8 +19,8 @@ ffi_dir="${crate_dir}/burnbar-remote-ffi"
 out_dir="${here}/BurnBarRemote.Ffi/generated"
 
 profile="${BURNBAR_REMOTE_BUILD_PROFILE:-debug}"
-build_flag=()
-[[ "${profile}" == "release" ]] && build_flag=(--release)
+build_flag=""
+[[ "${profile}" == "release" ]] && build_flag="--release"
 
 # Native library name per host OS.
 case "$(uname -s)" in
@@ -30,16 +30,24 @@ case "$(uname -s)" in
 esac
 
 echo "==> Building the burnbar-remote-ffi cdylib (${profile})"
-( cd "${crate_dir}" && cargo build -p burnbar-remote-ffi "${build_flag[@]}" )
+( cd "${crate_dir}" && cargo build -p burnbar-remote-ffi ${build_flag} )
 
-lib_path="${crate_dir}/target/${profile}/${libname}"
+target_dir="$(
+  cd "${crate_dir}" && cargo metadata --no-deps --format-version 1 \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
+)"
+lib_path="${target_dir}/${profile}/${libname}"
 [[ -f "${lib_path}" ]] || { echo "cdylib not found: ${lib_path}" >&2; exit 1; }
 
 echo "==> Generating C# bindings from ${lib_path}"
 mkdir -p "${out_dir}"
-uniffi-bindgen-cs \
-  --library "${lib_path}" \
-  --config "${ffi_dir}/uniffi.toml" \
-  --out-dir "${out_dir}"
+(
+  cd "${crate_dir}"
+  uniffi-bindgen-cs \
+    --library "${lib_path}" \
+    --config "${ffi_dir}/uniffi.toml" \
+    --out-dir "${out_dir}"
+)
+perl -0pi -e 's/[ \t]+$//mg' "${out_dir}/burnbar_remote.cs"
 
 echo "==> Done. Review + commit ${out_dir}/burnbar_remote.cs"
