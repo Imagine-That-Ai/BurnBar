@@ -86,7 +86,22 @@ internal sealed class RouteSmokeRunner
                 stopwatch.Elapsed);
         }
 
-        return ParseResult(route.Key, process.ExitCode, resultPath, stopwatch.Elapsed);
+        try
+        {
+            return ParseResult(route.Key, process.ExitCode, resultPath, stopwatch.Elapsed);
+        }
+        catch (JsonException ex)
+        {
+            return Failed(route.Key, process.ExitCode, timedOut: false, $"Route smoke result JSON was invalid: {ex.Message}", stopwatch.Elapsed);
+        }
+        catch (IOException ex)
+        {
+            return Failed(route.Key, process.ExitCode, timedOut: false, $"Route smoke result JSON could not be read: {ex.Message}", stopwatch.Elapsed);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Failed(route.Key, process.ExitCode, timedOut: false, $"Route smoke result JSON could not be accessed: {ex.Message}", stopwatch.Elapsed);
+        }
     }
 
     private ProcessStartInfo CreateStartInfo(UiHarnessRoute route, string routeOut, string profileRoot, string launchOut)
