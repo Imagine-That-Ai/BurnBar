@@ -6,8 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -28,14 +26,6 @@ public sealed record ChatExecutableResolution(string Id, string Path, string Sha
 
 public sealed class ApprovedChatExecutableCatalog
 {
-    public const string EnvironmentVariable = "OPENBURNBAR_CHAT_APPROVED_EXECUTABLES";
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
-
     private readonly IReadOnlyList<ApprovedChatExecutable> _executables;
 
     public ApprovedChatExecutableCatalog(IEnumerable<ApprovedChatExecutable> executables)
@@ -43,27 +33,10 @@ public sealed class ApprovedChatExecutableCatalog
         _executables = executables.ToArray();
     }
 
-    public static ApprovedChatExecutableCatalog FromEnvironment()
-    {
-        string? json = Environment.GetEnvironmentVariable(EnvironmentVariable);
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return new ApprovedChatExecutableCatalog(Array.Empty<ApprovedChatExecutable>());
-        }
+    public static ApprovedChatExecutableCatalog Empty { get; } =
+        new(Array.Empty<ApprovedChatExecutable>());
 
-        try
-        {
-            var entries = JsonSerializer.Deserialize<ApprovedChatExecutable[]>(json, JsonOptions)
-                ?? Array.Empty<ApprovedChatExecutable>();
-            return new ApprovedChatExecutableCatalog(entries);
-        }
-        catch (JsonException ex)
-        {
-            throw new ChatProcessException(
-                ChatFailureKind.ExecutableDenied,
-                "Chat executable approval catalog is malformed: " + ex.Message);
-        }
-    }
+    public bool HasEntries => _executables.Count > 0;
 
     public ChatExecutableResolution Resolve(string requestedExecutable)
     {
@@ -164,7 +137,7 @@ public static class ChatProcessRunner
         ChatProcessLimits? limits = null,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        catalog ??= ApprovedChatExecutableCatalog.FromEnvironment();
+        catalog ??= ApprovedChatExecutableCatalog.Empty;
         limits ??= ChatProcessLimits.ContractDefault;
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Process? process = null;
@@ -176,11 +149,7 @@ public static class ChatProcessRunner
         try
         {
             ProcessStartInfo startInfo = CreateStartInfo(spec, catalog);
-            process = Process.Start(startInfo);
-            if (process is null)
-            {
-                throw new ChatProcessException(ChatFailureKind.ProcessStartFailed, "CLI process failed to start.");
-            }
+            process = ChildProcessLaunchPolicy.Start(startInfo, ChildProcessProfile.Chat);
 
             if (spec.StandardInput is not null)
             {
@@ -235,29 +204,16 @@ public static class ChatProcessRunner
         ApprovedChatExecutableCatalog catalog)
     {
         ChatExecutableResolution executable = catalog.Resolve(spec.FileName);
-        var psi = new ProcessStartInfo
-        {
-            FileName = executable.Path,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = spec.StandardInput is not null,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        if (psi.RedirectStandardInput)
-        {
-            psi.StandardInputEncoding = Encoding.UTF8;
-        }
-
-        foreach (string argument in spec.Arguments)
-        {
-            psi.ArgumentList.Add(argument);
-        }
-
-        ChildProcessEnvironment.Apply(psi, ChildProcessProfile.Chat);
-        return psi;
+        return ChildProcessLaunchPolicy.CreateStartInfo(
+            ChildProcessProfile.Chat,
+            executable.Path,
+            spec.Arguments,
+            redirectStandardInput: spec.StandardInput is not null,
+            redirectStandardOutput: true,
+            redirectStandardError: true,
+            standardInputEncoding: spec.StandardInput is not null ? Encoding.UTF8 : null,
+            standardOutputEncoding: Encoding.UTF8,
+            standardErrorEncoding: Encoding.UTF8);
     }
 
     private static async Task CompleteWhenDoneAsync(

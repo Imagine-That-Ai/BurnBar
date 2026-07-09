@@ -5,8 +5,8 @@ using System.Text;
 namespace OpenBurnBar.App.Configuration;
 
 /// <summary>
-/// Process-wide runtime configuration. Resolution order per field: environment variable (CI/dev override),
-/// then protected-storage references from <c>app_config.json</c>, then empty.
+/// Process-wide runtime configuration. User credentials resolve from protected-storage references in
+/// <c>app_config.json</c>; release composition rejects plaintext credential environment overrides.
 /// </summary>
 public sealed class AppConfiguration
 {
@@ -80,15 +80,10 @@ public sealed class AppConfiguration
         && !string.IsNullOrWhiteSpace(EffectiveFirebaseIdToken());
 
     public string? EffectiveSqlCipherDbPath() =>
-        FirstNonEmpty(
-            Environment.GetEnvironmentVariable("OPENBURNBAR_SQLCIPHER_PATH"),
-            _model.SqlCipherDbPath);
+        FirstNonEmpty(null, _model.SqlCipherDbPath);
 
     public string? EffectiveSqlCipherPassphrase() =>
-        ResolveEnvOrSecret(
-            "OPENBURNBAR_SQLCIPHER_PASSPHRASE",
-            _model.SqlCipherPassphraseRef,
-            nameof(AppConfigurationModel.SqlCipherPassphraseRef));
+        ResolveSecret(_model.SqlCipherPassphraseRef, nameof(AppConfigurationModel.SqlCipherPassphraseRef));
 
     public string EffectiveFirebaseProjectId() =>
         FirstNonEmpty(

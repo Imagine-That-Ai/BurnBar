@@ -56,7 +56,7 @@ public sealed class ConPtyCliStream : ICliStream
             _columns,
             _rows,
             _workingDirectory,
-            ChildProcessEnvironment.CreateAllowlisted(ChildProcessProfile.Chat));
+            ChildProcessLaunchPolicy.CreateEnvironment(ChildProcessProfile.Chat));
         yield return new CliStreamEvent(
             CliStreamEventKind.System,
             $"session pid {session.ProcessId} started\n");

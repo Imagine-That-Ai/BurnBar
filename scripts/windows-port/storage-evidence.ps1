@@ -33,6 +33,13 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $env:OPENBURNBAR_STORAGE_EVIDENCE_DIR = $OutputDir
 
+$forbiddenCredentialEnv = @('OPENBURNBAR_SQLCIPHER_PATH', 'OPENBURNBAR_SQLCIPHER_PASSPHRASE')
+foreach ($name in $forbiddenCredentialEnv) {
+    if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+        throw "Release storage evidence refuses plaintext credential environment variable $name. Use protected storage composition."
+    }
+}
+
 $hostInfo = [ordered]@{
     capturedAt = (Get-Date).ToUniversalTime().ToString('o')
     computerName = $env:COMPUTERNAME
@@ -85,6 +92,8 @@ $cases = Get-ChildItem -Path $OutputDir -Directory | Select-Object -ExpandProper
 [ordered]@{
     status = 'passed'
     evidenceCases = $cases
+    forbiddenCredentialEnv = $forbiddenCredentialEnv
+    credentialPolicy = 'SQLCipher path/passphrase must come from protected configuration or generated protected storage, not environment variables.'
     requiredCases = @(
         'fresh-install',
         'restart-idempotency',

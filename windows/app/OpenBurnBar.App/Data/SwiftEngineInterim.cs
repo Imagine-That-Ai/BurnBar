@@ -40,28 +40,20 @@ public static class SwiftEngineInterim
             return false;
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "swift",
-            ArgumentList =
+        ProcessStartInfo startInfo = ChildProcessLaunchPolicy.CreateStartInfo(
+            ChildProcessProfile.ReleaseTool,
+            "swift",
+            new[]
             {
                 "run",
                 "--package-path",
                 fullPath,
                 "OpenBurnBarG2ParserParity",
             },
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        ChildProcessEnvironment.Apply(startInfo, ChildProcessProfile.ReleaseTool);
+            redirectStandardOutput: true,
+            redirectStandardError: true);
 
-        using var process = new Process { StartInfo = startInfo };
-        if (!process.Start())
-        {
-            return false;
-        }
+        using Process process = ChildProcessLaunchPolicy.Start(startInfo, ChildProcessProfile.ReleaseTool);
 
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         return process.ExitCode == 0;

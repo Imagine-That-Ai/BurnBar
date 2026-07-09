@@ -12,14 +12,12 @@ namespace OpenBurnBar.App.Storage.Tests;
 public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
 {
     private const string SampleEnv = "OPENBURNBAR_SAMPLE_MODE";
-    private const string SqlPathEnv = "OPENBURNBAR_SQLCIPHER_PATH";
-    private const string SqlPassEnv = "OPENBURNBAR_SQLCIPHER_PASSPHRASE";
 
     public void Dispose()
     {
         Environment.SetEnvironmentVariable(SampleEnv, null);
-        Environment.SetEnvironmentVariable(SqlPathEnv, null);
-        Environment.SetEnvironmentVariable(SqlPassEnv, null);
+        Environment.SetEnvironmentVariable("OPENBURNBAR_SQLCIPHER_PATH", null);
+        Environment.SetEnvironmentVariable("OPENBURNBAR_SQLCIPHER_PASSPHRASE", null);
         WindowsStorageDevHost.ResetForTests();
     }
 
@@ -159,15 +157,33 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
     {
         using var profile = TestProfile.Create();
         WindowsStorageDevHost.InitializeRuntime();
-        WindowsStorageDevHost.ResetForTests();
-        Environment.SetEnvironmentVariable(SqlPathEnv, profile.DatabasePath);
-        Environment.SetEnvironmentVariable(SqlPassEnv, "WrongBase64Key-000000000000000000000000000=");
+        profile.Configuration.UpdateAndSave(model =>
+        {
+            model.SqlCipherDbPath = profile.DatabasePath;
+            model.SqlCipherPassphrase = "WrongBase64Key-000000000000000000000000000=";
+        });
+        WindowsStorageDevHost.ConfigureForTests(profile.Configuration, profile.DatabasePath);
 
         WindowsStorageRuntimeStatus status = WindowsStorageDevHost.InitializeRuntime();
 
         Assert.False(status.IsReady);
         AssertRecovery(status, WindowsStorageFailureKind.WrongKey);
         WriteEvidence("wrong-key-recovery", profile.DatabasePath, null, status.RecoveryState);
+    }
+
+    [Fact]
+    public void PlaintextSqlCipherEnvironment_DoesNotOverrideInjectedProtectedConfiguration()
+    {
+        using var profile = TestProfile.Create();
+        Environment.SetEnvironmentVariable("OPENBURNBAR_SQLCIPHER_PATH", Path.Combine(profile.Root, "env.sqlite"));
+        Environment.SetEnvironmentVariable("OPENBURNBAR_SQLCIPHER_PASSPHRASE", "env-passphrase-must-not-win");
+
+        WindowsStorageRuntimeStatus status = WindowsStorageDevHost.InitializeRuntime();
+
+        Assert.True(status.IsReady);
+        Assert.Equal(profile.DatabasePath, status.Report!.DatabasePath);
+        Assert.Equal("protected-generated:openburnbar.windows.sqlcipher.passphrase", status.Report.KeyProvenance);
+        Assert.False(File.Exists(Path.Combine(profile.Root, "env.sqlite")));
     }
 
     [Fact]
@@ -314,6 +330,7 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
 
         public AppConfiguration Configuration { get; }
         public string DatabasePath { get; }
+        public string Root => _root;
 
         public static TestProfile Create()
         {

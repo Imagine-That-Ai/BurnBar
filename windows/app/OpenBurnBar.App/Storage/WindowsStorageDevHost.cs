@@ -18,8 +18,6 @@ namespace OpenBurnBar.App.Storage;
 /// </summary>
 internal static class WindowsStorageDevHost
 {
-    private const string SqlPathEnv = "OPENBURNBAR_SQLCIPHER_PATH";
-    private const string SqlPassEnv = "OPENBURNBAR_SQLCIPHER_PASSPHRASE";
     private const string ProtectedKeyProvenance = "protected-generated:" + AppSecretNames.SqlCipherPassphrase;
 
     private static readonly object Gate = new();
@@ -152,13 +150,6 @@ internal static class WindowsStorageDevHost
 
     private static (string Path, string Passphrase, string Provenance) ResolveOrProvisionCredentialsUnlocked()
     {
-        string? envPath = Environment.GetEnvironmentVariable(SqlPathEnv);
-        string? envPassphrase = Environment.GetEnvironmentVariable(SqlPassEnv);
-        if (!string.IsNullOrWhiteSpace(envPath) && !string.IsNullOrWhiteSpace(envPassphrase))
-        {
-            return (envPath.Trim(), envPassphrase.Trim(), "environment-override");
-        }
-
         AppConfiguration config = _configurationOverride ?? OpenBurnBar.App.Configuration.AppConfiguration.Current;
         string path = _databasePathOverride
             ?? config.EffectiveSqlCipherDbPath()

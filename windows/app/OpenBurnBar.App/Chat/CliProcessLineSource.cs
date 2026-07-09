@@ -106,7 +106,7 @@ public static class CliProcessLineSource
 
     internal static ProcessStartInfo CreateStartInfo(ChildProcessSpec spec)
     {
-        return ChatProcessRunner.CreateStartInfo(spec, ApprovedChatExecutableCatalog.FromEnvironment());
+        return ChatProcessRunner.CreateStartInfo(spec, ApprovedChatExecutableCatalog.Empty);
     }
 
     private static string ErrorLine(ChatFailureKind kind, string message)

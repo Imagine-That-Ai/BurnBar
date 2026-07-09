@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using OpenBurnBar.App.Configuration;
 
 namespace OpenBurnBar.App.Quota.Acquisition;
 
@@ -290,6 +291,7 @@ public sealed class ClaudeStatuslineHookInstaller
     {
         var snapshot = EscapePowerShellLiteral(_paths.SnapshotPath);
         var metadata = EscapePowerShellLiteral(_paths.MetadataPath);
+        string environmentNames = ChildProcessLaunchPolicy.PowerShellEnvironmentNameArrayLiteral(ChildProcessProfile.Chat);
         return string.Join("\r\n", new[]
         {
             "# OpenBurnBar Claude statusline quota bridge.",
@@ -314,7 +316,7 @@ public sealed class ClaudeStatuslineHookInstaller
             "        foreach ($arg in @($spec.arguments)) { [void]$psi.ArgumentList.Add([string]$arg) }",
             "        $psi.UseShellExecute = $false",
             "        $psi.Environment.Clear()",
-            "        foreach ($name in @('APPDATA','COMSPEC','LOCALAPPDATA','PATH','PATHEXT','SystemRoot','TEMP','TMP','USERPROFILE','WINDIR')) {",
+            $"        foreach ($name in {environmentNames}) {{",
             "          $value = [Environment]::GetEnvironmentVariable($name)",
             "          if ($value) { $psi.Environment[$name] = $value }",
             "        }",

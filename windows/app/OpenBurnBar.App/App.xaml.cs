@@ -48,6 +48,7 @@ public partial class App : Application
         AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
         try
         {
+            ReleaseConfigurationGuard.ThrowIfPlaintextCredentialEnvironmentPresent();
             _ = AppConfiguration.Current.SecurityState;
         }
         catch (SecretStoreException ex)

@@ -34,6 +34,14 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $env:OPENBURNBAR_CHAT_EVIDENCE_DIR = $OutputDir
 
+$forbiddenLaunchEnv = @(
+    'OPENAI_API_KEY',
+    'OPENBURNBAR_SQLCIPHER_PATH',
+    'OPENBURNBAR_SQLCIPHER_PASSPHRASE',
+    'WINDOWS_UPDATE_SIGNING_KEY',
+    'DIAGNOSTIC_CANARY_SECRET'
+)
+
 $hostInfo = [ordered]@{
     capturedAt = (Get-Date).ToUniversalTime().ToString('o')
     computerName = $env:COMPUTERNAME
@@ -98,6 +106,7 @@ Invoke-Step 'chat-presentation' @(
 )
 
 $requiredHostArtifacts = @(
+    'process-traces/launch-policy-environment-dump.json',
     'process-traces/image-argument-vector.json',
     'process-traces/metacharacters-quotes-unicode-newlines-long-payload.json',
     'process-traces/path-substitution-denial.json',
@@ -118,6 +127,17 @@ $requiredHostArtifacts = @(
         maxCombinedOutputBytes = 33554432
         maxLogicalRecordBytes = 1048576
         cancellationTreeAbsentMaxSeconds = 3
+    }
+    launchPolicy = [ordered]@{
+        requiredLaunchIds = @(
+            'chat.direct-cli',
+            'chat.conpty-cli',
+            'cloud.oauth-browser',
+            'data.swift-engine-interim',
+            'quota.claude-statusline-forwarder'
+        )
+        forbiddenEnvironmentNames = $forbiddenLaunchEnv
+        requiredArtifact = 'process-traces/launch-policy-environment-dump.json'
     }
     requiredHostArtifacts = $requiredHostArtifacts
     note = 'Attach the requiredHostArtifacts from Windows UIA/process-trace runners before target promotion.'

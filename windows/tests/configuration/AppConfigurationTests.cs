@@ -7,7 +7,7 @@ namespace OpenBurnBar.App.Configuration.Tests;
 public sealed class AppConfigurationTests
 {
     [Fact]
-    public void Effective_sqlcipher_prefers_environment_over_file()
+    public void Sqlcipher_environment_is_rejected_by_release_guard_and_ignored_by_configuration()
     {
         string dir = Path.Combine(Path.GetTempPath(), "obb-config-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -20,8 +20,16 @@ public sealed class AppConfigurationTests
             Environment.SetEnvironmentVariable("OPENBURNBAR_SQLCIPHER_PASSPHRASE", "env-pass");
 
             var config = new AppConfiguration(path);
-            Assert.Equal("C:\\from-env.sqlite", config.EffectiveSqlCipherDbPath());
-            Assert.Equal("env-pass", config.EffectiveSqlCipherPassphrase());
+            Assert.Equal("C:\\from-file.sqlite", config.EffectiveSqlCipherDbPath());
+            Assert.Equal("file-pass", config.EffectiveSqlCipherPassphrase());
+
+            var ex = Assert.Throws<SecretStoreException>(() =>
+                ReleaseConfigurationGuard.ThrowIfPlaintextCredentialEnvironmentPresent(new[]
+                {
+                    new KeyValuePair<string, string?>("OPENBURNBAR_SQLCIPHER_PATH", "C:\\from-env.sqlite"),
+                    new KeyValuePair<string, string?>("OPENBURNBAR_SQLCIPHER_PASSPHRASE", "env-pass"),
+                }));
+            Assert.Equal(SecretStoreFailureKind.WriteDenied, ex.Failure);
         }
         finally
         {
@@ -217,6 +225,7 @@ public sealed class AppConfigurationTests
             new KeyValuePair<string, string?>("PATH", "C:\\Windows\\System32"),
             new KeyValuePair<string, string?>("SystemRoot", "C:\\Windows"),
             new KeyValuePair<string, string?>("OPENAI_API_KEY", "forbidden"),
+            new KeyValuePair<string, string?>("OPENBURNBAR_SQLCIPHER_PATH", "forbidden"),
             new KeyValuePair<string, string?>("OPENBURNBAR_SQLCIPHER_PASSPHRASE", "forbidden"),
             new KeyValuePair<string, string?>("WINDOWS_UPDATE_SIGNING_KEY", "forbidden"),
             new KeyValuePair<string, string?>("DIAGNOSTIC_CANARY_SECRET", "forbidden"),
@@ -228,6 +237,7 @@ public sealed class AppConfigurationTests
 
         Assert.Equal("C:\\Windows\\System32", env["PATH"]);
         Assert.DoesNotContain("OPENAI_API_KEY", env.Keys);
+        Assert.DoesNotContain("OPENBURNBAR_SQLCIPHER_PATH", env.Keys);
         Assert.DoesNotContain("OPENBURNBAR_SQLCIPHER_PASSPHRASE", env.Keys);
         Assert.DoesNotContain("WINDOWS_UPDATE_SIGNING_KEY", env.Keys);
         Assert.DoesNotContain("DIAGNOSTIC_CANARY_SECRET", env.Keys);

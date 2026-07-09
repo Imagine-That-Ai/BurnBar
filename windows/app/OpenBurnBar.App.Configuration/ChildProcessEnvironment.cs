@@ -5,6 +5,7 @@ namespace OpenBurnBar.App.Configuration;
 
 public enum ChildProcessProfile
 {
+    BrowserActivation,
     Chat,
     Updater,
     Gateway,
@@ -76,6 +77,7 @@ public static class ChildProcessEnvironment
         "GOOGLE_SERVICES",
         "ID_TOKEN",
         "OPENAI",
+        "OPENBURNBAR_SQLCIPHER_PATH",
         "OPENBURNBAR_SQLCIPHER_PASSPHRASE",
         "PASSWORD",
         "PASSPHRASE",
@@ -92,23 +94,24 @@ public static class ChildProcessEnvironment
     public static IReadOnlyDictionary<string, string> CreateAllowlisted(
         ChildProcessProfile profile,
         IEnumerable<KeyValuePair<string, string?>>? source = null,
-        IEnumerable<KeyValuePair<string, string?>>? required = null)
+        IEnumerable<KeyValuePair<string, string?>>? required = null,
+        ChildProcessHost? host = null)
     {
         source ??= Environment.GetEnvironmentVariables()
             .Cast<DictionaryEntry>()
             .Select(entry => new KeyValuePair<string, string?>((string)entry.Key, entry.Value?.ToString()));
 
+        ChildProcessHost targetHost = host
+            ?? (OperatingSystem.IsWindows() ? ChildProcessHost.Windows : ChildProcessLaunchPolicy.CurrentHost);
+        StringComparer comparer = targetHost == ChildProcessHost.Windows
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
         var allowed = new HashSet<string>(
-            OperatingSystem.IsWindows() ? WindowsRuntimeAllowlist : PortableRuntimeAllowlist,
-            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-
-        foreach (string name in ProfileAllowlist(profile))
-        {
-            allowed.Add(name);
-        }
+            AllowedEnvironmentVariableNames(profile, targetHost),
+            comparer);
 
         var result = new SortedDictionary<string, string>(
-            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            comparer);
         foreach (var pair in source)
         {
             if (string.IsNullOrWhiteSpace(pair.Key) || pair.Value is null)
@@ -149,12 +152,14 @@ public static class ChildProcessEnvironment
     public static void Apply(
         ProcessStartInfo startInfo,
         ChildProcessProfile profile,
-        IEnumerable<KeyValuePair<string, string?>>? required = null)
+        IEnumerable<KeyValuePair<string, string?>>? required = null,
+        IEnumerable<KeyValuePair<string, string?>>? source = null,
+        ChildProcessHost? host = null)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
         startInfo.UseShellExecute = false;
         startInfo.Environment.Clear();
-        foreach (var pair in CreateAllowlisted(profile, required: required))
+        foreach (var pair in CreateAllowlisted(profile, source, required, host))
         {
             startInfo.Environment[pair.Key] = pair.Value;
         }
@@ -165,6 +170,57 @@ public static class ChildProcessEnvironment
         string normalized = name.Replace("-", "_", StringComparison.Ordinal).ToUpperInvariant();
         return ForbiddenNameFragments.Any(fragment => normalized.Contains(fragment, StringComparison.Ordinal));
     }
+
+    public static IReadOnlyList<string> AllowedEnvironmentVariableNames(
+        ChildProcessProfile profile,
+        ChildProcessHost host)
+    {
+        IEnumerable<string> baseAllowlist = host == ChildProcessHost.Windows
+            ? WindowsBaseAllowlist(profile)
+            : PortableBaseAllowlist(profile);
+        StringComparer comparer = host == ChildProcessHost.Windows
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        return baseAllowlist
+            .Concat(ProfileAllowlist(profile))
+            .Where(name => !IsForbidden(name))
+            .Distinct(comparer)
+            .OrderBy(name => name, comparer)
+            .ToArray();
+    }
+
+    private static IEnumerable<string> WindowsBaseAllowlist(ChildProcessProfile profile) =>
+        profile switch
+        {
+            ChildProcessProfile.BrowserActivation => new[]
+            {
+                "LOCALAPPDATA",
+                "SystemRoot",
+                "TEMP",
+                "TMP",
+                "USERPROFILE",
+                "WINDIR",
+            },
+            _ => WindowsRuntimeAllowlist,
+        };
+
+    private static IEnumerable<string> PortableBaseAllowlist(ChildProcessProfile profile) =>
+        profile switch
+        {
+            ChildProcessProfile.BrowserActivation => new[]
+            {
+                "HOME",
+                "LANG",
+                "LC_ALL",
+                "LC_CTYPE",
+                "PATH",
+                "TMPDIR",
+                "TMP",
+                "TEMP",
+                "USER",
+            },
+            _ => PortableRuntimeAllowlist,
+        };
 
     private static IEnumerable<string> ProfileAllowlist(ChildProcessProfile profile) =>
         profile switch
