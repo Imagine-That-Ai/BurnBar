@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  SurfaceStubPage — resolver fallback for unknown destination keys.
+  SurfaceStubPage — (1) unknown destination keys, and (2) intentional IA-1 deferred
+  disclosure for database/projects until depth pages land (SurfaceRouteMap).
 
-  The NavCatalog destinations and Auxiliary palette surfaces map to real Pages in
-  SurfacePageResolver; this stub remains for defensive routing only.
+  Not a fake Real surface: shows destination title/subtitle only.
 -->
 <Page
     x:Class="OpenBurnBar.App.Shell.SurfaceStubPage"

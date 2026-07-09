@@ -1,21 +1,20 @@
 using System;
-using System.Linq;
 using OpenBurnBar.App.Presentation.Insights;
 using Xunit;
 
 namespace OpenBurnBar.App.Presentation.Tests.Insights;
 
 /// <summary>
-/// Production-mode empty widgets must never look like demo series (H0 honesty).
+/// Production-mode empty widgets must never look like demo series or live zero KPI (H0 honesty).
 /// </summary>
 public sealed class InsightEmptyDataTests
 {
     [Fact]
-    public void ForKind_NonKpi_IsEmptyData_NeverSampleSeries()
+    public void ForKind_NonError_IsEmptyData_NeverSampleSeriesOrZeroKpi()
     {
         foreach (InsightWidgetKind kind in Enum.GetValues<InsightWidgetKind>())
         {
-            if (kind is InsightWidgetKind.KpiTile or InsightWidgetKind.Error)
+            if (kind == InsightWidgetKind.Error)
             {
                 continue;
             }
@@ -24,16 +23,44 @@ public sealed class InsightEmptyDataTests
             Assert.IsType<EmptyData>(data);
             Assert.False(data is RankingData or TimeSeriesData or DistributionData or HeatmapData
                 or ScatterData or SankeyData or RadarData or FunnelData or QuotaData
-                or NarrativeData or RecommendationData);
+                or NarrativeData or RecommendationData or KpiData);
         }
     }
 
     [Fact]
-    public void ForKind_Kpi_IsZeroedShell_WithReason()
+    public void ForKind_Error_IsErrorData()
     {
-        KpiData kpi = Assert.IsType<KpiData>(InsightEmptyData.ForKind(InsightWidgetKind.KpiTile, seed: 1));
-        Assert.Equal(0, kpi.Value);
-        Assert.Contains("SQLCipher", kpi.ContextLabel ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        ErrorData err = Assert.IsType<ErrorData>(
+            InsightEmptyData.ForKind(InsightWidgetKind.Error, seed: 0, reason: "boom"));
+        Assert.Equal("boom", err.Message);
+    }
+
+    [Fact]
+    public void ForKind_CustomReason_EmbedsInEmptyData()
+    {
+        EmptyData empty = Assert.IsType<EmptyData>(
+            InsightEmptyData.ForKind(InsightWidgetKind.BarRanking, seed: 1, reason: "custom-no-data"));
+        Assert.Equal("custom-no-data", empty.Reason);
+    }
+
+    [Fact]
+    public void ForKind_DefaultReason_MentionsSqlCipherOrSampleMode()
+    {
+        EmptyData empty = Assert.IsType<EmptyData>(InsightEmptyData.ForKind(InsightWidgetKind.KpiTile));
+        Assert.Contains("SQLCipher", empty.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SAMPLE_MODE", empty.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void ForKind_KpiSeeds_UseEmptyData_NotNumericZeroShell(int seed)
+    {
+        InsightWidgetData data = InsightEmptyData.ForKind(InsightWidgetKind.KpiTile, seed);
+        Assert.IsType<EmptyData>(data);
+        Assert.False(data is KpiData);
     }
 
     [Fact]

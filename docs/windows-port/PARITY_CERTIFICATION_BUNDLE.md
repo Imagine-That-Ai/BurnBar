@@ -14,10 +14,16 @@
 
 > **Never claim “100% parity” without naming F1 or F2.** Default launch target is **F1**.
 > Canonical execution plan: [`WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md`](WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md).
-> Engine Room (Daemon settings) surfaces the same table via `WindowsFinishLineScope`.
+>
+> **Engine Room surface status:** the F1/F2 matrix is authored on the portable
+> `WindowsFinishLineScope` / `DaemonSettingsViewModel` (unit-tested) and mirrored in this
+> bundle. The Daemon **WinUI tab still routes to `SettingsPlaceholderPage`** (H6 residual) —
+> it does **not** yet bind FinishLine* properties in XAML. Treat F1 column cells as **exit
+> criteria for Ship Peer**, not as “present in the current build.” Current build status is
+> the ledger row only.
 
-| Area | F1 — Ship Peer (default) | F2 — True 1:1 |
-|------|--------------------------|---------------|
+| Area | F1 — Ship Peer **exit criteria** (default) | F2 — True 1:1 **exit criteria** |
+|------|--------------------------------------------|----------------------------------|
 | Local peer desktop | Log ingest, quota, budget, storage, session logs, dashboard, insights, memory, DCC, onboarding, switcher, tray, settings | F1 plus deferred Mac-complete depth |
 | Chat | Production `IChatStreamDriver` for configured CLI backends | Hermes/Pi gateway-backed multi-client chat |
 | Cloud / auth | Desktop OAuth, Firestore, App Check, CloudVault live, trusted device | Same plane + F2-only connectors |
@@ -42,15 +48,15 @@
 
 ---
 
-## 1. Surface parity matrix (13 navigable destinations)
+## 1. Surface parity matrix (15 navigable keys)
 
 > **Status authority:** production-parity status is owned by
 > [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml). The Status column below
 > mirrors ledger vocabulary only (`Real` / `Substituted` / `DeferredApproved` /
 > `Blocked`). **Authored is not a valid status.**
 
-**Seams:** `NavCatalog` + `SurfacePageResolver` (`windows/app/OpenBurnBar.App/Shell/`).  
-**Sidebar:** 12 rows in `NavCatalog.All`; **13th** navigable key = auxiliary `elderWand` (Command Palette only, macOS reachability parity per `ElderWandPage.xaml`).
+**Seams:** `NavCatalog` + `SurfacePageResolver` / `SurfaceRouteMap` (`windows/app/OpenBurnBar.App/Shell/`).  
+**Catalog:** **14** keys in `NavCatalog.All` (incl. IA-1 `database` + `projects` deferred disclosure); **+1** auxiliary `elderWand` (Command Palette only) = **15** navigable keys total.
 
 | # | Nav key | macOS counterpart | Windows page / host | Primary tests | Data backend | Status (ledger) | Evidence / PR |
 |---|---------|-------------------|---------------------|---------------|--------------|-----------------|----------------|
@@ -132,7 +138,7 @@ These are **explicit** Tier-B/C substitutions or interim postures from the maste
 | D5 | **Web login helpers** | `CursorLoginHelper` / `FactoryLoginHelper` (AppKit/WebKit) | Deferred; OAuth loopback + web views later | Not on critical path for local-peer v1 | Documented deferral; Switcher uses portable sample until B2 |
 | D6 | **GRDB → SQLite seam** | GRDB API | C# `Microsoft.Data.Sqlite` + SQLCipher bundle | **Byte-identical file** per C4, not API-identical; **permanent** per WPD-0005 (Engine compute-only, shell persists) | `DbByteCompatVectorTests` + cross-open Mac DB on Windows host; `verify-windows-storage-architecture.sh` gate |
 | D7 | **Engine binding** | In-process Swift | **Interim** `swift run` wrapper; UniFFI C# bindgen target | B0 spike proved path; full in-proc binding follows | **#1257** spike evidence; WPD-0001 tracks bindgen |
-| D8 | **Elder Wand reachability** | Settings leaf + chat header | Command Palette auxiliary (not sidebar row) | Preserves 12-row + Ctrl+1..9 parity | `NavCatalog.Auxiliary` + `ElderWandPage` |
+| D8 | **Elder Wand reachability** | Settings leaf + chat header | Command Palette auxiliary (not sidebar row) | Keeps Elder Wand out of primary Ctrl 1..9 / menu switcher; `NavCatalog.All` is 14 keys after IA-1 | `NavCatalog.Auxiliary` + `ElderWandPage` |
 | D9 | **Sign in with Apple / IAP** | Apple / StoreKit | MSA/Google/email; Stripe or Store IAP | Tier C (`WINDOWS_PORT_MASTER_PLAN.md` §2) | Substitute checkout flow tested |
 | D10 | **Notarization staple** | Stapled DMG | No Apple-style staple; Authenticode + Ed25519 feed pin | R19 honest gap | DLL-load hardening + pinned feed key tests |
 | D11 | **SendInput capability gate** | CGEvent | Advisory `SendInput`; driver path for non-bypassable | R17 | Documented; ViGEm for secure-desktop v1.1 |

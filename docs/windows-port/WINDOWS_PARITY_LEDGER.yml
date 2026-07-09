@@ -617,3 +617,46 @@ rows:
       - scripts/ci/verify-windows-parity-ledger.py
     owner_lane: wave-6-parity-ci-release-gate
     notes: "Alberto E1 — make PR Windows Full Gate required. Parity ledger scanner is the Phase 0 honesty gate."
+
+# ---------------------------------------------------------------------------
+# F1 coverage register (H0 task 5 — annotate untracked F1 surfaces)
+# These are NOT ledger rows yet. Status vocabulary applies only when a full
+# row is added. Do not invent Real. See also evidence/h0-honesty/ and U8.
+# ---------------------------------------------------------------------------
+f1_coverage_register:
+  - subsystem: mercury-media
+    macos_surfaces: ["Mercury calls", "screen share", "file transfer"]
+    windows_status: future_row
+    note: "Integrations tree exists; no ledger row — add when H8 proofs start."
+  - subsystem: cast-smarthub
+    macos_surfaces: ["Cast", "SmartHub"]
+    windows_status: future_row
+    note: "Unit parity partial; host proof outstanding."
+  - subsystem: home-assistant
+    macos_surfaces: ["Home Assistant"]
+    windows_status: future_row
+    note: "Client tests exist; live device proof outstanding."
+  - subsystem: text-expansion
+    macos_surfaces: ["Text Expansion global hotkey"]
+    windows_status: future_row
+    note: "Portable core tests; SendInput host proof outstanding."
+  - subsystem: pet-companion
+    macos_surfaces: ["Pet overlay", "glTF host"]
+    windows_status: future_row
+    note: "Behavior tests exist; live overlay host proof outstanding."
+  - subsystem: cursor-connector
+    macos_surfaces: ["CursorConnector runtime"]
+    windows_status: future_row
+    note: "Windows proxy process not Real until live proof."
+  - subsystem: daily-digest-notifications
+    macos_surfaces: ["DailyDigest", "notifications", "launch-at-login"]
+    windows_status: future_row
+    note: "OS integration residual for H8."
+  - subsystem: computer-use-desktop
+    macos_surfaces: ["Computer Use desktop loop"]
+    windows_status: Blocked
+    note: "Ledger row computer-use-loop already Blocked; host-gated."
+  - subsystem: settings-placeholder-tabs
+    macos_surfaces: ["Settings tabs beyond General/Updates/DataPrivacy"]
+    windows_status: future_row
+    note: "H6 placeholder death; Engine Room FinishLine* VM-only until WinUI bind."

@@ -62,7 +62,10 @@ From `DashboardMainRoute.primarySections`:
 
 Plus required peers: `overview`, `insights`, `settings`, `flyout`, `budget`, `elderWand`.
 
-**Current gaps (Blocked):** `database` and `projects` have **no** Windows `NavCatalog` key.
+**Current gaps (Blocked):**
+
+- `database` / `projects` — **IA-1** `NavCatalog` keys exist and resolve to `SurfaceStubPage` **deferred disclosure** only; depth (IA-2+) is required before leaving `Blocked` (not Real).
+- `nav-chat` — remains `Blocked` until a production `IChatStreamDriver` streams live assistant tokens (ConPTY alone is insufficient).
 
 ## Status counts
 

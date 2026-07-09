@@ -50,10 +50,16 @@ public static class InsightsBuiltInTemplates
     }
 
     /// <summary>
-    /// When true, unresolved widgets receive deterministic <see cref="InsightSampleData"/>.
-    /// Defaults to <c>false</c> so production paths cannot silently paint demo series.
-    /// The WinUI Insights page sets this from <c>RuntimeDataMode.SampleModeEnabled</c>;
-    /// unit tests that need sample generators enable it in a try/finally.
+    /// When true, unresolved widgets (null <see cref="RealDataResolver"/> result) receive
+    /// deterministic <see cref="InsightSampleData"/>. Defaults to <c>false</c> (fail-closed).
+    /// <para>
+    /// Production: set exclusively from <c>RuntimeDataMode.SampleModeEnabled</c> in
+    /// <c>InsightsPage</c> so the env opt-in is the only production gate. Prefer installing
+    /// a <see cref="RealDataResolver"/> that itself gates samples (e.g.
+    /// <c>CloudSyncInsightSource.Resolve</c>) — the resolver is the authoritative production
+    /// path; this flag only covers the null-resolver fallback used by unit tests and
+    /// gallery stamping before a resolver is installed.
+    /// </para>
     /// </summary>
     public static bool SampleFallbackEnabled
     {

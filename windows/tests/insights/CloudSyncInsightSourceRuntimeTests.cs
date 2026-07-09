@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Insights;
 using OpenBurnBar.App.Presentation.Dashboard;
@@ -9,52 +10,64 @@ namespace OpenBurnBar.App.Insights.Tests;
 
 /// <summary>
 /// H0 honesty: production mode must not construct non-KPI <see cref="InsightSampleData"/>.
+/// Env mutations are isolated per test via try/finally.
 /// </summary>
 public sealed class CloudSyncInsightSourceRuntimeTests
 {
     private const string SampleEnv = "OPENBURNBAR_SAMPLE_MODE";
 
+    private static void ClearSampleMode() => Environment.SetEnvironmentVariable(SampleEnv, null);
+
+    private static void EnableSampleMode() => Environment.SetEnvironmentVariable(SampleEnv, "1");
+
     [Fact]
-    public void ProductionMode_NonKpi_ReturnsEmpty_NotSampleSeries()
+    public void ProductionMode_AllNonKpiKinds_ReturnEmpty_NotSampleSeries()
     {
         try
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
             Assert.False(RuntimeDataMode.SampleModeEnabled);
 
             var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
-            InsightWidgetData ranking = CloudSyncInsightSource.Resolve(InsightWidgetKind.BarRanking, seed: 16, empty);
-            InsightWidgetData series = CloudSyncInsightSource.Resolve(InsightWidgetKind.TimeSeriesLine, seed: 5, empty);
-            InsightWidgetData narrative = CloudSyncInsightSource.Resolve(InsightWidgetKind.Narrative, seed: 7, empty);
+            foreach (InsightWidgetKind kind in Enum.GetValues<InsightWidgetKind>())
+            {
+                if (kind is InsightWidgetKind.KpiTile or InsightWidgetKind.Error)
+                {
+                    continue;
+                }
 
-            Assert.IsType<EmptyData>(ranking);
-            Assert.IsType<EmptyData>(series);
-            Assert.IsType<EmptyData>(narrative);
+                InsightWidgetData data = CloudSyncInsightSource.Resolve(kind, seed: 16, empty);
+                Assert.IsType<EmptyData>(data);
+                Assert.False(data is RankingData or TimeSeriesData or DistributionData or HeatmapData
+                    or ScatterData or SankeyData or RadarData or FunnelData or QuotaData
+                    or NarrativeData or RecommendationData or KpiData);
+            }
         }
         finally
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
         }
     }
 
-    [Fact]
-    public void ProductionMode_KpiWithoutUsage_ReturnsZeroedEmptyShell()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void ProductionMode_KpiWithoutUsage_ReturnsEmptyChrome(int seed)
     {
         try
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
             var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
 
-            KpiData cost = Assert.IsType<KpiData>(
-                CloudSyncInsightSource.ResolveKpi(InsightWidgetKind.KpiTile, seed: 1, empty));
-            Assert.Equal(0, cost.Value);
-            Assert.Contains("SQLCipher", cost.ContextLabel ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-            // Must not look like InsightSampleData.Kpi (which paints ~120–1020 cost).
-            Assert.True(cost.Value < 1);
+            EmptyData noData = Assert.IsType<EmptyData>(
+                CloudSyncInsightSource.ResolveKpi(InsightWidgetKind.KpiTile, seed, empty));
+            Assert.Contains("SQLCipher", noData.Reason, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
         }
     }
 
@@ -63,7 +76,7 @@ public sealed class CloudSyncInsightSourceRuntimeTests
     {
         try
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
             var live = new DashboardUsageSummary(
                 SpendThisMonthUsd: 12.5,
                 TotalTokens: 9001,
@@ -84,7 +97,7 @@ public sealed class CloudSyncInsightSourceRuntimeTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
         }
     }
 
@@ -93,26 +106,25 @@ public sealed class CloudSyncInsightSourceRuntimeTests
     {
         try
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
             var live = new DashboardUsageSummary(1, 1, 1, HasData: true, DashboardUsageOrigin.Local);
 
-            // Seed 3 = cache hit — Engine path not wired; production stays empty.
-            KpiData cache = Assert.IsType<KpiData>(
+            EmptyData cache = Assert.IsType<EmptyData>(
                 CloudSyncInsightSource.ResolveKpi(InsightWidgetKind.KpiTile, seed: 3, live));
-            Assert.Equal(0, cache.Value);
+            Assert.Contains("SQLCipher", cache.Reason, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
         }
     }
 
     [Fact]
-    public void SampleMode_NonKpi_ReturnsDeterministicSampleSeries()
+    public void SampleMode_WithoutLive_NonKpi_ReturnsDeterministicSampleSeries()
     {
         try
         {
-            Environment.SetEnvironmentVariable(SampleEnv, "1");
+            EnableSampleMode();
             Assert.True(RuntimeDataMode.SampleModeEnabled);
 
             var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
@@ -121,7 +133,97 @@ public sealed class CloudSyncInsightSourceRuntimeTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
+            ClearSampleMode();
+        }
+    }
+
+    [Fact]
+    public void SampleMode_WithoutLive_Kpi_ReturnsSampleKpiShell()
+    {
+        try
+        {
+            EnableSampleMode();
+            var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
+            KpiData kpi = Assert.IsType<KpiData>(
+                CloudSyncInsightSource.ResolveKpi(InsightWidgetKind.KpiTile, seed: 1, empty));
+            // InsightSampleData.Kpi paints a non-zero fabricated cost (~120–1020).
+            Assert.True(kpi.Value > 1);
+        }
+        finally
+        {
+            ClearSampleMode();
+        }
+    }
+
+    [Fact]
+    public void SampleMode_WithLive_PrefersLiveKpiSeeds_OverSample()
+    {
+        try
+        {
+            EnableSampleMode();
+            var live = new DashboardUsageSummary(
+                SpendThisMonthUsd: 4.2,
+                TotalTokens: 100,
+                SessionCount: 2,
+                HasData: true,
+                Origin: DashboardUsageOrigin.Local);
+
+            KpiData cost = Assert.IsType<KpiData>(
+                CloudSyncInsightSource.ResolveKpi(InsightWidgetKind.KpiTile, seed: 1, live));
+            KpiData sessions = Assert.IsType<KpiData>(
+                CloudSyncInsightSource.ResolveKpi(InsightWidgetKind.KpiTile, seed: 2, live));
+            KpiData tokens = Assert.IsType<KpiData>(
+                CloudSyncInsightSource.ResolveKpi(InsightWidgetKind.KpiTile, seed: 4, live));
+
+            Assert.Equal(4.2, cost.Value);
+            Assert.Equal(2, sessions.Value);
+            Assert.Equal(100, tokens.Value);
+        }
+        finally
+        {
+            ClearSampleMode();
+        }
+    }
+
+    [Fact]
+    public void SampleMode_WithLive_NeverInjectsFabricatedNonKpiSeries()
+    {
+        try
+        {
+            EnableSampleMode();
+            var live = new DashboardUsageSummary(1, 1, 1, HasData: true, DashboardUsageOrigin.Local);
+
+            // Fail-closed hybrid: live present ⇒ empty unwired kinds (no RankingData fiction).
+            Assert.IsType<EmptyData>(
+                CloudSyncInsightSource.Resolve(InsightWidgetKind.BarRanking, seed: 16, live));
+        }
+        finally
+        {
+            ClearSampleMode();
+        }
+    }
+
+    [Fact]
+    public void Composition_SampleFallbackFalse_ResolverEmptySummary_YieldsEmptyNonKpi()
+    {
+        // Mirrors InsightsPage production wiring without WinUI.
+        try
+        {
+            ClearSampleMode();
+            InsightsBuiltInTemplates.SampleFallbackEnabled = RuntimeDataMode.SampleModeEnabled;
+            var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
+            InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
+                CloudSyncInsightSource.Resolve(kind, seed, empty);
+
+            InsightCanvas canvas = InsightsBuiltInTemplates.Find("cost-audit-7d")!.Instantiate();
+            Assert.All(canvas.Widgets, w => Assert.IsType<EmptyData>(w.Data));
+            Assert.DoesNotContain(canvas.Widgets, w => w.Data is RankingData or KpiData or TimeSeriesData);
+        }
+        finally
+        {
+            InsightsBuiltInTemplates.RealDataResolver = null;
+            InsightsBuiltInTemplates.SampleFallbackEnabled = false;
+            ClearSampleMode();
         }
     }
 }

@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Presentation.SessionLogs;
 using Xunit;
@@ -30,5 +32,25 @@ public sealed class SessionLogEmptySourceTests
     public void CreateReadSource_IsSingletonInstance()
     {
         Assert.Same(SessionLogEmptySource.CreateReadSource(), SessionLogEmptySource.CreateReadSource());
+    }
+
+    [Fact]
+    public async Task ListAsync_CanceledToken_ThrowsOperationCanceled()
+    {
+        ISessionLogReadSource source = SessionLogEmptySource.CreateReadSource();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => source.ListAsync(cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public async Task SearchMatchingIdsAsync_CanceledToken_ThrowsOperationCanceled()
+    {
+        ISessionLogReadSource source = SessionLogEmptySource.CreateReadSource();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => source.SearchMatchingIdsAsync("q", cancellationToken: cts.Token));
     }
 }
