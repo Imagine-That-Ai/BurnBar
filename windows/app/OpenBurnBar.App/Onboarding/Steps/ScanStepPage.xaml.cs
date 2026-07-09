@@ -53,7 +53,7 @@ public sealed partial class ScanStepPage : Page
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.Background = (Brush)Application.Current.Resources["OBBSurfaceBrush"];
+            row.Background = (Brush)Application.Current.Resources["PensieveColorGlassBgBrush"];
             row.CornerRadius = new CornerRadius(8);
 
             var badge = new Border

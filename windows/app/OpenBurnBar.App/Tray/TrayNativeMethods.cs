@@ -127,6 +127,19 @@ internal static class TrayNativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern IntPtr LoadIconW(IntPtr hInstance, IntPtr lpIconName);
 
+    internal const uint IMAGE_ICON = 1;
+    internal const uint LR_LOADFROMFILE = 0x0010;
+    internal const uint LR_DEFAULTSIZE = 0x0040;
+    internal const uint LR_SHARED = 0x8000;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern IntPtr LoadImageW(
+        IntPtr hInst, string name, uint type, int cx, int cy, uint fuLoad);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DestroyIcon(IntPtr hIcon);
+
     [DllImport("user32.dll")]
     internal static extern IntPtr CreatePopupMenu();
 

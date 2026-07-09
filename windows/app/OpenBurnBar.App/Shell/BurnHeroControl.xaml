@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- macOS BurnRailTelemetryHero / Linux DeckBurnHero peer. -->
+<UserControl
+    x:Class="OpenBurnBar.App.Shell.BurnHeroControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme">
+
+    <Border Style="{StaticResource LiquidGlassPillStyle}"
+            theme:LiquidGlass.Surface="True"
+            Padding="12,6"
+            MinHeight="36">
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
+                    Background="{StaticResource OBBAccentBrush}" />
+            <StackPanel Spacing="0" VerticalAlignment="Center">
+                <TextBlock Text="BURN"
+                           FontSize="9"
+                           FontWeight="Bold"
+                           CharacterSpacing="100"
+                           Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                <TextBlock x:Name="ValueText"
+                           Text="—"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           FontFamily="Cascadia Mono, Consolas"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            </StackPanel>
+            <Canvas x:Name="SparkCanvas" Width="64" Height="22" VerticalAlignment="Center" />
+        </StackPanel>
+    </Border>
+</UserControl>

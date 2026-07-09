@@ -20,7 +20,7 @@
     mc:Ignorable="d"
     AutomationProperties.AutomationId="RouteRoot.elderWand">
 
-    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Background="Transparent">
         <elderwand:ElderWandConfiguratorView x:Name="ConfiguratorView" />
     </Grid>
 </Page>

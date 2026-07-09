@@ -91,7 +91,7 @@
                                            Assistant="{StaticResource AssistantMessageTemplate}" />
     </UserControl.Resources>
 
-    <Grid Padding="20,16" RowSpacing="12" Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Padding="20,16" RowSpacing="12" Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
