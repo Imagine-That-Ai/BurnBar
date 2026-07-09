@@ -28,6 +28,7 @@ const artifacts = [
   'route-snapshot-plan.json',
   'route-a11y-user-flow-transcript.json',
   'automated-a11y-scan.json',
+  'axe-route-accessibility-scan.json',
   'a11y-keyboard-transcript.json',
   'token-visual-diff.json',
   'failure-state-transcript.json',

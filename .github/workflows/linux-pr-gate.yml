@@ -82,7 +82,8 @@ jobs:
           node scripts/linux-port/verify-linux-workflow-wiring.mjs
           node --test \
             scripts/linux-port/verify-linux-workflow-wiring.test.mjs \
-            scripts/linux-port/runtime-capability-contract.test.mjs
+            scripts/linux-port/runtime-capability-contract.test.mjs \
+            scripts/linux-port/accessibility-harness-contract.test.mjs
 
       - name: Install Linux desktop dependencies
         run: npm ci --prefix apps/linux-desktop

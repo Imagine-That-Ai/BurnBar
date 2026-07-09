@@ -466,6 +466,8 @@
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-top: 0.5rem;
+  padding: 0;
+  list-style: none;
 }
 
 .chat-memory-citation {

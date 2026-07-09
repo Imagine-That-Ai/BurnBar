@@ -48,7 +48,6 @@ export function App() {
       {/* Outside .shell so fixed positioning is never trapped by shell stacking. */}
       <KernelBackdrop skin={skin} kernelId={kernelId} />
       <div className="shell">
-        <div className="shell-key-capture" tabIndex={0} aria-hidden="true" />
         <a
           className="skip-link"
           href="#main"

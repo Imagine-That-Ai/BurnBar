@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux accessibility evidence gate** - audits every desktop route plus
+  degraded capability states with axe, captures live AT-SPI names, roles,
+  states, and actions from the installed package, and requires Orca discovery,
+  keyboard focus traversal, and zoom evidence before accessibility proof can
+  pass.
 - **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
   `POST /v1/chat/completions` through the shared provider router, relays
   OpenAI-compatible SSE streams, and records gateway usage events with cache

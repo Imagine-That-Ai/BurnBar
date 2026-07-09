@@ -32,13 +32,15 @@ function WarningBanners({ warnings, sharedFeaturesAvailable }: { warnings: ChatW
 function MemoryCitations({ citations }: { citations: { id: string; label: string }[] }) {
   if (!citations.length) return null;
   return (
-    <div className="chat-memory-citations" role="list" aria-label="Memory citations">
+    <ul className="chat-memory-citations" aria-label="Memory citations">
       {citations.map((c) => (
-        <button key={c.id} type="button" className="chat-memory-citation" role="listitem" disabled title="Citation jump ships with live memory bridge">
-          {c.label}
-        </button>
+        <li key={c.id}>
+          <button type="button" className="chat-memory-citation" disabled title="Citation jump ships with live memory bridge">
+            {c.label}
+          </button>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 

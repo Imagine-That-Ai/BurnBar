@@ -1,0 +1,431 @@
+#!/usr/bin/env python3
+"""Capture a bounded AT-SPI tree and fail when the app is not meaningfully exposed."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+from collections import Counter, deque
+from pathlib import Path
+from typing import Any
+
+
+ACTIONABLE_ROLES = {
+    "button",
+    "check box",
+    "combo box",
+    "entry",
+    "link",
+    "menu item",
+    "page tab",
+    "radio button",
+    "slider",
+    "spin button",
+    "toggle button",
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--application", default="OpenBurnBar")
+    parser.add_argument("--output")
+    parser.add_argument("--tree-text")
+    parser.add_argument("--expected-name")
+    parser.add_argument("--route")
+    parser.add_argument("--mode", choices=("tree", "summary", "focus", "activate"), default="tree")
+    parser.add_argument("--within-role")
+    parser.add_argument("--timeout-seconds", type=float, default=20.0)
+    parser.add_argument("--max-depth", type=int, default=48)
+    parser.add_argument("--max-nodes", type=int, default=5000)
+    parser.add_argument("--min-nodes", type=int, default=20)
+    parser.add_argument("--min-named", type=int, default=8)
+    parser.add_argument("--min-actionable", type=int, default=5)
+    parser.add_argument("--self-test", action="store_true")
+    return parser.parse_args()
+
+
+def safe_text(value: Any) -> str:
+    try:
+        return str(value or "").replace("\n", " ").strip()
+    except Exception:
+        return ""
+
+
+def node_name(node: Any) -> str:
+    try:
+        return safe_text(getattr(node, "name", ""))
+    except Exception:
+        return ""
+
+
+def node_description(node: Any) -> str:
+    try:
+        return safe_text(getattr(node, "description", ""))
+    except Exception:
+        return ""
+
+
+def child_count(node: Any) -> int:
+    try:
+        return int(node.childCount)
+    except Exception:
+        try:
+            return int(node.getChildCount())
+        except Exception:
+            return 0
+
+
+def child_at(node: Any, index: int) -> Any | None:
+    try:
+        return node.getChildAtIndex(index)
+    except Exception:
+        try:
+            return node[index]
+        except Exception:
+            return None
+
+
+def role_name(node: Any) -> str:
+    try:
+        return safe_text(node.getRoleName()).lower()
+    except Exception:
+        return "unknown"
+
+
+def state_names(node: Any, pyatspi: Any) -> list[str]:
+    try:
+        return sorted(safe_text(pyatspi.stateToString(state)).lower() for state in node.getState().getStates())
+    except Exception:
+        return []
+
+
+def action_names(node: Any) -> list[str]:
+    try:
+        action = node.queryAction()
+        return [safe_text(action.getName(index)) for index in range(action.nActions)]
+    except Exception:
+        return []
+
+
+def collect_nodes(root: Any, pyatspi: Any, max_depth: int, max_nodes: int) -> tuple[list[dict[str, Any]], bool]:
+    rows: list[dict[str, Any]] = []
+    queue: deque[tuple[Any, int, str]] = deque([(root, 0, "0")])
+    truncated = False
+    while queue:
+        node, depth, node_path = queue.popleft()
+        if len(rows) >= max_nodes:
+            truncated = True
+            break
+        role = role_name(node)
+        name = node_name(node)
+        description = node_description(node)
+        states = state_names(node, pyatspi)
+        actions = [name for name in action_names(node) if name]
+        rows.append(
+            {
+                "path": node_path,
+                "depth": depth,
+                "role": role,
+                "name": name,
+                "description": description,
+                "states": states,
+                "actions": actions,
+                "childCount": child_count(node),
+            }
+        )
+        if depth >= max_depth:
+            if child_count(node) > 0:
+                truncated = True
+            continue
+        for index in range(child_count(node)):
+            child = child_at(node, index)
+            if child is not None:
+                queue.append((child, depth + 1, f"{node_path}.{index}"))
+    return rows, truncated
+
+
+def contains_name(root: Any, expected: str, limit: int = 500) -> bool:
+    needle = expected.casefold()
+    queue: deque[Any] = deque([root])
+    seen = 0
+    while queue and seen < limit:
+        node = queue.popleft()
+        seen += 1
+        if needle in node_name(node).casefold():
+            return True
+        for index in range(child_count(node)):
+            child = child_at(node, index)
+            if child is not None:
+                queue.append(child)
+    return False
+
+
+def find_application(pyatspi: Any, application_name: str, timeout_seconds: float) -> Any:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        desktop = pyatspi.Registry.getDesktop(0)
+        applications = [child_at(desktop, index) for index in range(child_count(desktop))]
+        for application in applications:
+            if application is None:
+                continue
+            if (
+                application_name.casefold() in node_name(application).casefold()
+                and child_count(application) > 0
+            ):
+                return application
+        for application in applications:
+            if application is not None and contains_name(application, application_name):
+                return application
+        time.sleep(0.25)
+    raise RuntimeError(f"AT-SPI application not found: {application_name}")
+
+
+def find_actionable_node(root: Any, expected_name: str, within_role: str | None) -> Any:
+    search_root = root
+    if within_role:
+        queue: deque[Any] = deque([root])
+        while queue:
+            node = queue.popleft()
+            if role_name(node) == within_role.casefold():
+                search_root = node
+                break
+            for index in range(child_count(node)):
+                child = child_at(node, index)
+                if child is not None:
+                    queue.append(child)
+        else:
+            raise RuntimeError(f"AT-SPI ancestor role not found: {within_role}")
+
+    needle = expected_name.casefold()
+    candidates: list[tuple[int, Any]] = []
+    queue = deque([search_root])
+    while queue:
+        node = queue.popleft()
+        name = node_name(node)
+        actions = [value for value in action_names(node) if value]
+        folded = name.casefold()
+        if actions and needle in folded:
+            score = 0 if folded == needle else 1 if folded.startswith(needle) else 2
+            candidates.append((score, node))
+        for index in range(child_count(node)):
+            child = child_at(node, index)
+            if child is not None:
+                queue.append(child)
+    if not candidates:
+        raise RuntimeError(f"AT-SPI actionable node not found: {expected_name}")
+    candidates.sort(key=lambda item: item[0])
+    return candidates[0][1]
+
+
+def activate_node(node: Any) -> dict[str, Any]:
+    action = node.queryAction()
+    names = [safe_text(action.getName(index)).lower() for index in range(action.nActions)]
+    preferred = ("press", "click", "activate", "jump", "select")
+    action_index = next(
+        (index for preferred_name in preferred for index, name in enumerate(names) if name == preferred_name),
+        0,
+    )
+    activated = bool(action.doAction(action_index))
+    return {
+        "role": role_name(node),
+        "name": node_name(node),
+        "availableActions": names,
+        "performedAction": names[action_index] if names else None,
+        "activated": activated,
+    }
+
+
+def activate_with_retry(
+    pyatspi: Any,
+    application_name: str,
+    expected_name: str,
+    within_role: str | None,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            application = find_application(pyatspi, application_name, 1.0)
+            node = find_actionable_node(application, expected_name, within_role)
+            return activate_node(node)
+        except Exception as error:
+            last_error = error
+            time.sleep(0.25)
+    raise RuntimeError(f"AT-SPI action timed out for {expected_name}: {last_error}")
+
+
+def summarize(
+    rows: list[dict[str, Any]],
+    application_name: str,
+    route: str | None,
+    expected_name: str | None,
+    truncated: bool,
+    minimums: tuple[int, int, int],
+) -> dict[str, Any]:
+    named = [row for row in rows if row["name"]]
+    actionable = [
+        row for row in rows if row["actions"] or row["role"] in ACTIONABLE_ROLES
+    ]
+    focusable = [row for row in rows if "focusable" in row["states"]]
+    focused = [row for row in rows if "focused" in row["states"]]
+    role_counts = dict(sorted(Counter(row["role"] for row in rows).items()))
+    expected_present = (
+        True
+        if not expected_name
+        else any(expected_name.casefold() in row["name"].casefold() for row in named)
+    )
+    min_nodes, min_named, min_actionable = minimums
+    failures = []
+    if len(rows) < min_nodes:
+        failures.append(f"node_count_below_{min_nodes}")
+    if len(named) < min_named:
+        failures.append(f"named_node_count_below_{min_named}")
+    if len(actionable) < min_actionable:
+        failures.append(f"actionable_node_count_below_{min_actionable}")
+    if truncated:
+        failures.append("tree_truncated")
+    if not expected_present:
+        failures.append("expected_name_missing")
+    return {
+        "schemaVersion": 1,
+        "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "application": application_name,
+        "route": route,
+        "expectedName": expected_name,
+        "expectedNamePresent": expected_present,
+        "nodeCount": len(rows),
+        "namedNodeCount": len(named),
+        "actionableNodeCount": len(actionable),
+        "focusableNodeCount": len(focusable),
+        "focusedNodes": focused[:8],
+        "roleCounts": role_counts,
+        "namedSamples": named[:40],
+        "actionableSamples": actionable[:30],
+        "truncated": truncated,
+        "minimums": {
+            "nodes": min_nodes,
+            "named": min_named,
+            "actionable": min_actionable,
+        },
+        "pass": not failures,
+        "failures": failures,
+    }
+
+
+def write_tree_text(path: str, rows: list[dict[str, Any]]) -> None:
+    lines = []
+    for row in rows:
+        indent = "  " * row["depth"]
+        details = [row["role"]]
+        if row["name"]:
+            details.append(f'name="{row["name"]}"')
+        if row["states"]:
+            details.append(f'states={",".join(row["states"])}')
+        if row["actions"]:
+            details.append(f'actions={",".join(row["actions"])}')
+        lines.append(f'{indent}{row["path"]} ' + " ".join(details))
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def self_test() -> int:
+    rows = [
+        {"role": "application", "name": "OpenBurnBar", "states": [], "actions": []},
+        {"role": "heading", "name": "Overview", "states": [], "actions": []},
+    ]
+    rows.extend(
+        {"role": "button", "name": f"Action {index}", "states": ["focusable"], "actions": ["click"]}
+        for index in range(6)
+    )
+    rows.extend(
+        {"role": "text", "name": f"Label {index}", "states": [], "actions": []}
+        for index in range(12)
+    )
+    result = summarize(rows, "OpenBurnBar", "overview", "Overview", False, (20, 8, 5))
+    if not result["pass"] or result["actionableNodeCount"] != 6:
+        print(json.dumps(result, indent=2), file=sys.stderr)
+        return 1
+    print(json.dumps({"selfTest": "pass", "summary": result}, indent=2))
+    return 0
+
+
+def main() -> int:
+    args = parse_args()
+    if args.self_test:
+        return self_test()
+    if not args.output:
+        raise SystemExit("--output is required")
+
+    try:
+        import pyatspi  # type: ignore
+
+        if args.mode == "activate":
+            if not args.expected_name:
+                raise RuntimeError("--expected-name is required in activate mode")
+            activation = activate_with_retry(
+                pyatspi,
+                args.application,
+                args.expected_name,
+                args.within_role,
+                args.timeout_seconds,
+            )
+            result = {
+                "schemaVersion": 1,
+                "capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "application": args.application,
+                "expectedName": args.expected_name,
+                "withinRole": args.within_role,
+                "activation": activation,
+                "pass": activation["activated"],
+                "failures": [] if activation["activated"] else ["action_returned_false"],
+            }
+            Path(args.output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+            print(json.dumps(result, separators=(",", ":")))
+            return 0 if result["pass"] else 1
+        application = find_application(pyatspi, args.application, args.timeout_seconds)
+        rows, truncated = collect_nodes(application, pyatspi, args.max_depth, args.max_nodes)
+        minimums = (
+            0 if args.mode == "focus" else args.min_nodes,
+            0 if args.mode == "focus" else args.min_named,
+            0 if args.mode == "focus" else args.min_actionable,
+        )
+        result = summarize(
+            rows,
+            args.application,
+            args.route,
+            args.expected_name,
+            truncated,
+            minimums,
+        )
+        if args.mode == "tree":
+            result["nodes"] = rows
+        if args.mode == "focus":
+            result = {
+                "capturedAt": result["capturedAt"],
+                "route": args.route,
+                "focusedNodes": result["focusedNodes"],
+                "pass": len(result["focusedNodes"]) > 0,
+                "failures": [] if result["focusedNodes"] else ["no_focused_node"],
+            }
+        Path(args.output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        if args.tree_text:
+            write_tree_text(args.tree_text, rows)
+        print(json.dumps(result, separators=(",", ":")))
+        return 0 if result["pass"] else 1
+    except Exception as error:
+        failure = {
+            "schemaVersion": 1,
+            "application": args.application,
+            "route": args.route,
+            "pass": False,
+            "failures": [f"capture_failed:{type(error).__name__}:{error}"],
+        }
+        Path(args.output).write_text(json.dumps(failure, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(failure), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

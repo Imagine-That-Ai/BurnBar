@@ -118,13 +118,13 @@ export function SurfaceRouter({ route }: { route: ShellRoute }) {
       ) : (
         <>
           {boundary?.state === 'degraded' ? (
-            <aside className="capability-degraded" role="status">
+            <div className="capability-degraded" role="status">
               <span className="capability-degraded__icon" aria-hidden="true">!</span>
               <span>
                 <strong>Limited in this session.</strong> {boundary.reason}
                 {boundary.substitute ? ` ${boundary.substitute}` : ''}
               </span>
-            </aside>
+            </div>
           ) : null}
           <Surface />
         </>

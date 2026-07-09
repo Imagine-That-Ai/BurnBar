@@ -45,7 +45,15 @@ function currentDesktopArtifactsAreReusable() {
     'linux-desktop-session-report.json',
     'packaged-route-session-transcript.json',
     'runtime-perf-samples.jsonl',
-    'daemon-session-oracle.json'
+    'daemon-session-oracle.json',
+    'atspi-tree-linux-desktop.json',
+    'atspi-keyboard-focus-sequence.json',
+    'atspi-zoom-200-requested.json',
+    'orca-applications.txt',
+    'orca-debug.log',
+    'orca-process.txt',
+    'orca-version.txt',
+    'zoom-accessibility-evidence.json'
   ];
   for (const fileName of required) {
     const filePath = path.join(outDir, fileName);
@@ -59,13 +67,32 @@ function currentDesktopArtifactsAreReusable() {
   const runtimeRows = fs.readFileSync(path.join(outDir, 'runtime-perf-samples.jsonl'), 'utf8')
     .split('\n')
     .filter((line) => line.trim().length > 0);
+  const routeEvidenceIsComplete = routes?.routes?.every((route) => {
+    if (route?.navMethod !== 'atspi-command-palette-actions') return false;
+    const routeSlug = route?.route;
+    if (typeof routeSlug !== 'string' || routeSlug.length === 0) return false;
+    const actionFiles = [
+      `atspi-command-open-${routeSlug}.json`,
+      `atspi-command-route-${routeSlug}.json`,
+      `atspi-route-${routeSlug}.json`
+    ];
+    return actionFiles.every((fileName) => {
+      const artifact = readJSON(fileName);
+      return artifact?.pass === true;
+    });
+  });
   return Number.isFinite(generatedAt) &&
     Date.now() - generatedAt <= maxAgeMs &&
     report?.performance?.appStartMs > 0 &&
     report?.performance?.ipcHealthRoundTripMs > 0 &&
+    report?.accessibility?.atspiTree?.pass === true &&
+    report?.accessibility?.keyboardFocus?.pass === true &&
+    report?.accessibility?.zoom?.pass === true &&
+    report?.accessibility?.orcaProcessObserved === true &&
     routes?.mode === 'packaged-desktop-route-navigation' &&
     Array.isArray(routes?.routes) &&
-    routes.routes.length > 0 &&
+    routes.routes.length === 19 &&
+    routeEvidenceIsComplete === true &&
     oracle?.mode === 'openburnbar-daemon-af-unix' &&
     oracle?.status === 'ready' &&
     runtimeRows.length >= 5;

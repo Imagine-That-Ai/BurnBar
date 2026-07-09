@@ -22,7 +22,7 @@ export function ChatToolbar({
   compact = false
 }: ChatToolbarProps) {
   return (
-    <header className="chat-toolbar" role="toolbar" aria-label="Chat controls">
+    <div className="chat-toolbar" role="toolbar" aria-label="Chat controls">
       <div className="chat-toolbar-primary">
         <BackendStrip
           backend={backend}
@@ -71,6 +71,6 @@ export function ChatToolbar({
           </>
         ) : null}
       </div>
-    </header>
+    </div>
   );
 }

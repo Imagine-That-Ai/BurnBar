@@ -46,10 +46,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         nodejs \
         npm \
         openbox \
+        orca \
         patchelf \
         pipewire \
         pkg-config \
         procps \
+        python3-pyatspi \
         rpm \
         scrot \
         squashfs-tools \
