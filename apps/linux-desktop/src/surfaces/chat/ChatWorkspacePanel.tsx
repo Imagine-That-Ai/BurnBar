@@ -95,6 +95,7 @@ export function ChatWorkspacePanel({
               warnings={warnings}
               sharedFeaturesAvailable={sharedFeaturesAvailable}
               streamError={streamError}
+              streaming={streaming}
             />
           ) : (
             (mainFallback ?? <p className="chat-empty">Select a thread from the rail.</p>)

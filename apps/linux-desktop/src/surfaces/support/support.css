@@ -13,7 +13,10 @@
   padding: var(--space-4);
   border: 1px solid var(--color-glass-line);
   border-radius: var(--radius-sm);
-  background: var(--color-mercury-wash);
+  background: color-mix(in srgb, var(--color-mercury-wash) 85%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
 }
 
 .p09-channel-card h3,
