@@ -1,15 +1,8 @@
 {
-  "generatedAt": "2026-07-09T18:20:39.539Z",
+  "generatedAt": "2026-07-09T18:21:01.697Z",
   "outDir": "docs/linux-port/evidence/mission-002-reanchor",
   "allowBlocked": false,
-  "passed": false,
-  "failures": [
-    {
-      "message": "release checkout has unexpected dirty files outside generated Linux release evidence.",
-      "dirtyEntries": [
-        "?? scripts/linux-port/package-payload-contract.test.mjs"
-      ]
-    }
-  ],
+  "passed": true,
+  "failures": [],
   "warnings": []
 }
