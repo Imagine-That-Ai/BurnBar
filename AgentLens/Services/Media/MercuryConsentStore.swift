@@ -32,6 +32,18 @@ final class MercuryConsentStore: ObservableObject {
     private static let grantsKey = "mercuryMirrorAutoAcceptGrants.v2"
     private static let grantTTL: TimeInterval = 365 * 24 * 60 * 60
 
+    private final class DefaultsObserverToken: @unchecked Sendable {
+        private let token: NSObjectProtocol
+
+        init(_ token: NSObjectProtocol) {
+            self.token = token
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
     @Published var rememberAcceptedMirrorPeers: Bool {
         didSet {
             defaults.set(rememberAcceptedMirrorPeers, forKey: Self.rememberAcceptedPeersKey)
@@ -42,7 +54,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
-    private var defaultsObserver: NSObjectProtocol?
+    private var defaultsObserver: DefaultsObserverToken?
 
     init(
         defaults: UserDefaults = .standard,
@@ -68,7 +80,7 @@ final class MercuryConsentStore: ObservableObject {
                 self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
             }
         }
-        defaultsObserver = NotificationCenter.default.addObserver(
+        defaultsObserver = DefaultsObserverToken(NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil,
             queue: nil
@@ -81,14 +93,8 @@ final class MercuryConsentStore: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.reloadRememberAcceptedMirrorPeers()
             }
-        }
+        })
         pruneExpired()
-    }
-
-    deinit {
-        if let defaultsObserver {
-            NotificationCenter.default.removeObserver(defaultsObserver)
-        }
     }
 
     var activeGrantCount: Int {
