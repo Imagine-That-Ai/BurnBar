@@ -72,6 +72,10 @@ internal sealed class SemanticProbeRunner
         {
             return Fail(ex.Message);
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return Fail($"OpenBurnBar.App did not expose a main window within {_timeoutMilliseconds}ms.");
+        }
         finally
         {
             TryKill(process);
@@ -87,6 +91,7 @@ internal sealed class SemanticProbeRunner
             UseShellExecute = false,
             WindowStyle = ProcessWindowStyle.Normal,
         };
+        ProcessEnvironmentSanitizer.RemoveOpenBurnBarEnvironment(startInfo);
         startInfo.Environment["DOTNET_ROLL_FORWARD"] = Environment.GetEnvironmentVariable("DOTNET_ROLL_FORWARD") ?? "Major";
         startInfo.Environment["OPENBURNBAR_SAMPLE_MODE"] = "1";
         startInfo.Environment["OPENBURNBAR_AUTOMATION_PROFILE_ROOT"] = profileRoot;

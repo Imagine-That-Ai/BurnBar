@@ -16,6 +16,11 @@ public sealed record UiHarnessRoute(
     string ExpectedAutomationId,
     string XamlPath);
 
+public static class UiHarnessRouteDefaults
+{
+    public static string ExpectedAutomationId(string routeKey) => $"RouteRoot.{routeKey}";
+}
+
 public sealed record RouteSmokeEvidence(
     string RouteKey,
     HarnessVerdict Verdict,
@@ -28,7 +33,9 @@ public sealed record RouteSmokeEvidence(
     double Height,
     double LumaStdDev,
     double ElapsedMs,
-    string? Message);
+    string? Message,
+    string ExpectedAutomationId,
+    bool ExpectedAutomationIdFound);
 
 public sealed record SemanticProbeEvidence(
     HarnessVerdict Verdict,
@@ -44,7 +51,9 @@ public sealed record InputRouteEvidence(
     string ActionKind,
     string DispatchRoute,
     string AuditKind,
-    bool RequiresCapabilityToken);
+    bool RequiresCapabilityToken,
+    HarnessVerdict Verdict,
+    string? Message);
 
 public sealed record UiHarnessRunSummary(
     string GeneratedAtUtc,
@@ -69,6 +78,14 @@ public sealed record UiHarnessRunSummary(
             foreach (RouteSmokeEvidence route in Routes)
             {
                 if (route.Verdict == HarnessVerdict.Fail)
+                {
+                    return HarnessVerdict.Fail;
+                }
+            }
+
+            foreach (InputRouteEvidence input in InputRoutes)
+            {
+                if (input.Verdict == HarnessVerdict.Fail)
                 {
                     return HarnessVerdict.Fail;
                 }

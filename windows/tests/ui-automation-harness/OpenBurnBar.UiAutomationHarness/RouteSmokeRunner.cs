@@ -50,6 +50,10 @@ internal sealed class RouteSmokeRunner
             timedOut = true;
             TryKill(process);
         }
+        finally
+        {
+            TryKill(process);
+        }
 
         stopwatch.Stop();
         string resultPath = Path.Combine(routeOut, $"{route.Key}-result.json");
@@ -67,7 +71,9 @@ internal sealed class RouteSmokeRunner
                 Height: 0,
                 LumaStdDev: 0,
                 ElapsedMs: stopwatch.Elapsed.TotalMilliseconds,
-                Message: $"Timed out after {_timeoutMilliseconds + 5_000}ms.");
+                Message: $"Timed out after {_timeoutMilliseconds + 5_000}ms.",
+                ExpectedAutomationId: route.ExpectedAutomationId,
+                ExpectedAutomationIdFound: false);
         }
 
         if (!File.Exists(resultPath))
@@ -92,6 +98,7 @@ internal sealed class RouteSmokeRunner
             UseShellExecute = false,
             WindowStyle = ProcessWindowStyle.Normal,
         };
+        ProcessEnvironmentSanitizer.RemoveOpenBurnBarEnvironment(startInfo);
         startInfo.Environment["DOTNET_ROLL_FORWARD"] = Environment.GetEnvironmentVariable("DOTNET_ROLL_FORWARD") ?? "Major";
         startInfo.Environment["OPENBURNBAR_SAMPLE_MODE"] = "1";
         startInfo.Environment["OPENBURNBAR_AUTOMATION_PROFILE_ROOT"] = profileRoot;
@@ -115,11 +122,18 @@ internal sealed class RouteSmokeRunner
         bool nearUniform = ReadBool(root, "NearUniform", defaultValue: true);
         string? screenshotPath = ReadString(root, "ScreenshotPath");
         string? message = ReadString(root, "Message");
+        string expectedAutomationId = ReadString(root, "ExpectedAutomationId") ?? UiHarnessRouteDefaults.ExpectedAutomationId(routeKey);
+        bool expectedAutomationIdFound = ReadBool(root, "ExpectedAutomationIdFound", defaultValue: false);
         double width = ReadDouble(root, "Width");
         double height = ReadDouble(root, "Height");
         double lumaStdDev = ReadDouble(root, "LumaStdDev");
         double elapsedMs = ReadDouble(root, "ElapsedMs");
-        var verdict = processExitCode == 0 && !nearUniform ? HarnessVerdict.Pass : HarnessVerdict.Fail;
+        var verdict = processExitCode == 0 && !nearUniform && expectedAutomationIdFound ? HarnessVerdict.Pass : HarnessVerdict.Fail;
+        if (!expectedAutomationIdFound)
+        {
+            message = AppendMessage(message, $"Expected automation id was not found: {expectedAutomationId}");
+        }
+
         return new RouteSmokeEvidence(
             routeKey,
             verdict,
@@ -132,7 +146,9 @@ internal sealed class RouteSmokeRunner
             height,
             lumaStdDev,
             elapsedMs <= 0 ? elapsed.TotalMilliseconds : elapsedMs,
-            message);
+            message,
+            expectedAutomationId,
+            expectedAutomationIdFound);
     }
 
     private static RouteSmokeEvidence Failed(string routeKey, int exitCode, bool timedOut, string message, TimeSpan elapsed) =>
@@ -148,7 +164,9 @@ internal sealed class RouteSmokeRunner
             Height: 0,
             LumaStdDev: 0,
             ElapsedMs: elapsed.TotalMilliseconds,
-            Message: message);
+            Message: message,
+            ExpectedAutomationId: UiHarnessRouteDefaults.ExpectedAutomationId(routeKey),
+            ExpectedAutomationIdFound: false);
 
     private static string? ReadString(JsonElement root, string property) =>
         root.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
@@ -158,6 +176,9 @@ internal sealed class RouteSmokeRunner
 
     private static double ReadDouble(JsonElement root, string property) =>
         root.TryGetProperty(property, out JsonElement value) && value.TryGetDouble(out double parsed) ? parsed : 0;
+
+    private static string AppendMessage(string? current, string addition) =>
+        string.IsNullOrWhiteSpace(current) ? addition : $"{current} {addition}";
 
     private static void TryKill(Process process)
     {

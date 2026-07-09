@@ -43,6 +43,7 @@ public sealed class ArtifactRedactor
         {
             redacted = redacted.Replace(prefix, "[REDACTED_PATH]", StringComparison.OrdinalIgnoreCase);
             redacted = redacted.Replace(prefix.Replace('\\', '/'), "[REDACTED_PATH]", StringComparison.OrdinalIgnoreCase);
+            redacted = redacted.Replace(prefix.Replace("\\", "\\\\"), "[REDACTED_PATH]", StringComparison.OrdinalIgnoreCase);
         }
 
         return redacted;

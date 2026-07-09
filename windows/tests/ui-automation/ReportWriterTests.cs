@@ -74,7 +74,42 @@ public sealed class ReportWriterTests : IDisposable
         Assert.Contains("token:[REDACTED]", redacted);
     }
 
-    private static UiHarnessRunSummary CreateSummary(HarnessVerdict routeVerdict, string? message, string? screenshotPath = null) =>
+    [Fact]
+    public void ArtifactRedactor_ScrubsJsonEscapedWindowsPathPrefixes()
+    {
+        var redactor = new ArtifactRedactor(@"C:\Users\Alberto\project");
+
+        string redacted = redactor.Redact(@"{""RepoRoot"":""C:\\Users\\Alberto\\project"",""AppExe"":""C:\\Users\\Alberto\\project\\OpenBurnBar.App.exe""}");
+
+        Assert.Contains("[REDACTED_PATH]", redacted);
+        Assert.DoesNotContain(@"C:\\Users\\Alberto\\project", redacted);
+    }
+
+    [Fact]
+    public void SummaryVerdict_FailsWhenInputRouteContractFails()
+    {
+        UiHarnessRunSummary summary = CreateSummary(
+            HarnessVerdict.Pass,
+            message: null,
+            inputRoutes: new[]
+            {
+                new InputRouteEvidence(
+                    "Click",
+                    "Advisory",
+                    "mac.input.click",
+                    RequiresCapabilityToken: false,
+                    HarnessVerdict.Fail,
+                    "Expected NonBypassable with tokenRequired=True; got Advisory with tokenRequired=False.")
+            });
+
+        Assert.Equal(HarnessVerdict.Fail, summary.Verdict);
+    }
+
+    private static UiHarnessRunSummary CreateSummary(
+        HarnessVerdict routeVerdict,
+        string? message,
+        string? screenshotPath = null,
+        IReadOnlyList<InputRouteEvidence>? inputRoutes = null) =>
         new(
             GeneratedAtUtc: "2026-07-09T00:00:00.0000000Z",
             RepoRoot: "/repo",
@@ -95,7 +130,9 @@ public sealed class ReportWriterTests : IDisposable
                     Height: 800,
                     LumaStdDev: 14.2,
                     ElapsedMs: 450,
-                    Message: message),
+                    Message: message,
+                    ExpectedAutomationId: "RouteRoot.dashboard",
+                    ExpectedAutomationIdFound: routeVerdict == HarnessVerdict.Pass),
             },
             SemanticProbe: new SemanticProbeEvidence(
                 HarnessVerdict.Pass,
@@ -106,9 +143,15 @@ public sealed class ReportWriterTests : IDisposable
                 IsCredentialPrompt: false,
                 ScreenshotPath: null,
                 Message: "ok"),
-            InputRoutes: new[]
+            InputRoutes: inputRoutes ?? new[]
             {
-                new InputRouteEvidence("Click", "NonBypassable", "mac.input.click", RequiresCapabilityToken: true),
+                new InputRouteEvidence(
+                    "Click",
+                    "NonBypassable",
+                    "mac.input.click",
+                    RequiresCapabilityToken: true,
+                    HarnessVerdict.Pass,
+                    Message: null),
             },
             Notes: Array.Empty<string>());
 }

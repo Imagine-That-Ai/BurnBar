@@ -25,6 +25,14 @@ public static class JUnitReportWriter
             failures++;
         }
 
+        foreach (InputRouteEvidence input in summary.InputRoutes)
+        {
+            if (input.Verdict == HarnessVerdict.Fail)
+            {
+                failures++;
+            }
+        }
+
         var xml = new StringBuilder();
         xml.AppendLine($"""<?xml version="1.0" encoding="utf-8"?>""");
         xml.AppendLine($"""<testsuite name="OpenBurnBar.Windows.UiAutomation" tests="{tests}" failures="{failures}" skipped="0">""");
@@ -40,7 +48,13 @@ public static class JUnitReportWriter
 
         foreach (InputRouteEvidence input in summary.InputRoutes)
         {
-            WriteCase(xml, $"input-route.{input.ActionKind}", HarnessVerdict.Pass, 0, $"{input.DispatchRoute} {input.AuditKind}", redactor);
+            WriteCase(
+                xml,
+                $"input-route.{input.ActionKind}",
+                input.Verdict,
+                0,
+                input.Message ?? $"{input.DispatchRoute} {input.AuditKind}",
+                redactor);
         }
 
         xml.AppendLine("</testsuite>");
