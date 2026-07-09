@@ -37,6 +37,9 @@ for (const artifact of closure.artifacts ?? []) {
     // --version fast-exits before any GTK init (see src-tauri run()), so it needs
     // no display; --appimage-extract-and-run avoids the FUSE requirement in CI.
     steps.push(runStep(full, ['--appimage-extract-and-run', '--version']));
+    // Remove the extraction dir so the release verifier's clean-worktree check
+    // binds to the committed release commit.
+    fs.rmSync(path.join(repoRoot, 'squashfs-root'), { recursive: true, force: true });
   }
 }
 

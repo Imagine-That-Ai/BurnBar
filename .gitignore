@@ -292,3 +292,6 @@ node_modules/
 # these two .log files are release-gate proof and must be committed despite *.log.
 !docs/linux-port/evidence/mission-001-ops-toolchain/docker-toolchain-smoke-current.log
 !docs/linux-port/evidence/mission-001-discovery-devices-extension/extension-focused-tests.log
+
+# Transient AppImage extraction dir from package smoke (--appimage-extract)
+squashfs-root/
