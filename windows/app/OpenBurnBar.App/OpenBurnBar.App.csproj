@@ -176,6 +176,15 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Brand + provider logos (macOS AppLogo / Linux openburnbar.png parity). -->
+  <ItemGroup>
+    <Content Include="Assets\AppLogo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo-32.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo-64.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\ProviderLogos\*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!--
     Managed PE-hardening props (Phase 5 · R19): HighEntropyVA + Deterministic so the shipped
     OpenBurnBar.App.exe gets full ASLR entropy + a reproducible image. The exact required

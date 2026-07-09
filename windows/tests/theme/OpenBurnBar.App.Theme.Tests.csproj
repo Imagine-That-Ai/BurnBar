@@ -34,6 +34,7 @@
     <Compile Include="LiquidGlassPreferenceStoreTests.cs" />
     <Compile Include="KernelBackdropBridgeTests.cs" />
     <Compile Include="KernelBackdropSelectionTests.cs" />
+    <Compile Include="KernelCatalogTests.cs" />
   </ItemGroup>
 
 </Project>

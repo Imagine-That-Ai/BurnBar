@@ -1,150 +1,211 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tray flyout — macOS MenuBarPopoverView region stack:
+  header · freshness · quotas · scroll (summary/providers/insights) · cloud · actions
+-->
 <Window
     x:Class="OpenBurnBar.App.FlyoutWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:views="using:OpenBurnBar.App.Views"
-    xmlns:shell="using:OpenBurnBar.App.Shell"
+    xmlns:components="using:OpenBurnBar.App.Components"
     xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives">
 
-    <!-- Transparent root so Mica/Acrylic shows through; glass plate wraps the body. -->
     <Grid Background="Transparent">
         <Border x:Name="WindowBlendScrim" IsHitTestVisible="False" />
 
-        <Border Padding="14"
+        <Border Padding="0"
                 CornerRadius="{StaticResource PensieveRadiusLgCorner}"
                 Style="{StaticResource LiquidGlassSurfaceStyle}"
                 theme:LiquidGlass.Surface="True"
+                Background="{StaticResource PensieveColorGlassBgElevatedBrush}"
                 Margin="4">
-            <Grid RowSpacing="10">
+            <Grid>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Flyout header. -->
-                <Grid Grid.Row="0" ColumnSpacing="8">
+                <!-- 1. Header -->
+                <Border Grid.Row="0" Padding="16,12" theme:LiquidGlass.Surface="True"
+                        Background="{StaticResource PensieveColorGlassBgBrush}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <components:AppLogoView Grid.Column="0" Size="28" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="OpenBurnBar"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                            <Button Style="{StaticResource LiquidGlassCircleButtonStyle}"
+                                    theme:LiquidGlass.CircleButtonDiameter="28"
+                                    ToolTipService.ToolTip="Import sessions"
+                                    Click="Scan_Click">
+                                <FontIcon Glyph="&#xE72C;" FontSize="11"
+                                          Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                            </Button>
+                            <Button Style="{StaticResource LiquidGlassCircleButtonStyle}"
+                                    theme:LiquidGlass.CircleButtonDiameter="28"
+                                    ToolTipService.ToolTip="Settings"
+                                    Click="Settings_Click">
+                                <FontIcon Glyph="&#xE713;" FontSize="11"
+                                          Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 2. Freshness -->
+                <Border Grid.Row="1" Padding="16,8"
+                        Background="#66000000">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Border Width="6" Height="6" CornerRadius="3"
+                                    Background="#FF34D399" />
+                            <TextBlock x:Name="FreshnessText" Text="Updated just now" FontSize="11"
+                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                            <TextBlock x:Name="FreshnessMetric" Text="$0.00" FontSize="11"
+                                       FontFamily="Cascadia Mono, Consolas"
+                                       Foreground="{StaticResource OBBAccentBrush}" />
+                            <TextBlock Text="·" FontSize="11"
+                                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                            <TextBlock x:Name="FreshnessSessions" Text="0 sessions" FontSize="11"
+                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 3. Quota rail -->
+                <Border Grid.Row="2" Padding="16,10"
+                        BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                        BorderThickness="0,1,0,1">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="QUOTAS" FontSize="10" FontWeight="Bold" CharacterSpacing="80"
+                                   Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                        <StackPanel x:Name="QuotaHost" Spacing="6" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 4. Scroll body -->
+                <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="12,8">
+                    <StackPanel Spacing="14">
+                        <!-- Summary -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="SUMMARY" FontSize="10" FontWeight="Bold" CharacterSpacing="80"
+                                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                            <TextBlock x:Name="SummaryToday" Text="$0.00" FontSize="28" FontWeight="Bold"
+                                       FontFamily="Cascadia Mono, Consolas"
+                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                            <TextBlock Text="today" FontSize="11"
+                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                            <Grid ColumnSpacing="12" Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="This week" FontSize="10"
+                                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                    <TextBlock x:Name="SummaryWeek" Text="$0.00" FontSize="13" FontWeight="SemiBold"
+                                               FontFamily="Cascadia Mono, Consolas" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="This month" FontSize="10"
+                                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                    <TextBlock x:Name="SummaryMonth" Text="$0.00" FontSize="13" FontWeight="SemiBold"
+                                               FontFamily="Cascadia Mono, Consolas" />
+                                </StackPanel>
+                            </Grid>
+                            <Canvas x:Name="SummarySpark" Height="28" Margin="0,6,0,0" />
+                        </StackPanel>
+
+                        <!-- Providers -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="PROVIDERS" FontSize="10" FontWeight="Bold" CharacterSpacing="80"
+                                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                            <StackPanel x:Name="ProviderHost" Spacing="4" />
+                        </StackPanel>
+
+                        <!-- Insights -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="INSIGHTS" FontSize="10" FontWeight="Bold" CharacterSpacing="80"
+                                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                            <StackPanel x:Name="InsightHost" Spacing="6" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- 5. Cloud strip -->
+                <Border Grid.Row="4" Padding="14,10"
+                        BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                        BorderThickness="0,1,0,0"
+                        Background="#1AFA6B06">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Width="28" Height="28" CornerRadius="14"
+                                Background="{StaticResource PensieveColorGlassBgElevatedBrush}">
+                            <FontIcon Glyph="&#xE753;" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Foreground="{StaticResource OBBAccentBrush}" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                            <TextBlock Text="Cloud Pro unlocks multi-device sync"
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                            <TextBlock Text="Free plan · sample mode"
+                                       FontSize="11"
+                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 6. Action bar -->
+                <Grid Grid.Row="5" Padding="12,10" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0"
-                            Width="10" Height="10" CornerRadius="5"
-                            VerticalAlignment="Center"
-                            Background="{StaticResource OBBAccentBrush}" />
-                    <TextBlock Grid.Column="1"
-                               VerticalAlignment="Center"
-                               Text="OpenBurnBar"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                    <Border Grid.Column="2"
-                            Style="{StaticResource LiquidGlassPillStyle}"
-                            theme:LiquidGlass.Surface="True"
-                            Padding="8,2">
-                        <TextBlock VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Opacity="0.75"
-                                   Text="live"
-                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                    </Border>
-                </Grid>
-
-                <!-- Reorderable module cards (drag to reorder; order persists). -->
-                <ListView x:Name="ModulesList"
-                          Grid.Row="1"
-                          MaxHeight="240"
-                          SelectionMode="None"
-                          CanReorderItems="True"
-                          CanDragItems="True"
-                          AllowDrop="True"
-                          IsItemClickEnabled="False"
-                          Padding="0"
-                          Background="Transparent"
-                          DragItemsCompleted="ModulesList_DragItemsCompleted">
-                    <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
-                            <Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,0,6" />
-                            <Setter Property="MinHeight" Value="0" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Background" Value="Transparent" />
-                        </Style>
-                    </ListView.ItemContainerStyle>
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="shell:FlyoutModule">
-                            <Border Padding="10,8"
-                                    CornerRadius="{StaticResource PensieveRadiusSmCorner}"
-                                    Style="{StaticResource LiquidGlassSurfaceStyle}"
-                                    theme:LiquidGlass.Surface="True">
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Grid.Column="0"
-                                              FontFamily="Segoe MDL2 Assets"
-                                              FontSize="14"
-                                              Glyph="{x:Bind Glyph}"
-                                              Foreground="{StaticResource OBBAccentBrush}"
-                                              VerticalAlignment="Center" />
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" FontSize="13"
-                                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                                        <TextBlock Text="{x:Bind Subtitle}" Opacity="0.65" FontSize="11"
-                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                                    </StackPanel>
-                                    <FontIcon Grid.Column="2"
-                                              FontFamily="Segoe MDL2 Assets"
-                                              FontSize="12"
-                                              Glyph="&#xE76F;"
-                                              Opacity="0.4"
-                                              VerticalAlignment="Center" />
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-
-                <!-- Compact live CLI stream. -->
-                <views:LiveCliStreamView x:Name="StreamView" Grid.Row="2" Compact="True" />
-
-                <!-- Footer: open the full window + a resize grip. -->
-                <Grid Grid.Row="3" ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0"
-                            HorizontalAlignment="Left"
-                            Content="Open full window"
+                    <Button Grid.Column="0" Content="Dashboard" HorizontalAlignment="Stretch"
                             Style="{StaticResource LiquidGlassInteractiveStyle}"
                             Click="OpenFull_Click" />
-                    <primitives:Thumb Grid.Column="1"
-                                      x:Name="ResizeGrip"
-                                      Width="18"
-                                      Height="18"
-                                      DragDelta="ResizeGrip_DragDelta"
-                                      DragCompleted="ResizeGrip_DragCompleted">
-                        <ToolTipService.ToolTip>
-                            <ToolTip Content="Drag to resize" />
-                        </ToolTipService.ToolTip>
-                        <primitives:Thumb.Template>
-                            <ControlTemplate TargetType="primitives:Thumb">
-                                <Grid Background="Transparent">
-                                    <FontIcon FontFamily="Segoe MDL2 Assets"
-                                              FontSize="13"
-                                              Glyph="&#xE744;"
-                                              Opacity="0.5" />
-                                </Grid>
-                            </ControlTemplate>
-                        </primitives:Thumb.Template>
-                    </primitives:Thumb>
+                    <Button Grid.Column="1" Content="Settings" HorizontalAlignment="Stretch"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                            Click="Settings_Click" />
+                    <Button Grid.Column="2" Content="Quit" HorizontalAlignment="Stretch"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                            Click="Quit_Click" />
                 </Grid>
+
+                <!-- Resize grip -->
+                <primitives:Thumb Grid.Row="6"
+                                  x:Name="ResizeGrip"
+                                  Width="18" Height="14"
+                                  HorizontalAlignment="Right"
+                                  Margin="0,0,8,6"
+                                  DragDelta="ResizeGrip_DragDelta"
+                                  DragCompleted="ResizeGrip_DragCompleted">
+                    <primitives:Thumb.Template>
+                        <ControlTemplate TargetType="primitives:Thumb">
+                            <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE744;" Opacity="0.45" />
+                        </ControlTemplate>
+                    </primitives:Thumb.Template>
+                </primitives:Thumb>
             </Grid>
         </Border>
     </Grid>

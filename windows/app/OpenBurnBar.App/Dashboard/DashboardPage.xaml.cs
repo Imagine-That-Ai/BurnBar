@@ -35,8 +35,18 @@ public sealed partial class DashboardPage : Page
     {
         InitializeComponent();
 
-        _kernelEnabled = LiquidGlassEnvironment.Current.GetBool(KernelBackdropPreferences.EnabledKey, defaultValue: false);
         _webView2Capable = NativeCapability.IsWebView2Enabled(out _);
+        // Sample/dev guest builds should show the living WebGL2 field without a
+        // Settings dig — product default stays off when no preference is set
+        // outside sample mode (macOS @AppStorage default false).
+        if (RuntimeDataMode.SampleModeEnabled
+            && !LiquidGlassEnvironment.Current.GetBool(KernelBackdropPreferences.EnabledKey, false))
+        {
+            // Prefer GetBool with sentinel: if user never toggled, enable for sample.
+            LiquidGlassEnvironment.Current.SetBool(KernelBackdropPreferences.EnabledKey, true);
+        }
+
+        _kernelEnabled = LiquidGlassEnvironment.Current.GetBool(KernelBackdropPreferences.EnabledKey, defaultValue: false);
 
         if (_kernelEnabled)
         {

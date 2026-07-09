@@ -87,6 +87,9 @@ public partial class App : Application
     /// <summary>Open the full main window from the flyout's "Open full window" action.</summary>
     public void ShowMainWindowFromFlyout() => ShowMainWindow();
 
+    /// <summary>Live shell when the main window is open (flyout deep-links).</summary>
+    public AppShell? MainWindowShell => _mainWindow?.Shell;
+
     private void ToggleFlyout()
     {
         _flyout ??= new FlyoutWindow(_state);

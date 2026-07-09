@@ -4,25 +4,20 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:shell="using:OpenBurnBar.App.Shell"
+    xmlns:components="using:OpenBurnBar.App.Components"
     xmlns:theme="using:OpenBurnBar.App.Theme"
     Title="OpenBurnBar">
 
-    <!--
-      Root is intentionally transparent so Mica/Acrylic (LiquidGlass.ApplyWindowBackdrop)
-      shows through. ThemeService sets RequestedTheme=Dark on this root for Pensieve parity.
-    -->
     <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent" RequestedTheme="Dark">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- LiquidGlassWindowBlend scrim (frost/clear plate over the system backdrop). -->
         <Border x:Name="WindowBlendScrim"
                 Grid.RowSpan="2"
                 IsHitTestVisible="False" />
 
-        <!-- Custom draggable title bar (window-level title-bar region set in code-behind). -->
         <Border Grid.Row="0"
                 Style="{StaticResource LiquidGlassToolbarStyle}"
                 Margin="8,4,8,0"
@@ -32,19 +27,17 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border Grid.Column="0"
-                        Width="12" Height="12" CornerRadius="6"
-                        VerticalAlignment="Center"
-                        Background="{StaticResource OBBAccentBrush}" />
+                <components:AppLogoView Grid.Column="0" Size="18" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
                            VerticalAlignment="Center"
-                           Text="OpenBurnBar"
                            FontWeight="SemiBold"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}">
+                    <Run Text="Open" />
+                    <Run Text="BurnBar" FontWeight="Bold" />
+                </TextBlock>
             </Grid>
         </Border>
 
-        <!-- Command Deck shell (section switcher + content). Dashboard owns Command sidebar. -->
         <shell:AppShell x:Name="ShellControl" Grid.Row="1" />
     </Grid>
 </Window>

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using static OpenBurnBar.App.Tray.TrayNativeMethods;
 
 namespace OpenBurnBar.App.Tray;
@@ -26,6 +27,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly string _className;
 
     private IntPtr _hwnd;
+    private IntPtr _brandedIcon;
     private bool _iconAdded;
     private bool _disposed;
 
@@ -84,11 +86,40 @@ internal sealed class TrayIcon : IDisposable
             uID = TrayId,
             uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP,
             uCallbackMessage = CallbackMessage,
-            // System app icon keeps the spike text-only (no binary .ico blob). WINUI-017
-            // swaps in the branded ember icon loaded from Assets/OpenBurnBar.ico.
-            hIcon = LoadIconW(IntPtr.Zero, IDI_APPLICATION),
+            // Branded AppLogo flame when packaged; generic Windows icon only as last resort.
+            hIcon = ResolveTrayIcon(),
             szTip = _tooltip,
         };
+    }
+
+    private IntPtr ResolveTrayIcon()
+    {
+        if (_brandedIcon != IntPtr.Zero)
+        {
+            return _brandedIcon;
+        }
+
+        string[] candidates =
+        {
+            Path.Combine(AppContext.BaseDirectory, "Assets", "AppLogo.ico"),
+            Path.Combine(AppContext.BaseDirectory, "AppLogo.ico"),
+        };
+        foreach (string path in candidates)
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            IntPtr handle = LoadImageW(IntPtr.Zero, path, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+            if (handle != IntPtr.Zero)
+            {
+                _brandedIcon = handle;
+                return handle;
+            }
+        }
+
+        return LoadIconW(IntPtr.Zero, IDI_APPLICATION);
     }
 
     private void AddOrModifyIcon(uint message)
@@ -194,6 +225,12 @@ internal sealed class TrayIcon : IDisposable
         {
             DestroyWindow(_hwnd);
             _hwnd = IntPtr.Zero;
+        }
+
+        if (_brandedIcon != IntPtr.Zero)
+        {
+            DestroyIcon(_brandedIcon);
+            _brandedIcon = IntPtr.Zero;
         }
     }
 }

@@ -15,7 +15,14 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Background="#E612121A">
+    <!-- Elevated glass plate so the rail is never “invisible” on Mica/kernel. -->
+    <Border Style="{StaticResource LiquidGlassSurfaceStyle}"
+            theme:LiquidGlass.Surface="True"
+            Background="{StaticResource PensieveColorGlassBgElevatedBrush}"
+            BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+            BorderThickness="0,0,1,0"
+            CornerRadius="0">
+        <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
@@ -166,5 +173,6 @@
                            Foreground="{StaticResource PensieveColorTextDimBrush}" />
             </StackPanel>
         </ScrollViewer>
-    </Grid>
+        </Grid>
+    </Border>
 </UserControl>

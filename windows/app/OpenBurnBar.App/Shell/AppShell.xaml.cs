@@ -148,4 +148,6 @@ public sealed partial class AppShell : UserControl
 
     private void Palette_Click(object sender, RoutedEventArgs e)
         => CommandPaletteRequested?.Invoke(this, EventArgs.Empty);
+
+    private void Brand_Click(object sender, RoutedEventArgs e) => Navigate(NavCatalog.Default.Key);
 }
