@@ -21,12 +21,16 @@ for (const artifact of closure.artifacts ?? []) {
     steps.push(runStep('dpkg-deb', ['--info', full]));
     steps.push(runStep('dpkg-deb', ['--contents', full]));
     steps.push(runStep('dpkg', ['-i', full]));
-    steps.push(runStep('dpkg', ['-r', 'openburnbar']));
+    // Derive the real package name from the artifact so uninstall targets the
+    // exact installed package (Tauri names it `open-burn-bar`, not `openburnbar`).
+    const debName = runStep('dpkg-deb', ['-f', full, 'Package']).stdout.trim() || 'open-burn-bar';
+    steps.push(runStep('dpkg', ['-r', debName]));
   } else if (artifact.type === 'rpm') {
     steps.push(runStep('rpm', ['-qip', full]));
     steps.push(runStep('rpm', ['-qlp', full]));
     steps.push(runStep('rpm', ['-i', '--nodeps', full]));
-    steps.push(runStep('rpm', ['-e', 'openburnbar']));
+    const rpmName = runStep('rpm', ['-qp', '--queryformat', '%{NAME}', full]).stdout.trim() || 'open-burn-bar';
+    steps.push(runStep('rpm', ['-e', rpmName]));
   } else if (artifact.type === 'appimage') {
     fs.chmodSync(full, 0o755);
     steps.push(runStep(full, ['--appimage-extract']));
