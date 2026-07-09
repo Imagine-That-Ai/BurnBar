@@ -27,7 +27,7 @@ Responses follow standard JSON-RPC 2.0: `result` on success, `error` with `code`
 
 ## JSON-RPC methods
 
-Methods are defined in `OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift` as `BurnBarRPCMethod` and dispatched by category in `BurnBarDaemonServer`.
+Methods are defined in `OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift` as `BurnBarRPCMethod` and dispatched by category in `BurnBarDaemonServer`.
 
 ### Lifecycle
 
