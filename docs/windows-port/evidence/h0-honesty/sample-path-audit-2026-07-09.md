@@ -19,7 +19,7 @@
 | `CloudSyncInsightSource` | InsightSampleData | Empty widgets when sample mode off; samples only when sample mode on **and** no live usage (fail-closed hybrid) | **GATED** (H0) |
 | `InsightEmptyData` | Empty chrome | KPI/non-KPI use `EmptyData` (not numeric `$0` KPI shells) | **HONEST** (H0) |
 | `InsightsBuiltInTemplates` | InsightSampleData fallback | `SampleFallbackEnabled` default false; empty via `InsightEmptyData`; production prefers RealDataResolver | **GATED** (H0) |
-| `InsightsPage` SampleChip | UI label | Visible only when sample mode on | **GATED** (H0) |
+| `InsightsPage` SampleChip | UI label | Visible only when sample payloads install (`SampleModeEnabled && !HasData` via `ShowsSamplePreviewChip`); hidden under hybrid live+sample mode | **GATED** (H0) |
 | `ChatSurfaceViewModel` | Scripted vs Unavailable | `UnavailableChatStreamDriver` production; scripted sample-only | **GATED** / **HONEST** |
 | `MissionDispatchHostFactory` | DemoHost | Demo only when sample mode; else empty/Firestore | **GATED** |
 | `QuotaAccountsSource` | QuotaSampleData | Sample only when sample mode | **GATED** |

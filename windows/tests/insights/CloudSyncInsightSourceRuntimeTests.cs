@@ -235,18 +235,16 @@ public sealed class CloudSyncInsightSourceRuntimeTests
     }
 
     [Fact]
-    public void SampleMode_WithoutLive_EmptyCopy_MentionsLabeledDemo()
+    public void ProductionMode_EmptyCopy_UsesConnectWording()
     {
         try
         {
-            EnableSampleMode();
-            // Sample path installs RankingData, not EmptyData — empty copy only when not installing samples.
-            // Production empty with sample mode off uses connect wording; sample+no-live uses sample payloads.
             ClearSampleMode();
             var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
             EmptyData noSample = Assert.IsType<EmptyData>(
                 CloudSyncInsightSource.Resolve(InsightWidgetKind.BarRanking, seed: 1, empty));
             Assert.Contains("Connect", noSample.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Demo data is labeled", noSample.Reason, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
