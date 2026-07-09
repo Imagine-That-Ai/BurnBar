@@ -12,7 +12,7 @@ final class DashboardUITests: UITestBase {
         launchApp()
 
         waitFor(element(OBBAccessibilityID.dashboardRoot), timeout: 20)
-        let switcher = waitFor(element(OBBAccessibilityID.dashboardLayoutSwitcher), timeout: 20)
+        let switcher = waitFor(element(OBBAccessibilityID.dashboardViewModeSwitcher), timeout: 20)
         let modelsOption = switcher.buttons["Models"].firstMatch
         waitForHittable(modelsOption, timeout: 10).tap()
 
@@ -22,7 +22,7 @@ final class DashboardUITests: UITestBase {
         launchApp()
 
         waitFor(element(OBBAccessibilityID.dashboardRoot), timeout: 20)
-        let relaunchedModelsOption = element(OBBAccessibilityID.dashboardLayoutSwitcher).buttons["Models"].firstMatch
+        let relaunchedModelsOption = element(OBBAccessibilityID.dashboardViewModeSwitcher).buttons["Models"].firstMatch
         waitFor(relaunchedModelsOption, timeout: 10)
         XCTAssertTrue(isSelected(relaunchedModelsOption), "Expected Models view mode selection to persist across relaunch")
     }

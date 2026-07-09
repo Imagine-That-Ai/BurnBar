@@ -190,6 +190,8 @@ struct OpenBurnBarApp: App {
             return
         }
 
+        Self.seedUITestDefaultsIfNeeded()
+
         StartupProfiler.interval("configure_firebase") {
             Self.configureFirebaseIfAvailable(accountManager: .shared)
         }
@@ -207,6 +209,16 @@ struct OpenBurnBarApp: App {
             Self.makeStartupState()
         })
         StartupProfiler.event("app_init_end")
+    }
+
+    private static func seedUITestDefaultsIfNeeded() {
+        guard OpenBurnBarRuntime.isUITestLaunch else { return }
+        UserDefaults.standard.set(true, forKey: "hasOnboarded")
+        UserDefaults.standard.set(true, forKey: "hasShownInitialDashboard")
+        UserDefaults.standard.set(true, forKey: "conversationIndexingConsentShown")
+        UserDefaults.standard.set(true, forKey: "cliAssistantConsentShown")
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
     }
 
     @MainActor
@@ -364,12 +376,11 @@ struct OpenBurnBarApp: App {
         guard startupState.runtimeContext != nil else { return }
         didOpenUITestDashboard = true
 
-        UserDefaults.standard.set(true, forKey: "hasOnboarded")
-        UserDefaults.standard.set(true, forKey: "hasShownInitialDashboard")
-        UserDefaults.standard.set(true, forKey: "conversationIndexingConsentShown")
-        UserDefaults.standard.set(true, forKey: "cliAssistantConsentShown")
-        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
-        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
+        Self.seedUITestDefaultsIfNeeded()
+        if case .ready(let context) = startupState {
+            context.settingsManager.conversationIndexingConsentShown = true
+            context.settingsManager.cliAssistantConsentShown = true
+        }
 
         DispatchQueue.main.async {
             AppCommandRouter.shared.openDashboard?()

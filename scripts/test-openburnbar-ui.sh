@@ -111,8 +111,6 @@ xcodebuild_args=(
     SWIFT_ENABLE_EXPLICIT_MODULES=NO
     SWIFT_COMPILATION_MODE=singlefile
     SWIFT_ENABLE_BATCH_MODE=NO
-    CODE_SIGNING_ALLOWED=NO
-    CODE_SIGNING_REQUIRED=NO
 )
 if ((${#filters[@]})); then
     for filter in "${filters[@]}"; do

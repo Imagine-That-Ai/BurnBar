@@ -7,6 +7,7 @@ enum OBBAccessibilityID {
     static let popoverSettingsButton = "popover.settingsButton"
     static let dashboardRoot = "dashboard.root"
     static let dashboardLayoutSwitcher = "dashboard.layoutSwitcher"
+    static let dashboardViewModeSwitcher = "dashboard.viewModeSwitcher"
     static let dashboardOverflowButton = "dashboard.overflowButton"
     static let dashboardSettingsButton = "dashboard.settingsButton"
     static let settingsRoot = "settings.root"
