@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarFirestoreModels
 @testable import OpenBurnBarMobile
 
 final class ModelPurposeClassifierTests: XCTestCase {
@@ -9,6 +10,7 @@ final class ModelPurposeClassifierTests: XCTestCase {
         let minConfidence: Double?
         let expectedFingerprint: String?
         let expectedSignal: String?
+        let corrections: [GoldenCorrection]?
     }
 
     private struct GoldenSignals: Decodable {
@@ -20,6 +22,11 @@ final class ModelPurposeClassifierTests: XCTestCase {
         let hasCodeExecution: Bool?
         let hasSearchResults: Bool?
         let hasMultiStepPlanning: Bool?
+    }
+
+    private struct GoldenCorrection: Decodable {
+        let fingerprint: String
+        let correctedTo: String
     }
 
     func test_classifierGoldens_matchSharedFixture() throws {
@@ -42,7 +49,16 @@ final class ModelPurposeClassifierTests: XCTestCase {
             signals.hasSearchResults = fixture.signals.hasSearchResults ?? false
             signals.hasMultiStepPlanning = fixture.signals.hasMultiStepPlanning ?? false
 
-            let result = ModelPurposeClassifier.classify(signals)
+            let corrections = (fixture.corrections ?? []).compactMap { correction in
+                guard let category = FirestoreModelPurposeCategory(rawValue: correction.correctedTo) else {
+                    return nil
+                }
+                return ModelPurposeClassifier.Correction(
+                    fingerprint: correction.fingerprint,
+                    correctedTo: category
+                )
+            }
+            let result = ModelPurposeClassifier.classify(signals, corrections: corrections)
             if let expected = fixture.expected {
                 XCTAssertEqual(result.category.rawValue, expected, fixture.name)
             }

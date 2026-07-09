@@ -22,6 +22,11 @@ enum ModelPurposeClassifier {
         var confidence: Double
     }
 
+    struct Correction: Sendable {
+        var fingerprint: String
+        var correctedTo: FirestoreModelPurposeCategory
+    }
+
     private static let fileExtensionMap: [String: FirestoreModelPurposeCategory] = [
         "swift": .ui, "xaml": .ui, "css": .ui, "scss": .ui, "html": .ui, "vue": .ui, "svelte": .ui,
         "go": .backend, "rs": .backend, "py": .backend, "java": .backend, "kt": .backend,
@@ -67,7 +72,27 @@ enum ModelPurposeClassifier {
         "terminal": [.debugging: 0.15, .backend: 0.1]
     ]
 
-    static func classify(_ signals: Signals) -> Result {
+    static func signalFingerprint(_ signals: Signals) -> String {
+        var parts: [String] = []
+        if !signals.fileExtensions.isEmpty {
+            parts.append("ext:\(signals.fileExtensions.map { $0.lowercased() }.sorted().joined(separator: ","))")
+        }
+        if let surface = signals.appSurface {
+            parts.append("surf:\(surface)")
+        }
+        if signals.hasCodeExecution { parts.append("exec") }
+        if signals.hasErrorOutput { parts.append("err") }
+        if signals.hasSearchResults { parts.append("search") }
+        if signals.hasMultiStepPlanning { parts.append("plan") }
+        return parts.isEmpty ? "default" : parts.joined(separator: "|")
+    }
+
+    static func classify(_ signals: Signals, corrections: [Correction] = []) -> Result {
+        let fingerprint = signalFingerprint(signals)
+        if let correction = corrections.first(where: { $0.fingerprint == fingerprint }) {
+            return Result(category: correction.correctedTo, confidence: 1.0)
+        }
+
         var scores = Dictionary(
             uniqueKeysWithValues: FirestoreModelPurposeCategory.allCases.map { ($0, 0.0) }
         )
