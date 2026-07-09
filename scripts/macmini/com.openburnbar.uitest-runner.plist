@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openburnbar.uitest-runner</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__RUNNER_ROOT__/bin/runner-daemon.sh</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>RUNNER_ROOT</key>
+        <string>__RUNNER_ROOT__</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>__RUNNER_ROOT__</string>
+    <key>StandardOutPath</key>
+    <string>__RUNNER_ROOT__/logs/launchagent.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__RUNNER_ROOT__/logs/launchagent.err.log</string>
+</dict>
+</plist>

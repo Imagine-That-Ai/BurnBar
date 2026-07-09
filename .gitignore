@@ -80,6 +80,7 @@ xcuserdata/
 # Secrets
 .secrets/
 *.env
+scripts/macmini/config.env
 *.pem
 # Public verification keys are safe and required in-tree (private keys stay ignored)
 !packaging/linux/openburnbar-linux-ed25519.pub.pem
