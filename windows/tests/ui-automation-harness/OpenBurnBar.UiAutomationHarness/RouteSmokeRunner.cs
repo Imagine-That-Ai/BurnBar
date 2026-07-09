@@ -101,6 +101,7 @@ internal sealed class RouteSmokeRunner
         ProcessEnvironmentSanitizer.RemoveOpenBurnBarEnvironment(startInfo);
         startInfo.Environment["DOTNET_ROLL_FORWARD"] = Environment.GetEnvironmentVariable("DOTNET_ROLL_FORWARD") ?? "Major";
         startInfo.Environment["OPENBURNBAR_SAMPLE_MODE"] = "1";
+        startInfo.Environment["OPENBURNBAR_DISABLE_QUOTA_ACQUISITION"] = "1";
         startInfo.Environment["OPENBURNBAR_AUTOMATION_PROFILE_ROOT"] = profileRoot;
         startInfo.ArgumentList.Add("--route-smoke");
         startInfo.ArgumentList.Add(route.Key);

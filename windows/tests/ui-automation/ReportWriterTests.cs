@@ -61,6 +61,34 @@ public sealed class ReportWriterTests : IDisposable
     }
 
     [Fact]
+    public void HtmlReportWriter_RedactsInputRouteMessages()
+    {
+        string factoryKey = "fk-" + new string('B', 24);
+        UiHarnessRunSummary summary = CreateSummary(
+            HarnessVerdict.Pass,
+            message: null,
+            inputRoutes: new[]
+            {
+                new InputRouteEvidence(
+                    "Click",
+                    "NonBypassable",
+                    "mac.input.click",
+                    RequiresCapabilityToken: true,
+                    HarnessVerdict.Fail,
+                    $"/Users/alberto/project {factoryKey}")
+            });
+        string path = Path.Combine(_dir, "index.html");
+
+        HtmlReportWriter.Write(path, summary, new ArtifactRedactor("/Users/alberto/project"));
+
+        string html = File.ReadAllText(path);
+        Assert.Contains("[REDACTED_PATH]", html);
+        Assert.Contains("[REDACTED_FACTORY_KEY]", html);
+        Assert.DoesNotContain(factoryKey, html);
+        Assert.DoesNotContain("/Users/alberto/project", html);
+    }
+
+    [Fact]
     public void ArtifactRedactor_ScrubsFactoryKeysAndPathPrefixes()
     {
         var redactor = new ArtifactRedactor("/Users/alberto/project");

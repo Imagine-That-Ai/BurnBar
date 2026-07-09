@@ -94,6 +94,7 @@ internal sealed class SemanticProbeRunner
         ProcessEnvironmentSanitizer.RemoveOpenBurnBarEnvironment(startInfo);
         startInfo.Environment["DOTNET_ROLL_FORWARD"] = Environment.GetEnvironmentVariable("DOTNET_ROLL_FORWARD") ?? "Major";
         startInfo.Environment["OPENBURNBAR_SAMPLE_MODE"] = "1";
+        startInfo.Environment["OPENBURNBAR_DISABLE_QUOTA_ACQUISITION"] = "1";
         startInfo.Environment["OPENBURNBAR_AUTOMATION_PROFILE_ROOT"] = profileRoot;
         startInfo.ArgumentList.Add("--automation-main-window");
         startInfo.ArgumentList.Add("--automation-profile");
@@ -123,6 +124,7 @@ internal sealed class SemanticProbeRunner
             await Task.Delay(250, timeout.Token).ConfigureAwait(false);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         throw new TimeoutException($"OpenBurnBar.App did not expose a main window within {_timeoutMilliseconds}ms.");
     }
 

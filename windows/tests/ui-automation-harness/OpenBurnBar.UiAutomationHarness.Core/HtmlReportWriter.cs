@@ -56,7 +56,7 @@ public static class HtmlReportWriter
         html.AppendLine("<h2>Input Route Contract</h2><table><thead><tr><th>Action</th><th>Verdict</th><th>Route</th><th>Audit Kind</th><th>Token Required</th><th>Message</th></tr></thead><tbody>");
         foreach (InputRouteEvidence input in summary.InputRoutes)
         {
-            html.AppendLine($"<tr><td>{Esc(input.ActionKind)}</td><td class=\"{Css(input.Verdict)}\">{input.Verdict}</td><td>{Esc(input.DispatchRoute)}</td><td><code>{Esc(input.AuditKind)}</code></td><td>{input.RequiresCapabilityToken}</td><td>{Esc(input.Message)}</td></tr>");
+            html.AppendLine($"<tr><td>{Esc(input.ActionKind)}</td><td class=\"{Css(input.Verdict)}\">{input.Verdict}</td><td>{Esc(input.DispatchRoute)}</td><td><code>{Esc(input.AuditKind)}</code></td><td>{input.RequiresCapabilityToken}</td><td>{Esc(redactor.Redact(input.Message))}</td></tr>");
         }
 
         html.AppendLine("</tbody></table>");
