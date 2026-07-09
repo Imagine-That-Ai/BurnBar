@@ -8,6 +8,19 @@ struct ProviderRunCostTotals: Equatable, Sendable {
     let totalCost: Double
 }
 
+struct UsageCostBreakdown: Equatable, Sendable {
+    let sessionCount: Int
+    let totalTokens: Int
+    let totalCost: Double
+    let modelCosts: [UsageCostBucket]
+    let projectCosts: [UsageCostBucket]
+}
+
+struct UsageCostBucket: Equatable, Sendable {
+    let label: String
+    let cost: Double
+}
+
 struct UsageTotals { // pure-move: was private
     var sessionCount: Int
     var inputTokens: Int

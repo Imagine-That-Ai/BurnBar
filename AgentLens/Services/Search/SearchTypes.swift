@@ -9,6 +9,22 @@ struct SearchResult: Identifiable {
     let conversation: OpenBurnBarCore.ConversationRecord
     let snippet: String
     let rank: Double
+    let startOffset: Int
+    let endOffset: Int
+
+    init(
+        conversation: ConversationRecord,
+        snippet: String,
+        rank: Double,
+        startOffset: Int = 0,
+        endOffset: Int? = nil
+    ) {
+        self.conversation = conversation
+        self.snippet = snippet
+        self.rank = rank
+        self.startOffset = startOffset
+        self.endOffset = endOffset ?? snippet.count
+    }
 }
 
 // MARK: - Retrieval Degraded Modes

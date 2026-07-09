@@ -47,6 +47,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
     /// completed and requested reconciliation"). Read for migration only;
     /// cleared on the first state transition.
     static let orphanReconciliationDefaultsKey = "OpenBurnBarUsageOrphanReconciliationRequested"
+    private static let orphanCleanupPageSize = 500
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
@@ -169,7 +170,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             // empty local table (a fully failed recount persist must not
             // delete the device's entire cloud history).
             if Self.orphanReconciliationState == .readyForReconciliation {
-                let keeping = Set(try await context.dataStore.fetchAllUsage().map { $0.id.uuidString })
+                let keeping = try await context.dataStore.fetchUsageIdStrings()
                 if keeping.isEmpty {
                     AppLogger.sync.error(
                         "usage_orphan_cleanup_refused_empty_local_table",
@@ -224,39 +225,60 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         keeping currentUsageIds: Set<String>
     ) async throws -> Bool {
         let prefix = "\(deviceId)_"
-        let snapshot = try await collectionRef.whereField("deviceId", isEqualTo: deviceId).getDocuments()
-        let orphanDocIds = snapshot.documents.compactMap { document -> String? in
-            let documentID = document.documentID
-            guard documentID.hasPrefix(prefix) else { return nil }
-            let usageID = String(documentID.dropFirst(prefix.count))
-            return currentUsageIds.contains(usageID) ? nil : documentID
-        }
-        guard !orphanDocIds.isEmpty else { return true }
+        let upperBound = prefix + "\u{f8ff}"
+        var lowerBound = prefix
 
-        for batchStart in stride(from: 0, to: orphanDocIds.count, by: 400) {
-            // Re-check the reconciliation state before every delete commit: a
-            // recount starting (`beginOrphanReconciliationRecount`) demotes
-            // the state, and deletion must stop before touching another doc.
+        while true {
             guard Self.orphanReconciliationState == .readyForReconciliation else {
                 AppLogger.sync.notice(
                     "usage_orphan_cleanup_aborted_recount_started",
-                    metadata: ["deletedSoFar": "\(batchStart)", "planned": "\(orphanDocIds.count)"]
+                    metadata: ["lastScannedDocumentID": lowerBound]
                 )
                 return false
             }
-            let batch = context.firestoreGateway.batch()
-            for docId in orphanDocIds[batchStart..<min(batchStart + 400, orphanDocIds.count)] {
-                batch.deleteDocument(collectionRef.document(docId))
+
+            let snapshot = try await collectionRef
+                .whereDocumentID(isGreaterThan: lowerBound)
+                .whereDocumentID(isLessThan: upperBound)
+                .orderByDocumentID(descending: false)
+                .limit(to: Self.orphanCleanupPageSize)
+                .getDocuments()
+            let documents = snapshot.documents
+            guard let lastDocumentID = documents.last?.documentID else { return true }
+
+            let orphanDocIds = documents.compactMap { document -> String? in
+                let documentID = document.documentID
+                guard documentID.hasPrefix(prefix) else { return nil }
+                let usageID = String(documentID.dropFirst(prefix.count))
+                return currentUsageIds.contains(usageID) ? nil : documentID
             }
-            try await withCloudSyncRetry(
-                policy: context.retryPolicy,
-                circuitBreaker: context.circuitBreaker,
-                domain: "usage"
-            ) {
-                try await batch.commit()
+            for batchStart in stride(from: 0, to: orphanDocIds.count, by: 400) {
+                // Re-check the reconciliation state before every delete commit:
+                // a recount starting (`beginOrphanReconciliationRecount`)
+                // demotes the state, and deletion must stop before touching
+                // another doc.
+                guard Self.orphanReconciliationState == .readyForReconciliation else {
+                    AppLogger.sync.notice(
+                        "usage_orphan_cleanup_aborted_recount_started",
+                        metadata: ["lastScannedDocumentID": lowerBound, "deletedSoFarInPage": "\(batchStart)"]
+                    )
+                    return false
+                }
+                let batch = context.firestoreGateway.batch()
+                for docId in orphanDocIds[batchStart..<min(batchStart + 400, orphanDocIds.count)] {
+                    batch.deleteDocument(collectionRef.document(docId))
+                }
+                try await withCloudSyncRetry(
+                    policy: context.retryPolicy,
+                    circuitBreaker: context.circuitBreaker,
+                    domain: "usage"
+                ) {
+                    try await batch.commit()
+                }
             }
+
+            lowerBound = lastDocumentID
         }
-        return true
     }
 
     private func publishDeviceHeartbeatBestEffort(uid: String, deviceId: String) async {

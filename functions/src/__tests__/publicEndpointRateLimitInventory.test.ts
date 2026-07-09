@@ -19,6 +19,7 @@ const RATE_LIMITED_NAMES = new Set(RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS);
 // not required for abuse resistance (the provider is the only legitimate caller).
 const SIGNATURE_PROTECTED_WEBHOOKS = new Set([
   "appStoreServerNotificationsV2",
+  "onKnowledgeRepoPush",
   "stripeBurnBarProWebhook",
 ]);
 

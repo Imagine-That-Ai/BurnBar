@@ -46,7 +46,7 @@ extension UsageStore {
         )
     }
 
-    private static func fetchUsageAggregateRows(
+    static func fetchUsageAggregateRows( // pure-move: was private
         db: Database,
         dateRange: ClosedRange<Date>?
     ) throws -> [UsageAggregateRow] {
@@ -108,7 +108,7 @@ extension UsageStore {
         )
     }
 
-    private static func usageTotals(from rows: [UsageAggregateRow]) -> UsageTotals {
+    static func usageTotals(from rows: [UsageAggregateRow]) -> UsageTotals { // pure-move: was private
         rows.reduce(into: UsageTotals.empty) { totals, row in
             totals.sessionCount += row.sessionCount
             totals.inputTokens += row.inputTokens
@@ -119,6 +119,52 @@ extension UsageStore {
             totals.tokens += row.totalTokens
             totals.cost += row.cost
         }
+    }
+
+    static func fetchProjectCostBuckets( // pure-move: was private
+        db: Database,
+        dateRange: ClosedRange<Date>?,
+        limit: Int
+    ) throws -> [UsageCostBucket] {
+        guard limit > 0 else { return [] }
+        let predicate = dateRangePredicate(dateRange)
+        var arguments = predicate.arguments
+        arguments += StatementArguments([limit])
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT COALESCE(NULLIF(projectName, ''), 'Unassigned') AS label,
+                       COALESCE(SUM(cost), 0) AS cost
+                FROM token_usage
+                \(predicate.whereSQL)
+                GROUP BY label
+                ORDER BY cost DESC, label ASC
+                LIMIT ?
+                """,
+            arguments: arguments
+        )
+        return rows.compactMap { row in
+            guard let label = row["label"] as? String else { return nil }
+            return UsageCostBucket(label: label, cost: doubleValue(row["cost"]))
+        }
+    }
+
+    static func costBuckets( // pure-move: was private
+        from rows: [UsageAggregateRow],
+        label: KeyPath<UsageAggregateRow, String>,
+        limit: Int
+    ) -> [UsageCostBucket] {
+        guard limit > 0 else { return [] }
+        let totals = rows.reduce(into: [String: Double]()) { partial, row in
+            partial[row[keyPath: label], default: 0] += row.cost
+        }
+        let sortedBuckets = totals
+            .map { UsageCostBucket(label: $0.key, cost: $0.value) }
+            .sorted {
+                if $0.cost == $1.cost { return $0.label < $1.label }
+                return $0.cost > $1.cost
+            }
+        return Array(sortedBuckets.prefix(limit))
     }
 
     static func fetchDistinctUsageDayCount(db: Database) throws -> Int { // pure-move: was private

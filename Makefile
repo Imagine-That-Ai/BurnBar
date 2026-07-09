@@ -233,6 +233,7 @@ test-full: lint ## Full CI parity (core + Functions + extension evals + supply c
 	@./scripts/test-openburnbar-extension-host.sh
 	@./scripts/test-openburnbar-ts.sh
 	@npm --prefix functions run test:firestore-rules
+	@bash scripts/ci/test-storage-rules.sh
 	@./scripts/supply-chain-audit.sh
 	@$(MAKE) test
 
@@ -244,6 +245,8 @@ lint: ## Run SwiftLint
 	fi
 
 debt-check: ## Enforce debt budgets + refresh tech-debt metrics
+	@./scripts/ci/check-no-committed-build-artifacts.sh
+	@./scripts/ci/check-no-stale-launch-evidence.sh
 	@./scripts/debt/check-unsafe-cast-budget.sh
 	@./scripts/debt/check-empty-catch-budget.sh
 	@./scripts/debt/check-try-optional-budget.sh

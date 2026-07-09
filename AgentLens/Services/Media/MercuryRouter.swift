@@ -75,6 +75,7 @@ final class MercuryRouter: ObservableObject {
         /// match this transport identity.
         let remotePeerNodeID: String?
         let agentTerminalApproved: Bool
+        let autoAcceptedByMirrorGrant: Bool
 
         var requestsAgentTerminal: Bool {
             guard let terminal = frame.media?.mirrorRequest?.agentTerminal else { return false }
@@ -96,7 +97,22 @@ final class MercuryRouter: ObservableObject {
                 replySender: replySender,
                 controlStreamID: controlStreamID,
                 remotePeerNodeID: remotePeerNodeID,
-                agentTerminalApproved: true
+                agentTerminalApproved: true,
+                autoAcceptedByMirrorGrant: false
+            )
+        }
+
+        func markingMirrorGrantAutoAccepted() -> PendingRequest {
+            PendingRequest(
+                id: id,
+                requesterName: requesterName,
+                requestedAt: requestedAt,
+                frame: frame,
+                replySender: replySender,
+                controlStreamID: controlStreamID,
+                remotePeerNodeID: remotePeerNodeID,
+                agentTerminalApproved: agentTerminalApproved,
+                autoAcceptedByMirrorGrant: true
             )
         }
 

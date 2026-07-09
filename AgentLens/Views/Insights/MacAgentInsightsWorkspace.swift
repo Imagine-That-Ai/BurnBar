@@ -62,7 +62,7 @@ struct MacAgentInsightsWorkspace: View {
             sidebar
                 .frame(width: 320)
                 .background {
-                    if dashboardLiveBackdropActive || settingsManager.useWebsiteBackground {
+                    if dashboardLiveBackdropActive {
                         Color.clear.liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md), fallback: .ultraThinMaterial)
                     } else {
                         UnifiedDesignSystem.Colors.surface
@@ -79,12 +79,6 @@ struct MacAgentInsightsWorkspace: View {
         .background {
             if dashboardLiveBackdropActive {
                 Color.clear
-            } else if settingsManager.useWebsiteBackground {
-                if settingsManager.useConstellationBackground {
-                    ConstellationBackgroundView(accent: DesignSystem.Colors.ember)
-                } else {
-                    WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
-                }
             } else {
                 UnifiedDesignSystem.Colors.background
             }

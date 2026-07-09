@@ -251,6 +251,42 @@ final class DataStoreTests: XCTestCase {
         XCTAssertEqual(last7Days.totalTokens, 10_002)
     }
 
+    func test_contextBuilderWeeklySpendUsesExhaustiveAggregateBeyondPromptRowLimit() async throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let now = Date()
+        let cheapRows = (0..<200).map { index in
+            TokenUsage(
+                provider: .factory,
+                sessionId: "cheap-\(index)",
+                projectName: "CheapProject",
+                model: "cheap-model",
+                inputTokens: 1,
+                outputTokens: 1,
+                costUSD: 1,
+                startTime: now.addingTimeInterval(-Double(index)),
+                endTime: now.addingTimeInterval(-Double(index) + 1)
+            )
+        }
+        let expensiveExcludedFromPromptSample = TokenUsage(
+            provider: .codex,
+            sessionId: "older-expensive",
+            projectName: "ExpensiveProject",
+            model: "expensive-model",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 300,
+            startTime: now.addingTimeInterval(-10_000),
+            endTime: now.addingTimeInterval(-9_999)
+        )
+        try await store.insert(cheapRows + [expensiveExcludedFromPromptSample])
+
+        let prompt = await ContextBuilder.buildSystemPrompt(from: store)
+
+        XCTAssertTrue(prompt.contains("expensive-model"), "weekly spend must include rows outside the 200-row recent-work sample")
+        XCTAssertTrue(prompt.contains("Top project: ExpensiveProject ($300.00)"))
+    }
+
     // MARK: - Project Memory Persistence Tests
 
     func test_projectMemorySnapshot_roundTripsThroughControlPlaneStore() async throws {

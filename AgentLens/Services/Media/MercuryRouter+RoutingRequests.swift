@@ -151,14 +151,16 @@ extension MercuryRouter {
             replySender: replySender,
             controlStreamID: controlStreamID,
             remotePeerNodeID: remotePeerNodeID,
-            agentTerminalApproved: false
+            agentTerminalApproved: false,
+            autoAcceptedByMirrorGrant: false
         )
 
         let hasMirrorAutoAcceptGrant = consentStore.canAutoAccept(
             connectionId: frame.connectionId,
             viewerDeviceId: req.viewerDeviceId,
             controlAuthorityPeerNodeId: req.controlAuthorityPeerNodeId,
-            remotePeerNodeId: remotePeerNodeID
+            remotePeerNodeId: remotePeerNodeID,
+            now: clock()
         )
 
         // Consent fast-paths:
@@ -168,7 +170,7 @@ extension MercuryRouter {
         if (hasMirrorAutoAcceptGrant || remoteUnlockSession != nil) && !pending.requestsAgentTerminal {
             Self.log.info("router_mirror_request_auto_accept requestID=\(req.requestId, privacy: .public)")
             Self.debugTrace("router_mirror_request_auto_accept requestID=\(req.requestId)")
-            await beginMirror(for: pending)
+            await beginMirror(for: hasMirrorAutoAcceptGrant ? pending.markingMirrorGrantAutoAccepted() : pending)
             return
         }
 
@@ -337,7 +339,8 @@ extension MercuryRouter {
             replySender: replySender,
             controlStreamID: controlStreamID,
             remotePeerNodeID: nil,
-            agentTerminalApproved: false
+            agentTerminalApproved: false,
+            autoAcceptedByMirrorGrant: false
         )
         pendingCall = pending
         phase = .callRinging(
@@ -522,6 +525,15 @@ extension MercuryRouter {
                 frame: request.frame,
                 replySender: request.replySender
             )
+            if request.autoAcceptedByMirrorGrant {
+                consentStore.renewAutoAcceptGrant(
+                    connectionId: request.frame.connectionId,
+                    viewerDeviceId: mirrorRequest.viewerDeviceId,
+                    controlAuthorityPeerNodeId: mirrorRequest.controlAuthorityPeerNodeId,
+                    remotePeerNodeId: request.remotePeerNodeID,
+                    now: clock()
+                )
+            }
             if waitingForRemoteUnlock {
                 Self.log.info("router_locked_mirror_waiting_for_remote_unlock requestID=\(request.id, privacy: .public)")
                 Self.debugTrace("router_locked_mirror_waiting_for_remote_unlock requestID=\(request.id)")
