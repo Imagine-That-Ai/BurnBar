@@ -16,7 +16,8 @@ import Foundation
 //     merge(
 //       snapshot.searchKeys(query, limit + tombstonedCount)
 //         .filter(not in delta.tombstones),
-//       delta.search(query, limit)      -- O(k) brute-force on appended vectors
+//       delta.search(query, max(limit, appendedCount))
+//                                       -- O(k) brute-force on appended vectors
 //     )
 //     .resolve keys → chunkIDs
 //     .trim to limit
@@ -174,8 +175,10 @@ public final class BurnBarVectorIndexDeltaOverlay: Sendable {
             merged.append((key, score))
         }
 
-        // 3. Brute-force search the delta.
-        let (deltaKeys, deltaScores) = currentDelta.search(query: query, limit: limit)
+        // 3. Brute-force search the delta. Fetch every bounded appended vector
+        // so re-added keys always evict stale base scores before final trimming.
+        let deltaLimit = max(limit, currentDelta.appendedCount)
+        let (deltaKeys, deltaScores) = currentDelta.search(query: query, limit: deltaLimit)
 
         // 4. Merge delta results. Deduplicate by key (a key in both base and
         //    delta means the vector was re-added; the delta version wins
