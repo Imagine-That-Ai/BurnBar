@@ -60,6 +60,28 @@ extension BurnBarHTTPGatewayServer {
         await proxyRouteLogStore.append(entry)
     }
 
+    func recordQuotaSignalIfAvailable(
+        headers: [String: String],
+        route: BurnBarProviderRoute,
+        requestPath: String?,
+        endpoint: String?,
+        httpStatus: Int?,
+        streamed: Bool
+    ) async {
+        guard let quotaSignalStore,
+              let signal = BurnBarQuotaSignalStore.signal(
+                  from: headers,
+                  route: route,
+                  requestPath: requestPath,
+                  endpoint: endpoint,
+                  httpStatus: httpStatus,
+                  streamed: streamed
+              ) else {
+            return
+        }
+        await quotaSignalStore.append(signal)
+    }
+
     func proxyRouteUsage(
         from usage: BurnBarProviderProxyUsage?,
         route: BurnBarProviderRoute
@@ -173,8 +195,9 @@ extension BurnBarHTTPGatewayServer {
     }
 
     static func httpStatus(from error: Error) -> Int? {
-        if case let BurnBarProviderExecutorError.upstreamError(status, _) = error {
-            return status
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            return statusAndBody.statusCode
         }
         return nil
     }
@@ -190,8 +213,9 @@ extension BurnBarHTTPGatewayServer {
     }
 
     static func routeLogFailureMessage(from error: Error) -> String {
-        if case let BurnBarProviderExecutorError.upstreamError(statusCode, _) = error {
-            return "OpenBurnBar provider request failed with status \(statusCode)."
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            return "OpenBurnBar provider request failed with status \(statusAndBody.statusCode)."
         }
         return sanitizedFailureMessage(error.localizedDescription) ?? "OpenBurnBar provider request failed."
     }

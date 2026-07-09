@@ -9,21 +9,21 @@ import OpenBurnBarCore
 /// `RefreshBackgroundWork` delegates to these stages so timing and failure
 /// boundaries stay visible without rewriting the orchestrator graph.
 struct UsageRefreshPipeline: Sendable {
-    let parsers: [AgentProvider: any LogParser]
+    let parsers: [AgentProvider: any OpenBurnBarCore.LogParser]
     let dataStore: DataStore
     let orchestrator: RefreshOrchestrator
     let existingUsages: [TokenUsage]
     let settings: RefreshSettingsSnapshot
 
     struct DiscoverResult: Sendable {
-        var parserEntries: [(AgentProvider, any LogParser)] = []
+        var parserEntries: [(AgentProvider, any OpenBurnBarCore.LogParser)] = []
     }
 
     struct ParsedBatch: Sendable {
         var parserHealth: [AgentProvider: ParserHealth] = [:]
         var errors: [AgentProvider: String] = [:]
         var allUsages: [TokenUsage] = []
-        var allConversations: [ConversationRecord] = []
+        var allConversations: [OpenBurnBarCore.ConversationRecord] = []
         var duration: TimeInterval = 0
     }
 
@@ -51,7 +51,7 @@ struct UsageRefreshPipeline: Sendable {
         for (provider, parser) in discovery.parserEntries {
             do {
                 let parseResult = try await parser.parse(
-                    options: LogParseOptions(includeConversationBodies: settings.conversationIndexingEnabled)
+                    options: OpenBurnBarCore.LogParseOptions(includeConversationBodies: settings.conversationIndexingEnabled)
                 )
                 let usages = parseResult.usages
                 let providerHealth: ParserHealth = usages.isEmpty

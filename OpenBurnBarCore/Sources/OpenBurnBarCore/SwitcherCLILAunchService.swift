@@ -796,7 +796,10 @@ public enum CLILaunchAdapter {
         }
 
         // Build environment - only allowlisted keys
-        var env = filterAllowlistedEnvironment(keys: metadata.envKeysToPass)
+        var env = filterAllowlistedEnvironment(
+            keys: metadata.envKeysToPass,
+            baseEnv: environmentProvider()
+        )
         if let configDirectory = metadata.configDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
            !configDirectory.isEmpty {
             for configEnvKey in configEnvironmentKeys(for: cliType) {

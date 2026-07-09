@@ -1,8 +1,8 @@
 import Foundation
 import OpenBurnBarCore
 
-// `ConversationSourceType` + `ConversationRecord` moved to OpenBurnBarCore
-// (SharedModels/ConversationRecord.swift) for the Windows-port G2 parser lift.
+// `OpenBurnBarCore.ConversationSourceType` + `OpenBurnBarCore.ConversationRecord` moved to OpenBurnBarCore
+// (SharedModels/OpenBurnBarCore.ConversationRecord.swift) for the Windows-port G2 parser lift.
 // The chat/transcript types below stay in the app; both resolve via `import OpenBurnBarCore`.
 
 // MARK: - Chat Message (persisted)
@@ -166,7 +166,7 @@ enum ConversationJumpSource: String, Codable, Hashable, Sendable {
 }
 
 struct ConversationJumpTarget: Identifiable, Hashable, Sendable {
-    let conversation: ConversationRecord
+    let conversation: OpenBurnBarCore.ConversationRecord
     let snippet: String
     let startOffset: Int
     let endOffset: Int

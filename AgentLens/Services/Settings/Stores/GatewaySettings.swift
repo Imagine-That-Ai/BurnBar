@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Gateway Settings
 
@@ -24,7 +25,7 @@ final class GatewaySettings {
         didSet {
             secretPersistence.persist(
                 gatewayAuthToken,
-                account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
+                account: OpenBurnBarCore.OpenBurnBarIdentity.gatewayAuthTokenAccount,
                 legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
             )
         }
@@ -70,7 +71,7 @@ final class GatewaySettings {
             ? persistence.integer(forKey: "gatewayPort")
             : 8317
         let storedAuthToken = secretPersistence.load(
-            account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
+            account: OpenBurnBarCore.OpenBurnBarIdentity.gatewayAuthTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
         )
         if storedAuthToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -80,7 +81,7 @@ final class GatewaySettings {
             self.gatewayAuthToken = launchAgentToken
             secretPersistence.persist(
                 launchAgentToken,
-                account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
+                account: OpenBurnBarCore.OpenBurnBarIdentity.gatewayAuthTokenAccount,
                 legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
             )
         } else {

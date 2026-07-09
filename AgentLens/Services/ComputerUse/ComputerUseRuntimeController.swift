@@ -355,7 +355,7 @@ final class ComputerUseRuntimeController: ObservableObject {
         accountManager: AccountManager,
         settingsManager: SettingsManager
     ) -> ComputerUseSessionCoordinator {
-        let supportDirectory = OpenBurnBarAppPaths.live().supportDirectory
+        let supportDirectory = OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
         let auditDirectory = supportDirectory.appendingPathComponent("computer-use-audit", isDirectory: true)
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         return ComputerUseSessionCoordinator(

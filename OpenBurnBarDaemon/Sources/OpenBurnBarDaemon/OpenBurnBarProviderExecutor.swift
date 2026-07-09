@@ -60,17 +60,20 @@ public struct BurnBarProviderProxyUsage: Sendable {
 public struct BurnBarProviderProxyResponse: Sendable {
     public let statusCode: Int
     public let contentType: String
+    public let headers: [String: String]
     public let body: Data
     public let usage: BurnBarProviderProxyUsage?
 
     public init(
         statusCode: Int,
         contentType: String,
+        headers: [String: String] = [:],
         body: Data,
         usage: BurnBarProviderProxyUsage?
     ) {
         self.statusCode = statusCode
         self.contentType = contentType
+        self.headers = headers
         self.body = body
         self.usage = usage
     }
@@ -83,15 +86,18 @@ public struct BurnBarProviderProxyResponse: Sendable {
 public struct BurnBarProviderProxyStream: Sendable {
     public let statusCode: Int
     public let contentType: String
+    public let headers: [String: String]
     public let chunks: AsyncThrowingStream<Data, Error>
 
     public init(
         statusCode: Int,
         contentType: String,
+        headers: [String: String] = [:],
         chunks: AsyncThrowingStream<Data, Error>
     ) {
         self.statusCode = statusCode
         self.contentType = contentType
+        self.headers = headers
         self.chunks = chunks
     }
 }
@@ -181,9 +187,10 @@ public enum BurnBarProxyStreaming {
                     ]
                 )
             }
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: errorData, encoding: .utf8) ?? ""
+                String(data: errorData, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
 
@@ -216,9 +223,23 @@ public enum BurnBarProxyStreaming {
         return BurnBarProviderProxyStream(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: normalizedHeaders(from: httpResponse),
             chunks: stream
         )
         #endif
+    }
+
+    static func normalizedHeaders(from response: HTTPURLResponse) -> [String: String] {
+        response.allHeaderFields.reduce(into: [String: String]()) { result, element in
+            guard let key = element.key as? String else { return }
+            let value: String
+            if let stringValue = element.value as? String {
+                value = stringValue
+            } else {
+                value = "\(element.value)"
+            }
+            result[key] = value
+        }
     }
 
     static func appendBytePreservingStreamFraming(_ byte: UInt8, to buffer: inout Data) -> Data? {
@@ -254,6 +275,7 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
     private var successStatusCode: Int?
     private var upstreamErrorStatusCode: Int?
     private var upstreamErrorData = Data()
+    private var upstreamErrorHeaders: [String: String] = [:]
     private var finished = false
 
     init(defaultContentType: String) {
@@ -315,6 +337,7 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
         } else {
             lock.lock()
             upstreamErrorStatusCode = httpResponse.statusCode
+            upstreamErrorHeaders = BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             lock.unlock()
         }
         completionHandler(.allow)
@@ -344,6 +367,7 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
         let continuation = streamContinuation
         let upstreamStatus = upstreamErrorStatusCode
         let upstreamBody = String(data: upstreamErrorData, encoding: .utf8) ?? ""
+        let upstreamHeaders = upstreamErrorHeaders
         let sawSuccess = successStatusCode != nil
         lock.unlock()
 
@@ -356,7 +380,11 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
         }
 
         if let upstreamStatus {
-            let upstreamError = BurnBarProviderExecutorError.upstreamError(upstreamStatus, upstreamBody)
+            let upstreamError = BurnBarProviderExecutorError.upstreamErrorWithHeaders(
+                upstreamStatus,
+                upstreamBody,
+                upstreamHeaders
+            )
             completeResponse(.failure(upstreamError))
             continuation?.finish(throwing: upstreamError)
             return
@@ -490,9 +518,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             throw BurnBarProviderExecutorError.invalidResponse
         }
         guard (200..<300).contains(httpResponse.statusCode) else {
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: data, encoding: .utf8) ?? ""
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
 
@@ -570,9 +599,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
 
         let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "application/json"
         guard (200..<300).contains(httpResponse.statusCode) else {
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: data, encoding: .utf8) ?? ""
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
         try Self.validateOpenAICompatibleChatResponse(data, modelID: route.resolvedModelID)
@@ -580,6 +610,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return BurnBarProviderProxyResponse(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse),
             body: data,
             usage: Self.extractProxyUsage(requestBody: outboundBody, responseBody: data)
         )
@@ -663,15 +694,17 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             if httpResponse.statusCode == 404 || httpResponse.statusCode == 405 {
                 return try await proxyResponsesViaChatCompletions(body: body, route: route, variant: variant)
             }
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: data, encoding: .utf8) ?? ""
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
 
         return BurnBarProviderProxyResponse(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse),
             body: data,
             usage: Self.extractResponsesUsage(responseBody: data)
         )
@@ -702,6 +735,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "application/json",
+            headers: chatResponse.headers,
             body: body,
             usage: chatResponse.usage
         )
@@ -740,9 +774,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: data, encoding: .utf8) ?? ""
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
 
@@ -750,7 +785,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             requestBody: outboundBody,
             responseBody: data,
             modelID: route.resolvedModelID,
-            streamRequested: streamRequested
+            streamRequested: streamRequested,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
         )
     }
 

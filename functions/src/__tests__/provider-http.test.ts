@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const resilientFetch = vi.fn(async () => new Response("{}"));
+const providerResilientFetch = vi.fn(async () => new Response("{}"));
 
 vi.mock("../resilienceHelpers.js", () => ({
-  resilientFetch,
+  providerResilientFetch,
 }));
 
 describe("providerFetch", () => {
@@ -11,9 +11,14 @@ describe("providerFetch", () => {
     vi.clearAllMocks();
   });
 
-  it("delegates to resilientFetch with provider.operation label", async () => {
+  it("delegates to providerResilientFetch with the provider key and operation label", async () => {
     const { providerFetch } = await import("../providers/httpClient.js");
     await providerFetch("openai", "models", "https://api.openai.com/v1/models");
-    expect(resilientFetch).toHaveBeenCalledWith("openai.models", "https://api.openai.com/v1/models", undefined);
+    expect(providerResilientFetch).toHaveBeenCalledWith(
+      "openai",
+      "models",
+      "https://api.openai.com/v1/models",
+      undefined,
+    );
   });
 });

@@ -25,6 +25,7 @@ if !buildForLinuxBoundary {
         .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
         .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.18.0")
     ])
+    daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonTargetDependencies.append(.product(name: "SQLCipher", package: "SQLCipher.swift"))
     daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonLinkerSettings = [.unsafeFlags(["-framework", "Network", "-framework", "CoreServices"])]

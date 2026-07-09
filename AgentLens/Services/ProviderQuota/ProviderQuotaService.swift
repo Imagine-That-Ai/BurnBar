@@ -235,10 +235,10 @@ final class ProviderQuotaService {
         settingsManager: SettingsManager = .shared,
         keyStore: ProviderAPIKeyStore = .shared,
         providerRuntimeKeyStore: KeychainStore = KeychainStore(
-            service: OpenBurnBarIdentity.cursorConnectorKeychainService,
-            legacyServices: OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+            service: OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,
+            legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
         ),
-        appPaths: OpenBurnBarAppPaths = .live(),
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
         fileManager: FileManager = .default,
         session: URLSession = .shared,
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -313,7 +313,7 @@ final class ProviderQuotaService {
         // here used to make that whole-cache loss invisible. Keep init
         // resilient (the service must still construct) but record the fault.
         do {
-            _ = try OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+            _ = try OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
         } catch {
             AppLogger.dataStore.error(
                 "ProviderQuotaService: prepareSupportDirectory failed",
@@ -534,11 +534,56 @@ final class ProviderQuotaService {
     }
 
     internal func persistSnapshots() {  // pure-move: was private
+        let persistedSnapshots = deduplicatedPersistedSnapshots()
         snapshotStore.persistSnapshots(snapshotsByProvider, accountSnapshots: snapshotsByAccountID)
+        recordSnapshotWrittenTelemetry(for: persistedSnapshots)
         let syncableSnapshots = snapshotsForCloudSync.filter { $0.sourceKind != .unavailable }
         if !syncableSnapshots.isEmpty {
             onSnapshotsPersistedForCloudSync?(syncableSnapshots)
         }
+    }
+
+    private func deduplicatedPersistedSnapshots() -> [ProviderQuotaSnapshot] {
+        Array(
+            (Array(snapshotsByProvider.values) + Array(snapshotsByAccountID.values))
+                .reduce(into: [String: ProviderQuotaSnapshot]()) { result, snapshot in
+                    let key = ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)
+                    guard let existing = result[key] else {
+                        result[key] = snapshot
+                        return
+                    }
+                    if snapshot.fetchedAt >= existing.fetchedAt {
+                        result[key] = snapshot
+                    }
+                }
+                .values
+        )
+    }
+
+    private func recordSnapshotWrittenTelemetry(for snapshots: [ProviderQuotaSnapshot], now: Date = Date()) {
+        for snapshot in snapshots {
+            TelemetryService.shared.record(
+                feature: .providerQuotaRefresh,
+                outcome: .success,
+                attributes: [
+                    "quota_event": "snapshot_written",
+                    "provider": snapshot.providerID.rawValue,
+                    "source": snapshot.source,
+                    "snapshot_age_bucket": Self.snapshotAgeBucket(fetchedAt: snapshot.fetchedAt, now: now)
+                ]
+            )
+        }
+    }
+
+    static func snapshotAgeBucket(fetchedAt: Date, now: Date = Date()) -> String {
+        let ageSeconds = now.timeIntervalSince(fetchedAt)
+        if ageSeconds < 0 { return "future" }
+        if ageSeconds < 60 { return "<1m" }
+        if ageSeconds < 5 * 60 { return "1-5m" }
+        if ageSeconds < 20 * 60 { return "5-20m" }
+        if ageSeconds < 60 * 60 { return "20-60m" }
+        if ageSeconds < 4 * 60 * 60 { return "1-4h" }
+        return ">=4h"
     }
 
     private func loadPersistedRoutingEvents() {

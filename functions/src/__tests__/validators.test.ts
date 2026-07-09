@@ -6,7 +6,11 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { boundedHttpsURL } from "../callables/shared/validators.js";
+import {
+  boundedHttpsURL,
+  requireRoamingProfileEnvelope,
+  roamingProfileAADContext,
+} from "../callables/shared/validators.js";
 
 describe("boundedHttpsURL", () => {
   it("accepts plain HTTPS URLs", () => {
@@ -71,5 +75,55 @@ describe("boundedHttpsURL", () => {
     expect(() => boundedHttpsURL("http://127.1", "successUrl")).toThrow(/must be HTTPS/);
     expect(() => boundedHttpsURL("http://2130706433", "successUrl")).toThrow(/must be HTTPS/);
     expect(() => boundedHttpsURL("http://017700000001", "successUrl")).toThrow(/must be HTTPS/);
+  });
+});
+
+describe("roaming profile CloudVault validators", () => {
+  const uid = "alice-roaming-uid";
+
+  function sealedPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      schemaVersion: 2,
+      algorithm: "AES-256-GCM",
+      keyVersion: 1,
+      vaultKeyID: `v1_${"a".repeat(32)}`,
+      sealedBoxBase64: "Q2lwaGVydGV4dA==",
+      aad: roamingProfileAADContext(uid),
+      ...overrides,
+    };
+  }
+
+  it("builds the stable roaming profile aad context", () => {
+    expect(roamingProfileAADContext(uid)).toBe(
+      "OpenBurnBar-CloudVault-aad-v2|alice-roaming-uid|roaming_profile|current|sealedPayload|2|OpenBurnBar-RoamingProfile-v1",
+    );
+  });
+
+  it("accepts a strict sealed payload envelope for the current user", () => {
+    expect(requireRoamingProfileEnvelope(sealedPayload(), uid)).toEqual(sealedPayload());
+  });
+
+  it("rejects wrong users or generic sealed-payload aad", () => {
+    expect(() => requireRoamingProfileEnvelope(sealedPayload(), "bob-roaming-uid")).toThrow(
+      /CloudVault document context/,
+    );
+    expect(() =>
+      requireRoamingProfileEnvelope(
+        sealedPayload({ aad: "OpenBurnBar-CloudVaultSealedPayload-v2" }),
+        uid,
+      ),
+    ).toThrow(/CloudVault document context/);
+  });
+
+  it("rejects non-envelope or malformed envelope fields", () => {
+    expect(() => requireRoamingProfileEnvelope({ routerMode: "same_model_failover" }, uid)).toThrow(
+      /algorithm/,
+    );
+    expect(() => requireRoamingProfileEnvelope(sealedPayload({ vaultKeyID: "v1_nothex" }), uid)).toThrow(
+      /vault key id/,
+    );
+    expect(() => requireRoamingProfileEnvelope(sealedPayload({ sealedBoxBase64: "not base64!" }), uid)).toThrow(
+      /base64/,
+    );
   });
 });

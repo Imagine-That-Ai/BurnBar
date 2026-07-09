@@ -27,6 +27,7 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
     let preferredModelIDs: [String]
     let preferredCredentialSlotID: String?
     let credentialSlots: [CredentialSlot]
+    let ollamaEndpoints: [BurnBarOllamaEndpointConfig]
     let customModels: [BurnBarCustomModel]
 
     init(
@@ -38,6 +39,7 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
         preferredModelIDs: [String],
         preferredCredentialSlotID: String?,
         credentialSlots: [CredentialSlot],
+        ollamaEndpoints: [BurnBarOllamaEndpointConfig] = [],
         customModels: [BurnBarCustomModel] = []
     ) {
         self.providerID = providerID
@@ -48,6 +50,7 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
         self.preferredModelIDs = preferredModelIDs
         self.preferredCredentialSlotID = preferredCredentialSlotID
         self.credentialSlots = credentialSlots
+        self.ollamaEndpoints = ollamaEndpoints
         self.customModels = customModels
     }
 
@@ -257,6 +260,7 @@ final class OpenBurnBarDaemonUsageSyncService {
                             updatedAt: slot.updatedAt
                         )
                     },
+                ollamaEndpoints: settings.ollamaEndpoints,
                 customModels: settings.customModels
                 )
             }

@@ -29,6 +29,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case usageRecent = "daemon.usage.recent"
     case proxyRouteLogRecent = "daemon.proxy.route_log.recent"
     case proxyRouteLogClear = "daemon.proxy.route_log.clear"
+    case quotaSignalsRecent = "daemon.quota.signals.recent"
+    case quotaSignalsClear = "daemon.quota.signals.clear"
     case perfMeasure = "perf.measure"
     case membershipStatus = "daemon.membership.status"
     case membershipCheckoutURL = "daemon.membership.checkoutUrl"
