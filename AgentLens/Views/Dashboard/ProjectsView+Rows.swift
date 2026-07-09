@@ -339,7 +339,7 @@ struct ProjectHubView: View {
             }
         }
 
-        var conversations: [ConversationRecord] = []
+        var conversations: [OpenBurnBarCore.ConversationRecord] = []
         for key in projectMemoryKeys {
             if let rows = try? await dataStore.fetchConversationsForTranscriptScan(
                 provider: nil,

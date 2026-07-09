@@ -150,6 +150,49 @@ When adding a new critical path, ship **one structured log event** and **one cou
 
 **Error budget:** Monthly Firestore read budget for hosted MCP — alert on dashboard tile before hard cap; see [media-budget.md](media-budget.md).
 
+### Quota Freshness
+
+| SLI | Target | Measurement |
+|-----|--------|-------------|
+| Connected provider account quota snapshot age | p95 `<= 20 min` per provider/account | Structured `quota.snapshot_written` logs from Functions and Mac client `providerQuotaRefresh` telemetry with `quota_event=snapshot_written` |
+
+**Structured event fields:**
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| `event="quota.snapshot_written"` | Functions `logInfo` | Server snapshot writes only |
+| `provider` | Functions + Mac telemetry | Canonical provider ID; no account labels or credentials |
+| `source` | Functions + Mac telemetry | Low-cardinality source kind (`provider`, `localCLI`, `localSession`, `officialAPI`, etc.) |
+| `age_ms_bucket` | Functions | One of `<1m`, `1-5m`, `5-20m`, `20-60m`, `1-4h`, `>=4h`, `future`, `unknown` |
+| `snapshot_age_bucket` | Mac telemetry | Same bucket labels as `age_ms_bucket` |
+
+**Log-based metric to chart (Cloud Logging):**
+
+```text
+resource.type="cloud_function"
+jsonPayload.event="quota.snapshot_written"
+jsonPayload.provider=*
+```
+
+Create a distribution/ratio chart grouped by `jsonPayload.provider`, `jsonPayload.source`, and
+`jsonPayload.age_ms_bucket`; treat `20-60m`, `1-4h`, `>=4h`, `future`, and `unknown` as stale for
+the p95 SLO. Mac client telemetry uses the same grouping with `feature=providerQuotaRefresh`,
+`quota_event=snapshot_written`, and `snapshot_age_bucket`.
+
+**Alert threshold:** page when any connected provider's stale bucket share exceeds 5% for 30 minutes
+or when no `quota.snapshot_written` events arrive for an otherwise connected cloud-refreshable provider
+for 30 minutes.
+
+**Escalation:**
+
+1. Check `refreshAllProviderQuotas` schedule execution and recent `resilience_failure` /
+   `circuit_breaker_tripped` logs grouped by `provider_api:<provider>`.
+2. Verify provider account status/`lastRefreshAt` in `users/*/provider_accounts/*` and the latest
+   `quota_snapshots` document age for the affected provider.
+3. If only Mac telemetry is stale, inspect `ProviderQuotaService` local refresh logs and cloud-sync
+   upload status before escalating to backend refresh.
+4. Freeze quota-adapter changes for the affected provider until p95 returns below 20 minutes.
+
 ### Cold-start mitigation (hot path warm pool, A4)
 
 Hot revenue/control paths pin a warm instance via `HOT_PATH_OPTIONS`

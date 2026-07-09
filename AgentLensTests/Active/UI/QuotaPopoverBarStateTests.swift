@@ -23,7 +23,7 @@ final class QuotaPopoverBarStateTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("obb-quota-popover-\(UUID().uuidString)", isDirectory: true)
         return ProviderQuotaService(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: root),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: root),
             homeDirectoryURL: root.appendingPathComponent("home", isDirectory: true),
             refreshProviders: refreshProviders
         )

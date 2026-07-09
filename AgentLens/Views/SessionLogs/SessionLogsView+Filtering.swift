@@ -26,7 +26,7 @@ extension SessionLogsView {
     /// re-entering SwiftUI's state graph.
     final class LogGroupsCache {
         var key: LogGroupsCacheKey?
-        var filteredLogs: [ConversationRecord] = []
+        var filteredLogs: [OpenBurnBarCore.ConversationRecord] = []
         var groups: [SessionLogGroup] = []
     }
 
@@ -38,7 +38,7 @@ extension SessionLogsView {
     // `.onChange` — see docs/architecture/macos-performance.md §2) because
     // `handleSourceFilterChange`/`loadLogs` read the groups synchronously
     // right after mutating their inputs.
-    var filteredLogs: [ConversationRecord] {
+    var filteredLogs: [OpenBurnBarCore.ConversationRecord] {
         rebuildLogGroupsIfNeeded()
         return logGroupsCache.filteredLogs
     }
@@ -85,15 +85,15 @@ extension SessionLogsView {
     /// matrix down without a SwiftUI host — mirrors
     /// `ProjectsView.computeMergedProjects`.
     static func computeFilteredLogs(
-        allLogs: [ConversationRecord],
+        allLogs: [OpenBurnBarCore.ConversationRecord],
         sourceFilter: SessionLogSourceFilter,
         deviceFilter: String?,
         localDeviceId: String?,
         searchText: String,
         dataSource: SessionLogDataSource,
         retrievalMatchedIDs: [String]
-    ) -> [ConversationRecord] {
-        var result: [ConversationRecord]
+    ) -> [OpenBurnBarCore.ConversationRecord] {
+        var result: [OpenBurnBarCore.ConversationRecord]
         switch sourceFilter {
         case .all:
             result = allLogs
@@ -129,7 +129,7 @@ extension SessionLogsView {
         }
     }
 
-    var selectedLog: ConversationRecord? {
+    var selectedLog: OpenBurnBarCore.ConversationRecord? {
         guard let id = selectedId else { return nil }
         if let selectedDetailLog, selectedDetailLog.id == id {
             return selectedDetailLog
@@ -142,7 +142,7 @@ extension SessionLogsView {
     /// Pure, deterministic grouping pass — see `computeFilteredLogs`.
     /// `now` is injectable so the time buckets are unit-testable.
     static func computeLogGroups(
-        from logs: [ConversationRecord],
+        from logs: [OpenBurnBarCore.ConversationRecord],
         groupMode: SessionLogGroupMode,
         now: Date = Date()
     ) -> [SessionLogGroup] {
@@ -153,14 +153,14 @@ extension SessionLogsView {
         }
     }
 
-    private static func timeGroups(from logs: [ConversationRecord], now: Date) -> [SessionLogGroup] {
+    private static func timeGroups(from logs: [OpenBurnBarCore.ConversationRecord], now: Date) -> [SessionLogGroup] {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)
         let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
         let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
         let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
 
-        var buckets: [String: [ConversationRecord]] = [
+        var buckets: [String: [OpenBurnBarCore.ConversationRecord]] = [
             "today": [], "yesterday": [], "week": [], "month": [], "older": []
         ]
         for log in logs {
@@ -194,7 +194,7 @@ extension SessionLogsView {
         }
     }
 
-    private static func providerGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
+    private static func providerGroups(from logs: [OpenBurnBarCore.ConversationRecord]) -> [SessionLogGroup] {
         Dictionary(grouping: logs) { $0.provider }
             .map { provider, logs in
                 SessionLogGroup(
@@ -209,7 +209,7 @@ extension SessionLogsView {
             .sorted { $0.logs.count > $1.logs.count }
     }
 
-    private static func projectGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
+    private static func projectGroups(from logs: [OpenBurnBarCore.ConversationRecord]) -> [SessionLogGroup] {
         Dictionary(grouping: logs) { $0.projectName }
             .map { project, logs in
                 SessionLogGroup(
@@ -224,7 +224,7 @@ extension SessionLogsView {
             .sorted { $0.logs.count > $1.logs.count }
     }
 
-    private static func substringFilteredLogs(from logs: [ConversationRecord], query: String) -> [ConversationRecord] {
+    private static func substringFilteredLogs(from logs: [OpenBurnBarCore.ConversationRecord], query: String) -> [OpenBurnBarCore.ConversationRecord] {
         let q = query.lowercased()
         return logs.filter {
             $0.inferredTaskTitle.lowercased().contains(q)

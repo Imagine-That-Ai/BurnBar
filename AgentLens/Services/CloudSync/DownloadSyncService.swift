@@ -534,8 +534,8 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 let id = data["id"] as? String ?? doc.documentID
                 let stableId = "\(remoteDeviceId):\(id)"
                 let deviceName = nameMap[remoteDeviceId] ?? remoteDeviceId
-                let sourceTypeRaw = data["sourceType"] as? String ?? ConversationSourceType.providerLog.rawValue
-                let record = ConversationRecord(
+                let sourceTypeRaw = data["sourceType"] as? String ?? OpenBurnBarCore.ConversationSourceType.providerLog.rawValue
+                let record = OpenBurnBarCore.ConversationRecord(
                     id: stableId, provider: provider, sessionId: sessionId,
                     projectName: privatePayload.projectName,
                     startTime: (data["startTime"] as? Timestamp)?.dateValue(),
@@ -556,7 +556,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     summaryTitle: privatePayload.summaryTitle,
                     summaryProvider: privatePayload.summaryProvider,
                     summaryModel: privatePayload.summaryModel,
-                    sourceType: ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog,
+                    sourceType: OpenBurnBarCore.ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog,
                     sourceDeviceId: remoteDeviceId, sourceDeviceName: deviceName, isRemote: true,
                     // Honor a remote tombstone: if device A soft-deleted this
                     // conversation, carry `deletedAt` through so the local copy is

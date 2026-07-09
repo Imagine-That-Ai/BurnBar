@@ -76,7 +76,7 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
             sessions: [("session-privacy", sessionContent)]
         )
 
-        let appPaths = OpenBurnBarAppPaths(
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(
             applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
         )
         let parser = ClaudeCodeParser(

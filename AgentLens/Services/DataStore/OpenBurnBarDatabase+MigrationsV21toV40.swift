@@ -125,7 +125,7 @@ extension OpenBurnBarDatabase {
             let now = Date()
             try db.execute(
                 sql: "INSERT OR IGNORE INTO devices (deviceId, deviceName, isLocal, lastSeenAt, createdAt) VALUES (?, ?, 1, ?, ?)",
-                arguments: [UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? "unknown", localName, now, now]
+                arguments: [UserDefaults.standard.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey) ?? "unknown", localName, now, now]
             )
         }
 

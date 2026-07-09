@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - OpenAI Usage API
 
@@ -126,7 +127,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
 
         guard input > 0 || output > 0 else { return nil }
 
-        let pricing = ModelPricing.lookup(model: model)
+        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
         let cost = pricing.cost(
             inputTokens: uncachedInput,
             outputTokens: output,

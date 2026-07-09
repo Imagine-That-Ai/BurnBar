@@ -99,7 +99,7 @@ struct MenuBarLabel: View {
         .frame(width: Self.menuBarLabelSlotWidth, height: Self.menuBarLabelSlotHeight)
         .fixedSize()
         .help(balanceTooltip)
-        .accessibilityLabel("\(OpenBurnBarIdentity.productName), \(balanceTooltip)")
+        .accessibilityLabel("\(OpenBurnBarCore.OpenBurnBarIdentity.productName), \(balanceTooltip)")
         .onChange(of: isRefreshing) { _, new in
             guard !new else { return }
             Task { @MainActor in

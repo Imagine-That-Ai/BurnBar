@@ -1562,7 +1562,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -1625,7 +1625,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -1689,7 +1689,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -2265,7 +2265,7 @@ private func realpathString(_ url: URL) -> String {
 }
 
 private final class CLIBridgeNetworkTrapURLProtocol: URLProtocol, @unchecked Sendable {
-    private static let requestCountBox = Locked(0)
+    private static let requestCountBox = OpenBurnBarCore.Locked(0)
 
     static var requestCount: Int {
         requestCountBox.read()

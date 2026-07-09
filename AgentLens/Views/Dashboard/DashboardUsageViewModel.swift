@@ -193,12 +193,12 @@ final class DashboardUsageViewModel {
     }
 
     func usages(forModel normalizedName: String) -> [TokenUsage] {
-        usages.filter { TokenExtractionUtility.normalizeModelKey($0.model) == normalizedName }
+        usages.filter { OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey($0.model) == normalizedName }
     }
 
     func usages(forModel normalizedName: String, in dateRange: ClosedRange<Date>) -> [TokenUsage] {
         usages.filter {
-            TokenExtractionUtility.normalizeModelKey($0.model) == normalizedName
+            OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey($0.model) == normalizedName
             && $0.intersects(dateRange: dateRange)
         }
     }
@@ -397,7 +397,7 @@ final class DashboardUsageViewModel {
 
     static func makeModelSummaries(from usages: [TokenUsage]) -> [ModelSummary] {
         let grouped = Dictionary(grouping: usages) {
-            TokenExtractionUtility.normalizeModelKey($0.model)
+            OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey($0.model)
         }
 
         return grouped.compactMap { key, modelUsages -> ModelSummary? in
@@ -425,7 +425,7 @@ final class DashboardUsageViewModel {
 
             return ModelSummary(
                 modelName: key,
-                displayName: TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
+                displayName: OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
                 totalCost: totalCost,
                 totalTokens: totalTokens,
                 totalInputTokens: totalInputTokens,

@@ -1,6 +1,8 @@
 import XCTest
 
 class UITestBase: XCTestCase {
+    // reason: subclasses share this UI-test helper.
+    // swiftlint:disable:next test_case_accessibility
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
@@ -22,6 +24,8 @@ class UITestBase: XCTestCase {
         app = nil
     }
 
+    // reason: subclasses share this UI-test helper.
+    // swiftlint:disable:next test_case_accessibility
     @discardableResult
     func launchApp(openSettings: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
@@ -47,16 +51,22 @@ class UITestBase: XCTestCase {
         return app
     }
 
+    // reason: subclasses share this UI-test helper.
+    // swiftlint:disable:next test_case_accessibility
     func element(_ id: String) -> XCUIElement {
         app.descendants(matching: .any)[id].firstMatch
     }
 
+    // reason: subclasses share this UI-test helper.
+    // swiftlint:disable:next test_case_accessibility
     @discardableResult
     func waitFor(_ element: XCUIElement, timeout: TimeInterval = 15, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
         XCTAssertTrue(element.waitForExistence(timeout: timeout), "Expected element to exist: \(element)", file: file, line: line)
         return element
     }
 
+    // reason: subclasses share this UI-test helper.
+    // swiftlint:disable:next test_case_accessibility
     @discardableResult
     func waitForHittable(_ element: XCUIElement, timeout: TimeInterval = 15, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
         waitFor(element, timeout: timeout, file: file, line: line)

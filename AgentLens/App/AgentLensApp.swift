@@ -176,7 +176,7 @@ struct OpenBurnBarApp: App {
             // opaque `"test runner hung before establishing connection"`
             // failure mode). We therefore skip every form of synchronous boot:
             //   - No Firebase / Sentry / Google Sign-In configuration.
-            //   - No `OpenBurnBarMigration.migrateUserDefaults()` (the legacy-
+            //   - No `OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()` (the legacy-
             //     domain scan can stall briefly under XCTest sandboxing).
             //   - No `DataStore` open. The live menu-bar scene is short-
             //     circuited to `EmptyView` for both content and label by
@@ -200,7 +200,7 @@ struct OpenBurnBarApp: App {
             Self.configureAnalytics()
         }
         StartupProfiler.interval("migrate_user_defaults") {
-            OpenBurnBarMigration.migrateUserDefaults()
+            OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
         }
 
         _startupState = State(initialValue: StartupProfiler.interval("make_startup_state") {

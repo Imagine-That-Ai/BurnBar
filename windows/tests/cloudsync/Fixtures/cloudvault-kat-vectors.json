@@ -68,6 +68,96 @@
       "wrappedVaultKeyBase64" : "YGFiY2RlZmdoaWprsud\/A7lVHwRM206RFndE4Ua7GUsAUNaWznMkpzlJy27bUOGi8xVSThqoPDJXuekR"
     }
   ],
+  "roamingProfile" : [
+    {
+      "aadContext" : {
+        "collection" : "roaming_profile",
+        "docID" : "current",
+        "field" : "sealedPayload",
+        "purpose" : "OpenBurnBar-RoamingProfile-v1",
+        "schemaVersion" : 2,
+        "uid" : "user_alice"
+      },
+      "aeadAadHex" : "4f70656e4275726e4261722d436c6f75645661756c742d6161642d76327c757365725f616c6963657c726f616d696e675f70726f66696c657c63757272656e747c7365616c65645061796c6f61647c327c4f70656e4275726e4261722d526f616d696e6750726f66696c652d7631",
+      "envelope" : {
+        "aad" : "OpenBurnBar-CloudVault-aad-v2|user_alice|roaming_profile|current|sealedPayload|2|OpenBurnBar-RoamingProfile-v1",
+        "algorithm" : "AES-256-GCM",
+        "keyVersion" : 1,
+        "schemaVersion" : 2,
+        "sealedBoxBase64" : "XF1eX2BhYmNkZWZnHrYkGI1ib9GNyIII6bAwqWPT7Eu0fw6UgnPtz3MV\/YR+sgexVoQgXP9SrRP\/lCbwStghKh9SI6l2w1SuedBQIJRPJrvi\/bsm0PGNelxZ7beM3Xd0yhOoJuzXeuosWiNZ\/\/NAf5ajoMkFfBRmNB0doRpqa164m5M1vbqiJ3CSOqAMOecwqrRE2BzKDqDayeAexhexYX2jSYY9E4TmUtHCDjkAYKoWcOozdCxW8I30C+\/4G2eSXbiasgSKrCT7wyhy3Da5IvvBC64ncKT55zlH35aY5FdZUjH0v6a2fP3A1UcOhSvdO1TG24WJFmQmIOWOwAGlGoxbTQCWP7brNxigdusvw5mRGl575lL827QC0TYeKh0RiYgB3ENYmnCNH\/\/Zb3BbzbLrVSIW+im9EUcnKerqG6gqWPGkSaOOch6rF72hrxNzdVvshU6aiT9lRIN3l74RODMvRL5IM7HAJab+OhlEFxcmtJMed8vLbgybhUA2gJxEysdkk6bBnyMou\/LXEDHvgyDlurp\/06iDutH8K\/oHTnkrFcSx1IgGqzvWJp6bpoJLOEf9uHicW2mroIs1S2STEN2eVnKVgGK\/ylr7pr5hLma45BzFG2hERBgfH8iWMWOswMx45U7dH9Ge9dtJo+nzIWuABirJyguSPD6TZjTBKdQm6D7viklUnOaeSUnciiVUViAz4+eL0nEUrroI6rkM4GMFBWiUphRX\/dnAeBWQM9YjnfmPbrBxPOTRtXpbCrda+sdpzZPX0DDQHe28Y+UOO7q2FyYndoFSyzjhT46LcEEA4NYi902NU9WUMoudNfQ3rbb\/MkUSTA0mTUF+ipgd+2aYlpliLCgd+NJJUFW\/5Gqsx\/Flc+uqsN8xiEZu+s5SSOvnEEi97anRvs064oW1aO2n1nn9OcJWU+ylZn7WEEDhEZj+HEJS4tq8oNI6zCoKsvaeMBM2S9a8PfU9oAC+Cbf\/jE\/Kh1Ic5IpSLpuSXtrUOA86ATcF5BCD1jAUQBJQOH1TET014DjM\/B0blFlpqV+X+qNj15hs4IgW2HKC1\/2c2zV6+PkVg5LQW\/huDJEbGXBVHBEcbr6bvJdQdUKMJLs+gfRnXK89QS99+pk+WC3nvjwwg1cnX0g4QAwFO52wYHN959e3tk242lNEBIwhAKyBc2yue9yRtsN7G4XpJRP7bmRMJ\/inJV84MkwDx8Fg50rtQzgEnufYU2pBv6WSWscJWF3e15bNXK8iFvpAaU8zIwBfi91Pfzs\/Ce\/WalCHQAKeimYYObMGn21HQB4HaaYzGAoOVJ5H+PoLj0C4Rk6dTjLMNC0oKJV8P3pNzps5PmbbZ2nE\/2mCTSfXvIGeqfMKViWrP0V1Kg1kS5EfJRq5Ejus2VVIGiA3qNY5U3utOxjqavHMaKSyeA4BwxXY+kRFnQ==",
+        "vaultKeyID" : "v1_ca2a4fe727faaecf16ecd130a86e0885"
+      },
+      "keyHex" : "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "name" : "roaming-profile-v1",
+      "nonceHex" : "5c5d5e5f6061626364656667",
+      "payload" : {
+        "accountOrder" : [
+          "anthropic-primary"
+        ],
+        "crossProviderFailoverEnabled" : false,
+        "equivalenceOverrides" : [
+          {
+            "action" : "pin",
+            "canonicalModelID" : "gpt-5.5",
+            "classID" : "frontier"
+          }
+        ],
+        "ollamaEndpoints" : [
+          {
+            "baseURL" : "http:\/\/127.0.0.1:11434",
+            "id" : "local",
+            "label" : "Local Ollama",
+            "priority" : 1
+          }
+        ],
+        "providerAccounts" : [
+          {
+            "createdAt" : "2026-05-29T10:00:00Z",
+            "credentialKind" : "bearer",
+            "id" : "anthropic-primary",
+            "identityHint" : "user@example.com",
+            "isDefault" : true,
+            "label" : "Claude Code",
+            "providerID" : "anthropic",
+            "redactedLabel" : "Stored in Mac Keychain",
+            "schemaVersion" : 2,
+            "sortKey" : 0,
+            "sourceDeviceID" : "mac-vector",
+            "status" : "connected",
+            "storageScope" : "device_keychain",
+            "updatedAt" : "2026-05-29T10:05:00Z"
+          }
+        ],
+        "quotaDisplayPreferences" : {
+          "bucketOrders" : {
+            "anthropic" : [
+              "5h",
+              "weekly"
+            ]
+          },
+          "cumulativeAcrossAccounts" : false,
+          "hiddenBuckets" : [
+            "anthropic:daily"
+          ],
+          "percentageDisplayMode" : "remainingPercent",
+          "providerOrder" : [
+            "anthropic",
+            "openai"
+          ],
+          "visibleProviders" : [
+            "anthropic"
+          ]
+        },
+        "routerMode" : "same_model_failover",
+        "schemaVersion" : 1,
+        "sourceDeviceID" : "mac-vector",
+        "updatedAt" : "2026-05-29T10:05:00Z"
+      },
+      "plaintextHex" : "7b226163636f756e744f72646572223a5b22616e7468726f7069632d7072696d617279225d2c2263726f737350726f76696465724661696c6f766572456e61626c6564223a66616c73652c226571756976616c656e63654f7665727269646573223a5b7b22616374696f6e223a2270696e222c2263616e6f6e6963616c4d6f64656c4944223a226770742d352e35222c22636c6173734944223a2266726f6e74696572227d5d2c226f6c6c616d61456e64706f696e7473223a5b7b226261736555524c223a22687474703a5c2f5c2f3132372e302e302e313a3131343334222c226964223a226c6f63616c222c226c6162656c223a224c6f63616c204f6c6c616d61222c227072696f72697479223a317d5d2c2270726f76696465724163636f756e7473223a5b7b22637265617465644174223a22323032362d30352d32395431303a30303a30305a222c2263726564656e7469616c4b696e64223a22626561726572222c226964223a22616e7468726f7069632d7072696d617279222c226964656e7469747948696e74223a2275736572406578616d706c652e636f6d222c22697344656661756c74223a747275652c226c6162656c223a22436c6175646520436f6465222c2270726f76696465724944223a22616e7468726f706963222c2272656461637465644c6162656c223a2253746f72656420696e204d6163204b6579636861696e222c22736368656d6156657273696f6e223a322c22736f72744b6579223a302c22736f757263654465766963654944223a226d61632d766563746f72222c22737461747573223a22636f6e6e6563746564222c2273746f7261676553636f7065223a226465766963655f6b6579636861696e222c22757064617465644174223a22323032362d30352d32395431303a30353a30305a227d5d2c2271756f7461446973706c6179507265666572656e636573223a7b226275636b65744f7264657273223a7b22616e7468726f706963223a5b223568222c227765656b6c79225d7d2c2263756d756c61746976654163726f73734163636f756e7473223a66616c73652c2268696464656e4275636b657473223a5b22616e7468726f7069633a6461696c79225d2c2270657263656e74616765446973706c61794d6f6465223a2272656d61696e696e6750657263656e74222c2270726f76696465724f72646572223a5b22616e7468726f706963222c226f70656e6169225d2c2276697369626c6550726f766964657273223a5b22616e7468726f706963225d7d2c22726f757465724d6f6465223a2273616d655f6d6f64656c5f6661696c6f766572222c22736368656d6156657273696f6e223a312c22736f757263654465766963654944223a226d61632d766563746f72222c22757064617465644174223a22323032362d30352d32395431303a30353a30305a227d",
+      "plaintextUtf8" : "{\"accountOrder\":[\"anthropic-primary\"],\"crossProviderFailoverEnabled\":false,\"equivalenceOverrides\":[{\"action\":\"pin\",\"canonicalModelID\":\"gpt-5.5\",\"classID\":\"frontier\"}],\"ollamaEndpoints\":[{\"baseURL\":\"http:\\\/\\\/127.0.0.1:11434\",\"id\":\"local\",\"label\":\"Local Ollama\",\"priority\":1}],\"providerAccounts\":[{\"createdAt\":\"2026-05-29T10:00:00Z\",\"credentialKind\":\"bearer\",\"id\":\"anthropic-primary\",\"identityHint\":\"user@example.com\",\"isDefault\":true,\"label\":\"Claude Code\",\"providerID\":\"anthropic\",\"redactedLabel\":\"Stored in Mac Keychain\",\"schemaVersion\":2,\"sortKey\":0,\"sourceDeviceID\":\"mac-vector\",\"status\":\"connected\",\"storageScope\":\"device_keychain\",\"updatedAt\":\"2026-05-29T10:05:00Z\"}],\"quotaDisplayPreferences\":{\"bucketOrders\":{\"anthropic\":[\"5h\",\"weekly\"]},\"cumulativeAcrossAccounts\":false,\"hiddenBuckets\":[\"anthropic:daily\"],\"percentageDisplayMode\":\"remainingPercent\",\"providerOrder\":[\"anthropic\",\"openai\"],\"visibleProviders\":[\"anthropic\"]},\"routerMode\":\"same_model_failover\",\"schemaVersion\":1,\"sourceDeviceID\":\"mac-vector\",\"updatedAt\":\"2026-05-29T10:05:00Z\"}",
+      "vaultKeyID" : "v1_ca2a4fe727faaecf16ecd130a86e0885"
+    }
+  ],
   "schema" : "openburnbar.cloudvault.kat.v1",
   "sealBlob" : [
     {

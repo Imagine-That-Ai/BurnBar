@@ -33,6 +33,8 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let observability: Set<BurnBarRPCMethod> = [
         .proxyRouteLogRecent,
         .proxyRouteLogClear,
+        .quotaSignalsRecent,
+        .quotaSignalsClear,
         .perfMeasure
     ]
 

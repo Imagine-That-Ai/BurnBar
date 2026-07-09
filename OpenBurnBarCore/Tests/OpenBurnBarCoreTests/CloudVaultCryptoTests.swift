@@ -158,6 +158,76 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(try CloudVaultCrypto.openPayload(legacy, keyData: key), payload)
     }
 
+    func test_roamingProfilePayloadRoundTripBindsUidAndDomainAAD() throws {
+        let key = Data(repeating: 0x42, count: 32)
+        let updatedAt = Date(timeIntervalSince1970: 1_780_111_222)
+        let payload = RoamingProfilePayload(
+            routerMode: .sameModelFailover,
+            crossProviderFailoverEnabled: false,
+            accountOrder: ["anthropic-primary"],
+            providerAccounts: [
+                RoamingProfileProviderAccount(
+                    id: "anthropic-primary",
+                    providerID: ProviderID(rawValue: "anthropic"),
+                    label: "Claude Code",
+                    identityHint: "user@example.com",
+                    status: .connected,
+                    credentialKind: .bearer,
+                    storageScope: .deviceKeychain,
+                    redactedLabel: "Stored in Mac Keychain",
+                    sourceDeviceID: "mac-1",
+                    isDefault: true,
+                    sortKey: 0,
+                    createdAt: updatedAt.addingTimeInterval(-60),
+                    updatedAt: updatedAt
+                )
+            ],
+            ollamaEndpoints: [
+                RoamingOllamaEndpoint(id: "local", baseURL: "http://127.0.0.1:11434", label: "Local Ollama", priority: 1)
+            ],
+            equivalenceOverrides: [
+                RoamingModelEquivalenceOverride(canonicalModelID: "gpt-5.5", action: .pin, classID: "frontier")
+            ],
+            quotaDisplayPreferences: RoamingQuotaDisplayPreferences(
+                providerOrder: ["anthropic", "openai"],
+                visibleProviders: ["anthropic"],
+                hiddenBuckets: ["anthropic:daily"],
+                bucketOrders: ["anthropic": ["5h", "weekly"]],
+                percentageDisplayMode: "usedPercent",
+                cumulativeAcrossAccounts: true
+            ),
+            updatedAt: updatedAt,
+            sourceDeviceID: "mac-1"
+        )
+
+        let sealed = try CloudVaultCrypto.sealRoamingProfile(payload, keyData: key, uid: "alice")
+
+        XCTAssertEqual(sealed.schemaVersion, CloudVaultCrypto.currentSealedPayloadSchemaVersion)
+        XCTAssertEqual(sealed.aad, try CloudVaultCrypto.roamingProfileAADContext(uid: "alice").stringValue)
+        XCTAssertEqual(sealed.aad?.contains(CloudVaultCrypto.roamingProfileAADDomain), true)
+        XCTAssertEqual(try CloudVaultCrypto.openRoamingProfile(sealed, keyData: key, uid: "alice"), payload)
+        XCTAssertThrowsError(try CloudVaultCrypto.openRoamingProfile(sealed, keyData: key, uid: "bob"))
+    }
+
+    func test_roamingProfilePayloadRejectsSecretLikeMaterialBeforeSealing() throws {
+        let key = Data(repeating: 0x43, count: 32)
+        let payload = RoamingProfilePayload(
+            routerMode: .providerFamilyFailover,
+            crossProviderFailoverEnabled: true,
+            accountOrder: [],
+            providerAccounts: [],
+            ollamaEndpoints: [],
+            equivalenceOverrides: [],
+            quotaDisplayPreferences: RoamingQuotaDisplayPreferences(),
+            updatedAt: Date(timeIntervalSince1970: 1_780_111_222),
+            sourceDeviceID: "Bearer sk-this-should-not-roam-1234567890"
+        )
+
+        XCTAssertThrowsError(try CloudVaultCrypto.sealRoamingProfile(payload, keyData: key, uid: "alice")) { error in
+            XCTAssertTrue(error is RoamingProfilePayloadError)
+        }
+    }
+
     func test_rewrapCloudVaultDocument_resealsTopLevelEnvelopesWithPathBoundAAD() throws {
         let oldKey = Data(repeating: 0x71, count: 32)
         let newKey = Data(repeating: 0x72, count: 32)
