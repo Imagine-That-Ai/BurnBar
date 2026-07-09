@@ -63,7 +63,7 @@ object CommunityLocationResolver {
                             ) { list -> cont.resume(list) }
                         }
                     } else {
-                        @Suppress("DEPRECATION")
+                        @Suppress("DEPRECATION") // reason: Android 12 and older require the synchronous Geocoder API.
                         geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
                     }
                 val address = addresses?.firstOrNull() ?: return@withContext null

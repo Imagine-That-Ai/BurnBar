@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  deriveGeoKeys,
-  populateGeoKeys,
-  canonicalizeCityKey,
-  asciiFold,
-  normalizeGeoKey,
-} from "../community/geo.js";
+import { deriveGeoKeys, populateGeoKeys, canonicalizeCityKey, normalizeGeoKey } from "../community/geo.js";
 
 describe("deriveGeoKeys", () => {
   it("resolves US-CA from America/Los_Angeles + en-US", () => {
@@ -44,31 +38,43 @@ describe("deriveGeoKeys", () => {
 
 describe("populateGeoKeys", () => {
   it("sets countryCode when country tier consented", () => {
-    const profile = populateGeoKeys({}, { countryCode: "US", regionKey: "US-CA" }, {
-      country: true,
-      region: false,
-      city: false,
-    });
+    const profile = populateGeoKeys(
+      {},
+      { countryCode: "US", regionKey: "US-CA" },
+      {
+        country: true,
+        region: false,
+        city: false,
+      },
+    );
     expect(profile.countryCode).toBe("US");
     expect(profile.regionKey).toBeUndefined();
   });
 
   it("sets regionKey when region tier consented", () => {
-    const profile = populateGeoKeys({}, { countryCode: "US", regionKey: "US-CA" }, {
-      country: true,
-      region: true,
-      city: false,
-    });
+    const profile = populateGeoKeys(
+      {},
+      { countryCode: "US", regionKey: "US-CA" },
+      {
+        country: true,
+        region: true,
+        city: false,
+      },
+    );
     expect(profile.countryCode).toBe("US");
     expect(profile.regionKey).toBe("US-CA");
   });
 
   it("omits keys when tier not consented", () => {
-    const profile = populateGeoKeys({}, { countryCode: "US", regionKey: "US-CA" }, {
-      country: false,
-      region: false,
-      city: false,
-    });
+    const profile = populateGeoKeys(
+      {},
+      { countryCode: "US", regionKey: "US-CA" },
+      {
+        country: false,
+        region: false,
+        city: false,
+      },
+    );
     expect(profile.countryCode).toBeUndefined();
     expect(profile.regionKey).toBeUndefined();
   });
@@ -187,9 +193,7 @@ const goldens: Array<{
   countryCode: string;
   regionCode: string;
   expected: string;
-}> = JSON.parse(
-  readFileSync(resolve(__dirname, "../../../tests/fixtures/city-key-goldens.json"), "utf-8"),
-);
+}> = JSON.parse(readFileSync(resolve(__dirname, "../../../tests/fixtures/city-key-goldens.json"), "utf-8"));
 
 describe("city-key-goldens (cross-platform parity)", () => {
   for (const golden of goldens) {

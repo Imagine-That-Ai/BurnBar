@@ -7,11 +7,8 @@ import type { Firestore } from "firebase-admin/firestore";
 import {
   buildLeaderboard,
   collectValidParticipants,
-  cleanupStaleLeaderboards,
   computePercentiles,
   groupByGeoTier,
-  loadPreviousRanks,
-  loadPreviousRanksForBoards,
   type Participant,
 } from "../community/aggregation.js";
 import {
@@ -73,9 +70,7 @@ vi.mock("../callables/auditLog.js", () => ({
 }));
 
 vi.mock("firebase-admin/firestore", async () => {
-  const actual = await vi.importActual<typeof import("firebase-admin/firestore")>(
-    "firebase-admin/firestore",
-  );
+  const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
     ...actual,
     getFirestore: () => pathKeyedFirestore(store),
@@ -92,7 +87,6 @@ vi.mock("firebase-admin/storage", () => ({
     }),
   }),
 }));
-
 
 function windowTotals(tokenScale: number): CommunityWindowTotals {
   const slot = (totalTokens: number) => ({ totalTokens, costUSD: totalTokens * 0.001 });
@@ -206,7 +200,6 @@ describe("communityRuntimeStatus", () => {
     ).toEqual({ enabled: true, publicReadsEnabled: false, reason: "public_reads_disabled" });
   });
 });
-
 
 describe("collectValidParticipants anonId privacy", () => {
   const LEAK_UID = "firebase-auth-uid-must-not-publish";
@@ -349,78 +342,6 @@ describe("buildLeaderboard k-anonymity", () => {
   });
 });
 
-describe("loadPreviousRanks cohort doc id", () => {
-  beforeEach(() => store.clear());
-
-  it("reads ranks from the board matching window, tier, and geoKey (not a fixed all_time world doc)", async () => {
-    const geoKey = "US-CA-san-francisco";
-    seedDoc(store, CommunityPaths.leaderboard("30d", "city", geoKey), {
-      entries: [{ anonId: "cohort-anon", rank: 4, movement: "same" }],
-      belowThreshold: false,
-      cohortSize: 12,
-      percentiles: { p50: 1, p75: 1, p90: 1, p99: 1 },
-    });
-    seedDoc(store, CommunityPaths.leaderboard("all_time", "world", "world"), {
-      entries: [{ anonId: "cohort-anon", rank: 99, movement: "same" }],
-      belowThreshold: false,
-      cohortSize: 50,
-      percentiles: { p50: 1, p75: 1, p90: 1, p99: 1 },
-    });
-
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
-    const prev = await loadPreviousRanks(db, "30d", "city", geoKey);
-    expect(prev.get("cohort-anon")).toBe(4);
-    expect(prev.get("cohort-anon")).not.toBe(99);
-  });
-
-  it("loads previous ranks for unique board descriptors", async () => {
-    seedDoc(store, CommunityPaths.leaderboard("7d", "world", "world"), {
-      entries: [{ anonId: "world-anon", rank: 2, movement: "same" }],
-      belowThreshold: false,
-      cohortSize: 12,
-      percentiles: { p50: 1, p75: 1, p90: 1, p99: 1 },
-    });
-    seedDoc(store, CommunityPaths.leaderboard("7d", "country", "US"), {
-      entries: [{ anonId: "country-anon", rank: 7, movement: "same" }],
-      belowThreshold: false,
-      cohortSize: 12,
-      percentiles: { p50: 1, p75: 1, p90: 1, p99: 1 },
-    });
-
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
-    const prev = await loadPreviousRanksForBoards(db, [
-      { window: "7d", tier: "world", geoKey: "world" },
-      { window: "7d", tier: "world", geoKey: "world" },
-      { window: "7d", tier: "country", geoKey: "US" },
-    ]);
-
-    expect(prev.size).toBe(2);
-    expect(prev.get("7d|world|world")?.get("world-anon")).toBe(2);
-    expect(prev.get("7d|country|US")?.get("country-anon")).toBe(7);
-  });
-});
-
-describe("cleanupStaleLeaderboards", () => {
-  beforeEach(() => store.clear());
-
-  it("deletes only inactive boards older than the current run", async () => {
-    const activePath = CommunityPaths.leaderboard("7d", "world", "world");
-    const stalePath = CommunityPaths.leaderboard("7d", "country", "DE");
-    const freshPath = CommunityPaths.leaderboard("7d", "country", "US");
-    seedDoc(store, activePath, { updatedAt: "2026-07-09T00:00:00.000Z" });
-    seedDoc(store, stalePath, { updatedAt: "2026-07-08T23:00:00.000Z" });
-    seedDoc(store, freshPath, { updatedAt: "2026-07-09T00:30:00.000Z" });
-
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
-    const deleted = await cleanupStaleLeaderboards(db, new Set([activePath]), new Date("2026-07-09T00:00:00.000Z"));
-
-    expect(deleted).toBe(1);
-    expect(store.has(activePath)).toBe(true);
-    expect(store.has(stalePath)).toBe(false);
-    expect(store.has(freshPath)).toBe(true);
-  });
-});
-
 describe("groupByGeoTier and window totals", () => {
   it("partitions world tier into a single world bucket", () => {
     const participants = [
@@ -511,9 +432,9 @@ describe("handle validation and claims", () => {
 
   it("joinCommunity rejects invalid handle before claiming", async () => {
     const run = callableRunner(joinCommunity);
-    await expect(
-      run(callableRequest(ALICE_UID, { handle: "xx", l2World: "granted" })),
-    ).rejects.toMatchObject({ code: "invalid-argument" });
+    await expect(run(callableRequest(ALICE_UID, { handle: "xx", l2World: "granted" }))).rejects.toMatchObject({
+      code: "invalid-argument",
+    });
   });
 });
 

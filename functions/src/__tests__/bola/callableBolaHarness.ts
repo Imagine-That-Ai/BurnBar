@@ -183,22 +183,6 @@ export async function expectCallableDenial(
   expect.fail(`expected callable to reject with ${expectedCode}`);
 }
 
-type EmptyQuery = {
-  where: () => EmptyQuery;
-  limit: () => EmptyQuery;
-  orderBy: () => EmptyQuery;
-  get: () => Promise<{ docs: []; empty: true }>;
-};
-
-function emptyQuery(): EmptyQuery {
-  return {
-    where: () => emptyQuery(),
-    limit: () => emptyQuery(),
-    orderBy: () => emptyQuery(),
-    get: async () => ({ docs: [], empty: true }),
-  };
-}
-
 function isFirestoreDeleteSentinel(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const constructorValue = Reflect.get(value, "constructor");
@@ -235,7 +219,11 @@ function docRefWithParents(
 ): {
   path: string;
   parent: { id: string; parent: { id: string } | null } | null;
-  get: () => Promise<{ exists: boolean; data: () => Record<string, unknown> | undefined; get: (field: string) => unknown }>;
+  get: () => Promise<{
+    exists: boolean;
+    data: () => Record<string, unknown> | undefined;
+    get: (field: string) => unknown;
+  }>;
   set: (data: Record<string, unknown>) => Promise<void>;
   update: (data: Record<string, unknown>) => Promise<void>;
   delete: () => Promise<void>;
@@ -243,8 +231,7 @@ function docRefWithParents(
   const segments = path.split("/");
   const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
   const parentSegments = parentPath?.split("/") ?? [];
-  const grandparentPath =
-    parentSegments.length > 1 ? parentSegments.slice(0, -1).join("/") : null;
+  const grandparentPath = parentSegments.length > 1 ? parentSegments.slice(0, -1).join("/") : null;
 
   const parent =
     parentPath === null

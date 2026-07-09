@@ -20,18 +20,13 @@
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import {
-  getFirestore,
-  type DocumentReference,
-  type DocumentSnapshot,
-  type Firestore,
-} from "firebase-admin/firestore";
+import { getFirestore, type DocumentReference, type DocumentSnapshot, type Firestore } from "firebase-admin/firestore";
 import { runScheduledJob } from "../scheduledOps.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { logInfo, logWarn } from "../logging.js";
 import { recheckConsent, COMMUNITY_K_THRESHOLD, COMMUNITY_SCHEMA_VERSION, CommunityPaths } from "./consent.js";
 import { normalizeGeoKey } from "./geo.js";
-import { communityRuntimeStatus, publishCommunityRuntimeStatus } from "./rollout.js";
+import { publishCommunityRuntimeStatus } from "./rollout.js";
 import type { CommunityShareSnapshotDoc, CommunityUsageTotal, CommunityWindowTotals } from "./shareTypes.js";
 import type {
   LeaderboardEntry,
@@ -135,7 +130,7 @@ export const cleanupStaleCommunityLeaderboards = onSchedule(
  * Pure aggregation pipeline — exported for test injection. Takes a Firestore
  * instance, reads all snapshots, rechecks consent, computes boards, writes them.
  */
-export async function runAggregation(db: Firestore): Promise<void> {
+async function runAggregation(db: Firestore): Promise<void> {
   const runStartedAt = new Date();
   const status = await publishCommunityRuntimeStatus(db);
   if (!status.enabled) {
@@ -211,9 +206,10 @@ function parseUsageTotal(value: unknown): CommunityUsageTotal | null {
 
 function parseWindowTotals(value: unknown): CommunityWindowTotals | null {
   if (!isRecord(value)) return null;
-  const parsed = Object.fromEntries(
-    WINDOWS.map((window) => [window, parseUsageTotal(value[window])]),
-  ) as Record<WindowKey, CommunityUsageTotal | null>;
+  const parsed = Object.fromEntries(WINDOWS.map((window) => [window, parseUsageTotal(value[window])])) as Record<
+    WindowKey,
+    CommunityUsageTotal | null
+  >;
   if (WINDOWS.some((window) => parsed[window] === null)) return null;
 
   for (let i = 1; i < WINDOWS.length; i++) {
@@ -256,10 +252,7 @@ function freshUpdatedAt(value: unknown, nowMs: number): string | null {
   return new Date(parsed).toISOString();
 }
 
-export function parseCommunityShareSnapshotDoc(
-  raw: unknown,
-  nowMs: number = Date.now(),
-): CommunityShareSnapshotDoc | null {
+function parseCommunityShareSnapshotDoc(raw: unknown, nowMs: number = Date.now()): CommunityShareSnapshotDoc | null {
   if (!isRecord(raw)) return null;
   if (raw.schemaVersion !== COMMUNITY_SCHEMA_VERSION) return null;
 
@@ -299,10 +292,6 @@ export function parseCommunityShareSnapshotDoc(
   if (raw.revoked === true) out.revoked = true;
 
   return out;
-}
-
-export function validateCommunityShareSnapshotDoc(raw: unknown, nowMs: number = Date.now()): boolean {
-  return parseCommunityShareSnapshotDoc(raw, nowMs) !== null;
 }
 
 /**
@@ -386,7 +375,10 @@ function geoKeyForTier(p: Participant, tier: Tier): string | null {
 }
 
 /** Resolve the window total for a participant at a given window. */
-function windowTotal(p: Participant, window: WindowKey): {
+function windowTotal(
+  p: Participant,
+  window: WindowKey,
+): {
   totalTokens: number;
   costUSD: number;
 } {
@@ -535,11 +527,9 @@ function rankMapFromSnapshot(snapshot: DocumentSnapshot): Map<string, number> {
   return rankMap;
 }
 
-async function getAllDocuments(
-  db: Firestore,
-  refs: DocumentReference[],
-): Promise<DocumentSnapshot[]> {
-  const getAll = (db as Firestore & { getAll?: (...refsToRead: DocumentReference[]) => Promise<DocumentSnapshot[]> }).getAll;
+async function getAllDocuments(db: Firestore, refs: DocumentReference[]): Promise<DocumentSnapshot[]> {
+  const getAll = (db as Firestore & { getAll?: (...refsToRead: DocumentReference[]) => Promise<DocumentSnapshot[]> })
+    .getAll;
   if (typeof getAll === "function") {
     const docs: DocumentSnapshot[] = [];
     for (let i = 0; i < refs.length; i += MAX_BATCH_GET_DOCS) {
@@ -651,4 +641,4 @@ export {
   loadPreviousRanksForBoards,
   cleanupStaleLeaderboards,
 };
-export type { Participant, WindowKey, Tier };
+export type { Participant };

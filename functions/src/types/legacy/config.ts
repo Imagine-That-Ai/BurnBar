@@ -59,7 +59,11 @@ export interface ProviderAdapter {
   testCredential(credential: string, accountContext?: ProviderAccountConnectContext): Promise<CredentialTestResult>;
 
   /** Fetch current quota using the decrypted credential. */
-  fetchQuota(credential: string, sourceId: string, accountContext?: ProviderAccountConnectContext): Promise<QuotaRefreshResult>;
+  fetchQuota(
+    credential: string,
+    sourceId: string,
+    accountContext?: ProviderAccountConnectContext,
+  ): Promise<QuotaRefreshResult>;
 }
 
 // ---------------------------------------------------------------------------

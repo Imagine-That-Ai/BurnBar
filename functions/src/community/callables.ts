@@ -51,8 +51,21 @@ const HANDLE_PATTERN = /^[a-zA-Z0-9_-]+$/;
  * corrections and post-hoc review. Case-insensitive substring matching.
  */
 const PROFANITY_BLOCKLIST = [
-  "admin", "root", "system", "burnbar", "support", "official", "moderator",
-  "fuck", "shit", "dick", "cunt", "bitch", "nigger", "nazi", "faggot",
+  "admin",
+  "root",
+  "system",
+  "burnbar",
+  "support",
+  "official",
+  "moderator",
+  "fuck",
+  "shit",
+  "dick",
+  "cunt",
+  "bitch",
+  "nigger",
+  "nazi",
+  "faggot",
 ] as const;
 
 export function isValidHandle(handle: string): boolean {
@@ -248,6 +261,66 @@ interface UpdateProfileInput {
   cityKey?: string;
 }
 
+type CommunityTierGrants = Record<string, string>;
+
+function communityTierGrants(consent: Record<string, unknown>): CommunityTierGrants {
+  const tiers = consent.l2Tiers;
+  return tiers && typeof tiers === "object" ? (tiers as CommunityTierGrants) : {};
+}
+
+async function applyProfileHandleUpdate(
+  db: Firestore,
+  uid: string,
+  handle: string | undefined,
+  oldHandleLower: string | null,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  if (handle === undefined) return;
+
+  const trimmed = handle.trim();
+  if (!trimmed) {
+    if (oldHandleLower) await claimHandleRelease(db, uid, oldHandleLower);
+    updates.handle = null;
+    updates.handleLower = null;
+    return;
+  }
+
+  if (!isValidHandle(trimmed)) {
+    throw new HttpsError("invalid-argument", "Handle must be 3-24 chars, alphanumeric + _-.");
+  }
+
+  const newLower = trimmed.toLowerCase();
+  await claimHandleTransaction(db, uid, newLower, oldHandleLower);
+  updates.handle = trimmed;
+  updates.handleLower = newLower;
+}
+
+function setNormalizedGeoUpdate(
+  updates: Record<string, unknown>,
+  field: "countryCode" | "regionKey" | "cityKey",
+  raw: string | undefined,
+  granted: boolean,
+): void {
+  if (raw === undefined || !granted) return;
+  updates[field] = normalizeGeoKey(raw) ?? null;
+}
+
+function applyProfileGeoUpdates(
+  data: UpdateProfileInput,
+  tiers: CommunityTierGrants,
+  updates: Record<string, unknown>,
+): void {
+  if (data.timezone || data.locale) {
+    const geo = deriveGeoKeys(data.timezone ?? "", data.locale ?? "");
+    if (geo.countryCode && tiers.country === "granted") updates.countryCode = geo.countryCode;
+    if (geo.regionKey && tiers.region === "granted") updates.regionKey = geo.regionKey;
+  }
+
+  setNormalizedGeoUpdate(updates, "countryCode", data.countryCode, tiers.country === "granted");
+  setNormalizedGeoUpdate(updates, "regionKey", data.regionKey, tiers.region === "granted");
+  setNormalizedGeoUpdate(updates, "cityKey", data.cityKey, tiers.city === "granted");
+}
+
 /**
  * Updates the community profile. Handle changes go through uniqueness +
  * profanity validation. Geo key updates require the corresponding tier consent.
@@ -262,64 +335,18 @@ export const updateCommunityProfile = onCallProduction(
 
     const data = request.data ?? {};
     const db = getFirestore();
-
-    // Verify consent exists.
     const consentDoc = await db.doc(CommunityPaths.consent(uid)).get();
     if (!consentDoc.exists) {
       throw new HttpsError("failed-precondition", "Join the community before updating your profile.");
     }
 
-    const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
-
-    // Read current profile to get old handle for atomic release.
     const profileSnap = await db.doc(CommunityPaths.profile(uid)).get();
     const oldProfile = profileSnap.data();
     const oldHandleLower = typeof oldProfile?.handleLower === "string" ? oldProfile.handleLower : null;
+    const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
 
-    if (data.handle !== undefined) {
-      const trimmed = data.handle.trim();
-      if (trimmed) {
-        if (!isValidHandle(trimmed)) {
-          throw new HttpsError("invalid-argument", "Handle must be 3-24 chars, alphanumeric + _-.");
-        }
-        const newLower = trimmed.toLowerCase();
-        // Atomically claim new + release old in one transaction.
-        await claimHandleTransaction(db, uid, newLower, oldHandleLower);
-        updates.handle = trimmed;
-        updates.handleLower = newLower;
-      } else {
-        // Clear handle → fully anonymous. Release the claim.
-        if (oldHandleLower) {
-          await claimHandleRelease(db, uid, oldHandleLower);
-        }
-        updates.handle = null;
-        updates.handleLower = null;
-      }
-    }
-
-    // Geo key updates are gated by consent — verify before allowing.
-    const consent = consentDoc.data() ?? {};
-    const tiers = (consent.l2Tiers ?? {}) as Record<string, string>;
-
-    // Server-side geo re-derivation from timezone/locale when provided.
-    if (data.timezone || data.locale) {
-      const geo = deriveGeoKeys(data.timezone ?? "", data.locale ?? "");
-      if (geo.countryCode && tiers.country === "granted") {
-        updates.countryCode = geo.countryCode;
-      }
-      if (geo.regionKey && tiers.region === "granted") {
-        updates.regionKey = geo.regionKey;
-      }
-    }
-    if (data.countryCode !== undefined && tiers.country === "granted") {
-      updates.countryCode = normalizeGeoKey(data.countryCode) ?? null;
-    }
-    if (data.regionKey !== undefined && tiers.region === "granted") {
-      updates.regionKey = normalizeGeoKey(data.regionKey) ?? null;
-    }
-    if (data.cityKey !== undefined && tiers.city === "granted") {
-      updates.cityKey = normalizeGeoKey(data.cityKey) ?? null;
-    }
+    await applyProfileHandleUpdate(db, uid, data.handle, oldHandleLower, updates);
+    applyProfileGeoUpdates(data, communityTierGrants(consentDoc.data() ?? {}), updates);
 
     await firestoreWithResilience("community-profile-update", () =>
       db.doc(CommunityPaths.profile(uid)).set(updates, { merge: true }),
@@ -352,9 +379,7 @@ export const revokeCommunityParticipation = onCallProduction(
     // Read the profile first to get the handle for claim release.
     const profileSnap = await db.doc(CommunityPaths.profile(uid)).get();
     const oldHandleLower =
-      typeof profileSnap.data()?.handleLower === "string"
-        ? (profileSnap.data()!.handleLower as string)
-        : null;
+      typeof profileSnap.data()?.handleLower === "string" ? (profileSnap.data()!.handleLower as string) : null;
 
     // Required audit event first — if this fails, no revocation mutation runs.
     await appendAuditEventRequired(uid, {
@@ -398,7 +423,6 @@ export const revokeCommunityParticipation = onCallProduction(
     if (oldHandleLower) {
       await claimHandleRelease(db, uid, oldHandleLower);
     }
-
 
     logInfo({ event: "community_revoke", uid_prefix: uid.slice(0, 8) });
 

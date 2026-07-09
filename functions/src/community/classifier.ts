@@ -29,7 +29,7 @@ export type ModelPurposeCategory =
   | "orchestration"
   | "other";
 
-export const PURPOSE_CATEGORIES: readonly ModelPurposeCategory[] = [
+const PURPOSE_CATEGORIES: readonly ModelPurposeCategory[] = [
   "ui",
   "backend",
   "logic",
@@ -69,7 +69,7 @@ export interface PurposeCorrection {
 }
 
 /** Classification result with confidence. */
-export interface ClassificationResult {
+interface ClassificationResult {
   category: ModelPurposeCategory;
   /** Confidence score (0..1) — the winning category's share of total signal weight. */
   confidence: number;
@@ -127,27 +127,68 @@ const FILE_EXTENSION_MAP: Record<string, ModelPurposeCategory> = {
 /** Keyword → category mapping for session title/summary keywords. */
 const KEYWORD_MAP: Record<string, ModelPurposeCategory> = {
   // UI
-  ui: "ui", design: "ui", frontend: "ui", layout: "ui", view: "ui", button: "ui",
-  animation: "ui", theme: "ui", color: "ui", responsive: "ui", accessibility: "ui",
+  ui: "ui",
+  design: "ui",
+  frontend: "ui",
+  layout: "ui",
+  view: "ui",
+  button: "ui",
+  animation: "ui",
+  theme: "ui",
+  color: "ui",
+  responsive: "ui",
+  accessibility: "ui",
   // Backend
-  api: "backend", server: "backend", database: "backend", migration: "backend",
-  endpoint: "backend", auth: "backend", deploy: "backend", docker: "backend",
-  kubernetes: "backend", grpc: "backend",
+  api: "backend",
+  server: "backend",
+  database: "backend",
+  migration: "backend",
+  endpoint: "backend",
+  auth: "backend",
+  deploy: "backend",
+  docker: "backend",
+  kubernetes: "backend",
+  grpc: "backend",
   // Logic
-  refactor: "logic", algorithm: "logic", function: "logic", type: "logic",
-  interface: "logic", state: "logic", model: "logic", parse: "logic",
+  refactor: "logic",
+  algorithm: "logic",
+  function: "logic",
+  type: "logic",
+  interface: "logic",
+  state: "logic",
+  model: "logic",
+  parse: "logic",
   // Writing
-  docs: "writing", documentation: "writing", readme: "writing", blog: "writing",
-  article: "writing", essay: "writing", summary: "writing",
+  docs: "writing",
+  documentation: "writing",
+  readme: "writing",
+  blog: "writing",
+  article: "writing",
+  essay: "writing",
+  summary: "writing",
   // Research
-  research: "research", search: "research", analyze: "research", data: "research",
-  benchmark: "research", evaluate: "research",
+  research: "research",
+  search: "research",
+  analyze: "research",
+  data: "research",
+  benchmark: "research",
+  evaluate: "research",
   // Debugging
-  bug: "debugging", error: "debugging", fix: "debugging", crash: "debugging",
-  stacktrace: "debugging", debug: "debugging", test: "debugging", fail: "debugging",
+  bug: "debugging",
+  error: "debugging",
+  fix: "debugging",
+  crash: "debugging",
+  stacktrace: "debugging",
+  debug: "debugging",
+  test: "debugging",
+  fail: "debugging",
   // Orchestration
-  plan: "orchestration", workflow: "orchestration", pipeline: "orchestration",
-  agent: "orchestration", automate: "orchestration", schedule: "orchestration",
+  plan: "orchestration",
+  workflow: "orchestration",
+  pipeline: "orchestration",
+  agent: "orchestration",
+  automate: "orchestration",
+  schedule: "orchestration",
   mission: "orchestration",
 };
 

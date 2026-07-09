@@ -18,13 +18,15 @@ import { firestoreWithResilience } from "../resilienceHelpers.js";
 import type { EnvConfig } from "../types.js";
 import { CommunityPaths } from "./consent.js";
 
-export interface CommunityRuntimeStatus {
+interface CommunityRuntimeStatus {
   enabled: boolean;
   publicReadsEnabled: boolean;
   reason: "enabled" | "kill_switch" | "public_reads_disabled";
 }
 
-export function communityRuntimeStatus(config: Pick<EnvConfig, "communityKillSwitch" | "communityPublicReadsEnabled"> = getConfig()): CommunityRuntimeStatus {
+export function communityRuntimeStatus(
+  config: Pick<EnvConfig, "communityKillSwitch" | "communityPublicReadsEnabled"> = getConfig(),
+): CommunityRuntimeStatus {
   if (config.communityKillSwitch) {
     return { enabled: false, publicReadsEnabled: false, reason: "kill_switch" };
   }

@@ -58,6 +58,10 @@ export const AUTH_ONLY_CALLABLES = [
   "backfillPrivacyPlaintext",
   "scanLegacyPlaintextArtifacts",
   "getProfileAvatarDownloadUrl",
+  "joinCommunity",
+  "updateCommunityProfile",
+  "revokeCommunityParticipation",
+  "exportLookingGlassBundle",
 ] as const;
 
 export const PLATFORM_TRIGGER_ENDPOINTS = [
@@ -83,6 +87,8 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "refreshAllProviderQuotas",
   "refreshModelLandscapeBenchmarks",
   "anchorAuditLogHeads",
+  "aggregateCommunityLeaderboards",
+  "cleanupStaleCommunityLeaderboards",
   "latestRouterRundown",
   "reconcileHostedEntitlementsDaily",
   "backfillPrivacyPlaintextScheduled",

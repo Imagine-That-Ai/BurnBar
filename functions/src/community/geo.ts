@@ -13,7 +13,7 @@
 import type { CommunityProfileDoc } from "../types/generated/community.js";
 
 /** Result of locale/timezone-derived geography resolution. */
-export interface GeoKeys {
+interface GeoKeys {
   /** ISO 3166-1 alpha-2 country code (e.g. "US", "GB", "JP"). */
   countryCode?: string;
   /** Region/state key: "{countryCode}-{regionCode}" (e.g. "US-CA", "GB-ENG"). */
@@ -33,36 +33,82 @@ export interface GeoKeys {
  */
 const TZ_TO_COUNTRY: Record<string, string> = {
   // North America
-  "America/New_York": "US", "America/Chicago": "US", "America/Denver": "US",
-  "America/Los_Angeles": "US", "America/Phoenix": "US", "America/Anchorage": "US",
-  "Pacific/Honolulu": "US", "America/Toronto": "CA", "America/Vancouver": "CA",
-  "America/Halifax": "CA", "America/Edmonton": "CA", "America/Winnipeg": "CA",
-  "America/Mexico_City": "MX", "America/Cancun": "MX",
+  "America/New_York": "US",
+  "America/Chicago": "US",
+  "America/Denver": "US",
+  "America/Los_Angeles": "US",
+  "America/Phoenix": "US",
+  "America/Anchorage": "US",
+  "Pacific/Honolulu": "US",
+  "America/Toronto": "CA",
+  "America/Vancouver": "CA",
+  "America/Halifax": "CA",
+  "America/Edmonton": "CA",
+  "America/Winnipeg": "CA",
+  "America/Mexico_City": "MX",
+  "America/Cancun": "MX",
   // South America
-  "America/Sao_Paulo": "BR", "America/Argentina/Buenos_Aires": "AR",
-  "America/Santiago": "CL", "America/Bogota": "CO", "America/Lima": "PE",
+  "America/Sao_Paulo": "BR",
+  "America/Argentina/Buenos_Aires": "AR",
+  "America/Santiago": "CL",
+  "America/Bogota": "CO",
+  "America/Lima": "PE",
   // Europe
-  "Europe/London": "GB", "Europe/Dublin": "IE", "Europe/Paris": "FR",
-  "Europe/Berlin": "DE", "Europe/Madrid": "ES", "Europe/Italy": "IT",
-  "Europe/Rome": "IT", "Europe/Amsterdam": "NL", "Europe/Brussels": "BE",
-  "Europe/Vienna": "AT", "Europe/Zurich": "CH", "Europe/Stockholm": "SE",
-  "Europe/Oslo": "NO", "Europe/Copenhagen": "DK", "Europe/Helsinki": "FI",
-  "Europe/Warsaw": "PL", "Europe/Prague": "CZ", "Europe/Budapest": "HU",
-  "Europe/Lisbon": "PT", "Europe/Athens": "GR", "Europe/Istanbul": "TR",
-  "Europe/Moscow": "RU", "Europe/Kiev": "UA", "Europe/Kyiv": "UA",
+  "Europe/London": "GB",
+  "Europe/Dublin": "IE",
+  "Europe/Paris": "FR",
+  "Europe/Berlin": "DE",
+  "Europe/Madrid": "ES",
+  "Europe/Italy": "IT",
+  "Europe/Rome": "IT",
+  "Europe/Amsterdam": "NL",
+  "Europe/Brussels": "BE",
+  "Europe/Vienna": "AT",
+  "Europe/Zurich": "CH",
+  "Europe/Stockholm": "SE",
+  "Europe/Oslo": "NO",
+  "Europe/Copenhagen": "DK",
+  "Europe/Helsinki": "FI",
+  "Europe/Warsaw": "PL",
+  "Europe/Prague": "CZ",
+  "Europe/Budapest": "HU",
+  "Europe/Lisbon": "PT",
+  "Europe/Athens": "GR",
+  "Europe/Istanbul": "TR",
+  "Europe/Moscow": "RU",
+  "Europe/Kiev": "UA",
+  "Europe/Kyiv": "UA",
   // Asia
-  "Asia/Tokyo": "JP", "Asia/Shanghai": "CN", "Asia/Hong_Kong": "HK",
-  "Asia/Taipei": "TW", "Asia/Singapore": "SG", "Asia/Seoul": "KR",
-  "Asia/Bangkok": "TH", "Asia/Jakarta": "ID", "Asia/Manila": "PH",
-  "Asia/Kuala_Lumpur": "MY", "Asia/Ho_Chi_Minh": "VN", "Asia/Kolkata": "IN",
-  "Asia/Karachi": "PK", "Asia/Dubai": "AE", "Asia/Tehran": "IR",
-  "Asia/Jerusalem": "IL", "Asia/Riyadh": "SA",
+  "Asia/Tokyo": "JP",
+  "Asia/Shanghai": "CN",
+  "Asia/Hong_Kong": "HK",
+  "Asia/Taipei": "TW",
+  "Asia/Singapore": "SG",
+  "Asia/Seoul": "KR",
+  "Asia/Bangkok": "TH",
+  "Asia/Jakarta": "ID",
+  "Asia/Manila": "PH",
+  "Asia/Kuala_Lumpur": "MY",
+  "Asia/Ho_Chi_Minh": "VN",
+  "Asia/Kolkata": "IN",
+  "Asia/Karachi": "PK",
+  "Asia/Dubai": "AE",
+  "Asia/Tehran": "IR",
+  "Asia/Jerusalem": "IL",
+  "Asia/Riyadh": "SA",
   // Oceania
-  "Australia/Sydney": "AU", "Australia/Melbourne": "AU", "Australia/Brisbane": "AU",
-  "Australia/Perth": "AU", "Pacific/Auckland": "NZ",
+  "Australia/Sydney": "AU",
+  "Australia/Melbourne": "AU",
+  "Australia/Brisbane": "AU",
+  "Australia/Perth": "AU",
+  "Pacific/Auckland": "NZ",
   // Africa
-  "Africa/Cairo": "EG", "Africa/Lagos": "NG", "Africa/Johannesburg": "ZA",
-  "Africa/Nairobi": "KE", "Africa/Casablanca": "MA", "Africa/Accra": "GH",
+  "Africa/Cairo": "EG",
+  "Africa/Lagos": "NG",
+  "Africa/Johannesburg": "ZA",
+  "Africa/Nairobi": "KE",
+  "Africa/Casablanca": "MA",
+  "Africa/Accra": "GH",
 };
 
 /**
@@ -71,12 +117,22 @@ const TZ_TO_COUNTRY: Record<string, string> = {
  * Missing zones return undefined (region tier falls back to country tier).
  */
 const TZ_TO_REGION: Record<string, string> = {
-  "America/New_York": "US-NY", "America/Chicago": "US-IL", "America/Denver": "US-CO",
-  "America/Los_Angeles": "US-CA", "America/Phoenix": "US-AZ", "America/Anchorage": "US-AK",
-  "Pacific/Honolulu": "US-HI", "America/Toronto": "CA-ON", "America/Vancouver": "CA-BC",
-  "America/Halifax": "CA-NS", "America/Edmonton": "CA-AB", "America/Winnipeg": "CA-MB",
-  "Australia/Sydney": "AU-NSW", "Australia/Melbourne": "AU-VIC",
-  "Australia/Brisbane": "AU-QLD", "Australia/Perth": "AU-WA",
+  "America/New_York": "US-NY",
+  "America/Chicago": "US-IL",
+  "America/Denver": "US-CO",
+  "America/Los_Angeles": "US-CA",
+  "America/Phoenix": "US-AZ",
+  "America/Anchorage": "US-AK",
+  "Pacific/Honolulu": "US-HI",
+  "America/Toronto": "CA-ON",
+  "America/Vancouver": "CA-BC",
+  "America/Halifax": "CA-NS",
+  "America/Edmonton": "CA-AB",
+  "America/Winnipeg": "CA-MB",
+  "Australia/Sydney": "AU-NSW",
+  "Australia/Melbourne": "AU-VIC",
+  "Australia/Brisbane": "AU-QLD",
+  "Australia/Perth": "AU-WA",
 };
 
 // ---------------------------------------------------------------------------
@@ -186,11 +242,7 @@ export function normalizeGeoKey(raw: string | undefined): string | undefined {
  * @param regionCode ISO 3166-2 subdivision code WITHOUT the country prefix
  *                   (e.g. "CA" not "US-CA").
  */
-export function canonicalizeCityKey(
-  cityName: string,
-  countryCode: string,
-  regionCode: string,
-): string {
+export function canonicalizeCityKey(cityName: string, countryCode: string, regionCode: string): string {
   const country = countryCode.trim().toUpperCase();
   let region = regionCode.trim().toUpperCase();
   if (region.startsWith(`${country}-`)) {
@@ -262,16 +314,14 @@ const NON_DECOMPOSABLE: Record<string, string> = {
   "\u0165": "t", // ť
 };
 
-export function asciiFold(input: string): string {
+function asciiFold(input: string): string {
   // Step 1: replace non-decomposable characters BEFORE NFD.
   let out = input;
   for (const [from, to] of Object.entries(NON_DECOMPOSABLE)) {
     out = out.split(from).join(to);
   }
   // Step 2: NFD normalize + strip combining marks.
-  return out
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+  return out.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 /**
@@ -284,7 +334,7 @@ export function asciiFold(input: string): string {
  *   4. Strip leading/trailing "-"
  *   5. Truncate to 40 chars (keeps doc IDs reasonable)
  */
-export function slugifyCity(cityName: string): string {
+function slugifyCity(cityName: string): string {
   return asciiFold(cityName)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")

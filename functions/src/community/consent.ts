@@ -25,14 +25,11 @@ export const COMMUNITY_K_THRESHOLD = 10;
 /** Schema version for community documents. */
 export const COMMUNITY_SCHEMA_VERSION = 1;
 
-/** Tri-state consent values as stored in Firestore. */
-type ConsentTriState = "unset" | "granted" | "declined";
-
 /**
  * Normalized consent snapshot after server-side recheck. Every boolean is
  * false unless the persisted doc explicitly grants at that level / tier.
  */
-export interface CommunityConsentSnapshot {
+interface CommunityConsentSnapshot {
   /** L1 — local-only analytics (never read server-side, but tracked). */
   l1Analytics: boolean;
   /** L2 — any geography tier opted in. */
