@@ -72,8 +72,11 @@ FORBIDDEN_TOKEN_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b\w*DemoHost\w*\b"), "DemoHost"),
     (re.compile(r"\bMockAttestationProducer\b"), "MockAttestationProducer"),
     (re.compile(r"\bdev-host\b", re.IGNORECASE), "dev-host"),
-    # Stub* production substitutes (StubCliStream, SurfaceStubPage, StubFirebase…).
-    (re.compile(r"\bStub[A-Z]\w*\b|\bSurfaceStub\w*\b"), "Stub"),
+    # Stub production substitutes: bare Stub type, Stub*, IStub*, SurfaceStub*.
+    # Bare "Stub" is intentional — class Stub / type Stub is a false-green smell
+    # on Real rows. Does not match Stubborn (capital after Stub required for compounds;
+    # bare \bStub\b still matches identifier Stub only).
+    (re.compile(r"\bStub\b|\bStub[A-Z]\w*\b|\bIStub\w*\b|\bSurfaceStub\w*\b"), "Stub"),
     (
         re.compile(r"\bSettingsPlaceholderPage\b|\bPlaceholderCard\b|\bPLACEHOLDER\b"),
         "Placeholder",

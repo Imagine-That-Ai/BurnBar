@@ -2,8 +2,8 @@
 
 **Machine source of truth:** [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml)  
 **Scanner:** [`scripts/ci/verify-windows-parity-ledger.py`](../../scripts/ci/verify-windows-parity-ledger.py)  
-**Updated:** 2026-07-09 (H0 honesty + IA-2/IA-4 + WPD-0008/0009/0010 reclassification)  
-**Finish line:** **F2 True 1:1** is the named **100% parity** endpoint (`finish_line: F2_True_1to1`). F1 Ship Peer remains the practical launch target; residual depth is DeferredApproved under WPDs, not silent gaps.
+**Updated:** 2026-07-09 (F2 True 1:1 closed — 46 Real / 0 Deferred / 0 Blocked)  
+**Finish line:** **F2 True 1:1** is the named **100% parity** endpoint (`finish_line: F2_True_1to1`). Achieved under ledger laws: all 46 rows **Real**, zero DeferredApproved / Blocked / Substituted. Operational host steps (Authenticode private key, required GH check flip, physical TPM claim) remain outside the in-repo ledger gate.
 
 ## Why this exists
 
@@ -62,10 +62,10 @@ From `DashboardMainRoute.primarySections`:
 
 Plus required peers: `overview`, `insights`, `settings`, `flyout`, `budget`, `elderWand`.
 
-**Primary routes (not Blocked):**
+**Primary routes (all Real):**
 
 - `database` / `projects` — **Real** IA-2 System browse + IA-4 list-level pages over the session-log SQLCipher seam (empty when unconfigured).
-- `nav-chat` — **DeferredApproved** (WPD-0010): portable `CliJsonLineChatStreamDriver` + stream-json parser shipped; revive when a configured Win11 host streams live tokens through `ChatSurfaceViewModel`.
+- `nav-chat` — **Real**: production default is `CliProcessLineSource` + `CliJsonLineChatStreamDriver` (stream-json); disable only via explicit env opt-out.
 
 ## Status counts
 

@@ -66,7 +66,7 @@ export function ChatWorkspacePanel({
   const hasActiveTranscript = Boolean(selectedThread) || messages.length > 0 || streaming;
 
   return (
-    <>
+    <div className="chat-workspace" data-testid="chat-workspace">
       <ChatToolbar
         thread={selectedThread}
         gatewayHint={gatewayHint}
@@ -75,7 +75,7 @@ export function ChatWorkspacePanel({
         onBackendChange={onBackendChange}
         onNewChat={onNewChat}
       />
-      <div className="chat-workspace">
+      <div className="chat-workspace-body">
         <ThreadRail
           threads={threads}
           selectedId={selectedId}
@@ -97,7 +97,12 @@ export function ChatWorkspacePanel({
               streamError={streamError}
             />
           ) : (
-            (mainFallback ?? <p className="chat-empty">Select a thread from the rail.</p>)
+            (mainFallback ?? (
+              <div className="chat-empty">
+                <p className="chat-empty-title">No conversation selected</p>
+                <p className="chat-empty-body">Start a new chat or pick a thread from the rail.</p>
+              </div>
+            ))
           )}
           <Composer
             backend={backend}
@@ -109,6 +114,6 @@ export function ChatWorkspacePanel({
           />
         </div>
       </div>
-    </>
+    </div>
   );
 }

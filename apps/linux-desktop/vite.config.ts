@@ -15,6 +15,10 @@ export default defineConfig({
   envPrefix: ['VITE_', 'TAURI_'],
   resolve: {
     alias: {
+      '@openburnbar/design-tokens/css/pensieve.css': fileURLToPath(
+        new URL('../../packages/design-tokens/dist/css/pensieve.css', import.meta.url)
+      ),
+      '@openburnbar/design-tokens': fileURLToPath(new URL('../../packages/design-tokens', import.meta.url)),
       '@openburnbar/entitlements': fileURLToPath(new URL('../../packages/entitlements/src/index.ts', import.meta.url)),
       '@openburnbar/gl-engine': fileURLToPath(new URL('../../packages/gl-engine/src', import.meta.url))
     }

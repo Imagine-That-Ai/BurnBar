@@ -182,8 +182,8 @@ export function ChatSurface() {
   }
 
   return (
-    <div className="chat-surface">
-      <p className="muted chat-provenance">Source: {provenance}</p>
+    <div className="chat-surface surface-bleed" data-surface="chat">
+      <p className="sr-only">Source: {provenance}</p>
       <p className="sr-only" aria-live="polite">
         {loading ? 'Loading threads' : `${threads.length} thread${threads.length === 1 ? '' : 's'}`}
       </p>

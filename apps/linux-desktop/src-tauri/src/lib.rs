@@ -85,12 +85,27 @@ struct IntegrationsStatusPayload {
     integrations: Vec<IntegrationStatusRow>,
 }
 
-fn linux_support_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        let trimmed = xdg.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed).join("openburnbar");
+/// First non-empty trimmed env value among the given keys (VAL-PATH-001 parity with TS/Swift).
+fn first_non_empty_env(keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
         }
+    }
+    None
+}
+
+fn linux_support_dir() -> PathBuf {
+    if let Some(override_dir) =
+        first_non_empty_env(&["OPENBURNBAR_DAEMON_SUPPORT_DIR", "BURNBAR_DAEMON_SUPPORT_DIR"])
+    {
+        return PathBuf::from(override_dir);
+    }
+    if let Some(xdg) = first_non_empty_env(&["XDG_DATA_HOME"]) {
+        return PathBuf::from(xdg).join("openburnbar");
     }
     std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -99,23 +114,59 @@ fn linux_support_dir() -> PathBuf {
 }
 
 fn linux_socket_path() -> PathBuf {
-    if let Ok(override_path) = std::env::var("OPENBURNBAR_SOCKET_PATH") {
-        let trimmed = override_path.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
-        }
+    if let Some(override_path) = first_non_empty_env(&[
+        "OPENBURNBAR_SOCKET_PATH",
+        "OPENBURNBAR_DAEMON_SOCKET_PATH",
+        "BURNBAR_DAEMON_SOCKET_PATH",
+    ]) {
+        return PathBuf::from(override_path);
     }
-    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
-        let trimmed = runtime_dir.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed).join("openburnbar").join("daemon.sock");
-        }
+    if let Some(runtime_dir) = first_non_empty_env(&["XDG_RUNTIME_DIR"]) {
+        return PathBuf::from(runtime_dir)
+            .join("openburnbar")
+            .join("daemon.sock");
     }
     linux_support_dir().join("openburnbar-daemon.sock")
 }
 
+/// Read socket auth token; refuse world/group-readable files (mode must be 0600 or tighter).
 fn read_auth_token() -> Option<String> {
-    let path = linux_support_dir().join("daemon-socket-auth-token");
+    read_token_file_secure(&linux_support_dir().join("daemon-socket-auth-token"))
+}
+
+/// Read a token file only when it is a regular file with mode 0600 or tighter.
+fn read_token_file_secure(path: &std::path::Path) -> Option<String> {
+    use std::os::unix::fs::FileTypeExt;
+    use std::os::unix::fs::PermissionsExt;
+    let meta = fs::metadata(path).ok()?;
+    // Reject symlinks/FIFOs/devices: follow-up reads would race a replace.
+    // metadata() follows symlinks — also check symlink_metadata for the path itself.
+    if let Ok(link_meta) = fs::symlink_metadata(path) {
+        if link_meta.file_type().is_symlink() {
+            eprintln!(
+                "openburnbar: refusing token path {} (symlink not allowed)",
+                path.display()
+            );
+            return None;
+        }
+    }
+    let ft = meta.file_type();
+    if !ft.is_file() || ft.is_fifo() || ft.is_socket() || ft.is_block_device() || ft.is_char_device() {
+        eprintln!(
+            "openburnbar: refusing token path {} (not a regular file)",
+            path.display()
+        );
+        return None;
+    }
+    let mode = meta.permissions().mode() & 0o777;
+    if mode & 0o077 != 0 {
+        eprintln!(
+            "openburnbar: refusing token file {} with mode {:o} (require 0600 or tighter)",
+            path.display(),
+            mode
+        );
+        return None;
+    }
     fs::read_to_string(path)
         .ok()
         .map(|s| s.trim().to_string())
@@ -123,29 +174,31 @@ fn read_auth_token() -> Option<String> {
 }
 
 fn read_gateway_auth_token() -> Option<String> {
+    // Prefer file-based token (0600); env is last-resort for CI/dev only.
+    if let Ok(path) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN_FILE") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            if let Some(token) = read_token_file_secure(std::path::Path::new(trimmed)) {
+                return Some(token);
+            }
+        }
+    }
+    if let Some(token) = read_token_file_secure(&linux_support_dir().join("gateway-auth-token")) {
+        return Some(token);
+    }
     if let Ok(token) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN") {
         let trimmed = token.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());
         }
     }
-    if let Ok(path) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN_FILE") {
-        let trimmed = path.trim();
-        if !trimmed.is_empty() {
-            if let Ok(token) = fs::read_to_string(trimmed) {
-                let token = token.trim();
-                if !token.is_empty() {
-                    return Some(token.to_string());
-                }
-            }
-        }
-    }
-    fs::read_to_string(linux_support_dir().join("gateway-auth-token"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    None
 }
 
+/// Returns the gateway bearer for the HTTP gateway client (chat stream).
+/// Security note (Issue 20): this enters the renderer JS heap. Mitigations:
+/// restrictive CSP (tauri.conf.json), token file over env, short-lived tokens.
+/// Full fix is a Rust-side gateway proxy (Phase 4) that never returns the secret.
 #[tauri::command]
 fn gateway_auth_token() -> Option<String> {
     read_gateway_auth_token()
@@ -1051,11 +1104,16 @@ fn app_version_info() -> Result<serde_json::Value, String> {
 // ───────────────── P09: redacted diagnostics export ─────────────────
 // Writes a JSON bundle to the support dir. Redaction is structural: this
 // command only persists shell/health metadata — it never reads provider
-// payloads, tokens, or socket auth material.
+// payloads, tokens, or socket auth material. File mode is 0600.
 #[tauri::command]
 fn export_diagnostics() -> Result<serde_json::Value, String> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
     let dir = linux_support_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Ensure support dir is owner-only when possible.
+    let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -1084,7 +1142,14 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
         ]
     });
     let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| e.to_string())?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({ "path": path.display().to_string() }))
 }
 
@@ -1099,11 +1164,401 @@ fn session_env() -> serde_json::Value {
 }
 
 // ───────────────── P12: Mercury media status ─────────────────
-// Wire: proposed daemon.media.status. Current Linux daemons may reject this as
-// unknown; the TS bridge maps that rejection to the capability-absent state.
+// VAL-MEDIA-001 / VAL-RPC-001: no BurnBarRPCMethod media-control contract.
+// Return explicit capability-absent (do not invent media RPC method strings).
+// Real Mercury control uses iroh + remote-access-agent.
 #[tauri::command]
 fn media_status() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.media.status", None)
+    Ok(serde_json::json!({
+        "capabilityAvailable": false,
+        "capability": "media",
+        "reason": "No BurnBarRPCMethod media-control contract; Mercury uses iroh + remote-access-agent when available.",
+        "pairedDevices": [],
+        "activeSession": null
+    }))
+}
+
+// ───────────────── Tool approval respond ─────────────────
+// Wire: approval.respond (BurnBarRPCMethod.approvalRespond)
+// Params: BurnBarApprovalRespondRequest { response: BurnBarApprovalResponse }
+// respondedAt is Foundation reference-date seconds (f64), matching the extension.
+#[tauri::command]
+fn tool_approval_respond(
+    approval_id: String,
+    decision: String,
+    note: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let decision = match decision.as_str() {
+        "approve" | "reject" | "cancel" => decision,
+        other => {
+            return Err(format!(
+                "approval decision must be approve|reject|cancel, got {other}"
+            ))
+        }
+    };
+    if approval_id.trim().is_empty() {
+        return Err("approvalID is required".into());
+    }
+    let responded_at = foundation_reference_date_seconds();
+    call_daemon_method(
+        "approval.respond",
+        Some(serde_json::json!({
+            "response": {
+                "approvalID": approval_id,
+                "clientID": "linux-shell",
+                "decision": decision,
+                "note": note,
+                "respondedAt": responded_at
+            }
+        })),
+    )
+}
+
+// ───────────────── Memory set status ─────────────────
+// Wire: remember → daemon.memory.remember, reject/forget → daemon.memory.forget,
+// audit → daemon.memory.audit_trail. "approve" is an alias for remember and
+// requires non-empty text/body (fail-closed; never invent placeholder text).
+#[tauri::command]
+fn memory_set_status(
+    action: String,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    match action.as_str() {
+        "approve" | "remember" => {
+            let text = payload
+                .get("text")
+                .and_then(|v| v.as_str())
+                .or_else(|| payload.get("body").and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if text.is_empty() {
+                return Err(
+                    "memory remember requires non-empty text/body (fail-closed; no placeholder)".into(),
+                );
+            }
+            // Reject invented placeholder patterns from older shell versions.
+            if text.starts_with("approved:") {
+                return Err(
+                    "memory remember refuses invented approved:<id> placeholders".into(),
+                );
+            }
+            call_daemon_method(
+                "daemon.memory.remember",
+                Some(serde_json::json!({
+                    "text": text,
+                    "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "kind": payload.get("kind").and_then(|v| v.as_str()).unwrap_or("note"),
+                    "scope": payload.get("scope").and_then(|v| v.as_str()).unwrap_or("personal"),
+                    "tags": payload.get("tags").cloned().unwrap_or_else(|| serde_json::json!([])),
+                    "confidence": payload.get("confidence").and_then(|v| v.as_f64()).unwrap_or(1.0),
+                    "sourcePath": payload.get("sourcePath").cloned().unwrap_or(serde_json::Value::Null)
+                })),
+            )
+        }
+        "reject" | "forget" => {
+            let memory_id = payload
+                .get("memoryID")
+                .or_else(|| payload.get("memoryId"))
+                .or_else(|| payload.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if memory_id.is_empty() {
+                return Err("memory reject requires memoryID".into());
+            }
+            call_daemon_method(
+                "daemon.memory.forget",
+                Some(serde_json::json!({
+                    "memoryID": memory_id,
+                    "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "requireCloudDelete": payload.get("requireCloudDelete").and_then(|v| v.as_bool()).unwrap_or(false)
+                })),
+            )
+        }
+        "audit" => call_daemon_method(
+            "daemon.memory.audit_trail",
+            Some(serde_json::json!({
+                "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                "limit": payload.get("limit").and_then(|v| v.as_u64()).unwrap_or(50)
+            })),
+        ),
+        other => Err(format!(
+            "memory_set_status action must be approve|reject|audit (or remember|forget), got {other}"
+        )),
+    }
+}
+
+// ───────────────── Computer Use wrappers ─────────────────
+// Wire bodies MUST match BurnBarComputerUseContracts.swift exactly.
+// Params are typed allowlisted structs (deny_unknown_fields).
+
+const CU_MAX_ARGS_BYTES: usize = 64 * 1024;
+const CU_CLIENT_ID: &str = "linux-shell";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseSessionStartParams {
+    /// ComputerUseMode raw: agent_watch | browser | system
+    mode: String,
+    /// ComputerUseTrustMode raw: manual | step | trusted
+    trust_mode: String,
+    #[serde(default)]
+    scope_rule_ids: Vec<String>,
+    phone_viewer_node_id: Option<String>,
+    mac_host_node_id: Option<String>,
+    action_cap: Option<u32>,
+    session_timeout_seconds: Option<u32>,
+    /// BurnBarClientID; defaults to linux-shell
+    client_id: Option<String>,
+    run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseInvokeParams {
+    session_id: String,
+    /// BurnBarToolInvocation — required nested object (not flat tool/args).
+    invocation: ComputerUseInvocationParams,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseInvocationParams {
+    call_id: String,
+    run_id: String,
+    tool: String,
+    #[serde(default)]
+    arguments: serde_json::Value,
+    requested_by: Option<String>,
+    /// Foundation reference-date seconds when provided; shell fills if absent.
+    requested_at: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseApprovalPendingParams {
+    session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseApprovalRespondParams {
+    session_id: Option<String>,
+    /// HermesRealtimeRelayApprovalResponse fields (nested under `response` on the wire).
+    approval_id: String,
+    decision: String,
+    responded_by: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUsePanicHaltParams {
+    session_id: String,
+    /// ComputerUsePanicSource raw: hotkey | phone_gesture | mac_lock | remote_config | ...
+    source: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseAuditExportParams {
+    session_id: String,
+    include_screenshots: Option<bool>,
+    anchor_open_timestamps: Option<bool>,
+}
+
+fn validate_cu_mode(mode: &str) -> Result<(), String> {
+    match mode {
+        "agent_watch" | "browser" | "system" => Ok(()),
+        other => Err(format!(
+            "computer use mode must be agent_watch|browser|system, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_trust_mode(mode: &str) -> Result<(), String> {
+    match mode {
+        "manual" | "step" | "trusted" => Ok(()),
+        other => Err(format!(
+            "computer use trustMode must be manual|step|trusted, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_approval_decision(decision: &str) -> Result<(), String> {
+    match decision {
+        "approve" | "reject" | "reject_and_halt" => Ok(()),
+        other => Err(format!(
+            "computer use approval decision must be approve|reject|reject_and_halt, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_panic_source(source: &str) -> Result<(), String> {
+    match source {
+        "hotkey" | "phone_gesture" | "mac_lock" | "remote_config" | "accessibility_revoked"
+        | "stalled" | "revoked" => Ok(()),
+        other => Err(format!(
+            "computer use panic source must be a ComputerUsePanicSource raw value, got {other}"
+        )),
+    }
+}
+
+fn cap_json_value_size(value: &serde_json::Value, label: &str) -> Result<(), String> {
+    let encoded = serde_json::to_vec(value).map_err(|e| e.to_string())?;
+    if encoded.len() > CU_MAX_ARGS_BYTES {
+        return Err(format!(
+            "{label} exceeds {CU_MAX_ARGS_BYTES} byte shell cap (got {})",
+            encoded.len()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn computer_use_session_start(params: ComputerUseSessionStartParams) -> Result<serde_json::Value, String> {
+    validate_cu_mode(&params.mode)?;
+    validate_cu_trust_mode(&params.trust_mode)?;
+    let client_id = params
+        .client_id
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    // ComputerUseSessionStartRequest — required: mode, trustMode, clientID (+ defaults).
+    call_daemon_method(
+        "daemon.computer_use.session.start",
+        Some(serde_json::json!({
+            "mode": params.mode,
+            "trustMode": params.trust_mode,
+            "scopeRuleIds": params.scope_rule_ids,
+            "phoneViewerNodeId": params.phone_viewer_node_id,
+            "macHostNodeId": params.mac_host_node_id,
+            "actionCap": params.action_cap.unwrap_or(50),
+            "sessionTimeoutSeconds": params.session_timeout_seconds.unwrap_or(1800),
+            "clientID": client_id,
+            "runID": params.run_id
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_invoke(params: ComputerUseInvokeParams) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_invoke requires sessionId".into());
+    }
+    let inv = &params.invocation;
+    if inv.call_id.trim().is_empty() || inv.run_id.trim().is_empty() || inv.tool.trim().is_empty() {
+        return Err("computer_use_invoke.invocation requires callID, runID, and tool".into());
+    }
+    cap_json_value_size(&inv.arguments, "invocation.arguments")?;
+    let requested_by = inv
+        .requested_by
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    let requested_at = inv
+        .requested_at
+        .unwrap_or_else(foundation_reference_date_seconds);
+    // ComputerUseInvokeRequest { sessionId, invocation: BurnBarToolInvocation }
+    call_daemon_method(
+        "daemon.computer_use.invoke",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "invocation": {
+                "callID": inv.call_id,
+                "runID": inv.run_id,
+                "tool": inv.tool,
+                "arguments": inv.arguments,
+                "requestedBy": requested_by,
+                "requestedAt": requested_at
+            }
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_approval_pending(
+    params: Option<ComputerUseApprovalPendingParams>,
+) -> Result<serde_json::Value, String> {
+    // ComputerUseApprovalPendingRequest { sessionId? } — no limit field.
+    let session_id = params.and_then(|p| p.session_id);
+    call_daemon_method(
+        "daemon.computer_use.approval.pending",
+        Some(serde_json::json!({ "sessionId": session_id })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_approval_respond(
+    params: ComputerUseApprovalRespondParams,
+) -> Result<serde_json::Value, String> {
+    validate_cu_approval_decision(&params.decision)?;
+    if params.approval_id.trim().is_empty() {
+        return Err("computer_use_approval_respond requires approvalId".into());
+    }
+    let responded_by = params
+        .responded_by
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    // ComputerUseApprovalRespondRequest { sessionId?, response: HermesRealtimeRelayApprovalResponse }
+    call_daemon_method(
+        "daemon.computer_use.approval.respond",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "response": {
+                "approvalId": params.approval_id,
+                "decision": params.decision,
+                "respondedBy": responded_by,
+                "respondedAt": foundation_reference_date_seconds(),
+                "note": params.note
+            }
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_panic_halt(params: ComputerUsePanicHaltParams) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_panic_halt requires sessionId".into());
+    }
+    validate_cu_panic_source(&params.source)?;
+    // ComputerUsePanicHaltRequest { sessionId, source }
+    call_daemon_method(
+        "daemon.computer_use.panic_halt",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "source": params.source
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_audit_export(
+    params: ComputerUseAuditExportParams,
+) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_audit_export requires sessionId".into());
+    }
+    // ComputerUseAuditExportRequest { sessionId, includeScreenshots, anchorOpenTimestamps }
+    call_daemon_method(
+        "daemon.computer_use.audit_export",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "includeScreenshots": params.include_screenshots.unwrap_or(true),
+            "anchorOpenTimestamps": params.anchor_open_timestamps.unwrap_or(false)
+        })),
+    )
+}
+
+/// Apple Foundation reference-date seconds since 2001-01-01 UTC.
+/// Matches extension `toBurnBarTimestamp`: `Date.now()/1000 - 978307200`.
+fn foundation_reference_date_seconds() -> f64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    unix - 978_307_200.0
 }
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -1239,6 +1694,14 @@ pub fn run() {
             export_diagnostics,
             session_env,
             media_status,
+            tool_approval_respond,
+            memory_set_status,
+            computer_use_session_start,
+            computer_use_invoke,
+            computer_use_approval_pending,
+            computer_use_approval_respond,
+            computer_use_panic_halt,
+            computer_use_audit_export,
             integrations_status
         ])
         .setup(|app| {

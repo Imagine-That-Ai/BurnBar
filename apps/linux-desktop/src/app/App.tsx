@@ -44,31 +44,34 @@ export function App() {
   }, [skin]);
 
   return (
-    <div className="shell">
-      <div className="shell-key-capture" tabIndex={0} aria-hidden="true" />
-      <a
-        className="skip-link"
-        href="#main"
-        onClick={(event) => {
-          event.preventDefault();
-          window.requestAnimationFrame(() => document.getElementById('main')?.focus());
-        }}
-      >
-        Skip to content
-      </a>
+    <>
+      {/* Outside .shell so fixed positioning is never trapped by shell stacking. */}
       <KernelBackdrop skin={skin} kernelId={kernelId} />
-      <TopChrome
-        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-        kernelId={kernelId}
-        onKernelChange={(id) => {
-          writePersistedKernelId(id);
-          setKernelId(id);
-        }}
-      />
-      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
-      <main className="shell-main shell-main--bleed" id="main" tabIndex={-1}>
-        <SurfaceRouter route={route} />
-      </main>
-    </div>
+      <div className="shell">
+        <div className="shell-key-capture" tabIndex={0} aria-hidden="true" />
+        <a
+          className="skip-link"
+          href="#main"
+          onClick={(event) => {
+            event.preventDefault();
+            window.requestAnimationFrame(() => document.getElementById('main')?.focus());
+          }}
+        >
+          Skip to content
+        </a>
+        <TopChrome
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          kernelId={kernelId}
+          onKernelChange={(id) => {
+            writePersistedKernelId(id);
+            setKernelId(id);
+          }}
+        />
+        <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+        <main className="shell-main shell-main--bleed" id="main" tabIndex={-1}>
+          <SurfaceRouter route={route} />
+        </main>
+      </div>
+    </>
   );
 }

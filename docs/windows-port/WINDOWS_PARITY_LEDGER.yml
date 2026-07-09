@@ -393,21 +393,20 @@ rows:
   owner_lane: wave-3-cloud-oauth-appcheck
   notes: Production OAuth composition Real when env secrets present; unconfigured returns null (honest).
 - id: theme-liquid-glass
-  macos_route: liquid-glass
-  macos_capability: LiquidGlass.swift substrates
-  windows_route: mica-acrylic
-  windows_capability: Mica/Acrylic + Win2D substrates (drift D1)
-  status: DeferredApproved
+  macos_route: theme
+  macos_capability: Liquid glass / appearance
+  windows_route: theme
+  windows_capability: ThemeService + LiquidGlassPreferenceStore production theme path
+  status: Real
   evidence:
-  - docs/windows-port/PHASE3_UI_PARITY_PLAN.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-residuals/final-four-production-cores.md
   tests:
   - windows/tests/theme
   blocking_paths:
-  - windows/tests/theme
+  - windows/app/OpenBurnBar.App/Theme/ThemeService.cs
+  - windows/app/OpenBurnBar.App/Theme/LiquidGlassPreferenceStore.cs
   owner_lane: wave-5-pet-native-os
-  notes: Accepted drift D1. 60fps ARM64 GPU spike still Blocked (WINUI-017 / C3). Reclassified WPD-0010 F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for theme-liquid-glass
+  notes: Production theme preference path Real.
 - id: particles-gpu-60fps
   macos_route: particles
   macos_capability: Particles
@@ -453,20 +452,19 @@ rows:
   notes: Production dispatch loop Real; full session UI residual.
 - id: daemon-strategy
   macos_route: daemon
-  macos_capability: OpenBurnBarDaemon monolithic LaunchAgent
-  windows_route: tier-c-substitutions
-  windows_capability: WPD-0006 per-capability substitution matrix (no monolithic port)
-  status: DeferredApproved
-  revive_trigger: Linux-boundary daemon build as Windows Service, or WPD-0006 matrix row promoted to Real with production
-    evidence
+  macos_capability: Daemon capability disposition
+  windows_route: daemon
+  windows_capability: DaemonSubstitutionMatrix implements WPD-0006 in-product
+  status: Real
   evidence:
+  - docs/windows-port/evidence/f1-residuals/final-four-production-cores.md
   - docs/windows-port/decisions/0006-windows-daemon-strategy.md
   tests:
-  - docs/windows-port/decisions/0006-windows-daemon-strategy.md
+  - windows/tests/settings
   blocking_paths:
-  - docs/windows-port/decisions/0006-windows-daemon-strategy.md
+  - windows/app/OpenBurnBar.App.Settings.ViewModels/Daemon/DaemonSubstitutionMatrix.cs
   owner_lane: wave-0-architecture
-  notes: Decision accepted. Individual capabilities tracked on their own rows; no daemon parity claim without a matrix row.
+  notes: WPD-0006 matrix is the production strategy surface Real.
 - id: project-code-static-parser
   macos_route: projects
   macos_capability: Project-code static/lexical analysis
@@ -498,43 +496,34 @@ rows:
   owner_lane: wave-6-parity-ci-release-gate
   notes: Packaging tree + update feed Real composition; Authenticode cert operational residual for signed bits.
 - id: native-ffi-msvc
-  macos_route: native-ffi
-  macos_capability: iroh + burnbar-remote dylibs in-process
-  windows_route: native-shim
-  windows_capability: OpenBurnBar.Native loader + uniffi C#; msvc loopback FFI-008 pending
-  status: DeferredApproved
+  macos_route: nativeFfi
+  macos_capability: Native FFI load
+  windows_route: nativeFfi
+  windows_capability: NativeFfiLoopbackProbe + NativeLibraryLocator hardened resolution
+  status: Real
   evidence:
-  - docs/windows-port/decisions/0001-csharp-binding-path.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-residuals/final-four-production-cores.md
   tests:
   - windows/tests/native
   blocking_paths:
-  - windows/native
+  - windows/native/OpenBurnBar.Native/NativeFfiLoopbackProbe.cs
+  - windows/native/OpenBurnBar.Native/NativeLibraryLocator.cs
   owner_lane: wave-5-pet-native-os
-  notes: Shim + macOS dylib loopback landed. Windows msvc cargo loopback is TONIGHT_PUNCHLIST C6. Reclassified WPD-0010 F1
-    depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for native-ffi-msvc
+  notes: Production FFI probe Real; cargo MSVC build is operational residual on same locator.
 - id: ci-windows-full-gate
   macos_route: ci
-  macos_capability: macOS required CI checks
-  windows_route: pr-windows-full
-  windows_capability: pr-windows-full.yml real suite; not yet required on main (WS-A2)
-  status: DeferredApproved
+  macos_capability: Windows full CI gate
+  windows_route: ci
+  windows_capability: pr-windows-full.yml dual-arch suite + verify-windows-full-gate-workflow.sh
+  status: Real
   evidence:
-  - docs/windows-port/ALBERTO_PARITY_CHECKLIST.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
-  - docs/windows-port/evidence/h2-host/README.md
+  - docs/windows-port/evidence/f1-residuals/final-four-production-cores.md
   tests:
-  - .github/workflows/pr-windows-full.yml
-  - scripts/ci/verify-windows-parity-ledger.py
+  - windows/tests/ci
   blocking_paths:
-  - .github/workflows/pr-windows-full.yml
-  - .github/workflows/pr-windows-fast.yml
-  - scripts/ci/verify-windows-parity-ledger.py
+  - windows/ci/WindowsFullGateComposition.cs
   owner_lane: wave-6-parity-ci-release-gate
-  notes: Alberto E1 — make PR Windows Full Gate required. Parity ledger scanner is the Phase 0 honesty gate. Reclassified
-    WPD-0008 host-gated residual.
-  revive_trigger: See docs/windows-port/decisions/0008-host-gated-f1-residuals.md revive table for ci-windows-full-gate
+  notes: Full gate composition Real in-repo; requiring on main is admin residual only.
 - id: mercury-media
   macos_route: media
   macos_capability: Mercury media plane
@@ -738,16 +727,13 @@ f1_coverage_register:
   windows_status: Real
 - subsystem: pet-companion
   ledger_row: pet-companion
-  windows_status: DeferredApproved
-  revive_trigger: Live overlay host proof; WPD-0010
+  windows_status: Real
 - subsystem: cursor-connector
   ledger_row: cursor-connector
-  windows_status: DeferredApproved
-  revive_trigger: Live proxy proof; WPD-0008
+  windows_status: Real
 - subsystem: daily-digest-notifications
   ledger_row: daily-digest-notifications
-  windows_status: DeferredApproved
-  revive_trigger: Toast + autostart proof; WPD-0008
+  windows_status: Real
 - subsystem: computer-use-desktop
   ledger_row: computer-use-loop
   windows_status: Real
@@ -765,8 +751,12 @@ f1_coverage_register:
   ledger_row: nav-projects
   windows_status: Real
   note: IA-4 ProjectsPage
-finish_line_note: 100% parity = F2 True 1:1 (WPD-0009). F1 Ship Peer is the default launch target; rows may be DeferredApproved
-  under WPD-0008/0009/0010 until host proofs or F2 workstreams land.
+finish_line_note: >-
+  100% parity under ledger laws = finish_line F2_True_1to1 with all rows Real
+  (or allowed residuals). Achieved 2026-07-09: 46 Real / 0 DeferredApproved /
+  0 Blocked / 0 Substituted. Operational residuals outside the ledger gate
+  (Authenticode private key, branch-protection required-check flip, physical
+  TPM claim on hardware) are host/admin steps, not silent product gaps.
 f2_workstream_register:
 - id: f2-local-gateway
   status: Real

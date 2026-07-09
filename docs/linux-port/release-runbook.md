@@ -23,6 +23,12 @@ Required package artifacts:
   [`../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml`](../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml).
 - Desktop entry, autostart entry, and systemd user service under
   [`../../packaging/linux/`](../../packaging/linux/).
+- Daemon launch script
+  [`../../packaging/linux/openburnbar-daemon-launch.sh`](../../packaging/linux/openburnbar-daemon-launch.sh)
+  installed to **`/usr/libexec/openburnbar-daemon-launch`** (required by the
+  unit `ExecStart`; missing install causes systemd 203/EXEC).
+- Custom XDG drop-in example:
+  [`../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example`](../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example).
 
 Build locally:
 

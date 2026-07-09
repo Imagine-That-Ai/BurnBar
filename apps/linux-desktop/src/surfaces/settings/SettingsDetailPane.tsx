@@ -4,6 +4,10 @@ import type { ConfigSnapshot, NotificationConfig, ProviderSettings } from '../..
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
+import {
+  LINUX_PROVIDER_PATH_REGISTRY,
+  resolveProviderLogicalPath
+} from '../../providerPathRegistry.js';
 import { useSupportStore } from '../../state/supportStore.js';
 import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
@@ -628,6 +632,28 @@ export function SettingsDetailPane({
 }) {
   const meta = settingsTabMeta(activeTab);
 
+  const providerRegistryRows = useMemo(() => {
+    // Browser/test env may lack process.env; fall back to logical-only display.
+    const env =
+      typeof process !== 'undefined'
+        ? {
+            XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+            XDG_DATA_HOME: process.env.XDG_DATA_HOME
+          }
+        : {};
+    const home =
+      typeof process !== 'undefined' && process.env.HOME
+        ? process.env.HOME
+        : '~';
+    return LINUX_PROVIDER_PATH_REGISTRY.map((row) => ({
+      ...row,
+      resolvedHint:
+        home === '~'
+          ? undefined
+          : resolveProviderLogicalPath(row.logicalPath, home, env)
+    }));
+  }, []);
+
   let content: ReactNode = null;
 
   if (activeTab === 'home') {
@@ -703,7 +729,7 @@ export function SettingsDetailPane({
             <SettingRow
               iconGlyph="📁"
               label="Support directory (XDG data)"
-              description="Canonical state and logs live here."
+              description="Canonical state and logs live here (~/.local/share/openburnbar). Legacy ~/.config/OpenBurnBar: set OPENBURNBAR_DAEMON_SUPPORT_DIR or move the tree."
               control={<CopyPathButton path={config.paths.supportDir} />}
             />
             <p className="system-path-row">
@@ -718,19 +744,46 @@ export function SettingsDetailPane({
             <p className="system-path-row">
               <code>{config.paths.configDir}</code>
             </p>
-            {config.paths.providerLogPaths.map((logPath) => (
-              <div key={logPath}>
+            {/* VAL-PARSER-002: registry is the source of truth for display paths. */}
+            {providerRegistryRows.map((row) => (
+              <div key={row.providerId}>
                 <SettingRow
                   iconGlyph="📄"
-                  label="Provider log path"
-                  description="Parser ingest reads these directories."
-                  control={<CopyPathButton path={logPath} label="Copy log path" />}
+                  label={`${row.displayLabel} log path`}
+                  description={`Parser source ${row.parserSourceId} · pattern ${row.filePattern}`}
+                  control={<CopyPathButton path={row.logicalPath} label="Copy log path" />}
                 />
                 <p className="system-path-row">
-                  <code>{logPath}</code>
+                  <code>{row.logicalPath}</code>
+                  {row.resolvedHint ? (
+                    <>
+                      {' '}
+                      → <code>{row.resolvedHint}</code>
+                    </>
+                  ) : null}
                 </p>
               </div>
             ))}
+            {config.paths.providerLogPaths.length > 0 &&
+            !config.paths.providerLogPaths.every((p) =>
+              providerRegistryRows.some((r) => r.logicalPath === p)
+            )
+              ? config.paths.providerLogPaths
+                  .filter((p) => !providerRegistryRows.some((r) => r.logicalPath === p))
+                  .map((logPath) => (
+                    <div key={`extra-${logPath}`}>
+                      <SettingRow
+                        iconGlyph="📄"
+                        label="Daemon-reported log path"
+                        description="Additional path from daemon config snapshot."
+                        control={<CopyPathButton path={logPath} label="Copy log path" />}
+                      />
+                      <p className="system-path-row">
+                        <code>{logPath}</code>
+                      </p>
+                    </div>
+                  ))
+              : null}
             <SettingRow
               iconGlyph="🔐"
               label="GNOME Keyring / KWallet"

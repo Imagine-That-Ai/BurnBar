@@ -3,6 +3,17 @@
 This directory tracks the Linux desktop peer release work. The Linux lane is
 implemented as reviewable infrastructure, not a public availability claim.
 
+Current parity status as of 2026-07-09:
+
+- A public signed aarch64 prerelease exists at `linux-v0.1.0`.
+- Full macOS parity is not complete. See
+  [`full-macos-parity-audit-2026-07-09.md`](full-macos-parity-audit-2026-07-09.md)
+  for the current gap matrix, blocker list, and execution plan.
+- For the CMUX-synthesized implementation plan, see
+  [`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md).
+- The 2026-07-05 release notes below are historical context and should not be
+  read as the current live GitHub release state.
+
 Current active-checkout status as of 2026-07-05:
 
 - V24 foundation and V23 surface validation passed from
@@ -21,8 +32,12 @@ Primary files:
 - [`release-runbook.md`](release-runbook.md) - package, update, signature,
   provenance, source-offer, and promotion process.
 - [`parity-ledger.json`](parity-ledger.json) - machine-readable Tier A/B/C
-  status ledger.
+  status ledger. **Semantics:** `productParityClaim` is false until product
+  rows are proven; historical mission-001 rows use
+  `scope: historical-infrastructure`.
 - [`parity-ledger.md`](parity-ledger.md) - human-readable ledger notes.
+- [`evidence/mission-002-reanchor/`](evidence/mission-002-reanchor/) - Phase 0
+  reanchor baseline for full parity work.
 - [`factory-pr-handoff.md`](factory-pr-handoff.md) - review map and known
   blockers for the factory PR loop.
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:

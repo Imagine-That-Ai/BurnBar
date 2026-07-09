@@ -431,6 +431,15 @@ plant_and_fail_token Stub \
   'public sealed class StubCliStream {}' \
   "forbidden token 'Stub'"
 
+# Bare type Stub (plan token "Stub") must fail — not only Stub* compounds.
+plant_and_fail_token StubBare \
+  'public sealed class Stub {}' \
+  "forbidden token 'Stub'"
+
+plant_and_fail_token IStub \
+  'public interface IStubTokenSource {}' \
+  "forbidden token 'Stub'"
+
 plant_and_fail_token Placeholder \
   'public sealed class SettingsPlaceholderPage {}' \
   "forbidden token 'Placeholder'"

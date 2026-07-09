@@ -26,6 +26,17 @@ export const emptyMemoryReviewInbox = (): Promise<MemoryReviewInbox> =>
 
 export const emptyMemoryReviewDecision = (): Promise<void> => Promise.resolve();
 
+export const emptyMemorySetStatus = async (
+  _action: string,
+  _payload: Record<string, unknown>
+): Promise<unknown> => ({ ok: true });
+
+export const emptyToolApprovalRespond = async (): Promise<void> => {};
+
+export const emptyComputerUse = async (
+  _params?: Record<string, unknown>
+): Promise<unknown> => ({ ok: false, reason: 'stub' });
+
 export const emptyDatabaseWorkspaceStatus = (): Promise<DatabaseWorkspaceStatus> =>
   Promise.resolve({
     sourceLabel: 'test stub',
@@ -63,6 +74,14 @@ export const bridgeStubDefaults = {
   missionCreate: emptyMissionCreate,
   memoryReviewInbox: emptyMemoryReviewInbox,
   memoryReviewDecision: emptyMemoryReviewDecision,
+  memorySetStatus: emptyMemorySetStatus,
+  toolApprovalRespond: emptyToolApprovalRespond,
+  computerUseSessionStart: emptyComputerUse,
+  computerUseInvoke: emptyComputerUse,
+  computerUseApprovalPending: emptyComputerUse,
+  computerUseApprovalRespond: emptyComputerUse,
+  computerUsePanicHalt: emptyComputerUse,
+  computerUseAuditExport: emptyComputerUse,
   databaseWorkspaceStatus: emptyDatabaseWorkspaceStatus,
   databaseIndexProject: emptyDatabaseIndexAction,
   databaseWatchProject: emptyDatabaseIndexAction

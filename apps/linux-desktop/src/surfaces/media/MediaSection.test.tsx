@@ -65,7 +65,8 @@ describe('P12 Mercury media section', () => {
     });
     expect(screen.getByText('Capability absent')).toBeTruthy();
     expect(screen.getByText('daemon capability')).toBeTruthy();
-    expect(screen.getByText(/daemon.media.status/)).toBeTruthy();
+    expect(screen.getByText(/capability-absent/i)).toBeTruthy();
+    expect(screen.getByText(/BurnBarRPCMethod/i)).toBeTruthy();
   });
 
   it('renders loading while the daemon request is unresolved', () => {
@@ -106,7 +107,17 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('socket closed')).toBeTruthy();
   });
 
-  it('renders fixture peers and session timeline without action controls', async () => {
+  it('renders fixture capability-absent by default (live parity)', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+    expect(screen.getByText('Capability absent')).toBeTruthy();
+  });
+
+  it('renders rich fixture peers when mediaFixtureRich is set', async () => {
+    localStorage.setItem('openburnbar.linux.mediaFixtureRich', '1');
     useShellStore.setState({ fixtureMode: true, bridge: null });
     render(<MediaSection />);
     await act(async () => {
@@ -116,11 +127,8 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('fixture transcript')).toBeTruthy();
     expect(screen.getByText('Studio Mac')).toBeTruthy();
     expect(screen.getByText('Phase: Active')).toBeTruthy();
-    expect(screen.getByText('Staged')).toBeTruthy();
-    expect(screen.getByText('Connecting')).toBeTruthy();
-    expect(screen.getByText('Active')).toBeTruthy();
-    expect(screen.getByText('Ended')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /call|send file|end|forget/i })).toBeNull();
+    localStorage.removeItem('openburnbar.linux.mediaFixtureRich');
   });
 
   it('renders live daemon peers with provenance when media_status is available', async () => {

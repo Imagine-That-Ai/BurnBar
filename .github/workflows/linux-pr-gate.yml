@@ -48,6 +48,20 @@ jobs:
       - name: Check Linux docs
         run: node scripts/linux-port/check-linux-docs.mjs
 
+      # PR policy (Issue 6 R2): hermetic unit tests always run. Live probe against
+      # burnbar.ai is advisory on PRs (continue-on-error) because the public path
+      # still serves SPA HTML. Release promotion jobs must run the same probe
+      # without continue-on-error (HTML is hard-fail when status 200).
+      - name: Linux update-feed unit tests (hermetic)
+        run: node --test scripts/linux-port/check-linux-update-feed.test.mjs
+
+      - name: Probe public Linux update feed (advisory on PR)
+        run: node scripts/linux-port/check-linux-update-feed.mjs --allow-missing
+        continue-on-error: true
+
+      - name: Linux parity ledger unit tests
+        run: node --test scripts/linux-port/validate-parity-ledger.test.mjs
+
       - name: Install Linux desktop dependencies
         run: npm ci --prefix apps/linux-desktop
 

@@ -19,7 +19,27 @@ for (const artifact of closure.artifacts ?? []) {
   const full = path.join(repoRoot, artifact.file);
   if (artifact.type === 'deb') {
     steps.push(runStep('dpkg-deb', ['--info', full]));
-    steps.push(runStep('dpkg-deb', ['--contents', full]));
+    const contents = runStep('dpkg-deb', ['--contents', full]);
+    steps.push(contents);
+    // Unit ExecStart=/usr/libexec/openburnbar-daemon-launch must ship in the package.
+    if (!contents.stdout.includes('openburnbar-daemon-launch')) {
+      steps.push({
+        command: 'assert deb contains openburnbar-daemon-launch',
+        cwd: '.',
+        exitCode: 1,
+        stdout: '',
+        stderr: 'deb package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)'
+      });
+    }
+    if (!contents.stdout.includes('openburnbar-daemon.service')) {
+      steps.push({
+        command: 'assert deb contains openburnbar-daemon.service',
+        cwd: '.',
+        exitCode: 1,
+        stdout: '',
+        stderr: 'deb package missing systemd user unit'
+      });
+    }
     steps.push(runStep('dpkg', ['-i', full]));
     // Derive the real package name from the artifact so uninstall targets the
     // exact installed package (Tauri names it `open-burn-bar`, not `openburnbar`).
@@ -27,7 +47,17 @@ for (const artifact of closure.artifacts ?? []) {
     steps.push(runStep('dpkg', ['-r', debName]));
   } else if (artifact.type === 'rpm') {
     steps.push(runStep('rpm', ['-qip', full]));
-    steps.push(runStep('rpm', ['-qlp', full]));
+    const listing = runStep('rpm', ['-qlp', full]);
+    steps.push(listing);
+    if (!listing.stdout.includes('openburnbar-daemon-launch')) {
+      steps.push({
+        command: 'assert rpm contains openburnbar-daemon-launch',
+        cwd: '.',
+        exitCode: 1,
+        stdout: '',
+        stderr: 'rpm package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)'
+      });
+    }
     steps.push(runStep('rpm', ['-i', '--nodeps', full]));
     const rpmName = runStep('rpm', ['-qp', '--queryformat', '%{NAME}', full]).stdout.trim() || 'open-burn-bar';
     steps.push(runStep('rpm', ['-e', rpmName]));

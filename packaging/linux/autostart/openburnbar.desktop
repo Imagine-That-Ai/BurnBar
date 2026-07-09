@@ -2,6 +2,7 @@
 Type=Application
 Name=OpenBurnBar
 Comment=Start OpenBurnBar when the Linux desktop session starts
+# Hardware GL by default (see openburnbar-safe-mode.desktop for software GL).
 Exec=openburnbar-linux-desktop --background
 Icon=dev.openburnbar.OpenBurnBar
 Terminal=false

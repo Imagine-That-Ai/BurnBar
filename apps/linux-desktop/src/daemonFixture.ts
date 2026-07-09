@@ -130,7 +130,17 @@ export function isDaemonFixtureMode(): boolean {
   }
 }
 
-export function fixtureMercuryMediaStatus(): MercuryMediaStatus {
+/**
+ * Default fixture matches live capability-absent posture (VAL-MEDIA-001).
+ * Pass `{ rich: true }` only when a test needs populated peers/session.
+ */
+export function fixtureMercuryMediaStatus(options?: { rich?: boolean }): MercuryMediaStatus {
+  if (!options?.rich) {
+    return {
+      capabilityAvailable: false,
+      pairedDevices: []
+    };
+  }
   const now = Date.now();
   return {
     capabilityAvailable: true,
@@ -536,9 +546,15 @@ export function fixtureConfigSnapshot(): ConfigSnapshot {
   return {
     paths: {
       supportDir: '~/.local/share/openburnbar',
-      socketPath: '~/.local/share/openburnbar/openburnbar-daemon.sock',
+      socketPath: '$XDG_RUNTIME_DIR/openburnbar/daemon.sock',
       configDir: '~/.config/openburnbar',
-      providerLogPaths: ['~/.local/share/openburnbar/logs/anthropic', '~/.local/share/openburnbar/logs/openai']
+      providerLogPaths: [
+        '~/.codex/sessions',
+        '~/.claude/projects',
+        '~/.grok/sessions',
+        '~/.local/share/opencode',
+        '~/.local/share/goose/sessions'
+      ]
     },
     secretServiceStatus: 'locked',
     telemetryEnabled: false,

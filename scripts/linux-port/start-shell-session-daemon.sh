@@ -17,12 +17,13 @@ LOG_PATH="$OUT_DIR/daemon-shell-session.log"
 HOME_DIR="$WORK_DIR/home"
 RUNTIME_DIR="$WORK_DIR/runtime"
 DATA_DIR="$HOME_DIR/.local/share/openburnbar"
-SOCKET_PATH="$DATA_DIR/openburnbar-daemon.sock"
+# VAL-PATH-001: prefer XDG_RUNTIME_DIR socket when available.
+SOCKET_PATH="${XDG_RUNTIME_DIR:-$RUNTIME_DIR}/openburnbar/daemon.sock"
 TOKEN_FILE="$DATA_DIR/daemon-socket-auth-token"
 SOCKET_TOKEN="${OB_SHELL_SOCKET_AUTH_TOKEN:-shell-session-$(date +%s)-$RANDOM}"
 
-mkdir -p "$DATA_DIR" "$RUNTIME_DIR"
-chmod 700 "$RUNTIME_DIR"
+mkdir -p "$DATA_DIR" "$RUNTIME_DIR" "$(dirname "$SOCKET_PATH")"
+chmod 700 "$RUNTIME_DIR" "$(dirname "$SOCKET_PATH")" 2>/dev/null || true
 printf '%s\n' "$SOCKET_TOKEN" >"$TOKEN_FILE"
 chmod 600 "$TOKEN_FILE"
 rm -f "$LOG_PATH" "$ORACLE_PATH" "$SOCKET_PATH"

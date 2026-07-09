@@ -1,29 +1,58 @@
 # Linux parity ledger
 
-The machine-readable ledger is [`parity-ledger.json`](parity-ledger.json). It is
-the release gate source for Linux Tier A/B/C rows. Each row carries status,
-evidence, command, platform, source oracle, accepted divergence, owner,
-promotion criterion, commit, and environment.
+The machine-readable ledger is [`parity-ledger.json`](parity-ledger.json).
 
-Run the strict promotion check with:
+## Semantics (VAL-000-LEDGER)
+
+As of mission-002 reanchor (2026-07-09):
+
+```json
+"semantics": {
+  "kind": "historical-infrastructure-plus-product",
+  "productParityClaim": false
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `scope: historical-infrastructure` | Mission-001 sealed evidence; not a current product parity claim. |
+| `scope: product-parity` | Product foundation / surface contracts for full macOS parity. |
+| `staleWhenHeadDiffers` | When true on ready product rows, evidence head must match the checkout once `productParityClaim` is true. |
+| `evidenceHead` / `validatedAtHead` | Git SHA where the product row was last proven. |
+
+**Do not treat an all-ready historical ledger as full product parity.** Public
+prerelease assets may exist while product parity remains incomplete.
+
+## Commands
+
+Strict promotion check:
 
 ```bash
 node scripts/linux-port/validate-parity-ledger.mjs
 ```
 
-Run the PR structural check with blocked rows preserved:
+PR structural check (blocked Tier A/B allowed as warnings):
 
 ```bash
 node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
 ```
 
-As of 2026-07-05, the ledger points at the V24 foundation and V23 surface seals
-from `1b62ec42bd752cc8a6af578f034bf776c6ec3b97`. The checkout later moved to
-`1af805eb1878cc5af8821ee35cac838c5ac473ee`, so product rows are blocked for
-release promotion until validation is rerun at the release head. Public release
-promotion also remains blocked by release packaging, update metadata,
-signature/provenance, nightly-matrix artifact, release-dependent docs, and clean
-commit evidence.
+Public update feed (HTML must not pass for promotion):
 
-Release readiness means the strict command exits 0 from a clean release commit
-and every Tier A/B row is `ready`.
+```bash
+node scripts/linux-port/check-linux-update-feed.mjs
+node scripts/linux-port/check-linux-update-feed.mjs --allow-missing
+```
+
+## Historical context
+
+Mission-001 rows were sealed against `64538ed350b1d3bd25ddd1cae1ba67b2a9165c57`
+with V24/V23 active-checkout evidence at
+`1b62ec42bd752cc8a6af578f034bf776c6ec3b97`. Those rows remain
+`historical-infrastructure`. Product foundation work is tracked under
+`scope: product-parity` and
+[`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md).
+
+Release readiness still means: strict release verifier exits 0 from a clean
+commit, public JSON feed verifies, and product parity rows are green with
+current evidence heads.

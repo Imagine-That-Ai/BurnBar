@@ -98,14 +98,14 @@ function messagesForSession(session: SessionEntry, fixtureMode: boolean): ChatMe
     role: 'thinking',
     text: fixtureMode
       ? 'Reviewing provider logs and prior context before drafting a reply.'
-      : 'Reasoning stream is not wired on Linux v1 — showing session index metadata only.'
+      : 'Indexed session loaded. Live reasoning appears when you send a new message through the gateway stream.'
   };
   const assistant: ChatMessage = {
     id: `${session.id}-assistant`,
     role: 'assistant',
     text: fixtureMode
       ? 'Pulled indexed excerpts for this thread and drafted a concise answer from your recent provider spend and session metadata.'
-      : `Indexed session · ${session.provider} / ${session.model} · ${started} · ${session.tokens.toLocaleString()} tokens · $${session.costUsd.toFixed(2)}. Full transcript replay ships when the daemon exposes thread messages on this bridge.`,
+      : `Indexed session · ${session.provider} / ${session.model} · ${started} · ${session.tokens.toLocaleString()} tokens · $${session.costUsd.toFixed(2)}. Compose below to stream a live reply via the local gateway (not stub text).`,
     viaHermes: fixtureMode || session.provider === 'hermes' || session.provider === 'openclaw',
     memoryCitations: fixtureMode
       ? [

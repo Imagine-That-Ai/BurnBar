@@ -9,7 +9,7 @@
  *   packaged desktop-session smoke, which clicks nav items at fixed pixel
  *   coordinates. Visual changes to the rail go through color/shadow only.
  * - Token names come from packages/design-tokens (tokens.css); skins swap
- *   token values on :root[data-skin], never per-component constants.
+ *   token values in skins.css, never as ad-hoc hex in this file.
  */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -18,6 +18,7 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 body.reduced-motion * { animation: none !important; transition: none !important; }
 
 :root {
+  /* Component radii may tighten tokens for shell chrome; base tokens stay in design-tokens. */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
@@ -25,15 +26,6 @@ body.reduced-motion * { animation: none !important; transition: none !important;
   --mesh-blob-b: color-mix(in srgb, var(--color-tier-end-to-end) 9%, transparent);
   --mesh-blob-c: color-mix(in srgb, var(--color-brass-bright) 7%, transparent);
   --focus-ring: 0 0 0 2px var(--color-ink-void), 0 0 0 4px color-mix(in srgb, var(--color-brass-core) 75%, transparent);
-}
-
-:root[data-skin="aurora"] {
-  --color-ink-void: #040610;
-  --color-brass-core: #3cd6c0;
-  --ds-accent-gradient: linear-gradient(135deg, #3cd6c0, #6ee7ff);
-  --mesh-blob-a: color-mix(in srgb, #3cd6c0 13%, transparent);
-  --mesh-blob-b: color-mix(in srgb, #6ee7ff 9%, transparent);
-  --mesh-blob-c: color-mix(in srgb, #8b5cf6 8%, transparent);
 }
 
 #root { min-height: 100vh; display: flex; }
@@ -45,14 +37,36 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 /* ---------------------------------------------------------------- layout */
 
 .skip-link { position: absolute; left: -9999px; top: 0; }
-.skip-link:focus { left: var(--space-4); top: var(--space-4); z-index: 1000; background: var(--color-brass-core); color: #000; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
+.skip-link:focus { left: var(--space-4); top: var(--space-4); z-index: 1000; background: var(--color-brass-core); color: var(--color-ink-void); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
 
-.shell { display: flex; flex-direction: column; width: 100%; min-height: 100vh; position: relative; z-index: 1; }
+.shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
 .shell-body { display: grid; grid-template-columns: 280px 1fr; flex: 1; min-height: 0; position: relative; overflow: hidden; }
 .shell-nav { border-right: 1px solid var(--color-glass-line); background: color-mix(in srgb, var(--color-glass-bg) 50%, transparent); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); }
-.shell-main { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); position: relative; overflow-y: auto; }
-.shell-main--bleed { flex: 1; min-height: 0; padding: 0; gap: 0; }
-.shell-main--bleed .surface-bleed { width: 100%; min-height: 100%; padding: var(--space-4) var(--space-5) var(--space-6); }
+.shell-main {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  position: relative;
+  overflow-y: auto;
+  background: transparent;
+  z-index: 1;
+}
+.shell-main--bleed { flex: 1; min-height: 0; padding: 0; gap: 0; background: transparent; }
+.shell-main--bleed .surface-bleed {
+  width: 100%;
+  min-height: 100%;
+  padding: var(--space-4) var(--space-5) var(--space-6);
+  background: transparent;
+}
 
 /* ---------------------------------------------------------- command deck */
 
@@ -99,18 +113,118 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 /* -------------------------------------------------------------- backdrop */
 
 .mesh-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.mesh-blob { position: absolute; width: 55vw; height: 55vw; border-radius: 50%; filter: blur(90px); opacity: 0.9; will-change: transform; }
-.mesh-blob-a { background: radial-gradient(circle, var(--mesh-blob-a), transparent 65%); top: -18vw; right: -12vw; animation: mesh-drift-a 46s var(--motion-ease-standard) infinite alternate; }
-.mesh-blob-b { background: radial-gradient(circle, var(--mesh-blob-b), transparent 62%); bottom: -22vw; left: -10vw; animation: mesh-drift-b 58s var(--motion-ease-standard) infinite alternate; }
-.mesh-blob-c { background: radial-gradient(circle, var(--mesh-blob-c), transparent 60%); top: 34vh; left: 30vw; width: 38vw; height: 38vw; animation: mesh-drift-c 72s var(--motion-ease-standard) infinite alternate; }
-.mesh-grain { position: absolute; inset: 0; opacity: 0.5; background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px); background-size: 3px 3px; }
-@keyframes mesh-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-6vw, 5vh, 0) scale(1.08); } }
-@keyframes mesh-drift-b { from { transform: translate3d(0, 0, 0) scale(1.05); } to { transform: translate3d(5vw, -4vh, 0) scale(0.96); } }
-@keyframes mesh-drift-c { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(4vw, 6vh, 0); } }
+/* Avoid CSS filter:blur on WebKitGTK virt GPU — can black out the surface. */
+.mesh-blob {
+  position: absolute;
+  width: 62vw;
+  height: 62vw;
+  border-radius: 50%;
+  opacity: 1;
+  will-change: transform, background;
+  transition: background 320ms var(--motion-ease-standard, ease), opacity 320ms ease;
+}
+.mesh-blob-a {
+  background: radial-gradient(circle, var(--mesh-blob-a), transparent 68%);
+  top: -20vw;
+  right: -14vw;
+  animation: mesh-drift-a 42s linear infinite alternate;
+}
+.mesh-blob-b {
+  background: radial-gradient(circle, var(--mesh-blob-b), transparent 66%);
+  bottom: -24vw;
+  left: -12vw;
+  animation: mesh-drift-b 54s linear infinite alternate;
+}
+.mesh-blob-c {
+  background: radial-gradient(circle, var(--mesh-blob-c), transparent 64%);
+  top: 30vh;
+  left: 28vw;
+  width: 44vw;
+  height: 44vw;
+  animation: mesh-drift-c 66s linear infinite alternate;
+}
+.mesh-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.45;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 3px 3px;
+  pointer-events: none;
+}
+@keyframes mesh-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-7vw, 6vh, 0) scale(1.1); } }
+@keyframes mesh-drift-b { from { transform: translate3d(0, 0, 0) scale(1.05); } to { transform: translate3d(6vw, -5vh, 0) scale(0.94); } }
+@keyframes mesh-drift-c { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(5vw, 7vh, 0); } }
 
-/* Kernel canvas sits above page void, below shell chrome (z-index: 1). */
-.kernel-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-.kernel-backdrop canvas { display: block; }
+/* Real kernel canvas host — under shell chrome (z-index: 1). */
+.kernel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--color-ink-void);
+}
+.kernel-backdrop canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+.kernel-backdrop-badge {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-glass-line-bright);
+  background: color-mix(in srgb, var(--color-glass-bg-elevated) 85%, transparent);
+  color: var(--color-text-base);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  text-transform: lowercase;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--color-ink-void) 55%, transparent);
+  pointer-events: none;
+}
+.kernel-backdrop-badge-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--color-brass-core);
+  box-shadow: 0 0 10px var(--color-brass-glow);
+}
+.kernel-backdrop-badge-dot[data-gl='1'] {
+  background: var(--color-tier-end-to-end);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-tier-end-to-end) 80%, transparent);
+}
+.kernel-backdrop-badge-text {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Emergency CSS wash only when mode=css (engine failed). */
+.kernel-backdrop--css {
+  background:
+    radial-gradient(ellipse 90% 70% at 15% 10%, color-mix(in srgb, var(--color-brass-core) 55%, transparent), transparent 55%),
+    radial-gradient(ellipse 80% 60% at 90% 80%, color-mix(in srgb, var(--color-tier-end-to-end) 35%, transparent), transparent 55%),
+    var(--color-ink-base);
+}
+/*
+ * WebKitGTK paint safety: backdrop-filter has been observed to composite the
+ * entire surface to pure black on virtio/Apple GPU guests. Prefer solid tint.
+ */
+.shell, .shell * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
 
 /* -------------------------------------------------------- sidebar card */
 .sidebar-glass-card { display: grid; gap: var(--space-1); margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-glass-line); background: color-mix(in srgb, var(--color-glass-bg-elevated) 30%, transparent); backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%); box-shadow: inset 0 1px 0 var(--color-frost-line); }
@@ -186,7 +300,7 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 
 /* --------------------------------------------------------------- buttons */
 
-button.primary { background: var(--ds-accent-gradient); color: #120804; border: none; border-radius: var(--radius-sm); padding: var(--space-2) var(--space-4); font-weight: 600; font-family: inherit; cursor: pointer; transition: filter 160ms var(--motion-ease-standard), transform 160ms var(--motion-ease-standard); }
+button.primary { background: var(--ds-accent-gradient); color: var(--color-ink-base); border: none; border-radius: var(--radius-sm); padding: var(--space-2) var(--space-4); font-weight: 600; font-family: inherit; cursor: pointer; transition: filter 160ms var(--motion-ease-standard), transform 160ms var(--motion-ease-standard); }
 button.primary:hover { filter: brightness(1.08); }
 button.primary:active { transform: translateY(1px); }
 button.primary:disabled { filter: grayscale(0.6) brightness(0.8); cursor: default; }
@@ -244,7 +358,7 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
 /* ------------------------------------------------------------------- pet */
 
 .pet-stage { min-height: 220px; display: grid; place-items: center; border: 1px dashed var(--color-glass-line); border-radius: var(--radius-sm); overflow: hidden; }
-.pet-canvas { width: 100%; min-height: 220px; aspect-ratio: 16 / 7; display: block; background: radial-gradient(circle at 50% 48%, rgba(60, 214, 192, 0.12), transparent 56%); }
+.pet-canvas { width: 100%; min-height: 220px; aspect-ratio: 16 / 7; display: block; background: radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--color-tier-end-to-end) 12%, transparent), transparent 56%); }
 .pet-runtime-caption { margin: 0; padding: 0 var(--space-3) var(--space-3); }
 .pet-graph { font-family: var(--font-mono); font-size: 0.8rem; white-space: pre-wrap; background: var(--color-ink-elevated); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-glass-line); }
 

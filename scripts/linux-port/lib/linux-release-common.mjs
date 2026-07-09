@@ -5,7 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+/** Sealed historical mission-001 release evidence — do not rewrite during local gates. */
 export const releaseEvidenceDir = path.join(repoRoot, 'docs/linux-port/evidence/mission-001-release');
+/** Mutable reanchor / local-gate evidence (Phase 0+). Prefer this for validator outputs. */
+export const reanchorEvidenceDir = path.join(repoRoot, 'docs/linux-port/evidence/mission-002-reanchor');
 export const manifestPath = path.join(repoRoot, 'packaging/linux/release-manifest.json');
 
 export function readJson(file) {

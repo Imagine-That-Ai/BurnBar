@@ -9,8 +9,18 @@
     "aur": "packaging/linux/aur/PKGBUILD",
     "flatpak": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",
     "desktopEntry": "packaging/linux/openburnbar.desktop",
+    "safeModeDesktopEntry": "packaging/linux/openburnbar-safe-mode.desktop",
     "autostartEntry": "packaging/linux/autostart/openburnbar.desktop",
-    "systemdUserService": "packaging/linux/openburnbar-daemon.service"
+    "systemdUserService": "packaging/linux/openburnbar-daemon.service",
+    "daemonLaunchScript": "packaging/linux/openburnbar-daemon-launch.sh",
+    "daemonEnvExample": "packaging/linux/daemon.env.example",
+    "customXdgDropInExample": "packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
+  },
+  "installPaths": {
+    "daemonLaunch": "/usr/libexec/openburnbar-daemon-launch",
+    "daemonBinary": "/usr/bin/openburnbar-daemon",
+    "systemdUserService": "/usr/lib/systemd/user/openburnbar-daemon.service",
+    "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
   },
   "updateMetadata": {
     "draftName": "latest-linux.draft.json",

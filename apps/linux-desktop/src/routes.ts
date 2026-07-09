@@ -14,7 +14,10 @@ export type ShellRoute =
   | 'support'
   | 'onboarding'
   | 'pet'
-  | 'text-expansion';
+  | 'text-expansion'
+  | 'computer-use'
+  | 'mercury'
+  | 'smarthub';
 
 export type RouteMeta = {
   id: ShellRoute;
@@ -33,6 +36,9 @@ export const ROUTES: RouteMeta[] = [
   { id: 'activity', label: 'Activity & logs', group: 'dashboard', description: 'Session logs and parser ingest checkpoints.' },
   { id: 'chat', label: 'Chat / Hermes', group: 'dashboard', description: 'Hermes chat threads and tool approvals.' },
   { id: 'memory', label: 'Memory', group: 'dashboard', description: 'Project memory review and recall boundaries.' },
+  { id: 'computer-use', label: 'Computer Use', group: 'dashboard', description: 'Approval-gated browser/system automation, panic, and audit.' },
+  { id: 'mercury', label: 'Mercury', group: 'dashboard', description: 'Pair/call/mirror media via iroh when capability is present.' },
+  { id: 'smarthub', label: 'SmartHub / IoT', group: 'dashboard', description: 'Device control through openburnbar-cli devices iot.' },
   { id: 'settings', label: 'Settings', group: 'system', description: 'Linux paths, Secret Service, telemetry, and privacy.' },
   { id: 'account', label: 'Account & sync', group: 'system', description: 'Lower-trust cloud identity and encrypted sync posture.' },
   { id: 'updates', label: 'Updates', group: 'system', description: 'Package channel and restart guidance.' },

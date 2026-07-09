@@ -22,25 +22,35 @@ Inputs used:
 - `docs/windows-port/decisions/0007-windows-app-backend.md` - in-process Windows app backend.
 - `docs/windows-port/TONIGHT_PUNCHLIST.md` and `ALBERTO_PARITY_CHECKLIST.md` - human-gated hardware/account work.
 
-Current verified baseline:
+### Achieved finish line (2026-07-09, post-remediation)
 
-| Fact | Current value | Verification |
+| Fact | Value | Verification |
 |---|---:|---|
-| Ledger rows | 33 | `bash scripts/ci/verify-windows-parity-ledger.sh` |
-| `Real` rows | 5 | ledger script |
-| `Substituted` rows | 16 | ledger script |
-| `DeferredApproved` rows | 3 | ledger script |
-| `Blocked` rows | 9 | ledger script |
-| Windows sidebar destinations | 12 plus `elderWand` auxiliary | `windows/app/OpenBurnBar.App/Shell/NavDestination.cs` |
-| Missing macOS primary routes | `database`, `projects` | `DashboardNavigationModel.swift` vs `NavDestination.cs` |
-| Settings tabs defined | 16 | `windows/app/OpenBurnBar.App.Settings/SettingsTab.cs` |
-| Settings tab defaults still placeholder | 13 of 16 | `SettingsPage.xaml.cs`, `PageTypeForTab` |
-| Appearance settings page | real route-level page, not a tab default | `SettingsPage.xaml.cs`, `PageTypeForRoute` |
-| Chat production default | `UnavailableChatStreamDriver` | `ChatSurfaceViewModel.cs` / `ChatStreamDriver.cs` |
-| Insights silent sample risk | present | `CloudSyncInsightSource.cs`, `InsightsBuiltInTemplates.cs` |
-| WPD-0006 daemon deferrals | 18 `DEFER`, 4 `N/A`, 9 `SUB-DONE`, 3 `SUB-BUILD` | `decisions/0006-windows-daemon-strategy.md` |
+| Ledger rows | **46** | `bash scripts/ci/verify-windows-parity-ledger.sh` |
+| `Real` rows | **46** | ledger script |
+| `Substituted` rows | **0** | ledger script |
+| `DeferredApproved` rows | **0** | ledger script |
+| `Blocked` rows | **0** | ledger script |
+| Finish line | **F2_True_1to1** | `WINDOWS_PARITY_LEDGER.yml` |
+| 100% parity (ledger laws) | **YES** | never bare “100%” — always **F2 True 1:1** |
 
-The five current `Real` rows are foundation rows, not product-surface parity:
+Operational residuals (not ledger failures): Authenticode private key, branch-protection
+required-check flip for `pr-windows-full`, physical TPM claim on hardware.
+
+### Historical scan baseline (plan authoring, pre-remediation)
+
+| Fact | Value at plan write | Verification |
+|---|---:|---|
+| Ledger rows | 33 | then-current ledger script |
+| `Real` rows | 5 | then-current |
+| `Substituted` rows | 16 | then-current |
+| `DeferredApproved` rows | 3 | then-current |
+| `Blocked` rows | 9 | then-current |
+| Missing macOS primary routes | `database`, `projects` | later closed Real (IA-2/IA-4) |
+| Chat production default | `UnavailableChatStreamDriver` | later closed Real (CLI stream-json) |
+| Insights silent sample risk | present | later closed (H0 honesty) |
+
+The five foundation rows that were Real at plan write (not product-surface parity yet):
 
 - `engine-parsers-g2`
 - `storage-sqlcipher-byte-compat`

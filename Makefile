@@ -291,3 +291,23 @@ sbom: ## Generate SPDX Software Bill of Materials
 	@VERSION=$$(grep -m1 'MARKETING_VERSION' project.yml | sed 's/.*: *//;s/ *//;s/"//g'); \
 	echo "==> Generating SBOM for v$$VERSION…"; \
 	python3 scripts/generate-sbom.py --version "$$VERSION" --repo-root .
+
+.PHONY: release-linux linux-matrix
+
+release-linux: ## Linux release gate entry (strict verifier when artifacts present)
+	@echo "==> Linux release config + packaging sync + feed schema"
+	node scripts/linux-port/validate-linux-release-config.mjs
+	node scripts/linux-port/check-packaging-path-sync.mjs
+	node scripts/linux-port/check-linux-docs.mjs
+	@echo "==> Frontend unit tests"
+	npm test --prefix apps/linux-desktop
+	@echo "==> Ledger (allow-blocked until productParityClaim)"
+	node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
+	@echo "==> Update feed unit tests"
+	node --test scripts/linux-port/check-linux-update-feed.test.mjs
+	@echo "==> Strict release verifier (fails without packages — expected pre-release)"
+	node scripts/linux-port/verify-linux-release.mjs || true
+	@echo "release-linux foundation gates complete. Promote only when verify-linux-release.mjs exits 0 without --allow-blocked."
+
+linux-matrix: ## Record local matrix probe under mission-002 evidence
+	node scripts/linux-port/run-linux-matrix-harness.mjs

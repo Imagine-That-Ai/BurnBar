@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-07-09T15:12:36.928Z",
+  "url": "https://burnbar.ai/latest-linux.json",
+  "allowMissing": true,
+  "passed": false,
+  "httpStatus": 200,
+  "contentType": "text/html; charset=utf-8",
+  "bodyKind": "html",
+  "failures": [
+    "latest-linux.json returned HTML (marketing shell) instead of JSON update metadata."
+  ],
+  "warnings": []
+}

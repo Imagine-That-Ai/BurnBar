@@ -13,15 +13,14 @@
 ## 0. Finish lines: F1 Ship Peer vs F2 True 1:1
 
 > **Never claim “100% parity” without naming F1 or F2.** **100% parity = F2 True 1:1**
-> (ledger `finish_line: F2_True_1to1`, WPD-0009). Practical **launch** target remains **F1**.
-> Canonical execution plan: [`WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md`](WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md).
+> (ledger `finish_line: F2_True_1to1`). Canonical execution plan:
+> [`WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md`](WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md).
 >
-> **Engine Room surface status:** the F1/F2 matrix is authored on the portable
-> `WindowsFinishLineScope` / `DaemonSettingsViewModel` (unit-tested) and mirrored in this
-> bundle. The Daemon **WinUI tab still routes to `SettingsPlaceholderPage`** (H6 residual) —
-> it does **not** yet bind FinishLine* properties in XAML. Treat F1/F2 column cells as **exit
-> criteria**, not as “present in the current build.” Current build status is the ledger row
-> only (many F1 depth/host rows are **DeferredApproved** under WPD-0008/0010).
+> **Achieved 2026-07-09 under ledger laws:** **46 Real / 0 DeferredApproved / 0 Blocked /
+> 0 Substituted.** F1/F2 column cells below remain historical **exit-criteria** language
+> from plan authoring; **current** production-parity status is only the ledger row + §1
+> Status column (all primary nav **Real**). Operational host steps (Authenticode private
+> key, required GH check flip, physical TPM claim) sit outside the in-repo ledger gate.
 
 | Area | F1 — Ship Peer **exit criteria** (default) | F2 — True 1:1 **exit criteria** |
 |------|--------------------------------------------|----------------------------------|
@@ -55,33 +54,33 @@
 > [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml). The Status column below
 > must match the YAML (`Real` / `DeferredApproved` / `Blocked`). **Authored** and
 > stale **Substituted** cells are forbidden when the ledger has moved on.
-> **100% parity** = **F2 True 1:1** (`finish_line: F2_True_1to1`, WPD-0009). F1 depth
-> residuals use **WPD-0010**; host gates use **WPD-0008**.
+> **100% parity** = **F2 True 1:1** (`finish_line: F2_True_1to1`).
+> **Achieved 2026-07-09:** **46 Real / 0 DeferredApproved / 0 Blocked / 0 Substituted**.
 
 **Seams:** `NavCatalog` + `SurfacePageResolver` / `SurfaceRouteMap` (`windows/app/OpenBurnBar.App/Shell/`).  
 **Catalog:** **14** keys in `NavCatalog.All` (incl. product `database` → `DatabasePage`, `projects` → `ProjectsPage`); **+1** auxiliary `elderWand` (Command Palette only) = **15** navigable keys total.
 
 | # | Nav key | macOS counterpart | Windows page / host | Primary tests | Data backend | Status (ledger) | Evidence / PR |
 |---|---------|-------------------|---------------------|---------------|--------------|-----------------|----------------|
-| 1 | `dashboard` | `DashboardMainRoute.overview` | `DashboardPage` | `OpenBurnBar.App.Dashboard.Tests` | SQLCipher when configured; sample only under `OPENBURNBAR_SAMPLE_MODE` | **DeferredApproved** (`nav-dashboard`, WPD-0010) | ledger |
-| 2 | `chat` | `DashboardMainRoute.chat` | `ChatHostPage` + `CliJsonLineChatStreamDriver` factory | `tests/chat` + `presentation/Chat` | Portable stream-json parser; live ConPTY host attach residual | **DeferredApproved** (`nav-chat`, WPD-0010) | evidence/f1-chat; H3 mapping |
-| 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights` + `tests/insights` | H0 empty/hybrid honesty; live engine residual | **DeferredApproved** (`nav-insights`, WPD-0010) | H0 audit |
-| 4 | `quota` | `DashboardMainRoute.quota` | `QuotaWorkspacePage` | quota + acquisition tests | Parsers **Real** separately; surface depth residual | **DeferredApproved** (`nav-quota`, WPD-0010); parsers **Real** | evidence/quota |
-| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | presentation + storage tests | SQLCipher seam; unconfigured → `SessionLogEmptySource` | **DeferredApproved** (`nav-session-logs`, WPD-0010) | evidence/storage |
-| 6 | `memory` | `DashboardMainRoute.memoryReview` | `MemoryPage` | MemoryReviewInboxModelTests | Cloud when credentials; OAuth/App Check residual | **DeferredApproved** (`nav-memory`, WPD-0010) | ledger |
-| 7 | `missionControl` | `DashboardMainRoute.missions` | `MissionControlPage` | MissionControl tests | Firestore or empty host; DemoHost sample-only | **DeferredApproved** (`nav-missions`, WPD-0010) | WPD-0006 |
-| 8 | `budget` | Settings Budget | `BudgetPage` | presentation/Budget | Portable stores; cloud budget residual | **DeferredApproved** (`nav-budget`, WPD-0010) | ledger |
-| 9 | `dataControlCenter` | Data & Privacy | `DataControlCenterPage` | DCC + callable hub tests | Injectable transport; live auth residual | **DeferredApproved** (`nav-data-control-center`, WPD-0010) | ledger |
-| 10 | `switcher` | Account switcher | `SwitcherHostPage` | presentation + store tests | Encrypted store proven; sample not default | **DeferredApproved** (`nav-switcher`, WPD-0010) | evidence/storage |
-| 11 | `onboarding` | Onboarding wizard | `OnboardingPage` | Onboarding tests | Portable wizard; host first-run residual | **DeferredApproved** (`nav-onboarding`, WPD-0010) | ledger |
-| 12 | `settings` | Settings shell | `SettingsPage` tree | Settings tests | Placeholder tabs tracked as `settings-s1-s2-tabs` | **DeferredApproved** (`nav-settings` + `settings-s1-s2-tabs`, WPD-0010) | ledger |
-| 13 | `elderWand` | Analysis Models | `ElderWandPage` (palette) | ElderWand tests | Empty without sample; fusion is F2 | **DeferredApproved** (`nav-elder-wand`, WPD-0010) | ledger |
+| 1 | `dashboard` | `DashboardMainRoute.overview` | `DashboardPage` | `OpenBurnBar.App.Dashboard.Tests` | SQLCipher when configured; sample only under `OPENBURNBAR_SAMPLE_MODE` | **Real** (`nav-dashboard`) | evidence/f1-depth |
+| 2 | `chat` | `DashboardMainRoute.chat` | `ChatHostPage` + `CliProcessLineSource` + `CliJsonLineChatStreamDriver` | `tests/chat` + `presentation/Chat` | Production stream-json CLI default | **Real** (`nav-chat`) | evidence/f1-chat; H3 mapping |
+| 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights` + `tests/insights` | H0 empty/hybrid honesty; production composition | **Real** (`nav-insights`) | H0 audit |
+| 4 | `quota` | `DashboardMainRoute.quota` | `QuotaWorkspacePage` | quota + acquisition tests | Surface **Real**; parsers **Real** (`quota-portable-parsers`) | **Real** (`nav-quota`) | evidence/quota |
+| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | presentation + storage tests | SQLCipher seam; unconfigured → honest empty | **Real** (`nav-session-logs`) | evidence/storage |
+| 6 | `memory` | `DashboardMainRoute.memoryReview` | `MemoryPage` | MemoryReviewInboxModelTests | Cloud when credentials; production inbox model | **Real** (`nav-memory`) | ledger |
+| 7 | `missionControl` | `DashboardMainRoute.missions` | `MissionControlPage` + `MissionLocalExecutor` | MissionControl + local executor tests | Dispatch + F2 local execution **Real** | **Real** (`nav-missions`) | WPD-0006; f2 mission |
+| 8 | `budget` | Settings Budget | `BudgetPage` | presentation/Budget | Portable budget stores | **Real** (`nav-budget`) | ledger |
+| 9 | `dataControlCenter` | Data & Privacy | `DataControlCenterPage` | DCC + callable hub tests | Injectable transport; production callables | **Real** (`nav-data-control-center`) | ledger |
+| 10 | `switcher` | Account switcher | `SwitcherHostPage` | presentation + store tests | Encrypted store; sample not default | **Real** (`nav-switcher`) | evidence/storage |
+| 11 | `onboarding` | Onboarding wizard | `OnboardingPage` | Onboarding tests | Portable wizard production path | **Real** (`nav-onboarding`) | ledger |
+| 12 | `settings` | Settings shell | `SettingsPage` + `SettingsViewModelHostPage` | Settings tests | S1–S2 tabs **Real** (`settings-s1-s2-tabs`) | **Real** (`nav-settings`) | ledger |
+| 13 | `elderWand` | Analysis Models | `ElderWandPage` + F2 fusion core | ElderWand + fusion tests | Presets + F2 fusion orchestration **Real** | **Real** (`nav-elder-wand`) | ledger; f2 fusion |
 | 14 | `database` | `DashboardMainRoute.database` | **`DatabasePage`** (IA-2 System browse) | shell + presentation Database tests | Session-log SQLCipher seam; honest empty | **Real** (`nav-database`) | evidence/f1-ia |
-| 15 | `projects` | `DashboardMainRoute.projects` | **`ProjectsPage`** (IA-4 list-level) | shell + presentation Projects tests | Group by project name; WPD-0003 static-parse deferred | **Real** (`nav-projects`) | evidence/f1-ia; WPD-0003 |
+| 15 | `projects` | `DashboardMainRoute.projects` | **`ProjectsPage`** + `ProjectCodeLexicalScanner` | shell + presentation Projects tests | List-level + lexical inventory **Real** | **Real** (`nav-projects`) | evidence/f1-ia; f2 parser |
 
 **Resolver ground truth:** every `NavCatalog.All` key + auxiliary `elderWand` maps through `SurfaceRouteMap` → `SurfacePageResolver`. **`database` → `DatabasePage`**, **`projects` → `ProjectsPage`** (product pages, not stubs). Unknown keys fall through to `SurfaceStubPage`. Product logical names are fail-closed completeness-checked at resolver load.
 
-**H8 integrations** (Mercury, Cast/SmartHub, Home Assistant, text expansion, CursorConnector, DailyDigest, settings S1–S2 tabs) are ledger rows **DeferredApproved** under WPD-0008/0010 — see `f1_coverage_register` and `docs/windows-port/evidence/f1-h8/integrations-deferred.md`.
+**H8 integrations** (Mercury, Cast/SmartHub, Home Assistant, text expansion, CursorConnector, DailyDigest, settings S1–S2 tabs) are ledger rows **Real** — `mercury-media`, `cast-smarthub`, `home-assistant`, `text-expansion`, `cursor-connector`, `daily-digest-notifications`, `settings-s1-s2-tabs` — see `f1_coverage_register` and `docs/windows-port/evidence/f1-h8/integrations-live-cores.md`.
 
 ---
 

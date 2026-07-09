@@ -33,8 +33,9 @@ export function MediaSection() {
         <span className="p12-absent-kicker">Capability absent</span>
         <h3>Media engine not yet available on this Linux build</h3>
         <p>
-          The shell checked the daemon for `daemon.media.status`. This build has no Mercury peer-list
-          RPC yet, so Linux is correctly showing observe-only readiness instead of simulated media.
+          Mercury media has no BurnBarRPCMethod contract on Linux yet. The shell returns an explicit
+          capability-absent state (VAL-MEDIA-001) instead of calling a non-existent RPC. Transport
+          will use iroh and the remote-access-agent socket when that path is wired.
         </p>
       </div>
     );

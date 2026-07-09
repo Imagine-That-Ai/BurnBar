@@ -426,6 +426,26 @@ export interface LinuxShellBridge {
   sessionEnv(): Promise<SessionEnv>;
   mediaStatus(): Promise<MercuryMediaStatus>;
   integrationsStatus(): Promise<IntegrationsStatus>;
+  /** Wire: approval.respond */
+  toolApprovalRespond?(
+    approvalId: string,
+    decision: 'approve' | 'reject' | 'cancel',
+    note?: string
+  ): Promise<void>;
+  /**
+   * Wire: approve → daemon.memory.remember, reject → daemon.memory.forget,
+   * audit → daemon.memory.audit_trail.
+   */
+  memorySetStatus?(
+    action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
+    payload: Record<string, unknown>
+  ): Promise<unknown>;
+  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
+  computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
+  computerUsePanicHalt?(params?: Record<string, unknown>): Promise<unknown>;
+  computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -1412,10 +1432,20 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('memory_review_inbox');
       return mapMemoryReviewInbox(raw);
     },
-    // P07 — daemon.memory.forget; daemon has no approve/reject review-row RPC on Linux.
+    // P07 — reject → forget; approve requires memorySetStatus with real body
+    // from the store (never invent approved:<id> placeholders here).
     memoryReviewDecision: async (id, decision) => {
       if (decision === 'rejected') {
-        await invoke<RawJsonValue>('memory_forget', { memoryId: id });
+        await invoke<RawJsonValue>('memory_set_status', {
+          action: 'reject',
+          payload: { memoryID: id }
+        });
+        return;
+      }
+      if (decision === 'approved') {
+        throw new Error(
+          'memoryReviewDecision cannot approve without body text; use memorySetStatus({ text }) from the store.'
+        );
       }
     },
     // P07 — daemon.code.index_status + explore + diagnostics + ops_diagnostics
@@ -1471,23 +1501,36 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         XDG_CURRENT_DESKTOP: str(pick(raw, 'xdg_current_desktop', 'XDG_CURRENT_DESKTOP')) || undefined
       };
     },
-    // P12 — daemon media_status / media.control observation
+    // P12 — explicit capability-absent until a real BurnBarRPCMethod media contract exists.
     mediaStatus: async () => {
-      try {
-        const raw = await invoke<RawJsonValue>('media_status');
-        return mapMercuryMediaStatus(raw);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        if (/unknown|unsupported|not implemented|no such method/i.test(message)) {
-          return { capabilityAvailable: false, pairedDevices: [] };
-        }
-        throw e;
-      }
+      const raw = await invoke<RawJsonValue>('media_status');
+      return mapMercuryMediaStatus(raw);
     },
     // P13 — daemon-reported smart-display/device integration status.
     integrationsStatus: async () => {
       const raw = await invoke<RawJsonValue>('integrations_status');
       return mapIntegrationsStatus(raw);
-    }
+    },
+    toolApprovalRespond: async (approvalId, decision, note) => {
+      await invoke<RawJsonValue>('tool_approval_respond', {
+        approvalId,
+        decision,
+        note: note ?? null
+      });
+    },
+    memorySetStatus: async (action, payload) => {
+      return invoke<RawJsonValue>('memory_set_status', { action, payload });
+    },
+    computerUseSessionStart: (params) =>
+      invoke<RawJsonValue>('computer_use_session_start', { params }),
+    computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
+    computerUseApprovalPending: (params) =>
+      invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
+    computerUseApprovalRespond: (params) =>
+      invoke<RawJsonValue>('computer_use_approval_respond', { params }),
+    computerUsePanicHalt: (params) =>
+      invoke<RawJsonValue>('computer_use_panic_halt', { params: params ?? null }),
+    computerUseAuditExport: (params) =>
+      invoke<RawJsonValue>('computer_use_audit_export', { params: params ?? null })
   };
 }

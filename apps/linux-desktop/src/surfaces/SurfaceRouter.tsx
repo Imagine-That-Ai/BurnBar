@@ -17,6 +17,9 @@ import { MemorySurface } from './memory/MemorySurface.js';
 import { ChatSurface } from './chat/ChatSurface.js';
 import { MissionsSurface } from './missions/MissionsSurface.js';
 import { ProjectsSurface } from './projects/ProjectsSurface.js';
+import { ComputerUseSurface } from './computerUse/ComputerUseSurface.js';
+import { MercurySurface } from './media/MercurySurface.js';
+import { SmartHubSurface } from './smarthub/SmartHubSurface.js';
 
 /**
  * Route → surface registry. Task-packet lanes extend this map by REPLACING a
@@ -40,6 +43,9 @@ const SURFACES: Record<ShellRoute, ComponentType> = {
   activity: ActivitySurface,
   chat: ChatSurface,
   memory: MemorySurface,
+  'computer-use': ComputerUseSurface,
+  mercury: MercurySurface,
+  smarthub: SmartHubSurface,
   settings: SettingsSurface,
   account: AccountSurface,
   updates: UpdatesSurface,

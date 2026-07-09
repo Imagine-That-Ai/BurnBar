@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { repoRoot, writeJson } from './lib/linux-release-common.mjs';
+import { reanchorEvidenceDir, repoRoot, writeJson } from './lib/linux-release-common.mjs';
 
 const files = [
   'docs/linux-port/README.md',
@@ -59,6 +59,7 @@ const report = {
   passed: failures.length === 0,
   failures
 };
-writeJson(path.join(repoRoot, 'docs/linux-port/evidence/mission-001-release/docs-check.json'), report);
+// Never rewrite sealed mission-001-release evidence. Local gates archive under mission-002.
+writeJson(path.join(reanchorEvidenceDir, 'docs-check.json'), report);
 console.log(JSON.stringify(report, null, 2));
 process.exit(failures.length === 0 ? 0 : 1);

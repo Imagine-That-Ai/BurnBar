@@ -266,7 +266,13 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
             throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
         }
         if !allowedRoots.isEmpty {
-            guard allowedRoots.contains(where: { executablePath.hasPrefix($0) }) else {
+            // Require root + path boundary (Issue 19): "/opt/obb" must not match "/opt/obb-evil".
+            let rootAllowed = allowedRoots.contains { root in
+                if executablePath == root { return true }
+                let boundary = root.hasSuffix("/") ? root : root + "/"
+                return executablePath.hasPrefix(boundary)
+            }
+            guard rootAllowed else {
                 throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
             }
         }

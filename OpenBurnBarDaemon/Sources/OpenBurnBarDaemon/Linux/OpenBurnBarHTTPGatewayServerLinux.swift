@@ -263,11 +263,9 @@ public actor BurnBarHTTPGatewayServer {
             let body = (try? String(data: JSONEncoder().encode(snapshot), encoding: .utf8)) ?? #"{"gatewayEnabled":true}"#
             return .buffered(httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body))
         case ("GET", "/v1/models"):
-            return .buffered(httpResponse(
-                status: 200,
-                headers: ["Content-Type": "application/json"],
-                body: #"{"object":"list","data":[]}"#
-            ))
+            return .buffered(await linuxModelsListResponse(catalog: false))
+        case ("GET", "/v1/models/catalog"):
+            return .buffered(await linuxModelsListResponse(catalog: true))
         case ("POST", "/v1/chat/completions"):
             return await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor)
         case ("POST", "/v1/responses"):
@@ -536,6 +534,71 @@ public actor BurnBarHTTPGatewayServer {
     private struct LinuxGatewayResolvedModel {
         var modelID: String
         var variant: BurnBarModelVariant?
+    }
+
+    /// Build OpenAI-compatible `/v1/models` (+ catalog) from configured providers (VAL-DAEMON-002).
+    private func linuxModelsListResponse(catalog: Bool) async -> Data {
+        var data: [[String: Any]] = []
+        if let configurations = try? await configStore.resolvedConfigurations() {
+            var seen = Set<String>()
+            for configuration in configurations {
+                let owner = configuration.settings.providerID
+                for variant in configuration.settings.modelVariants {
+                    let id = variant.variantID
+                    guard seen.insert(id).inserted else { continue }
+                    var row: [String: Any] = [
+                        "id": id,
+                        "object": "model",
+                        "owned_by": owner,
+                        "created": Int(Date().timeIntervalSince1970)
+                    ]
+                    if catalog {
+                        row["base_model"] = variant.baseModelID
+                        row["provider"] = owner
+                    }
+                    data.append(row)
+                }
+                for alias in configuration.settings.modelAliases {
+                    let id = alias.aliasID
+                    guard seen.insert(id).inserted else { continue }
+                    var row: [String: Any] = [
+                        "id": id,
+                        "object": "model",
+                        "owned_by": owner,
+                        "created": Int(Date().timeIntervalSince1970)
+                    ]
+                    if catalog {
+                        row["base_model"] = alias.baseModelID
+                        row["provider"] = owner
+                        row["alias"] = true
+                    }
+                    data.append(row)
+                }
+                // Prefer advertised catalog models when variants empty.
+                if configuration.settings.modelVariants.isEmpty {
+                    for model in configuration.preferredModels {
+                        let id = model.id
+                        guard seen.insert(id).inserted else { continue }
+                        data.append([
+                            "id": id,
+                            "object": "model",
+                            "owned_by": owner,
+                            "created": Int(Date().timeIntervalSince1970)
+                        ])
+                    }
+                }
+            }
+        }
+        let bodyObj: [String: Any] = [
+            "object": "list",
+            "data": data,
+            "platform": "linux",
+            "catalog": catalog
+        ]
+        let body = (try? JSONSerialization.data(withJSONObject: bodyObj, options: []))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"object":"list","data":[]}"#
+        return httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body)
     }
 
     private func resolveLinuxGatewayModel(_ requested: String) async -> LinuxGatewayResolvedModel {
