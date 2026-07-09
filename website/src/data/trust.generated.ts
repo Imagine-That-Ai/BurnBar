@@ -323,6 +323,26 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     ]
   },
   {
+    "id": "community",
+    "title": "Community",
+    "tier": "server_readable",
+    "blurb": "Consent-gated Community participation: local-only L1 state, anonymous leaderboard profile metadata, server-owned share snapshots, public k-anonymous leaderboard aggregates, and opt-in Looking Glass trace export metadata. City sharing uses approximate city keys only; raw coordinates are never stored.",
+    "caveat": null,
+    "serverSees": [
+      "consent ladder states",
+      "anonymous handles and anonIds",
+      "coarse country/region/city keys",
+      "per-window token and cost aggregates",
+      "model/purpose mix totals",
+      "Looking Glass trace metadata and export bundle references"
+    ],
+    "deviceOnly": [
+      "raw location coordinates",
+      "private analytics when L2/L3 are not granted",
+      "manual city text before sync"
+    ]
+  },
+  {
     "id": "audit_timeline",
     "title": "Access Audit Timeline",
     "tier": "server_readable",

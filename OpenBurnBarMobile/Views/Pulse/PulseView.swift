@@ -18,6 +18,7 @@ struct PulseView: View {
     let quotaStore: QuotaStore
     let sessionsStore: ActivityStore
     let hermesService: HermesService
+    @Bindable var communityStore: CommunityStore
     @State private var displayMode: UsageDisplayMode = .currency
     @State private var timelineScope: PulseTimelineScope = .day
     @State private var liveUsageStart = PulseWindowMetricBuilder.liveQueryStart()
@@ -118,6 +119,12 @@ struct PulseView: View {
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.20)
+                    CommunityEntryCard(
+                        participates: CommunityConsentStore.shared.participatesInRankings,
+                        headlineTokens: communityPulseHeadline
+                    )
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                    .staggeredEntrance(delay: 0.18)
 
                     HermesQuickAskCard(
                         service: hermesService,
@@ -288,6 +295,13 @@ struct PulseView: View {
 
     private var liveUsagesForPulse: [TokenUsage] {
         sessionsStore.liveUsages.isEmpty ? sessionsStore.rawUsages : sessionsStore.liveUsages
+    }
+
+    private var communityPulseHeadline: String? {
+        guard CommunityConsentStore.shared.participatesInRankings else { return nil }
+        let tokens = communityStore.shareSnapshot?.usage(for: .sevenDay).totalTokens ?? 0
+        guard tokens > 0 else { return nil }
+        return "\(tokens.formatAsTokens()) tokens · 7d"
     }
 
     private var suggestedPrompts: [String] {

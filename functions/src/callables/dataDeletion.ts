@@ -26,13 +26,9 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import { DATA_DOMAIN_PATHS } from "./dataExport.js";
-import {
-  appendAuditEvent,
-  appendAuditEventRequired,
-  auditActorLabel,
-  AUDIT_ACTIONS,
-} from "./auditLog.js";
+import { appendAuditEvent, appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { CommunityPaths } from "../community/consent.js";
 
 /**
  * Domains whose deletion is intentionally NOT exposed through deleteDomainData.
@@ -53,6 +49,27 @@ export const UNDELETABLE_DOMAINS = new Set<string>([
   "entitlements_billing",
   "audit_timeline",
 ]);
+
+function storagePrefixForDomain(uid: string, prefix: string): string {
+  if (prefix === "looking_glass_exports") {
+    return `looking_glass_exports/${uid}/`;
+  }
+  return `users/${uid}/${prefix}/`;
+}
+
+async function releaseCommunityHandleClaim(uid: string): Promise<void> {
+  await db.runTransaction(async (tx) => {
+    const profileRef = db.doc(CommunityPaths.profile(uid));
+    const profileSnap = await tx.get(profileRef);
+    const profile = profileSnap.data();
+    const handleLower = typeof profile?.handleLower === "string" ? profile.handleLower : null;
+    if (!handleLower) return;
+
+    const claimRef = db.doc(CommunityPaths.handleClaim(handleLower));
+    const claimSnap = await tx.get(claimRef);
+    if (claimSnap.exists && claimSnap.data()?.uid === uid) tx.delete(claimRef);
+  });
+}
 
 export const deleteDomainData = onCall(
   {
@@ -93,6 +110,12 @@ export const deleteDomainData = onCall(
         domain: domainId,
       });
 
+      // Community handles live outside users/{uid}; release the owner claim
+      // while the profile still identifies it so retries cannot orphan it.
+      if (domainId === "community") {
+        await releaseCommunityHandleClaim(uid);
+      }
+
       // Recursive delete so nested subcollections are purged too (e.g.
       // knowledge_sync_manifests/{slug}/entries, cli_sessions/{id}/snapshots).
       // A top-level query-delete would orphan descendants — residual PII after a
@@ -109,7 +132,7 @@ export const deleteDomainData = onCall(
       if (paths.storagePrefixes.length > 0) {
         const bucket = getStorage().bucket();
         for (const prefix of paths.storagePrefixes) {
-          const fullPrefix = `users/${uid}/${prefix}/`;
+          const fullPrefix = storagePrefixForDomain(uid, prefix);
           const [files] = await bucket.getFiles({ prefix: fullPrefix });
           storageObjects += files.length;
           await bucket.deleteFiles({ prefix: fullPrefix, force: true });

@@ -28,6 +28,8 @@ final class NavigationCoordinator {
     
     /// The pending route to navigate to in the dashboard.
     var dashboardRoute: DashboardRoute?
+    /// When set before opening the dashboard, the window navigates here on appear.
+    var pendingMainRoute: DashboardMainRoute?
     
     /// Dashboard route enum - mirrors DashboardMainRoute for external coordination
     enum DashboardRoute: Hashable {

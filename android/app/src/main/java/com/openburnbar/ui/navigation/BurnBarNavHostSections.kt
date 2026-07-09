@@ -43,6 +43,7 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.missions.MobileMissionConsoleHost
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.ui.burn.BurnView
+import com.openburnbar.ui.community.CommunityScreen
 import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.BurnBarLogo
 import com.openburnbar.ui.computeruse.ComputerUseAgentWatchScreen
@@ -112,6 +113,7 @@ internal fun BurnBarContent(
         burnBarYouRoute()
         burnBarStoreRoute(navController)
         burnBarControlCenterRoute(navController, priceForTier)
+        burnBarCommunityRoute()
         burnBarComputerUseRoute(navController, navigateToHermes, currentTier, priceForTier)
         burnBarPairedMacRoutes(navController, currentTier, priceForTier)
         burnBarDashboardRedirectRoute(navController)
@@ -324,6 +326,15 @@ private fun androidx.navigation.NavGraphBuilder.burnBarStoreRoute(navController:
         com.openburnbar.ui.store.CloudStoreView(
             onClose = { navController.popBackStack() },
         )
+    }
+}
+
+private fun androidx.navigation.NavGraphBuilder.burnBarCommunityRoute() {
+    composable(
+        "community",
+        deepLinks = listOf(navDeepLink { uriPattern = "burnbar://community" }),
+    ) {
+        CommunityScreen(modifier = Modifier.fillMaxSize())
     }
 }
 

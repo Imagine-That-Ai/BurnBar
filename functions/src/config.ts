@@ -518,6 +518,24 @@ function resolveRequireHighRiskNonce(
   return requireHighRiskNonce;
 }
 
+/** Resolve Community rollout gates. Defaults keep the feature enabled while
+ * allowing a single hard kill switch to disable mutation/export/aggregation. */
+function buildCommunitySettings(
+  openburnbar: Record<string, unknown>,
+): Pick<EnvConfig, "communityKillSwitch" | "communityPublicReadsEnabled"> {
+  const communityKillSwitch = toBool(
+    process.env.COMMUNITY_KILL_SWITCH ?? configString(openburnbar, "community_kill_switch"),
+    false,
+  );
+  return {
+    communityKillSwitch,
+    communityPublicReadsEnabled: toBool(
+      process.env.COMMUNITY_PUBLIC_READS_ENABLED ?? configString(openburnbar, "community_public_reads_enabled"),
+      !communityKillSwitch,
+    ),
+  };
+}
+
 /**
  * Build the runtime configuration from Firebase Functions config and
  * environment variables.  Falls back to safe defaults for local emulation.
@@ -552,6 +570,7 @@ function buildConfig(): EnvConfig {
     kmsKeyName,
     enforceAppCheck,
     requireHighRiskNonce,
+    ...buildCommunitySettings(openburnbar),
     ...resolveAppCheckAppIdSurface(openburnbar, looksProd),
     ...buildNumericSettings(openburnbar),
     ...buildAppleProductIds(openburnbar),

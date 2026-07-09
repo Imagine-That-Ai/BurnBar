@@ -59,7 +59,11 @@ export interface ProviderAdapter {
   testCredential(credential: string, accountContext?: ProviderAccountConnectContext): Promise<CredentialTestResult>;
 
   /** Fetch current quota using the decrypted credential. */
-  fetchQuota(credential: string, sourceId: string, accountContext?: ProviderAccountConnectContext): Promise<QuotaRefreshResult>;
+  fetchQuota(
+    credential: string,
+    sourceId: string,
+    accountContext?: ProviderAccountConnectContext,
+  ): Promise<QuotaRefreshResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +82,12 @@ export interface EnvConfig {
 
   /** Require a single-use high-risk action nonce on high-risk callables (default false; staged rollout). */
   requireHighRiskNonce: boolean;
+
+  /** Hard kill switch for Community joins/profile writes/exports/aggregation (default false). */
+  communityKillSwitch: boolean;
+
+  /** Public leaderboard read gate mirrored into /ops/community_status/state/current (default true). */
+  communityPublicReadsEnabled: boolean;
 
   /**
    * App Check app ids permitted to mint / carry a lower-trust desktop App Check token.

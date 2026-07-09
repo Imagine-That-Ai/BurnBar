@@ -77,6 +77,7 @@ public static class NavCatalog
     public static IReadOnlyList<NavDestination> Auxiliary { get; } = new List<NavDestination>
     {
         new("elderWand", "Analysis Models", "Elder Wand analysis, judge & research budget", "\uE734"),
+        new("community", "Community", "Anonymous rankings & consent-first sharing", "\uE716"),
     };
 
     /// <summary>Menu (non-footer) destinations, in order.</summary>

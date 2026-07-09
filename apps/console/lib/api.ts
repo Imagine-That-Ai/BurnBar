@@ -263,3 +263,57 @@ export const verifyPasskeyAssertion = (assertion: AuthenticationResponseJSON, ch
     { assertion: AuthenticationResponseJSON; challenge: string },
     { ok: boolean; token: string }
   >("verifyPasskeyAssertion", { assertion, challenge });
+
+// ── Community (consent + profile) ───────────────────────────────────────────
+
+export interface JoinCommunityRequest {
+  l1Analytics?: string;
+  l2Rankings?: string;
+  l2World?: string;
+  l2Country?: string;
+  l2Region?: string;
+  l2City?: string;
+  locationConsent?: string;
+  l3LookingGlass?: string;
+  handle?: string;
+  timezone?: string;
+  locale?: string;
+  countryCode?: string;
+  regionKey?: string;
+  cityKey?: string;
+}
+
+export interface JoinCommunityResponse {
+  ok: boolean;
+  anonId: string;
+  handle: string;
+}
+
+export const joinCommunity = (payload: JoinCommunityRequest) =>
+  call<JoinCommunityRequest, JoinCommunityResponse>("joinCommunity", payload);
+
+export interface UpdateCommunityProfileRequest {
+  handle?: string;
+  timezone?: string;
+  locale?: string;
+  countryCode?: string;
+  regionKey?: string;
+  cityKey?: string;
+}
+
+export const updateCommunityProfile = (payload: UpdateCommunityProfileRequest) =>
+  call<UpdateCommunityProfileRequest, { ok: boolean }>("updateCommunityProfile", payload);
+
+export const revokeCommunityParticipation = () =>
+  call<Record<string, never>, { ok: boolean }>("revokeCommunityParticipation", {});
+
+export interface ExportLookingGlassBundleResponse {
+  signedUrl?: string;
+  downloadUrl: string;
+  traceCount: number;
+  format: string;
+  expiresIn: number;
+}
+
+export const exportLookingGlassBundle = (format: "jsonl" | "parquet" = "jsonl") =>
+  call<{ format: "jsonl" | "parquet" }, ExportLookingGlassBundleResponse>("exportLookingGlassBundle", { format });

@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 import OSLog
 
 private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "FirestoreRepository")
@@ -134,7 +135,39 @@ final class FirestoreRepository {
     /// Injects the Firestore document ID as `id` when the payload lacks it,
     /// remaps `deviceId` → `sourceDeviceId`, sanitizes for JSON, then decodes.
     nonisolated func decodeWithDocID<T: Decodable>(_ type: T.Type, from data: [String: Any], docID: String) -> T? {
-        decodeWithDocID(type, from: data, docID: docID, projectNameOpener: nil)
+        decodeWithDocID(type, from: data, docID: docID, preserveStringValues: false, projectNameOpener: nil)
+    }
+
+    /// Generated TypeSpec Firestore models keep server ISO date fields as strings.
+    /// Use this path for those models so the generic legacy decoder does not
+    /// coerce ISO strings into `Date`'s numeric deferred representation.
+    nonisolated func decodeWithDocIDPreservingStringValues<T: Decodable>(
+        _ type: T.Type,
+        from data: [String: Any],
+        docID: String
+    ) -> T? {
+        decodeWithDocID(type, from: data, docID: docID, preserveStringValues: true, projectNameOpener: nil)
+    }
+
+    func listenCommunityDocument(
+        uid: String,
+        documentID: String,
+        handler: @escaping (DocumentSnapshot?, Error?) -> Void
+    ) -> ListenerRegistration {
+        db.collection("users")
+            .document(uid)
+            .collection("community")
+            .document(documentID)
+            .addSnapshotListener(handler)
+    }
+
+    func fetchCommunityLeaderboard(docID: String) async throws -> FirestoreCommunityLeaderboardDoc? {
+        let data = try await db.collection("community_leaderboards")
+            .document(docID)
+            .getDocument()
+            .data()
+        guard let data else { return nil }
+        return decodeWithDocIDPreservingStringValues(FirestoreCommunityLeaderboardDoc.self, from: data, docID: docID)
     }
 
     /// `TokenUsage` decode for the incremental live listener: identical to
@@ -147,7 +180,7 @@ final class FirestoreRepository {
         updatedAtMillis: Int64,
         projectNames: SealedProjectNameCache
     ) -> TokenUsage? {
-        decodeWithDocID(TokenUsage.self, from: data, docID: docID) { enriched in
+        decodeWithDocID(TokenUsage.self, from: data, docID: docID, preserveStringValues: false) { enriched in
             projectNames.openOrCached(docID: docID, updatedAtMillis: updatedAtMillis) {
                 CloudVaultCrypto.openSealedProjectName(
                     from: enriched,
@@ -175,6 +208,7 @@ final class FirestoreRepository {
         _ type: T.Type,
         from data: [String: Any],
         docID: String,
+        preserveStringValues: Bool,
         projectNameOpener: (([String: Any]) -> String?)?
     ) -> T? {
         var enriched = data
@@ -212,7 +246,7 @@ final class FirestoreRepository {
         if enriched["deviceId"] != nil && enriched["sourceDeviceId"] == nil {
             enriched["sourceDeviceId"] = enriched["deviceId"]
         }
-        let sanitized = Self.sanitizeForJSON(enriched) as? [String: Any] ?? enriched
+        let sanitized = Self.sanitizeForJSON(enriched, preservingStringValues: preserveStringValues) as? [String: Any] ?? enriched
         guard let jsonData = try? JSONSerialization.data(withJSONObject: sanitized) else {
             logger.warning("Failed to serialize Firestore data for document \(docID, privacy: .public): \(String(describing: T.self), privacy: .public)")
             return nil

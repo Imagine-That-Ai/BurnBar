@@ -1,0 +1,111 @@
+[
+  {
+    "name": "ui-swift-file",
+    "signals": { "fileExtensions": ["swift"] },
+    "expected": "ui",
+    "minConfidence": 0.5
+  },
+  {
+    "name": "ui-css-html",
+    "signals": { "fileExtensions": ["css", "html"] },
+    "expected": "ui",
+    "minConfidence": 0.5
+  },
+  {
+    "name": "backend-go-sql",
+    "signals": { "fileExtensions": ["go", "sql"] },
+    "expected": "backend",
+    "minConfidence": 0.5
+  },
+  {
+    "name": "backend-python-api",
+    "signals": { "fileExtensions": ["py"], "keywords": ["api", "server"] },
+    "expected": "backend",
+    "minConfidence": 0.5
+  },
+  {
+    "name": "backend-deploy-keyword",
+    "signals": { "keywords": ["deploy"] },
+    "expected": "backend",
+    "minConfidence": 0.5,
+    "expectedSignal": "keyword:deploy"
+  },
+  {
+    "name": "logic-typescript-refactor",
+    "signals": { "fileExtensions": ["ts"], "keywords": ["refactor"] },
+    "expected": "logic",
+    "minConfidence": 0.3
+  },
+  {
+    "name": "writing-markdown-docs",
+    "signals": { "fileExtensions": ["md"], "keywords": ["docs"] },
+    "expected": "writing",
+    "minConfidence": 0.4
+  },
+  {
+    "name": "research-json-search",
+    "signals": { "fileExtensions": ["json"], "hasSearchResults": true },
+    "expected": "research",
+    "minConfidence": 0.4
+  },
+  {
+    "name": "debugging-error-stacktrace",
+    "signals": { "hasErrorOutput": true, "keywords": ["bug", "fix"] },
+    "expected": "debugging",
+    "minConfidence": 0.5
+  },
+  {
+    "name": "orchestration-planning",
+    "signals": { "hasMultiStepPlanning": true, "keywords": ["workflow"] },
+    "expected": "orchestration",
+    "minConfidence": 0.5
+  },
+  {
+    "name": "no-signals-default",
+    "signals": {},
+    "expected": "other",
+    "minConfidence": 0
+  },
+  {
+    "name": "mixed-ui-backend",
+    "signals": { "fileExtensions": ["swift", "py"], "keywords": ["api", "design"] },
+    "expected": "ui",
+    "minConfidence": 0.3
+  },
+  {
+    "name": "model-bias-deepseek",
+    "signals": { "model": "deepseek-coder-v2" },
+    "expected": "logic",
+    "minConfidence": 0.2
+  },
+  {
+    "name": "surface-terminal-debugging",
+    "signals": { "appSurface": "terminal", "hasErrorOutput": true },
+    "expected": "debugging",
+    "minConfidence": 0.5
+  },
+  {
+    "name": "correction-overrides",
+    "signals": { "fileExtensions": ["swift"] },
+    "expected": "backend",
+    "minConfidence": 1.0,
+    "corrections": [
+      {
+        "fingerprint": "ext:swift",
+        "correctedTo": "backend"
+      }
+    ]
+  },
+  {
+    "name": "fingerprint-stability",
+    "signals": { "fileExtensions": ["ts", "swift"], "appSurface": "editor" },
+    "expectedFingerprint": "ext:swift,ts|surf:editor"
+  },
+  {
+    "name": "model-bias-tie-order",
+    "signals": { "model": "o1-deepseek-hybrid" },
+    "expected": "research",
+    "minConfidence": 0.2,
+    "expectedSignal": "model:o1"
+  }
+]

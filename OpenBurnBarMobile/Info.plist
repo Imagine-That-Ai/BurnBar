@@ -51,6 +51,8 @@
 	<string>OpenBurnBar uses Face ID only to confirm it's you before this iPhone sends remote input -- like typing or unlocking -- to your trusted Mac during a Mercury session.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenBurnBar uses the local network to connect this iPhone or iPad to your trusted Mac for pairing, Hermes relay, and media sessions.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OpenBurnBar uses your approximate city only when you explicitly enable the Community city leaderboard. Raw coordinates are never stored.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>OpenBurnBar uses the microphone only when you start voice commands or a trusted Mercury audio call.</string>
 	<key>NSMotionUsageDescription</key>

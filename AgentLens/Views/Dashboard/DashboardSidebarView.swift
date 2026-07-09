@@ -56,6 +56,18 @@ extension DashboardView {
                         }
                     }
 
+                    DashboardWorkspaceNavButton(
+                        title: DashboardMainRoute.community.title(),
+                        subtitle: DashboardMainRoute.community.subtitle(),
+                        systemImage: DashboardMainRoute.community.systemImage(),
+                        accent: DesignSystem.Colors.ember,
+                        isSelected: mainRoute == .community
+                    ) {
+                        withAnimation(DesignSystem.Animation.standard) {
+                            navigate(to: .community)
+                        }
+                    }
+
                     if viewMode == .agents {
                         ForEach(Array(dashboardProviderSummaries.enumerated()), id: \.element.id) { index, summary in
                             SidebarItem(
@@ -204,7 +216,7 @@ extension DashboardView {
     }
 
     var sidebarRouteOrder: [DashboardMainRoute] {
-        var routes: [DashboardMainRoute] = [.overview, .insights]
+        var routes: [DashboardMainRoute] = [.overview, .insights, .community]
         if viewMode == .agents {
             routes.append(contentsOf: dashboardProviderSummaries.map { .provider($0.provider) })
         } else {

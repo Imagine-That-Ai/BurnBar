@@ -19,9 +19,9 @@
  * only burn down, never silently grow.
  *
  * Type normalization maps TypeSpec scalars to their TypeScript emit (int32 ->
- * number, ...), sorts union members, and renders arrays as `Elem[]`
- * (parenthesized when the element is a union), so `("a" | "b")[]` compares
- * stably regardless of declaration order.
+ * number, ...), renders `Record<T>` as `Record<string, T>`, resolves
+ * `@encodedName("application/json", "...")` property names, sorts union
+ * members, and renders arrays as `Elem[]`
  *
  * Run via check-drift.sh (CI: fast-feedback schema-drift job) or directly:
  *   npm --prefix tools/schema-sync run check:canon
@@ -36,6 +36,8 @@ import {
   navigateProgram,
   getSourceLocation,
   isArrayModelType,
+  isRecordModelType,
+  resolveEncodedName,
 } from "@typespec/compiler";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -73,6 +75,9 @@ function tspTypeToTs(program, type) {
       if (isArrayModelType(program, type)) {
         const element = tspTypeToTs(program, type.indexer.value);
         return element.includes(" | ") ? `(${element})[]` : `${element}[]`;
+      }
+      if (isRecordModelType(program, type)) {
+        return `Record<string, ${tspTypeToTs(program, type.indexer.value)}>`;
       }
       if (!type.name) throw new Error("anonymous model types are not allowed in the canon");
       return type.name;
@@ -113,8 +118,9 @@ function parseGeneratedInterfaces(tsSource) {
   const interfaces = new Map();
   for (const block of tsSource.matchAll(/export interface (\w+)\s*\{([\s\S]*?)\n\}/gm)) {
     const fields = new Map();
-    for (const line of block[2].matchAll(/^\s*(\w+)(\??):\s*(.+?);\s*$/gm)) {
-      fields.set(line[1], { optional: line[2] === "?", type: normalizeTsType(line[3]) });
+    for (const line of block[2].matchAll(/^\s*(?:"([^"]+)"|(\w+))(\??):\s*(.+?);\s*$/gm)) {
+      const fieldName = line[1] ?? line[2];
+      fields.set(fieldName, { optional: line[3] === "?", type: normalizeTsType(line[4]) });
     }
     interfaces.set(block[1], fields);
   }
@@ -188,14 +194,15 @@ for (const domain of manifest.domains) {
     if (!fields) continue; // already reported above
     const modelProps = new Map();
     for (const [propName, prop] of model.properties) {
+      const wireName = resolveEncodedName(program, prop, "application/json");
       let rendered;
       try {
         rendered = tspTypeToTs(program, prop.type);
       } catch (error) {
-        fail(`[${domain.id}] ${name}.${propName}: ${String(error.message ?? error)}`);
+        fail(`[${domain.id}] ${name}.${wireName}: ${String(error.message ?? error)}`);
         continue;
       }
-      modelProps.set(propName, { optional: prop.optional, type: rendered });
+      modelProps.set(wireName, { optional: prop.optional, type: rendered });
     }
     for (const [propName, expected] of modelProps) {
       const actual = fields.get(propName);

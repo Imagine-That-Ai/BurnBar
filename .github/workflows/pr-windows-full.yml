@@ -157,6 +157,11 @@ jobs:
       - name: Test (dotnet test — full suite)
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-x64.trx" --results-directory TestResults-x64
 
+      - name: Test (dotnet test — Community smoke)
+        env:
+          DOTNET_ROLL_FORWARD: Major
+        run: dotnet test windows/tests/community/OpenBurnBar.App.Community.Tests.csproj --configuration Debug --no-build --logger "trx;LogFileName=windows-community-x64.trx" --results-directory TestResults-x64
+
       # Publish the TRX results so a red fixture is inspectable in the Actions UI.
       - name: Upload test results
         if: always()
@@ -215,6 +220,11 @@ jobs:
 
       - name: Test (dotnet test — full suite)
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-arm64.trx" --results-directory TestResults-arm64
+
+      - name: Test (dotnet test — Community smoke)
+        env:
+          DOTNET_ROLL_FORWARD: Major
+        run: dotnet test windows/tests/community/OpenBurnBar.App.Community.Tests.csproj --configuration Debug --no-build --logger "trx;LogFileName=windows-community-arm64.trx" --results-directory TestResults-arm64
 
       - name: Upload test results
         if: always()

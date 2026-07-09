@@ -35,7 +35,8 @@ function exportedNames() {
 const CATALOG_OVERRIDES = {
   mintLinuxAppCheckToken: {
     trigger: "callable",
-    authMethod: "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
+    authMethod:
+      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
     appCheck: "not-required",
     publicJustification:
       "Bootstrap that MINTS a lower-trust Linux App Check token, so it cannot itself require one (chicken-and-egg). Gated by a Linux platform attestation verifier instead; under production config no mock verifier is registered so only a real Linux verifier can mint.",
@@ -89,6 +90,116 @@ const CATALOG_OVERRIDES = {
         expectedCode: "not-found",
       },
     ],
+  },
+  aggregateCommunityLeaderboards: {
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / platform trigger",
+    appCheck: "not-applicable",
+    tenantSource: "collectionGroup share_snapshot sweep with server-side consent recheck",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "scheduled worker never accepts client object ids; it scans share_snapshot docs, rechecks stored consent, and publishes only aggregate leaderboards",
+    handlerModule: "community/aggregation.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["aggregateCommunityLeaderboards"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  cleanupStaleCommunityLeaderboards: {
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / platform trigger",
+    appCheck: "not-applicable",
+    tenantSource: "public community_leaderboards collection with age-based cleanup guard",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "scheduled cleanup accepts no tenant or document ids from clients and deletes only stale public leaderboard docs by server timestamp policy",
+    handlerModule: "community/aggregation.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["cleanupStaleCommunityLeaderboards"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  exportLookingGlassBundle: {
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid, reads only that user's looking_glass_traces, and writes a short-lived export object owned by that uid",
+    handlerModule: "community/callables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["exportLookingGlassBundle"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  joinCommunity: {
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and writes only users/{uid}/community consent/profile/share-snapshot rows",
+    handlerModule: "community/callables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["joinCommunity"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  revokeCommunityParticipation: {
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid, tombstones that user's share_snapshot, deletes that user's profile, and never accepts a target uid",
+    handlerModule: "community/callables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["revokeCommunityParticipation"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  updateCommunityProfile: {
+    tenantSource: "request.auth.uid plus handle uniqueness transaction",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid; optional handle claims use community_handles/{handleLower} with an atomic ownerUid check, not a client-supplied tenant id",
+    handlerModule: "community/callables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["updateCommunityProfile"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
   },
   latestRouterRundown: {
     trigger: "http",

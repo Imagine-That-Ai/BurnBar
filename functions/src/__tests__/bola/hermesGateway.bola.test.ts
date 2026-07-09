@@ -46,13 +46,28 @@ vi.mock("../../callables/shared.js", async () => {
     isActiveBurnBarCloudProEntitlement: () => true,
   };
 });
-vi.mock("firebase-admin/firestore", () => ({
-  FieldValue: { delete: () => ({ __delete: true }) },
-  Timestamp: {
-    now: () => ({ toMillis: () => Date.now() }),
-    fromMillis: (ms: number) => ({ toMillis: () => ms }),
-  },
-}));
+vi.mock("firebase-admin/firestore", () => {
+  class MockTimestamp {
+    constructor(private readonly millis: number) {}
+
+    static now(): MockTimestamp {
+      return new MockTimestamp(Date.now());
+    }
+
+    static fromMillis(ms: number): MockTimestamp {
+      return new MockTimestamp(ms);
+    }
+
+    toMillis(): number {
+      return this.millis;
+    }
+  }
+
+  return {
+    FieldValue: { delete: () => ({ __delete: true }) },
+    Timestamp: MockTimestamp,
+  };
+});
 vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 
 export const BOLA_MANIFEST = {

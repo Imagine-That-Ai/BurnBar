@@ -52,7 +52,7 @@ describe('CommandPalette', () => {
     const dialog = screen.getByRole('dialog');
     fireEvent.keyDown(dialog, { key: 'ArrowDown' });
     fireEvent.keyDown(dialog, { key: 'Enter' });
-    expect(useShellStore.getState().route).toBe('insights');
+    expect(useShellStore.getState().route).toBe('community');
     onClose.mockClear();
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();

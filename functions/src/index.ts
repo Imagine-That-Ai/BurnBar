@@ -202,3 +202,12 @@ export { backfillPrivacyPlaintext, backfillPrivacyPlaintextScheduled } from "./c
 // Shared-artifact privacy remediation: read-only inventory of legacy plaintext
 // documents so trusted clients can pull and locally re-seal them.
 export { scanLegacyPlaintextArtifacts } from "./callables/sharedArtifactLegacyScan.js";
+
+// Community: consent-gated leaderboards + Looking Glass Mode.
+export {
+  joinCommunity,
+  updateCommunityProfile,
+  revokeCommunityParticipation,
+  exportLookingGlassBundle,
+} from "./community/callables.js";
+export { aggregateCommunityLeaderboards, cleanupStaleCommunityLeaderboards } from "./community/aggregation.js";

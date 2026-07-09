@@ -33,6 +33,11 @@
     "test:router-rundown": "npm run build && node scripts/test-router-rundown.mjs",
     "test:iroh-monitoring": "npm run build && node scripts/test-iroh-monitoring.mjs",
     "test:fcm-android": "npm run build && node scripts/test-fcm-android.mjs",
+    "test:community": "node ../scripts/ci/check-community-golden-fixtures.mjs && vitest run src/__tests__/community.test.ts src/__tests__/community-callables.test.ts src/__tests__/community-geo.test.ts src/__tests__/community-aggregation-hardening.test.ts",
+    "test:community-ops": "node --test scripts/community-leaderboard-canary.test.mjs scripts/community-postmerge-check.test.mjs scripts/community-rollout-dashboard.test.mjs",
+    "community:canary": "node scripts/community-leaderboard-canary.mjs",
+    "community:postmerge-check": "node scripts/community-postmerge-check.mjs",
+    "community:rollout-dashboard": "node scripts/community-rollout-dashboard.mjs",
     "generate:bola-seeds": "node scripts/generate-bola-victim-seeds.mjs",
     "test:bola": "bash scripts/test-bola-matrix.sh",
     "test:security": "node --test scripts/generated-literal-parser.test.mjs scripts/sync-bola-tier2-proofs.test.mjs && vitest run src/__tests__/googlePlayTokenClaims.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/irohPairingFreshness.test.ts src/__tests__/appCheckAttestationBinding.test.ts src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/hermesGatewayAttachmentInit.test.ts src/__tests__/highRiskOwnerActionCallableGuards.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/trustedDeviceActionProof.test.ts src/__tests__/bolaCoverageValidators.test.ts && npm run test:bola",
@@ -44,7 +49,7 @@
     "backfill:cloud-search-v3": "npm run build && node scripts/backfill-legacy-session-log-cloud-search-v3.mjs",
     "backfill:cloud-search-v4": "npm run build && node scripts/backfill-legacy-session-log-cloud-search-v3.mjs",
     "upload:local-session-logs-v4": "npm run build && node scripts/upload-local-sqlite-session-logs-v4.mjs",
-    "test": "npm run test:guards && npm run test:rollups && npm run test:appstore && npm run test:account-deletion && npm run test:hermes && npm run test:hermes-gateway && npm run test:pi-agent && npm run test:provider-device-links && npm run test:computer-use-opentimestamps && npm run test:computer-use-budget-killswitch && npm run test:cloud-pro-allowance && npm run test:hosted-quota-proof && npm run test:tier-cogs && npm run test:app-check-attestation && npm run test:demo-seed && npm run test:model-landscape && npm run test:router-rundown && npm run test:iroh-monitoring && npm run test:fcm-android && npm run test:agent-notifications && npm run test:providers && npm run test:conversation-query && npm run test:encrypted-search-index && npm run test:encrypted-session-blob && npm run test:firestore-rules",
+    "test": "npm run test:guards && npm run test:rollups && npm run test:appstore && npm run test:account-deletion && npm run test:hermes && npm run test:hermes-gateway && npm run test:pi-agent && npm run test:provider-device-links && npm run test:computer-use-opentimestamps && npm run test:computer-use-budget-killswitch && npm run test:cloud-pro-allowance && npm run test:hosted-quota-proof && npm run test:tier-cogs && npm run test:app-check-attestation && npm run test:demo-seed && npm run test:model-landscape && npm run test:router-rundown && npm run test:iroh-monitoring && npm run test:fcm-android && npm run test:agent-notifications && npm run test:providers && npm run test:conversation-query && npm run test:encrypted-search-index && npm run test:encrypted-session-blob && npm run test:community && npm run test:firestore-rules",
     "prove:hosted-quota": "node scripts/prove-hosted-quota-live.mjs",
     "prove:paid-tier": "node scripts/prove-paid-tier-live.mjs",
     "prove:cloud-search": "node scripts/prove-burnbar-pro-cloud-search-live.mjs",
@@ -82,6 +87,7 @@
     "firebase-admin": "13.10.0",
     "firebase-functions": "^7.2.5",
     "googleapis": "173.0.0",
+    "hyparquet-writer": "0.16.1",
     "stripe": "19.3.0"
   },
   "devDependencies": {

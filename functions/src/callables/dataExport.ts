@@ -209,6 +209,11 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
     ],
     storagePrefixes: [],
   },
+  community: {
+    encryptionTier: "server_readable",
+    firestoreCollections: ["community", "looking_glass_traces", "looking_glass_exports"],
+    storagePrefixes: ["looking_glass_exports"],
+  },
   audit_timeline: {
     encryptionTier: "server_readable",
     firestoreCollections: [
@@ -262,6 +267,13 @@ interface DomainExport {
    */
   redactedFields?: string[];
   sealedRefs?: Array<{ pathDigest: string; signedUrl: string }>;
+}
+
+function storagePrefixForDomain(uid: string, prefix: string): string {
+  if (prefix === "looking_glass_exports") {
+    return `looking_glass_exports/${uid}/`;
+  }
+  return `users/${uid}/${prefix}/`;
 }
 
 /**
@@ -602,7 +614,10 @@ async function collectSealedRefs(
   const expires = new Date(Date.now() + SIGNED_URL_TTL_MS);
   for (const prefix of paths.storagePrefixes) {
     if (budget.remaining <= 0) break;
-    const [files] = await bucket.getFiles({ prefix: `users/${uid}/${prefix}/`, maxResults: budget.remaining });
+    const [files] = await bucket.getFiles({
+      prefix: storagePrefixForDomain(uid, prefix),
+      maxResults: budget.remaining,
+    });
     for (const file of files) {
       if (budget.remaining <= 0) break;
       const [signedUrl] = await file.getSignedUrl({ version: "v4", action: "read", expires });

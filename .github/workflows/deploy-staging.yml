@@ -309,6 +309,37 @@ jobs:
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
             --non-interactive
 
+      - name: Community rollout dashboard (staging)
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        env:
+          FIREBASE_WEB_API_KEY: ${{ secrets.STAGING_FIREBASE_WEB_API_KEY }}
+          COMMUNITY_CANARY_THRESHOLD_DOC: ${{ vars.STAGING_COMMUNITY_CANARY_THRESHOLD_DOC }}
+          COMMUNITY_CANARY_LIVE_DOC: ${{ vars.STAGING_COMMUNITY_CANARY_LIVE_DOC }}
+          COMMUNITY_CANARY_REVOKED_ANON_ID: ${{ vars.STAGING_COMMUNITY_CANARY_REVOKED_ANON_ID }}
+          COMMUNITY_POSTMERGE_STALE_HOURS: ${{ vars.STAGING_COMMUNITY_POSTMERGE_STALE_HOURS || '48' }}
+        run: |
+          set -euo pipefail
+          common_args=(
+            --project "$FIREBASE_PROJECT"
+            --stale-hours "${COMMUNITY_POSTMERGE_STALE_HOURS:-48}"
+          )
+
+          if [[ -z "${FIREBASE_WEB_API_KEY:-}" || -z "${COMMUNITY_CANARY_THRESHOLD_DOC:-}" || -z "${COMMUNITY_CANARY_LIVE_DOC:-}" ]]; then
+            echo "::notice::Community canary inputs are not fully provisioned; running aggregate posture dashboard with --skip-canary."
+            npm --prefix functions run community:rollout-dashboard -- "${common_args[@]}" --skip-canary
+          else
+            canary_args=(
+              "${common_args[@]}"
+              --api-key "$FIREBASE_WEB_API_KEY"
+              --threshold-doc "$COMMUNITY_CANARY_THRESHOLD_DOC"
+              --live-doc "$COMMUNITY_CANARY_LIVE_DOC"
+            )
+            if [[ -n "${COMMUNITY_CANARY_REVOKED_ANON_ID:-}" ]]; then
+              canary_args+=(--revoked-anon-id "$COMMUNITY_CANARY_REVOKED_ANON_ID")
+            fi
+            npm --prefix functions run community:rollout-dashboard -- "${canary_args[@]}"
+          fi
+
       - name: Staging Functions summary
         if: always()
         run: |

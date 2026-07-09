@@ -2,6 +2,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { open as openExternal } from '@tauri-apps/plugin-shell';
 import type { DaemonHealth } from './daemonClient.js';
 import { ENTITLEMENT_DOC_IDS, evaluateEntitlement } from '@openburnbar/entitlements';
+import type {
+  CommunityLeaderboardCard,
+  CommunityLiveData,
+  CommunityShareSnapshotDoc,
+  CommunityUsageTotal,
+  CommunityWindowTotals,
+  GeographyTier,
+  PercentileBands,
+  RankMovement,
+} from './community/types.js';
 
 // ─────────────────────────── P01: usage summary ───────────────────────────
 
@@ -379,6 +389,7 @@ export interface LinuxShellBridge {
   sessionList(): Promise<SessionListResult>;
   sessionSearch(query: string): Promise<SessionListResult>;
   usageInsights(): Promise<UsageInsights>;
+  communityLiveData?(): Promise<CommunityLiveData | null>;
   missionList(): Promise<MissionListResult>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
   missionCreate(input: MissionCreateInput): Promise<MissionListResult['missions'][number] | null>;
@@ -459,6 +470,102 @@ function pick(v: RawJsonValue, ...keys: string[]): RawJsonValue {
     }
   }
   return undefined;
+}
+
+const COMMUNITY_TIERS = new Set<GeographyTier>(['city', 'region', 'country', 'world']);
+const COMMUNITY_MOVEMENTS = new Set<RankMovement>(['up', 'down', 'same', 'new']);
+
+function record(v: RawJsonValue): Record<string, RawJsonValue> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, RawJsonValue>) : {};
+}
+
+function mapCommunityUsageTotal(raw: RawJsonValue): CommunityUsageTotal {
+  return {
+    totalTokens: num(pick(raw, 'totalTokens', 'tokens', 'total_tokens')),
+    costUSD: num(pick(raw, 'costUSD', 'costUsd', 'cost_usd', 'cost')),
+  };
+}
+
+function mapCommunityWindowTotals(raw: RawJsonValue): CommunityWindowTotals {
+  return {
+    today: mapCommunityUsageTotal(pick(raw, 'today')),
+    sevenDay: mapCommunityUsageTotal(pick(raw, 'sevenDay', 'seven_day', '7d')),
+    thirtyDay: mapCommunityUsageTotal(pick(raw, 'thirtyDay', 'thirty_day', '30d')),
+    ninetyDay: mapCommunityUsageTotal(pick(raw, 'ninetyDay', 'ninety_day', '90d')),
+    allTime: mapCommunityUsageTotal(pick(raw, 'allTime', 'all_time')),
+  };
+}
+
+function mapNumberRecord(raw: RawJsonValue): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(record(raw))
+      .map(([key, value]) => [key, num(value, NaN)] as const)
+      .filter(([, value]) => Number.isFinite(value)),
+  );
+}
+
+function mapCommunityShareSnapshot(raw: RawJsonValue): CommunityShareSnapshotDoc | null {
+  const source = pick(raw, 'shareSnapshot', 'share_snapshot', 'snapshot') ?? raw;
+  const windows = pick(source, 'windows');
+  if (!windows) return null;
+  return {
+    windows: mapCommunityWindowTotals(windows),
+    modelMix: mapNumberRecord(pick(source, 'modelMix', 'model_mix')),
+    purposeMix: mapNumberRecord(pick(source, 'purposeMix', 'purpose_mix')),
+  };
+}
+
+function mapCommunityTier(raw: RawJsonValue): GeographyTier {
+  const tier = str(raw, 'world') as GeographyTier;
+  return COMMUNITY_TIERS.has(tier) ? tier : 'world';
+}
+
+function mapCommunityMovement(raw: RawJsonValue): RankMovement {
+  const movement = str(raw, 'same') as RankMovement;
+  return COMMUNITY_MOVEMENTS.has(movement) ? movement : 'same';
+}
+
+function mapPercentiles(raw: RawJsonValue): PercentileBands {
+  return {
+    p50: num(pick(raw, 'p50')),
+    p75: num(pick(raw, 'p75')),
+    p90: num(pick(raw, 'p90')),
+    p99: num(pick(raw, 'p99')),
+  };
+}
+
+function mapCommunityLeaderboard(raw: RawJsonValue): CommunityLeaderboardCard {
+  const tier = mapCommunityTier(pick(raw, 'tier'));
+  return {
+    tier,
+    geoLabel: str(pick(raw, 'geoLabel', 'geo_label', 'geoKey', 'geo_key'), tier),
+    entries: arr(pick(raw, 'entries')).map((entry, index) => ({
+      rank: Math.max(1, Math.trunc(num(pick(entry, 'rank'), index + 1))),
+      handle: str(pick(entry, 'handle')) || undefined,
+      anonId: str(pick(entry, 'anonId', 'anon_id'), `anon-${index + 1}`),
+      totalTokens: num(pick(entry, 'totalTokens', 'total_tokens', 'tokens')),
+      costUSD: num(pick(entry, 'costUSD', 'costUsd', 'cost_usd', 'cost')),
+      movement: mapCommunityMovement(pick(entry, 'movement')),
+    })),
+    percentiles: mapPercentiles(pick(raw, 'percentiles')),
+    cohortSize: Math.max(0, Math.trunc(num(pick(raw, 'cohortSize', 'cohort_size')))),
+    belowThreshold: Boolean(pick(raw, 'belowThreshold', 'below_threshold')),
+    kThreshold: Math.max(1, Math.trunc(num(pick(raw, 'kThreshold', 'k_threshold'), 10))),
+    yourRank: pick(raw, 'yourRank', 'your_rank') === undefined
+      ? undefined
+      : Math.max(1, Math.trunc(num(pick(raw, 'yourRank', 'your_rank')))),
+    yourMovement: pick(raw, 'yourMovement', 'your_movement') === undefined
+      ? undefined
+      : mapCommunityMovement(pick(raw, 'yourMovement', 'your_movement')),
+  };
+}
+
+function mapCommunityLiveData(raw: RawJsonValue): CommunityLiveData | null {
+  const source = pick(raw, 'result') ?? raw;
+  const shareSnapshot = mapCommunityShareSnapshot(source);
+  const leaderboards = arr(pick(source, 'leaderboards', 'boards')).map(mapCommunityLeaderboard);
+  if (!shareSnapshot && leaderboards.length === 0) return null;
+  return { shareSnapshot, leaderboards };
 }
 
 type UsageEvent = {
@@ -1304,6 +1411,12 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     usageInsights: async () => {
       const raw = await invoke<RawJsonValue>('usage_insights');
       return mapUsageInsights(raw);
+    },
+    // Community — optional daemon relay for consent-gated share snapshot + public boards.
+    // Older daemons reject this command; the Community store treats that as preview mode.
+    communityLiveData: async () => {
+      const raw = await invoke<RawJsonValue>('community_live_data');
+      return mapCommunityLiveData(raw);
     },
     // P06 — daemon.mission.list + pending approvals
     missionList: async () => {

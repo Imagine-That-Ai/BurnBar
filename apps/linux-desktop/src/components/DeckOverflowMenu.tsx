@@ -181,6 +181,17 @@ export function DeckOverflowMenu({
             role="menuitem"
             className="deck-overflow-item"
             onClick={() => {
+              setRoute('community');
+              setOpen(false);
+            }}
+          >
+            Community…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="deck-overflow-item"
+            onClick={() => {
               setRoute('settings');
               setOpen(false);
             }}
