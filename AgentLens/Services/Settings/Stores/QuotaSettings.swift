@@ -48,13 +48,28 @@ final class QuotaSettings {
     }
 
     private let persistence: SettingsPersistenceCoordinator
+    private var hasLoadedPersistedValues = false
+
+    private(set) var updatedAt = Date(timeIntervalSince1970: 0)
+
+    private func markUpdated() {
+        guard hasLoadedPersistedValues else { return }
+        updatedAt = Date()
+        persistence.set(updatedAt.timeIntervalSince1970, forKey: "quotaSettingsUpdatedAt")
+    }
 
     var providerOrderCSV: String = QuotaSettings.defaultProviderOrderCSV {
-        didSet { persistence.set(providerOrderCSV, forKey: "providerOrderCSV") }
+        didSet {
+            persistence.set(providerOrderCSV, forKey: "providerOrderCSV")
+            markUpdated()
+        }
     }
 
     var visibleProvidersCSV: String = QuotaSettings.defaultProviderOrderCSV {
-        didSet { persistence.set(visibleProvidersCSV, forKey: "visibleProvidersCSV") }
+        didSet {
+            persistence.set(visibleProvidersCSV, forKey: "visibleProvidersCSV")
+            markUpdated()
+        }
     }
 
     var hiddenBuckets: Set<String> = [] {
@@ -63,6 +78,7 @@ final class QuotaSettings {
             if let data = try? JSONEncoder().encode(array), // try?-ok(skip preference save)
                let raw = String(data: data, encoding: .utf8) {
                 persistence.set(raw, forKey: "hiddenBucketsJSON")
+                markUpdated()
             }
         }
     }
@@ -72,12 +88,16 @@ final class QuotaSettings {
             if let data = try? JSONEncoder().encode(bucketOrders), // try?-ok(skip preference save)
                let raw = String(data: data, encoding: .utf8) {
                 persistence.set(raw, forKey: "bucketOrdersJSON")
+                markUpdated()
             }
         }
     }
 
     var percentageDisplayMode: QuotaPercentageDisplayMode = .remainingPercent {
-        didSet { persistence.set(percentageDisplayMode.rawValue, forKey: "percentageDisplayMode") }
+        didSet {
+            persistence.set(percentageDisplayMode.rawValue, forKey: "percentageDisplayMode")
+            markUpdated()
+        }
     }
 
     var providerOrder: [AgentProvider] {
@@ -171,7 +191,10 @@ final class QuotaSettings {
     /// off — preserves the per-account view for users with only one
     /// account on each provider.
     var cumulativeAcrossAccounts: Bool = false {
-        didSet { persistence.set(cumulativeAcrossAccounts, forKey: "cumulativeAcrossAccounts") }
+        didSet {
+            persistence.set(cumulativeAcrossAccounts, forKey: "cumulativeAcrossAccounts")
+            markUpdated()
+        }
     }
 
     var smartHubQuotaDisplayEnabled: Bool = false {
@@ -407,5 +430,9 @@ final class QuotaSettings {
         } else {
             self.castSelectedDeviceSupportsDisplay = true
         }
+        if persistence.objectExists(forKey: "quotaSettingsUpdatedAt") {
+            self.updatedAt = Date(timeIntervalSince1970: persistence.double(forKey: "quotaSettingsUpdatedAt"))
+        }
+        self.hasLoadedPersistedValues = true
     }
 }

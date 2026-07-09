@@ -242,6 +242,7 @@ public enum CloudVaultCrypto {
     public static let projectMemoryContentHashVersion = 2
     public static let currentSealedPayloadSchemaVersion = 2
     public static let sealedPayloadAADContext = "OpenBurnBar-CloudVaultSealedPayload-v2"
+    public static let roamingProfileAADDomain = "OpenBurnBar-RoamingProfile-v1"
     public static let tokenHashVersion = 1
     public static let semanticHashVersion = 1
     public static let currentKeyVersion = 1
@@ -280,6 +281,17 @@ public enum CloudVaultCrypto {
     public static func vaultKeyID(for keyData: Data) throws -> String {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         return "v1_" + String(sha256Hex(keyData).prefix(32))
+    }
+
+    public static func roamingProfileAADContext(uid: String) throws -> CloudVaultAADContext {
+        try CloudVaultAADContext(
+            uid: uid,
+            collection: "roaming_profile",
+            docID: "current",
+            field: "sealedPayload",
+            schemaVersion: currentSealedPayloadSchemaVersion,
+            purpose: roamingProfileAADDomain
+        )
     }
 
     public static func generateRecoveryKey() throws -> String {
@@ -479,6 +491,52 @@ public enum CloudVaultCrypto {
         default:
             throw CloudVaultCryptoError.invalidEnvelope
         }
+    }
+
+    public static func sealRoamingProfile(
+        _ payload: RoamingProfilePayload,
+        keyData: Data,
+        uid: String,
+        keyVersion: Int = currentKeyVersion
+    ) throws -> CloudVaultSealedPayload {
+        let validated = try payload.validatedForCloudVaultSeal()
+        let data = try CloudVaultJSON.roamingProfileEncoder.encode(validated)
+        return try sealPayload(
+            data,
+            keyData: keyData,
+            vaultKeyID: vaultKeyID(for: keyData),
+            keyVersion: keyVersion,
+            aadContext: roamingProfileAADContext(uid: uid)
+        )
+    }
+
+    public static func openRoamingProfile(
+        _ envelope: CloudVaultSealedPayload,
+        keyData: Data,
+        uid: String
+    ) throws -> RoamingProfilePayload {
+        let data = try openPayload(
+            envelope,
+            keyData: keyData,
+            aadContext: roamingProfileAADContext(uid: uid)
+        )
+        let payload = try CloudVaultJSON.roamingProfileDecoder.decode(RoamingProfilePayload.self, from: data)
+        return try payload.validatedForCloudVaultSeal()
+    }
+
+    public static func roamingProfileCloudDocument(
+        payload: RoamingProfilePayload,
+        sealedPayload: CloudVaultSealedPayload,
+        uid: String
+    ) -> [String: Any] {
+        [
+            "uid": uid,
+            "schemaVersion": 1,
+            "payloadSchemaVersion": payload.schemaVersion,
+            "sourceDeviceID": payload.sourceDeviceID,
+            "updatedAt": payload.updatedAt,
+            "sealedPayload": sealedPayloadDictionary(sealedPayload)
+        ]
     }
 
     public static func sealedPayloadDictionary(_ envelope: CloudVaultSealedPayload) -> [String: Any] {

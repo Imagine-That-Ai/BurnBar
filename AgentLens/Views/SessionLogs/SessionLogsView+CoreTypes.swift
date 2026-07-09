@@ -52,5 +52,5 @@ struct SessionLogGroup: Identifiable {
     let systemImage: String
     let accentColor: Color
     let provider: AgentProvider?
-    let logs: [ConversationRecord]
+    let logs: [OpenBurnBarCore.ConversationRecord]
 }

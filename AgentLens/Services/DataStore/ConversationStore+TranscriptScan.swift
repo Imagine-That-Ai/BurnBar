@@ -11,10 +11,10 @@ extension ConversationStore {
             provider: AgentProvider?,
             projectName: String?,
             dateRange: ClosedRange<Date>?,
-            conversationSources: Set<ConversationSourceType>?,
+            conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?,
             limit: Int = 500
-        ) async throws -> [ConversationRecord] {
-            try await dbQueue.read { db -> [ConversationRecord] in
+        ) async throws -> [OpenBurnBarCore.ConversationRecord] {
+            try await dbQueue.read { db -> [OpenBurnBarCore.ConversationRecord] in
                 var sql = """
                 SELECT *
                 FROM conversations AS c
@@ -68,7 +68,7 @@ extension ConversationStore {
             provider: AgentProvider?,
             projectName: String?,
             dateRange: ClosedRange<Date>?,
-            conversationSources: Set<ConversationSourceType>?,
+            conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?,
             limit: Int,
             offset: Int
         ) async throws -> [(id: String, fullText: String)] {
@@ -164,7 +164,7 @@ extension ConversationStore {
             provider: AgentProvider?,
             projectName: String?,
             dateRange: ClosedRange<Date>?,
-            conversationSources: Set<ConversationSourceType>?
+            conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?
         ) async throws -> Int {
             let cleaned = patterns
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -216,9 +216,9 @@ extension ConversationStore {
             provider: AgentProvider?,
             projectName: String?,
             dateRange: ClosedRange<Date>?,
-            conversationSources: Set<ConversationSourceType>?,
+            conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?,
             limit: Int
-        ) async throws -> [ConversationRecord] {
+        ) async throws -> [OpenBurnBarCore.ConversationRecord] {
             let cleaned = Array(
                 Set(
                     patterns
@@ -230,7 +230,7 @@ extension ConversationStore {
             let boundedLimit = max(1, min(limit, 600))
             guard cleaned.isEmpty == false else { return [] }
 
-            return try await dbQueue.read { db -> [ConversationRecord] in
+            return try await dbQueue.read { db -> [OpenBurnBarCore.ConversationRecord] in
                 var instrConditions: [String] = []
                 var args: [any DatabaseValueConvertible] = []
                 for pattern in cleaned {
@@ -262,7 +262,7 @@ extension ConversationStore {
             patterns: [String],
             projectName: String?,
             dateRange: ClosedRange<Date>?,
-            conversationSources: Set<ConversationSourceType>?
+            conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?
         ) async throws -> [ConversationProviderOccurrence] {
             let cleaned = Array(
                 Set(
@@ -335,7 +335,7 @@ extension ConversationStore {
             provider: AgentProvider?,
             projectName: String?,
             dateRange: ClosedRange<Date>?,
-            conversationSources: Set<ConversationSourceType>?,
+            conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?,
             args: inout [any DatabaseValueConvertible]
         ) -> String {
             var sql = ""

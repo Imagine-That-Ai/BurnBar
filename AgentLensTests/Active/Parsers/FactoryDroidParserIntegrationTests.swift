@@ -62,7 +62,7 @@ final class FactoryDroidParserIntegrationTests: XCTestCase {
             sessions: [(sessionId: "factory-privacy", content: jsonl, settings: settings, metadata: nil)]
         )
 
-        let appPaths = OpenBurnBarAppPaths(
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(
             applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
         )
         let parser = FactoryDroidParser(

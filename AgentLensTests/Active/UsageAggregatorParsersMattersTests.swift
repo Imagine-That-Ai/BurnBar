@@ -43,7 +43,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
     func testWarmUpSucceedsForWritableSupportRoot() throws {
         let root = uniqueTempURL()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: root)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: root)
 
         let prepared = ParserSupportDirectoryWarmUp.prepare(
             fileManager: .default,
@@ -64,7 +64,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         // Place a regular file exactly where the support *root* directory is expected.
         let fileRoot = uniqueTempURL()
         try Data("not a directory".utf8).write(to: fileRoot, options: .atomic)
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: fileRoot)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: fileRoot)
 
         // Must not throw / crash even though preparation fails.
         let prepared = ParserSupportDirectoryWarmUp.prepare(
@@ -91,7 +91,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
     func testCodexParserConstructsAndDegradesWhenSupportDirUnavailable() async throws {
         let fileRoot = uniqueTempURL()
         try Data("not a directory".utf8).write(to: fileRoot, options: .atomic)
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: fileRoot)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: fileRoot)
 
         // Home directory with no `.codex/state_5.sqlite` -> parse returns empty.
         let home = uniqueTempURL(suffix: "-home")
@@ -136,7 +136,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         )])
 
         let supportRoot = harness.rootURL.appendingPathComponent("support", isDirectory: true)
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         let parser = TestableCodexParser(
             fileManager: harness.fileManager,
             codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
@@ -177,7 +177,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
 
     func testParserConversationCacheScrubberRedactsKnownParserCaches() throws {
         let supportRoot = uniqueTempURL()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         try FileManager.default.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
 
         let privateMarker = "private parser cache body \(UUID().uuidString)"
@@ -215,7 +215,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
     func testModelFilterParserConstructsWhenSupportDirUnavailable() throws {
         let fileRoot = uniqueTempURL()
         try Data("not a directory".utf8).write(to: fileRoot, options: .atomic)
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: fileRoot)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: fileRoot)
 
         // Construction triggers the warm-up; it must not throw / crash.
         let parser = ModelFilterParser(

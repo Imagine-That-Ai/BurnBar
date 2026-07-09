@@ -223,7 +223,7 @@ struct ModelSummaryAccumulator { // pure-move: was private
     var summary: ModelSummary {
         ModelSummary(
             modelName: modelName,
-            displayName: TokenExtractionUtility.displayNameForModel(displayModelName ?? modelName),
+            displayName: OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(displayModelName ?? modelName),
             totalCost: totalCost,
             totalTokens: totalTokens,
             totalInputTokens: totalInputTokens,

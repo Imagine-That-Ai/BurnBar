@@ -7,7 +7,7 @@ import OpenBurnBarCore
 extension ConversationStore {
         // MARK: - Conversation CRUD
 
-        func upsertConversation(_ record: ConversationRecord) async throws {
+        func upsertConversation(_ record: OpenBurnBarCore.ConversationRecord) async throws {
             let keyFilesJSON = try OpenBurnBarDatabase.encodeJSON(record.keyFiles)
             let keyCommandsJSON = try OpenBurnBarDatabase.encodeJSON(record.keyCommands)
             let keyToolsJSON = try OpenBurnBarDatabase.encodeJSON(record.keyTools)
@@ -163,7 +163,7 @@ extension ConversationStore {
             }
         }
 
-        func fetchConversation(id: String) async throws -> ConversationRecord? {
+        func fetchConversation(id: String) async throws -> OpenBurnBarCore.ConversationRecord? {
             try await dbQueue.read { db in
                 // User-facing read: a tombstoned conversation reads as absent.
                 // Internal callers (upsert sync-preservation) use the unfiltered
@@ -178,7 +178,7 @@ extension ConversationStore {
             }
         }
 
-        func fetchConversationSynchronously(id: String) throws -> ConversationRecord? {
+        func fetchConversationSynchronously(id: String) throws -> OpenBurnBarCore.ConversationRecord? {
             try dbQueue.read { db in
                 guard let row = try Row.fetchOne(
                     db,
@@ -189,7 +189,7 @@ extension ConversationStore {
             }
         }
 
-        func fetchConversations(limit: Int = 500) async throws -> [ConversationRecord] {
+        func fetchConversations(limit: Int = 500) async throws -> [OpenBurnBarCore.ConversationRecord] {
             try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
@@ -200,7 +200,7 @@ extension ConversationStore {
             }
         }
 
-        func fetchConversationsSynchronously(limit: Int = 500) throws -> [ConversationRecord] {
+        func fetchConversationsSynchronously(limit: Int = 500) throws -> [OpenBurnBarCore.ConversationRecord] {
             try dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
@@ -213,7 +213,7 @@ extension ConversationStore {
 
         /// Paginated conversation fetch using offset-based cursor.
         /// Returns conversations ordered by endTime/startTime for stable pagination.
-        func fetchConversations(limit: Int, offset: Int) async throws -> [ConversationRecord] {
+        func fetchConversations(limit: Int, offset: Int) async throws -> [OpenBurnBarCore.ConversationRecord] {
             try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
@@ -229,7 +229,7 @@ extension ConversationStore {
             }
         }
 
-        func fetchConversations(ids: [String]) async throws -> [ConversationRecord] {
+        func fetchConversations(ids: [String]) async throws -> [OpenBurnBarCore.ConversationRecord] {
             guard ids.isEmpty == false else { return [] }
             let uniqueIDs = Array(Set(ids)).sorted()
             return try await dbQueue.read { db in
@@ -246,7 +246,7 @@ extension ConversationStore {
             }
         }
 
-        func fetchAllSessionLogs(limit: Int = 1000) async throws -> [ConversationRecord] {
+        func fetchAllSessionLogs(limit: Int = 1000) async throws -> [OpenBurnBarCore.ConversationRecord] {
             try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
@@ -257,7 +257,7 @@ extension ConversationStore {
             }
         }
 
-        func fetchSessionLogSummaries(limit: Int = 1000) async throws -> [ConversationRecord] {
+        func fetchSessionLogSummaries(limit: Int = 1000) async throws -> [OpenBurnBarCore.ConversationRecord] {
             try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
@@ -336,7 +336,7 @@ extension ConversationStore {
             now: Date = Date(),
             retryCooldown: TimeInterval = 60 * 60,
             indexedAfter: Date? = nil
-        ) async throws -> [ConversationRecord] {
+        ) async throws -> [OpenBurnBarCore.ConversationRecord] {
             let cutoff = now.addingTimeInterval(-max(retryCooldown, 0))
             return try await dbQueue.read { db in
                 let (whereSQL, whereArguments) = self.summaryCandidateWhereClause(
@@ -493,7 +493,7 @@ extension ConversationStore {
         /// Local tombstones whose `deletedAt` is older than `before`. The GC sweep
         /// uses this to find conversations eligible for purge after the retention
         /// window, then deletes their cloud bodies/manifests before hard-deleting.
-        func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) async throws -> [ConversationRecord] {
+        func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) async throws -> [OpenBurnBarCore.ConversationRecord] {
             try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,

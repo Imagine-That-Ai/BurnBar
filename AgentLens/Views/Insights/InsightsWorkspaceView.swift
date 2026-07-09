@@ -46,7 +46,7 @@ struct InsightsWorkspaceView: View {
                 ) {
                     environment = env
                     let model = InsightsMacVerdictModel(
-                        deviceID: UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? "device_local",
+                        deviceID: UserDefaults.standard.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey) ?? "device_local",
                         window: .today,
                         dataSource: env.dataSource,
                         digestBuilder: env.digestBuilder

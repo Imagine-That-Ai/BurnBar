@@ -18,13 +18,13 @@ final class SettingsManager {
     static let shared = SettingsManager()
 
     private static let controllerRuntimeSecrets = KeychainStore(
-        service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.controllerRuntimeKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
 
     private static let chatGatewaySecrets = KeychainStore(
-        service: OpenBurnBarIdentity.chatGatewayKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyChatGatewayKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.chatGatewayKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyChatGatewayKeychainServices
     )
 
     // MARK: - Domain Stores
@@ -593,7 +593,7 @@ final class SettingsManager {
             index.conversationIndexingEnabled = newValue
             if wasEnabled && !newValue {
                 Task.detached(priority: .utility) {
-                    ParserConversationCacheScrubber().scrubKnownParserCaches()
+                    OpenBurnBarCore.ParserConversationCacheScrubber().scrubKnownParserCaches()
                 }
             }
         }

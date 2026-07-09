@@ -15,7 +15,7 @@ import OpenBurnBarCore
 @MainActor
 final class UsageAggregator {
     private let dataStore: DataStore
-    private let parsers: [AgentProvider: any LogParser]
+    private let parsers: [AgentProvider: any OpenBurnBarCore.LogParser]
     private weak var cloudSync: CloudSyncService?
     private weak var cloudSyncCoordinator: CloudSyncCoordinator?
     private weak var sessionMirror: ICloudSessionMirrorService?
@@ -71,7 +71,7 @@ final class UsageAggregator {
         quotaService: ProviderQuotaService = .shared,
         artifactDiscoveryService: ArtifactDiscoveryService? = nil,
         projectionPipelineService: ProjectionPipelineService? = nil,
-        parserOverrides: [AgentProvider: any LogParser]? = nil,
+        parserOverrides: [AgentProvider: any OpenBurnBarCore.LogParser]? = nil,
         summaryEngine: AutoSummaryEngine? = nil,
         memoryCloudSyncDomain: MemoryCloudSyncDomain? = nil
     ) {
@@ -149,7 +149,7 @@ final class UsageAggregator {
         typedPersistenceError = nil
 
         // VAL-TOKEN-008: Set fallback estimator based on user flag before parsing.
-        TokenExtractionUtility.fallbackEstimator = settingsManager.tokenizerAssistedFallbackEnabled
+        OpenBurnBarCore.TokenExtractionUtility.fallbackEstimator = settingsManager.tokenizerAssistedFallbackEnabled
             ? .tokenizerAssisted
             : .characterRatio
 
@@ -335,7 +335,7 @@ final class UsageAggregator {
         guard let parser = parsers[provider] else { return }
 
         // VAL-TOKEN-008: Set fallback estimator based on user flag before parsing.
-        TokenExtractionUtility.fallbackEstimator = settingsManager.tokenizerAssistedFallbackEnabled
+        OpenBurnBarCore.TokenExtractionUtility.fallbackEstimator = settingsManager.tokenizerAssistedFallbackEnabled
             ? .tokenizerAssisted
             : .characterRatio
 

@@ -32,6 +32,8 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .usageRecent: "daemon.usage.recent",
         .proxyRouteLogRecent: "daemon.proxy.route_log.recent",
         .proxyRouteLogClear: "daemon.proxy.route_log.clear",
+        .quotaSignalsRecent: "daemon.quota.signals.recent",
+        .quotaSignalsClear: "daemon.quota.signals.clear",
         .connectorPlaneGet: "daemon.connector.plane.get",
         .connectorConfigUpdate: "daemon.connector.config.update",
         .connectorAction: "daemon.connector.action",

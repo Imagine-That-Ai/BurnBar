@@ -161,7 +161,7 @@ final class ChatSessionController {
     var historyThreads: [ChatThreadSummary] = []
 
     var activeThreadID: String = DataStore.legacyChatThreadID
-    var selectedContext: ConversationRecord?
+    var selectedContext: OpenBurnBarCore.ConversationRecord?
 
     /// Wired by the app until the backend (PR-5) lands a real `MemoryServing`.
     /// `nil` in production today, so the terminal-commit extraction chokepoint is a

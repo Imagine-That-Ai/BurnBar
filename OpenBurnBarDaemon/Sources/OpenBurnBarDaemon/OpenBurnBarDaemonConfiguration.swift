@@ -56,6 +56,10 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL.appendingPathComponent("proxy-route-events.jsonl", isDirectory: false)
     }
 
+    public static var defaultQuotaSignalsURL: URL {
+        supportDirectoryURL.appendingPathComponent("quota-signals.jsonl", isDirectory: false)
+    }
+
     public static var defaultGatewayModelHealthURL: URL {
         supportDirectoryURL.appendingPathComponent("gateway-model-health.json", isDirectory: false)
     }
@@ -102,6 +106,18 @@ public enum BurnBarDaemonPaths {
 
 public enum BurnBarDaemonVersion {
     public static let current = "1.0.29"
+}
+
+public enum OpenBurnBarDaemonOllamaEndpointDefaults {
+    public static func synthesizedLegacyDefault(
+        providerBaseURL: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> BurnBarOllamaEndpointConfig {
+        BurnBarOllamaEndpointConfig.synthesizedLegacyDefault(
+            providerBaseURL: providerBaseURL,
+            environment: environment
+        )
+    }
 }
 
 public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {

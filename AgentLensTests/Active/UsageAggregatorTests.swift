@@ -20,7 +20,7 @@ final class UsageAggregatorTests: XCTestCase {
             .appendingPathComponent("openburnbar-usage-aggregator-\(UUID().uuidString)", isDirectory: true)
         let home = root.appendingPathComponent("home", isDirectory: true)
         return ProviderQuotaService(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: root),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: root),
             homeDirectoryURL: home,
             refreshProviders: []
         )

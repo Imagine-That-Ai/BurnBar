@@ -1,5 +1,6 @@
 import Foundation
 import LocalAuthentication
+import OpenBurnBarCore
 import Security
 
 #if os(macOS)
@@ -189,8 +190,8 @@ struct KeychainStore: Sendable {
     private let backend: any KeychainStoreBackend
 
     init(
-        service: String = OpenBurnBarIdentity.cursorConnectorKeychainService,
-        legacyServices: [String] = OpenBurnBarIdentity.legacyCursorConnectorKeychainServices,
+        service: String = OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,
+        legacyServices: [String] = OpenBurnBarCore.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices,
         backend: any KeychainStoreBackend = SecurityKeychainStoreBackend()
     ) {
         self.service = service

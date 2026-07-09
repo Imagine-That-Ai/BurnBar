@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 private struct ClaudeQuotaBridgeCommandSpec: Codable, Equatable {
     let executable: String
@@ -22,7 +23,7 @@ private struct ClaudeQuotaBridgeCommandSpec: Codable, Equatable {
 }
 
 struct ClaudeQuotaBridgeManager {
-    let appPaths: OpenBurnBarAppPaths
+    let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     let homeDirectoryURL: URL
     let fileManager: FileManager
     let snapshotStore: ProviderQuotaSnapshotStore

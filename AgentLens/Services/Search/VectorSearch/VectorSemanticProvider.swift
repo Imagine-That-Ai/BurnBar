@@ -122,7 +122,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         exactRerankEnabled: Bool = true,
         exactRerankLimit: Int = 320,
         nowProvider: @escaping @Sendable () -> Date = { Date() },
-        storageRootURL: URL = OpenBurnBarAppPaths.live().vectorIndexesRootURL,
+        storageRootURL: URL = OpenBurnBarCore.OpenBurnBarAppPaths.live().vectorIndexesRootURL,
         storageNamespace: String = "app",
         snapshotBackend: any BurnBarPersistentVectorIndexBackend = BurnBarPersistentVectorIndexFactory.defaultBackend(),
         snapshotPageSize: Int = 1_000

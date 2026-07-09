@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Auth Method
 
@@ -92,8 +93,8 @@ final class ProviderAPIKeyStore {
     private let keychain: KeychainStore
 
     init(keychain: KeychainStore = KeychainStore(
-        service: OpenBurnBarIdentity.providerAPIKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyProviderAPIKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.providerAPIKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyProviderAPIKeychainServices
     )) {
         self.keychain = keychain
     }
