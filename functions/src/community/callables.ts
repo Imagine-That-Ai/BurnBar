@@ -24,6 +24,7 @@ import { firestoreWithResilience } from "../resilienceHelpers.js";
 import { COMMUNITY_SCHEMA_VERSION, CommunityPaths } from "./consent.js";
 import { deriveGeoKeys, populateGeoKeys, normalizeGeoKey } from "./geo.js";
 import { assertCommunityRuntimeEnabled } from "./rollout.js";
+import { refreshCommunityShareSnapshotForUser } from "./snapshot.js";
 import type { CommunityConsentDoc, CommunityProfileDoc } from "../types/generated/community.js";
 import type { ColumnSource } from "hyparquet-writer";
 
@@ -147,6 +148,56 @@ interface JoinCommunityInput {
   cityKey?: string;
 }
 
+function validatedJoinHandle(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (!isValidHandle(trimmed)) {
+    throw new HttpsError("invalid-argument", "Handle must be 3-24 chars, alphanumeric + _-.");
+  }
+  return trimmed;
+}
+
+function buildConsentDoc(data: JoinCommunityInput, now: string): CommunityConsentDoc {
+  return {
+    l1Analytics: data.l1Analytics === "granted" ? "granted" : "declined",
+    l2Rankings: data.l2Rankings === "granted" ? "granted" : "declined",
+    l2Tiers: {
+      world: data.l2World === "granted" ? "granted" : "declined",
+      country: data.l2Country === "granted" ? "granted" : "declined",
+      region: data.l2Region === "granted" ? "granted" : "declined",
+      city: data.l2City === "granted" ? "granted" : "declined",
+    },
+    l3LookingGlass: data.l3LookingGlass === "granted" ? "granted" : "declined",
+    locationConsent: data.locationConsent === "granted" ? "granted" : "declined",
+    schemaVersion: COMMUNITY_SCHEMA_VERSION,
+    updatedAt: now,
+    optedInAt: now,
+  };
+}
+
+function applyJoinGeo(profileDoc: CommunityProfileDoc & { handleLower?: string }, data: JoinCommunityInput): void {
+  const geo = deriveGeoKeys(data.timezone ?? "", data.locale ?? "");
+  populateGeoKeys(profileDoc, geo, {
+    country: data.l2Country === "granted",
+    region: data.l2Region === "granted",
+    city: false,
+  });
+
+  if (data.l2Country === "granted") {
+    const normalized = normalizeGeoKey(data.countryCode);
+    if (normalized) profileDoc.countryCode = normalized;
+  }
+  if (data.l2Region === "granted") {
+    const normalized = normalizeGeoKey(data.regionKey);
+    if (normalized) profileDoc.regionKey = normalized;
+  }
+  if (data.l2City === "granted" && data.locationConsent === "granted") {
+    const normalized = normalizeGeoKey(data.cityKey);
+    if (normalized) profileDoc.cityKey = normalized;
+  }
+}
+
 /**
  * Creates the consent doc + profile doc. The user opts into one or more levels.
  * Generates a stable anonId and an auto handle if none is provided.
@@ -161,83 +212,59 @@ export const joinCommunity = onCallProduction(
 
     const data = request.data ?? {};
     const now = new Date().toISOString();
-    const anonId = randomUUID().replace(/-/g, "").slice(0, 16);
-
-    // Validate handle if provided.
-    let handle: string | undefined;
-    if (data.handle) {
-      const trimmed = data.handle.trim();
-      if (!isValidHandle(trimmed)) {
-        throw new HttpsError("invalid-argument", "Handle must be 3-24 chars, alphanumeric + _-.");
-      }
-      handle = trimmed;
-    }
+    const requestedHandle = validatedJoinHandle(data.handle);
+    const generatedAnonId = randomUUID().replace(/-/g, "").slice(0, 16);
+    let anonId = generatedAnonId;
 
     const db = getFirestore();
+    const consentDoc = buildConsentDoc(data, now);
 
-    // Atomically claim the handle if one was provided.
-    if (handle) {
-      await claimHandleTransaction(db, uid, handle.toLowerCase(), null);
-    }
+    await firestoreWithResilience("community-join-write", () =>
+      db.runTransaction(async (tx) => {
+        const consentRef = db.doc(CommunityPaths.consent(uid));
+        const profileRef = db.doc(CommunityPaths.profile(uid));
+        const profileSnap = await tx.get(profileRef);
+        const oldProfile = profileSnap.data();
+        const existingAnonId = typeof oldProfile?.anonId === "string" ? oldProfile.anonId : undefined;
+        const existingHandle = typeof oldProfile?.handle === "string" ? oldProfile.handle : undefined;
+        const existingHandleLower = typeof oldProfile?.handleLower === "string" ? oldProfile.handleLower : null;
+        anonId = existingAnonId ?? generatedAnonId;
 
-    // Write consent doc.
-    const consentDoc: CommunityConsentDoc = {
-      l1Analytics: data.l1Analytics === "granted" ? "granted" : "declined",
-      l2Rankings: data.l2Rankings === "granted" ? "granted" : "declined",
-      l2Tiers: {
-        world: data.l2World === "granted" ? "granted" : "declined",
-        country: data.l2Country === "granted" ? "granted" : "declined",
-        region: data.l2Region === "granted" ? "granted" : "declined",
-        city: data.l2City === "granted" ? "granted" : "declined",
-      },
-      l3LookingGlass: data.l3LookingGlass === "granted" ? "granted" : "declined",
-      locationConsent: data.locationConsent === "granted" ? "granted" : "declined",
-      schemaVersion: COMMUNITY_SCHEMA_VERSION,
-      updatedAt: now,
-      optedInAt: now,
-    };
+        const finalHandle = requestedHandle ?? existingHandle;
+        const finalHandleLower = finalHandle?.toLowerCase();
+        if (finalHandleLower) {
+          const claimRef = db.doc(CommunityPaths.handleClaim(finalHandleLower));
+          const claimSnap = await tx.get(claimRef);
+          if (claimSnap.exists) {
+            const owner = claimSnap.data()?.uid;
+            if (owner !== uid) {
+              throw new HttpsError("already-exists", "That handle is taken.");
+            }
+          } else {
+            tx.set(claimRef, { uid, createdAt: now });
+          }
+        }
+        if (existingHandleLower && existingHandleLower !== finalHandleLower) {
+          tx.delete(db.doc(CommunityPaths.handleClaim(existingHandleLower)));
+        }
 
-    // Write profile doc — only include geo keys at consented tiers.
-    const profileDoc: CommunityProfileDoc & { handleLower?: string } = {
-      anonId,
-      schemaVersion: COMMUNITY_SCHEMA_VERSION,
-      updatedAt: now,
-    };
-    if (handle) {
-      profileDoc.handle = handle;
-      profileDoc.handleLower = handle.toLowerCase();
-    }
-    // Geo keys: derive from timezone/locale (no location permission needed for
-    // country/region). Client may override via manual picker. City tier
-    // requires OS location (passed as cityKey when locationConsent is granted).
-    const geo = deriveGeoKeys(data.timezone ?? "", data.locale ?? "");
-    populateGeoKeys(profileDoc, geo, {
-      country: data.l2Country === "granted",
-      region: data.l2Region === "granted",
-      city: false, // cityKey requires OS location, not timezone/locale
-    });
-    // Manual override (manual picker or client-provided). Normalize ALL
-    // client-provided geo keys through normalizeGeoKey before persisting —
-    // defense-in-depth against path injection (a `/` in a key crashes the
-    // hourly aggregation loop via db.doc() throwing).
-    if (data.l2Country === "granted") {
-      const normalized = normalizeGeoKey(data.countryCode);
-      if (normalized) profileDoc.countryCode = normalized;
-    }
-    if (data.l2Region === "granted") {
-      const normalized = normalizeGeoKey(data.regionKey);
-      if (normalized) profileDoc.regionKey = normalized;
-    }
-    if (data.l2City === "granted" && data.locationConsent === "granted") {
-      profileDoc.cityKey = normalizeGeoKey(data.cityKey);
-    }
+        const profileDoc: CommunityProfileDoc & { handleLower?: string } = {
+          anonId,
+          schemaVersion: COMMUNITY_SCHEMA_VERSION,
+          updatedAt: now,
+        };
+        if (finalHandle) {
+          profileDoc.handle = finalHandle;
+          profileDoc.handleLower = finalHandle.toLowerCase();
+        }
+        applyJoinGeo(profileDoc, data);
 
-    await firestoreWithResilience("community-join-write", async () => {
-      const batch = db.batch();
-      batch.set(db.doc(CommunityPaths.consent(uid)), consentDoc);
-      batch.set(db.doc(CommunityPaths.profile(uid)), profileDoc);
-      await batch.commit();
-    });
+        tx.set(consentRef, consentDoc);
+        tx.set(profileRef, profileDoc);
+      }),
+    );
+
+    await refreshCommunityShareSnapshotForUser(db, uid, new Date(now));
 
     logInfo({ event: "community_join", uid_prefix: uid.slice(0, 8) });
 
@@ -265,7 +292,13 @@ type CommunityTierGrants = Record<string, string>;
 
 function communityTierGrants(consent: Record<string, unknown>): CommunityTierGrants {
   const tiers = consent.l2Tiers;
-  return tiers && typeof tiers === "object" ? (tiers as CommunityTierGrants) : {};
+  if (!tiers || typeof tiers !== "object" || Array.isArray(tiers)) return {};
+  const out: CommunityTierGrants = {};
+  for (const key of ["world", "country", "region", "city"]) {
+    const value = Reflect.get(tiers, key);
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
 }
 
 async function applyProfileHandleUpdate(
@@ -301,8 +334,9 @@ function setNormalizedGeoUpdate(
   raw: string | undefined,
   granted: boolean,
 ): void {
-  if (raw === undefined || !granted) return;
-  updates[field] = normalizeGeoKey(raw) ?? null;
+  if (raw === undefined || raw.trim() === "" || !granted) return;
+  const normalized = normalizeGeoKey(raw);
+  if (normalized) updates[field] = normalized;
 }
 
 function applyProfileGeoUpdates(
@@ -351,6 +385,7 @@ export const updateCommunityProfile = onCallProduction(
     await firestoreWithResilience("community-profile-update", () =>
       db.doc(CommunityPaths.profile(uid)).set(updates, { merge: true }),
     );
+    await refreshCommunityShareSnapshotForUser(db, uid);
 
     return { ok: true };
   },
@@ -378,8 +413,8 @@ export const revokeCommunityParticipation = onCallProduction(
 
     // Read the profile first to get the handle for claim release.
     const profileSnap = await db.doc(CommunityPaths.profile(uid)).get();
-    const oldHandleLower =
-      typeof profileSnap.data()?.handleLower === "string" ? (profileSnap.data()!.handleLower as string) : null;
+    const oldProfile = profileSnap.data();
+    const oldHandleLower = typeof oldProfile?.handleLower === "string" ? oldProfile.handleLower : null;
 
     // Required audit event first — if this fails, no revocation mutation runs.
     await appendAuditEventRequired(uid, {
@@ -391,12 +426,9 @@ export const revokeCommunityParticipation = onCallProduction(
     await firestoreWithResilience("community-revoke", async () => {
       const batch = db.batch();
 
-      // Tombstone the share_snapshot (aggregation sweep will delete it).
-      const shareRef = db.doc(CommunityPaths.shareSnapshot(uid));
-      const shareDoc = await shareRef.get();
-      if (shareDoc.exists) {
-        batch.set(shareRef, { revoked: true, updatedAt: now }, { merge: true });
-      }
+      // Delete the server-owned share snapshot immediately; the next
+      // aggregation sweep also removes public boards whose cohorts vanished.
+      batch.delete(db.doc(CommunityPaths.shareSnapshot(uid)));
 
       // Delete profile doc.
       batch.delete(db.doc(CommunityPaths.profile(uid)));
@@ -413,6 +445,7 @@ export const revokeCommunityParticipation = onCallProduction(
         },
         l3LookingGlass: "declined",
         locationConsent: "declined",
+        schemaVersion: COMMUNITY_SCHEMA_VERSION,
         updatedAt: now,
       });
 

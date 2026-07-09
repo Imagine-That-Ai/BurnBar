@@ -389,6 +389,7 @@ test("cloudVaultRewrapStrategy: every vault-backed domain has an explicit rotati
       media: "document_envelopes",
       entitlements_billing: null,
       device_trust_keys: "key_wrappers_only",
+      community: null,
       audit_timeline: "document_envelopes",
     },
     "CloudVault rotation policy must be explicit for every domain that contains CloudVault-sealed material",

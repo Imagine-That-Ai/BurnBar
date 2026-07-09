@@ -1,6 +1,4 @@
-using System.Globalization;
 using Windows.Devices.Geolocation;
-using Windows.Globalization;
 using Windows.Services.Maps;
 
 namespace OpenBurnBar.App.Community;
@@ -11,7 +9,6 @@ namespace OpenBurnBar.App.Community;
 /// </summary>
 public static class CommunityLocationResolver
 {
-    private static readonly GeographicRegion EnUsRegion = new("US");
 
     public static async Task<string?> TryResolveCityKeyAsync(CancellationToken cancellationToken = default)
     {
@@ -64,23 +61,24 @@ public static class CommunityLocationResolver
         var cityName = address.Town;
         if (string.IsNullOrWhiteSpace(cityName))
         {
-            cityName = address.Region;
-        }
-
-        if (string.IsNullOrWhiteSpace(cityName))
-        {
             return null;
         }
+
+        var (tz, loc) = CommunityJoinPayload.DeviceGeoKeys();
+        var derived = CommunityGeoKeys.Derive(tz, loc);
 
         var countryCode = address.CountryCode?.Trim().ToUpperInvariant();
         if (string.IsNullOrWhiteSpace(countryCode))
         {
-            countryCode = EnUsRegion.CodeTwoLetter;
+            countryCode = derived.CountryCode;
+        }
+
+        if (string.IsNullOrWhiteSpace(countryCode))
+        {
+            return null;
         }
 
         var regionCode = address.Region?.Trim();
-        var (tz, loc) = CommunityJoinPayload.DeviceGeoKeys();
-        var derived = CommunityGeoKeys.Derive(tz, loc);
         if (string.IsNullOrWhiteSpace(regionCode) || regionCode.Length > 3)
         {
             regionCode = CommunityGeoKeys.RegionCodeFromRegionKey(derived.RegionKey, countryCode);

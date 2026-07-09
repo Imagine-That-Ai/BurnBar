@@ -25,6 +25,13 @@ describe("deriveGeoKeys", () => {
     expect(keys.countryCode).toBe("GT");
   });
 
+  it("parses locale regions before POSIX and Unicode extension subtags", () => {
+    expect(deriveGeoKeys("Atlantic/Canary", "en_US_POSIX").countryCode).toBe("US");
+    expect(deriveGeoKeys("Atlantic/Canary", "zh-Hant-TW").countryCode).toBe("TW");
+    expect(deriveGeoKeys("Atlantic/Canary", "en-US-u-ca-gregory").countryCode).toBe("US");
+    expect(deriveGeoKeys("Atlantic/Canary", "en-u-ca-gregory").countryCode).toBeUndefined();
+  });
+
   it("returns undefined country for unknown timezone and locale without region", () => {
     const keys = deriveGeoKeys("Atlantic/Canary", "es");
     expect(keys.countryCode).toBeUndefined();

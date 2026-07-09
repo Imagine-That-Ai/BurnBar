@@ -1,11 +1,14 @@
 package com.openburnbar.ui.community
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,9 +22,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
+import com.openburnbar.data.community.ConsentTriState
 import com.openburnbar.data.community.CommunityTimeWindow
 import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.ui.components.AuroraGlassCard
@@ -33,21 +39,41 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 
 @Composable
-fun CommunityScreen(
-    viewModel: CommunityViewModel = viewModel(),
-    modifier: Modifier = Modifier,
-) {
+fun CommunityScreen(viewModel: CommunityViewModel = viewModel(), modifier: Modifier = Modifier) {
     val uiState by viewModel.uiState.collectAsState()
     val consentDraft by viewModel.consentDraft.collectAsState()
+    val context = LocalContext.current
+    val coarseLocationLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                viewModel.joinCommunity()
+            } else {
+                viewModel.declineCityLocationPermission()
+            }
+        }
+    fun saveCommunityPreferences() {
+        val needsCityPermission =
+            consentDraft.l2City == ConsentTriState.GRANTED &&
+                consentDraft.locationConsent == ConsentTriState.GRANTED &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ) != PackageManager.PERMISSION_GRANTED
+        if (needsCityPermission) {
+            coarseLocationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        } else {
+            viewModel.joinCommunity()
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         AuroraBackdrop()
         Column(
             modifier =
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(AuroraSpacing.LG.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(AuroraSpacing.LG.dp),
             verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         ) {
             Text(
@@ -106,7 +132,7 @@ fun CommunityScreen(
                 isJoining = uiState.isJoining,
                 isRevoking = uiState.isRevoking,
                 onDraftChange = { newDraft -> viewModel.updateConsentDraft { _ -> newDraft } },
-                onSave = { viewModel.joinCommunity() },
+                onSave = { saveCommunityPreferences() },
                 onRevoke = { viewModel.revokeParticipation() },
             )
         }
@@ -114,11 +140,7 @@ fun CommunityScreen(
 }
 
 @Composable
-private fun CommunityPersonalHero(
-    tokens: Long,
-    costUsd: Double,
-    modelMix: Map<String, Double>,
-) {
+private fun CommunityPersonalHero(tokens: Long, costUsd: Double, modelMix: Map<String, Double>) {
     AuroraGlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = AuroraRadius.XL,
@@ -154,10 +176,7 @@ private fun CommunityPersonalHero(
 }
 
 @Composable
-private fun CommunityTimeFilterRow(
-    selected: CommunityTimeWindow,
-    onSelect: (CommunityTimeWindow) -> Unit,
-) {
+private fun CommunityTimeFilterRow(selected: CommunityTimeWindow, onSelect: (CommunityTimeWindow) -> Unit) {
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
@@ -173,9 +192,7 @@ private fun CommunityTimeFilterRow(
 }
 
 @Composable
-private fun CommunityPercentileStrip(
-    percentiles: com.openburnbar.data.models.generated.FirestorePercentileBands,
-) {
+private fun CommunityPercentileStrip(percentiles: com.openburnbar.data.models.generated.FirestorePercentileBands) {
     AuroraGlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = AuroraRadius.LG,
@@ -205,10 +222,7 @@ private fun PercentileChip(label: String, value: Double) {
 }
 
 @Composable
-private fun CommunityPeerComparisonChart(
-    cohortSize: Long,
-    yourTokens: Long,
-) {
+private fun CommunityPeerComparisonChart(cohortSize: Long, yourTokens: Long) {
     AuroraGlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = AuroraRadius.LG,
@@ -218,11 +232,11 @@ private fun CommunityPeerComparisonChart(
             Text(text = "Peer comparison", style = AuroraType.headline)
             Text(
                 text =
-                    if (cohortSize > 0) {
-                        "Anonymized cohort of $cohortSize burners (no individual data below k=10)."
-                    } else {
-                        "Cohort chart fills in once enough burners opt in at your tier."
-                    },
+                if (cohortSize > 0) {
+                    "Anonymized cohort of $cohortSize burners (no individual data below k=10)."
+                } else {
+                    "Cohort chart fills in once enough burners opt in at your tier."
+                },
                 style = AuroraType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -271,9 +285,8 @@ private fun CommunityPurposeBreakdown(purposeMix: Map<String, Double>) {
     }
 }
 
-private fun formatCompact(value: Long): String =
-    when {
-        value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0)
-        value >= 1_000 -> "%.1fK".format(value / 1_000.0)
-        else -> value.toString()
-    }
+private fun formatCompact(value: Long): String = when {
+    value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0)
+    value >= 1_000 -> "%.1fK".format(value / 1_000.0)
+    else -> value.toString()
+}

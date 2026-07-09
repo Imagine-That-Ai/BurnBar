@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { canonicalizeCityKey } from "./geoCityKey";
+import { canonicalizeCityKey, deriveGeoKeys } from "./geoCityKey";
 
 const __dirname2 = dirname(fileURLToPath(import.meta.url));
 const goldens: Array<{
@@ -34,5 +34,14 @@ describe("city-key-goldens (cross-platform parity)", () => {
 
   it("prefixed-region-code: US-CA with country US", () => {
     expect(canonicalizeCityKey("San Francisco", "US", "US-CA")).toBe("US-CA-san-francisco");
+  });
+});
+
+describe("deriveGeoKeys", () => {
+  it("parses locale region before POSIX and Unicode extension subtags", () => {
+    expect(deriveGeoKeys("Atlantic/Canary", "en_US_POSIX").countryCode).toBe("US");
+    expect(deriveGeoKeys("Atlantic/Canary", "zh-Hant-TW").countryCode).toBe("TW");
+    expect(deriveGeoKeys("Atlantic/Canary", "en-US-u-ca-gregory").countryCode).toBe("US");
+    expect(deriveGeoKeys("Atlantic/Canary", "en-u-ca-gregory").countryCode).toBeUndefined();
   });
 });

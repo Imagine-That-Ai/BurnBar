@@ -3,10 +3,10 @@ package com.openburnbar.data.community
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.openburnbar.data.firebase.FirestoreRepository
-import com.openburnbar.data.models.CommunityShareSnapshotDoc
 import com.openburnbar.data.models.generated.FirestoreCommunityConsentDoc
 import com.openburnbar.data.models.generated.FirestoreCommunityLeaderboardDoc
 import com.openburnbar.data.models.generated.FirestoreCommunityProfileDoc
+import com.openburnbar.data.models.generated.FirestoreCommunityShareSnapshotDoc
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -28,26 +28,18 @@ class CommunityRepository(
         return snap.toObject(FirestoreCommunityProfileDoc::class.java)
     }
 
-    suspend fun fetchShareSnapshot(): CommunityShareSnapshotDoc? {
+    suspend fun fetchShareSnapshot(): FirestoreCommunityShareSnapshotDoc? {
         val uid = firestoreRepo.currentUserId()
         val snap = db.document(CommunityPaths.shareSnapshot(uid)).get().await()
-        return snap.toObject(CommunityShareSnapshotDoc::class.java)
+        return snap.toObject(FirestoreCommunityShareSnapshotDoc::class.java)
     }
 
-    suspend fun fetchLeaderboard(
-        window: String,
-        tier: String,
-        geoKey: String,
-    ): FirestoreCommunityLeaderboardDoc? {
+    suspend fun fetchLeaderboard(window: String, tier: String, geoKey: String): FirestoreCommunityLeaderboardDoc? {
         val snap = db.document(CommunityPaths.leaderboard(window, tier, geoKey)).get().await()
         return snap.toObject(FirestoreCommunityLeaderboardDoc::class.java)
     }
 
-    fun listenLeaderboard(
-        window: String,
-        tier: String,
-        geoKey: String,
-    ): Flow<FirestoreCommunityLeaderboardDoc?> = callbackFlow {
+    fun listenLeaderboard(window: String, tier: String, geoKey: String): Flow<FirestoreCommunityLeaderboardDoc?> = callbackFlow {
         val ref = db.document(CommunityPaths.leaderboard(window, tier, geoKey))
         val registration: ListenerRegistration =
             ref.addSnapshotListener { snapshot, error ->

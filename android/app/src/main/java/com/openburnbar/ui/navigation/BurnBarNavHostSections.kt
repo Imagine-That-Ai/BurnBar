@@ -329,7 +329,6 @@ private fun androidx.navigation.NavGraphBuilder.burnBarStoreRoute(navController:
     }
 }
 
-
 private fun androidx.navigation.NavGraphBuilder.burnBarCommunityRoute() {
     composable(
         "community",

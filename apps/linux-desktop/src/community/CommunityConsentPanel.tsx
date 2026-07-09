@@ -68,7 +68,6 @@ export function CommunityConsentPanel({ consent, onChange, onRevoke, statusMessa
           />
         </label>
       ) : null}
-      </div>
       <button type="button" className="glass-interactive community-revoke" onClick={onRevoke}>
         Pause / revoke participation
       </button>

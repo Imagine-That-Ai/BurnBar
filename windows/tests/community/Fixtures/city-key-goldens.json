@@ -118,5 +118,12 @@
     "countryCode": "US",
     "regionCode": "CA",
     "expected": "US-CA-alpha-beta-gamma-delta-epsilon-zeta-eta"
+  },
+  {
+    "name": "nonmatching-trailing-region-prefix",
+    "cityName": "Boundary City",
+    "countryCode": "US",
+    "regionCode": "CA-FOO-",
+    "expected": "US-CA-FOO--boundary-city"
   }
 ]

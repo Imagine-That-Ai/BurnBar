@@ -29,7 +29,7 @@ enum CommunityTimeWindow: String, CaseIterable, Identifiable, Sendable {
         case .sevenDay: "7d"
         case .thirtyDay: "30d"
         case .ninetyDay: "90d"
-        case .allTime: "all"
+        case .allTime: "all_time"
         }
     }
 }

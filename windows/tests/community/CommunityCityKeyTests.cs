@@ -8,7 +8,7 @@ public sealed class CommunityCityKeyTests
     private record Golden(string Name, string CityName, string CountryCode, string RegionCode, string Expected);
 
     // Mirrors tests/fixtures/city-key-goldens.json — every platform must produce
-    // byte-identical output for all 15 entries, including non-decomposable chars.
+    // byte-identical output for every entry, including edge-case region codes.
     private static readonly Golden[] Goldens =
     [
         new("ascii-clean", "San Francisco", "US", "CA", "US-CA-san-francisco"),
@@ -27,6 +27,7 @@ public sealed class CommunityCityKeyTests
         new("hyphenated-name", "Winston-Salem", "US", "NC", "US-NC-winston-salem"),
         new("long-name-truncation", "Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch", "GB", "WLS", "GB-WLS-llanfairpwllgwyngyllgogerychwyrndrobwlll"),
         new("prefixed-region-code", "San Francisco", "US", "US-CA", "US-CA-san-francisco"),
+        new("nonmatching-trailing-region-prefix", "Boundary City", "US", "CA-FOO-", "US-CA-FOO--boundary-city"),
         new("truncation-trailing-hyphen", "alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa", "US", "CA", "US-CA-alpha-beta-gamma-delta-epsilon-zeta-eta"),
     ];
 
@@ -34,6 +35,7 @@ public sealed class CommunityCityKeyTests
     [MemberData(nameof(GoldenData))]
     public void CanonicalizeCityKey_AllGoldens(string name, string cityName, string countryCode, string regionCode, string expected)
     {
+        Assert.False(string.IsNullOrWhiteSpace(name));
         Assert.Equal(expected, CommunityCityKey.CanonicalizeCityKey(cityName, countryCode, regionCode));
     }
 
@@ -54,5 +56,14 @@ public sealed class CommunityCityKeyTests
         var slug = CommunityCityKey.SlugifyCity(longName);
         Assert.False(slug.EndsWith('-'));
         Assert.True(slug.Length <= 40);
+    }
+
+    [Fact]
+    public void Derive_ParsesLocaleRegionBeforeUnicodeExtensions()
+    {
+        Assert.Equal("US", CommunityGeoKeys.Derive("Atlantic/Canary", "en_US_POSIX").CountryCode);
+        Assert.Equal("TW", CommunityGeoKeys.Derive("Atlantic/Canary", "zh-Hant-TW").CountryCode);
+        Assert.Equal("US", CommunityGeoKeys.Derive("Atlantic/Canary", "en-US-u-ca-gregory").CountryCode);
+        Assert.Null(CommunityGeoKeys.Derive("Atlantic/Canary", "en-u-ca-gregory").CountryCode);
     }
 }

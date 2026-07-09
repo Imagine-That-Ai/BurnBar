@@ -103,8 +103,14 @@ const TZ_TO_REGION: Record<string, string> = {
 export function deriveGeoKeys(timezone: string, locale: string): GeoKeys {
   const countryFromTz = TZ_TO_COUNTRY[timezone];
   const regionFromTz = TZ_TO_REGION[timezone];
-  const localeMatch = locale.match(/[-_]([A-Z]{2})\b/);
-  const countryFromLocale = localeMatch?.[1]?.toUpperCase();
+  let countryFromLocale: string | undefined;
+  for (const part of locale.split(/[-_]/).slice(1)) {
+    if (part.length === 1) break;
+    if (/^[A-Za-z]{2}$/.test(part)) {
+      countryFromLocale = part.toUpperCase();
+      break;
+    }
+  }
   const countryCode = countryFromTz ?? countryFromLocale;
   const regionKey = regionFromTz;
   return { countryCode, regionKey };
@@ -173,9 +179,8 @@ export function slugifyCity(cityName: string): string {
 export function canonicalizeCityKey(cityName: string, countryCode: string, regionCode: string): string {
   const cc = countryCode.trim().toUpperCase();
   let rc = regionCode.trim().toUpperCase();
-  const dash = rc.indexOf("-");
-  if (dash >= 0) {
-    rc = rc.slice(dash + 1);
+  if (rc.startsWith(`${cc}-`)) {
+    rc = rc.slice(cc.length + 1);
   }
   return `${cc}-${rc}-${slugifyCity(cityName)}`;
 }

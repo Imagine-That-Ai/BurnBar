@@ -14,33 +14,31 @@ enum class ModelPurposeCategory {
     OTHER,
     ;
 
-    fun wireName(): String =
-        when (this) {
-            UI -> "ui"
-            BACKEND -> "backend"
-            LOGIC -> "logic"
-            WRITING -> "writing"
-            RESEARCH -> "research"
-            DEBUGGING -> "debugging"
-            ORCHESTRATION -> "orchestration"
-            OTHER -> "other"
-        }
+    fun wireName(): String = when (this) {
+        UI -> "ui"
+        BACKEND -> "backend"
+        LOGIC -> "logic"
+        WRITING -> "writing"
+        RESEARCH -> "research"
+        DEBUGGING -> "debugging"
+        ORCHESTRATION -> "orchestration"
+        OTHER -> "other"
+    }
 
     companion object {
         val all: List<ModelPurposeCategory> = entries
 
-        fun fromWire(name: String): ModelPurposeCategory? =
-            when (name.lowercase()) {
-                "ui" -> UI
-                "backend" -> BACKEND
-                "logic" -> LOGIC
-                "writing" -> WRITING
-                "research" -> RESEARCH
-                "debugging" -> DEBUGGING
-                "orchestration" -> ORCHESTRATION
-                "other" -> OTHER
-                else -> null
-            }
+        fun fromWire(name: String): ModelPurposeCategory? = when (name.lowercase()) {
+            "ui" -> UI
+            "backend" -> BACKEND
+            "logic" -> LOGIC
+            "writing" -> WRITING
+            "research" -> RESEARCH
+            "debugging" -> DEBUGGING
+            "orchestration" -> ORCHESTRATION
+            "other" -> OTHER
+            else -> null
+        }
     }
 }
 
@@ -196,10 +194,7 @@ fun signalFingerprint(signals: ClassifierSignals): String {
     return parts.joinToString("|").ifEmpty { "default" }
 }
 
-fun classifyPurpose(
-    signals: ClassifierSignals,
-    corrections: List<PurposeCorrection> = emptyList(),
-): ClassificationResult {
+fun classifyPurpose(signals: ClassifierSignals, corrections: List<PurposeCorrection> = emptyList()): ClassificationResult {
     val fp = signalFingerprint(signals)
     val matched = corrections.firstOrNull { it.fingerprint == fp }
     if (matched != null) {

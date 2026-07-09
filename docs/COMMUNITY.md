@@ -58,13 +58,13 @@ TypeSpec-first in `tools/schema-sync/typespec/domains/community.tsp`. Emits TS/S
 |------|----------|--------|
 | `users/{uid}/community/consent` | `CommunityConsentDoc` | Owner read; callable write (Admin SDK) |
 | `users/{uid}/community/profile` | `CommunityProfileDoc` | Owner read; callable write |
-| `users/{uid}/community/share_snapshot` | `CommunityShareSnapshotDoc` | Owner read+write (client-written) |
+| `users/{uid}/community/share_snapshot` | `CommunityShareSnapshotDoc` | Owner read+write (server-refreshed from trusted rollups) |
 | `community_leaderboards/{window}_{tier}_{geoKey}` | `CommunityLeaderboardDoc` | Public authenticated read; no client write |
 | `community_handles/{handleLower}` | `{ uid, createdAt }` | No client access (callable-managed) |
 | `users/{uid}/looking_glass_traces/{id}` | `LookingGlassTraceDoc` | Owner read+write |
 | `users/{uid}/looking_glass_exports/{id}` | `LookingGlassExportDoc` | Owner read; callable write |
 
-`tspOnlyModels`: `CommunityShareSnapshotDoc`, `CommunityWindowTotals`, `CommunityUsageTotal` (Record<> + @encodedName don't round-trip through the canon gate; hand-maintained in `functions/src/community/shareTypes.ts` and platform-native equivalents).
+`CommunityShareSnapshotDoc`, `CommunityWindowTotals`, and `CommunityUsageTotal` are emitted from TypeSpec into TS/Swift/Kotlin. The emitter owns the language-native map shapes and non-identifier window keys (`7d`, `30d`, `90d`, `all_time`) so every platform consumes the same generated contract.
 
 ## Ranking Algorithm
 
@@ -139,7 +139,7 @@ Golden fixtures: `tests/fixtures/classifier-goldens.json` verify cross-platform 
 | `aggregation.ts` | Hourly `onSchedule`: collectionGroup, consent recheck, plausibility validation, per-cohort previous-rank reads, leaderboard computation, stale cleanup |
 | `callables.ts` | `joinCommunity`, `updateCommunityProfile`, `revokeCommunityParticipation`, `exportLookingGlassBundle` (`jsonl` default, optional `parquet`) |
 | `classifier.ts` | Canonical model-purpose classifier (shared spec) |
-| `shareTypes.ts` | Hand-maintained types for Record/@encodedName models |
+| `functions/src/types/generated/community.ts` + generated Swift/Kotlin models | TypeSpec-emitted community document contracts, including share snapshots |
 
 ### Handle uniqueness
 

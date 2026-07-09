@@ -29,7 +29,7 @@ import {
 import { communityRuntimeStatus } from "../community/rollout.js";
 import { COMMUNITY_SCHEMA_VERSION, CommunityPaths, recheckConsent } from "../community/consent.js";
 import { normalizeGeoKey } from "../community/geo.js";
-import type { CommunityWindowTotals } from "../community/shareTypes.js";
+import type { CommunityWindowTotals } from "../types/generated/community.js";
 import {
   ALICE_UID,
   BOB_UID,
@@ -474,7 +474,7 @@ describe("updateCommunityProfile geo normalization", () => {
     expect(profile.countryCode).not.toContain("/");
   });
 
-  it("writes null for manual geo overrides that normalize to empty", async () => {
+  it("ignores manual geo overrides that normalize to empty", async () => {
     seedDoc(store, CommunityPaths.consent(ALICE_UID), {
       l2Tiers: { world: "granted", country: "granted", region: "granted", city: "granted" },
       locationConsent: "granted",
@@ -497,9 +497,9 @@ describe("updateCommunityProfile geo normalization", () => {
     );
 
     const profile = store.get(CommunityPaths.profile(ALICE_UID)) ?? {};
-    expect(profile.countryCode).toBeNull();
-    expect(profile.regionKey).toBeNull();
-    expect(profile.cityKey).toBeNull();
+    expect(profile.countryCode).toBe("US");
+    expect(profile.regionKey).toBe("US-CA");
+    expect(profile.cityKey).toBe("US-CA-old");
   });
 });
 

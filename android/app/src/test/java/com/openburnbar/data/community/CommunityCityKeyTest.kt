@@ -13,7 +13,7 @@ class CommunityCityKeyTest {
     )
 
     // Mirrors tests/fixtures/city-key-goldens.json — every platform must produce
-    // byte-identical output for all 15 entries, including non-decomposable chars.
+    // byte-identical output for every entry, including edge-case region codes.
     private val goldens = listOf(
         Golden("ascii-clean", "San Francisco", "US", "CA", "US-CA-san-francisco"),
         Golden("decomposable-umlaut", "München", "DE", "BY", "DE-BY-munchen"),
@@ -32,14 +32,23 @@ class CommunityCityKeyTest {
         Golden(
             "long-name-truncation",
             "Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch",
-            "GB", "WLS",
+            "GB",
+            "WLS",
             "GB-WLS-llanfairpwllgwyngyllgogerychwyrndrobwlll",
         ),
         Golden("prefixed-region-code", "San Francisco", "US", "US-CA", "US-CA-san-francisco"),
         Golden(
+            "nonmatching-trailing-region-prefix",
+            "Boundary City",
+            "US",
+            "CA-FOO-",
+            "US-CA-FOO--boundary-city",
+        ),
+        Golden(
             "truncation-trailing-hyphen",
             "alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa",
-            "US", "CA",
+            "US",
+            "CA",
             "US-CA-alpha-beta-gamma-delta-epsilon-zeta-eta",
         ),
     )
@@ -76,5 +85,30 @@ class CommunityCityKeyTest {
         val slug = CommunityCityKey.slugifyCity(long)
         org.junit.Assert.assertFalse(slug.endsWith("-"))
         org.junit.Assert.assertTrue(slug.length <= 40)
+    }
+
+    @Test
+    fun normalizeRegionCode_mapsCommonRegionNamesToIsoCodes() {
+        assertEquals("CA", CommunityLocationResolver.normalizeRegionCode("California", null, "US"))
+        assertEquals("QC", CommunityLocationResolver.normalizeRegionCode("Québec", null, "CA"))
+    }
+
+    @Test
+    fun normalizeRegionCode_returnsNullWhenRegionCannotMatchIso() {
+        assertEquals(null, CommunityLocationResolver.normalizeRegionCode("Bavaria", null, "DE"))
+    }
+
+    @Test
+    fun canonicalCityKeyFromComponents_requiresCityName() {
+        assertEquals(
+            null,
+            CommunityLocationResolver.canonicalCityKeyFromComponents(
+                cityName = null,
+                subLocality = null,
+                countryCode = "US",
+                adminArea = "California",
+                subAdminArea = null,
+            ),
+        )
     }
 }

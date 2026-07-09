@@ -15,9 +15,9 @@
  *   3. Treats any malformed / missing document as fully dark.
  */
 
-import type { Firestore } from "firebase-admin/firestore";
 import { firestoreWithResilience } from "../resilienceHelpers.js";
 import { normalizeGeoKey } from "./geo.js";
+import type { CommunityFirestoreReader } from "./firestoreTypes.js";
 
 /** K-anonymity threshold: a cohort needs >= K members to publish a board. */
 export const COMMUNITY_K_THRESHOLD = 10;
@@ -60,12 +60,16 @@ function isGranted(raw: unknown): boolean {
   return raw === "granted";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Re-read the persisted consent document and return a normalized snapshot.
  * Missing or malformed doc → fully dark. City tier additionally requires
  * locationConsent (per the spec's separate location consent gate).
  */
-export async function recheckConsent(db: Firestore, uid: string): Promise<CommunityConsentSnapshot> {
+export async function recheckConsent(db: CommunityFirestoreReader, uid: string): Promise<CommunityConsentSnapshot> {
   const snapshot = await firestoreWithResilience("community-consent-read", () =>
     db.doc(`users/${uid}/community/consent`).get(),
   );
@@ -73,15 +77,19 @@ export async function recheckConsent(db: Firestore, uid: string): Promise<Commun
   if (!snapshot.exists) return { ...FULLY_DARK };
 
   const data = snapshot.data();
-  if (!data || typeof data !== "object") return { ...FULLY_DARK };
+  if (!isRecord(data)) return { ...FULLY_DARK };
 
   const tiers = data.l2Tiers;
-  const tierData = tiers && typeof tiers === "object" ? tiers : {};
+  const tierData = isRecord(tiers) ? tiers : {};
+  const hasLegacyTierGrant =
+    data.l2Rankings === undefined &&
+    (isGranted(tierData.world) || isGranted(tierData.country) || isGranted(tierData.region) || isGranted(tierData.city));
+  const topLevelL2Granted = isGranted(data.l2Rankings) || hasLegacyTierGrant;
 
-  const l2World = isGranted(tierData.world);
-  const l2Country = isGranted(tierData.country);
-  const l2Region = isGranted(tierData.region);
-  const l2City = isGranted(tierData.city) && isGranted(data.locationConsent);
+  const l2World = topLevelL2Granted && isGranted(tierData.world);
+  const l2Country = topLevelL2Granted && isGranted(tierData.country);
+  const l2Region = topLevelL2Granted && isGranted(tierData.region);
+  const l2City = topLevelL2Granted && isGranted(tierData.city) && isGranted(data.locationConsent);
 
   return {
     l1Analytics: isGranted(data.l1Analytics),

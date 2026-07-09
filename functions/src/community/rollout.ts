@@ -11,11 +11,11 @@
  */
 
 import { HttpsError } from "firebase-functions/v2/https";
-import type { Firestore } from "firebase-admin/firestore";
 
 import { getConfig } from "../config.js";
 import { firestoreWithResilience } from "../resilienceHelpers.js";
 import type { EnvConfig } from "../types.js";
+import type { CommunityFirestoreReader } from "./firestoreTypes.js";
 import { CommunityPaths } from "./consent.js";
 
 interface CommunityRuntimeStatus {
@@ -46,7 +46,7 @@ export function assertCommunityRuntimeEnabled(action: string): void {
   }
 }
 
-export async function publishCommunityRuntimeStatus(db: Firestore): Promise<CommunityRuntimeStatus> {
+export async function publishCommunityRuntimeStatus(db: CommunityFirestoreReader): Promise<CommunityRuntimeStatus> {
   const status = communityRuntimeStatus();
   await firestoreWithResilience("community-runtime-status-write", () =>
     db.doc(CommunityPaths.publicReadStatus()).set({

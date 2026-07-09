@@ -144,9 +144,14 @@ const TZ_TO_REGION: Record<string, string> = {
  * alpha-2 country code. Returns undefined if the locale doesn't carry a region.
  */
 function localeToCountry(locale: string): string | undefined {
-  // Match the region suffix: "en-US" → "US", "ja_JP" → "JP", "de-DE" → "DE"
-  const match = locale.match(/[-_]([A-Z]{2})\b/);
-  return match?.[1]?.toUpperCase();
+  // BCP-47 puts region before extension singletons: "en-US-u-ca-gregory".
+  // Stop at a singleton so extension keys like "ca"/"nu" are never treated as
+  // countries, while still accepting "en_US_POSIX" and "zh-Hant-TW".
+  for (const part of locale.split(/[-_]/).slice(1)) {
+    if (part.length === 1) break;
+    if (/^[A-Za-z]{2}$/.test(part)) return part.toUpperCase();
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

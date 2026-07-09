@@ -10,8 +10,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.community.CommunityGeoTier
 import com.openburnbar.data.models.generated.FirestoreLeaderboardEntry
@@ -23,11 +23,7 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 
 @Composable
-fun CommunityLeaderboardCard(
-    state: CommunityLeaderboardCardState,
-    anonId: String?,
-    modifier: Modifier = Modifier,
-) {
+fun CommunityLeaderboardCard(state: CommunityLeaderboardCardState, anonId: String?, modifier: Modifier = Modifier) {
     AuroraGlassCard(
         modifier = modifier.fillMaxWidth(),
         cornerRadius = AuroraRadius.LG,
@@ -97,11 +93,7 @@ fun CommunityLeaderboardCard(
 }
 
 @Composable
-private fun CommunityBelowThresholdMessage(
-    tier: CommunityGeoTier,
-    geoLabel: String,
-    kThreshold: Long,
-) {
+private fun CommunityBelowThresholdMessage(tier: CommunityGeoTier, geoLabel: String, kThreshold: Long) {
     val place =
         when (tier) {
             CommunityGeoTier.CITY -> geoLabel
@@ -119,10 +111,7 @@ private fun CommunityBelowThresholdMessage(
 }
 
 @Composable
-private fun CommunityLeaderboardRow(
-    entry: FirestoreLeaderboardEntry,
-    isYou: Boolean,
-) {
+private fun CommunityLeaderboardRow(entry: FirestoreLeaderboardEntry, isYou: Boolean) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -156,16 +145,14 @@ private fun CommunityLeaderboardRow(
     }
 }
 
-private fun movementGlyph(movement: String): String =
-    when (movement.lowercase()) {
-        "up" -> "▲"
-        "down" -> "▼"
-        else -> "•"
-    }
+private fun movementGlyph(movement: String): String = when (movement.lowercase()) {
+    "up" -> "▲"
+    "down" -> "▼"
+    else -> "•"
+}
 
-private fun formatTokens(tokens: Long): String =
-    when {
-        tokens >= 1_000_000 -> "%.1fM".format(tokens / 1_000_000.0)
-        tokens >= 1_000 -> "%.1fK".format(tokens / 1_000.0)
-        else -> tokens.toString()
-    }
+private fun formatTokens(tokens: Long): String = when {
+    tokens >= 1_000_000 -> "%.1fM".format(tokens / 1_000_000.0)
+    tokens >= 1_000 -> "%.1fK".format(tokens / 1_000.0)
+    else -> tokens.toString()
+}

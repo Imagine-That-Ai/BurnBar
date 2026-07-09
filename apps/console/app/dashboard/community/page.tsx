@@ -11,7 +11,7 @@ import {
 } from "@/lib/community/localConsent";
 import type { CommunityConsentDoc, CommunityTimeWindow, GeographyTier } from "@/lib/community/types";
 import { GEO_TIER_ORDER, TIME_WINDOWS } from "@/lib/community/types";
-import { joinCommunity } from "@/lib/api";
+import { joinCommunity, revokeCommunityParticipation } from "@/lib/api";
 import { buildJoinCommunityRequest } from "@/lib/community/joinPayload";
 import { resolveBrowserCityKey } from "@/lib/community/browserCityLocation";
 import { cityKeyFromManualCityInput } from "@/lib/community/geoCityKey";
@@ -226,16 +226,26 @@ export default function CommunityDashboardPage() {
           type="button"
           className="btn-outline mt-token-4"
           onClick={() => {
-            const d = defaultCommunityConsent();
-            persist({
-              ...d,
-              l1Analytics: "declined",
-              l2Rankings: "declined",
-              l3LookingGlass: "declined",
-              locationConsent: "declined",
-              l2Tiers: { world: "declined", country: "declined", region: "declined", city: "declined" },
-            });
-            setStatus("Participation paused locally.");
+            void (async () => {
+              setSyncing(true);
+              try {
+                await revokeCommunityParticipation();
+                const d = defaultCommunityConsent();
+                persist({
+                  ...d,
+                  l1Analytics: "declined",
+                  l2Rankings: "declined",
+                  l3LookingGlass: "declined",
+                  locationConsent: "declined",
+                  l2Tiers: { world: "declined", country: "declined", region: "declined", city: "declined" },
+                });
+                setStatus("Participation revoked on this device and the server.");
+              } catch {
+                setStatus("Could not revoke server participation. Sign in and try again.");
+              } finally {
+                setSyncing(false);
+              }
+            })();
           }}
         >
           Pause / revoke participation

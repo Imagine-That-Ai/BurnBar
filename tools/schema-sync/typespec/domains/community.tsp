@@ -111,7 +111,7 @@ model CommunityProfileDoc {
 }
 
 // ---------------------------------------------------------------------------
-// Share snapshot (tspOnly — Record<> + @encodedName don't round-trip)
+// Share snapshot
 // ---------------------------------------------------------------------------
 
 /**
@@ -121,8 +121,8 @@ model CommunityProfileDoc {
  * Written only while L2 is granted. The hourly aggregation reads these via
  * collectionGroup to compute public leaderboards.
  *
- * Hand-maintained in generate.mjs — not checked by tsp-canon because
- * modelMix/purposeMix are Record<> and the window keys use @encodedName.
+ * The emitter keeps explicit language-native shapes for Record<> maps and
+ * non-identifier window keys (7d/30d/90d/all_time).
  */
 model CommunityShareSnapshotDoc {
   windows: CommunityWindowTotals;
@@ -157,6 +157,7 @@ model CommunityUsageTotal {
 /** A single leaderboard row. */
 model LeaderboardEntry {
   rank: int32;
+  percentile: float64;
   handle?: string;
   anonId: string;
   totalTokens: int64;
@@ -188,6 +189,7 @@ model CommunityLeaderboardDoc {
   belowThreshold: boolean;
   kThreshold: int32;
   updatedAt: string;
+  schemaVersion: int32;
 }
 
 // ---------------------------------------------------------------------------

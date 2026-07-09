@@ -36,10 +36,38 @@ export interface CommunityProfileDoc {
   updatedAt: string;
 }
 
+export interface CommunityUsageTotal {
+  totalTokens: number;
+  costUSD: number;
+}
+
+export interface CommunityWindowTotals {
+  today: CommunityUsageTotal;
+  "7d": CommunityUsageTotal;
+  "30d": CommunityUsageTotal;
+  "90d": CommunityUsageTotal;
+  all_time: CommunityUsageTotal;
+}
+
+/// Firestore: users/{uid}/community/share_snapshot
+export interface CommunityShareSnapshotDoc {
+  windows: CommunityWindowTotals;
+  modelMix: Record<string, number>;
+  purposeMix: Record<string, number>;
+  sessionCount?: number;
+  countryCode?: string;
+  regionKey?: string;
+  cityKey?: string;
+  revoked?: boolean;
+  schemaVersion: number;
+  updatedAt: string;
+}
+
 export type RankMovement = "up" | "down" | "same" | "new";
 
 export interface LeaderboardEntry {
   rank: number;
+  percentile: number;
   handle?: string;
   anonId: string;
   totalTokens: number;
@@ -65,6 +93,7 @@ export interface CommunityLeaderboardDoc {
   belowThreshold: boolean;
   kThreshold: number;
   updatedAt: string;
+  schemaVersion: number;
 }
 
 export type ModelPurposeCategory = "ui" | "backend" | "logic" | "writing" | "research" | "debugging" | "orchestration" | "other";

@@ -7,6 +7,5 @@ object CommunityPaths {
 
     fun shareSnapshot(uid: String): String = "users/$uid/community/share_snapshot"
 
-    fun leaderboard(window: String, tier: String, geoKey: String): String =
-        "community_leaderboards/${window}_${tier}_$geoKey"
+    fun leaderboard(window: String, tier: String, geoKey: String): String = "community_leaderboards/${window}_${tier}_$geoKey"
 }

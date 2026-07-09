@@ -55,6 +55,8 @@
 	<string>OpenBurnBar uses the microphone only when you start voice commands or a trusted Mercury audio call.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>OpenBurnBar reads device motion only to adapt the mobile dashboard while you are using the app.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OpenBurnBar uses your approximate city only when you explicitly enable the Community city leaderboard. Raw coordinates are never stored.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>OpenBurnBar saves received media to your photo library only when you choose Save.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

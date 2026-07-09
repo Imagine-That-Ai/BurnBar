@@ -45,8 +45,47 @@ data class FirestoreCommunityProfileDoc(
 
 @Keep
 @IgnoreExtraProperties
+data class FirestoreCommunityUsageTotal(
+    val totalTokens: Long = 0,
+    val costUSD: Double = 0.0,
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityWindowTotals(
+    @get:PropertyName("today") @set:PropertyName("today")
+    var today: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+    @get:PropertyName("7d") @set:PropertyName("7d")
+    var sevenDay: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+    @get:PropertyName("30d") @set:PropertyName("30d")
+    var thirtyDay: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+    @get:PropertyName("90d") @set:PropertyName("90d")
+    var ninetyDay: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+    @get:PropertyName("all_time") @set:PropertyName("all_time")
+    var allTime: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+)
+
+/// Firestore: users/{uid}/community/share_snapshot
+@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityShareSnapshotDoc(
+    val windows: FirestoreCommunityWindowTotals = FirestoreCommunityWindowTotals(),
+    val modelMix: Map<String, Double> = emptyMap(),
+    val purposeMix: Map<String, Double> = emptyMap(),
+    val sessionCount: Long? = null,
+    val countryCode: String? = null,
+    val regionKey: String? = null,
+    val cityKey: String? = null,
+    val revoked: Boolean? = null,
+    val schemaVersion: Long = 1,
+    val updatedAt: String = "",
+)
+
+@Keep
+@IgnoreExtraProperties
 data class FirestoreLeaderboardEntry(
     val rank: Long = 0,
+    val percentile: Double = 0.0,
     val handle: String? = null,
     val anonId: String = "",
     val totalTokens: Long = 0,
@@ -78,6 +117,7 @@ data class FirestoreCommunityLeaderboardDoc(
     val belowThreshold: Boolean = false,
     val kThreshold: Long = 10,
     val updatedAt: String = "",
+    val schemaVersion: Long = 1,
 )
 
 @Keep

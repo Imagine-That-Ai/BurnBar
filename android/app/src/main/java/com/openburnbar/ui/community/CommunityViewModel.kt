@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.openburnbar.data.community.CommunityConsentDraft
+import com.openburnbar.data.community.ConsentTriState
 import com.openburnbar.data.community.CommunityConsentStore
 import com.openburnbar.data.community.CommunityFunctions
 import com.openburnbar.data.community.CommunityGeoTier
@@ -11,9 +12,9 @@ import com.openburnbar.data.community.CommunityRepository
 import com.openburnbar.data.community.CommunityTimeWindow
 import com.openburnbar.data.community.usageForWindow
 import com.openburnbar.data.firebase.FirestoreRepository
-import com.openburnbar.data.models.CommunityShareSnapshotDoc
 import com.openburnbar.data.models.generated.FirestoreCommunityLeaderboardDoc
 import com.openburnbar.data.models.generated.FirestoreCommunityProfileDoc
+import com.openburnbar.data.models.generated.FirestoreCommunityShareSnapshotDoc
 import com.openburnbar.data.models.generated.FirestorePercentileBands
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +41,7 @@ data class CommunityUiState(
     val isJoining: Boolean = false,
     val isRevoking: Boolean = false,
     val profile: FirestoreCommunityProfileDoc? = null,
-    val shareSnapshot: CommunityShareSnapshotDoc? = null,
+    val shareSnapshot: FirestoreCommunityShareSnapshotDoc? = null,
     val selectedWindow: CommunityTimeWindow = CommunityTimeWindow.SEVEN_DAY,
     val consentDraft: CommunityConsentDraft = CommunityConsentDraft(),
     val leaderboardCards: List<CommunityLeaderboardCardState> = emptyList(),
@@ -153,6 +154,23 @@ class CommunityViewModel(
                 _uiState.update {
                     it.copy(isJoining = false, error = e.message ?: "Could not join community.")
                 }
+            }
+        }
+    }
+
+    fun declineCityLocationPermission() {
+        viewModelScope.launch {
+            val next =
+                _uiState.value.consentDraft.copy(
+                    l2City = ConsentTriState.DECLINED,
+                    locationConsent = ConsentTriState.DECLINED,
+                )
+            consentStore.applyDraftChange(next)
+            _uiState.update {
+                it.copy(
+                    error = "City leaderboard needs approximate location permission. City sharing is off.",
+                    isJoining = false,
+                )
             }
         }
     }

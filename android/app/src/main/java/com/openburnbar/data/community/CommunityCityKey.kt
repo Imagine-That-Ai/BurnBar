@@ -64,16 +64,11 @@ object CommunityCityKey {
         return slug
     }
 
-    fun canonicalizeCityKey(
-        cityName: String,
-        countryCode: String,
-        regionCode: String,
-    ): String {
+    fun canonicalizeCityKey(cityName: String, countryCode: String, regionCode: String): String {
         val cc = countryCode.trim().uppercase(Locale.ROOT)
         var rc = regionCode.trim().uppercase(Locale.ROOT)
-        val dash = rc.indexOf('-')
-        if (dash >= 0 && dash < rc.length - 1) {
-            rc = rc.substring(dash + 1)
+        if (rc.startsWith("$cc-")) {
+            rc = rc.substring(cc.length + 1)
         }
         return "$cc-$rc-${slugifyCity(cityName)}"
     }

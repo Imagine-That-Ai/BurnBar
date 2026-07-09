@@ -6,9 +6,9 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.openburnbar.data.models.generated.FirestoreCommunityConsentDoc
 import java.util.Locale
 import java.util.TimeZone
-import com.openburnbar.data.models.generated.FirestoreCommunityConsentDoc
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -20,20 +20,18 @@ enum class ConsentTriState {
     DECLINED,
     ;
 
-    fun wireValue(): String =
-        when (this) {
-            UNSET -> "unset"
-            GRANTED -> "granted"
-            DECLINED -> "declined"
-        }
+    fun wireValue(): String = when (this) {
+        UNSET -> "unset"
+        GRANTED -> "granted"
+        DECLINED -> "declined"
+    }
 
     companion object {
-        fun fromWire(value: String?): ConsentTriState =
-            when (value?.lowercase()) {
-                "granted" -> GRANTED
-                "declined" -> DECLINED
-                else -> UNSET
-            }
+        fun fromWire(value: String?): ConsentTriState = when (value?.lowercase()) {
+            "granted" -> GRANTED
+            "declined" -> DECLINED
+            else -> UNSET
+        }
     }
 }
 
@@ -49,19 +47,15 @@ data class CommunityConsentDraft(
     val locationConsent: ConsentTriState = ConsentTriState.UNSET,
     val resolvedCityKey: String? = null,
 ) {
-    fun hasAnyL2TierGranted(): Boolean =
-        l2Rankings == ConsentTriState.GRANTED &&
-            (l2World == ConsentTriState.GRANTED ||
+    fun hasAnyL2TierGranted(): Boolean = l2Rankings == ConsentTriState.GRANTED &&
+        (
+            l2World == ConsentTriState.GRANTED ||
                 l2Country == ConsentTriState.GRANTED ||
                 l2Region == ConsentTriState.GRANTED ||
-                l2City == ConsentTriState.GRANTED)
+                l2City == ConsentTriState.GRANTED
+            )
 
-    fun toJoinPayload(
-        handle: String? = null,
-        countryCode: String? = null,
-        regionKey: String? = null,
-        cityKey: String? = resolvedCityKey,
-    ): Map<String, Any?> {
+    fun toJoinPayload(handle: String? = null, countryCode: String? = null, regionKey: String? = null, cityKey: String? = resolvedCityKey): Map<String, Any?> {
         val payload = mutableMapOf<String, Any?>(
             "l1Analytics" to l1Analytics.wireValue(),
             "l2Rankings" to l2Rankings.wireValue(),
@@ -88,17 +82,16 @@ data class CommunityConsentDraft(
     }
 }
 
-fun FirestoreCommunityConsentDoc.toDraft(): CommunityConsentDraft =
-    CommunityConsentDraft(
-        l1Analytics = ConsentTriState.fromWire(l1Analytics),
-        l2Rankings = ConsentTriState.fromWire(l2Rankings),
-        l2World = ConsentTriState.fromWire(l2Tiers.world),
-        l2Country = ConsentTriState.fromWire(l2Tiers.country),
-        l2Region = ConsentTriState.fromWire(l2Tiers.region),
-        l2City = ConsentTriState.fromWire(l2Tiers.city),
-        l3LookingGlass = ConsentTriState.fromWire(l3LookingGlass),
-        locationConsent = ConsentTriState.fromWire(locationConsent),
-    )
+fun FirestoreCommunityConsentDoc.toDraft(): CommunityConsentDraft = CommunityConsentDraft(
+    l1Analytics = ConsentTriState.fromWire(l1Analytics),
+    l2Rankings = ConsentTriState.fromWire(l2Rankings),
+    l2World = ConsentTriState.fromWire(l2Tiers.world),
+    l2Country = ConsentTriState.fromWire(l2Tiers.country),
+    l2Region = ConsentTriState.fromWire(l2Tiers.region),
+    l2City = ConsentTriState.fromWire(l2Tiers.city),
+    l3LookingGlass = ConsentTriState.fromWire(l3LookingGlass),
+    locationConsent = ConsentTriState.fromWire(locationConsent),
+)
 
 private val Context.communityConsentDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "burnbar_community_consent",

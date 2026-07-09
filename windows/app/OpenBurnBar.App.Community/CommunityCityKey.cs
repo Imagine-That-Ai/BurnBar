@@ -72,13 +72,9 @@ public static class CommunityCityKey
     {
         var cc = countryCode.Trim().ToUpperInvariant();
         var rc = regionCode.Trim().ToUpperInvariant();
-        if (rc.Contains('-', StringComparison.Ordinal))
+        if (rc.StartsWith($"{cc}-", StringComparison.Ordinal))
         {
-            var parts = rc.Split('-', 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 2)
-            {
-                rc = parts[1];
-            }
+            rc = rc[(cc.Length + 1)..];
         }
 
         return $"{cc}-{rc}-{SlugifyCity(cityName)}";

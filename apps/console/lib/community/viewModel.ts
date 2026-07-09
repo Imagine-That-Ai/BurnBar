@@ -4,7 +4,6 @@ import type {
   CommunityConsentDoc,
   CommunityLeaderboardDoc,
   CommunityTimeWindow,
-  GeographyTier,
   PercentileBands,
 } from "./types";
 import { GEO_TIER_ORDER } from "./types";
@@ -28,18 +27,6 @@ export type CommunityViewState = {
   showInvite: boolean;
 };
 
-function geoLabel(tier: GeographyTier): string {
-  switch (tier) {
-    case "city":
-      return "San Francisco";
-    case "region":
-      return "California";
-    case "country":
-      return "United States";
-    default:
-      return "Global";
-  }
-}
 
 function thresholdCards(): CommunityLeaderboardDoc[] {
   return GEO_TIER_ORDER.map((tier) => ({

@@ -311,9 +311,11 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
     },
     collectionGroup: (collectionId: string) => ({
       get: async () => {
-        const suffix = `/${collectionId}`;
         const docs = [...store.entries()]
-          .filter(([path]) => path.endsWith(suffix))
+          .filter(([path]) => {
+            const parts = path.split("/");
+            return parts.length >= 2 && parts[parts.length - 2] === collectionId;
+          })
           .map(([path, data]) => {
             const ref = pathKeyedFirestore(store).doc(path);
             return {

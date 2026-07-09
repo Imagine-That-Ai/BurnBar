@@ -14,6 +14,7 @@ describe('routeFromHash', () => {
   it('covers all navigation ids', () => {
     expect(ROUTES.map((r) => r.id)).toEqual([
       'overview',
+      'community',
       'insights',
       'database',
       'providers',

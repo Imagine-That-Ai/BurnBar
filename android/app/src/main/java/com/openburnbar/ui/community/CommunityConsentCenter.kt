@@ -14,8 +14,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import com.openburnbar.data.community.CommunityConsentDraft
 import com.openburnbar.data.community.ConsentTriState
 import com.openburnbar.ui.components.AuroraButton
@@ -155,11 +155,7 @@ fun CommunityConsentCenter(
 }
 
 @Composable
-private fun CommunityTierToggle(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
+private fun CommunityTierToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = AuroraSpacing.LG.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -171,13 +167,7 @@ private fun CommunityTierToggle(
 }
 
 @Composable
-private fun CommunityTriStateRow(
-    icon: ImageVector,
-    label: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
+private fun CommunityTriStateRow(icon: ImageVector, label: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -191,5 +181,4 @@ private fun CommunityTriStateRow(
     }
 }
 
-private fun tierFromToggle(on: Boolean): ConsentTriState =
-    if (on) ConsentTriState.GRANTED else ConsentTriState.DECLINED
+private fun tierFromToggle(on: Boolean): ConsentTriState = if (on) ConsentTriState.GRANTED else ConsentTriState.DECLINED

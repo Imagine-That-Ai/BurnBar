@@ -20,19 +20,23 @@
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { getFirestore, type DocumentReference, type DocumentSnapshot, type Firestore } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { runScheduledJob } from "../scheduledOps.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { logInfo, logWarn } from "../logging.js";
 import { recheckConsent, COMMUNITY_K_THRESHOLD, COMMUNITY_SCHEMA_VERSION, CommunityPaths } from "./consent.js";
 import { normalizeGeoKey } from "./geo.js";
 import { publishCommunityRuntimeStatus } from "./rollout.js";
-import type { CommunityShareSnapshotDoc, CommunityUsageTotal, CommunityWindowTotals } from "./shareTypes.js";
+import { refreshCommunityShareSnapshots } from "./snapshot.js";
+import type { CommunityDocumentReference, CommunityDocumentSnapshot, CommunityFirestore } from "./firestoreTypes.js";
 import type {
   LeaderboardEntry,
   CommunityLeaderboardDoc,
   PercentileBands,
   RankMovement,
+  CommunityShareSnapshotDoc,
+  CommunityUsageTotal,
+  CommunityWindowTotals,
 } from "../types/generated/community.js";
 
 // ---------------------------------------------------------------------------
@@ -130,7 +134,7 @@ export const cleanupStaleCommunityLeaderboards = onSchedule(
  * Pure aggregation pipeline — exported for test injection. Takes a Firestore
  * instance, reads all snapshots, rechecks consent, computes boards, writes them.
  */
-async function runAggregation(db: Firestore): Promise<void> {
+async function runAggregation(db: CommunityFirestore): Promise<void> {
   const runStartedAt = new Date();
   const status = await publishCommunityRuntimeStatus(db);
   if (!status.enabled) {
@@ -138,10 +142,17 @@ async function runAggregation(db: Firestore): Promise<void> {
     return;
   }
 
+  const snapshotRefresh = await refreshCommunityShareSnapshots(db, runStartedAt);
   const participants = await collectValidParticipants(db);
   if (participants.length === 0) {
     const staleDeleted = await cleanupStaleLeaderboards(db, new Set(), runStartedAt);
-    logInfo({ event: "community_aggregation_empty", message: "No valid participants", staleDeleted });
+    logInfo({
+      event: "community_aggregation_empty",
+      message: "No valid participants",
+      staleDeleted,
+      shareSnapshotsRefreshed: snapshotRefresh.refreshed,
+      shareSnapshotsRemoved: snapshotRefresh.removed,
+    });
     return;
   }
 
@@ -179,6 +190,8 @@ async function runAggregation(db: Firestore): Promise<void> {
     participants: participants.length,
     boardsWritten,
     staleDeleted,
+    shareSnapshotsRefreshed: snapshotRefresh.refreshed,
+    shareSnapshotsRemoved: snapshotRefresh.removed,
   });
 }
 
@@ -206,19 +219,21 @@ function parseUsageTotal(value: unknown): CommunityUsageTotal | null {
 
 function parseWindowTotals(value: unknown): CommunityWindowTotals | null {
   if (!isRecord(value)) return null;
-  const parsed = Object.fromEntries(WINDOWS.map((window) => [window, parseUsageTotal(value[window])])) as Record<
-    WindowKey,
-    CommunityUsageTotal | null
-  >;
-  if (WINDOWS.some((window) => parsed[window] === null)) return null;
+  const today = parseUsageTotal(value.today);
+  const sevenDay = parseUsageTotal(value["7d"]);
+  const thirtyDay = parseUsageTotal(value["30d"]);
+  const ninetyDay = parseUsageTotal(value["90d"]);
+  const allTime = parseUsageTotal(value.all_time);
+  if (!today || !sevenDay || !thirtyDay || !ninetyDay || !allTime) return null;
 
-  for (let i = 1; i < WINDOWS.length; i++) {
-    const previous = parsed[WINDOWS[i - 1]]!;
-    const current = parsed[WINDOWS[i]]!;
+  const ordered = [today, sevenDay, thirtyDay, ninetyDay, allTime];
+  for (let i = 1; i < ordered.length; i++) {
+    const previous = ordered[i - 1];
+    const current = ordered[i];
     if (current.totalTokens < previous.totalTokens || current.costUSD < previous.costUSD) return null;
   }
 
-  return parsed as CommunityWindowTotals;
+  return { today, "7d": sevenDay, "30d": thirtyDay, "90d": ninetyDay, all_time: allTime };
 }
 
 function parseMix(value: unknown): Record<string, number> | null {
@@ -299,13 +314,14 @@ function parseCommunityShareSnapshotDoc(raw: unknown, nowMs: number = Date.now()
  * tombstone cleanup. Returns only participants whose L2 consent is still
  * granted for at least one tier and whose share snapshot is publishable.
  */
-async function collectValidParticipants(db: Firestore): Promise<Participant[]> {
-  const snapshot = await db.collectionGroup("share_snapshot").get();
+async function collectValidParticipants(db: CommunityFirestore): Promise<Participant[]> {
+  const snapshot = await db.collectionGroup("community").get();
   const participants: Participant[] = [];
   const nowMs = Date.now();
 
   for (const doc of snapshot.docs) {
-    const uid = doc.ref.parent.parent?.id;
+    if (doc.id !== "share_snapshot") continue;
+    const uid = doc.ref.parent?.parent?.id;
     if (!uid) continue;
 
     const raw = doc.data();
@@ -327,22 +343,21 @@ async function collectValidParticipants(db: Firestore): Promise<Participant[]> {
     const consent = await recheckConsent(db, uid);
     if (!consent.l2Rankings) continue;
 
-    // Derive the participant's geo keys based on consented tiers.
-    const countryCode = consent.l2Country ? (data.countryCode ?? null) : null;
-    const regionKey = consent.l2Region ? (data.regionKey ?? null) : null;
-    const cityKey = consent.l2City ? (data.cityKey ?? null) : null;
-
-    // Read profile for anonId + handle. A missing anonId means the user has no
-    // publishable pseudonym yet; never fall back to the Firebase Auth uid on a
-    // public leaderboard row.
+    // Read profile for anonId, handle, and consent-normalized geo keys. A
+    // missing anonId means the user has no publishable pseudonym yet; never
+    // fall back to the Firebase Auth uid on a public leaderboard row.
     const profileDoc = await db.doc(CommunityPaths.profile(uid)).get();
-    const profile = profileDoc.data() as { anonId?: string; handle?: string } | undefined;
-    if (!profile?.anonId) continue;
+    const profile = profileDoc.data();
+    if (!isRecord(profile) || typeof profile.anonId !== "string") continue;
+
+    const countryCode = consent.l2Country ? (parseOptionalGeoKey(profile.countryCode) ?? null) : null;
+    const regionKey = consent.l2Region ? (parseOptionalGeoKey(profile.regionKey) ?? null) : null;
+    const cityKey = consent.l2City ? (parseOptionalGeoKey(profile.cityKey) ?? null) : null;
 
     participants.push({
       uid,
       anonId: profile.anonId,
-      handle: profile?.handle ?? null,
+      handle: typeof profile.handle === "string" ? profile.handle : null,
       totalTokens: 0,
       costUSD: 0,
       countryCode,
@@ -437,6 +452,7 @@ function buildLeaderboard(
       belowThreshold: true,
       kThreshold: COMMUNITY_K_THRESHOLD,
       updatedAt: new Date().toISOString(),
+      schemaVersion: COMMUNITY_SCHEMA_VERSION,
     };
   }
 
@@ -447,6 +463,7 @@ function buildLeaderboard(
     const movement: RankMovement = computeMovement(rank, prevRank);
     return {
       rank,
+      percentile: Math.round(((cohortSize - idx) / cohortSize) * 10_000) / 100,
       handle: p.handle ?? undefined,
       anonId: p.anonId,
       totalTokens: p.totalTokens,
@@ -468,6 +485,7 @@ function buildLeaderboard(
     belowThreshold: false,
     kThreshold: COMMUNITY_K_THRESHOLD,
     updatedAt: new Date().toISOString(),
+    schemaVersion: COMMUNITY_SCHEMA_VERSION,
   };
 }
 
@@ -514,26 +532,36 @@ function previousRankKey(window: WindowKey, tier: Tier, geoKey: string): string 
   return `${window}|${tier}|${normalizeGeoKey(geoKey) ?? "unknown"}`;
 }
 
-function rankMapFromSnapshot(snapshot: DocumentSnapshot): Map<string, number> {
+function rankMapFromSnapshot(snapshot: CommunityDocumentSnapshot): Map<string, number> {
   const rankMap = new Map<string, number>();
   if (!snapshot.exists) return rankMap;
-  const data = snapshot.data() as Partial<CommunityLeaderboardDoc> | undefined;
-  if (!Array.isArray(data?.entries)) return rankMap;
+  const data = snapshot.data();
+  if (!isRecord(data) || !Array.isArray(data.entries)) return rankMap;
   for (const entry of data.entries) {
-    if (entry && typeof entry.anonId === "string" && typeof entry.rank === "number") {
+    if (isRecord(entry) && typeof entry.anonId === "string" && typeof entry.rank === "number") {
       rankMap.set(entry.anonId, entry.rank);
     }
   }
   return rankMap;
 }
 
-async function getAllDocuments(db: Firestore, refs: DocumentReference[]): Promise<DocumentSnapshot[]> {
-  const getAll = (db as Firestore & { getAll?: (...refsToRead: DocumentReference[]) => Promise<DocumentSnapshot[]> })
-    .getAll;
-  if (typeof getAll === "function") {
-    const docs: DocumentSnapshot[] = [];
+interface CommunityFirestoreWithGetAll extends CommunityFirestore {
+  getAll(...refsToRead: CommunityDocumentReference[]): Promise<CommunityDocumentSnapshot[]>;
+}
+
+function hasGetAll(db: CommunityFirestore): db is CommunityFirestoreWithGetAll {
+  if (!("getAll" in db)) return false;
+  return typeof db.getAll === "function";
+}
+
+async function getAllDocuments(
+  db: CommunityFirestore,
+  refs: CommunityDocumentReference[],
+): Promise<CommunityDocumentSnapshot[]> {
+  if (hasGetAll(db)) {
+    const docs: CommunityDocumentSnapshot[] = [];
     for (let i = 0; i < refs.length; i += MAX_BATCH_GET_DOCS) {
-      docs.push(...(await getAll.call(db, ...refs.slice(i, i + MAX_BATCH_GET_DOCS))));
+      docs.push(...(await db.getAll(...refs.slice(i, i + MAX_BATCH_GET_DOCS))));
     }
     return docs;
   }
@@ -541,7 +569,7 @@ async function getAllDocuments(db: Firestore, refs: DocumentReference[]): Promis
 }
 
 async function loadPreviousRanksForBoards(
-  db: Firestore,
+  db: CommunityFirestore,
   boards: Array<Pick<BoardWorkItem, "window" | "tier" | "geoKey">>,
 ): Promise<Map<string, Map<string, number>>> {
   const result = new Map<string, Map<string, number>>();
@@ -575,7 +603,7 @@ async function loadPreviousRanksForBoards(
 }
 
 async function loadPreviousRanks(
-  db: Firestore,
+  db: CommunityFirestore,
   window: WindowKey,
   tier: Tier,
   geoKey: string,
@@ -588,18 +616,46 @@ async function loadPreviousRanks(
 // Write + cleanup
 // ---------------------------------------------------------------------------
 
-async function writeLeaderboard(db: Firestore, board: CommunityLeaderboardDoc): Promise<void> {
-  const docPath = CommunityPaths.leaderboard(board.window, board.tier, board.geoKey);
-  await db.doc(docPath).set(board);
+function leaderboardRecord(board: CommunityLeaderboardDoc): Record<string, unknown> {
+  return {
+    window: board.window,
+    tier: board.tier,
+    geoKey: board.geoKey,
+    cohortSize: board.cohortSize,
+    belowThreshold: board.belowThreshold,
+    entries: board.entries.map((entry) => ({
+      anonId: entry.anonId,
+      handle: entry.handle,
+      rank: entry.rank,
+      percentile: entry.percentile,
+      totalTokens: entry.totalTokens,
+      costUSD: entry.costUSD,
+      movement: entry.movement,
+    })),
+    percentiles: {
+      p50: board.percentiles.p50,
+      p75: board.percentiles.p75,
+      p90: board.percentiles.p90,
+      p99: board.percentiles.p99,
+    },
+    updatedAt: board.updatedAt,
+    schemaVersion: board.schemaVersion,
+  };
 }
 
-function isStaleLeaderboardDoc(data: Record<string, unknown> | undefined, runStartedAt: Date): boolean {
-  const updatedAt = typeof data?.updatedAt === "string" ? Date.parse(data.updatedAt) : Number.NaN;
+async function writeLeaderboard(db: CommunityFirestore, board: CommunityLeaderboardDoc): Promise<void> {
+  const docPath = CommunityPaths.leaderboard(board.window, board.tier, board.geoKey);
+  await db.doc(docPath).set(leaderboardRecord(board));
+}
+
+function isStaleLeaderboardDoc(data: unknown, runStartedAt: Date): boolean {
+  if (!isRecord(data)) return true;
+  const updatedAt = typeof data.updatedAt === "string" ? Date.parse(data.updatedAt) : Number.NaN;
   return !Number.isFinite(updatedAt) || updatedAt < runStartedAt.getTime();
 }
 
 async function cleanupStaleLeaderboards(
-  db: Firestore,
+  db: CommunityFirestore,
   activeDocPaths: Set<string>,
   runStartedAt: Date,
 ): Promise<number> {
@@ -617,7 +673,7 @@ async function cleanupStaleLeaderboards(
 
   for (const doc of snapshot.docs) {
     if (activeDocPaths.has(doc.ref.path)) continue;
-    if (!isStaleLeaderboardDoc(doc.data() as Record<string, unknown> | undefined, runStartedAt)) continue;
+    if (!isStaleLeaderboardDoc(doc.data(), runStartedAt)) continue;
     batch.delete(doc.ref);
     pending++;
     deleted++;
