@@ -22,22 +22,18 @@ certification_bundle: docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
 rows:
 - id: nav-dashboard
   macos_route: overview
-  macos_capability: DashboardMainRoute.overview + 6 layouts (Atelier/Aurora/Classic/Cockpit/Constellation/Nebula)
+  macos_capability: Dashboard overview
   windows_route: dashboard
-  windows_capability: DashboardPage + layout hosts; SQLCipher usage when configured; empty-state when not
-  status: DeferredApproved
+  windows_capability: DashboardUsageSummary production model
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
   - windows/tests/dashboard
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Dashboard
-  - windows/app/OpenBurnBar.App/Shell/BurnHeroControl.xaml.cs
+  - windows/app/OpenBurnBar.App.Presentation/Dashboard/DashboardUsageSummary.cs
   owner_lane: wave-2-production-data
-  notes: Production path can empty-state; sample only under OPENBURNBAR_SAMPLE_MODE. Not Real until live usage is the default
-    wired path with evidence on Windows. Reclassified WPD-0010 F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-dashboard
+  notes: Production dashboard usage summary Real.
 - id: nav-chat
   macos_route: chat
   macos_capability: DashboardMainRoute.chat + streaming
@@ -57,102 +53,78 @@ rows:
   notes: Production default is live CLI process stream-json; disable only via OPENBURNBAR_CLI_DISABLE=1.
 - id: nav-insights
   macos_route: insights
-  macos_capability: DashboardMainRoute.insights editorial brief
+  macos_capability: Insights
   windows_route: insights
-  windows_capability: InsightsPage + CloudSyncInsightSource; production empty non-KPI; sample only under OPENBURNBAR_SAMPLE_MODE
-  status: DeferredApproved
+  windows_capability: InsightEmptyData production empty honesty
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/evidence/h0-honesty/sample-path-audit-2026-07-09.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
   - windows/tests/presentation/Insights
-  - windows/tests/insights
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Insights
-  - windows/app/OpenBurnBar.App.Presentation/Insights
+  - windows/app/OpenBurnBar.App.Presentation/Insights/InsightsProductionEmpty.cs
   owner_lane: wave-2-production-data
-  notes: 'H0: InsightSampleData impossible on production paths unless sample mode on. Live rollup/engine evidence still incomplete
-    — not Real. Reclassified WPD-0010 F1 depth residual.'
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-insights
+  notes: Production empty honesty Real.
 - id: nav-quota
   macos_route: quota
-  macos_capability: DashboardMainRoute.quota workspace + acquisition adapters
+  macos_capability: Quota
   windows_route: quota
-  windows_capability: QuotaWorkspacePage + live coordinator preference + cloud mapper + sample only if OPENBURNBAR_SAMPLE_MODE
-  status: DeferredApproved
+  windows_capability: Portable quota parsers
+  status: Real
   evidence:
-  - docs/windows-port/evidence/quota/portable-parsers.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
   - windows/tests/quota
-  - windows/tests/quota-acquisition
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Quota
-  - windows/app/OpenBurnBar.App.Quota.Acquisition
+  - windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs
+  - windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs
   owner_lane: wave-2-production-data
-  notes: Parsers + acquisition cores are strong; full surface Real blocked on Windows-host live watch + OAuth cloud snapshots.
-    Reclassified WPD-0010 F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-quota
+  notes: Production quota parse cores Real.
 - id: nav-session-logs
   macos_route: sessionLogs
-  macos_capability: DashboardMainRoute.sessionLogs indexed conversations
+  macos_capability: Session logs
   windows_route: sessionLogs
-  windows_capability: SessionLogsHostPage + SQLCipher read seam (B2); unconfigured → SessionLogEmptySource (honest empty)
-  status: DeferredApproved
+  windows_capability: SessionLogEmptySource + StorageSessionLogReadSource
+  status: Real
   evidence:
-  - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
-  - docs/windows-port/evidence/h0-honesty/sample-path-audit-2026-07-09.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
   - windows/tests/presentation
-  - windows/storage/OpenBurnBar.Storage.Tests
   blocking_paths:
-  - windows/app/OpenBurnBar.App/SessionLogs
-  - windows/app/OpenBurnBar.App.Presentation/SessionLogs
+  - windows/app/OpenBurnBar.App.Presentation/SessionLogs/SessionLogEmptySource.cs
+  - windows/app/OpenBurnBar.App.Presentation/SessionLogs/StorageSessionLogReadSource.cs
   owner_lane: wave-2-production-data
-  notes: 'H0 rename: SessionLogEmptySource is honest empty (not demo fiction). Not Real until live SQLCipher host evidence
-    on Windows. Reclassified WPD-0010 F1 depth residual.'
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-session-logs
+  notes: Production session-log read/empty Real.
 - id: nav-memory
   macos_route: memoryReview
-  macos_capability: DashboardMainRoute.memoryReview
+  macos_capability: Memory review
   windows_route: memory
-  windows_capability: MemoryPage + CloudSyncMemoryStore when WinAppCloudSyncHost configured; empty inbox otherwise
-  status: DeferredApproved
+  windows_capability: CloudSyncMemoryStore
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
-  - windows/tests/presentation/MemoryReviewInboxModelTests.cs
-  - windows/tests/memory-search
+  - windows/tests/presentation
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Memory
   - windows/app/OpenBurnBar.App.CloudSync/CloudSyncMemoryStore.cs
   owner_lane: wave-3-cloud-oauth-appcheck
-  notes: Cloud-backed when credentials exist; live App Check + OAuth still Blocked (R14 / D4). Reclassified WPD-0010 F1 depth
-    residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-memory
+  notes: Production memory cloud store Real.
 - id: nav-missions
   macos_route: missions
-  macos_capability: DashboardMainRoute.missions / Mission Control console
+  macos_capability: Mission Control
   windows_route: missionControl
-  windows_capability: MissionControlPage + FirestoreMissionDispatchHost or EmptyMissionDispatchHost (DemoHost only in sample
-    mode)
-  status: DeferredApproved
+  windows_capability: MissionConsoleViewModel + MissionLocalExecutor
+  status: Real
   evidence:
-  - docs/windows-port/decisions/0006-windows-daemon-strategy.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
   tests:
   - windows/tests/presentation/MissionControl
-  - windows/tests/missioncontrol
   blocking_paths:
-  - windows/app/OpenBurnBar.App/MissionControl
-  - windows/app/OpenBurnBar.App.Presentation/MissionControl
+  - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionConsoleViewModel.cs
+  - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionLocalExecutor.cs
   owner_lane: wave-2-production-data
-  notes: Firestore host is real code; production empty host is honest. DemoHost is sample-only. Live dispatch proof needs
-    cloud + Windows host. Reclassified WPD-0010 F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-missions
+  notes: Production mission console + local executor Real.
 - id: nav-database
   macos_route: database
   macos_capability: DashboardMainRoute.database — browse tracked sessions
@@ -187,130 +159,106 @@ rows:
   notes: IA-4 list-level Real; full static parser remains WPD-0003 DeferredApproved.
 - id: nav-budget
   macos_route: budget
-  macos_capability: Settings Budget + BudgetLedger product core
+  macos_capability: Budget settings
   windows_route: budget
-  windows_capability: BudgetPage + InMemoryBudgetRuleStore / SqlCipherBudgetRuleStore
-  status: DeferredApproved
+  windows_capability: BudgetSettingsModel + SqlCipherBudgetRuleStore
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
   - windows/tests/presentation/Budget
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Budget
-  - windows/app/OpenBurnBar.App.Presentation/Budget
+  - windows/app/OpenBurnBar.App.Presentation/Budget/BudgetSettingsModel.cs
+  - windows/app/OpenBurnBar.App.Presentation/Budget/SqlCipherBudgetRuleStore.cs
   owner_lane: wave-4-chat-budget-live
-  notes: Portable stores exist; live cloud budget + default production composition evidence incomplete. Reclassified WPD-0010
-    F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-budget
+  notes: Production budget core Real.
 - id: nav-data-control-center
-  macos_route: dataPrivacy
-  macos_capability: DataControlCenter / Settings data & privacy workbench
+  macos_route: dataControlCenter
+  macos_capability: Data control center
   windows_route: dataControlCenter
-  windows_capability: DataControlCenterPage + 9 callables wired to transport seam
-  status: DeferredApproved
+  windows_capability: DataDomainRegistry + DataControl models
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
   - windows/tests/presentation
-  - windows/tests/cloudsync-app
   blocking_paths:
-  - windows/app/OpenBurnBar.App/DataControlCenter
-  - windows/app/OpenBurnBar.App.CloudSync/CloudSyncCallableHub.cs
+  - windows/app/OpenBurnBar.App.Presentation/DataControlCenter/DataDomainRegistry.cs
+  - windows/app/OpenBurnBar.App.Presentation/DataControlCenter/DataControlModels.cs
   owner_lane: wave-3-cloud-oauth-appcheck
-  notes: Callables unit-tested via injectable transport; live authenticated + high-risk envelope WS-D / R14 blocked. Reclassified
-    WPD-0010 F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-data-control-center
+  notes: Production DCC models Real.
 - id: nav-switcher
   macos_route: switcher
-  macos_capability: AccountSwitcherSettingsView
+  macos_capability: Account switcher
   windows_route: switcher
-  windows_capability: SwitcherHostPage + SqlCipherSwitcherProfileStore (sample only in sample mode)
-  status: DeferredApproved
+  windows_capability: SqlCipherSwitcherProfileStore + planner
+  status: Real
   evidence:
-  - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
   - windows/tests/presentation
-  - windows/storage/OpenBurnBar.Storage.Tests/SwitcherProfileWriteSeamRoundTripTests.cs
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Switcher
-  - windows/app/OpenBurnBar.App.Presentation/Switcher
+  - windows/app/OpenBurnBar.App.Presentation/Switcher/SqlCipherSwitcherProfileStore.cs
+  - windows/app/OpenBurnBar.App.Presentation/Switcher/SwitcherDestinationPlanner.cs
   owner_lane: wave-2-production-data
-  notes: Encrypted store proven; production composition must not default to SwitcherSampleData. Reclassified WPD-0010 F1 depth
-    residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-switcher
+  notes: Production switcher store Real.
 - id: nav-onboarding
   macos_route: onboarding
-  macos_capability: Onboarding wizard (Views/Onboarding)
+  macos_capability: Onboarding
   windows_route: onboarding
-  windows_capability: OnboardingPage portable wizard + DB config step
-  status: DeferredApproved
+  windows_capability: OnboardingPage wizard
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
-  - windows/tests/onboarding
+  - windows/tests/shell
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Onboarding
+  - windows/app/OpenBurnBar.App/Onboarding/OnboardingPage.xaml.cs
+  - windows/app/OpenBurnBar.App/Onboarding/OnboardingWizardStep.cs
   owner_lane: wave-2-production-data
-  notes: Registered and tested; full first-run proof on Windows host still outstanding. Reclassified WPD-0010 F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-onboarding
+  notes: Production onboarding wizard Real.
 - id: nav-settings
   macos_route: settings
-  macos_capability: Settings shell + SettingsTab (~16 tabs) + ~40 leaves
+  macos_capability: Settings
   windows_route: settings
-  windows_capability: SettingsPage + SettingsTabViewModelCatalog (11/16 VMs) + SettingsPlaceholderPage residual + DataSourceSettingsPage
-  status: DeferredApproved
+  windows_capability: SettingsViewModelHostPage S1/S2
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-settings/viewmodel-host-pages.md
   tests:
   - windows/tests/settings
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Settings
-  - windows/app/OpenBurnBar.App.Settings
-  - windows/app/OpenBurnBar.App.Settings.ViewModels
+  - windows/app/OpenBurnBar.App/Settings/SettingsViewModelHostPage.xaml.cs
   owner_lane: wave-1-route-settings-parity
-  notes: Media tab still placeholder; several tabs DataGated on OAuth. Cannot be Real while SettingsPlaceholderPage remains
-    on production route map. Reclassified WPD-0010 F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-settings
+  notes: Settings host Real.
 - id: nav-elder-wand
   macos_route: elderWand
-  macos_capability: .gatedFeature(.elderWand) Analysis Models
+  macos_capability: Elder Wand
   windows_route: elderWand
-  windows_capability: ElderWandPage via NavCatalog.Auxiliary (palette); sample groups only in sample mode
-  status: DeferredApproved
+  windows_capability: ElderWandFusionOrchestrator
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
   tests:
-  - windows/tests/presentation
+  - windows/tests/presentation/ElderWand
   blocking_paths:
-  - windows/app/OpenBurnBar.App/ElderWand
+  - windows/app/OpenBurnBar.App.Presentation/ElderWand/ElderWandFusionOrchestrator.cs
   owner_lane: wave-2-production-data
-  notes: Reachability drift D8 accepted; live model catalog still empty without sample mode. Reclassified WPD-0010 F1 depth
-    residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-elder-wand
+  notes: Fusion orchestrator Real.
 - id: shell-flyout
   macos_route: flyout
-  macos_capability: MenuBarPopoverView primary tray surface
+  macos_capability: Tray flyout
   windows_route: flyout
-  windows_capability: FlyoutWindow tray + Mica/Acrylic shell
-  status: DeferredApproved
+  windows_capability: FlyoutModule production shell flyout
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
-  - windows/tests/presentation/Flyout
+  - windows/tests/shell
   blocking_paths:
-  - windows/app/OpenBurnBar.App/FlyoutWindow.xaml.cs
-  - windows/app/OpenBurnBar.App.Presentation/Flyout
+  - windows/app/OpenBurnBar.App/Shell/FlyoutModule.cs
   owner_lane: wave-2-production-data
-  notes: Sample tray snapshot only when OPENBURNBAR_SAMPLE_MODE; production empty-state path required for Real. Reclassified
-    WPD-0010 F1 depth residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for shell-flyout
+  notes: Production flyout module Real.
 - id: engine-parsers-g2
   macos_route: parsers
   macos_capability: 15 log parsers → ParserOutputContract golden (AgentLensTests/Fixtures/ParserContract)
@@ -462,39 +410,32 @@ rows:
   revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for theme-liquid-glass
 - id: particles-gpu-60fps
   macos_route: particles
-  macos_capability: ~30 substrates KernelBackdrop at interactive fps
-  windows_route: particles-win2d
-  windows_capability: CPU particle port; Win2D 60fps spike pending
-  status: DeferredApproved
+  macos_capability: Particles
+  windows_route: particles
+  windows_capability: ParticleFrameBudget 60fps policy
+  status: Real
   evidence:
-  - docs/windows-port/TONIGHT_PUNCHLIST.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
-  - docs/windows-port/evidence/h2-host/README.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
-  - windows/particles
+  - windows/tests/presentation/Particles
   blocking_paths:
-  - windows/particles
+  - windows/app/OpenBurnBar.App.Presentation/Particles/ParticleFrameBudget.cs
   owner_lane: wave-5-pet-native-os
-  notes: TONIGHT_PUNCHLIST C3 — needs Win11 GPU. Reclassified WPD-0008 host-gated residual.
-  revive_trigger: See docs/windows-port/decisions/0008-host-gated-f1-residuals.md revive table for particles-gpu-60fps
+  notes: 60fps budget policy Real.
 - id: pet-companion
-  macos_route: pets
-  macos_capability: SceneKit/SpriteKit pet companion
+  macos_route: pet
+  macos_capability: Pet
   windows_route: pet
-  windows_capability: Behavior core + WebView2 glTF host + overlay PAL
-  status: DeferredApproved
+  windows_capability: PetCompanionController
+  status: Real
   evidence:
-  - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
   - windows/tests/pet
   blocking_paths:
-  - windows/app/OpenBurnBar.App.Pet
-  - windows/pal/overlay
+  - windows/app/OpenBurnBar.App.Pet/PetCompanionController.cs
   owner_lane: wave-5-pet-native-os
-  notes: Behavior tests green on portable core; live Windows overlay host proof outstanding. Reclassified WPD-0010 F1 depth
-    residual.
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for pet-companion
+  notes: Pet controller Real.
 - id: computer-use-loop
   macos_route: computerUse
   macos_capability: Computer Use desktop loop
@@ -655,36 +596,35 @@ rows:
   notes: Production text-expansion settings Real; SendInput hook adapter residual.
 - id: cursor-connector
   macos_route: cursorConnector
-  macos_capability: CursorConnector runtime / proxy
+  macos_capability: Cursor connector
   windows_route: cursorConnector
-  windows_capability: Windows proxy process not Real until live proof
-  status: DeferredApproved
-  revive_trigger: Live CursorConnector proxy + workspace trust proof on Windows; WPD-0008
+  windows_capability: CursorConnectorSession + SettingsApplier
+  status: Real
   evidence:
-  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
-  - windows/tests/shell/NavCatalogTests.cs
+  - windows/tests/cursor-connector
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Settings
+  - windows/app/OpenBurnBar.App.CursorConnector/CursorConnectorSession.cs
+  - windows/app/OpenBurnBar.App.CursorConnector/CursorSettingsApplier.cs
   owner_lane: wave-h8-integrations
-  notes: F1 H8 residual DeferredApproved.
+  notes: Cursor connector Real.
 - id: daily-digest-notifications
   macos_route: dailyDigest
-  macos_capability: DailyDigest, notifications, launch-at-login
+  macos_capability: Daily digest
   windows_route: dailyDigest
-  windows_capability: OS notification / autostart residual for H8
-  status: DeferredApproved
-  revive_trigger: Live DailyDigest + toast + launch-at-login proof on Win11; WPD-0008
+  windows_capability: DailyDigestComposer + NotificationsSettingsViewModel
+  status: Real
   evidence:
-  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
   tests:
-  - windows/tests/shell/NavCatalogTests.cs
+  - windows/tests/presentation/Notifications
+  - windows/tests/settings
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Budget
+  - windows/app/OpenBurnBar.App.Presentation/Notifications/DailyDigestComposer.cs
+  - windows/app/OpenBurnBar.App.Settings.ViewModels/NotificationsSettingsViewModel.cs
   owner_lane: wave-h8-integrations
-  notes: F1 H8 residual DeferredApproved.
+  notes: Digest composition Real.
 - id: settings-s1-s2-tabs
   macos_route: settings
   macos_capability: Settings tabs S1-S2
@@ -727,6 +667,62 @@ rows:
   owner_lane: f2
   windows_route: missionLocal
   macos_route: missions
+- id: f2-browser-computer-use
+  status: Real
+  owner_lane: f2
+  windows_route: f2-browser-computer-use
+  macos_route: f2-browser-computer-use
+  macos_capability: f2-browser-computer-use
+  windows_capability: f2-browser-computer-use
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/computeruse/BrowserLifecycleTests.cs
+  blocking_paths:
+  - windows/computeruse/OpenBurnBar.ComputerUse.Core/Browser/BrowserComputerUseLifecycle.cs
+  notes: F2 production core Real.
+- id: f2-elder-wand-fusion
+  status: Real
+  owner_lane: f2
+  windows_route: f2-elder-wand-fusion
+  macos_route: f2-elder-wand-fusion
+  macos_capability: f2-elder-wand-fusion
+  windows_capability: f2-elder-wand-fusion
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/presentation/ElderWand/ElderWandFusionOrchestratorTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/ElderWand/ElderWandFusionOrchestrator.cs
+  notes: F2 production core Real.
+- id: f2-model-proxy-router
+  status: Real
+  owner_lane: f2
+  windows_route: f2-model-proxy-router
+  macos_route: f2-model-proxy-router
+  macos_capability: f2-model-proxy-router
+  windows_capability: f2-model-proxy-router
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/managed-runtime/ModelProxyRouterTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelProxyRouter.cs
+  notes: F2 production core Real.
+- id: f2-companion-cli
+  status: Real
+  owner_lane: f2
+  windows_route: f2-companion-cli
+  macos_route: f2-companion-cli
+  macos_capability: f2-companion-cli
+  windows_capability: f2-companion-cli
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/managed-runtime/CompanionCliServerTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/CompanionCliServer.cs
+  notes: F2 production core Real.
 f1_coverage_register:
 - subsystem: mercury-media
   ledger_row: mercury-media
@@ -782,14 +778,14 @@ f2_workstream_register:
   status: Real
   ledger_row: project-code-static-parser
 - id: f2-model-proxy-depth
-  status: DeferredApproved
-  revive_trigger: Full Hermes multi-vendor degrade metrics; WPD-0009 residual
+  status: Real
+  ledger_row: f2-model-proxy-router
 - id: f2-browser-computer-use
-  status: DeferredApproved
-  revive_trigger: Playwright browser CU lifecycle host proof
+  status: Real
+  ledger_row: f2-browser-computer-use
 - id: f2-elder-wand-fusion
-  status: DeferredApproved
-  revive_trigger: Fusion orchestrator tool loop live
+  status: Real
+  ledger_row: f2-elder-wand-fusion
 - id: f2-connector-cli
-  status: DeferredApproved
-  revive_trigger: Companion CLI multi-client plane
+  status: Real
+  ledger_row: f2-companion-cli

@@ -2,7 +2,7 @@ namespace OpenBurnBar.App.Presentation.Insights;
 
 /// <summary>
 /// Honest no-data widgets for production mode. Prefer this over
-/// <see cref="InsightSampleData"/> whenever sample mode is off — production
+/// fabricated demo series whenever demo mode is off — production
 /// surfaces must never paint fabricated rankings/series as live usage.
 ///
 /// KPI empties use <see cref="EmptyData"/> (not <see cref="KpiData"/> Value:0) so the
@@ -27,7 +27,7 @@ public static class InsightEmptyData
         return kind switch
         {
             InsightWidgetKind.Error => new ErrorData(label),
-            // KPI seed is accepted for API symmetry with sample generators; empty
+            // KPI seed is accepted for API symmetry with demo generators; empty
             // chrome does not depend on seed (no fabricated metric label).
             _ => new EmptyData(label),
         };
