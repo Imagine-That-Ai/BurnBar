@@ -10,9 +10,10 @@
  * HTML body is always a hard failure when the resource exists (HTTP 200).
  * With --allow-missing, HTTP 404 is a soft pass (feed not published yet).
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { repoRoot, writeJson } from './lib/linux-release-common.mjs';
+import { manifestPath, readJson, reanchorEvidenceDir, repoRoot, writeJson } from './lib/linux-release-common.mjs';
 import { classifyFeedResponse, finalizeFeedReport } from './lib/linux-update-feed.mjs';
 
 const args = process.argv.slice(2);
@@ -24,9 +25,10 @@ const url =
     : 'https://burnbar.ai/latest-linux.json';
 
 const reportPath = path.join(
-  repoRoot,
-  'docs/linux-port/evidence/mission-002-reanchor/latest-linux-feed-check.json'
+  reanchorEvidenceDir,
+  'latest-linux-feed-check.json'
 );
+const manifest = readJson(manifestPath);
 
 let report = {
   generatedAt: new Date().toISOString(),
@@ -61,6 +63,21 @@ try {
     warnings: classified.warnings,
     keys: classified.keys
   });
+  if (report.passed && classified.document) {
+    if (classified.document.signature.publicKeySpkiSha256 !== manifest.signing.publicKeySpkiSha256) {
+      report.failures.push('feed signature key fingerprint does not match the pinned release manifest.');
+    } else {
+      const signatureResponse = await fetch(classified.document.signature.url, { redirect: 'follow' });
+      const signature = Buffer.from(await signatureResponse.arrayBuffer());
+      const publicKey = crypto.createPublicKey(
+        fs.readFileSync(path.join(repoRoot, manifest.signing.publicKey), 'utf8')
+      );
+      if (!signatureResponse.ok || signature.length !== 64 || !crypto.verify(null, Buffer.from(text), publicKey, signature)) {
+        report.failures.push('feed detached Ed25519 signature verification failed.');
+      }
+    }
+    report = finalizeFeedReport(report);
+  }
 } catch (err) {
   report = finalizeFeedReport({
     ...report,

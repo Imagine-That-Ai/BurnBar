@@ -1,5 +1,8 @@
 import XCTest
 @testable import OpenBurnBarCore
+#if os(Linux)
+import OpenBurnBarLinuxSecurity
+#endif
 
 #if os(Linux)
 final class OpenBurnBarCoreLinuxPathContractTests: XCTestCase {

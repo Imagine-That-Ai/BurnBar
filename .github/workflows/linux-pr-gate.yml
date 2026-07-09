@@ -30,6 +30,8 @@ jobs:
     name: Linux fast package and parity gate
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
+    env:
+      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ runner.temp }}/openburnbar-linux-evidence
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -44,6 +46,9 @@ jobs:
 
       - name: Validate parity ledger structure
         run: node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
+
+      - name: Check generated parity ledger Markdown
+        run: node scripts/linux-port/render-parity-ledger.mjs --check
 
       - name: Check Linux docs
         run: node scripts/linux-port/check-linux-docs.mjs
@@ -60,7 +65,21 @@ jobs:
         continue-on-error: true
 
       - name: Linux parity ledger unit tests
-        run: node --test scripts/linux-port/validate-parity-ledger.test.mjs
+        run: >
+          node --test
+          scripts/linux-port/validate-parity-ledger.test.mjs
+          scripts/linux-port/render-parity-ledger.test.mjs
+
+      - name: Linux release integrity unit tests
+        run: >
+          node --test
+          scripts/linux-port/verify-linux-release.test.mjs
+          scripts/linux-port/resolve-linux-release-version.test.mjs
+
+      - name: Verify Linux workflow wiring
+        run: |
+          node scripts/linux-port/verify-linux-workflow-wiring.mjs
+          node --test scripts/linux-port/verify-linux-workflow-wiring.test.mjs
 
       - name: Install Linux desktop dependencies
         run: npm ci --prefix apps/linux-desktop
@@ -77,25 +96,19 @@ jobs:
       - name: Toolchain smoke
         run: docker run --rm -v "$PWD:/workspace" -w /workspace openburnbar-linux-toolchain:mission-001 bash tools/linux-toolchain/smoke.sh
 
-      - name: Swift daemon and CLI Linux build
+      - name: Linux Swift and Rust behavior tests
         run: >
           docker run --rm -v "$PWD:/workspace" -w /workspace
           openburnbar-linux-toolchain:mission-001
-          swift build --package-path OpenBurnBarDaemon
-          --target OpenBurnBarDaemon
-          --target OpenBurnBarCLI
-          --target OpenBurnBarDaemonExecutable
+          bash scripts/linux-port/run-linux-native-tests.sh
 
       - name: IPC drift gate
         run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
-
-      - name: Release verification structural report
-        run: node scripts/linux-port/verify-linux-release.mjs --allow-blocked
 
       - name: Upload Linux gate evidence
         if: always()
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
         with:
           name: linux-pr-gate-evidence
-          path: docs/linux-port/evidence/mission-001-release/
+          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
           if-no-files-found: warn

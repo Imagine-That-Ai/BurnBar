@@ -7,8 +7,9 @@ Current parity status as of 2026-07-09:
 
 - A public signed aarch64 prerelease exists at `linux-v0.1.0`.
 - Full macOS parity is not complete. See
-  [`full-macos-parity-audit-2026-07-09.md`](full-macos-parity-audit-2026-07-09.md)
-  for the current gap matrix, blocker list, and execution plan.
+  [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md)
+  for the independent executive summary, parity matrix, implementation plan,
+  prioritized roadmap, and QA checklist.
 - For the CMUX-synthesized implementation plan, see
   [`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md).
 - The 2026-07-05 release notes below are historical context and should not be
@@ -32,10 +33,14 @@ Primary files:
 - [`release-runbook.md`](release-runbook.md) - package, update, signature,
   provenance, source-offer, and promotion process.
 - [`parity-ledger.json`](parity-ledger.json) - machine-readable Tier A/B/C
-  status ledger. **Semantics:** `productParityClaim` is false until product
-  rows are proven; historical mission-001 rows use
-  `scope: historical-infrastructure`.
-- [`parity-ledger.md`](parity-ledger.md) - human-readable ledger notes.
+  product status ledger. **Semantics:** `productParityClaim` is false until all
+  40 product requirements and the seven-environment support matrix have
+  current-HEAD attestations.
+- [`product-parity-requirements.json`](product-parity-requirements.json) -
+  canonical `P-01` through `P-40` inventory and minimum support matrix.
+- [`parity-ledger.md`](parity-ledger.md) - generated human-readable ledger.
+- [`parity-ledger-history.json`](parity-ledger-history.json) - archived
+  mission evidence that cannot satisfy current product parity.
 - [`evidence/mission-002-reanchor/`](evidence/mission-002-reanchor/) - Phase 0
   reanchor baseline for full parity work.
 - [`factory-pr-handoff.md`](factory-pr-handoff.md) - review map and known

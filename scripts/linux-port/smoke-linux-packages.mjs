@@ -171,14 +171,33 @@ writeJson(path.join(smokeDir, 'package-update-rollback.json'), update);
 fs.writeFileSync(path.join(smokeDir, 'package-update-rollback.log'), `${JSON.stringify(update, null, 2)}\n`, 'utf8');
 
 const failed = steps.filter((step) => step.exitCode !== 0);
+const lifecycle = {
+  guiLaunch: {
+    status: 'blocked',
+    reason: 'Package inspection and --version do not prove a painted interactive GUI launch.'
+  },
+  daemonLaunch: {
+    status: 'blocked',
+    reason: 'Daemon --help does not prove package-owned service launch and health.'
+  },
+  versionReadback: {
+    status: 'blocked',
+    reason: 'Smoke does not yet read both package version and source commit from the running GUI and daemon.'
+  },
+  update: { status: update.status, reason: update.reason },
+  rollback: { status: update.status, reason: update.reason },
+  dataPreservation: { status: update.status, reason: update.reason }
+};
+const lifecyclePassed = Object.values(lifecycle).every((step) => step.status === 'passed');
 const summary = {
   steps: steps.length,
   failedCount: failed.length,
   failed: failed.slice(0, 20),
   update,
-  passed: failed.length === 0
+  lifecycle,
+  passed: failed.length === 0 && lifecyclePassed
 };
 writeJson(path.join(smokeDir, 'package-smoke-summary.json'), summary);
 console.log(JSON.stringify(summary, null, 2));
 // Fail closed: any assert/install failure is a hard smoke failure.
-process.exit(failed.length === 0 ? 0 : 1);
+process.exit(summary.passed ? 0 : 1);

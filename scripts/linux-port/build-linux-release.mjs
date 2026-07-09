@@ -10,6 +10,7 @@ import {
   manifestPath,
   packageVersion,
   readJson,
+  reanchorEvidenceDir,
   relative,
   releaseEvidenceDir,
   repoRoot,
@@ -132,6 +133,7 @@ const copied = discoverBundleArtifacts().map((artifact) => {
   const dest = copyArtifact(artifact.file, artifactsDir);
   return {
     type: artifact.type,
+    architecture: linuxArch(),
     file: relative(dest),
     sourceFile: relative(artifact.file),
     size: fileSize(dest),
@@ -147,6 +149,7 @@ if (fs.existsSync(daemonBinary)) {
   fs.chmodSync(daemonArtifact, 0o755);
   copied.push({
     type: 'daemon',
+    architecture: linuxArch(),
     file: relative(daemonArtifact),
     sourceFile: relative(daemonBinary),
     size: fileSize(daemonArtifact),
@@ -248,6 +251,23 @@ if (sourceArchive.exitCode !== 0) {
   }
 }
 writeLog('source-archive.log', sourceSteps);
+const paritySource = path.join(reanchorEvidenceDir, 'parity-ledger-validation.json');
+const parityFile = path.join(sidecarDir, `OpenBurnBar-${version}-linux.parity-attestation.json`);
+if (fs.existsSync(paritySource)) {
+  fs.copyFileSync(paritySource, parityFile);
+  const parity = readJson(parityFile);
+  if (parity.targetHead !== git.commit || parity.promotionPassed !== true || parity.productParityClaim !== true) {
+    blockers.push({
+      kind: 'parity-attestation',
+      message: 'Parity attestation is not green for the release commit.'
+    });
+  }
+} else {
+  blockers.push({
+    kind: 'parity-attestation',
+    message: 'Current release-head parity attestation is missing; run the strict parity ledger first.'
+  });
+}
 if (!git.gitAvailable) {
   blockers.push({
     kind: 'git-metadata',
@@ -324,11 +344,13 @@ if (!cosignOidcAvailable) {
   }
 }
 
-const expectedCosignIdentity = `https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/v${version}`;
+const expectedCosignIdentity = manifest.signing.cosignIdentityTemplate.replace('{version}', version);
 const provenance = {
   predicateType: 'https://openburnbar.dev/attestations/linux-release-artifact/v1',
   generatedAt: new Date().toISOString(),
   expectedCosignIdentity,
+  expectedCosignIssuer: manifest.signing.cosignIssuer,
+  publicKeySpkiSha256: manifest.signing.publicKeySpkiSha256,
   git,
   version,
   artifacts: copied,
@@ -345,6 +367,21 @@ const provenance = {
 };
 const provenanceFile = path.join(sidecarDir, `OpenBurnBar-${version}-linux.provenance-predicate.json`);
 writeJson(provenanceFile, provenance);
+
+function closureRecord(file) {
+  return fs.existsSync(file)
+    ? { file: relative(file), sha256: sha256(file), size: fileSize(file) }
+    : null;
+}
+
+const closureSidecars = {
+  checksums: closureRecord(checksumFile),
+  sbom: closureRecord(sbomFile),
+  vex: closureRecord(vexFile),
+  provenancePredicate: closureRecord(provenanceFile),
+  sourceArchive: closureRecord(sourceTar),
+  parityAttestation: closureRecord(parityFile)
+};
 
 const primary = copied.find((artifact) => artifact.type === manifest.primaryArtifact);
 const latestDraft = {
@@ -368,23 +405,20 @@ const latestDraft = {
 writeJson(path.join(outDir, manifest.updateMetadata.draftName), latestDraft);
 
 writeJson(path.join(outDir, 'package-closure.json'), {
+  schemaVersion: 2,
   generatedAt: new Date().toISOString(),
   manifest: relative(manifestPath),
+  tag: `linux-v${version}`,
   git,
   version,
   artifacts: copied,
   metadata: metadataFiles,
-  sidecars: {
-    checksums: relative(checksumFile),
-    sbom: fs.existsSync(sbomFile) ? relative(sbomFile) : null,
-    vex: fs.existsSync(vexFile) ? relative(vexFile) : null,
-    provenancePredicate: relative(provenanceFile)
-  },
+  sidecars: closureSidecars,
   blockers
 });
 
 console.log(JSON.stringify({ outDir: relative(outDir), artifacts: copied, blockers }, null, 2));
-process.exit(blockers.some((blocker) => blocker.kind === 'package-build') ? 1 : 0);
+process.exit(blockers.length === 0 ? 0 : 1);
 
 function linuxArch() {
   switch (process.arch) {

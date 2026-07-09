@@ -14,7 +14,7 @@ on:
         type: boolean
   push:
     tags:
-      - "v*"
+      - "linux-v*"
 
 permissions:
   contents: write
@@ -31,6 +31,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     environment: release
+    env:
+      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ runner.temp }}/openburnbar-linux-evidence
+      OPENBURNBAR_LINUX_RELEASE_OUT: ${{ github.workspace }}/.linux-release
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -39,6 +42,17 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/linux-desktop/package-lock.json
+
+      - name: Resolve and validate Linux release version
+        id: release-version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: node scripts/linux-port/resolve-linux-release-version.mjs --github-output
+
+      - name: Verify product parity at release HEAD
+        run: |
+          node scripts/linux-port/render-parity-ledger.mjs --check
+          node scripts/linux-port/validate-parity-ledger.mjs
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
@@ -54,16 +68,20 @@ jobs:
           -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
           -e ACTIONS_ID_TOKEN_REQUEST_TOKEN
           -e ACTIONS_ID_TOKEN_REQUEST_URL
+          -e OPENBURNBAR_LINUX_EVIDENCE_OUT
+          -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-release
           -v "$PWD:/workspace"
+          -v "$RUNNER_TEMP:$RUNNER_TEMP"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
           bash -c "git config --global --add safe.directory /workspace &&
-          node scripts/linux-port/build-linux-release.mjs --version '${{ inputs.version }}'"
+          node scripts/linux-port/build-linux-release.mjs --version '${{ steps.release-version.outputs.version }}'"
 
       - name: Package install/uninstall/update smoke
         run: >
           docker run --rm
           -v "$PWD:/workspace"
+          -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-release
           -w /workspace
           openburnbar-linux-toolchain:mission-001
           bash -c "git config --global --add safe.directory /workspace &&
@@ -73,22 +91,21 @@ jobs:
         # The build/smoke containers run as root and create artifacts/ + sidecars/
         # owned by root; the later runner steps (attest, publish) write next to
         # those files, so hand ownership back to the runner user first.
-        run: sudo chown -R "$(id -u):$(id -g)" docs/linux-port/evidence/mission-001-release
+        run: sudo chown -R "$(id -u):$(id -g)" "$OPENBURNBAR_LINUX_RELEASE_OUT" "$OPENBURNBAR_LINUX_EVIDENCE_OUT"
 
-      - name: Restore SPM resolved files mutated by the Linux build
-        # The container Linux build deterministically re-resolves and drops the
-        # macOS-only sqlcipher.swift pin, mutating the tracked Package.resolved.
-        # Restore it so the strict verifier's clean-worktree check binds to the
-        # committed release commit rather than failing on expected Linux drift.
-        run: git checkout -- OpenBurnBarCore/Package.resolved OpenBurnBarDaemon/Package.resolved
+      - name: Reject tracked dependency-resolution drift
+        run: git diff --exit-code -- OpenBurnBarCore/Package.resolved OpenBurnBarDaemon/Package.resolved
 
-      - name: Strict Linux release verification
-        run: node scripts/linux-port/verify-linux-release.mjs
+      - name: Pre-attestation Linux release verification
+        run: >
+          node scripts/linux-port/verify-linux-release.mjs
+          --phase pre-attestation
+          --version '${{ steps.release-version.outputs.version }}'
 
       - name: Attest Linux release sidecars and packages
         run: |
           set -euo pipefail
-          mapfile -t files < <(find docs/linux-port/evidence/mission-001-release -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*provenance-predicate.json' \) | sort)
+          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' \) | sort)
           if [[ "${#files[@]}" -eq 0 ]]; then
             echo "::error::No Linux release files found for attestation"
             exit 1
@@ -98,7 +115,7 @@ jobs:
             if [[ "$file" == *provenance-predicate.json ]]; then
               predicate="$file"
             else
-              cp docs/linux-port/evidence/mission-001-release/sidecars/*provenance-predicate.json "$predicate"
+              cp "$OPENBURNBAR_LINUX_RELEASE_OUT"/sidecars/*provenance-predicate.json "$predicate"
             fi
             cosign attest-blob --yes \
               --type "https://openburnbar.dev/attestations/linux-release-artifact/v1" \
@@ -109,34 +126,50 @@ jobs:
 
       - name: Verify cosign bundles exist
         run: |
-          test -n "$(find docs/linux-port/evidence/mission-001-release -type f -name '*.sigstore.json' -print -quit)"
+          test -n "$(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f -name '*.sigstore.json' -print -quit)"
+
+      - name: Final Linux release verification
+        run: >
+          node scripts/linux-port/verify-linux-release.mjs
+          --phase final
+          --version '${{ steps.release-version.outputs.version }}'
 
       - name: Publish Linux GitHub prerelease
+        if: steps.release-version.outputs.publish_allowed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # Linux-specific tag: does not match the macOS/iOS `v*` release trigger,
           # so publishing here never fires the Apple release pipeline.
-          tag="linux-v${{ inputs.version }}"
-          art=docs/linux-port/evidence/mission-001-release
-          cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/" 2>/dev/null || true
+          tag="${{ steps.release-version.outputs.tag }}"
+          art="$OPENBURNBAR_LINUX_RELEASE_OUT"
+          cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
           mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art" -maxdepth 2 -type f \
             \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
                -o -name '*.ed25519.sig' -o -name '*.sigstore.json' -o -name '*.spdx.json' \
-               -o -name '*.openvex.json' -o -name '*checksums*.txt' -o -name '*provenance-predicate.json' \
+               -o -name '*.openvex.json' -o -name '*checksums*.txt' -o -name '*source-*.tar' \
+               -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' \
                -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
           prerelease=""
-          [ "${{ inputs.allow_prerelease }}" = "true" ] && prerelease="--prerelease"
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.allow_prerelease }}" = "true" ]]; then
+            prerelease="--prerelease"
+          fi
           gh release create "$tag" $prerelease \
-            --title "OpenBurnBar Linux ${{ inputs.version }} (aarch64)" \
-            --notes "First OpenBurnBar Linux desktop release — aarch64/ARM64. Signed AppImage (primary), deb, and rpm plus the daemon binary, with Ed25519 detached signatures and keyless Sigstore/cosign attestation bundles. Verify with packaging/linux/openburnbar-linux-ed25519.pub.pem. Prerelease: this build seeds the auto-update chain." \
+            --title "OpenBurnBar Linux ${{ steps.release-version.outputs.version }}" \
+            --notes "OpenBurnBar Linux candidate. Signed packages and daemon include Ed25519 signatures, Sigstore bundles, source, SBOM, VEX, provenance, and parity attestation." \
             "${assets[@]}"
+
+      - name: Verify live Linux update feed after publish
+        if: steps.release-version.outputs.publish_allowed == 'true'
+        run: node scripts/linux-port/check-linux-update-feed.mjs --url https://burnbar.ai/latest-linux.json
 
       - name: Upload Linux release evidence
         if: always()
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
         with:
           name: linux-release-evidence
-          path: docs/linux-port/evidence/mission-001-release/
+          path: |
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/
+            ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
           if-no-files-found: error
