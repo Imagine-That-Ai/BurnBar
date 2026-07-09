@@ -5,6 +5,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using System.Text;
 using Microsoft.UI.Xaml;
+using OpenBurnBar.App.Configuration;
 namespace OpenBurnBar.App.Diagnostics;
 
 /// <summary>
@@ -113,7 +114,8 @@ public static class AppDiagnostics
     {
         string route = ActiveRouteKey;
         string routeSuffix = string.IsNullOrEmpty(route) ? string.Empty : $" route={route}";
-        return $"[{DateTimeOffset.UtcNow:O}] {category}{routeSuffix} pid={Environment.ProcessId}{Environment.NewLine}{message}{Environment.NewLine}";
+        string redacted = SecretRedactor.Shared.Redact(message);
+        return $"[{DateTimeOffset.UtcNow:O}] {category}{routeSuffix} pid={Environment.ProcessId}{Environment.NewLine}{redacted}{Environment.NewLine}";
     }
 
     private static string Describe(Exception? exception)

@@ -50,14 +50,13 @@ public sealed partial class ProvidersStepPage : Page
     {
         AppConfigurationModel snap = AppConfiguration.Current.Snapshot();
         DbPathBox.Text = snap.SqlCipherDbPath ?? string.Empty;
-        if (!string.IsNullOrEmpty(snap.SqlCipherPassphrase))
-        {
-            DbPassphraseBox.Password = snap.SqlCipherPassphrase;
-        }
+        DbPassphraseBox.Password = string.Empty;
 
         DbStatusText.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "Database configured for this PC."
-            : "Optional — skip if you are starting fresh on Windows.";
+            : string.IsNullOrWhiteSpace(snap.SqlCipherPassphraseRef)
+                ? "Optional — skip if you are starting fresh on Windows."
+                : "Protected passphrase configured; choose a database file to enable SQLCipher.";
     }
 
     private async void OnBrowseDb(object sender, RoutedEventArgs e)

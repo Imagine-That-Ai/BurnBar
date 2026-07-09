@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.CloudSync;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Tray;
 
@@ -44,6 +45,16 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
+        try
+        {
+            _ = AppConfiguration.Current.SecurityState;
+        }
+        catch (SecretStoreException ex)
+        {
+            AppDiagnostics.LogException("configuration.security", ex);
+            throw;
+        }
+
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
 

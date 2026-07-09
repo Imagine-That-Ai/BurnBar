@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -15,7 +16,6 @@ namespace OpenBurnBar.App.Settings.Winui;
 public sealed partial class DataSourceSettingsPage : Page
 {
     private SettingsPageContext? _context;
-    private bool _passphraseLoaded;
 
     public DataSourceSettingsPage()
     {
@@ -33,23 +33,17 @@ public sealed partial class DataSourceSettingsPage : Page
     {
         AppConfigurationModel snap = AppConfiguration.Current.Snapshot();
         DbPathBox.Text = snap.SqlCipherDbPath ?? string.Empty;
-        if (!_passphraseLoaded && !string.IsNullOrEmpty(snap.SqlCipherPassphrase))
-        {
-            PassphraseBox.Password = snap.SqlCipherPassphrase;
-            _passphraseLoaded = true;
-        }
+        PassphraseBox.Password = string.Empty;
 
         FirebaseProjectBox.Text = snap.FirebaseProjectId ?? string.Empty;
         FirebaseUidBox.Text = snap.FirebaseUid ?? string.Empty;
-        FirebaseIdTokenBox.Text = snap.FirebaseIdToken ?? string.Empty;
-        AppCheckTokenBox.Text = snap.AppCheckToken ?? string.Empty;
-        // Read the vault key from the snapshot without triggering gitleaks.
-        var model = AppConfiguration.Current.Snapshot();
-        VaultKeyBox.Text = model.VaultKeyB64 ?? string.Empty;
+        FirebaseIdTokenBox.Text = string.Empty;
+        AppCheckTokenBox.Text = string.Empty;
+        VaultKeyBox.Text = string.Empty;
 
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "SQLCipher: configured"
-            : "SQLCipher: using in-memory / sample fallbacks";
+            : SecretSummary(snap);
     }
 
     private async void OnBrowseDb(object sender, RoutedEventArgs e)
@@ -102,9 +96,21 @@ public sealed partial class DataSourceSettingsPage : Page
 
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "Saved. SQLCipher active — reopen surfaces to reload stores."
-            : "Saved. Cloud settings applied where UID + token are set.";
+            : "Saved. Secrets were written to protected storage; cloud settings applied where UID + token are set.";
     }
 
     private static string? NullIfEmpty(string? text) =>
         string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+
+    private static string SecretSummary(AppConfigurationModel model)
+    {
+        var configured = new List<string>();
+        if (!string.IsNullOrWhiteSpace(model.SqlCipherPassphraseRef)) configured.Add("database passphrase");
+        if (!string.IsNullOrWhiteSpace(model.FirebaseIdTokenRef)) configured.Add("Firebase ID token");
+        if (!string.IsNullOrWhiteSpace(model.AppCheckTokenRef)) configured.Add("App Check token");
+        if (!string.IsNullOrWhiteSpace(model.VaultKeyB64Ref)) configured.Add("CloudVault key");
+        return configured.Count == 0
+            ? "No protected secrets configured."
+            : "Protected secrets configured: " + string.Join(", ", configured) + ".";
+    }
 }

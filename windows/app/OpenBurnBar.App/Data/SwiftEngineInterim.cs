@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenBurnBar.App.Configuration;
 
 namespace OpenBurnBar.App.Data;
 
@@ -54,6 +55,7 @@ public static class SwiftEngineInterim
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        ChildProcessEnvironment.Apply(startInfo, ChildProcessProfile.ReleaseTool);
 
         using var process = new Process { StartInfo = startInfo };
         if (!process.Start())

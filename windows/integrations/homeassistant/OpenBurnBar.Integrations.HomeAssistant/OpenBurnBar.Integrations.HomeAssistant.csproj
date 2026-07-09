@@ -50,4 +50,8 @@
     <AssemblyName>OpenBurnBar.Integrations.HomeAssistant</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\app\OpenBurnBar.App.Configuration\OpenBurnBar.App.Configuration.csproj" />
+  </ItemGroup>
+
 </Project>

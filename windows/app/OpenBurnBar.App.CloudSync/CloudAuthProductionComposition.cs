@@ -1,4 +1,5 @@
 using System;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.CloudSync.AppCheck.Attestation;
 using OpenBurnBar.CloudSync.AppCheck.Mint;
 using OpenBurnBar.CloudSync.AppCheck.Provider;
@@ -51,6 +52,34 @@ public static class CloudAuthProductionComposition
             browser ?? new SystemBrowserLauncher(),
             new FirebaseIdentityClient(http, options),
             clock ?? SystemClock.Instance);
+    }
+
+    public static DesktopOAuthCredentialsProvider? TryCreateOAuthCredentialsProvider(
+        IBrowserLauncher? browser = null,
+        IClock? clock = null,
+        IAppSecretStore? secretStore = null)
+    {
+        if (!IsOAuthConfigured())
+        {
+            return null;
+        }
+
+        var options = new DesktopOAuthOptions
+        {
+            ClientId = Environment.GetEnvironmentVariable(GoogleClientIdEnv)!,
+            FirebaseApiKey = Environment.GetEnvironmentVariable(FirebaseApiKeyEnv)!,
+        };
+        options.Validate();
+        var http = new System.Net.Http.HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(options.HttpTimeoutSeconds),
+        };
+        return DesktopOAuthCredentialsProvider.Create(
+            options,
+            http,
+            browser,
+            clock,
+            new ProtectedFirebaseOAuthSessionStore(secretStore ?? AppConfiguration.Current.SecretStore));
     }
 
     /// <summary>

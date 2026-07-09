@@ -22,7 +22,7 @@
                 Margin="0,0,0,8"
                 Foreground="{StaticResource PensieveColorTextMuteBrush}"
                 TextWrapping="Wrap"
-                Text="Point OpenBurnBar at your Mac SQLCipher database and optional cloud sync credentials. Saved to app_config.json; environment variables still override at runtime." />
+                Text="Point OpenBurnBar at your SQLCipher database and optional cloud sync credentials. Non-secret settings are saved to app_config.json; credentials are stored in protected Windows storage." />
 
             <tk:SettingsCard x:Name="DbPathCard" Header="SQLCipher database" Description="Path to the .sqlite file produced on macOS">
                 <StackPanel Spacing="8" MinWidth="280">
@@ -31,7 +31,7 @@
                 </StackPanel>
             </tk:SettingsCard>
 
-            <tk:SettingsCard x:Name="PassphraseCard" Header="Database passphrase" Description="Same passphrase used when the file was created on Mac">
+            <tk:SettingsCard x:Name="PassphraseCard" Header="Database passphrase" Description="Leave blank to keep the protected value already configured for this PC">
                 <PasswordBox x:Name="PassphraseBox" MinWidth="280" PlaceholderText="Passphrase" />
             </tk:SettingsCard>
 
@@ -49,15 +49,15 @@
                 <TextBox x:Name="FirebaseUidBox" MinWidth="280" />
             </tk:SettingsCard>
 
-            <tk:SettingsCard Header="Firebase ID token" Description="Paste a dev-host ID token (OAuth flow deferred)">
+            <tk:SettingsCard Header="Firebase ID token" Description="Leave blank to keep the protected value already configured for this PC">
                 <TextBox x:Name="FirebaseIdTokenBox" MinWidth="280" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" />
             </tk:SettingsCard>
 
-            <tk:SettingsCard Header="App Check token" Description="Optional; leave empty if not using App Check">
+            <tk:SettingsCard Header="App Check token" Description="Leave blank to keep the protected value already configured for this PC">
                 <TextBox x:Name="AppCheckTokenBox" MinWidth="280" />
             </tk:SettingsCard>
 
-            <tk:SettingsCard Header="Vault key (Base64)" Description="Optional E2EE vault key; generated if empty when UID is set">
+            <tk:SettingsCard Header="Vault key (Base64)" Description="Leave blank to keep the protected value already configured for this PC">
                 <TextBox x:Name="VaultKeyBox" MinWidth="280" />
             </tk:SettingsCard>
 
