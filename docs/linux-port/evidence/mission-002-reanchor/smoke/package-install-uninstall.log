@@ -1,0 +1,122 @@
+## /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage --appimage-extract
+cwd=.
+exit_code=0
+### stdout
+
+### stderr
+
+
+## /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage --appimage-extract-and-run --version
+cwd=.
+exit_code=0
+### stdout
+OpenBurnBar 0.1.0
+
+### stderr
+
+
+## dpkg-deb --info /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb
+cwd=.
+exit_code=0
+### stdout
+ new Debian package, version 2.0.
+ size 27893280 bytes: control archive=457 bytes.
+     245 bytes,     9 lines      control
+     246 bytes,     3 lines      md5sums
+ Package: open-burn-bar
+ Version: 0.1.0
+ Architecture: arm64
+ Installed-Size: 16238
+ Maintainer: OpenBurnBar
+ Priority: optional
+ Depends: libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0
+ Description: OpenBurnBar Linux desktop shell
+  (none)
+
+### stderr
+
+
+## dpkg-deb --contents /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb
+cwd=.
+exit_code=0
+### stdout
+drwxr-xr-x burnbar/burnbar   0 2026-07-09 18:09 ./
+drwxr-xr-x burnbar/burnbar   0 2026-07-09 18:09 ./usr/
+drwxr-xr-x burnbar/burnbar   0 2026-07-09 18:09 ./usr/bin/
+-rwxr-xr-x burnbar/burnbar 97396968 2026-07-09 18:09 ./usr/bin/openburnbar-daemon
+-rwxr-xr-x burnbar/burnbar 16566232 2026-07-09 04:38 ./usr/bin/openburnbar-linux-desktop
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:09 ./usr/lib/
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:09 ./usr/lib/systemd/
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:09 ./usr/lib/systemd/user/
+-rw-r--r-- burnbar/burnbar     1753 2026-07-09 18:09 ./usr/lib/systemd/user/openburnbar-daemon.service
+drwxrwxr-x burnbar/burnbar        0 2026-07-09 18:09 ./usr/libexec/
+-rwxr-xr-x burnbar/burnbar     6320 2026-07-09 18:09 ./usr/libexec/openburnbar-daemon-launch
+drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/
+drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/applications/
+-rw-r--r-- burnbar/burnbar      220 2026-07-09 04:38 ./usr/share/applications/OpenBurnBar.desktop
+drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/icons/
+drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/icons/hicolor/
+drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/icons/hicolor/256x256/
+drwxr-xr-x burnbar/burnbar        0 2026-07-09 04:38 ./usr/share/icons/hicolor/256x256/apps/
+-rw-r--r-- burnbar/burnbar    25018 2026-07-09 04:38 ./usr/share/icons/hicolor/256x256/apps/openburnbar-linux-desktop.png
+
+### stderr
+
+
+## dpkg -i /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb
+cwd=.
+exit_code=2
+### stdout
+
+### stderr
+dpkg: error: requested operation requires superuser privilege
+
+
+## dpkg -r open-burn-bar
+cwd=.
+exit_code=2
+### stdout
+
+### stderr
+dpkg: error: requested operation requires superuser privilege
+
+
+## rpm -qip /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm
+cwd=.
+exit_code=1
+### stdout
+
+### stderr
+
+
+## rpm -qlp /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm
+cwd=.
+exit_code=1
+### stdout
+
+### stderr
+
+
+## assert rpm contains openburnbar-daemon-launch
+cwd=.
+exit_code=1
+### stdout
+
+### stderr
+rpm package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)
+
+## rpm -i --nodeps /home/burnbar/BurnBar/docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm
+cwd=.
+exit_code=1
+### stdout
+
+### stderr
+
+
+## rpm -e open-burn-bar
+cwd=.
+exit_code=1
+### stdout
+
+### stderr
+

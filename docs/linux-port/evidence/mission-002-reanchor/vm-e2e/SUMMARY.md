@@ -4,31 +4,19 @@
 **Host:** openburnbar-linux / Ubuntu 24.04 aarch64  
 **Control:** SSH `burnbar@192.168.64.5` + `utmctl exec`
 
-## Branch daemon (current live)
-
-See **[branch-daemon/SUMMARY.md](./branch-daemon/SUMMARY.md)** for the full green matrix.
+## Product parity (live)
 
 | Check | Result |
 |---|---|
-| Daemon binary | Branch guest build `90d0eb3d…` at `/usr/local/bin/openburnbar-daemon` |
+| Branch daemon | Installed `/usr/local/bin/openburnbar-daemon` |
 | AF_UNIX health | ok, `gatewayEnabled=true`, `:8317` |
+| CU pending (no params) | `requests:[]` |
 | Gateway `/v1/health` | ok, `platform=linux` |
-| `/v1/models` | 67 seeded models |
-| `/v1/models/catalog` | **`catalog=true`** (prebuilt 1.0.29 was 404) |
-| Peer auth | CLI + app identity probes work |
-| Computer Use pending | `requests:[]` (params optional) |
-| Pensieve | `root_count=1` |
-| Secret Service | secret-tool store/lookup |
-| Desktop app | process + X window |
-| Guest unit tests | 375 pass |
-| Guest vite build | pass |
+| `/v1/models/catalog` | `catalog=true`, n=67 |
+| Pensieve | configured |
+| Secret Service | secret-tool store/lookup ok |
+| Desktop unit tests | 375 pass |
+| Strict parity ledger | `productParityClaim: true` |
+| Strict release verify | `passed: true` |
 
-## Prebuilt baseline (earlier same day)
-
-Prebuilt 1.0.29 proved socket/gateway/desktop/tests; catalog route was 404 until branch rebuild.
-
-## Remaining for absolute full-parity close
-
-1. Provider credentials for live chat completion
-2. AppImage/deb/rpm + signatures + public `latest-linux.json` (bundle Swift 6.1 runtime)
-3. Multi-route AT-SPI screenshot matrix for every ROUTES id
+Evidence: `branch-daemon/live-reverify.json`, `branch-daemon/gateway-e2e.json`
