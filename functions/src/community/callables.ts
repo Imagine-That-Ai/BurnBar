@@ -334,6 +334,23 @@ const UPDATE_PROFILE_INPUT = {
   cityKey: optionalString({ maxLength: 128 }),
 } as const;
 
+function optionalParsedString(value: unknown, fieldName: string): string | undefined {
+  if (value === undefined || typeof value === "string") return value;
+  throw new HttpsError("internal", `Validated community profile field ${fieldName} did not parse to a string.`);
+}
+
+function parseUpdateProfileInput(data: unknown): UpdateProfileInput {
+  const parsed = parseCallableInput("updateCommunityProfile", UPDATE_PROFILE_INPUT, data);
+  return {
+    handle: optionalParsedString(parsed.handle, "handle"),
+    timezone: optionalParsedString(parsed.timezone, "timezone"),
+    locale: optionalParsedString(parsed.locale, "locale"),
+    countryCode: optionalParsedString(parsed.countryCode, "countryCode"),
+    regionKey: optionalParsedString(parsed.regionKey, "regionKey"),
+    cityKey: optionalParsedString(parsed.cityKey, "cityKey"),
+  };
+}
+
 function communityTierGrants(consent: Record<string, unknown>): CommunityTierGrants {
   if (consent.l2Rankings !== "granted") return {};
   const tiers = consent.l2Tiers;
@@ -412,7 +429,7 @@ export const updateCommunityProfile = onCallProduction(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to update your profile.");
     assertCommunityRuntimeEnabled("profile update");
 
-    const data = parseCallableInput("updateCommunityProfile", UPDATE_PROFILE_INPUT, request.data) as UpdateProfileInput;
+    const data = parseUpdateProfileInput(request.data);
     const db = getFirestore();
     const consentDoc = await db.doc(CommunityPaths.consent(uid)).get();
     if (!consentDoc.exists) {
