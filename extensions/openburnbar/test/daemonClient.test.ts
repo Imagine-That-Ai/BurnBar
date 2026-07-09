@@ -71,6 +71,26 @@ describe('OpenBurnBarDaemonClient', () => {
     expect(paths.supportDir).toBe('/srv/openburnbar/state');
   });
 
+  it('VAL-EXT-001: ignores blank daemon path overrides before fallback values', () => {
+    const paths = resolveOpenBurnBarDaemonRuntimePaths({
+      platform: 'linux',
+      homeDir: '/home/alberto',
+      env: {
+        OPENBURNBAR_SOCKET_PATH: '',
+        OPENBURNBAR_DAEMON_SOCKET_PATH: '   ',
+        BURNBAR_DAEMON_SOCKET_PATH: '/srv/openburnbar/daemon.sock',
+        OPENBURNBAR_DAEMON_SUPPORT_DIR: '',
+        BURNBAR_DAEMON_SUPPORT_DIR: '/srv/openburnbar/state',
+        OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE: ' ',
+        BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE: '/srv/openburnbar/socket-token'
+      }
+    });
+
+    expect(paths.socketPath).toBe('/srv/openburnbar/daemon.sock');
+    expect(paths.authTokenFilePath).toBe('/srv/openburnbar/socket-token');
+    expect(paths.supportDir).toBe('/srv/openburnbar/state');
+  });
+
   it('VAL-EXT-001: resolves macOS daemon paths from the provided home directory', () => {
     const paths = resolveOpenBurnBarDaemonRuntimePaths({
       platform: 'darwin',

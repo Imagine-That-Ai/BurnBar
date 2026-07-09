@@ -57,6 +57,16 @@ import type {
 
 const DEFAULT_MAX_IN_FLIGHT = 8;
 
+function firstNonBlankEnvValue(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
+
 interface OpenBurnBarDaemonRuntimePathInput {
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform | string;
@@ -76,11 +86,19 @@ export function resolveOpenBurnBarDaemonRuntimePaths(
   const env = input.env ?? process.env;
   const platform = input.platform ?? process.platform;
   const homeDir = input.homeDir ?? homedir();
-  const supportDirOverride = env.OPENBURNBAR_DAEMON_SUPPORT_DIR ?? env.BURNBAR_DAEMON_SUPPORT_DIR;
-  const socketPathOverride =
-    env.OPENBURNBAR_SOCKET_PATH ?? env.OPENBURNBAR_DAEMON_SOCKET_PATH ?? env.BURNBAR_DAEMON_SOCKET_PATH;
-  const authTokenFileOverride =
-    env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE ?? env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE;
+  const supportDirOverride = firstNonBlankEnvValue(
+    env.OPENBURNBAR_DAEMON_SUPPORT_DIR,
+    env.BURNBAR_DAEMON_SUPPORT_DIR
+  );
+  const socketPathOverride = firstNonBlankEnvValue(
+    env.OPENBURNBAR_SOCKET_PATH,
+    env.OPENBURNBAR_DAEMON_SOCKET_PATH,
+    env.BURNBAR_DAEMON_SOCKET_PATH
+  );
+  const authTokenFileOverride = firstNonBlankEnvValue(
+    env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE,
+    env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE
+  );
 
   if (platform === 'linux') {
     const configRoot = env.XDG_CONFIG_HOME?.trim() || join(homeDir, '.config');
