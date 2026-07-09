@@ -16,6 +16,8 @@ namespace OpenBurnBar.App.Dashboard;
 /// <c>KernelBackdropView</c>: loads the offline bundle, bridges
 /// <c>__setKernel</c> / <c>__setTheme</c> / <c>__setBackdropActive</c>, and is
 /// hit-test disabled so dashboard content composites cleanly on top.
+/// Permanent failure is signaled via <see cref="Failed"/> so the dashboard can
+/// fail over to the Win2D swarm.
 /// </summary>
 public sealed class KernelBackdropHost : IDisposable
 {
@@ -26,6 +28,8 @@ public sealed class KernelBackdropHost : IDisposable
     private bool _started;
     private bool _disposed;
     private bool _isLoaded;
+    private bool _isFailed;
+    private string? _failureReason;
     private string _kernelId = KernelCatalog.DefaultId;
     private string _theme = "dark";
     private bool? _lastActive;
@@ -46,8 +50,23 @@ public sealed class KernelBackdropHost : IDisposable
     /// <summary>The WebView2 control to place at the back of the dashboard visual tree.</summary>
     public WebView2 Control => _webView;
 
-    /// <summary>True once the CoreWebView2 session is ready (or failed permanently).</summary>
+    /// <summary>True once the CoreWebView2 session loaded the kernel bundle successfully.</summary>
     public bool IsReady => _isLoaded;
+
+    /// <summary>True after a permanent failure (missing assets, init throw, nav fail).</summary>
+    public bool IsFailed => _isFailed;
+
+    /// <summary>Reason string for the last permanent failure, if any.</summary>
+    public string? FailureReason => _failureReason;
+
+    /// <summary>Raised when the bundle has loaded and the JS bridge is live.</summary>
+    public event EventHandler? Ready;
+
+    /// <summary>
+    /// Raised once on permanent failure so the dashboard can fail over to Win2D.
+    /// Argument is a short diagnostic reason (not user-facing copy).
+    /// </summary>
+    public event EventHandler<string>? Failed;
 
     /// <summary>
     /// Resolve the KernelBackdrop asset folder (packaged beside the exe under
@@ -77,10 +96,14 @@ public sealed class KernelBackdropHost : IDisposable
         return null;
     }
 
-    /// <summary>Initialize CoreWebView2 and navigate to the kernel bundle.</summary>
+    /// <summary>
+    /// Initialize CoreWebView2 and navigate to the kernel bundle.
+    /// Permanent failures raise <see cref="Failed"/> (missing assets, init throw).
+    /// Navigation failure raises <see cref="Failed"/> from the completion handler.
+    /// </summary>
     public async Task StartAsync(string? kernelId = null, string theme = "dark")
     {
-        if (_disposed || _started)
+        if (_disposed || _started || _isFailed)
         {
             return;
         }
@@ -92,13 +115,18 @@ public sealed class KernelBackdropHost : IDisposable
         string? resourceDir = ResolveResourceDirectory();
         if (resourceDir is null)
         {
-            AppDiagnostics.LogEvent("kernel-backdrop.missing-assets", "KernelBackdrop index.html not found");
+            Fail("missing-assets");
             return;
         }
 
         try
         {
             await _webView.EnsureCoreWebView2Async();
+            if (_disposed)
+            {
+                return;
+            }
+
             _core = _webView.CoreWebView2;
             Harden(_core);
 
@@ -112,12 +140,18 @@ public sealed class KernelBackdropHost : IDisposable
         catch (Exception ex)
         {
             AppDiagnostics.LogException("kernel-backdrop.start", ex);
+            Fail("init-exception:" + ex.GetType().Name);
         }
     }
 
     /// <summary>Push a new kernel id through the JS bridge (no-op until loaded).</summary>
     public void SetKernel(string? kernelId)
     {
+        if (_isFailed)
+        {
+            return;
+        }
+
         string resolved = KernelCatalog.Resolve(kernelId);
         if (string.Equals(_kernelId, resolved, StringComparison.Ordinal) && _isLoaded)
         {
@@ -140,6 +174,11 @@ public sealed class KernelBackdropHost : IDisposable
     /// <summary>Push theme (<c>light</c>/<c>dark</c>) through the JS bridge.</summary>
     public void SetTheme(string theme)
     {
+        if (_isFailed)
+        {
+            return;
+        }
+
         string normalized = string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase) ? "light" : "dark";
         if (string.Equals(_theme, normalized, StringComparison.Ordinal) && _isLoaded)
         {
@@ -161,6 +200,11 @@ public sealed class KernelBackdropHost : IDisposable
     /// </summary>
     public void SetBackdropActive(bool active)
     {
+        if (_isFailed)
+        {
+            return;
+        }
+
         if (_lastActive == active)
         {
             return;
@@ -175,9 +219,14 @@ public sealed class KernelBackdropHost : IDisposable
         _ = ExecuteScriptAsync(KernelBackdropBridge.SetBackdropActiveScript(active));
     }
 
-    /// <summary>Read the live preference and apply kernel + enabled visibility.</summary>
+    /// <summary>Read the live preference and apply kernel selection.</summary>
     public void ApplyFromPreferences()
     {
+        if (_isFailed)
+        {
+            return;
+        }
+
         var env = LiquidGlassEnvironment.Current;
         string kernel = env.GetString(KernelBackdropPreferences.KernelKey, KernelCatalog.DefaultId);
         SetKernel(kernel);
@@ -188,6 +237,7 @@ public sealed class KernelBackdropHost : IDisposable
         if (!args.IsSuccess)
         {
             AppDiagnostics.LogEvent("kernel-backdrop.nav-failed", args.WebErrorStatus.ToString());
+            Fail("nav-failed:" + args.WebErrorStatus);
             return;
         }
 
@@ -201,13 +251,27 @@ public sealed class KernelBackdropHost : IDisposable
         _ = ExecuteScriptAsync(KernelBackdropBridge.SetThemeScript(_theme));
         _lastActive = null;
         SetBackdropActive(true);
+        Ready?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void Fail(string reason)
+    {
+        if (_isFailed || _disposed)
+        {
+            return;
+        }
+
+        _isFailed = true;
+        _failureReason = reason;
+        AppDiagnostics.LogEvent("kernel-backdrop.failed", reason);
+        Failed?.Invoke(this, reason);
     }
 
     private async Task ExecuteScriptAsync(string script)
     {
         try
         {
-            if (_core is null)
+            if (_core is null || _isFailed)
             {
                 return;
             }

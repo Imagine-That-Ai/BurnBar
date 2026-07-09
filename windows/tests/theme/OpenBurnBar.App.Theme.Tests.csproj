@@ -29,9 +29,11 @@
     <Compile Include="../../app/OpenBurnBar.App/Theme/LiquidGlassPreferenceStore.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelCatalog.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropBridge.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropSelection.cs" />
     <Compile Include="LiquidGlassTransparencyTests.cs" />
     <Compile Include="LiquidGlassPreferenceStoreTests.cs" />
     <Compile Include="KernelBackdropBridgeTests.cs" />
+    <Compile Include="KernelBackdropSelectionTests.cs" />
   </ItemGroup>
 
 </Project>

@@ -15,6 +15,8 @@ namespace OpenBurnBar.App.Dashboard;
 /// the Win2D swarm fallback, the easter-egg overlay canvas, and the scroll-reversal
 /// controller. Selecting a concept swaps the content view AND the Win2D backdrop family;
 /// kernel selection is driven by <see cref="KernelBackdropPreferences"/>.
+/// Visibility of kernel vs Win2D is resolved by <see cref="KernelBackdropSelection"/> and
+/// re-applied on host Ready/Failed so missing assets or WebView2 init failure fail over.
 /// </summary>
 public sealed partial class DashboardPage : Page
 {
@@ -23,6 +25,7 @@ public sealed partial class DashboardPage : Page
     private readonly EasterEggCanvasHost? _egg;
     private readonly EasterEggController _controller = new();
     private readonly UISettings _uiSettings = new();
+    private readonly bool _webView2Capable;
     private bool _kernelEnabled;
 
     public DashboardPage()
@@ -30,17 +33,18 @@ public sealed partial class DashboardPage : Page
         InitializeComponent();
 
         // Prefer WebGL2 kernel when the preference is on and WebView2 is available;
-        // always keep Win2D swarm as the capable fallback (and when kernel is off).
+        // always keep Win2D swarm as the capable fallback (and when kernel is off / fails).
         _kernelEnabled = LiquidGlassEnvironment.Current.GetBool(KernelBackdropPreferences.EnabledKey, defaultValue: false);
+        _webView2Capable = NativeCapability.IsWebView2Enabled(out _);
 
-        if (_kernelEnabled && NativeCapability.IsWebView2Enabled(out _))
+        if (_kernelEnabled && _webView2Capable)
         {
             try
             {
                 _kernel = new KernelBackdropHost();
+                _kernel.Ready += OnKernelReady;
+                _kernel.Failed += OnKernelFailed;
                 KernelHost.Children.Add(_kernel.Control);
-                KernelHost.Visibility = Visibility.Visible;
-                BackdropHost.Visibility = Visibility.Collapsed;
                 string kernelId = LiquidGlassEnvironment.Current.GetString(
                     KernelBackdropPreferences.KernelKey, KernelCatalog.DefaultId);
                 string theme = ActualTheme == ElementTheme.Light ? "light" : "dark";
@@ -49,41 +53,26 @@ public sealed partial class DashboardPage : Page
             catch (Exception ex)
             {
                 AppDiagnostics.LogException("dashboard.kernel", ex);
-                _kernel = null;
-                KernelHost.Visibility = Visibility.Collapsed;
+                // Construction failed — treat as non-capable for selection.
             }
         }
 
-        // Win2D swarm: always available as fallback when kernel is off or failed.
-        if (_kernel is null && NativeCapability.IsWin2DEnabled(out _))
+        // Win2D swarm: primary when kernel is off; standby when kernel is preferred so
+        // we can fail over if WebGL/WebView2 dies permanently.
+        if (NativeCapability.IsWin2DEnabled(out _))
         {
             try
             {
                 _backdrop = new DashboardBackdrop();
                 BackdropHost.Children.Add(_backdrop.Control);
-                BackdropHost.Visibility = Visibility.Visible;
             }
             catch (Exception ex)
             {
                 AppDiagnostics.LogException("dashboard.win2d", ex);
-                _backdrop = null;
             }
         }
-        else if (_kernel is not null && NativeCapability.IsWin2DEnabled(out _))
-        {
-            // Kernel is primary; still construct Win2D so we can fail over if WebGL dies.
-            try
-            {
-                _backdrop = new DashboardBackdrop();
-                BackdropHost.Children.Add(_backdrop.Control);
-                BackdropHost.Visibility = Visibility.Collapsed;
-            }
-            catch (Exception ex)
-            {
-                AppDiagnostics.LogException("dashboard.win2d-fallback", ex);
-                _backdrop = null;
-            }
-        }
+
+        ApplyBackdropLayers();
 
         if (NativeCapability.IsWin2DEnabled(out _))
         {
@@ -116,6 +105,47 @@ public sealed partial class DashboardPage : Page
 
     // The Windows "show animations" system setting is the Reduce-Motion analog.
     private bool ReduceMotion => !_uiSettings.AnimationsEnabled;
+
+    private bool HostReady => _kernel?.IsReady == true;
+
+    private bool HostFailed =>
+        _kernel is null
+            ? _kernelEnabled && _webView2Capable // wanted kernel but construction failed
+            : _kernel.IsFailed;
+
+    private void ApplyBackdropLayers()
+    {
+        DashboardBackdropLayer layer = KernelBackdropSelection.Resolve(
+            kernelEnabled: _kernelEnabled,
+            webView2Capable: _webView2Capable && _kernel is not null,
+            hostReady: HostReady,
+            hostFailed: HostFailed,
+            win2DAvailable: _backdrop is not null);
+
+        KernelHost.Visibility = layer == DashboardBackdropLayer.Kernel
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        BackdropHost.Visibility = layer == DashboardBackdropLayer.Win2D
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (layer == DashboardBackdropLayer.Kernel)
+        {
+            _kernel?.SetBackdropActive(true);
+        }
+        else
+        {
+            _kernel?.SetBackdropActive(false);
+        }
+    }
+
+    private void OnKernelReady(object? sender, EventArgs e) => ApplyBackdropLayers();
+
+    private void OnKernelFailed(object? sender, string reason)
+    {
+        AppDiagnostics.LogEvent("dashboard.kernel-failover", reason);
+        ApplyBackdropLayers();
+    }
 
     private void OnLayoutChanged(object? sender, DashboardLayout layout) => ShowLayout(layout);
 
@@ -162,33 +192,16 @@ public sealed partial class DashboardPage : Page
 
     private void OnGlassPreferencesChanged(object? sender, EventArgs e)
     {
-        bool enabled = LiquidGlassEnvironment.Current.GetBool(KernelBackdropPreferences.EnabledKey, false);
+        _kernelEnabled = LiquidGlassEnvironment.Current.GetBool(KernelBackdropPreferences.EnabledKey, false);
         string kernelId = LiquidGlassEnvironment.Current.GetString(
             KernelBackdropPreferences.KernelKey, KernelCatalog.DefaultId);
 
-        if (_kernel is not null)
+        if (_kernel is not null && !_kernel.IsFailed)
         {
-            if (enabled)
-            {
-                KernelHost.Visibility = Visibility.Visible;
-                BackdropHost.Visibility = Visibility.Collapsed;
-                _kernel.SetKernel(kernelId);
-                _kernel.SetBackdropActive(true);
-            }
-            else
-            {
-                KernelHost.Visibility = Visibility.Collapsed;
-                BackdropHost.Visibility = _backdrop is not null ? Visibility.Visible : Visibility.Collapsed;
-                _kernel.SetBackdropActive(false);
-            }
-        }
-        else if (enabled && _backdrop is not null)
-        {
-            // Kernel host never started (WebView2 unavailable) — keep Win2D visible.
-            BackdropHost.Visibility = Visibility.Visible;
+            _kernel.SetKernel(kernelId);
         }
 
-        _kernelEnabled = enabled;
+        ApplyBackdropLayers();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -197,13 +210,19 @@ public sealed partial class DashboardPage : Page
         ActualThemeChanged -= OnActualThemeChanged;
         _controller.EventPresented -= OnEventPresented;
         Switcher.LayoutChanged -= OnLayoutChanged;
+        if (_kernel is not null)
+        {
+            _kernel.Ready -= OnKernelReady;
+            _kernel.Failed -= OnKernelFailed;
+            _kernel.Dispose();
+        }
+
         if (_egg is not null)
         {
             _egg.Finished -= OnEggFinished;
             _egg.Dispose();
         }
 
-        _kernel?.Dispose();
         _backdrop?.Dispose();
     }
 }
