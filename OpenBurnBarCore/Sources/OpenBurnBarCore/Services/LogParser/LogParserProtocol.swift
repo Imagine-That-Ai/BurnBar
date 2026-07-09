@@ -100,7 +100,7 @@ public struct ParserConversationCacheScrubber {
             for (key, value) in entries {
                 guard var entry = value as? [String: Any],
                       entry["conversation"] != nil else { continue }
-                entry["conversation"] = NSNull()
+                entry.removeValue(forKey: "conversation")
                 entries[key] = entry
                 mutated = true
             }
@@ -128,7 +128,7 @@ public struct ParserConversationCacheScrubber {
         for (key, value) in entries {
             guard var entry = value as? [String: Any],
                   entry["conversation"] != nil else { continue }
-            entry["conversation"] = NSNull()
+            entry.removeValue(forKey: "conversation")
             entries[key] = entry
             mutated = true
         }

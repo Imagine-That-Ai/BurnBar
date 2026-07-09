@@ -147,8 +147,8 @@ public final class BurnBarVectorIndexDeltaOverlay: Sendable {
     /// Search the base snapshot + delta overlay, merge, and return candidates.
     ///
     /// Merge strategy:
-    /// 1. Over-fetch from the base by `limit + tombstonedCount` to compensate
-    ///    for tombstoned results that will be filtered.
+    /// 1. Over-fetch from the base by `limit + tombstonedCount + appendedCount`
+    ///    to compensate for tombstoned and updated-key results that will be filtered.
     /// 2. Filter base results by tombstoned keys.
     /// 3. Brute-force search the delta's appended vectors.
     /// 4. Merge base + delta results by score, deduplicate by key.
@@ -162,8 +162,9 @@ public final class BurnBarVectorIndexDeltaOverlay: Sendable {
             return try baseSnapshot.candidates(for: query, limit: limit)
         }
 
-        // 1. Over-fetch from base to compensate for tombstoned results.
-        let baseLimit = limit + currentDelta.tombstonedCount
+        // 1. Over-fetch from base to compensate for tombstoned results and
+        // updated keys whose stale base score will be replaced by the delta.
+        let baseLimit = limit + currentDelta.tombstonedCount + currentDelta.appendedCount
         let (baseKeys, baseScores) = try baseSnapshot.searchKeys(for: query, limit: baseLimit)
 
         // 2. Filter tombstoned keys from base results.

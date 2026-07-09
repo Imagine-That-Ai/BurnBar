@@ -175,6 +175,26 @@ final class BurnBarVectorIndexDeltaTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.chunkID), ["chunk-3"])
     }
 
+    func test_delta_updatedKeyWithLowerScore_overfetchesBaseReplacement() throws {
+        let baseVectors: [(key: UInt64, vector: [Float], chunkID: String)] = [
+            (1, [1.0, 0.0, 0.0], "chunk-1"),
+            (2, [0.95, 0.05, 0.0], "chunk-2"),
+            (3, [0.8, 0.2, 0.0], "chunk-3"),
+            (4, [0.0, 1.0, 0.0], "chunk-4")
+        ]
+        let (snapshot, dir) = try buildSnapshot(vectors: baseVectors, dimensions: 3)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let overlay = BurnBarVectorIndexDeltaOverlay(baseSnapshot: snapshot)
+
+        var delta = BurnBarVectorIndexDelta(dimensions: 3, distanceMetric: .cosine)
+        delta.append(key: 2, vector: [0.0, 1.0, 0.0], chunkID: "chunk-2")
+        overlay.updateDelta(delta)
+
+        let candidates = try overlay.candidates(for: [1.0, 0.0, 0.0], limit: 2)
+        XCTAssertEqual(candidates.map(\.chunkID), ["chunk-1", "chunk-3"])
+    }
+
     func test_delta_tombstoneThenReAdd_unTombstones() throws {
         let baseVectors: [(key: UInt64, vector: [Float], chunkID: String)] = [
             (1, [1.0, 0.0, 0.0], "chunk-1")

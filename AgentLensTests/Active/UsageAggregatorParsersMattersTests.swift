@@ -206,8 +206,33 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             )
             let entries = try XCTUnwrap(root["fileEntries"] as? [String: Any])
             let entry = try XCTUnwrap(entries["session"] as? [String: Any])
-            XCTAssertTrue(entry["conversation"] is NSNull)
+            XCTAssertNil(entry["conversation"])
         }
+    }
+
+    func testParserConversationCacheScrubberRedactsBinaryPlistCaches() throws {
+        let supportRoot = uniqueTempURL()
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
+        try FileManager.default.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
+
+        let privateMarker = "private binary parser cache body \(UUID().uuidString)"
+        let cacheURL = appPaths.claudeCodeParserCacheURL
+        try seedBinaryParserCache(at: cacheURL, marker: privateMarker)
+
+        ParserConversationCacheScrubber(
+            fileManager: .default,
+            appPaths: appPaths
+        ).scrubKnownParserCaches()
+
+        let scrubbed = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(scrubbed.containsRawString(privateMarker))
+
+        let root = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: scrubbed, options: [], format: nil) as? [String: Any]
+        )
+        let entries = try XCTUnwrap(root["fileEntries"] as? [String: Any])
+        let entry = try XCTUnwrap(entries["session"] as? [String: Any])
+        XCTAssertNil(entry["conversation"])
     }
 
     /// `ModelFilterParser` (used for Zai / MiniMax) must likewise stay constructible
@@ -240,7 +265,21 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
     }
 
     private func seedParserCache(at cacheURL: URL, marker: String) throws {
-        let json: [String: Any] = [
+        let data = try JSONSerialization.data(withJSONObject: parserCacheRoot(marker: marker), options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: cacheURL, options: .atomic)
+    }
+
+    private func seedBinaryParserCache(at cacheURL: URL, marker: String) throws {
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: parserCacheRoot(marker: marker),
+            format: .binary,
+            options: 0
+        )
+        try data.write(to: cacheURL, options: .atomic)
+    }
+
+    private func parserCacheRoot(marker: String) -> [String: Any] {
+        [
             "schemaVersion": 2,
             "fileEntries": [
                 "session": [
@@ -253,8 +292,6 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
                 ]
             ]
         ]
-        let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: cacheURL, options: .atomic)
     }
 }
 
