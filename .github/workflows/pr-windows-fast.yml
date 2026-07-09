@@ -149,6 +149,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      # Explicit install — do not assume ubuntu-latest ships PyYAML.
+      - name: Install PyYAML for ledger scanner
+        run: python3 -m pip install --user 'pyyaml>=6,<7'
+
       - name: Self-test the Windows parity ledger gate
         run: bash scripts/ci/verify-windows-parity-ledger.test.sh
 

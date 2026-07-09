@@ -5,9 +5,12 @@ Fails closed when:
   * the ledger is missing / unparseable
   * any row uses a forbidden status (including legacy ``Authored``)
   * any macOS primary / required route lacks a mapping row
-  * any Real row lacks ≥1 existing test path and ≥1 existing evidence file
-  * any Real row's evidence or certification references still say PLACEHOLDER
-  * any Real row's blocking_paths contain anti-false-green tokens
+  * any Real row lacks ≥1 existing evidence file (non-empty, marked) and
+    ≥1 existing test-shaped path
+  * any Real row lacks ≥1 production-prefix blocking path with scannable text
+  * any Real-row production blocking path contains anti-false-green tokens
+  * any DeferredApproved row lacks revive_trigger + existing evidence
+  * certification bundle reintroduces PLACEHOLDER screenshot path claims
 
 Usage:
   python3 scripts/ci/verify-windows-parity-ledger.py
@@ -18,6 +21,9 @@ Environment overrides (for self-tests):
   WINDOWS_PARITY_LEDGER   path to ledger YAML
   WINDOWS_PARITY_REPO     repo root
   WINDOWS_PARITY_BUNDLE   certification bundle path (optional override)
+
+PyYAML is required. CI jobs must ``pip install 'pyyaml>=6,<7'`` explicitly —
+do not assume the runner image ships it.
 """
 
 from __future__ import annotations
@@ -32,8 +38,11 @@ from typing import Any
 
 try:
     import yaml
-except ImportError:  # pragma: no cover — PyYAML is in repo CI images; fail clearly if missing
-    print("FATAL: PyYAML is required (pip install pyyaml)", file=sys.stderr)
+except ImportError:  # pragma: no cover
+    print(
+        "FATAL: PyYAML is required. Install with: python3 -m pip install 'pyyaml>=6,<7'",
+        file=sys.stderr,
+    )
     sys.exit(2)
 
 VALID_STATUSES = frozenset({"Real", "Substituted", "DeferredApproved", "Blocked"})
@@ -41,7 +50,7 @@ FORBIDDEN_STATUSES = frozenset(
     {
         "Authored",
         "authored",
-        "AUTHORIED",
+        "AUTHORED",
         "InFlight",
         "in flight",
         "Partial",
@@ -55,23 +64,21 @@ FORBIDDEN_STATUSES = frozenset(
 )
 
 # Precision-matched anti-false-green patterns for Real-row production paths.
-# Bare domain words (e.g. enum case Unavailable) are intentionally excluded.
+# Bare domain words (e.g. enum case Unavailable, prose "none are deferred") are
+# intentionally excluded — see docs/windows-port/WINDOWS_PARITY_LEDGER.md.
 FORBIDDEN_TOKEN_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bSampleModeEnabled\b"), "SampleModeEnabled"),
     (re.compile(r"\b\w*SampleData\w*\b"), "SampleData"),
     (re.compile(r"\b\w*DemoHost\w*\b"), "DemoHost"),
     (re.compile(r"\bMockAttestationProducer\b"), "MockAttestationProducer"),
     (re.compile(r"\bdev-host\b", re.IGNORECASE), "dev-host"),
-    (
-        re.compile(
-            r"\bStub(?:CliStream|Page|Host|Stream|Factory|Driver)?\b|SurfaceStub(?:Page)?"
-        ),
-        "Stub",
-    ),
+    # Stub* production substitutes (StubCliStream, SurfaceStubPage, StubFirebase…).
+    (re.compile(r"\bStub[A-Z]\w*\b|\bSurfaceStub\w*\b"), "Stub"),
     (
         re.compile(r"\bSettingsPlaceholderPage\b|\bPlaceholderCard\b|\bPLACEHOLDER\b"),
         "Placeholder",
     ),
+    # Compound deferral markers only (not prose "none are deferred").
     (
         re.compile(
             r"(?:dev-host|CI|Windows-runner|WS-D|adapter|host|XamlCompiler)-deferred"
@@ -80,18 +87,55 @@ FORBIDDEN_TOKEN_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         "deferred",
     ),
-    (re.compile(r"\bUnavailableChatStreamDriver\b"), "Unavailable"),
+    # Production unavailable substitutes — not domain enums like SourceKind.Unavailable.
+    (
+        re.compile(
+            r"\bUnavailable(?:ChatStreamDriver|Host|Source|Driver|Service|Client)\b"
+        ),
+        "Unavailable",
+    ),
 ]
 
 PLACEHOLDER_SCREENSHOT = re.compile(
-    r"PLACEHOLDER\s+`?screenshots/|PLACEHOLDER\s+`screenshots/",
+    r"PLACEHOLDER\s+`?screenshots/",
     re.IGNORECASE,
 )
 PLACEHOLDER_CELL = re.compile(r"\bPLACEHOLDER\b")
 
-TEXT_SUFFIXES = {
+# Blocking paths must include ≥1 entry under these production prefixes.
+PRODUCTION_PREFIXES = (
+    "windows/",
+    "OpenBurnBarCore/",
+    "packages/",
+    "crates/",
+)
+
+# Evidence / docs paths are never token-scanned (honest non-claims would false-fail).
+SKIP_TOKEN_SCAN_PREFIXES = (
+    "docs/",
+    "scripts/ci/",
+)
+
+CODE_SUFFIXES = {
     ".cs",
     ".swift",
+    ".xaml",
+    ".props",
+    ".targets",
+    ".csproj",
+    ".fs",
+    ".rs",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".mjs",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+}
+
+TEXT_SUFFIXES = CODE_SUFFIXES | {
     ".md",
     ".yml",
     ".yaml",
@@ -99,11 +143,10 @@ TEXT_SUFFIXES = {
     ".txt",
     ".ps1",
     ".sh",
-    ".xaml",
-    ".props",
-    ".targets",
-    ".csproj",
 }
+
+EVIDENCE_MIN_CHARS = 200
+EVIDENCE_REQUIRED_MARKERS = ("Ledger row:", "What this proves")
 
 
 def fatal(msg: str) -> None:
@@ -118,6 +161,19 @@ def fail(messages: list[str]) -> None:
     sys.exit(1)
 
 
+def normalize_rel(rel: str) -> str:
+    """Normalize ledger path strings to forward-slash, repo-relative form.
+
+    Does **not** strip leading ``..`` segments — those are rejected by
+    :func:`confine_rel`. Only collapses backslashes and a single optional
+    ``./`` prefix.
+    """
+    s = rel.strip().replace("\\", "/")
+    while s.startswith("./"):
+        s = s[2:]
+    return s
+
+
 def load_ledger(path: Path) -> dict[str, Any]:
     if not path.is_file():
         fatal(f"ledger not found: {path}")
@@ -130,65 +186,171 @@ def load_ledger(path: Path) -> dict[str, Any]:
     return data
 
 
-def resolve_path(repo: Path, rel: str) -> Path:
-    p = Path(rel)
-    return p if p.is_absolute() else (repo / p)
+def confine_rel(repo: Path, rel: str) -> tuple[str | None, str | None]:
+    """Return (normalized_rel, error). Reject absolute paths and `..` escape."""
+    if not isinstance(rel, str) or not rel.strip():
+        return None, "path must be a non-empty string"
+    raw = rel.strip()
+    if raw.startswith("/") or re.match(r"^[A-Za-z]:[/\\]", raw):
+        return None, f"absolute paths are forbidden: {rel}"
+    norm = normalize_rel(raw)
+    if not norm or norm == ".":
+        return None, f"empty path after normalize: {rel}"
+    parts = Path(norm).parts
+    if ".." in parts:
+        return None, f"path escape '..' is forbidden: {rel}"
+    # Resolve and confirm under repo (catches symlink escapes when present).
+    candidate = (repo / norm).resolve()
+    try:
+        candidate.relative_to(repo.resolve())
+    except ValueError:
+        return None, f"path escapes repo root: {rel}"
+    return norm, None
 
 
-def path_exists(repo: Path, rel: str) -> bool:
-    return resolve_path(repo, rel).exists()
+def is_production_prefix(norm: str) -> bool:
+    return any(norm == p.rstrip("/") or norm.startswith(p) for p in PRODUCTION_PREFIXES)
 
 
-def iter_scan_files(root: Path) -> list[Path]:
+def skip_token_scan(norm: str) -> bool:
+    return any(norm == p.rstrip("/") or norm.startswith(p) for p in SKIP_TOKEN_SCAN_PREFIXES)
+
+
+def is_test_path(norm: str) -> bool:
+    """Heuristic: path must look like a test harness, not arbitrary production code."""
+    name = Path(norm).name
+    parts = set(Path(norm).parts)
+    if parts & {"tests", "Tests", "Fixtures", "AgentLensTests", "__tests__"}:
+        return True
+    if re.search(r"Tests?\.(cs|swift|py|sh|mjs|ts|tsx)$", name, re.I):
+        return True
+    if re.search(r"Parity\.(swift|cs)$", name):
+        return True
+    if "golden" in name.lower() and name.endswith((".json", ".jsonl", ".txt")):
+        return True
+    if name.endswith(".test.sh") or name.endswith(".test.mjs") or name.endswith(".test.py"):
+        return True
+    return False
+
+
+def iter_scan_files(root: Path, *, code_only: bool = False) -> list[Path]:
+    suffixes = CODE_SUFFIXES if code_only else TEXT_SUFFIXES
     if root.is_file():
-        return [root]
+        if root.suffix.lower() in suffixes or root.name in {"Dockerfile", "Makefile"}:
+            return [root]
+        return []
     if not root.is_dir():
         return []
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
-        # skip build outputs
         dirnames[:] = [d for d in dirnames if d not in {"bin", "obj", ".git", "node_modules"}]
         for name in filenames:
             p = Path(dirpath) / name
-            if p.suffix.lower() in TEXT_SUFFIXES or p.name in {"Dockerfile", "Makefile"}:
+            if p.suffix.lower() in suffixes or p.name in {"Dockerfile", "Makefile"}:
                 out.append(p)
     return out
 
 
-def scan_file_for_tokens(path: Path) -> list[tuple[str, int, str]]:
-    """Return list of (token_name, line_no, line_text)."""
+def scan_file_for_tokens(path: Path) -> tuple[list[tuple[str, int]], str | None]:
+    """Return (hits as (token, line_no), read_error)."""
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return []
-    hits: list[tuple[str, int, str]] = []
-    lines = text.splitlines()
-    for i, line in enumerate(lines, 1):
-        # Skip pure markdown table separator noise? still scan — tokens shouldn't appear there.
+    except OSError as exc:
+        return [], f"cannot read for token scan: {path}: {exc}"
+    hits: list[tuple[str, int]] = []
+    for i, line in enumerate(text.splitlines(), 1):
         for pattern, name in FORBIDDEN_TOKEN_PATTERNS:
             if pattern.search(line):
-                hits.append((name, i, line.strip()[:160]))
-                break  # one hit per line is enough
-    return hits
+                hits.append((name, i))
+                break
+    return hits, None
 
 
 def collect_token_hits(repo: Path, rel_paths: list[str]) -> list[str]:
+    """Token-scan production blocking paths. Skip docs/evidence. Fail closed on OSError."""
     messages: list[str] = []
     for rel in rel_paths:
-        root = resolve_path(repo, rel)
-        if not root.exists():
-            messages.append(f"blocking path missing: {rel}")
+        norm, err = confine_rel(repo, rel)
+        if err:
+            messages.append(f"blocking path invalid: {err}")
             continue
-        for f in iter_scan_files(root):
-            for token, line_no, line in scan_file_for_tokens(f):
-                try:
-                    shown = f.relative_to(repo).as_posix()
-                except ValueError:
-                    shown = f.as_posix()
+        assert norm is not None
+        if skip_token_scan(norm):
+            # Evidence/docs listed in blocking_paths are ignored for tokens
+            # (still counted for existence / production-prefix rules separately).
+            continue
+        root = repo / norm
+        if not root.exists():
+            messages.append(f"blocking path missing: {norm}")
+            continue
+        files = iter_scan_files(root, code_only=False)
+        # Prefer scanning code-like files; if only non-code text, still scan.
+        code_files = [f for f in files if f.suffix.lower() in CODE_SUFFIXES]
+        scan_files = code_files if code_files else files
+        if root.is_dir() and not scan_files:
+            messages.append(
+                f"blocking path has zero scannable text files: {norm}"
+            )
+            continue
+        if root.is_file() and not scan_files:
+            messages.append(f"blocking path is not a scannable text file: {norm}")
+            continue
+        for f in scan_files:
+            hits, read_err = scan_file_for_tokens(f)
+            if read_err:
+                messages.append(read_err)
+                continue
+            try:
+                shown = f.relative_to(repo).as_posix()
+            except ValueError:
+                shown = f.as_posix()
+            for token, line_no in hits:
+                # Log path + line + token only — never dump full source lines
+                # (avoids leaking secrets/snippets into CI logs).
                 messages.append(
-                    f"Real-row forbidden token {token!r} in {shown}:{line_no}: {line}"
+                    f"Real-row forbidden token {token!r} in {shown}:{line_no}"
                 )
     return messages
+
+
+def validate_evidence_file(repo: Path, rid: str, rel: str) -> list[str]:
+    errors: list[str] = []
+    norm, err = confine_rel(repo, rel)
+    if err:
+        return [f"{rid}: evidence path invalid: {err}"]
+    assert norm is not None
+    if "PLACEHOLDER" in norm:
+        errors.append(f"{rid}: evidence path must not contain PLACEHOLDER: {norm}")
+    ep = repo / norm
+    if not ep.is_file():
+        errors.append(f"{rid}: Real evidence file missing: {norm}")
+        return errors
+    try:
+        etext = ep.read_text(encoding="utf-8", errors="ignore")
+    except OSError as exc:
+        errors.append(f"{rid}: cannot read evidence {norm}: {exc}")
+        return errors
+    stripped = etext.strip()
+    if not stripped:
+        errors.append(f"{rid}: Real evidence file is empty: {norm}")
+        return errors
+    # Primary evidence under docs/windows-port/evidence/ must be substantive + marked.
+    if norm.startswith("docs/windows-port/evidence/"):
+        if len(stripped) < EVIDENCE_MIN_CHARS:
+            errors.append(
+                f"{rid}: Real evidence file too short "
+                f"(<{EVIDENCE_MIN_CHARS} non-whitespace chars): {norm}"
+            )
+        for marker in EVIDENCE_REQUIRED_MARKERS:
+            if marker not in etext:
+                errors.append(
+                    f"{rid}: Real evidence missing required marker {marker!r}: {norm}"
+                )
+    elif len(stripped) < 40:
+        errors.append(f"{rid}: Real evidence file too short: {norm}")
+    if PLACEHOLDER_CELL.search(etext):
+        errors.append(f"{rid}: Real evidence file must not contain PLACEHOLDER: {norm}")
+    return errors
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -218,14 +380,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.repo_root:
         repo = Path(args.repo_root).resolve()
     else:
-        # scripts/ci/thisfile → repo root
         repo = Path(__file__).resolve().parents[2]
 
-    ledger_path = (
-        Path(args.ledger).resolve()
-        if args.ledger
-        else repo / "docs/windows-port/WINDOWS_PARITY_LEDGER.yml"
-    )
+    if args.ledger:
+        ledger_path = Path(args.ledger).resolve()
+    else:
+        ledger_path = repo / "docs/windows-port/WINDOWS_PARITY_LEDGER.yml"
     data = load_ledger(ledger_path)
 
     errors: list[str] = []
@@ -233,7 +393,6 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(rows, list) or not rows:
         fail([f"{ledger_path}: 'rows' must be a non-empty list"])
 
-    # ── status + shape ──────────────────────────────────────────────────────
     ids: set[str] = set()
     status_counts: Counter[str] = Counter()
     macos_mapped: set[str] = set()
@@ -267,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
             macos_mapped.add(macos_route.strip())
 
         for field in ("macos_capability", "windows_route", "windows_capability", "owner_lane"):
-            if not isinstance(row.get(field), str) or not row.get(field).strip():
+            val = row.get(field)
+            if not isinstance(val, str) or not val.strip():
                 errors.append(f"{rid}: missing string '{field}'")
 
         evidence = row.get("evidence") or []
@@ -277,44 +437,109 @@ def main(argv: list[str] | None = None) -> int:
             errors.append(f"{rid}: evidence/tests/blocking_paths must be lists")
             continue
 
+        # ── DeferredApproved: revive_trigger + existing evidence ────────────
+        if status == "DeferredApproved":
+            revive = row.get("revive_trigger")
+            if not isinstance(revive, str) or not revive.strip():
+                errors.append(
+                    f"{rid}: DeferredApproved row requires non-empty 'revive_trigger'"
+                )
+            if not evidence:
+                errors.append(
+                    f"{rid}: DeferredApproved row requires ≥1 evidence path"
+                )
+            for e in evidence:
+                if not isinstance(e, str):
+                    errors.append(f"{rid}: evidence entry must be string")
+                    continue
+                norm, err = confine_rel(repo, e)
+                if err:
+                    errors.append(f"{rid}: evidence path invalid: {err}")
+                    continue
+                assert norm is not None
+                if not (repo / norm).is_file():
+                    errors.append(
+                        f"{rid}: DeferredApproved evidence file missing: {norm}"
+                    )
+
         if status == "Real":
             if not evidence:
                 errors.append(f"{rid}: Real row requires ≥1 evidence path")
             if not tests:
                 errors.append(f"{rid}: Real row requires ≥1 test path")
             if not blocking:
-                errors.append(f"{rid}: Real row requires ≥1 blocking_paths entry for token scan")
+                errors.append(
+                    f"{rid}: Real row requires ≥1 blocking_paths entry for token scan"
+                )
 
             for e in evidence:
                 if not isinstance(e, str):
                     errors.append(f"{rid}: evidence entry must be string")
                     continue
-                if "PLACEHOLDER" in e:
-                    errors.append(f"{rid}: evidence path must not contain PLACEHOLDER: {e}")
-                ep = resolve_path(repo, e)
-                if not ep.is_file():
-                    errors.append(f"{rid}: Real evidence file missing: {e}")
-                else:
-                    try:
-                        etext = ep.read_text(encoding="utf-8", errors="ignore")
-                    except OSError as exc:
-                        errors.append(f"{rid}: cannot read evidence {e}: {exc}")
-                    else:
-                        if PLACEHOLDER_CELL.search(etext):
-                            errors.append(
-                                f"{rid}: Real evidence file must not contain PLACEHOLDER: {e}"
-                            )
+                errors.extend(validate_evidence_file(repo, rid, e))
 
+            test_ok = 0
             for t in tests:
                 if not isinstance(t, str):
                     errors.append(f"{rid}: test entry must be string")
                     continue
-                if not path_exists(repo, t):
-                    errors.append(f"{rid}: Real test path missing: {t}")
+                norm, err = confine_rel(repo, t)
+                if err:
+                    errors.append(f"{rid}: test path invalid: {err}")
+                    continue
+                assert norm is not None
+                if not (repo / norm).exists():
+                    errors.append(f"{rid}: Real test path missing: {norm}")
+                    continue
+                if not is_test_path(norm):
+                    errors.append(
+                        f"{rid}: Real test path is not test-shaped "
+                        f"(need *Tests*, windows/tests/, Fixtures, *Parity*, golden): {norm}"
+                    )
+                    continue
+                test_ok += 1
+            if tests and test_ok == 0 and all(isinstance(t, str) for t in tests):
+                # individual errors already recorded; ensure at least one test-shaped
+                pass
+            elif evidence and tests and test_ok == 0:
+                errors.append(f"{rid}: Real row requires ≥1 test-shaped path")
 
-            # Token scan production paths
-            rels = [b for b in blocking if isinstance(b, str)]
-            for msg in collect_token_hits(repo, rels):
+            # Production-prefix + scannable blocking paths
+            prod_count = 0
+            rels_for_scan: list[str] = []
+            for b in blocking:
+                if not isinstance(b, str):
+                    errors.append(f"{rid}: blocking_paths entry must be string")
+                    continue
+                norm, err = confine_rel(repo, b)
+                if err:
+                    errors.append(f"{rid}: blocking path invalid: {err}")
+                    continue
+                assert norm is not None
+                rels_for_scan.append(norm)
+                root = repo / norm
+                if not root.exists():
+                    errors.append(f"{rid}: blocking path missing: {norm}")
+                    continue
+                if is_production_prefix(norm):
+                    prod_count += 1
+                    files = iter_scan_files(root, code_only=False)
+                    if root.is_dir() and not files:
+                        errors.append(
+                            f"{rid}: production blocking dir has zero scannable text files: {norm}"
+                        )
+                    if root.is_file() and root.suffix.lower() not in TEXT_SUFFIXES:
+                        errors.append(
+                            f"{rid}: production blocking file is not scannable text: {norm}"
+                        )
+            if blocking and prod_count == 0:
+                errors.append(
+                    f"{rid}: Real row requires ≥1 blocking_paths entry under "
+                    f"production prefixes {list(PRODUCTION_PREFIXES)} "
+                    f"(docs-only paths cannot satisfy Real)"
+                )
+
+            for msg in collect_token_hits(repo, rels_for_scan):
                 errors.append(f"{rid}: {msg}")
 
     # ── primary / required route coverage ───────────────────────────────────
@@ -336,21 +561,31 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── certification bundle placeholder policy ─────────────────────────────
     bundle_rel = args.bundle or data.get("certification_bundle") or ""
-    bundle_path = resolve_path(repo, bundle_rel) if bundle_rel else None
-    if bundle_path is not None and bundle_path.is_file():
-        btext = bundle_path.read_text(encoding="utf-8", errors="ignore")
-        # Always fail on screenshot PLACEHOLDER path claims (false G5 evidence).
-        if PLACEHOLDER_SCREENSHOT.search(btext):
-            errors.append(
-                f"{bundle_rel}: still contains PLACEHOLDER screenshot path claims — "
-                "replace with honest blocked wording (no fake paths)"
-            )
-        if args.production and PLACEHOLDER_CELL.search(btext):
-            errors.append(
-                f"{bundle_rel}: --production forbids any PLACEHOLDER cell in the certification bundle"
-            )
-    elif bundle_rel:
-        errors.append(f"certification bundle missing: {bundle_rel}")
+    if bundle_rel:
+        bnorm, berr = confine_rel(repo, str(bundle_rel))
+        if berr:
+            errors.append(f"certification bundle path invalid: {berr}")
+        else:
+            assert bnorm is not None
+            bundle_path = repo / bnorm
+            if bundle_path.is_file():
+                try:
+                    btext = bundle_path.read_text(encoding="utf-8", errors="ignore")
+                except OSError as exc:
+                    errors.append(f"cannot read certification bundle {bnorm}: {exc}")
+                else:
+                    if PLACEHOLDER_SCREENSHOT.search(btext):
+                        errors.append(
+                            f"{bnorm}: still contains PLACEHOLDER screenshot path claims — "
+                            "replace with honest blocked wording (no fake paths)"
+                        )
+                    if args.production and PLACEHOLDER_CELL.search(btext):
+                        errors.append(
+                            f"{bnorm}: --production forbids any PLACEHOLDER cell "
+                            "in the certification bundle"
+                        )
+            else:
+                errors.append(f"certification bundle missing: {bnorm}")
 
     # ── report ──────────────────────────────────────────────────────────────
     print("windows-parity-ledger: scan")
@@ -364,7 +599,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"    (illegal): {extra}")
 
     if errors:
-        # de-dupe while preserving order
         seen: set[str] = set()
         uniq: list[str] = []
         for e in errors:

@@ -23,29 +23,29 @@
 
 ## 1. Surface parity matrix (13 navigable destinations)
 
-> **Status authority:** production-parity status for every surface is owned by
-> [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml). The Status column below is
-> historical narrative from the integration wave and may still say **Authored** —
-> that word is **not** a valid ledger status and must not be treated as Real.
+> **Status authority:** production-parity status is owned by
+> [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml). The Status column below
+> mirrors ledger vocabulary only (`Real` / `Substituted` / `DeferredApproved` /
+> `Blocked`). **Authored is not a valid status.**
 
 **Seams:** `NavCatalog` + `SurfacePageResolver` (`windows/app/OpenBurnBar.App/Shell/`).  
 **Sidebar:** 12 rows in `NavCatalog.All`; **13th** navigable key = auxiliary `elderWand` (Command Palette only, macOS reachability parity per `ElderWandPage.xaml`).
 
-| # | Nav key | macOS counterpart | Windows page / host | Primary tests | Data backend | Status | Evidence / PR |
-|---|---------|-------------------|---------------------|---------------|--------------|--------|----------------|
-| 1 | `dashboard` | `DashboardMainRoute.overview` / provider lanes (`DashboardNavigationModel.swift`) | `DashboardPage` | `OpenBurnBar.App.Dashboard.Tests` (`SeededGeneratorTests.cs`) | Sample/seeded layout + particle hosts (`Particles/`); live DB deferred | **Authored** (canvas); live data seam in flight | **#1256** (B5 nav); G3 rubric `PHASE3_UI_PARITY_PLAN.md` |
-| 2 | `chat` | `DashboardMainRoute.chat` + Pretext-backed bubbles | `ChatHostPage` → `ChatSurfaceView` + `WebView2PretextHost` | `presentation/Chat/*Tests.cs` | WebView2 + portable transcript models; engine parse via Phase 2 | **Authored** | `docs/windows-port/design/0005-pretext-webview2-metric-parity.md` |
-| 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights/*Tests.cs` (geometry, templates, render plan) | In-memory sample + view models; Firestore rollup deferred | **Authored** | **#1256** |
-| 4 | `quota` | `DashboardMainRoute.quota` | `QuotaWorkspacePage` | `OpenBurnBar.App.Quota.Tests` + `presentation/` quota geometry | Quota parsers (C2 lift) + sample data; live adapters in flight | **Authored** / engine **in flight** | **#1250** parsers; C2 branch `windows/c2-quota-lift` (no PR # yet) |
-| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | `presentation/SessionLogGroupingTests`, `StorageSessionLogReadSourceTests` | `OpenBurnBar.Storage.SessionLogs` read seam (B2) + ConPTY CLI (B1) | **Real** (storage-backed) | **#1267** (integration); B1 ConPTY; B2 SQLCipher |
-| 6 | `memory` | `DashboardMainRoute.memoryReview` | `MemoryPage` | `presentation/MemoryReviewInboxModelTests.cs` | CloudSync memory_facts (B4) when configured; read-only on review | **Real** (cloud-backed) | **#1267** (integration); B4 CloudSync |
-| 7 | `missionControl` | `DashboardMainRoute.missions` / Mission Control console | `MissionControlPage` | `presentation/MissionControl/*Tests.cs` | `MissionDispatchDemoHost` + sample; Firestore dispatch in flight | **Authored** | Branch `windows/b6-mission-dispatch` (in flight) |
-| 8 | `budget` | Settings Budget + `BudgetLedger` (product core) | `BudgetPage` | `presentation/Budget/*Tests.cs` | Seeded rules (`BudgetPage` seed pattern); cloud budget deferred | **Authored** | Master plan §10.1 Budget row |
-| 9 | `dataControlCenter` | `DataControlCenter/` settings workbench | `DataControlCenterPage` | `presentation/DataControlCenter*Tests.cs`, `cloudsync-app/CloudSyncCallableHubTests.cs` | Registry/sorting portable; **all 9 callables wired to the deployed wire contract + tested (2026-07-06)** via the injectable transport seam; live transport + high-risk envelope WS-D | **Authored** | **#1256** |
-| 10 | `switcher` | `AccountSwitcherSettingsView` | `SwitcherHostPage` | `presentation/Switcher/*Tests.cs` | `SwitcherSampleData` until encrypted profile store (B2) | **Authored** / store **in flight** | `windows/b2-sqlcipher-persistence` (in flight) |
-| 11 | `onboarding` | Onboarding wizard (`Views/Onboarding/`) | `OnboardingPage` | `OpenBurnBar.App.Onboarding.Tests` | Portable wizard model + DB config step | **Real** (registered in resolver) | **#1267** (integration) |
-| 12 | `settings` | Settings shell + ~40 leaves | `SettingsPage` tree | `OpenBurnBar.App.Settings.Tests` | Manifest/router portable + DataSourceSettingsPage (SQLCipher + Firebase config) | **Real** (registered + data source settings) | **#1267** (integration) |
-| 13 | `elderWand` | `.gatedFeature(.elderWand)` / Analysis Models | `ElderWandPage` (auxiliary, palette) | `presentation/ElderWand*Tests.cs` | `ElderWandSampleData` | **Authored** | **#1256**; accepted drift: sidebar vs Settings-leaf entry (§4) |
+| # | Nav key | macOS counterpart | Windows page / host | Primary tests | Data backend | Status (ledger) | Evidence / PR |
+|---|---------|-------------------|---------------------|---------------|--------------|-----------------|----------------|
+| 1 | `dashboard` | `DashboardMainRoute.overview` | `DashboardPage` | `OpenBurnBar.App.Dashboard.Tests` | SQLCipher when configured; empty-state / sample only under `OPENBURNBAR_SAMPLE_MODE` | **Substituted** (`nav-dashboard`) | ledger; **#1256** |
+| 2 | `chat` | `DashboardMainRoute.chat` | `ChatHostPage` + Pretext host | `presentation/Chat/*Tests.cs` | Scripted/Unavailable drivers without live Hermes/ConPTY proof | **Blocked** (`nav-chat`) | design/0005; TONIGHT C1/C4 |
+| 3 | `insights` | `DashboardMainRoute.insights` | `InsightsPage` | `presentation/Insights/*Tests.cs` | Empty KPI honest path; live rollup incomplete | **Substituted** (`nav-insights`) | ledger |
+| 4 | `quota` | `DashboardMainRoute.quota` | `QuotaWorkspacePage` | `OpenBurnBar.App.Quota.Tests` + acquisition tests | Live coordinator preferred; parsers Real on separate row | **Substituted** (`nav-quota`); parsers **Real** (`quota-portable-parsers`) | evidence/quota; **#1250** |
+| 5 | `sessionLogs` | `DashboardMainRoute.sessionLogs` | `SessionLogsHostPage` | presentation + storage tests | SQLCipher read seam; sample fallback still present in composition | **Substituted** (`nav-session-logs`) | evidence/storage; **#1267** |
+| 6 | `memory` | `DashboardMainRoute.memoryReview` | `MemoryPage` | `MemoryReviewInboxModelTests.cs` | Cloud when credentials; App Check/OAuth still Blocked | **Substituted** (`nav-memory`) | ledger; **#1267** |
+| 7 | `missionControl` | `DashboardMainRoute.missions` | `MissionControlPage` | `presentation/MissionControl/*Tests.cs` | Firestore host or empty host; DemoHost sample-only | **Substituted** (`nav-missions`) | WPD-0006 |
+| 8 | `budget` | Settings Budget + `BudgetLedger` | `BudgetPage` | `presentation/Budget/*Tests.cs` | In-memory / SQLCipher stores; cloud budget incomplete | **Substituted** (`nav-budget`) | ledger |
+| 9 | `dataControlCenter` | Data & Privacy workbench | `DataControlCenterPage` | DCC + `CloudSyncCallableHubTests` | 9 callables wired via injectable transport; live auth WS-D | **Substituted** (`nav-data-control-center`) | ledger |
+| 10 | `switcher` | `AccountSwitcherSettingsView` | `SwitcherHostPage` | presentation + store round-trip | SqlCipher store proven; sample fallback must not be default | **Substituted** (`nav-switcher`) | evidence/storage |
+| 11 | `onboarding` | Onboarding wizard | `OnboardingPage` | `OpenBurnBar.App.Onboarding.Tests` | Portable wizard + DB config; host proof outstanding | **Substituted** (`nav-onboarding`) | ledger |
+| 12 | `settings` | Settings shell + tabs | `SettingsPage` tree | `OpenBurnBar.App.Settings.Tests` | Placeholder residual + DataGated OAuth tabs remain | **Substituted** (`nav-settings`) | ledger |
+| 13 | `elderWand` | Analysis Models | `ElderWandPage` (palette) | `presentation/ElderWand*Tests.cs` | Empty without sample mode; drift D8 | **Substituted** (`nav-elder-wand`) | ledger |
 
 **Resolver ground truth:** all 12 `NavCatalog.All` keys + 1 `NavCatalog.Auxiliary` key (elderWand) = **13/13** map to real `Page` types in `SurfacePageResolver.cs`.  is only the `_ ` catch-all for unknown keys (**#1267** integration).
 

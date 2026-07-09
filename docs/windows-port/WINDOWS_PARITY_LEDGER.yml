@@ -328,7 +328,6 @@ rows:
       - AgentLensTests/Fixtures/ParserContract/parser-output-golden.json
     blocking_paths:
       - OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/G2ParserParity.swift
-      - docs/windows-port/evidence/engine/g2-parser-parity.md
     owner_lane: wave-0-engine
     notes: "PROVEN on Windows CI run 28775204323 / PR #1270. Route-resolves is irrelevant — this is contract parity."
 
@@ -348,7 +347,6 @@ rows:
       - windows/storage/OpenBurnBar.Storage/DbCompatVector.cs
       - windows/storage/OpenBurnBar.Storage/SqlCipherConnection.cs
       - windows/storage/OpenBurnBar.Storage/SqlCipherParameters.cs
-      - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
     owner_lane: wave-0-storage
     notes: "Read-path byte-compat proven. Write/migration breadth is follow-on but does not revoke Real on the proven seam."
 
@@ -362,14 +360,12 @@ rows:
       - docs/windows-port/evidence/cloudsync/cloudvault-kat.md
     tests:
       - windows/tests/cloudsync
-      - windows/cloudsync/OpenBurnBar.CloudSync.Crypto
     blocking_paths:
       - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs
       - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/AesGcmBox.cs
       - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultEnvelopes.cs
       - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/P256KeyAgreement.cs
       - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs
-      - docs/windows-port/evidence/cloudsync/cloudvault-kat.md
     owner_lane: wave-0-crypto
     notes: "Vector/KAT parity is Real. Live Windows-seal→Mac-open remains DeferredApproved (c5-e2ee-round-trip-deferral)."
 
@@ -379,6 +375,7 @@ rows:
     windows_route: cloudvault-live
     windows_capability: "Same crypto stack; live cross-machine trip not certified"
     status: DeferredApproved
+    revive_trigger: "Win11 Pro VM seal payload → open on Mac; retire docs/windows-port/c5-e2ee-round-trip-deferral.md (TONIGHT_PUNCHLIST C5)"
     evidence:
       - docs/windows-port/c5-e2ee-round-trip-deferral.md
     tests:
@@ -386,7 +383,7 @@ rows:
     blocking_paths:
       - docs/windows-port/c5-e2ee-round-trip-deferral.md
     owner_lane: wave-3-cloud-oauth-appcheck
-    notes: "Alberto-signed C5 deferral. Revive: Win11 VM + Mac open proof (TONIGHT_PUNCHLIST C5)."
+    notes: "Alberto-signed C5 deferral. KAT crypto is Real on cloudvault-crypto-kat; this row is live cross-machine only."
 
   - id: pal-ipc-named-pipe
     macos_route: ipc
@@ -405,7 +402,6 @@ rows:
       - windows/pal/ipc/SignedNonceResponder.cs
       - windows/pal/ipc/HandshakeTranscript.cs
       - windows/pal/ipc/HandshakeCredentials.cs
-      - docs/windows-port/evidence/pal/ipc-handshake.md
     owner_lane: wave-0-pal
     notes: "Portable handshake tests green. CNG/TPM key material on real Windows is separate Blocked evidence."
 
@@ -424,7 +420,9 @@ rows:
       - windows/tests/quota/AnthropicRateLimitHeaderParserTests.cs
     blocking_paths:
       - windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs
-      - docs/windows-port/evidence/quota/portable-parsers.md
+      - windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs
+      - windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs
+      - windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs
     owner_lane: wave-0-quota
     notes: "Parse cores only. Acquisition watchers + workspace UI are separate Substituted/Blocked rows."
 
@@ -533,6 +531,7 @@ rows:
     windows_route: tier-c-substitutions
     windows_capability: "WPD-0006 per-capability substitution matrix (no monolithic port)"
     status: DeferredApproved
+    revive_trigger: "Linux-boundary daemon build as Windows Service, or WPD-0006 matrix row promoted to Real with production evidence"
     evidence:
       - docs/windows-port/decisions/0006-windows-daemon-strategy.md
     tests:
@@ -548,6 +547,7 @@ rows:
     windows_route: lexical-fallback
     windows_capability: "Deferred Windows target; lexical fallback (WPD-0003)"
     status: DeferredApproved
+    revive_trigger: "Ship windows-msvc target for project-code-static-parser and retire WPD-0003 lexical fallback"
     evidence:
       - docs/windows-port/decisions/0003-defer-project-code-static-parser-windows.md
     tests:
