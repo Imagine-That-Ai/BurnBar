@@ -77,14 +77,13 @@ public sealed class KernelBackdropBridgeTests
     }
 
     [Fact]
-
-    [Fact]
     public void Label_ReturnsCatalogLabel_OrIdFallback()
     {
         Assert.Equal("Fluid Aurora", KernelCatalog.Label("fluid-aurora"));
         Assert.Equal("not-a-kernel", KernelCatalog.Label("not-a-kernel"));
     }
 
+    [Fact]
     public void HashFragmentFor_UsesResolvedId()
     {
         Assert.Equal("mesh", KernelBackdropBridge.HashFragmentFor("mesh"));
