@@ -76,10 +76,6 @@
   padding: var(--space-3, 0.75rem) var(--space-3, 0.75rem) var(--space-2, 0.5rem);
 }
 
-.chat-rail-title {
-  display: none;
-}
-
 .chat-new-button {
   width: 100%;
   display: inline-flex;
@@ -532,7 +528,6 @@
   align-self: flex-start;
   max-width: min(85%, 34rem);
   margin-left: calc(24px + 0.5rem);
-  border: none;
   border-radius: 12px;
   padding: 0.55rem 0.75rem;
   font-size: var(--chat-caption);

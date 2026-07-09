@@ -19,7 +19,7 @@ export function ChatToolbar({
   modelLabel,
   onBackendChange,
   onNewChat,
-  compact = false
+  compact: _compact = false
 }: ChatToolbarProps) {
   return (
     <header className="chat-toolbar" role="toolbar" aria-label="Chat controls">
@@ -51,8 +51,7 @@ export function ChatToolbar({
         >
           <span aria-hidden="true">⋯</span>
         </button>
-        {/* Floating HUD controls are macOS-only; omit stubs so chrome matches DashboardChatWorkspace. */}
-        {compact ? null : null}
+        {/* Floating HUD controls (pop-out / restore / close) are macOS-only. */}
       </div>
     </header>
   );

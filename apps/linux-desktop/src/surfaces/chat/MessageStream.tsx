@@ -129,6 +129,9 @@ function assistantLogoSrc(message: ChatMessage): string | null {
   if (provider.includes('factory') || provider.includes('droid')) {
     return '/provider-logos/factory.png';
   }
+  if (provider.includes('pi') || provider === 'pi-agent') {
+    return '/provider-logos/openburnbar.png';
+  }
   // Unknown / missing provider: no logo — never impersonate Hermes.
   return null;
 }
