@@ -50,6 +50,25 @@ public static class CommunityGeoDisplay
         };
     }
 
+    public static string ResolveConfidenceCopy(CommunityConsentState consent, GeographyTier tier)
+    {
+        var label = ResolveLabel(consent, tier);
+        return tier switch
+        {
+            GeographyTier.City => label.StartsWith("City unavailable", StringComparison.Ordinal)
+                ? "City rank waits for explicit city consent and a manual label; no raw coordinates are used."
+                : "Manual city label only; BurnBar stores a canonical city key, never raw coordinates.",
+            GeographyTier.Region => label.StartsWith("Region unavailable", StringComparison.Ordinal)
+                ? "Region unavailable from this device locale/timezone."
+                : "Coarse region inferred from device locale/timezone.",
+            GeographyTier.Country => label.StartsWith("Country unavailable", StringComparison.Ordinal)
+                ? "Country unavailable from this device locale/timezone."
+                : "Coarse country inferred from device locale/timezone.",
+            _ => "World ranking uses no location signal.",
+        };
+    }
+
+
     private static string ResolveRegion(string? regionKey)
     {
         if (string.IsNullOrWhiteSpace(regionKey))

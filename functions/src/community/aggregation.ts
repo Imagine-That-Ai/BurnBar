@@ -58,6 +58,7 @@ const MAX_MIX_KEYS = 128;
 const MAX_MIX_KEY_LENGTH = 128;
 const MAX_BATCH_GET_DOCS = 300;
 const MAX_CLEANUP_BATCH_WRITES = 400;
+const PERCENTILE_MOVEMENT_DEADBAND = 1;
 const MIX_KEY_PATTERN = /^[\p{L}\p{N}._:@/+ -]+$/u;
 const GEO_KEY_PATTERN = /^[A-Za-z0-9_-]+$/u;
 
@@ -81,6 +82,26 @@ interface BoardWorkItem {
   geoKey: string;
   group: Participant[];
 }
+interface PreviousPosition {
+  rank: number;
+  percentile: number | null;
+}
+
+interface PreviousBoardHistory {
+  hasUsableHistory: boolean;
+  positions: Map<string, PreviousPosition>;
+}
+
+const EMPTY_PREVIOUS_BOARD_HISTORY: PreviousBoardHistory = {
+  hasUsableHistory: false,
+  positions: new Map(),
+};
+
+interface StableMovementPercentiles {
+  currentPercentile: number;
+  previousPercentile: number;
+}
+
 
 // ---------------------------------------------------------------------------
 // Scheduled exports
@@ -166,7 +187,7 @@ async function runAggregation(db: CommunityFirestore): Promise<void> {
     }
   }
 
-  const previousRanks = await loadPreviousRanksForBoards(db, workItems);
+  const previousBoards = await loadPreviousBoardHistoriesForBoards(db, workItems);
   const activeDocPaths = new Set<string>();
   let boardsWritten = 0;
 
@@ -176,7 +197,7 @@ async function runAggregation(db: CommunityFirestore): Promise<void> {
       item.tier,
       item.geoKey,
       item.group,
-      previousRanks.get(previousRankKey(item.window, item.tier, item.geoKey)) ?? new Map(),
+      previousBoards.get(previousRankKey(item.window, item.tier, item.geoKey)) ?? EMPTY_PREVIOUS_BOARD_HISTORY,
     );
     await writeLeaderboard(db, board);
     activeDocPaths.add(CommunityPaths.leaderboard(board.window, board.tier, board.geoKey));
@@ -422,7 +443,7 @@ function buildLeaderboard(
   tier: Tier,
   geoKey: string,
   group: Participant[],
-  prevRankMap: Map<string, number>,
+  previousHistory: Map<string, number> | PreviousBoardHistory,
 ): CommunityLeaderboardDoc {
   const scored = group.map((p) => {
     const totals = windowTotal(p, window);
@@ -456,14 +477,16 @@ function buildLeaderboard(
     };
   }
 
-  // Top 100 entries.
+  const previous = normalizePreviousHistory(previousHistory);
+  const stableMovement = computeStableMovementPercentiles(scored, previous);
   const entries: LeaderboardEntry[] = scored.slice(0, 100).map((p, idx) => {
     const rank = idx + 1;
-    const prevRank = prevRankMap.get(p.anonId) ?? null;
-    const movement: RankMovement = computeMovement(rank, prevRank);
+    const percentile = percentileForIndex(idx, cohortSize);
+    const previousPosition = previous.positions.get(p.anonId) ?? null;
+    const movement = computeMovement(rank, percentile, previous, previousPosition, stableMovement.get(p.anonId));
     return {
       rank,
-      percentile: Math.round(((cohortSize - idx) / cohortSize) * 10_000) / 100,
+      percentile,
       handle: p.handle ?? undefined,
       anonId: p.anonId,
       totalTokens: p.totalTokens,
@@ -489,10 +512,75 @@ function buildLeaderboard(
   };
 }
 
-function computeMovement(currentRank: number, prevRank: number | null): RankMovement {
-  if (prevRank === null) return "new";
-  if (currentRank < prevRank) return "up";
-  if (currentRank > prevRank) return "down";
+function normalizePreviousHistory(previous: Map<string, number> | PreviousBoardHistory): PreviousBoardHistory {
+  if (previous instanceof Map) {
+    return {
+      hasUsableHistory: true,
+      positions: new Map([...previous.entries()].map(([anonId, rank]) => [anonId, { rank, percentile: null }])),
+    };
+  }
+  return previous;
+}
+
+function percentileForIndex(index: number, size: number): number {
+  if (size <= 0) return 0;
+  return Math.round(((size - index) / size) * 10_000) / 100;
+}
+
+function computeStableMovementPercentiles(
+  currentSorted: Array<Participant & { totalTokens: number; costUSD: number }>,
+  history: PreviousBoardHistory,
+): Map<string, StableMovementPercentiles> {
+  const result = new Map<string, StableMovementPercentiles>();
+  if (!history.hasUsableHistory) return result;
+
+  const stableCurrent = currentSorted.filter((p) => history.positions.has(p.anonId));
+  if (stableCurrent.length < 2) return result;
+
+  const stablePrevious = [...stableCurrent].sort((a, b) => {
+    const aPrevious = history.positions.get(a.anonId)?.rank ?? Number.MAX_SAFE_INTEGER;
+    const bPrevious = history.positions.get(b.anonId)?.rank ?? Number.MAX_SAFE_INTEGER;
+    return aPrevious - bPrevious;
+  });
+  const previousPercentiles = new Map<string, number>();
+  stablePrevious.forEach((p, index) => {
+    previousPercentiles.set(p.anonId, percentileForIndex(index, stablePrevious.length));
+  });
+
+  stableCurrent.forEach((p, index) => {
+    const previousPercentile = previousPercentiles.get(p.anonId);
+    if (previousPercentile === undefined) return;
+    result.set(p.anonId, {
+      currentPercentile: percentileForIndex(index, stableCurrent.length),
+      previousPercentile,
+    });
+  });
+  return result;
+}
+
+function computeMovement(
+  currentRank: number,
+  currentPercentile: number,
+  history: PreviousBoardHistory,
+  previous: PreviousPosition | null,
+  stablePercentiles?: StableMovementPercentiles,
+): RankMovement {
+  if (!history.hasUsableHistory) return "same";
+  if (previous === null) return "new";
+  if (stablePercentiles) {
+    const delta = stablePercentiles.currentPercentile - stablePercentiles.previousPercentile;
+    if (delta >= PERCENTILE_MOVEMENT_DEADBAND) return "up";
+    if (delta <= -PERCENTILE_MOVEMENT_DEADBAND) return "down";
+    return "same";
+  }
+  if (previous.percentile !== null) {
+    const delta = currentPercentile - previous.percentile;
+    if (delta >= PERCENTILE_MOVEMENT_DEADBAND) return "up";
+    if (delta <= -PERCENTILE_MOVEMENT_DEADBAND) return "down";
+    return "same";
+  }
+  if (currentRank < previous.rank) return "up";
+  if (currentRank > previous.rank) return "down";
   return "same";
 }
 
@@ -532,18 +620,28 @@ function previousRankKey(window: WindowKey, tier: Tier, geoKey: string): string 
   return `${window}|${tier}|${normalizeGeoKey(geoKey) ?? "unknown"}`;
 }
 
-function rankMapFromSnapshot(snapshot: CommunityDocumentSnapshot): Map<string, number> {
-  const rankMap = new Map<string, number>();
-  if (!snapshot.exists) return rankMap;
+function previousHistoryFromSnapshot(snapshot: CommunityDocumentSnapshot): PreviousBoardHistory {
+  if (!snapshot.exists) return EMPTY_PREVIOUS_BOARD_HISTORY;
   const data = snapshot.data();
-  if (!isRecord(data) || !Array.isArray(data.entries)) return rankMap;
-  for (const entry of data.entries) {
-    if (isRecord(entry) && typeof entry.anonId === "string" && typeof entry.rank === "number") {
-      rankMap.set(entry.anonId, entry.rank);
-    }
+  if (!isRecord(data) || data.belowThreshold === true || !Array.isArray(data.entries) || data.entries.length === 0) {
+    return EMPTY_PREVIOUS_BOARD_HISTORY;
   }
-  return rankMap;
+  const positions = new Map<string, PreviousPosition>();
+  for (const entry of data.entries) {
+    if (!isRecord(entry) || typeof entry.anonId !== "string" || typeof entry.rank !== "number") continue;
+    const percentile = typeof entry.percentile === "number" && Number.isFinite(entry.percentile) ? entry.percentile : null;
+    positions.set(entry.anonId, { rank: entry.rank, percentile });
+  }
+  return {
+    hasUsableHistory: positions.size > 0,
+    positions,
+  };
 }
+
+function rankMapFromHistory(history: PreviousBoardHistory): Map<string, number> {
+  return new Map([...history.positions.entries()].map(([anonId, position]) => [anonId, position.rank]));
+}
+
 
 interface CommunityFirestoreWithGetAll extends CommunityFirestore {
   getAll(...refsToRead: CommunityDocumentReference[]): Promise<CommunityDocumentSnapshot[]>;
@@ -568,11 +666,11 @@ async function getAllDocuments(
   return Promise.all(refs.map((ref) => ref.get()));
 }
 
-async function loadPreviousRanksForBoards(
+async function loadPreviousBoardHistoriesForBoards(
   db: CommunityFirestore,
   boards: Array<Pick<BoardWorkItem, "window" | "tier" | "geoKey">>,
-): Promise<Map<string, Map<string, number>>> {
-  const result = new Map<string, Map<string, number>>();
+): Promise<Map<string, PreviousBoardHistory>> {
+  const result = new Map<string, PreviousBoardHistory>();
   if (boards.length === 0) return result;
 
   const unique = new Map<string, { window: WindowKey; tier: Tier; geoKey: string; path: string }>();
@@ -593,13 +691,21 @@ async function loadPreviousRanksForBoards(
     const snapshots = await getAllDocuments(db, refs);
     snapshots.forEach((snapshot, index) => {
       const [key] = descriptors[index];
-      result.set(key, rankMapFromSnapshot(snapshot));
+      result.set(key, previousHistoryFromSnapshot(snapshot));
     });
   } catch {
     logWarn({ event: "community_prev_rank_batch_load_failed", boards: descriptors.length });
-    for (const [key] of descriptors) result.set(key, new Map());
+    for (const [key] of descriptors) result.set(key, EMPTY_PREVIOUS_BOARD_HISTORY);
   }
   return result;
+}
+
+async function loadPreviousRanksForBoards(
+  db: CommunityFirestore,
+  boards: Array<Pick<BoardWorkItem, "window" | "tier" | "geoKey">>,
+): Promise<Map<string, Map<string, number>>> {
+  const histories = await loadPreviousBoardHistoriesForBoards(db, boards);
+  return new Map([...histories.entries()].map(([key, history]) => [key, rankMapFromHistory(history)]));
 }
 
 async function loadPreviousRanks(
@@ -693,8 +799,9 @@ export {
   groupByGeoTier,
   buildLeaderboard,
   collectValidParticipants,
-  loadPreviousRanks,
   loadPreviousRanksForBoards,
+  loadPreviousRanks,
+  loadPreviousBoardHistoriesForBoards,
   cleanupStaleLeaderboards,
 };
-export type { Participant };
+export type { Participant, PreviousBoardHistory };

@@ -185,6 +185,7 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
             cards.Add(new CommunityLeaderboardCard(
                 tier,
                 CommunityGeoDisplay.ResolveLabel(Consent, tier),
+                CommunityGeoDisplay.ResolveConfidenceCopy(Consent, tier),
                 Array.Empty<LeaderboardEntry>(),
                 new PercentileBands(0, 0, 0, 0),
                 0,
@@ -205,6 +206,7 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
             cards.Add(new CommunityLeaderboardCard(
                 tier,
                 CommunityGeoDisplay.ResolveLabel(Consent, tier),
+                CommunityGeoDisplay.ResolveConfidenceCopy(Consent, tier),
                 Array.Empty<LeaderboardEntry>(),
                 new PercentileBands(0, 0, 0, 0),
                 0,

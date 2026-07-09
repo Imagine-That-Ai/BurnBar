@@ -45,6 +45,17 @@ fun CommunityLeaderboardCard(state: CommunityLeaderboardCardState, anonId: Strin
                 }
             }
 
+            Text(
+                text = state.geoLabel,
+                style = AuroraType.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = state.geoConfidenceCopy,
+                style = AuroraType.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
             val board = state.board
             when {
                 board == null && state.isLoading ->
@@ -62,7 +73,7 @@ fun CommunityLeaderboardCard(state: CommunityLeaderboardCardState, anonId: Strin
                 board.belowThreshold ->
                     CommunityBelowThresholdMessage(
                         tier = state.tier,
-                        geoLabel = state.geoKey,
+                        geoLabel = state.geoLabel,
                         kThreshold = board.kThreshold,
                     )
                 board.entries.isEmpty() ->

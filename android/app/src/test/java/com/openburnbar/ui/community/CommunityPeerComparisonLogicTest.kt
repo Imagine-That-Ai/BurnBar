@@ -1,5 +1,6 @@
 package com.openburnbar.ui.community
 
+import com.openburnbar.data.community.CommunityGeoTier
 import com.openburnbar.data.models.generated.FirestorePercentileBands
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -41,6 +42,30 @@ class CommunityPeerComparisonLogicTest {
     fun shouldShow_trueWithCohortAndPercentileSignal() {
         val bands = FirestorePercentileBands(p75 = 50.0)
         assertTrue(shouldShowPeerComparisonChart(cohortSize = 10, percentiles = bands, yourTokens = 60))
+    }
+
+    @Test
+    fun geoDisplayLabel_usesManualCityAndCoarseDisplayNames() {
+        assertEquals("Berlin", communityGeoDisplayLabel(CommunityGeoTier.CITY, "Berlin"))
+        assertEquals("California", communityGeoDisplayLabel(CommunityGeoTier.REGION, "US-CA"))
+        assertEquals("United States", communityGeoDisplayLabel(CommunityGeoTier.COUNTRY, "us"))
+        assertEquals("Global", communityGeoDisplayLabel(CommunityGeoTier.WORLD, "world"))
+    }
+
+    @Test
+    fun geoConfidenceCopy_isHonestAboutUnavailableAndDerivedPrecision() {
+        assertTrue(
+            communityGeoConfidenceCopy(CommunityGeoTier.CITY, "city")
+                .contains("manual label"),
+        )
+        assertTrue(
+            communityGeoConfidenceCopy(CommunityGeoTier.REGION, "US-CA")
+                .contains("locale/timezone"),
+        )
+        assertTrue(
+            communityGeoConfidenceCopy(CommunityGeoTier.WORLD, "world")
+                .contains("no location"),
+        )
     }
 
     @Test

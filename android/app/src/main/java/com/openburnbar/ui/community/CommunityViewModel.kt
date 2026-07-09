@@ -30,6 +30,8 @@ import kotlinx.coroutines.launch
 data class CommunityLeaderboardCardState(
     val tier: CommunityGeoTier,
     val geoKey: String,
+    val geoLabel: String,
+    val geoConfidenceCopy: String,
     val board: FirestoreCommunityLeaderboardDoc?,
     val isLoading: Boolean = false,
 )
@@ -269,9 +271,12 @@ class CommunityViewModel(
                                 !key.isNullOrBlank() -> key
                                 else -> tier.wire
                             }
+                        val geoLabel = communityGeoDisplayLabel(tier, geoKey)
                         CommunityLeaderboardCardState(
                             tier = tier,
                             geoKey = geoKey,
+                            geoLabel = geoLabel,
+                            geoConfidenceCopy = communityGeoConfidenceCopy(tier, geoKey),
                             board = null,
                             isLoading = tier == CommunityGeoTier.WORLD || !key.isNullOrBlank(),
                         )

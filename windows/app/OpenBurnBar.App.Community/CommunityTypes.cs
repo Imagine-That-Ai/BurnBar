@@ -62,6 +62,7 @@ public sealed record PercentileBands(double P50, double P75, double P90, double 
 public sealed record CommunityLeaderboardCard(
     GeographyTier Tier,
     string GeoLabel,
+    string GeoConfidenceCopy,
     IReadOnlyList<LeaderboardEntry> Entries,
     PercentileBands Percentiles,
     int CohortSize,

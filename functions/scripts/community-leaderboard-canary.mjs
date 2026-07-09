@@ -217,7 +217,7 @@ function requireLiveOptions(options) {
   if (!options.liveDoc) throw new Error("--live-doc or COMMUNITY_CANARY_LIVE_DOC is required");
 }
 
-async function runLiveCanary(options) {
+export async function runLiveCanary(options) {
   requireLiveOptions(options);
   if (getApps().length === 0) initializeApp({ projectId: options.project });
   const customToken = await getAuth().createCustomToken(options.uid, { purpose: "community-leaderboard-canary" });

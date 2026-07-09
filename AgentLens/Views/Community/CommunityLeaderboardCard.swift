@@ -27,12 +27,15 @@ struct CommunityLeaderboardCard: View {
                     CommunityThresholdView(
                         tierLabel: geoLabel,
                         kThreshold: board.kThreshold,
-                        neededCount: max(board.kThreshold - board.cohortSize, 1)
+                        neededCount: CommunityDisplayFormatter.thresholdNeededCount(
+                            kThreshold: board.kThreshold,
+                            cohortSize: board.cohortSize
+                        )
                     )
                 } else if let board = displayBoard {
                     leaderboardBody(board)
                 } else {
-                    Text("Leaderboard unavailable for \(geoLabel).")
+                    Text(CommunityDisplayFormatter.leaderboardUnavailableText(geoLabel: geoLabel))
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
@@ -90,14 +93,14 @@ struct CommunityLeaderboardCard: View {
 
             movementIcon(entry.movement)
 
-            Text(entry.handle ?? "anon-\(entry.anonId.prefix(6))")
+            Text(CommunityDisplayFormatter.participantDisplayName(handle: entry.handle, anonId: entry.anonId))
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(pinned ? DesignSystem.Colors.ember : DesignSystem.Colors.textPrimary)
                 .lineLimit(1)
 
             Spacer()
 
-            Text(formatTokens(entry.totalTokens))
+            Text(CommunityDisplayFormatter.compactTokenCount(entry.totalTokens))
                 .font(DesignSystem.Typography.caption.monospacedDigit())
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
@@ -141,10 +144,4 @@ struct CommunityLeaderboardCard: View {
         }
     }
 
-    private func formatTokens(_ value: Int64) -> String {
-        let n = Int(value)
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1_000 { return String(format: "%.1fK", Double(n) / 1_000) }
-        return "\(n)"
-    }
 }

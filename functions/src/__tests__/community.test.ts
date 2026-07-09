@@ -8,6 +8,7 @@ import {
   computePercentiles,
   groupByGeoTier,
   type Participant,
+  type PreviousBoardHistory,
 } from "../community/aggregation.js";
 import { classifyPurpose, signalFingerprint } from "../community/classifier.js";
 import {
@@ -387,7 +388,74 @@ describe("buildLeaderboard k-anonymity", () => {
     const anon1Entry = board.entries.find((e) => e.anonId === "anon1");
     expect(anon1Entry?.movement).toBe("down");
     const anon2Entry = board.entries.find((e) => e.anonId === "anon2");
-    expect(anon2Entry?.movement).toBe("same");
+    expect(anon2Entry?.movement).toBe("down");
+  });
+
+  it("keeps first usable aggregate neutral until a prior board exists", () => {
+    const group = Array.from({ length: 10 }, (_, i) =>
+      participant({
+        uid: `fresh${i}`,
+        anonId: `fresh-anon${i}`,
+        windowTotals: windowTotals(10 - i),
+      }),
+    );
+    const previous: PreviousBoardHistory = { hasUsableHistory: false, positions: new Map() };
+
+    const board = buildLeaderboard("30d", "world", "world", group, previous);
+
+    expect(board.entries).toHaveLength(10);
+    expect(board.entries.every((entry) => entry.movement === "same")).toBe(true);
+  });
+
+  it("computes movement within the stable cohort instead of raw rank churn", () => {
+    const group = Array.from({ length: 100 }, (_, i) =>
+      participant({
+        uid: `smooth${i}`,
+        anonId: `smooth-anon${i}`,
+        windowTotals: windowTotals(100 - i),
+      }),
+    );
+    const previous: PreviousBoardHistory = {
+      hasUsableHistory: true,
+      positions: new Map([
+        ["smooth-anon0", { rank: 3, percentile: 99.2 }],
+        ["smooth-anon1", { rank: 1, percentile: 99.0 }],
+        ["smooth-anon2", { rank: 2, percentile: 100.0 }],
+        ["smooth-anon99", { rank: 99, percentile: 2.0 }],
+      ]),
+    };
+
+    const board = buildLeaderboard("30d", "world", "world", group, previous);
+
+    expect(board.entries.find((entry) => entry.anonId === "smooth-anon0")?.movement).toBe("up");
+    expect(board.entries.find((entry) => entry.anonId === "smooth-anon1")?.movement).toBe("down");
+    expect(board.entries.find((entry) => entry.anonId === "smooth-anon2")?.movement).toBe("down");
+    expect(board.entries.find((entry) => entry.anonId === "smooth-anon99")?.movement).toBe("same");
+  });
+
+  it("does not mark a small stable cohort down when one newcomer joins above them", () => {
+    const unchanged = Array.from({ length: 12 }, (_, i) =>
+      participant({
+        uid: `stable${i}`,
+        anonId: `stable-anon${i}`,
+        windowTotals: windowTotals(12 - i),
+      }),
+    );
+    const group = [
+      participant({ uid: "newcomer", anonId: "stable-newcomer", windowTotals: windowTotals(40) }),
+      ...unchanged,
+    ];
+    const previous: PreviousBoardHistory = {
+      hasUsableHistory: true,
+      positions: new Map(unchanged.map((p, index) => [p.anonId, { rank: index + 1, percentile: 0 }])),
+    };
+
+    const board = buildLeaderboard("7d", "world", "world", group, previous);
+
+    expect(board.entries.find((entry) => entry.anonId === "stable-newcomer")?.movement).toBe("new");
+    for (const entry of board.entries.filter((entry) => entry.anonId.startsWith("stable-anon"))) {
+      expect(entry.movement).toBe("same");
+    }
   });
 });
 

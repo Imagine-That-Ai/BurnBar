@@ -31,6 +31,8 @@ public sealed class CommunityViewModelTests
             Assert.Null(card.YourRank);
         });
         Assert.Equal("Portland", vm.Leaderboards.First(c => c.Tier == GeographyTier.City).GeoLabel);
+        Assert.Contains("Manual city label", vm.Leaderboards.First(c => c.Tier == GeographyTier.City).GeoConfidenceCopy);
+        Assert.Contains("locale/timezone", vm.Leaderboards.First(c => c.Tier == GeographyTier.Country).GeoConfidenceCopy);
         Assert.DoesNotContain("ember-fox", vm.Leaderboards.SelectMany(c => c.Entries).Select(e => e.Handle));
     }
 

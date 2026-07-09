@@ -36,16 +36,13 @@ struct CommunityLeaderboardCard: View {
         }
     }
 
-    private var neededForThreshold: Int {
-        max(board.kThreshold - board.cohortSize, 1)
-    }
 
     private var belowThresholdFallback: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "person.3.sequence")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
-            Text("Needs \(neededForThreshold) more burners in \(tierLabel.lowercased())")
+            Text(CommunityDisplayFormatter.belowThresholdTitle(kThreshold: board.kThreshold, cohortSize: board.cohortSize, tierLabel: tierLabel))
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
             Text("We never show individual ranks until the cohort is large enough. Try a broader geography above.")
@@ -89,7 +86,7 @@ struct CommunityLeaderboardCard: View {
 
             movementIcon(entry.movement)
 
-            Text(entry.handle ?? "anon-\(entry.anonId.prefix(6))")
+            Text(CommunityDisplayFormatter.participantDisplayName(handle: entry.handle, anonId: entry.anonId))
                 .font(MobileTheme.Typography.body)
                 .fontWeight(pinned ? .semibold : .regular)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
@@ -97,7 +94,7 @@ struct CommunityLeaderboardCard: View {
 
             Spacer(minLength: 0)
 
-            Text(formatTokens(entry.totalTokens))
+            Text(CommunityDisplayFormatter.compactTokenCount(entry.totalTokens))
                 .font(CommunityEditorialTypography.metaStrip)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
         }
@@ -133,9 +130,4 @@ struct CommunityLeaderboardCard: View {
         }
     }
 
-    private func formatTokens(_ value: Int64) -> String {
-        if value >= 1_000_000 { return String(format: "%.1fM", Double(value) / 1_000_000) }
-        if value >= 1_000 { return String(format: "%.1fK", Double(value) / 1_000) }
-        return "\(value)"
-    }
 }

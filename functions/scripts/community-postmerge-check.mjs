@@ -184,7 +184,7 @@ async function deleteDocs(db, docs) {
   return cleaned;
 }
 
-async function runLiveReport(options) {
+export async function runLiveReport(options) {
   const db = initFirestore(options);
   const nowMs = Date.now();
   const staleMs =

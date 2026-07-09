@@ -110,6 +110,14 @@ public sealed partial class CommunityPage : Page
 
         panel.Children.Add(new TextBlock
         {
+            Text = card.GeoConfidenceCopy,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["PensieveColorTextMuteBrush"],
+        });
+
+
+        panel.Children.Add(new TextBlock
+        {
             Text = card.BelowThreshold
                 ? $"Needs {card.KThreshold} more burners in {card.GeoLabel}. No individual data is shown below k={card.KThreshold}."
                 : "Preview only — live leaderboard rows sync when Firestore boards are wired.",
