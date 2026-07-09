@@ -60,6 +60,19 @@ else:
 PY
 }
 
+terminate_process_tree() {
+    local root_pid="$1"
+    local signal="${2:-TERM}"
+    local child_pid
+
+    while IFS= read -r child_pid; do
+        [[ -n "$child_pid" ]] || continue
+        terminate_process_tree "$child_pid" "$signal"
+    done < <(pgrep -P "$root_pid" 2>/dev/null || true)
+
+    kill "-$signal" "$root_pid" 2>/dev/null || true
+}
+
 run_with_timeout() {
     local timeout_seconds="$1"
     shift
@@ -71,9 +84,9 @@ run_with_timeout() {
     while kill -0 "$child_pid" 2>/dev/null; do
         if ((SECONDS >= deadline)); then
             log "timeout after ${timeout_seconds}s; terminating pid $child_pid"
-            kill -TERM "-$child_pid" 2>/dev/null || kill -TERM "$child_pid" 2>/dev/null || true
+            terminate_process_tree "$child_pid" TERM
             sleep 3
-            kill -KILL "-$child_pid" 2>/dev/null || kill -KILL "$child_pid" 2>/dev/null || true
+            terminate_process_tree "$child_pid" KILL
             wait "$child_pid" 2>/dev/null || true
             return 124
         fi
@@ -214,7 +227,7 @@ process_job() {
     log "picked up job id=$id kind=$kind timeout=${timeout_seconds}s"
 
     set +e
-    {
+    (
         printf '[runner] id=%s kind=%s startedAt=%s\n' "$id" "$kind" "$started_at"
         log_permission_probe
         case "$kind" in
@@ -229,7 +242,7 @@ process_job() {
                 exit 64
                 ;;
         esac
-    } > >(tee -a "$result_dir/runner.log") 2> >(tee -a "$result_dir/runner.log" >&2)
+    ) > >(tee -a "$result_dir/runner.log") 2> >(tee -a "$result_dir/runner.log" >&2)
     exit_code=$?
     set -e
 

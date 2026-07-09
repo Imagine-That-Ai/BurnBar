@@ -93,6 +93,7 @@ adhoc_sign_products() {
     local products_dir="$1"
     local ents
     ents="$(mktemp "${TMPDIR:-/tmp}/openburnbar-gta.XXXXXX.plist")"
+    trap 'rm -f "$ents"' RETURN
     cat > "$ents" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -128,12 +129,4 @@ PLIST
 
 mini_resolve_runner_root() {
     mini_ssh "python3 -c 'import os,sys; print(os.path.expandvars(os.path.expanduser(sys.argv[1])))' $(printf "%q" "$MACMINI_RUNNER_ROOT")"
-}
-
-json_quote() {
-    python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
-}
-
-utc_now() {
-    date -u +%Y-%m-%dT%H:%M:%SZ
 }

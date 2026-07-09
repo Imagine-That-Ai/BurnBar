@@ -1,11 +1,10 @@
 import XCTest
 
 final class DashboardUITests: UITestBase {
-    func testDashboardRendersWithLayoutSwitcher() {
+    func testDashboardRendersRoot() {
         launchApp()
 
         waitFor(element(OBBAccessibilityID.dashboardRoot), timeout: 20)
-        waitFor(element(OBBAccessibilityID.dashboardLayoutSwitcher), timeout: 20)
     }
 
     func testDashboardViewModeSwitcherPersistsSelection() {

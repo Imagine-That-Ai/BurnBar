@@ -25,10 +25,6 @@ enum OBBAccessibilityID {
         "providers.row.\(normalized(providerID))"
     }
 
-    static func dashboardViewMode(_ mode: String) -> String {
-        "dashboard.viewMode.\(normalized(mode))"
-    }
-
     private static func normalized(_ raw: String) -> String {
         raw
             .trimmingCharacters(in: .whitespacesAndNewlines)

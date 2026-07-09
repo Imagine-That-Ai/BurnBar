@@ -59,7 +59,11 @@ enum OpenBurnBarRuntime {
     }
 
     static func isUITestLaunch(environment: [String: String], arguments: [String]) -> Bool {
+        #if DEBUG
         environment["OPENBURNBAR_UITEST"] == "1" || arguments.contains("--uitest")
+        #else
+        false
+        #endif
     }
 
     static var shouldOpenSettingsForUITest: Bool {

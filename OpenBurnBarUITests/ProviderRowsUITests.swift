@@ -6,6 +6,7 @@ final class ProviderRowsUITests: UITestBase {
 
         waitFor(element(OBBAccessibilityID.settingsRoot), timeout: 20)
         waitForHittable(element(OBBAccessibilityID.settingsRow("agents")), timeout: 10).tap()
+        waitForHittable(app.staticTexts["Advanced"].firstMatch, timeout: 10).tap()
 
         let providerRows = [
             OBBAccessibilityID.providersRow("Claude Code"),

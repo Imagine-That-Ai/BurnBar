@@ -46,7 +46,7 @@ while [[ "$#" -gt 0 ]]; do
             mode="local"
             shift
             ;;
-        --dry-run|--ax-smoke|--timeout-seconds|--poll-timeout-seconds)
+        --dry-run|--ax-smoke|--products-dir|--timeout-seconds|--poll-timeout-seconds)
             option="$1"
             forward_args+=("$option")
             if [[ "$option" != "--dry-run" ]]; then
