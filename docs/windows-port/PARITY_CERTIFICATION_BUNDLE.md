@@ -6,7 +6,7 @@
 **Windows tree:** `windows/` (WinUI shell, PAL, storage, cloudsync, tests, dist).  
 **Related:** `docs/windows-port/HANDOFF.md`, `docs/windows-port/PHASE3_UI_PARITY_PLAN.md`, `docs/WINDOWS_PORT_MASTER_PLAN.md` §10.1.
 
-> **How to use this doc.** Each row cites a **test**, **fixture**, **WPD/PR**, or **runbook** artifact. Screenshot cells marked **PLACEHOLDER** are filled by Alberto’s **Win11 Pro validation pass** (WS-D GPU/render fidelity is out of scope for this PR). Cross-platform snapshot auto-gates are explicitly **not** claimed (`PHASE3_UI_PARITY_PLAN.md` §G3).
+> **How to use this doc.** Each row cites a **test**, **fixture**, **WPD/PR**, or **runbook** artifact. Screenshot cells awaiting Alberto’s **Win11 Pro validation pass** are marked `_(blocked — Win11 Pro pass pending)_` — never as invented image paths (Phase 0 ledger scanner rejects those). Cross-platform snapshot auto-gates are explicitly **not** claimed (`PHASE3_UI_PARITY_PLAN.md` §G3). Canonical production-parity status is [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml).
 
 ---
 
@@ -22,6 +22,11 @@
 ---
 
 ## 1. Surface parity matrix (13 navigable destinations)
+
+> **Status authority:** production-parity status for every surface is owned by
+> [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml). The Status column below is
+> historical narrative from the integration wave and may still say **Authored** —
+> that word is **not** a valid ledger status and must not be treated as Real.
 
 **Seams:** `NavCatalog` + `SurfacePageResolver` (`windows/app/OpenBurnBar.App/Shell/`).  
 **Sidebar:** 12 rows in `NavCatalog.All`; **13th** navigable key = auxiliary `elderWand` (Command Palette only, macOS reachability parity per `ElderWandPage.xaml`).
@@ -118,33 +123,40 @@ These are **explicit** Tier-B/C substitutions or interim postures from the maste
 
 Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** accepted drift §4 ID if any.
 
+> **Honesty rule (Phase 0):** do **not** invent screenshot paths. Rows awaiting the Win11
+> Pro validation pass use `_(blocked — Win11 Pro pass pending; TONIGHT_PUNCHLIST C7)_`.
+> The parity ledger scanner (`scripts/ci/verify-windows-parity-ledger.py`) **fails** if this
+> section reintroduces fake `screenshots/g5-*.png` path claims. Committed evidence for
+> **Real** ledger rows lives under `docs/windows-port/evidence/` and in the
+> [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml).
+
 | Flow / surface | Screenshot (Win11 Pro) | Automated evidence | Drift |
 |----------------|------------------------|--------------------|-------|
-| Cold install signed MSIX | PLACEHOLDER `screenshots/g5-msix-install.png` | `openburnbar-release-windows.yml` run ID + installer SHA256 in release notes | D10 |
-| Auto-update from Ed25519 feed | PLACEHOLDER `screenshots/g5-update-apply.png` | `OpenBurnBar.Updater.Tests` + recorded feed apply log | — |
-| Tray → flyout → main window | PLACEHOLDER `screenshots/g5-tray-flyout.png` | `DEV_HOST_RUNBOOK.md` / validation pass script | — |
-| Dashboard populated | PLACEHOLDER `screenshots/g5-dashboard.png` | `dotnet test windows/tests/dashboard` | D1 |
-| Chat stream + Pretext bubble | PLACEHOLDER `screenshots/g5-chat.png` | `presentation/Chat/*Tests` + Pretext metric harness | D12 |
-| Quota workspace | PLACEHOLDER `screenshots/g5-quota.png` | `OpenBurnBar.App.Quota.Tests` | — |
-| Budget rules | PLACEHOLDER `screenshots/g5-budget.png` | `presentation/Budget/*Tests` | — |
-| Mission Control console | PLACEHOLDER `screenshots/g5-mission.png` | `presentation/MissionControl/*Tests` | D1 |
-| Data Control Center | PLACEHOLDER `screenshots/g5-dcc.png` | `DataControlCenter*Tests` | — |
-| Switcher profiles | PLACEHOLDER `screenshots/g5-switcher.png` | `Switcher*Tests` | D5 |
-| Session logs + live CLI | PLACEHOLDER `screenshots/g5-sessionlogs.png` | `StorageSessionLogReadSourceTests` + ConPTY smoke (B1) | D4 |
-| Settings search + leaf | PLACEHOLDER `screenshots/g5-settings.png` | `OpenBurnBar.App.Settings.Tests` | — |
-| Onboarding wizard | PLACEHOLDER `screenshots/g5-onboarding.png` | `OpenBurnBar.App.Onboarding.Tests` | — |
-| Command Palette → Elder Wand | PLACEHOLDER `screenshots/g5-elderwand.png` | `ElderWand*Tests` | D8 |
-| DB byte-compat vector | _(no screenshot)_ | `dotnet test windows/storage/OpenBurnBar.Storage.Tests` log archived | D6 |
-| Parser-output golden | _(no screenshot)_ | Mac `ParserOutputContractGoldenTests` + Windows `OpenBurnBarG2ParserParity` byte-diff **green** (15 providers / 26 fixtures, x64 + ARM64): run [28775204323](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/28775204323), PR #1270 → `cc56024f07` | — |
+| Cold install signed MSIX | _(blocked — Win11 Pro pass pending; also W0 signing cert)_ | `openburnbar-release-windows.yml` run ID + installer SHA256 in release notes | D10 |
+| Auto-update from Ed25519 feed | _(blocked — Win11 Pro pass pending)_ | `OpenBurnBar.Updater.Tests` + recorded feed apply log | — |
+| Tray → flyout → main window | _(blocked — Win11 Pro pass pending)_ | `DEV_HOST_RUNBOOK.md` / validation pass script | — |
+| Dashboard populated | _(blocked — Win11 Pro pass pending)_ | `dotnet test windows/tests/dashboard` | D1 |
+| Chat stream + Pretext bubble | _(blocked — Win11 Pro pass pending)_ | `presentation/Chat/*Tests` + Pretext metric harness | D12 |
+| Quota workspace | _(blocked — Win11 Pro pass pending)_ | `OpenBurnBar.App.Quota.Tests` | — |
+| Budget rules | _(blocked — Win11 Pro pass pending)_ | `presentation/Budget/*Tests` | — |
+| Mission Control console | _(blocked — Win11 Pro pass pending)_ | `presentation/MissionControl/*Tests` | D1 |
+| Data Control Center | _(blocked — Win11 Pro pass pending)_ | `DataControlCenter*Tests` | — |
+| Switcher profiles | _(blocked — Win11 Pro pass pending)_ | `Switcher*Tests` | D5 |
+| Session logs + live CLI | _(blocked — Win11 Pro pass pending)_ | `StorageSessionLogReadSourceTests` + ConPTY smoke (B1) | D4 |
+| Settings search + leaf | _(blocked — Win11 Pro pass pending)_ | `OpenBurnBar.App.Settings.Tests` | — |
+| Onboarding wizard | _(blocked — Win11 Pro pass pending)_ | `OpenBurnBar.App.Onboarding.Tests` | — |
+| Command Palette → Elder Wand | _(blocked — Win11 Pro pass pending)_ | `ElderWand*Tests` | D8 |
+| DB byte-compat vector | _(no screenshot)_ | `dotnet test windows/storage/OpenBurnBar.Storage.Tests` log archived; evidence `docs/windows-port/evidence/storage/sqlcipher-byte-compat.md` | D6 |
+| Parser-output golden | _(no screenshot)_ | Mac `ParserOutputContractGoldenTests` + Windows `OpenBurnBarG2ParserParity` byte-diff **green** (15 providers / 26 fixtures, x64 + ARM64): run [28775204323](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/28775204323), PR #1270 → `cc56024f07`; evidence `docs/windows-port/evidence/engine/g2-parser-parity.md` | — |
 | Wrap vector (C3) | _(no screenshot)_ | Committed corpus per **#1254** | — |
-| CloudVault KAT | _(no screenshot)_ | `dotnet test windows/tests/cloudsync` | — |
-| IPC handshake 20/20 | _(no screenshot)_ | `dotnet test windows/tests/ipc` | — |
+| CloudVault KAT | _(no screenshot)_ | `dotnet test windows/tests/cloudsync`; evidence `docs/windows-port/evidence/cloudsync/cloudvault-kat.md` | — |
+| IPC handshake 20/20 | _(no screenshot)_ | `dotnet test windows/tests/ipc`; evidence `docs/windows-port/evidence/pal/ipc-handshake.md` | — |
 | `pr-windows-full` green | _(CI link)_ | GitHub Actions run URL on `windows-latest` | D3 |
 | SBOM + Sigstore attestation | _(artifact link)_ | Release workflow attestation bundle | D10 |
-| Crash-free 30 min session | PLACEHOLDER narrative | ETW/WER-free session log from validation pass | — |
-| TPM App Check E2E | PLACEHOLDER `screenshots/g5-cloud-login.png` | Callable success with minted token | D2 |
+| Crash-free 30 min session | _(blocked — Win11 Pro pass pending)_ | ETW/WER-free session log from validation pass | — |
+| TPM App Check E2E | _(blocked — Win11 Pro pass pending; R14 / TONIGHT_PUNCHLIST C2)_ | Callable success with minted token | D2 |
 
-**Reviewer rule:** Any row still **PLACEHOLDER** without a linked CI log or test output → **FIX** for G5; drift IDs alone do not excuse missing tests.
+**Reviewer rule:** Any G5 screenshot cell still blocked without a linked CI log or test output → **FIX** for G5 ship claim; drift IDs alone do not excuse missing tests. Engine/storage/crypto/IPC rows with committed evidence under `docs/windows-port/evidence/` may be **Real** on the ledger without screenshots.
 
 ---
 

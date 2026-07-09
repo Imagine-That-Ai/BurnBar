@@ -88,7 +88,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh)'; then
+            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows surface changed: running the skeleton build/lint/test lane."
           else
@@ -134,6 +134,27 @@ jobs:
         run: |
           echo "SKELETON unit tests: run the windows/tests projects once they exist."
 
+  # ── Phase 0 parity ledger (ubuntu; runs whenever the Windows surface changes) ─
+  # Anti-false-green gate: Authored is illegal; Real rows need tests+evidence and
+  # clean production paths. Also covered by fast-feedback.yml on every PR.
+  windows-parity-ledger:
+    name: Windows parity ledger
+    needs: detect-windows-changes
+    if: needs.detect-windows-changes.outputs.windows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      - name: Self-test the Windows parity ledger gate
+        run: bash scripts/ci/verify-windows-parity-ledger.test.sh
+
+      - name: Verify Windows parity ledger honesty
+        run: bash scripts/ci/verify-windows-parity-ledger.sh
+
   # ── Aggregate gate ─────────────────────────────────────────────────────────
   # Single required status. Passes when the skeleton lane succeeds OR when it was
   # skipped because the PR touched no Windows surface. Fails if it failed or was
@@ -143,6 +164,7 @@ jobs:
     needs:
       - detect-windows-changes
       - windows-skeleton
+      - windows-parity-ledger
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -150,10 +172,12 @@ jobs:
         env:
           DETECT_RESULT: ${{ needs.detect-windows-changes.result }}
           SKELETON_RESULT: ${{ needs.windows-skeleton.result }}
+          LEDGER_RESULT: ${{ needs.windows-parity-ledger.result }}
         run: |
           set -euo pipefail
           echo "detect-windows-changes: ${DETECT_RESULT}"
           echo "windows-skeleton: ${SKELETON_RESULT}"
+          echo "windows-parity-ledger: ${LEDGER_RESULT}"
 
           # The detector itself must have succeeded; a 'skipped' here would mean
           # the path filter never ran, so the downstream skip cannot be trusted.
@@ -169,4 +193,9 @@ jobs:
             exit 1
           fi
 
-          echo "### PR Windows Gate: skeleton build/lint/test checks passed" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${LEDGER_RESULT}" != "success" && "${LEDGER_RESULT}" != "skipped" ]]; then
+            echo "::error::The Windows parity ledger gate failed (result=${LEDGER_RESULT})."
+            exit 1
+          fi
+
+          echo "### PR Windows Gate: skeleton + parity ledger checks passed" >> "$GITHUB_STEP_SUMMARY"

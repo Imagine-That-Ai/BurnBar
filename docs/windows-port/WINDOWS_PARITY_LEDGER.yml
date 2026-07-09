@@ -1,0 +1,609 @@
+# OpenBurnBar Windows ↔ macOS Parity Ledger (Phase 0 / Wave 1)
+#
+# Machine-readable source of truth for production parity claims.
+# Human overview: docs/windows-port/WINDOWS_PARITY_LEDGER.md
+# Scanner: scripts/ci/verify-windows-parity-ledger.py
+#
+# Status vocabulary (closed set — Authored is FORBIDDEN):
+#   Real              — runs in production mode on Windows with real data/backend
+#                       behavior (or an approved Windows substitute that is itself Real).
+#                       Every Real row MUST have ≥1 existing test + ≥1 evidence file,
+#                       and blocking_paths MUST pass the anti-false-green token scan.
+#   Substituted       — Tier-B/C OS/platform substitute that works without sample/stub
+#                       claims, OR a surface that is production-honest (empty state when
+#                       unconfigured) but not yet full peer feature parity.
+#   DeferredApproved  — Explicit WPD / Alberto-signed deferral with revive trigger.
+#   Blocked           — Cannot be Real until a named external dependency lands
+#                       (Win11 VM, cert, OAuth client, partner account, etc.).
+#
+# Anti-false-green rule: "route resolves", "authored page", "sample mode", and
+# "dev-host deferred" are NEVER sufficient for Real.
+
+version: 1
+updated: "2026-07-09"
+schema_id: windows-parity-ledger-v1
+
+# macOS Command Deck primary sections (DashboardMainRoute.primarySections).
+# Every entry MUST appear as macos_route on at least one ledger row.
+macos_primary_routes:
+  - chat
+  - quota
+  - database
+  - projects
+  - missions
+  - sessionLogs
+  - memoryReview
+
+# Additional first-class macOS surfaces that must stay mapped (not primarySections,
+# but required for peer completeness).
+macos_required_routes:
+  - overview
+  - insights
+  - settings
+  - flyout
+  - budget
+  - elderWand
+
+certification_bundle: docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+
+# ---------------------------------------------------------------------------
+# Rows
+# ---------------------------------------------------------------------------
+rows:
+  # ── Nav / surface parity (NavCatalog + Auxiliary) ─────────────────────────
+
+  - id: nav-dashboard
+    macos_route: overview
+    macos_capability: "DashboardMainRoute.overview + 6 layouts (Atelier/Aurora/Classic/Cockpit/Constellation/Nebula)"
+    windows_route: dashboard
+    windows_capability: "DashboardPage + layout hosts; SQLCipher usage when configured; empty-state when not"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/dashboard
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Dashboard
+      - windows/app/OpenBurnBar.App/Shell/BurnHeroControl.xaml.cs
+    owner_lane: wave-2-production-data
+    notes: "Production path can empty-state; sample only under OPENBURNBAR_SAMPLE_MODE. Not Real until live usage is the default wired path with evidence on Windows."
+
+  - id: nav-chat
+    macos_route: chat
+    macos_capability: "DashboardMainRoute.chat + Hermes/Pretext streaming"
+    windows_route: chat
+    windows_capability: "ChatHostPage + ChatSurfaceView + WebView2PretextHost; Scripted/Unavailable drivers without sample mode"
+    status: Blocked
+    evidence:
+      - docs/windows-port/design/0005-pretext-webview2-metric-parity.md
+    tests:
+      - windows/tests/presentation/Chat
+      - windows/tests/chat
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Chat
+      - windows/app/OpenBurnBar.App/Cli
+    owner_lane: wave-4-chat-budget-live
+    notes: "Default production driver is UnavailableChatStreamDriver; live ConPTY/Hermes path needs Windows host proof (TONIGHT_PUNCHLIST C1/C4)."
+
+  - id: nav-insights
+    macos_route: insights
+    macos_capability: "DashboardMainRoute.insights editorial brief"
+    windows_route: insights
+    windows_capability: "InsightsPage + CloudSyncInsightSource / empty KPI states"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/presentation/Insights
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Insights
+    owner_lane: wave-2-production-data
+    notes: "Empty-state honest without sample mode; live rollup evidence still incomplete."
+
+  - id: nav-quota
+    macos_route: quota
+    macos_capability: "DashboardMainRoute.quota workspace + acquisition adapters"
+    windows_route: quota
+    windows_capability: "QuotaWorkspacePage + live coordinator preference + cloud mapper + sample only if OPENBURNBAR_SAMPLE_MODE"
+    status: Substituted
+    evidence:
+      - docs/windows-port/evidence/quota/portable-parsers.md
+    tests:
+      - windows/tests/quota
+      - windows/tests/quota-acquisition
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Quota
+      - windows/app/OpenBurnBar.App.Quota.Acquisition
+    owner_lane: wave-2-production-data
+    notes: "Parsers + acquisition cores are strong; full surface Real blocked on Windows-host live watch + OAuth cloud snapshots."
+
+  - id: nav-session-logs
+    macos_route: sessionLogs
+    macos_capability: "DashboardMainRoute.sessionLogs indexed conversations"
+    windows_route: sessionLogs
+    windows_capability: "SessionLogsHostPage + SQLCipher read seam (B2) with sample fallback only in sample mode"
+    status: Substituted
+    evidence:
+      - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
+    tests:
+      - windows/tests/presentation
+      - windows/storage/OpenBurnBar.Storage.Tests
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/SessionLogs
+      - windows/app/OpenBurnBar.App.Presentation/SessionLogs
+    owner_lane: wave-2-production-data
+    notes: "Storage-backed path exists; WindowsStorageDevHost still carries sample fallback seams — not Real until production composition never names SampleData types as default."
+
+  - id: nav-memory
+    macos_route: memoryReview
+    macos_capability: "DashboardMainRoute.memoryReview"
+    windows_route: memory
+    windows_capability: "MemoryPage + CloudSyncMemoryStore when WinAppCloudSyncHost configured; empty inbox otherwise"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/presentation/MemoryReviewInboxModelTests.cs
+      - windows/tests/memory-search
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Memory
+      - windows/app/OpenBurnBar.App.CloudSync/CloudSyncMemoryStore.cs
+    owner_lane: wave-3-cloud-oauth-appcheck
+    notes: "Cloud-backed when credentials exist; live App Check + OAuth still Blocked (R14 / D4)."
+
+  - id: nav-missions
+    macos_route: missions
+    macos_capability: "DashboardMainRoute.missions / Mission Control console"
+    windows_route: missionControl
+    windows_capability: "MissionControlPage + FirestoreMissionDispatchHost or EmptyMissionDispatchHost (DemoHost only in sample mode)"
+    status: Substituted
+    evidence:
+      - docs/windows-port/decisions/0006-windows-daemon-strategy.md
+    tests:
+      - windows/tests/presentation/MissionControl
+      - windows/tests/missioncontrol
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/MissionControl
+      - windows/app/OpenBurnBar.App.Presentation/MissionControl
+    owner_lane: wave-2-production-data
+    notes: "Firestore host is real code; production empty host is honest. DemoHost is sample-only. Live dispatch proof needs cloud + Windows host."
+
+  - id: nav-database
+    macos_route: database
+    macos_capability: "DashboardMainRoute.database — browse tracked sessions"
+    windows_route: "(none — no NavCatalog key)"
+    windows_capability: "No dedicated Database destination; partial coverage via sessionLogs + Data Source settings"
+    status: Blocked
+    evidence:
+      - docs/windows-port/WINDOWS_PARITY_LEDGER.md
+    tests:
+      - windows/app/OpenBurnBar.App/Shell/NavDestination.cs
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Shell/NavDestination.cs
+      - windows/app/OpenBurnBar.App/Shell/SurfacePageResolver.cs
+    owner_lane: wave-1-route-settings-parity
+    notes: "macOS primary section has no Windows peer route. Must add mapping or explicit DeferredApproved WPD before any Real claim."
+
+  - id: nav-projects
+    macos_route: projects
+    macos_capability: "DashboardMainRoute.projects — group by project"
+    windows_route: "(none — no NavCatalog key)"
+    windows_capability: "No dedicated Projects destination; Mission Control exposes KnownProjects/RecentProjects chips only"
+    status: Blocked
+    evidence:
+      - docs/windows-port/WINDOWS_PARITY_LEDGER.md
+    tests:
+      - windows/app/OpenBurnBar.App/Shell/NavDestination.cs
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Shell/NavDestination.cs
+      - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionSnapshotBuilder.cs
+    owner_lane: wave-1-route-settings-parity
+    notes: "macOS primary section missing as top-level Windows nav. Project chips inside Mission Control are not full parity."
+
+  - id: nav-budget
+    macos_route: budget
+    macos_capability: "Settings Budget + BudgetLedger product core"
+    windows_route: budget
+    windows_capability: "BudgetPage + InMemoryBudgetRuleStore / SqlCipherBudgetRuleStore"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/presentation/Budget
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Budget
+      - windows/app/OpenBurnBar.App.Presentation/Budget
+    owner_lane: wave-4-chat-budget-live
+    notes: "Portable stores exist; live cloud budget + default production composition evidence incomplete."
+
+  - id: nav-data-control-center
+    macos_route: dataPrivacy
+    macos_capability: "DataControlCenter / Settings data & privacy workbench"
+    windows_route: dataControlCenter
+    windows_capability: "DataControlCenterPage + 9 callables wired to transport seam"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/presentation
+      - windows/tests/cloudsync-app
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/DataControlCenter
+      - windows/app/OpenBurnBar.App.CloudSync/CloudSyncCallableHub.cs
+    owner_lane: wave-3-cloud-oauth-appcheck
+    notes: "Callables unit-tested via injectable transport; live authenticated + high-risk envelope WS-D / R14 blocked."
+
+  - id: nav-switcher
+    macos_route: switcher
+    macos_capability: "AccountSwitcherSettingsView"
+    windows_route: switcher
+    windows_capability: "SwitcherHostPage + SqlCipherSwitcherProfileStore (sample only in sample mode)"
+    status: Substituted
+    evidence:
+      - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
+    tests:
+      - windows/tests/presentation
+      - windows/storage/OpenBurnBar.Storage.Tests/SwitcherProfileWriteSeamRoundTripTests.cs
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Switcher
+      - windows/app/OpenBurnBar.App.Presentation/Switcher
+    owner_lane: wave-2-production-data
+    notes: "Encrypted store proven; production composition must not default to SwitcherSampleData."
+
+  - id: nav-onboarding
+    macos_route: onboarding
+    macos_capability: "Onboarding wizard (Views/Onboarding)"
+    windows_route: onboarding
+    windows_capability: "OnboardingPage portable wizard + DB config step"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/onboarding
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Onboarding
+    owner_lane: wave-2-production-data
+    notes: "Registered and tested; full first-run proof on Windows host still outstanding."
+
+  - id: nav-settings
+    macos_route: settings
+    macos_capability: "Settings shell + SettingsTab (~16 tabs) + ~40 leaves"
+    windows_route: settings
+    windows_capability: "SettingsPage + SettingsTabViewModelCatalog (11/16 VMs) + SettingsPlaceholderPage residual + DataSourceSettingsPage"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/settings
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/Settings
+      - windows/app/OpenBurnBar.App.Settings
+      - windows/app/OpenBurnBar.App.Settings.ViewModels
+    owner_lane: wave-1-route-settings-parity
+    notes: "Media tab still placeholder; several tabs DataGated on OAuth. Cannot be Real while SettingsPlaceholderPage remains on production route map."
+
+  - id: nav-elder-wand
+    macos_route: elderWand
+    macos_capability: ".gatedFeature(.elderWand) Analysis Models"
+    windows_route: elderWand
+    windows_capability: "ElderWandPage via NavCatalog.Auxiliary (palette); sample groups only in sample mode"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/presentation
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/ElderWand
+    owner_lane: wave-2-production-data
+    notes: "Reachability drift D8 accepted; live model catalog still empty without sample mode."
+
+  - id: shell-flyout
+    macos_route: flyout
+    macos_capability: "MenuBarPopoverView primary tray surface"
+    windows_route: flyout
+    windows_capability: "FlyoutWindow tray + Mica/Acrylic shell"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/presentation/Flyout
+    blocking_paths:
+      - windows/app/OpenBurnBar.App/FlyoutWindow.xaml.cs
+      - windows/app/OpenBurnBar.App.Presentation/Flyout
+    owner_lane: wave-2-production-data
+    notes: "Sample tray snapshot only when OPENBURNBAR_SAMPLE_MODE; production empty-state path required for Real."
+
+  # ── Engine / data plane ───────────────────────────────────────────────────
+
+  - id: engine-parsers-g2
+    macos_route: parsers
+    macos_capability: "15 log parsers → ParserOutputContract golden (AgentLensTests/Fixtures/ParserContract)"
+    windows_route: engine-g2
+    windows_capability: "OpenBurnBarG2ParserParity byte-diff on Windows CI (x64+ARM64)"
+    status: Real
+    evidence:
+      - docs/windows-port/evidence/engine/g2-parser-parity.md
+    tests:
+      - OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/G2ParserParity.swift
+      - AgentLensTests/Fixtures/ParserContract/parser-output-golden.json
+    blocking_paths:
+      - OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/G2ParserParity.swift
+      - docs/windows-port/evidence/engine/g2-parser-parity.md
+    owner_lane: wave-0-engine
+    notes: "PROVEN on Windows CI run 28775204323 / PR #1270. Route-resolves is irrelevant — this is contract parity."
+
+  - id: storage-sqlcipher-byte-compat
+    macos_route: storage
+    macos_capability: "GRDB + SQLCipher 53 migrations; shared DB file"
+    windows_route: storage-csharp
+    windows_capability: "windows/storage OpenBurnBar.Storage + Microsoft.Data.Sqlite + bundle_e_sqlcipher (WPD-0005 permanent)"
+    status: Real
+    evidence:
+      - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
+      - docs/windows-port/decisions/0005-windows-storage-architecture.md
+    tests:
+      - windows/storage/OpenBurnBar.Storage.Tests/DbByteCompatVectorTests.cs
+    blocking_paths:
+      - windows/storage/OpenBurnBar.Storage/OpenBurnBarStorage.cs
+      - windows/storage/OpenBurnBar.Storage/DbCompatVector.cs
+      - windows/storage/OpenBurnBar.Storage/SqlCipherConnection.cs
+      - windows/storage/OpenBurnBar.Storage/SqlCipherParameters.cs
+      - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
+    owner_lane: wave-0-storage
+    notes: "Read-path byte-compat proven. Write/migration breadth is follow-on but does not revoke Real on the proven seam."
+
+  - id: cloudvault-crypto-kat
+    macos_route: cloudvault
+    macos_capability: "CloudVaultCrypto Swift E2EE"
+    windows_route: cloudsync-crypto
+    windows_capability: "OpenBurnBar.CloudSync.Crypto KAT parity"
+    status: Real
+    evidence:
+      - docs/windows-port/evidence/cloudsync/cloudvault-kat.md
+    tests:
+      - windows/tests/cloudsync
+      - windows/cloudsync/OpenBurnBar.CloudSync.Crypto
+    blocking_paths:
+      - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs
+      - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/AesGcmBox.cs
+      - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultEnvelopes.cs
+      - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/P256KeyAgreement.cs
+      - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs
+      - docs/windows-port/evidence/cloudsync/cloudvault-kat.md
+    owner_lane: wave-0-crypto
+    notes: "Vector/KAT parity is Real. Live Windows-seal→Mac-open remains DeferredApproved (c5-e2ee-round-trip-deferral)."
+
+  - id: cloudvault-live-roundtrip
+    macos_route: cloudvault-live
+    macos_capability: "Live E2EE seal on one peer → open on the other"
+    windows_route: cloudvault-live
+    windows_capability: "Same crypto stack; live cross-machine trip not certified"
+    status: DeferredApproved
+    evidence:
+      - docs/windows-port/c5-e2ee-round-trip-deferral.md
+    tests:
+      - windows/tests/cloudsync
+    blocking_paths:
+      - docs/windows-port/c5-e2ee-round-trip-deferral.md
+    owner_lane: wave-3-cloud-oauth-appcheck
+    notes: "Alberto-signed C5 deferral. Revive: Win11 VM + Mac open proof (TONIGHT_PUNCHLIST C5)."
+
+  - id: pal-ipc-named-pipe
+    macos_route: ipc
+    macos_capability: "Unix socket + codesign peer auth"
+    windows_route: ipc-named-pipe
+    windows_capability: "Named pipe + signed-nonce handshake (design/0004)"
+    status: Real
+    evidence:
+      - docs/windows-port/evidence/pal/ipc-handshake.md
+      - docs/windows-port/design/0004-named-pipe-peer-auth.md
+    tests:
+      - windows/tests/ipc/SignedNonceHandshakeTests.cs
+    blocking_paths:
+      - windows/pal/ipc/SignedNonce.cs
+      - windows/pal/ipc/SignedNonceHandshakeVerifier.cs
+      - windows/pal/ipc/SignedNonceResponder.cs
+      - windows/pal/ipc/HandshakeTranscript.cs
+      - windows/pal/ipc/HandshakeCredentials.cs
+      - docs/windows-port/evidence/pal/ipc-handshake.md
+    owner_lane: wave-0-pal
+    notes: "Portable handshake tests green. CNG/TPM key material on real Windows is separate Blocked evidence."
+
+  - id: quota-portable-parsers
+    macos_route: quota-parsers
+    macos_capability: "ProviderQuota parsers (Claude statusline, Cursor, Codex, Anthropic headers)"
+    windows_route: quota-parsers
+    windows_capability: "OpenBurnBar.App.Presentation/Quota portable parse core"
+    status: Real
+    evidence:
+      - docs/windows-port/evidence/quota/portable-parsers.md
+    tests:
+      - windows/tests/quota/ClaudeStatuslineQuotaParserTests.cs
+      - windows/tests/quota/CursorUsageQuotaParserTests.cs
+      - windows/tests/quota/CodexUsageQuotaParserTests.cs
+      - windows/tests/quota/AnthropicRateLimitHeaderParserTests.cs
+    blocking_paths:
+      - windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs
+      - docs/windows-port/evidence/quota/portable-parsers.md
+    owner_lane: wave-0-quota
+    notes: "Parse cores only. Acquisition watchers + workspace UI are separate Substituted/Blocked rows."
+
+  # ── Cloud auth / App Check ────────────────────────────────────────────────
+
+  - id: appcheck-tpm
+    macos_route: appcheck
+    macos_capability: "Apple App Attest"
+    windows_route: appcheck-tpm
+    windows_capability: "TPM NCryptCreateClaim + mint backend; MockAttestationProducer for tests only"
+    status: Blocked
+    evidence:
+      - docs/windows-port/ALBERTO_PARITY_CHECKLIST.md
+      - docs/windows-port/TONIGHT_PUNCHLIST.md
+    tests:
+      - windows/tests/cloudsync-appcheck
+    blocking_paths:
+      - windows/cloudsync/appcheck
+    owner_lane: wave-3-cloud-oauth-appcheck
+    notes: "R14 last named kill-risk. Win11 Pro/vTPM proof required (TONIGHT_PUNCHLIST C2). MockAttestationProducer must never be production default."
+
+  - id: firebase-oauth-windows
+    macos_route: sign-in
+    macos_capability: "Firebase / Sign in with Apple + web login helpers"
+    windows_route: desktop-oauth
+    windows_capability: "DesktopOAuthLoopbackFlow built; needs Google Desktop OAuth client secrets"
+    status: Blocked
+    evidence:
+      - docs/windows-port/ALBERTO_PARITY_CHECKLIST.md
+    tests:
+      - windows/tests/cloudsync-app
+    blocking_paths:
+      - windows/app/OpenBurnBar.App.CloudSync
+    owner_lane: wave-3-cloud-oauth-appcheck
+    notes: "Alberto D4: Desktop OAuth client + Firebase Web API key. Until then no Real cloud sign-in claim."
+
+  # ── Platform substitutions / deferrals ────────────────────────────────────
+
+  - id: theme-liquid-glass
+    macos_route: liquid-glass
+    macos_capability: "LiquidGlass.swift substrates"
+    windows_route: mica-acrylic
+    windows_capability: "Mica/Acrylic + Win2D substrates (drift D1)"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PHASE3_UI_PARITY_PLAN.md
+    tests:
+      - windows/tests/theme
+    blocking_paths:
+      - windows/tests/theme
+    owner_lane: wave-5-pet-native-os
+    notes: "Accepted drift D1. 60fps ARM64 GPU spike still Blocked (WINUI-017 / C3)."
+
+  - id: particles-gpu-60fps
+    macos_route: particles
+    macos_capability: "~30 substrates KernelBackdrop at interactive fps"
+    windows_route: particles-win2d
+    windows_capability: "CPU particle port; Win2D 60fps spike pending"
+    status: Blocked
+    evidence:
+      - docs/windows-port/TONIGHT_PUNCHLIST.md
+    tests:
+      - windows/particles
+    blocking_paths:
+      - windows/particles
+    owner_lane: wave-5-pet-native-os
+    notes: "TONIGHT_PUNCHLIST C3 — needs Win11 GPU."
+
+  - id: pet-companion
+    macos_route: pets
+    macos_capability: "SceneKit/SpriteKit pet companion"
+    windows_route: pet
+    windows_capability: "Behavior core + WebView2 glTF host + overlay PAL"
+    status: Substituted
+    evidence:
+      - docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+    tests:
+      - windows/tests/pet
+    blocking_paths:
+      - windows/app/OpenBurnBar.App.Pet
+      - windows/pal/overlay
+    owner_lane: wave-5-pet-native-os
+    notes: "Behavior tests green on portable core; live Windows overlay host proof outstanding."
+
+  - id: computer-use-loop
+    macos_route: computer-use
+    macos_capability: "Full computer-use loop (Playwright, virtual HID, Agent Watch)"
+    windows_route: computer-use
+    windows_capability: "ComputerUse.Core policy + SendInput/UIA adapters"
+    status: Blocked
+    evidence:
+      - docs/windows-port/TONIGHT_PUNCHLIST.md
+    tests:
+      - windows/tests/computeruse
+      - windows/tests/input
+    blocking_paths:
+      - windows/computeruse
+      - windows/pal/input
+      - windows/pal/input-windows
+    owner_lane: wave-5-pet-native-os
+    notes: "Core tests exist; full desktop loop is TONIGHT_PUNCHLIST C4."
+
+  - id: daemon-strategy
+    macos_route: daemon
+    macos_capability: "OpenBurnBarDaemon monolithic LaunchAgent"
+    windows_route: tier-c-substitutions
+    windows_capability: "WPD-0006 per-capability substitution matrix (no monolithic port)"
+    status: DeferredApproved
+    evidence:
+      - docs/windows-port/decisions/0006-windows-daemon-strategy.md
+    tests:
+      - docs/windows-port/decisions/0006-windows-daemon-strategy.md
+    blocking_paths:
+      - docs/windows-port/decisions/0006-windows-daemon-strategy.md
+    owner_lane: wave-0-architecture
+    notes: "Decision accepted. Individual capabilities tracked on their own rows; no daemon parity claim without a matrix row."
+
+  - id: project-code-static-parser
+    macos_route: project-code-parser
+    macos_capability: "Rust project-code-static-parser helper"
+    windows_route: lexical-fallback
+    windows_capability: "Deferred Windows target; lexical fallback (WPD-0003)"
+    status: DeferredApproved
+    evidence:
+      - docs/windows-port/decisions/0003-defer-project-code-static-parser-windows.md
+    tests:
+      - docs/windows-port/decisions/0003-defer-project-code-static-parser-windows.md
+    blocking_paths:
+      - docs/windows-port/decisions/0003-defer-project-code-static-parser-windows.md
+    owner_lane: wave-0-architecture
+    notes: "WPD-0003 accepted deferral with named revive trigger."
+
+  - id: dist-msix-signed
+    macos_route: distribution
+    macos_capability: "Notarized DMG + Sparkle"
+    windows_route: msix-winget
+    windows_capability: "MSIX pipeline authored; Authenticode/Trusted Signing cert missing (W0)"
+    status: Blocked
+    evidence:
+      - docs/windows-port/ALBERTO_PARITY_CHECKLIST.md
+      - windows/dist/WINDOWS_RELEASE.md
+    tests:
+      - windows/tests/dist
+      - scripts/ci/verify-windows-release-signing-preflight.sh
+    blocking_paths:
+      - windows/packaging
+      - .github/workflows/openburnbar-release-windows.yml
+    owner_lane: wave-6-parity-ci-release-gate
+    notes: "Alberto B — signing cert. No shippable Real claim without signed install + update evidence."
+
+  - id: native-ffi-msvc
+    macos_route: native-ffi
+    macos_capability: "iroh + burnbar-remote dylibs in-process"
+    windows_route: native-shim
+    windows_capability: "OpenBurnBar.Native loader + uniffi C#; msvc loopback FFI-008 pending"
+    status: Substituted
+    evidence:
+      - docs/windows-port/decisions/0001-csharp-binding-path.md
+    tests:
+      - windows/tests/native
+    blocking_paths:
+      - windows/native
+    owner_lane: wave-5-pet-native-os
+    notes: "Shim + macOS dylib loopback landed. Windows msvc cargo loopback is TONIGHT_PUNCHLIST C6."
+
+  - id: ci-windows-full-gate
+    macos_route: ci
+    macos_capability: "macOS required CI checks"
+    windows_route: pr-windows-full
+    windows_capability: "pr-windows-full.yml real suite; not yet required on main (WS-A2)"
+    status: Blocked
+    evidence:
+      - docs/windows-port/ALBERTO_PARITY_CHECKLIST.md
+    tests:
+      - .github/workflows/pr-windows-full.yml
+      - scripts/ci/verify-windows-parity-ledger.py
+    blocking_paths:
+      - .github/workflows/pr-windows-full.yml
+      - .github/workflows/pr-windows-fast.yml
+      - scripts/ci/verify-windows-parity-ledger.py
+    owner_lane: wave-6-parity-ci-release-gate
+    notes: "Alberto E1 — make PR Windows Full Gate required. Parity ledger scanner is the Phase 0 honesty gate."
