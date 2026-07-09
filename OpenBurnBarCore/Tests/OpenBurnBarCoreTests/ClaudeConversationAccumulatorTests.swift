@@ -31,6 +31,22 @@ final class ClaudeConversationAccumulatorTests: XCTestCase {
         XCTAssertEqual(acc.fullText.utf8.count, 10)
     }
 
+    func test_overflowTailStartsAfterTruncatedUnicodeScalarsNotCharacters() {
+        let acc = ClaudeConversationAccumulator(maxFullTextBytes: 9)
+        let line: [String: Any] = [
+            "type": "user",
+            "timestamp": "2025-06-01T12:00:00Z",
+            "message": ["role": "user", "content": [["type": "text", "text": "e\u{301} API_KEY=abcdefghi"]]]
+        ]
+
+        acc.ingest(jsonLine: line)
+        acc.finalizeArrays()
+
+        XCTAssertTrue(acc.fullText.hasPrefix("## You\n\ne\n\n## Security Scan Overflow"))
+        XCTAssertTrue(acc.fullText.contains("\u{301} API_KEY=abcdefghi"))
+        XCTAssertTrue(acc.fullText.contains("Security Scan Overflow"))
+    }
+
     func test_preservesCredentialSnippetAfterFullTextCap() {
         let acc = ClaudeConversationAccumulator(maxFullTextBytes: 80)
         let fillerLine: [String: Any] = [

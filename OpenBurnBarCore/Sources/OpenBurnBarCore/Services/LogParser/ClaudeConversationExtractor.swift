@@ -192,11 +192,13 @@ public final class ClaudeConversationAccumulator {
                 let remaining = maxFullTextBytes - fullTextByteCount
                 var unappendedText = formatted
                 if remaining > 0 {
-                    let truncated = Self.truncateToUTF8Bytes(formatted, maxBytes: remaining)
-                    fullTextParts.append(truncated)
-                    fullTextByteCount += truncated.utf8.count
-                    let tailStart = formatted.index(formatted.startIndex, offsetBy: truncated.count)
-                    unappendedText = String(formatted[tailStart...])
+                    let tailStart = Self.unicodeScalarIndexAfterUTF8Prefix(formatted, maxBytes: remaining)
+                    let truncated = String(formatted.unicodeScalars[..<tailStart])
+                    if truncated.isEmpty == false {
+                        fullTextParts.append(truncated)
+                        fullTextByteCount += truncated.utf8.count
+                    }
+                    unappendedText = String(formatted.unicodeScalars[tailStart...])
                 }
                 appendCredentialOverflowSnippets(from: unappendedText)
                 fullTextCapped = true
@@ -284,18 +286,27 @@ public final class ClaudeConversationAccumulator {
     /// a multi-byte scalar. Returns a substring of the first complete scalars
     /// whose UTF8 encoding fits within the budget.
     private static func truncateToUTF8Bytes(_ string: String, maxBytes: Int) -> String {
-        guard maxBytes > 0 else { return "" }
-        if string.utf8.count <= maxBytes { return string }
+        let endIndex = unicodeScalarIndexAfterUTF8Prefix(string, maxBytes: maxBytes)
+        return String(string.unicodeScalars[..<endIndex])
+    }
+
+    private static func unicodeScalarIndexAfterUTF8Prefix(
+        _ string: String,
+        maxBytes: Int
+    ) -> String.UnicodeScalarView.Index {
+        guard maxBytes > 0 else { return string.unicodeScalars.startIndex }
+        if string.utf8.count <= maxBytes { return string.unicodeScalars.endIndex }
 
         var usedBytes = 0
-        var scalars = String.UnicodeScalarView()
-        for scalar in string.unicodeScalars {
+        var scalarIndex = string.unicodeScalars.startIndex
+        while scalarIndex < string.unicodeScalars.endIndex {
+            let scalar = string.unicodeScalars[scalarIndex]
             let scalarBytes = String(scalar).utf8.count
             guard usedBytes + scalarBytes <= maxBytes else { break }
-            scalars.append(scalar)
             usedBytes += scalarBytes
+            scalarIndex = string.unicodeScalars.index(after: scalarIndex)
         }
-        return String(scalars)
+        return scalarIndex
     }
 
     public func finalizeArrays() {
