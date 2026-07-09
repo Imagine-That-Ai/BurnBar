@@ -42,10 +42,12 @@ const clusterPrefix = "CLIAgentMissionRequestListener";
 function scanCluster() {
   if (!fs.existsSync(clusterDir)) return [];
   return fs
-    .readdirSync(clusterDir)
-    .filter((name) => name.startsWith(clusterPrefix) && name.endsWith(".swift"))
-    .map((name) => {
-      const abs = path.join(clusterDir, name);
+    .readdirSync(clusterDir, { recursive: true })
+    .map(String)
+    .filter((rel) => path.basename(rel).startsWith(clusterPrefix) && rel.endsWith(".swift"))
+    .filter((rel) => fs.statSync(path.join(clusterDir, rel)).isFile())
+    .map((rel) => {
+      const abs = path.join(clusterDir, rel);
       const lines = fs.readFileSync(abs, "utf8").split("\n").length - 1;
       return { path: path.relative(repoRoot, abs), lines };
     })

@@ -48,7 +48,8 @@ const pureTargets = [
   "BurnBarRemoteEngine",
   "OpenBurnBarCoreCAbi",
 ];
-const importPattern = /^\s*(?:@_exported\s+)?(?:@preconcurrency\s+)?import\s+(SwiftUI|AppKit)\b/;
+const importPattern =
+  /^\s*(?:(?:@_[A-Za-z0-9_]+|@[A-Za-z0-9_]+)(?:\([^)]*\))?\s+)*import\s+(?:(?:class|struct|enum|protocol|typealias|func|var|let)\s+)?(SwiftUI|AppKit)(?:\b|\.)/;
 
 function uiImports(filePath) {
   const found = new Set();
@@ -139,8 +140,10 @@ for (const target of pureTargets) {
 }
 
 if (removed.length) {
-  console.log(`\nImproved: ${removed.length} file(s) left the UI-import set — regenerate the baseline to ratchet down:`);
-  for (const p of removed) console.log(`  ${p}`);
+  failed = true;
+  console.error(`\nFAIL: ${removed.length} file(s) left the UI-import set, but the baseline was not ratcheted down.`);
+  console.error("Run scripts/debt/check-core-ui-purity-budget.sh --update and commit the updated baseline:");
+  for (const p of removed) console.error(`  ${p}`);
 }
 
 if (failed) {
