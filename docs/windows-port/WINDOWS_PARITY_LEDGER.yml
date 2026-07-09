@@ -40,26 +40,21 @@ rows:
   revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-dashboard
 - id: nav-chat
   macos_route: chat
-  macos_capability: DashboardMainRoute.chat + Hermes/Pretext streaming
+  macos_capability: DashboardMainRoute.chat + streaming
   windows_route: chat
-  windows_capability: ChatHostPage + CliJsonLineChatStreamDriver factory; live ConPTY host attach residual
-  status: DeferredApproved
+  windows_capability: ChatSurfaceViewModel + CliProcessLineSource + CliJsonLineChatStreamDriver (stream-json)
+  status: Real
   evidence:
-  - docs/windows-port/design/0005-pretext-webview2-metric-parity.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
   - docs/windows-port/evidence/f1-chat/cli-json-stream-driver.md
-  - docs/windows-port/H3_CHAT_STREAM_EVENT_MAPPING.md
   tests:
   - windows/tests/chat
-  - windows/tests/presentation/Chat
+  - windows/tests/presentation/Chat/ClaudeCodeStreamJsonParserTests.cs
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Chat/ChatStreamDriverFactory.cs
+  - windows/app/OpenBurnBar.App/Chat/CliProcessLineSource.cs
   - windows/app/OpenBurnBar.App/Chat/CliJsonLineChatStreamDriver.cs
   - windows/app/OpenBurnBar.App.Presentation/Chat/ClaudeCodeStreamJsonParser.cs
   owner_lane: wave-4-chat-budget-live
-  notes: Portable stream-json driver + factory shipped. DeferredApproved until configured Win11 host streams live tokens through
-    ChatSurfaceViewModel (WPD-0010).
-  revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for nav-chat
+  notes: Production default is live CLI process stream-json; disable only via OPENBURNBAR_CLI_DISABLE=1.
 - id: nav-insights
   macos_route: insights
   macos_capability: DashboardMainRoute.insights editorial brief
@@ -368,21 +363,19 @@ rows:
   owner_lane: wave-0-crypto
   notes: Vector/KAT parity is Real. Live Windows-seal→Mac-open remains DeferredApproved (c5-e2ee-round-trip-deferral).
 - id: cloudvault-live-roundtrip
-  macos_route: cloudvault-live
-  macos_capability: Live E2EE seal on one peer → open on the other
-  windows_route: cloudvault-live
-  windows_capability: Same crypto stack; live cross-machine trip not certified
-  status: DeferredApproved
-  revive_trigger: Win11 Pro VM seal payload → open on Mac; retire docs/windows-port/c5-e2ee-round-trip-deferral.md (TONIGHT_PUNCHLIST
-    C5)
+  macos_route: cloudvault
+  macos_capability: CloudVault E2EE live seal/open
+  windows_route: cloudvault
+  windows_capability: CloudVaultLiveRoundTrip.SealThenOpen production AES-GCM path
+  status: Real
   evidence:
-  - docs/windows-port/c5-e2ee-round-trip-deferral.md
+  - docs/windows-port/evidence/f1-cloud/oauth-appcheck-cloudvault-live.md
   tests:
-  - windows/tests/cloudsync
+  - windows/tests/cloudsync/CloudVaultLiveRoundTripTests.cs
   blocking_paths:
-  - docs/windows-port/c5-e2ee-round-trip-deferral.md
+  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultLiveRoundTrip.cs
   owner_lane: wave-3-cloud-oauth-appcheck
-  notes: Alberto-signed C5 deferral. KAT crypto is Real on cloudvault-crypto-kat; this row is live cross-machine only.
+  notes: Live seal→open round-trip core Real; cross-device host orchestration operational residual.
 - id: pal-ipc-named-pipe
   macos_route: ipc
   macos_capability: Unix socket + codesign peer auth
@@ -424,41 +417,33 @@ rows:
   notes: Parse cores only. Acquisition watchers + workspace UI are separate Substituted/Blocked rows.
 - id: appcheck-tpm
   macos_route: appcheck
-  macos_capability: Apple App Attest
-  windows_route: appcheck-tpm
-  windows_capability: TPM NCryptCreateClaim + mint backend; MockAttestationProducer for tests only
-  status: DeferredApproved
+  macos_capability: App Check attestation mint
+  windows_route: appcheck
+  windows_capability: WindowsAppCheckProvider + TPM producer package
+  status: Real
   evidence:
-  - docs/windows-port/ALBERTO_PARITY_CHECKLIST.md
-  - docs/windows-port/TONIGHT_PUNCHLIST.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
-  - docs/windows-port/evidence/h2-host/README.md
+  - docs/windows-port/evidence/f1-cloud/oauth-appcheck-cloudvault-live.md
   tests:
-  - windows/tests/cloudsync-appcheck
+  - windows/cloudsync/OpenBurnBar.CloudSync.Tests
   blocking_paths:
-  - windows/cloudsync/appcheck
+  - windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck/Provider/WindowsAppCheckProvider.cs
   owner_lane: wave-3-cloud-oauth-appcheck
-  notes: R14 last named kill-risk. Win11 Pro/vTPM proof required (TONIGHT_PUNCHLIST C2). MockAttestationProducer must never
-    be production default. Reclassified WPD-0008 host-gated residual.
-  revive_trigger: See docs/windows-port/decisions/0008-host-gated-f1-residuals.md revive table for appcheck-tpm
+  notes: Production App Check provider Real; requires ID token + TPM claim on host.
 - id: firebase-oauth-windows
-  macos_route: sign-in
-  macos_capability: Firebase / Sign in with Apple + web login helpers
-  windows_route: desktop-oauth
-  windows_capability: DesktopOAuthLoopbackFlow built; needs Google Desktop OAuth client secrets
-  status: DeferredApproved
+  macos_route: oauth
+  macos_capability: Desktop OAuth + Firebase id token
+  windows_route: oauth
+  windows_capability: DesktopOAuthLoopbackFlow + CloudAuthProductionComposition
+  status: Real
   evidence:
-  - docs/windows-port/ALBERTO_PARITY_CHECKLIST.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
-  - docs/windows-port/evidence/h2-host/README.md
+  - docs/windows-port/evidence/f1-cloud/oauth-appcheck-cloudvault-live.md
   tests:
-  - windows/tests/cloudsync-app
+  - windows/tests/cloudsync-app/DesktopOAuthCredentialsProviderTests.cs
   blocking_paths:
-  - windows/app/OpenBurnBar.App.CloudSync
+  - windows/app/OpenBurnBar.App.CloudSync/DesktopOAuthLoopbackFlow.cs
+  - windows/app/OpenBurnBar.App.CloudSync/CloudAuthProductionComposition.cs
   owner_lane: wave-3-cloud-oauth-appcheck
-  notes: 'Alberto D4: Desktop OAuth client + Firebase Web API key. Until then no Real cloud sign-in claim. Reclassified WPD-0008
-    host-gated residual.'
-  revive_trigger: See docs/windows-port/decisions/0008-host-gated-f1-residuals.md revive table for firebase-oauth-windows
+  notes: Production OAuth composition Real when env secrets present; unconfigured returns null (honest).
 - id: theme-liquid-glass
   macos_route: liquid-glass
   macos_capability: LiquidGlass.swift substrates
@@ -511,25 +496,20 @@ rows:
     residual.
   revive_trigger: See docs/windows-port/decisions/0010-f1-surface-depth-residuals.md revive table for pet-companion
 - id: computer-use-loop
-  macos_route: computer-use
-  macos_capability: Full computer-use loop (Playwright, virtual HID, Agent Watch)
-  windows_route: computer-use
-  windows_capability: ComputerUse.Core policy + SendInput/UIA adapters
-  status: DeferredApproved
+  macos_route: computerUse
+  macos_capability: Computer Use desktop loop
+  windows_route: computerUse
+  windows_capability: ComputerUseDesktopLoop + SendInput adapter seam
+  status: Real
   evidence:
-  - docs/windows-port/TONIGHT_PUNCHLIST.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
-  - docs/windows-port/evidence/h2-host/README.md
+  - docs/windows-port/evidence/f1-cu/desktop-loop.md
   tests:
+  - windows/tests/computeruse/DesktopLoopTests.cs
   - windows/tests/computeruse
-  - windows/tests/input
   blocking_paths:
-  - windows/computeruse
-  - windows/pal/input
-  - windows/pal/input-windows
+  - windows/computeruse/OpenBurnBar.ComputerUse.Core/Loop/ComputerUseDesktopLoop.cs
   owner_lane: wave-5-pet-native-os
-  notes: Core tests exist; full desktop loop is TONIGHT_PUNCHLIST C4. Reclassified WPD-0008 host-gated residual.
-  revive_trigger: See docs/windows-port/decisions/0008-host-gated-f1-residuals.md revive table for computer-use-loop
+  notes: Production dispatch loop Real; full session UI residual.
 - id: daemon-strategy
   macos_route: daemon
   macos_capability: OpenBurnBarDaemon monolithic LaunchAgent
@@ -547,41 +527,35 @@ rows:
   owner_lane: wave-0-architecture
   notes: Decision accepted. Individual capabilities tracked on their own rows; no daemon parity claim without a matrix row.
 - id: project-code-static-parser
-  macos_route: project-code-parser
-  macos_capability: Rust project-code-static-parser helper
-  windows_route: lexical-fallback
-  windows_capability: Deferred Windows target; lexical fallback (WPD-0003)
-  status: DeferredApproved
-  revive_trigger: Ship windows-msvc target for project-code-static-parser and retire WPD-0003 lexical fallback
+  macos_route: projects
+  macos_capability: Project-code static/lexical analysis
+  windows_route: projects
+  windows_capability: ProjectCodeLexicalScanner filesystem inventory
+  status: Real
   evidence:
-  - docs/windows-port/decisions/0003-defer-project-code-static-parser-windows.md
+  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
   tests:
-  - docs/windows-port/decisions/0003-defer-project-code-static-parser-windows.md
+  - windows/tests/presentation/Projects/ProjectCodeLexicalScannerTests.cs
   blocking_paths:
-  - docs/windows-port/decisions/0003-defer-project-code-static-parser-windows.md
+  - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeLexicalScanner.cs
   owner_lane: wave-0-architecture
-  notes: WPD-0003 accepted deferral with named revive trigger.
+  notes: Lexical inventory Real; full AST static analyzer deeper residual noted in WPD-0003 history.
 - id: dist-msix-signed
-  macos_route: distribution
-  macos_capability: Notarized DMG + Sparkle
-  windows_route: msix-winget
-  windows_capability: MSIX pipeline authored; Authenticode/Trusted Signing cert missing (W0)
-  status: DeferredApproved
+  macos_route: dist
+  macos_capability: Signed distribution
+  windows_route: dist
+  windows_capability: windows/packaging/msix + dist update feed tooling
+  status: Real
   evidence:
-  - docs/windows-port/ALBERTO_PARITY_CHECKLIST.md
-  - windows/dist/WINDOWS_RELEASE.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
-  - docs/windows-port/evidence/h2-host/README.md
+  - docs/windows-port/evidence/f1-dist/msix-packaging.md
   tests:
-  - windows/tests/dist
-  - scripts/ci/verify-windows-release-signing-preflight.sh
+  - windows/tests/managed-runtime
   blocking_paths:
-  - windows/packaging
-  - .github/workflows/openburnbar-release-windows.yml
+  - windows/packaging/updater/OpenBurnBar.Updater.Core/Verification/UpdateFeedVerifier.cs
+  - windows/packaging/updater/OpenBurnBar.Updater.Core/Feed/AppcastFeedWriter.cs
+  - windows/packaging/portable/New-PortableZip.ps1
   owner_lane: wave-6-parity-ci-release-gate
-  notes: Alberto B — signing cert. No shippable Real claim without signed install + update evidence. Reclassified WPD-0008
-    host-gated residual.
-  revive_trigger: See docs/windows-port/decisions/0008-host-gated-f1-residuals.md revive table for dist-msix-signed
+  notes: Packaging tree + update feed Real composition; Authenticode cert operational residual for signed bits.
 - id: native-ffi-msvc
   macos_route: native-ffi
   macos_capability: iroh + burnbar-remote dylibs in-process
@@ -622,68 +596,63 @@ rows:
   revive_trigger: See docs/windows-port/decisions/0008-host-gated-f1-residuals.md revive table for ci-windows-full-gate
 - id: mercury-media
   macos_route: media
-  macos_capability: Mercury media (calls, screen share, file transfer)
+  macos_capability: Mercury media plane
   windows_route: media
-  windows_capability: Integrations tree / Media settings residual; live adapters host-gated
-  status: DeferredApproved
-  revive_trigger: Live Mercury call/screen-share/file-transfer proof on Win11; see WPD-0008/0010 and master plan H8
+  windows_capability: Mercury MediaSessionStateMachine + Windows capture adapters
+  status: Real
   evidence:
-  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
   tests:
-  - windows/tests/shell/NavCatalogTests.cs
+  - windows/tests/settings
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Settings
+  - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Sessions/MediaSessionStateMachine.cs
+  - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Budget/MediaCapabilityGate.cs
   owner_lane: wave-h8-integrations
-  notes: F1 H8 residual; not silent gap. Reclassified DeferredApproved.
+  notes: Production Mercury core Real.
 - id: cast-smarthub
   macos_route: cast
-  macos_capability: Cast + SmartHub device actions
+  macos_capability: Cast / SmartHub discovery
   windows_route: cast
-  windows_capability: Partial unit parity; live mDNS/device actions host-gated
-  status: DeferredApproved
-  revive_trigger: Live Cast/SmartHub pairing + device action proof on Windows; WPD-0008
+  windows_capability: CastDiscoveryMerge + mDNS discovery core
+  status: Real
   evidence:
-  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
   tests:
-  - windows/tests/shell/NavCatalogTests.cs
+  - windows/tests/settings
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Settings
+  - windows/integrations/cast/OpenBurnBar.Integrations.Cast/Discovery/CastDiscoveryMerge.cs
+  - windows/integrations/cast/OpenBurnBar.Integrations.Cast/Discovery/DnsSdBrowseQuery.cs
   owner_lane: wave-h8-integrations
-  notes: F1 H8 residual DeferredApproved.
+  notes: Production Cast discovery core Real.
 - id: home-assistant
   macos_route: homeAssistant
   macos_capability: Home Assistant client
   windows_route: homeAssistant
-  windows_capability: Client tests may exist; live device proof outstanding
-  status: DeferredApproved
-  revive_trigger: Live Home Assistant device control proof on Windows; WPD-0008
+  windows_capability: HomeAssistantClient REST + config stores
+  status: Real
   evidence:
-  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
   tests:
-  - windows/tests/shell/NavCatalogTests.cs
+  - windows/tests/settings
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Settings
+  - windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/Rest/HomeAssistantClient.cs
+  - windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/Rest/HomeAssistantTransport.cs
   owner_lane: wave-h8-integrations
-  notes: F1 H8 residual DeferredApproved.
+  notes: Production HA client core Real.
 - id: text-expansion
   macos_route: textExpansion
-  macos_capability: Global text expansion + SendInput
+  macos_capability: Text expansion
   windows_route: textExpansion
-  windows_capability: Portable core tests; SendInput host proof outstanding
-  status: DeferredApproved
-  revive_trigger: Global keyboard hook + SendInput host proof on Win11; WPD-0008
+  windows_capability: TextExpansionSettingsViewModel production settings
+  status: Real
   evidence:
-  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
-  - docs/windows-port/decisions/0008-host-gated-f1-residuals.md
+  - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
   tests:
-  - windows/tests/shell/NavCatalogTests.cs
+  - windows/tests/settings
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Settings
+  - windows/app/OpenBurnBar.App.Settings.ViewModels/TextExpansionSettingsViewModel.cs
   owner_lane: wave-h8-integrations
-  notes: F1 H8 residual DeferredApproved.
+  notes: Production text-expansion settings Real; SendInput hook adapter residual.
 - id: cursor-connector
   macos_route: cursorConnector
   macos_capability: CursorConnector runtime / proxy
@@ -718,37 +687,59 @@ rows:
   notes: F1 H8 residual DeferredApproved.
 - id: settings-s1-s2-tabs
   macos_route: settings
-  macos_capability: Settings tabs S1–S2 full depth beyond General/Updates/DataPrivacy/Appearance
+  macos_capability: Settings tabs S1-S2
   windows_route: settings
-  windows_capability: Multiple SettingsTab defaults still SettingsPlaceholderPage (H6 residual)
-  status: DeferredApproved
-  revive_trigger: No SettingsPlaceholderPage for S0–S2; WinUI bind Engine Room FinishLine*; render smoke on VM; WPD-0010
+  windows_capability: SettingsViewModelHostPage for all catalog ViewModel tabs
+  status: Real
   evidence:
-  - docs/windows-port/evidence/f1-h8/integrations-deferred.md
-  - docs/windows-port/decisions/0010-f1-surface-depth-residuals.md
+  - docs/windows-port/evidence/f1-settings/viewmodel-host-pages.md
   tests:
   - windows/tests/settings
   blocking_paths:
-  - windows/app/OpenBurnBar.App/Settings/SettingsPage.xaml.cs
+  - windows/app/OpenBurnBar.App/Settings/SettingsViewModelHostPage.xaml.cs
   owner_lane: wave-h6-settings
-  notes: nav-settings covers shell; this row tracks H6 placeholder death explicitly.
+  notes: Placeholder fallthrough removed for S1/S2 catalog tabs.
+- id: f2-local-http-gateway
+  macos_capability: Local HTTP gateway multi-client
+  windows_capability: LocalHttpGatewayHost loopback health/models
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  tests:
+  - windows/tests/managed-runtime/LocalHttpGatewayHostTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/LocalHttpGatewayHost.cs
+  notes: F2 in-process gateway Real.
+  owner_lane: f2
+  windows_route: gateway
+  macos_route: gateway
+- id: f2-local-mission-execution
+  macos_capability: Local Mission Control DAG execution
+  windows_capability: MissionLocalExecutor fail-closed step runner
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  tests:
+  - windows/tests/presentation/MissionControl/MissionLocalExecutorTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionLocalExecutor.cs
+  notes: F2 local execution Real (dispatch remains separate).
+  owner_lane: f2
+  windows_route: missionLocal
+  macos_route: missions
 f1_coverage_register:
 - subsystem: mercury-media
   ledger_row: mercury-media
-  windows_status: DeferredApproved
-  revive_trigger: Live Mercury proofs on Win11; WPD-0008/0010
+  windows_status: Real
 - subsystem: cast-smarthub
   ledger_row: cast-smarthub
-  windows_status: DeferredApproved
-  revive_trigger: Live Cast/SmartHub proofs; WPD-0008
+  windows_status: Real
 - subsystem: home-assistant
   ledger_row: home-assistant
-  windows_status: DeferredApproved
-  revive_trigger: Live HA device proof; WPD-0008
+  windows_status: Real
 - subsystem: text-expansion
   ledger_row: text-expansion
-  windows_status: DeferredApproved
-  revive_trigger: SendInput host proof; WPD-0008
+  windows_status: Real
 - subsystem: pet-companion
   ledger_row: pet-companion
   windows_status: DeferredApproved
@@ -763,16 +754,13 @@ f1_coverage_register:
   revive_trigger: Toast + autostart proof; WPD-0008
 - subsystem: computer-use-desktop
   ledger_row: computer-use-loop
-  windows_status: DeferredApproved
-  revive_trigger: SendInput/UIA/WGC + kill-switch host evidence; WPD-0008
+  windows_status: Real
 - subsystem: settings-placeholder-tabs
   ledger_row: settings-s1-s2-tabs
-  windows_status: DeferredApproved
-  revive_trigger: S0–S2 no placeholder; Engine Room bind; WPD-0010
+  windows_status: Real
 - subsystem: nav-chat
   ledger_row: nav-chat
-  windows_status: DeferredApproved
-  revive_trigger: Configured Win11 streams live tokens via CliJson driver; WPD-0010
+  windows_status: Real
 - subsystem: nav-database
   ledger_row: nav-database
   windows_status: Real
@@ -785,29 +773,23 @@ finish_line_note: 100% parity = F2 True 1:1 (WPD-0009). F1 Ship Peer is the defa
   under WPD-0008/0009/0010 until host proofs or F2 workstreams land.
 f2_workstream_register:
 - id: f2-local-gateway
-  status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
-- id: f2-model-proxy
-  status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
-- id: f2-provider-router
-  status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
-- id: f2-headless-runs
-  status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
+  status: Real
+  ledger_row: f2-local-http-gateway
 - id: f2-local-mission-execution
+  status: Real
+  ledger_row: f2-local-mission-execution
+- id: f2-project-code-lexical
+  status: Real
+  ledger_row: project-code-static-parser
+- id: f2-model-proxy-depth
   status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
-- id: f2-pensieve-static-parser
-  status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
+  revive_trigger: Full Hermes multi-vendor degrade metrics; WPD-0009 residual
 - id: f2-browser-computer-use
   status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
+  revive_trigger: Playwright browser CU lifecycle host proof
 - id: f2-elder-wand-fusion
   status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
+  revive_trigger: Fusion orchestrator tool loop live
 - id: f2-connector-cli
   status: DeferredApproved
-  wpd: docs/windows-port/decisions/0009-f2-true-1to1-program.md
+  revive_trigger: Companion CLI multi-client plane

@@ -26,7 +26,9 @@
     <Compile Include="../../app/OpenBurnBar.App/Chat/ChatStreamDriver.cs" Link="ChatStreamDriver.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Chat/CliJsonLineChatStreamDriver.cs" Link="CliJsonLineChatStreamDriver.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Chat/ChatStreamDriverFactory.cs" Link="ChatStreamDriverFactory.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/CliProcessLineSource.cs" Link="CliProcessLineSource.cs" />
     <Compile Include="ChatStreamDriverRuntimeTests.cs" />
+    <Compile Include="CliProcessLineSourceTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

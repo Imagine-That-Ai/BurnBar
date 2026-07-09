@@ -101,29 +101,13 @@ public sealed class ChatStreamDriverRuntimeTests
     }
 
     [Fact]
-    public void Factory_Unconfigured_UsesUnavailable()
+    public void Factory_ProductionDefault_UsesCliJsonDriver()
     {
         try
         {
             Environment.SetEnvironmentVariable(SampleEnv, null);
+            Environment.SetEnvironmentVariable(ChatStreamDriverFactory.CliDisableEnv, null);
             Environment.SetEnvironmentVariable(CliEnv, null);
-            IChatStreamDriver driver = ChatStreamDriverFactory.CreateDefault();
-            Assert.IsType<UnavailableChatStreamDriver>(driver);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
-            Environment.SetEnvironmentVariable(CliEnv, null);
-        }
-    }
-
-    [Fact]
-    public void Factory_ConfiguredCli_UsesCliJsonDriver()
-    {
-        try
-        {
-            Environment.SetEnvironmentVariable(SampleEnv, null);
-            Environment.SetEnvironmentVariable(CliEnv, "claude --output-format stream-json");
             IChatStreamDriver driver = ChatStreamDriverFactory.CreateDefault();
             Assert.IsType<CliJsonLineChatStreamDriver>(driver);
             Assert.True(ChatStreamDriverFactory.IsCliConfigured());
@@ -131,7 +115,26 @@ public sealed class ChatStreamDriverRuntimeTests
         finally
         {
             Environment.SetEnvironmentVariable(SampleEnv, null);
+            Environment.SetEnvironmentVariable(ChatStreamDriverFactory.CliDisableEnv, null);
             Environment.SetEnvironmentVariable(CliEnv, null);
+        }
+    }
+
+    [Fact]
+    public void Factory_CliDisabled_UsesUnavailable()
+    {
+        try
+        {
+            Environment.SetEnvironmentVariable(SampleEnv, null);
+            Environment.SetEnvironmentVariable(ChatStreamDriverFactory.CliDisableEnv, "1");
+            IChatStreamDriver driver = ChatStreamDriverFactory.CreateDefault();
+            Assert.IsType<UnavailableChatStreamDriver>(driver);
+            Assert.False(ChatStreamDriverFactory.IsCliConfigured());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(SampleEnv, null);
+            Environment.SetEnvironmentVariable(ChatStreamDriverFactory.CliDisableEnv, null);
         }
     }
 }

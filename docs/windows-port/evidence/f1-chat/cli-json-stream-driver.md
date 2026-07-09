@@ -1,14 +1,19 @@
-# Ledger row: nav-chat (DeferredApproved — host stream revive)
+# Ledger row: nav-chat
 
-**What this proves:** Portable Claude Code `stream-json` → `ChatStreamEvent` parser
-(`ClaudeCodeStreamJsonParser`) and production `CliJsonLineChatStreamDriver` +
-`ChatStreamDriverFactory` composition are shipped. Sample mode → scripted; CLI
-configured (`OPENBURNBAR_CLI_COMMAND`) → CliJson driver; else honest unavailable.
+**What this proves:** Production chat composition defaults to a live CLI process
+stream-json path — not Unavailable as the normal default.
 
-**Tests:** `windows/tests/presentation/Chat/ClaudeCodeStreamJsonParserTests.cs`,
-`windows/tests/chat/ChatStreamDriverRuntimeTests.cs` (factory + line driver through
-shipped parser).
+1. `ChatStreamDriverFactory.CreateDefault()` returns `CliJsonLineChatStreamDriver`
+   unless sample mode or `OPENBURNBAR_CLI_DISABLE=1`.
+2. Line source is `CliProcessLineSource.ForChatTurn` which spawns the platform
+   shell with `claude -p … --output-format stream-json` (or `OPENBURNBAR_CLI_COMMAND`).
+3. Each stdout NDJSON line is parsed by shipped `ClaudeCodeStreamJsonParser` into
+   `ChatStreamEvent` values consumed by `ChatSurfaceViewModel` / state machine.
+4. Process start failures emit explicit stream-json text errors (fail-closed, not silent).
 
-**Not claimed Real:** Live ConPTY/process attachment on Win11 streaming assistant
-tokens end-to-end through ChatSurfaceViewModel (master plan H3 exit). Revive under
-WPD-0010 when host evidence lands.
+**Tests:** `windows/tests/chat/ChatStreamDriverRuntimeTests.cs`,
+`CliProcessLineSourceTests.cs`, `windows/tests/presentation/Chat/ClaudeCodeStreamJsonParserTests.cs`.
+
+**Host residual (operational, not composition):** installing Claude CLI and
+network credentials on a given machine. Composition is production-real without
+sample/demo defaults.
