@@ -112,14 +112,25 @@ function MercuryIdle() {
 }
 
 function assistantLogoSrc(message: ChatMessage): string | null {
+  // Hermes route always uses the Hermes mark (including via-Hermes gateway turns).
   if (message.viaHermes) return '/provider-logos/hermes.png';
-  // Prefer explicit provider when present on the message; fall back to hermes-neutral.
-  const provider = (message as { provider?: string }).provider?.toLowerCase();
-  if (provider?.includes('codex') || provider?.includes('openai')) return '/provider-logos/codex.png';
-  if (provider?.includes('claude') || provider?.includes('anthropic')) {
+
+  const provider = message.provider?.toLowerCase() ?? '';
+  if (provider.includes('hermes') || provider.includes('openclaw')) {
+    return '/provider-logos/hermes.png';
+  }
+  if (provider.includes('codex') || provider.includes('openai')) {
+    return '/provider-logos/codex.png';
+  }
+  if (provider.includes('claude') || provider.includes('anthropic')) {
     return '/provider-logos/claude-code.png';
   }
-  return '/provider-logos/hermes.png';
+  if (provider.includes('cursor')) return '/provider-logos/cursor.png';
+  if (provider.includes('factory') || provider.includes('droid')) {
+    return '/provider-logos/factory.png';
+  }
+  // Unknown / missing provider: no logo — never impersonate Hermes.
+  return null;
 }
 
 type MessageStreamProps = {

@@ -22,6 +22,8 @@ export type ChatMessage = {
   toolArgsSummary?: string;
   toolState?: 'proposed' | 'approved' | 'denied' | 'done' | 'running';
   viaHermes?: boolean;
+  /** Indexed/live session provider id when known (codex, claude-code, hermes, …). */
+  provider?: string;
   memoryCitations?: MemoryCitation[];
 };
 
@@ -107,6 +109,7 @@ function messagesForSession(session: SessionEntry, fixtureMode: boolean): ChatMe
       ? 'Pulled indexed excerpts for this thread and drafted a concise answer from your recent provider spend and session metadata.'
       : `Indexed session · ${session.provider} / ${session.model} · ${started} · ${session.tokens.toLocaleString()} tokens · $${session.costUsd.toFixed(2)}. Full transcript replay ships when the daemon exposes thread messages on this bridge.`,
     viaHermes: fixtureMode || session.provider === 'hermes' || session.provider === 'openclaw',
+    provider: session.provider,
     memoryCitations: fixtureMode
       ? [
           { id: 'mem-1', label: 'BurnBar memory · quota pacing', messageId: `${session.id}-assistant` },
@@ -419,7 +422,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     const { fixtureMode, bridge } = useShellStore.getState();
     const user: ChatMessage = { id: newId('user'), role: 'user', text: prompt };
     const assistantId = newId('assistant');
-    const assistant: ChatMessage = { id: assistantId, role: 'assistant', text: '', viaHermes: true };
+    const backend = get().backend;
+    const assistant: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      text: '',
+      viaHermes: backend === 'hermes',
+      provider: backend === 'cli' ? undefined : backend
+    };
     const controller = new AbortController();
     const outboundHistory = [
       ...get()
