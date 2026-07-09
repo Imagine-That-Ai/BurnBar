@@ -36,7 +36,20 @@ public sealed class ThemeService
     public ThemeService(AppStatePersistence persistence)
     {
         _persistence = persistence;
-        _mode = AppearanceModeExtensions.ParseOrSystem(persistence.State.AppearanceMode);
+        // First-run / empty preference: lock Dark so the shell matches macOS Pensieve
+        // instead of light Fluent. Explicit "system"/"light"/"dark" still parse as chosen.
+        string? rawMode = persistence.State.AppearanceMode;
+        if (string.IsNullOrWhiteSpace(rawMode))
+        {
+            _mode = AppearanceMode.Dark;
+            _persistence.State.AppearanceMode = "dark";
+            _persistence.Save();
+        }
+        else
+        {
+            _mode = AppearanceModeExtensions.ParseOrSystem(rawMode);
+        }
+
         _reduceTransparencyOverride = persistence.State.ReduceTransparency;
         // Glass transparency / content-surfaces changes re-apply window backdrops.
         LiquidGlassEnvironment.PreferencesChanged += (_, _) => ApplyToAll();
@@ -133,13 +146,13 @@ public sealed class ThemeService
 
     private void Apply(Window window)
     {
-        // 1. Element theme (light/dark/system) on the window's content root.
+        // 1. Element theme on the window content root (Dark by default for Pensieve parity).
         if (window.Content is FrameworkElement root)
         {
             root.RequestedTheme = _mode.ToElementTheme();
         }
 
-        // 2. Backdrop on/off: allowed by the mode AND not reduced-transparency.
+        // 2. Backdrop through the Liquid Glass chokepoint when allowed.
         var backdropEnabled = _mode.AllowsBackdrop() && !EffectiveReduceTransparency;
         WindowChrome.ApplyBackdrop(window, backdropEnabled);
     }

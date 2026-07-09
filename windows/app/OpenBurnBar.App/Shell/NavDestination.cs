@@ -58,7 +58,7 @@ public static class NavCatalog
         new("memory",            "Memory",             "Review what OpenBurnBar learned", "\uEA37"),
         new("missionControl",    "Mission Control",    "Active runs & tasks",             "\uE7C1"),
         new("budget",            "Budget",             "Spend rules & limits",            "\uE8C7"),
-        new("dataControlCenter", "Data Control Center","Local & synced data",             "\uE964"),
+        new("dataControlCenter", "Data & Privacy",     "Govern every data domain",        "\uE964"),
         new("switcher",          "Switcher",           "Accounts & sign-in",              "\uE748"),
         new("onboarding",        "Onboarding",         "First-run setup",                 "\uE897"),
         new("settings",          "Settings",           "Preferences & configuration",     "\uE713", isFooter: true),

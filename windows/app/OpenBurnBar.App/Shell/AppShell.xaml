@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  AppShell — the WinUI 3 NavigationView app frame (Phase 3 W6-SHELL).
-
-  Liquid Glass chrome: transparent NavigationView so Mica/Acrylic shows through the
-  pane; header is a liquid-glass toolbar; command palette + appearance use interactive
-  / circle glass buttons. Destinations are populated in code-behind so NavCatalog
-  stays the single source of truth.
+  AppShell — WinUI NavigationView frame (macOS NavigationSplitView analogue).
+  Dark Pensieve + Liquid Glass chrome: translucent pane, glass header toolbar,
+  interactive Search + circle Appearance. Content frame stays transparent so
+  page/kernel/Mica layers show through.
 -->
 <UserControl
     x:Class="OpenBurnBar.App.Shell.AppShell"
@@ -14,7 +12,8 @@
     xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    RequestedTheme="Dark">
 
     <NavigationView x:Name="Nav"
                     Background="Transparent"
@@ -22,12 +21,13 @@
                     IsSettingsVisible="False"
                     PaneDisplayMode="Left"
                     OpenPaneLength="240"
+                    IsPaneToggleButtonVisible="True"
                     SelectionChanged="Nav_SelectionChanged">
 
         <NavigationView.Header>
             <Border Style="{StaticResource LiquidGlassToolbarStyle}"
                     theme:LiquidGlass.Surface="True"
-                    Margin="0,0,0,4">
+                    Margin="0,0,0,6">
                 <theme:LiquidGlassGroup>
                     <Grid ColumnSpacing="8" Padding="4,2,4,2">
                         <Grid.ColumnDefinitions>
@@ -43,25 +43,30 @@
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource PensieveColorTextBrightBrush}" />
 
-                        <!-- Command Palette entry (Ctrl+K). -->
                         <Button Grid.Column="1"
                                 Style="{StaticResource LiquidGlassInteractiveStyle}"
                                 theme:LiquidGlass.Interactive="True"
                                 Click="Palette_Click"
                                 ToolTipService.ToolTip="Command palette (Ctrl+K)">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE721;" />
-                                <TextBlock Text="Search" />
-                                <TextBlock Text="Ctrl K" Opacity="0.55" FontSize="11" VerticalAlignment="Center" />
+                                <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE721;"
+                                          Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                <TextBlock Text="Search"
+                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                <TextBlock Text="Ctrl K"
+                                           Opacity="0.55"
+                                           FontSize="11"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
                             </StackPanel>
                         </Button>
 
-                        <!-- Appearance flyout (theme/appearance-mode plumbing). -->
                         <Button Grid.Column="2"
                                 Style="{StaticResource LiquidGlassCircleButtonStyle}"
                                 theme:LiquidGlass.CircleButtonDiameter="30"
                                 ToolTipService.ToolTip="Appearance">
-                            <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;" />
+                            <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;"
+                                      Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                             <Button.Flyout>
                                 <Flyout x:Name="AppearanceFlyout" Opening="AppearanceFlyout_Opening">
                                     <theme:AppearanceModeControl x:Name="AppearanceControl" MinWidth="300" />
@@ -73,7 +78,6 @@
             </Border>
         </NavigationView.Header>
 
-        <!-- Transparent content frame so page backdrops (kernel / mica) composite. -->
         <Frame x:Name="ContentFrame" Background="Transparent" />
     </NavigationView>
 </UserControl>
