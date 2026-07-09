@@ -34,4 +34,13 @@ public sealed class KernelBackdropSelectionTests
         Assert.Equal(DashboardBackdropLayer.Win2D,
             KernelBackdropSelection.Resolve(true, true, hostReady: false, hostFailed: true, win2DAvailable: true));
     }
+
+    [Fact]
+    public void ShouldShowHelpers_MatchResolve()
+    {
+        Assert.True(KernelBackdropSelection.ShouldShowKernel(true, true, true, false, true));
+        Assert.False(KernelBackdropSelection.ShouldShowWin2D(true, true, true, false, true));
+        Assert.False(KernelBackdropSelection.ShouldShowKernel(true, true, false, false, true));
+        Assert.True(KernelBackdropSelection.ShouldShowWin2D(true, true, false, false, true));
+    }
 }

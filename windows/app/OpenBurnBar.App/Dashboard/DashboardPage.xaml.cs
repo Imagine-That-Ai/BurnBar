@@ -119,28 +119,15 @@ public sealed partial class DashboardPage : Page
 
     private void ApplyBackdropLayers()
     {
-        DashboardBackdropLayer layer = KernelBackdropSelection.Resolve(
-            kernelEnabled: _kernelEnabled,
-            webView2Capable: _webView2Capable && _kernel is not null,
-            hostReady: HostReady,
-            hostFailed: HostFailed,
-            win2DAvailable: _backdrop is not null);
+        bool capable = _webView2Capable && _kernel is not null;
+        bool showKernel = KernelBackdropSelection.ShouldShowKernel(
+            _kernelEnabled, capable, HostReady, HostFailed, _backdrop is not null);
+        bool showWin2D = KernelBackdropSelection.ShouldShowWin2D(
+            _kernelEnabled, capable, HostReady, HostFailed, _backdrop is not null);
 
-        KernelHost.Visibility = layer == DashboardBackdropLayer.Kernel
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        BackdropHost.Visibility = layer == DashboardBackdropLayer.Win2D
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
-        if (layer == DashboardBackdropLayer.Kernel)
-        {
-            _kernel?.SetBackdropActive(true);
-        }
-        else
-        {
-            _kernel?.SetBackdropActive(false);
-        }
+        KernelHost.Visibility = showKernel ? Visibility.Visible : Visibility.Collapsed;
+        BackdropHost.Visibility = showWin2D ? Visibility.Visible : Visibility.Collapsed;
+        _kernel?.SetBackdropActive(showKernel);
     }
 
     private void OnKernelReady(object? sender, EventArgs e) => ApplyBackdropLayers();
