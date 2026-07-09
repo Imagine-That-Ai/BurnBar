@@ -29,6 +29,8 @@
 
   <ItemGroup>
     <Compile Include="../../app/OpenBurnBar.App/Insights/CloudSyncInsightSource.cs" Link="CloudSyncInsightSource.cs" />
+    <!-- Install(summary) only — DefaultLoad pulls WinUI DashboardUsageProvider and is not linked. -->
+    <Compile Include="../../app/OpenBurnBar.App/Insights/InsightsProductionComposition.cs" Link="InsightsProductionComposition.cs" />
     <Compile Include="CloudSyncInsightSourceRuntimeTests.cs" />
   </ItemGroup>
 

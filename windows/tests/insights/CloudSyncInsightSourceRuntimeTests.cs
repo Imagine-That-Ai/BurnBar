@@ -259,14 +259,46 @@ public sealed class CloudSyncInsightSourceRuntimeTests
         try
         {
             ClearSampleMode();
-            InsightsBuiltInTemplates.SampleFallbackEnabled = RuntimeDataMode.SampleModeEnabled;
             var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
-            InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
-                CloudSyncInsightSource.Resolve(kind, seed, empty);
+            InsightsProductionComposition.Install(empty);
 
             InsightCanvas canvas = InsightsBuiltInTemplates.Find("cost-audit-7d")!.Instantiate();
             Assert.All(canvas.Widgets, w => Assert.IsType<EmptyData>(w.Data));
             Assert.DoesNotContain(canvas.Widgets, w => w.Data is RankingData or KpiData or TimeSeriesData);
+        }
+        finally
+        {
+            InsightsBuiltInTemplates.RealDataResolver = null;
+            InsightsBuiltInTemplates.SampleFallbackEnabled = false;
+            ClearSampleMode();
+        }
+    }
+
+    [Fact]
+    public void Composition_ReinstallWithLiveSummary_UpdatesStampedKpis()
+    {
+        // Guards the audit fix: stamp must not freeze the first empty snapshot forever.
+        try
+        {
+            ClearSampleMode();
+            var empty = new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
+            InsightsProductionComposition.Install(empty);
+            InsightCanvas emptyCanvas = InsightsBuiltInTemplates.Find("today")!.Instantiate();
+            Assert.Contains(emptyCanvas.Widgets, w => w.Kind == InsightWidgetKind.KpiTile && w.Data is EmptyData);
+
+            var live = new DashboardUsageSummary(
+                SpendThisMonthUsd: 42.5,
+                TotalTokens: 1000,
+                SessionCount: 7,
+                HasData: true,
+                Origin: DashboardUsageOrigin.Local);
+            InsightsProductionComposition.Install(live);
+            InsightCanvas liveCanvas = InsightsBuiltInTemplates.Find("today")!.Instantiate();
+
+            KpiData cost = Assert.IsType<KpiData>(
+                liveCanvas.Widgets.First(w => w.Title == "Cost").Data);
+            Assert.Equal(42.5, cost.Value);
+            Assert.False(CloudSyncInsightSource.ShowsSamplePreviewChip(live));
         }
         finally
         {

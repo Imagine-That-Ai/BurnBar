@@ -3,7 +3,7 @@
   SurfaceStubPage — (1) unknown destination keys, and (2) intentional IA-1 deferred
   disclosure for database/projects until depth pages land (SurfaceRouteMap).
 
-  Not a fake Real surface: shows destination title/subtitle only.
+  Not a fake Real surface: honest deferred / unknown chrome only.
 -->
 <Page
     x:Class="OpenBurnBar.App.Shell.SurfaceStubPage"
@@ -17,35 +17,47 @@
 
     <Grid Padding="24" Background="Transparent">
         <Border x:Name="PlaceholderCard"
-                MaxWidth="520"
-                Padding="28"
+                MaxWidth="560"
+                Padding="32"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Style="{StaticResource LiquidGlassSurfaceStyle}"
                 theme:LiquidGlass.Surface="True">
-            <StackPanel Spacing="12" HorizontalAlignment="Center">
+            <StackPanel Spacing="14" HorizontalAlignment="Stretch">
                 <FontIcon x:Name="Glyph"
                           FontFamily="Segoe MDL2 Assets"
-                          FontSize="34"
+                          FontSize="36"
+                          HorizontalAlignment="Center"
                           Foreground="{StaticResource OBBAccentBrush}" />
                 <TextBlock x:Name="TitleText"
                            HorizontalAlignment="Center"
                            FontSize="22"
                            FontWeight="SemiBold"
+                           TextAlignment="Center"
                            Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                 <TextBlock x:Name="SubtitleText"
                            HorizontalAlignment="Center"
-                           Opacity="0.7"
+                           Opacity="0.75"
                            TextWrapping="Wrap"
                            TextAlignment="Center"
                            Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                <Border Style="{StaticResource LiquidGlassPillStyle}"
+                <Border x:Name="StatusPill"
+                        Style="{StaticResource LiquidGlassPillStyle}"
                         theme:LiquidGlass.Surface="True"
-                        HorizontalAlignment="Center">
-                    <TextBlock Text="Windows parity · stub surface"
+                        HorizontalAlignment="Center"
+                        Margin="0,4,0,0">
+                    <TextBlock x:Name="StatusPillText"
                                FontSize="11"
-                               Opacity="0.6" />
+                               Opacity="0.75" />
                 </Border>
+                <TextBlock x:Name="NextStepText"
+                           Margin="0,4,0,0"
+                           HorizontalAlignment="Center"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                           Opacity="0.9" />
             </StackPanel>
         </Border>
     </Grid>

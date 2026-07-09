@@ -1,9 +1,8 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using OpenBurnBar.App.Configuration;
-using OpenBurnBar.App.Presentation.Insights;
 using OpenBurnBar.App.Presentation.Dashboard;
+using OpenBurnBar.App.Presentation.Insights;
 
 namespace OpenBurnBar.App.Insights;
 
@@ -14,27 +13,28 @@ namespace OpenBurnBar.App.Insights;
 /// </summary>
 public sealed partial class InsightsPage : Page
 {
-    private readonly Lazy<DashboardUsageSummary> _dashboardSummary;
-
     public InsightsPage()
     {
         // Install before InitializeComponent(): the XAML tree constructs TemplateGalleryView,
         // and its constructor materializes InsightsBuiltInTemplates.All immediately.
-        // Production default is honest empty data; sample series only when opt-in and no live data.
-        InsightsBuiltInTemplates.SampleFallbackEnabled = RuntimeDataMode.SampleModeEnabled;
-        _dashboardSummary = new Lazy<DashboardUsageSummary>(
-            OpenBurnBar.App.Dashboard.DashboardUsageProvider.Load);
-        InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
-            CloudSyncInsightSource.Resolve(kind, seed, _dashboardSummary.Value);
+        InsightsProductionComposition.Install(OpenBurnBar.App.Dashboard.DashboardUsageProvider.Load());
 
         InitializeComponent();
         GalleryView.TemplateSelected += OnTemplateSelected;
     }
 
     private void OnTemplateSelected(object? sender, InsightCanvasTemplate template)
-        => ShowCanvas(template.Instantiate());
+    {
+        // Re-install against a fresh usage summary so stamp reflects current local/cloud data
+        // (not a frozen snapshot from page construction). Setting RealDataResolver invalidates
+        // the template cache; re-Find by id then Instantiate.
+        DashboardUsageSummary summary = InsightsProductionComposition.Install(
+            OpenBurnBar.App.Dashboard.DashboardUsageProvider.Load());
+        InsightCanvasTemplate? fresh = InsightsBuiltInTemplates.Find(template.Id) ?? template;
+        ShowCanvas(fresh.Instantiate(), summary);
+    }
 
-    private void ShowCanvas(InsightCanvas canvas)
+    private void ShowCanvas(InsightCanvas canvas, DashboardUsageSummary summary)
     {
         HeaderTitle.Text = canvas.Title;
         CanvasPanel.Children.Clear();
@@ -61,9 +61,8 @@ public sealed partial class InsightsPage : Page
         GalleryView.Visibility = Visibility.Collapsed;
         CanvasScroller.Visibility = Visibility.Visible;
         BackButton.Visibility = Visibility.Visible;
-        // Sample chip only when sample payloads were actually installed — not when sample
-        // mode is on but hybrid withheld fiction because live usage is present.
-        SampleChip.Visibility = CloudSyncInsightSource.ShowsSamplePreviewChip(_dashboardSummary.Value)
+        // Sample chip only when sample payloads were actually installed for this stamp.
+        SampleChip.Visibility = CloudSyncInsightSource.ShowsSamplePreviewChip(summary)
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -72,6 +71,9 @@ public sealed partial class InsightsPage : Page
     {
         CanvasPanel.Children.Clear();
         HeaderTitle.Text = "Insights";
+        // Refresh gallery cards against current usage (template cache was invalidated on stamp).
+        InsightsProductionComposition.Install(OpenBurnBar.App.Dashboard.DashboardUsageProvider.Load());
+        GalleryView.ReloadTemplates();
         GalleryView.Visibility = Visibility.Visible;
         CanvasScroller.Visibility = Visibility.Collapsed;
         BackButton.Visibility = Visibility.Collapsed;

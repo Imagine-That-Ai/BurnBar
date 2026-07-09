@@ -20,12 +20,15 @@
 | `InsightEmptyData` | Empty chrome | KPI/non-KPI use `EmptyData` (not numeric `$0` KPI shells) | **HONEST** (H0) |
 | `InsightsBuiltInTemplates` | InsightSampleData fallback | `SampleFallbackEnabled` default false; empty via `InsightEmptyData`; production prefers RealDataResolver | **GATED** (H0) |
 | `InsightsPage` SampleChip | UI label | Visible only when sample payloads install (`SampleModeEnabled && !HasData` via `ShowsSamplePreviewChip`); hidden under hybrid live+sample mode | **GATED** (H0) |
+| `InsightsProductionComposition` | stamp wiring | Re-Installs resolver + fresh usage summary on every stamp/Back (no session-frozen empty snapshot) | **HONEST** (H0 audit fix) |
+| `SurfaceStubPage` IA-1 | deferred UI | User-facing “Coming soon · depth deferred” + next-step copy (not fake Real product) | **HONEST** (IA-1) |
 | `ChatSurfaceViewModel` | Scripted vs Unavailable | `UnavailableChatStreamDriver` production; scripted sample-only | **GATED** / **HONEST** |
 | `MissionDispatchHostFactory` | DemoHost | Demo only when sample mode; else empty/Firestore | **GATED** |
 | `QuotaAccountsSource` | QuotaSampleData | Sample only when sample mode | **GATED** |
 | `FlyoutWindow` | FlyoutTraySampleData | Sample only when sample mode | **GATED** |
 | `DashboardPage` / Atelier layout | DashboardCommandSampleData | Sample only when sample mode | **GATED** |
 | `DashboardUsageProvider` | sample summary | Sample only when sample mode | **GATED** |
+| `BurnHeroControl` (shell chrome capsule) | DashboardUsageSampleData spend | Sample spend only when sample mode; renders labeled `SampleChip` ("Sample") when showing sample data, else `—` | **GATED** (H0 audit fix) |
 | `ElderWandPage` | ElderWandSampleData | Empty groups unless sample mode | **GATED** |
 | `WindowsStorageDevHost` budget/switcher | seed / SwitcherSampleData | Sample only when sample mode; empty otherwise | **GATED** |
 | `WindowsStorageDevHost` session logs | was `SessionLogSampleData` | Renamed `SessionLogEmptySource` — always empty list | **HONEST** (H0 rename) |
@@ -38,7 +41,7 @@
 
 ## Test guards added (H0)
 
-- `CloudSyncInsightSourceRuntimeTests` — production non-KPI never sample series; hybrid sample+live; sample chip/copy honesty; composition path
+- `CloudSyncInsightSourceRuntimeTests` — production non-KPI never sample series; hybrid sample+live; sample chip/copy honesty; composition path; **re-install live summary updates stamped KPIs**
 - `InsightsBuiltInTemplatesTests.ProductionDefault_DoesNotFabricateSampleSeries_AndKpisAreEmptyChrome`
 - `InsightsBuiltInTemplatesTests.SampleFallbackEnabled_DefaultsFalse_FailClosed`
 - `InsightEmptyDataTests`
