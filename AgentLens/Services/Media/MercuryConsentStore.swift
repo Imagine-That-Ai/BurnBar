@@ -42,6 +42,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
+    private var defaultsObservationTask: Task<Void, Never>?
 
     init(
         defaults: UserDefaults = .standard,
@@ -60,12 +61,25 @@ final class MercuryConsentStore: ObservableObject {
         }
         self.grants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
         if defaults.object(forKey: Self.legacyAlwaysAllowKey) != nil {
+            let legacyAlwaysAllow = defaults.bool(forKey: Self.legacyAlwaysAllowKey)
             defaults.removeObject(forKey: Self.legacyAlwaysAllowKey)
-            // The legacy bit was a *broader* consent than the device-bound
-            // grants replacing it — carry the intent forward as ON.
-            self.rememberAcceptedMirrorPeers = true
+            if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
+                defaults.set(legacyAlwaysAllow, forKey: Self.rememberAcceptedPeersKey)
+                self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
+            }
+        }
+        defaultsObservationTask = Task { @MainActor [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: UserDefaults.didChangeNotification
+            ) {
+                self?.reloadRememberAcceptedMirrorPeers()
+            }
         }
         pruneExpired()
+    }
+
+    deinit {
+        defaultsObservationTask?.cancel()
     }
 
     var activeGrantCount: Int {
@@ -95,15 +109,40 @@ final class MercuryConsentStore: ObservableObject {
             viewerDeviceId: viewerDeviceId,
             controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
         )
-        guard let index = grants.firstIndex(where: { $0.key == key && $0.expiresAt > now }) else {
+        guard grants.contains(where: { $0.key == key && $0.expiresAt > now }) else {
             return false
         }
+        return true
+    }
+
+    func renewAutoAcceptGrant(
+        connectionId: String,
+        viewerDeviceId: String?,
+        controlAuthorityPeerNodeId: String?,
+        remotePeerNodeId: String?,
+        now: Date = Date()
+    ) {
+        guard Self.peerNodeIDsMatch(
+            declaredPeerNodeId: controlAuthorityPeerNodeId,
+            remotePeerNodeId: remotePeerNodeId
+        ) else {
+            return
+        }
+        pruneExpired(now: now)
+        let key = Self.grantKey(
+            connectionId: connectionId,
+            viewerDeviceId: viewerDeviceId,
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
+        )
+        guard let index = grants.firstIndex(where: { $0.key == key && $0.expiresAt > now }) else {
+            return
+        }
         grants[index].lastUsedAt = now
-        // Sliding window: every auto-accepted session renews the grant, so an
-        // actively-used device never re-rings the Mac; only dormancy expires it.
+        // Sliding window: every actually auto-accepted session renews the
+        // grant, so active devices avoid re-ringing while declined/ringing
+        // attempts cannot keep consent alive.
         grants[index].expiresAt = now.addingTimeInterval(Self.grantTTL)
         persist()
-        return true
     }
 
     func rememberAcceptedPeer(
@@ -160,6 +199,14 @@ final class MercuryConsentStore: ObservableObject {
         // intact rather than overwriting it with nil.
         guard let data = Self.encodeGrants(grants, encode: encodeGrants) else { return }
         defaults.set(data, forKey: Self.grantsKey)
+    }
+
+    private func reloadRememberAcceptedMirrorPeers() {
+        guard defaults.object(forKey: Self.rememberAcceptedPeersKey) != nil else { return }
+        let persisted = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
+        if rememberAcceptedMirrorPeers != persisted {
+            rememberAcceptedMirrorPeers = persisted
+        }
     }
 
     /// Encode the grant ledger for persistence, returning `nil` (and logging) on a

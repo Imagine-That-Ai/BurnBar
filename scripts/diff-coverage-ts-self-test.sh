@@ -21,6 +21,7 @@ for ((i = 0; i < ${#args[@]}; i += 1)); do
 done
 
 if [[ "$*" == *" test:unit:coverage"* || "$*" == *" test:unit "* ]]; then
+  echo "fake npm coverage log line"
   if [[ "${FAKE_NPM_MODE:-success}" == "fail-no-coverage" ]]; then
     exit 42
   fi
@@ -76,7 +77,7 @@ run_gate() {
   make_fake_npm "$fake_bin"
   (
     cd "$repo"
-    PATH="$fake_bin:$PATH" FAKE_NPM_MODE="$mode" bash scripts/diff-coverage-ts.sh HEAD~1
+    PATH="$fake_bin:$PATH" FAKE_NPM_MODE="$mode" DIFF_COVERAGE_OUTPUT="$repo/ts-diff-coverage.json" bash scripts/diff-coverage-ts.sh HEAD~1
   )
 }
 
@@ -88,6 +89,20 @@ assert_contains() {
     printf 'FAIL: %s missing %q\n%s\n' "$label" "$needle" "$haystack" >&2
     exit 1
   fi
+}
+
+assert_json_artifact() {
+  local path="$1"
+  local label="$2"
+  python3 - "$path" "$label" <<'PY'
+import json
+import sys
+
+path, label = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as fh:
+    json.load(fh)
+print(f"PASS: {label} is JSON-only")
+PY
 }
 
 repo="$(init_case_repo)"
@@ -108,9 +123,11 @@ if output="$(run_gate "$repo" fail-no-coverage 2>&1)"; then
   exit 1
 fi
 assert_contains "$output" "istanbul_evidence_missing" "stale coverage rejection"
+assert_json_artifact "$repo/ts-diff-coverage.json" "failure diff coverage artifact"
 
 output="$(run_gate "$repo" success 2>&1)"
 assert_contains "$output" '"passed": true' "fresh coverage acceptance"
 assert_contains "$output" '"method": "istanbul_line_intersection"' "fresh coverage acceptance"
+assert_json_artifact "$repo/ts-diff-coverage.json" "success diff coverage artifact"
 
 echo "PASS: TypeScript diff coverage rejects stale evidence"

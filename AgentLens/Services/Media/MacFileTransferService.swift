@@ -30,6 +30,8 @@ import OSLog
 @MainActor
 final class MacFileTransferService: ObservableObject {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+    private static let maxAtRestSealPlaintextBytes: Int64 = 64 * 1024 * 1024
+    private static let maxAtRestSealEnvelopeBytes: Int64 = maxAtRestSealPlaintextBytes + 64
     private static func debugTrace(_ message: String) {
         #if DEBUG
         NSLog("OpenBurnBarMercury \(message)")
@@ -445,33 +447,54 @@ final class MacFileTransferService: ObservableObject {
             return
         }
 
+        let sealKey = frameSealKeyProvider(frame.uid, frame.connectionId)
+        if sealKey != nil, manifest.size > Self.maxAtRestSealPlaintextBytes {
+            await sendDenialAck(
+                for: manifest,
+                frame: frame,
+                reason: "received file is too large for in-memory at-rest sealing (\(manifest.size) bytes > \(Self.maxAtRestSealPlaintextBytes) bytes)",
+                ackSender: ackSender
+            )
+            return
+        }
+
         incrementFileTransferCount()
         defer { decrementFileTransferCount() }
 
         var status: HermesRealtimeRelayMediaAck.Status = .received
         var reason: String?
 
+        var fetchedDestinationURL: URL?
         do {
             let result = try await service.fetch(ticketText: ticket, manifest: manifest)
+            fetchedDestinationURL = result.destinationURL
+            try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)
             // RR-18 — seal the received bytes at rest under the media session
             // key when one is negotiated, so the file is not plaintext in the
             // sandbox Caches inbox. No key ⇒ keep the prior quarantine-only
-            // behaviour rather than failing the transfer. Seal BEFORE the
-            // quarantine xattr so the marker lands on the file that survives the
-            // atomic replace rather than on the discarded plaintext.
-            if let sealKey = frameSealKeyProvider(frame.uid, frame.connectionId) {
+            // behaviour rather than failing the transfer. Apply quarantine
+            // before sealing so an oversized or malformed plaintext fetch is
+            // quarantined even if sealing fails, then re-apply after the atomic
+            // replace so the sealed file carries the xattr that survives.
+            if let sealKey {
                 try sealReceivedFileAtRest(at: result.destinationURL, manifest: manifest, key: sealKey)
+                try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)
             }
-            try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)
             lastReceivedManifestID = manifest.manifestId
         } catch let serviceError as MediaFileTransferService.ServiceError {
             status = .rejected
             reason = String(describing: serviceError)
             lastError = .fetchFailed(reason ?? "")
+            if let fetchedDestinationURL {
+                try? FileManager.default.removeItem(at: fetchedDestinationURL) // try?-ok(best-effort failed fetch cleanup)
+            }
         } catch {
             status = .rejected
             reason = error.localizedDescription
             lastError = .fetchFailed(reason ?? "")
+            if let fetchedDestinationURL {
+                try? FileManager.default.removeItem(at: fetchedDestinationURL) // try?-ok(best-effort failed fetch cleanup)
+            }
         }
 
         await sendAck(
@@ -600,9 +623,19 @@ final class MacFileTransferService: ObservableObject {
         manifest: HermesRealtimeRelayAttachmentManifest,
         key: SymmetricKey
     ) throws {
-        let plaintext = try Data(contentsOf: url)
-        // Already sealed (idempotent re-fetch) — leave it.
-        guard !MediaFrameAEAD.isSealedEnvelope(plaintext) else { return }
+        let byteCount = try Self.fileSizeBytes(at: url)
+        // Already sealed (idempotent re-fetch) — leave it only after an
+        // authenticated open with the same manifest-bound AAD. Public magic
+        // bytes are not evidence that the remaining bytes are sealed.
+        if fileAuthenticatesAsSealedEnvelope(at: url, manifest: manifest, key: key, byteCount: byteCount) {
+            return
+        }
+        guard byteCount <= Self.maxAtRestSealPlaintextBytes else {
+            throw Failure.fetchFailed(
+                "received file is too large for in-memory at-rest sealing (\(byteCount) bytes > \(Self.maxAtRestSealPlaintextBytes) bytes)"
+            )
+        }
+        let plaintext = try Data(contentsOf: url, options: .mappedIfSafe)
         let sealed = try frameSealAEAD.seal(
             plaintext: plaintext,
             key: key,
@@ -614,7 +647,33 @@ final class MacFileTransferService: ObservableObject {
         let tempURL = url.deletingLastPathComponent()
             .appendingPathComponent(".\(UUID().uuidString).obmfa1-tmp")
         try sealed.write(to: tempURL, options: .atomic)
-        _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) } // try?-ok(best-effort temp cleanup)
+        guard try FileManager.default.replaceItemAt(url, withItemAt: tempURL) != nil else {
+            throw Failure.fetchFailed("at-rest seal atomic replace failed")
+        }
+    }
+
+    private func fileAuthenticatesAsSealedEnvelope(
+        at url: URL,
+        manifest: HermesRealtimeRelayAttachmentManifest,
+        key: SymmetricKey,
+        byteCount: Int64
+    ) -> Bool {
+        guard byteCount <= Self.maxAtRestSealEnvelopeBytes else { return false }
+        do {
+            let envelope = try Data(contentsOf: url, options: .mappedIfSafe)
+            _ = try frameSealAEAD.open(
+                envelope: envelope,
+                key: key,
+                streamClass: MediaStreamClass.blob.rawValue,
+                kind: 0,
+                gopID: Self.atRestGopID(for: manifest),
+                frameIndex: 0
+            )
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// Stable 32-bit AAD discriminator derived from the manifest id so the

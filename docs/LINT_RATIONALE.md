@@ -76,6 +76,7 @@ budgets/hand-maintained-ts-baseline.json
 budgets/knip-baseline.json
 budgets/raw-firestore-baseline.json
 budgets/singleton-baseline.json
+budgets/string-any-boundary-baseline.json
 budgets/swift-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/linux-desktop.perf.json
@@ -196,7 +197,6 @@ AgentLens/Views/Settings/Search/SettingsSearchResultsView.swift | OpenBurnBarMob
 AgentLens/Views/Settings/SmartDisplays/NestHubSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/NestHubSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/PixelClockSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/TextExpansionSettingsView.swift | OpenBurnBarMobile/Views/You/TextExpansionSettingsView.swift | platform-ui
-AgentLens/Utilities/StringNilIfBlank.swift | OpenBurnBarMobile/Models/StringNilIfBlank.swift | platform-ui
 ```
 <!-- END:twin-basename-allowlist -->
 

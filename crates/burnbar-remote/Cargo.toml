@@ -32,6 +32,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tokio-stream = "0.1"
 tokio-util = "0.7"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uniffi = { version = "0.28", features = ["cli"] }
 zeroize = "1"
 

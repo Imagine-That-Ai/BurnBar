@@ -41,6 +41,13 @@ extension UsageStore {
         }
     }
 
+    func fetchUsageIdStrings() async throws -> Set<String> {
+        try await dbQueue.read { db -> Set<String> in
+            let ids = try String.fetchAll(db, sql: "SELECT id FROM token_usage")
+            return Set(ids)
+        }
+    }
+
     func markSynced(ids: [UUID]) async throws {
         guard !ids.isEmpty else { return }
         let placeholders = ids.map { _ in "?" }.joined(separator: ", ")

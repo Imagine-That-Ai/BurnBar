@@ -16,7 +16,7 @@ public enum OpenBurnBarLinuxPaths {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent("OpenBurnBar", isDirectory: true)
         }
-        return FileManager.default.homeDirectoryForCurrentUser
+        return currentHomeDirectory
             .appendingPathComponent(".config/OpenBurnBar", isDirectory: true)
     }
 
@@ -25,7 +25,7 @@ public enum OpenBurnBarLinuxPaths {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent(defaultConfigRelativeComponents[0], isDirectory: true)
         }
-        return FileManager.default.homeDirectoryForCurrentUser
+        return currentHomeDirectory
             .appendingPathComponent(".config/openburnbar", isDirectory: true)
     }
 
@@ -41,7 +41,7 @@ public enum OpenBurnBarLinuxPaths {
 
     public static func expandTildeInPath(_ path: String, homeDirectory: URL? = nil) -> String {
         guard path.hasPrefix("~") else { return path }
-        let home = homeDirectory ?? FileManager.default.homeDirectoryForCurrentUser
+        let home = homeDirectory ?? currentHomeDirectory
         if path == "~" {
             return home.path
         }
@@ -55,5 +55,13 @@ public enum OpenBurnBarLinuxPaths {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static var currentHomeDirectory: URL {
+        #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        #else
+        FileManager.default.homeDirectoryForCurrentUser
+        #endif
     }
 }

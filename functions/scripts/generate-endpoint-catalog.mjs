@@ -90,6 +90,48 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  latestRouterRundown: {
+    trigger: "http",
+    authMethod: "public read-only JSON endpoint with product-layer IP rate limit",
+    appCheck: "not-applicable",
+    publicJustification:
+      "Public read-only router rundown JSON for the website; no tenant objects are exposed, and every request is bounded by checkPublicHttpEndpointRateLimit plus cache/maxInstances controls.",
+    tenantSource: "public router_rundowns/{latest|date} document; no tenant scope",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler validates the optional date key against a plausible calendar window and reads only public router_rundowns documents",
+    handlerModule: "routerRundown.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/routerRundownEndpoint.test.ts",
+        test: "maps product-layer rate-limit rejection to HTTP 429 before Firestore reads",
+        kind: "not-applicable-public",
+        covers: ["latestRouterRundown"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  onKnowledgeRepoPush: {
+    trigger: "provider-webhook",
+    authMethod: "GitHub x-hub-signature-256 HMAC over the raw request body",
+    appCheck: "not-applicable",
+    publicJustification:
+      "Public GitHub webhook ingress is authenticated by provider HMAC before any repo mapping or writes occur.",
+    tenantSource: "GitHub-signed repository full_name plus installation id mapped server-side to knowledge_repos rows",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler verifies the GitHub HMAC before reading payload fields, then maps the signed repo and installation id through server-stored match tokens",
+    handlerModule: "callables/knowledgeSync.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+        test: "webhook flags only repos bound to the GitHub installation in the signed payload",
+        kind: "runtime-cross-user",
+        covers: ["onKnowledgeRepoPush"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   consumeCredentialTransfer: {
     objectIdsFromClient: ["transferId"],
     handlerModule: "callables/credentialTransfer.ts",

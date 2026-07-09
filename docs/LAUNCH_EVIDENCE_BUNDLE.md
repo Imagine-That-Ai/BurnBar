@@ -35,6 +35,13 @@ scripts/validate-launch-evidence-bundle.mjs --require-done-stamp launch-evidence
 - Release IDs for iOS, Stripe, Google Play, and Hosting
 - `launch-evidence/LAUNCH_DONE.md` linking the final manifest and all evidence
 
+`launch-evidence/` is a live-proof workspace, not a place to park stale launch
+claims. Failed commercial gate snapshots (`verdict.status == "NO_GO"`) must not
+be tracked; `./scripts/ci/check-no-stale-launch-evidence.sh` enforces that in
+the debt guard. A current launch claim requires a fresh run of
+`scripts/commercial-launch-gate.mjs` or the capture helper on the release
+machine with the relevant production credentials.
+
 ## Paid Proof Commands
 
 Use the generic paid-tier proof for the new launch tiers:
