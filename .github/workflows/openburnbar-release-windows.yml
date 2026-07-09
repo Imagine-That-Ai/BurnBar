@@ -36,6 +36,11 @@ on:
         description: "Release version (e.g. 1.0.28) — required for manual dispatch."
         required: false
         default: ""
+      allow_unsigned:
+        description: "Manual validation only: build unsigned artifacts up to the signing boundary. Ignored for windows-v* tag releases."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -170,27 +175,19 @@ jobs:
             8.0.x
             10.0.x
 
-      - name: Resolve signing configuration
+      - name: Preflight signing configuration
         id: config
         env:
-          CODESIGN_ENDPOINT: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
-          CODESIGN_ACCOUNT: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
-          CODESIGN_PROFILE: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
-          UPDATE_KEY: ${{ secrets.WINDOWS_UPDATE_SIGNING_KEY }}
-        run: |
-          set -euo pipefail
-          if [[ -n "${CODESIGN_ENDPOINT}" && -n "${CODESIGN_ACCOUNT}" && -n "${CODESIGN_PROFILE}" ]]; then
-            echo "codesign=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "codesign=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::WINDOWS_CODESIGN_* not configured — Authenticode signing deferred (needs the W0 Trusted-Signing tenant + cert)."
-          fi
-          if [[ -n "${UPDATE_KEY}" ]]; then
-            echo "updatekey=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "updatekey=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::WINDOWS_UPDATE_SIGNING_KEY not configured — update-feed signing deferred."
-          fi
+          WINDOWS_RELEASE_ALLOW_UNSIGNED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' && '1' || '0' }}
+          WINDOWS_CODESIGN_ENDPOINT: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
+          WINDOWS_CODESIGN_ACCOUNT_NAME: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          WINDOWS_CODESIGN_CERT_PROFILE_NAME: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          WINDOWS_CODESIGN_AZURE_TENANT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
+          WINDOWS_CODESIGN_AZURE_CLIENT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
+          WINDOWS_CODESIGN_AZURE_CLIENT_SECRET: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
+          WINDOWS_UPDATE_SIGNING_KEY: ${{ secrets.WINDOWS_UPDATE_SIGNING_KEY }}
+          WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
+        run: bash scripts/ci/verify-windows-release-signing-preflight.sh
 
       - name: Publish WinUI app (win-x64 + win-arm64)
         # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
@@ -288,12 +285,17 @@ jobs:
         if: steps.config.outputs.updatekey == 'true'
         env:
           WINDOWS_UPDATE_SIGNING_KEY: ${{ secrets.WINDOWS_UPDATE_SIGNING_KEY }}
+          WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           tool="windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool/OpenBurnBar.Dist.UpdateFeed.Tool.csproj"
           # Recover the pinned public key from the private seed (for the self-verify + to confirm
           # it equals the value pinned into the app).
           pub="$(dotnet run --project "$tool" -c Release -- derive-pubkey --private-key-env WINDOWS_UPDATE_SIGNING_KEY)"
+          if [[ "$pub" != "$WINDOWS_UPDATE_PUBLIC_KEY" ]]; then
+            echo "::error::WINDOWS_UPDATE_SIGNING_KEY does not derive to repo variable WINDOWS_UPDATE_PUBLIC_KEY; rotate them together before releasing."
+            exit 1
+          fi
           entries=""
           for rid in win-x64 win-arm64; do
             zip="artifacts/OpenBurnBar-${VERSION}-${rid}.zip"
