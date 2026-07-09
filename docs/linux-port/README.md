@@ -50,6 +50,9 @@ Primary files:
 - [`accessibility-validation.md`](accessibility-validation.md) - axe route
   matrix, installed-app AT-SPI/Orca harness, evidence contract, and remaining
   manual GNOME/KDE certification.
+- [`performance-reliability-validation.md`](performance-reliability-validation.md) -
+  repeated packaged-shell percentiles, matched production-linked macOS/Linux
+  workloads, resource soak, supervisor behavior, and fail-closed QA contract.
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.

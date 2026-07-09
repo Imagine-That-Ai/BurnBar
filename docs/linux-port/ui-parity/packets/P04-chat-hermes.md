@@ -4,7 +4,7 @@
 
 ## Mission
 
-The flagship surface: Hermes chat with streamed assistant output, tool-call cards with approval controls, thinking/reasoning disclosure, model strip, and thread history. First streamed token must record the `chat.firstToken.progress` perf sample through the existing bridge measurement (do not add a second sample with the same name).
+The flagship surface: Hermes chat with streamed assistant output, tool-call cards with approval controls, thinking/reasoning disclosure, model strip, and thread history. First-visible stream decode performance is measured through the production `HermesOpenAICompatibleStreamParser` in the matched macOS/Linux harness; do not replace it with a synthetic bridge sample.
 
 ## Read first
 

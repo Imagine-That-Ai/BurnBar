@@ -5,160 +5,155 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const budgetPath = path.join(root, 'budgets/linux-desktop.perf.json');
-const outDir = process.env.OB_EVIDENCE_OUT
-  ? path.resolve(process.env.OB_EVIDENCE_OUT)
+const evidenceOutput = process.env.OB_EVIDENCE_OUT ?? process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT;
+const outDir = evidenceOutput
+  ? path.resolve(evidenceOutput)
   : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 const desktopSessionPath = path.join(outDir, 'linux-desktop-session-report.json');
 const runtimeSamplesPath = path.join(outDir, 'runtime-perf-samples.jsonl');
 const routeTranscriptPath = path.join(outDir, 'packaged-route-session-transcript.json');
-
-const requiredRows = [
-  'app.start',
-  'route.navigation',
-  'ipc.health.roundtrip',
-  'tray.click.open',
-  'chat.firstToken.progress',
-  'db.migration.open.query',
-  'parser.incremental.run',
-  'memory.search',
-  'media.control.stage'
-];
+const matchedComparisonPath = path.join(outDir, 'matched-performance-comparison.json');
 
 fs.mkdirSync(outDir, { recursive: true });
 const budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
+const requiredMetrics = budget.nativeShell?.requiredMetrics ?? [];
 const errors = [];
 
-function readJsonIfPresent(file) {
+function readJSON(file) {
   if (!fs.existsSync(file)) return null;
-  return JSON.parse(fs.readFileSync(file, 'utf8'));
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (error) {
+    errors.push(`invalid JSON in ${path.basename(file)}: ${error.message}`);
+    return null;
+  }
 }
 
 function readRuntimeSamples() {
   if (!fs.existsSync(runtimeSamplesPath)) return [];
-  const text = fs.readFileSync(runtimeSamplesPath, 'utf8').trim();
-  if (!text) return [];
-  return text.split(/\n+/).map((line) => JSON.parse(line));
+  return fs.readFileSync(runtimeSamplesPath, 'utf8')
+    .split(/\n+/)
+    .filter(Boolean)
+    .map((line, index) => {
+      try { return JSON.parse(line); }
+      catch (error) {
+        errors.push(`invalid runtime sample line ${index + 1}: ${error.message}`);
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
-const desktopSession = readJsonIfPresent(desktopSessionPath);
-const routeTranscript = readJsonIfPresent(routeTranscriptPath);
-const runtimeSamples = readRuntimeSamples();
+function percentile(sorted, quantile) {
+  const position = quantile * (sorted.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
 
+function summarize(values) {
+  const sorted = values.filter((value) => typeof value === 'number' && Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  return {
+    minimum: sorted[0],
+    p50: percentile(sorted, 0.50),
+    p95: percentile(sorted, 0.95),
+    p99: percentile(sorted, 0.99),
+    maximum: sorted[sorted.length - 1]
+  };
+}
+
+const desktopSession = readJSON(desktopSessionPath);
+const routeTranscript = readJSON(routeTranscriptPath);
+const matchedComparison = readJSON(matchedComparisonPath);
+const runtimeSamples = readRuntimeSamples();
 if (!desktopSession) errors.push('missing linux-desktop-session-report.json');
 if (!routeTranscript) errors.push('missing packaged-route-session-transcript.json');
-if (!runtimeSamples.length) errors.push('missing runtime-perf-samples.jsonl rows from packaged Tauri app');
+if (!matchedComparison) errors.push('missing matched-performance-comparison.json');
 
-function desktopVerdict(name, ms, source) {
-  const limit = budget.thresholdsMs?.[name];
-  return {
-    name,
-    ms: typeof ms === 'number' ? ms : null,
-    limit,
-    source,
-    sampleCount: typeof ms === 'number' ? 1 : 0,
-    measured: typeof ms === 'number',
-    pass: typeof limit === 'number' && typeof ms === 'number' ? ms <= limit : false
-  };
-}
-
-function runtimeVerdict(name) {
-  const rows = runtimeSamples.filter((row) => row.name === name && typeof row.ms === 'number');
-  const limit = budget.thresholdsMs?.[name];
-  if (!rows.length) {
-    return {
-      name,
-      ms: null,
-      limit,
-      source: 'missing-packaged-runtime-sample',
-      sampleCount: 0,
-      measured: false,
-      pass: false
-    };
+const metricInputs = {
+  'app.start': {
+    samples: desktopSession?.performance?.appStartSamples ?? [],
+    source: 'packaged-tauri-deb-process-launch-to-x11-window-visible'
+  },
+  'route.navigation': {
+    samples: runtimeSamples
+      .filter((row) => row.name === 'route.navigation' && typeof row.ms === 'number')
+      .map((row) => row.ms),
+    source: 'packaged-tauri-command-palette-route-to-two-animation-frames'
+  },
+  'ipc.health.roundtrip': {
+    samples: desktopSession?.performance?.ipcHealthRoundTripSamples ?? [],
+    source: 'packaged-tray-reconnect-to-af-unix-daemon-activity'
+  },
+  'tray.click.open': {
+    samples: desktopSession?.performance?.trayClickOpenSamples ?? [],
+    source: 'appindicator-dbusmenu-open-to-visible-x11-window'
   }
-  const maxMs = Math.max(...rows.map((row) => row.ms));
-  const sources = [...new Set(rows.map((row) => String(row.source ?? 'unknown')).filter(Boolean))].sort();
-  return {
-    name,
-    ms: maxMs,
-    limit,
-    source: `packaged-tauri-runtime-samples:${sources.join(',')}`,
-    sampleCount: rows.length,
-    measured: true,
-    pass: typeof limit === 'number' ? maxMs <= limit : false
-  };
-}
+};
 
-for (const row of requiredRows) {
-  if (typeof budget.thresholdsMs?.[row] !== 'number') {
-    errors.push(`budget missing threshold for ${row}`);
+const verdicts = requiredMetrics.map((name) => {
+  const input = metricInputs[name] ?? { samples: [], source: 'missing' };
+  const stats = summarize(input.samples);
+  const limit = budget.nativeShell.thresholdsP95Ms?.[name];
+  const minimumSamples = budget.nativeShell.minimumSamples?.[name];
+  const sampleCount = input.samples.length;
+  const measured = stats !== null;
+  const pass = measured &&
+    typeof limit === 'number' &&
+    Number.isSafeInteger(minimumSamples) &&
+    sampleCount >= minimumSamples &&
+    stats.p95 <= limit;
+  if (!measured) errors.push(`missing measured samples for ${name}`);
+  if (sampleCount < (minimumSamples ?? Number.POSITIVE_INFINITY)) {
+    errors.push(`${name} has ${sampleCount} samples; requires ${minimumSamples ?? 'a configured minimum'}`);
   }
-}
-
-const verdicts = [
-  desktopVerdict('app.start', desktopSession?.performance?.appStartMs, 'packaged-tauri-deb-xvfb-window-visible'),
-  runtimeVerdict('route.navigation'),
-  desktopVerdict(
-    'ipc.health.roundtrip',
-    desktopSession?.performance?.ipcHealthRoundTripMs,
-    'packaged-tray-reconnect-to-af-unix-daemon-log'
-  ),
-  desktopVerdict(
-    'tray.click.open',
-    desktopSession?.performance?.trayClickOpenMs,
-    'appindicator-dbusmenu-open-to-visible-window'
-  ),
-  runtimeVerdict('chat.firstToken.progress'),
-  runtimeVerdict('db.migration.open.query'),
-  runtimeVerdict('parser.incremental.run'),
-  runtimeVerdict('memory.search'),
-  runtimeVerdict('media.control.stage')
-];
-
-const forbiddenSourceFragments = [
-  'route-state-loop',
-  'progress-chunk-reducer',
-  'sqlite-memory-query',
-  'swift-source-incremental-file-scan',
-  'fixture-index-regex-search',
-  'control-frame-json-stage'
-];
-
-for (const verdict of verdicts) {
-  if (!verdict.measured) errors.push(`missing measured row for ${verdict.name}`);
-  if (forbiddenSourceFragments.some((fragment) => verdict.source.includes(fragment))) {
-    errors.push(`forbidden placeholder source for ${verdict.name}: ${verdict.source}`);
+  if (stats && typeof limit === 'number' && stats.p95 > limit) {
+    errors.push(`${name} p95 ${stats.p95}ms exceeds ${limit}ms`);
   }
+  return { name, unit: 'milliseconds', source: input.source, sampleCount, minimumSamples, limitP95Ms: limit, stats, measured, pass };
+});
+
+const routeSources = runtimeSamples
+  .filter((row) => row.name === 'route.navigation')
+  .map((row) => String(row.source ?? ''));
+if (routeSources.some((source) => source.includes('route-render') || source.includes('route-state-loop'))) {
+  errors.push('route.navigation contains a pre-paint or placeholder source');
+}
+if (matchedComparison?.pass !== true) errors.push('matched macOS/Linux performance comparison did not pass');
+if (matchedComparison && matchedComparison.protocolVersion !== budget.matched?.protocolVersion) {
+  errors.push('matched comparison protocol does not match the budget');
 }
 
-const missingMetrics = requiredRows.filter((name) => !verdicts.some((verdict) => verdict.name === name));
 const allPass = errors.length === 0 &&
-  missingMetrics.length === 0 &&
-  verdicts.every((verdict) => verdict.measured && verdict.pass === true);
-
+  verdicts.length === requiredMetrics.length &&
+  verdicts.every((verdict) => verdict.pass) &&
+  matchedComparison?.pass === true;
 const generatedAt = new Date().toISOString();
 const report = {
   generatedAt,
-  runner: 'linux-desktop-packaged-runtime-perf-v3',
-  note: 'Budget rows are derived from the same packaged Linux desktop smoke run: Xvfb/XFCE .deb session report plus runtime samples emitted by the installed Tauri app through OPENBURNBAR_EVIDENCE_OUT.',
+  runner: 'linux-desktop-packaged-runtime-perf-v4',
+  note: 'Native packaged-shell p50/p95/p99 metrics are combined with identical production-linked macOS/Linux workloads. Boot-time synthetic subsystem operations are forbidden.',
   host: { platform: process.platform, arch: process.arch },
   command: 'node scripts/linux-port/run-perf-budget.mjs',
   budgetFile: path.relative(root, budgetPath),
   measurements: {
     desktopSessionReport: path.relative(root, desktopSessionPath),
     desktopSessionPresent: Boolean(desktopSession),
-    desktopSessionGeneratedAt: desktopSession?.generatedAt ?? null,
     runtimeSamples: path.relative(root, runtimeSamplesPath),
     runtimeSampleCount: runtimeSamples.length,
     packagedRouteTranscript: path.relative(root, routeTranscriptPath),
-    packagedRouteCount: routeTranscript?.routeCount ?? null
+    packagedRouteCount: routeTranscript?.routeCount ?? null,
+    matchedComparison: path.relative(root, matchedComparisonPath),
+    matchedComparisonPresent: Boolean(matchedComparison),
+    matchedProfile: matchedComparison?.profile ?? null
   },
-  budget,
+  nativeShellBudget: budget.nativeShell,
+  matchedPerformance: matchedComparison,
   verdicts,
-  missingMetrics,
   errors,
   allPass
 };
-
 fs.writeFileSync(path.join(outDir, 'perf-budget.json'), JSON.stringify(report, null, 2) + '\n');
 
 const trend = {
@@ -167,25 +162,30 @@ const trend = {
   baselinePolicy: budget.trendPolicy,
   rows: verdicts.map((verdict) => ({
     name: verdict.name,
-    currentMs: verdict.ms,
-    thresholdMs: verdict.limit,
+    currentP50Ms: verdict.stats?.p50 ?? null,
+    currentP95Ms: verdict.stats?.p95 ?? null,
+    currentP99Ms: verdict.stats?.p99 ?? null,
+    thresholdP95Ms: verdict.limitP95Ms,
     sampleCount: verdict.sampleCount,
     source: verdict.source,
-    thresholdPass: verdict.pass,
-    trendPass: verdict.pass
+    pass: verdict.pass
   })),
+  matchedProfile: matchedComparison?.profile ?? null,
+  matchedPass: matchedComparison?.pass === true,
   pass: allPass,
-  errors,
-  note: 'Mission-001 has no durable multi-run Linux history yet; trend enforcement is fail-closed to current threshold rows.'
+  errors
 };
 fs.writeFileSync(path.join(outDir, 'perf-threshold-enforcement.json'), JSON.stringify(trend, null, 2) + '\n');
 
 const macosComparison = {
   generatedAt,
-  status: budget.macosComparison?.status ?? 'blocked',
-  reason: budget.macosComparison?.reason ?? 'No macOS source shell perf runner exists for this Linux desktop lane.',
-  acceptedBlocker: budget.macosComparison?.acceptedBlocker ?? 'VAL-PERF-001-macos-source-comparison-unavailable',
-  linuxRunner: report.runner
+  status: matchedComparison?.pass === true ? 'measured-pass' : 'measured-fail',
+  protocolVersion: matchedComparison?.protocolVersion ?? null,
+  profile: matchedComparison?.profile ?? null,
+  workloads: matchedComparison?.workloads ?? [],
+  resources: matchedComparison?.resources ?? null,
+  errors: matchedComparison?.errors ?? ['matched comparison missing'],
+  pass: matchedComparison?.pass === true
 };
 fs.writeFileSync(path.join(outDir, 'macos-perf-comparison.json'), JSON.stringify(macosComparison, null, 2) + '\n');
 

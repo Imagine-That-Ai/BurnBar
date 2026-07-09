@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const appDir = path.join(root, 'apps/linux-desktop');
-const outDir = process.env.OB_EVIDENCE_OUT
-  ? path.resolve(process.env.OB_EVIDENCE_OUT)
+const evidenceOutput = process.env.OB_EVIDENCE_OUT ?? process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT;
+const outDir = evidenceOutput
+  ? path.resolve(evidenceOutput)
   : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -125,6 +126,19 @@ steps.push(currentDesktopArtifactsAreReusable()
   ? reusedDesktopStep()
   : run('node', [path.join(root, 'scripts/linux-port/run-shell-desktop-session.mjs')], root, evidenceEnv, desktopSessionTimeoutMs));
 steps.push(run('node', [path.join(root, 'scripts/linux-port/run-shell-evidence.mjs')], root, evidenceEnv, 120000));
+const matchedProfile = process.env.OB_MATCHED_PERF_PROFILE || 'pr';
+const matchedArguments = [
+  path.join(root, 'scripts/linux-port/run-matched-performance.mjs'),
+  '--profile', matchedProfile
+];
+if (process.env.OB_MATCHED_MACOS_INPUT) {
+  matchedArguments.push('--macos-input', process.env.OB_MATCHED_MACOS_INPUT);
+}
+if (process.env.OB_MATCHED_LINUX_INPUT) {
+  matchedArguments.push('--linux-input', process.env.OB_MATCHED_LINUX_INPUT);
+}
+const matchedTimeoutMs = matchedProfile === 'nightly' ? 2700000 : 900000;
+steps.push(run('node', matchedArguments, root, evidenceEnv, matchedTimeoutMs));
 steps.push(run('node', [path.join(root, 'scripts/linux-port/run-perf-budget.mjs')], root, evidenceEnv, 120000));
 steps.push(run('node', [path.join(root, 'scripts/linux-port/verify-shell-evidence.mjs'), outDir], root, evidenceEnv, 120000));
 

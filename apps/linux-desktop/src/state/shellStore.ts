@@ -7,7 +7,7 @@ import {
   setDaemonFixtureMode
 } from '../daemonFixture.js';
 import { buildDaemonStatusCopy, type DaemonStatusCopy } from '../daemonStatusCopy.js';
-import { markStart, recordPerfSample } from '../perfMarks.js';
+import { markAfterPaint, markStart } from '../perfMarks.js';
 import { routeFromHash, type ShellRoute } from '../routes.js';
 import { displayLinuxSocketPath } from '../shellPaths.js';
 import { loadShellBridge, type LinuxShellBridge } from '../tauriBridge.js';
@@ -25,38 +25,6 @@ function readPersistedSkin(): ShellSkin {
     return 'editorial';
   }
 }
-
-/**
- * Required perf operations measured once through the packaged Tauri bridge.
- * Names are pinned by budgets/linux-desktop.perf.json and
- * scripts/linux-port/run-perf-budget.mjs — never rename without updating both.
- */
-export const REQUIRED_PERF_OPERATIONS: { name: string; source: string }[] = [
-  { name: 'chat.firstToken.progress', source: 'packaged-startup-chat-hermes-daemon-measurement' },
-  { name: 'db.migration.open.query', source: 'packaged-startup-db-daemon-measurement' },
-  { name: 'parser.incremental.run', source: 'packaged-startup-parser-daemon-measurement' },
-  { name: 'memory.search', source: 'packaged-startup-memory-daemon-measurement' },
-  { name: 'media.control.stage', source: 'packaged-startup-media-control-daemon-measurement' }
-];
-
-export function routeSurfaceMetric(route: ShellRoute): { name: string; source: string } | null {
-  switch (route) {
-    case 'chat':
-      return { name: 'chat.firstToken.progress', source: 'packaged-chat-route-daemon-measurement' };
-    case 'database':
-      return { name: 'db.migration.open.query', source: 'packaged-database-route-daemon-measurement' };
-    case 'activity':
-      return { name: 'parser.incremental.run', source: 'packaged-parser-route-daemon-measurement' };
-    case 'memory':
-      return { name: 'memory.search', source: 'packaged-memory-route-daemon-measurement' };
-    case 'support':
-      return { name: 'media.control.stage', source: 'packaged-support-route-daemon-measurement' };
-    default:
-      return null;
-  }
-}
-
-const measuredRouteOperations = new Set<string>();
 
 export type ShellState = {
   route: ShellRoute;
@@ -78,21 +46,6 @@ export type ShellState = {
   boot(): Promise<void>;
 };
 
-async function measurePerfOperation(
-  bridge: LinuxShellBridge | null,
-  name: string,
-  source: string
-): Promise<void> {
-  if (!bridge || measuredRouteOperations.has(name)) return;
-  measuredRouteOperations.add(name);
-  const result = await bridge.measurePerfOperation(name);
-  if (!result.ok) {
-    recordPerfSample(name, result.ms, `${source};${result.source};blocked=${result.detail ?? 'unknown'}`);
-    return;
-  }
-  recordPerfSample(name, result.ms, `${source};${result.source}`);
-}
-
 export const useShellStore = create<ShellState>()((set, get) => ({
   route: routeFromHash(typeof location === 'undefined' ? '' : location.hash),
   health: null,
@@ -107,19 +60,15 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   fixtureMode: false,
 
   setRoute(route) {
-    const end = markStart('route.navigation', `packaged-ui-route:${route}`);
+    markAfterPaint('route.navigation', `packaged-ui-route-after-paint:${route}`);
     location.hash = `#/${route}`;
     set({ route });
-    end();
-    const metric = routeSurfaceMetric(route);
-    if (metric) void measurePerfOperation(get().bridge, metric.name, metric.source);
   },
 
   syncRouteFromHash() {
     const route = routeFromHash(location.hash);
+    markAfterPaint('route.navigation', `packaged-ui-hash-route-after-paint:${route}`);
     set({ route });
-    const metric = routeSurfaceMetric(route);
-    if (metric) void measurePerfOperation(get().bridge, metric.name, metric.source);
   },
 
   async refreshHealth() {
@@ -204,11 +153,6 @@ export const useShellStore = create<ShellState>()((set, get) => ({
       });
     }
     await get().refreshHealth();
-    for (const operation of REQUIRED_PERF_OPERATIONS) {
-      await measurePerfOperation(get().bridge, operation.name, operation.source);
-    }
-    const metric = routeSurfaceMetric(get().route);
-    if (metric) void measurePerfOperation(get().bridge, metric.name, metric.source);
   }
 }));
 

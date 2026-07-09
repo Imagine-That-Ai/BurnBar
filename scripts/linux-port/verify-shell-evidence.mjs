@@ -4,8 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const defaultEvidenceDir = process.env.OB_EVIDENCE_OUT
-  ? path.resolve(process.env.OB_EVIDENCE_OUT)
+const evidenceOutput = process.env.OB_EVIDENCE_OUT ?? process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT;
+const defaultEvidenceDir = evidenceOutput
+  ? path.resolve(evidenceOutput)
   : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 
 const arg = process.argv[2];
@@ -45,12 +46,7 @@ const requiredPerfRows = [
   'app.start',
   'route.navigation',
   'ipc.health.roundtrip',
-  'tray.click.open',
-  'chat.firstToken.progress',
-  'db.migration.open.query',
-  'parser.incremental.run',
-  'memory.search',
-  'media.control.stage'
+  'tray.click.open'
 ];
 
 const requiredRoutes = [
@@ -444,13 +440,14 @@ function checkTextExpansion() {
 function checkPerf() {
   const perf = readJson('perf-budget.json', 'VAL-PERF-001');
   const trend = readJson('perf-threshold-enforcement.json', 'VAL-PERF-001');
-  if (!perf || !trend) return;
+  const matched = readJson('matched-performance-comparison.json', 'VAL-PERF-001');
+  if (!perf || !trend || !matched) return;
   if (perf.allPass !== true) add('VAL-PERF-001', 'perf-budget.json allPass is not true');
   if (perf.measurements?.desktopSessionPresent !== true) {
     add('VAL-PERF-001', 'perf budget is not tied to a packaged desktop session');
   }
-  if ((perf.measurements?.runtimeSampleCount ?? 0) < 5) {
-    add('VAL-PERF-001', 'runtime sample count is too low for subsystem evidence');
+  if ((perf.measurements?.runtimeSampleCount ?? 0) < 19) {
+    add('VAL-PERF-001', 'runtime sample count is too low for post-paint route evidence');
   }
   const verdicts = new Map((perf.verdicts ?? []).map((row) => [row.name, row]));
   for (const rowName of requiredPerfRows) {
@@ -459,13 +456,29 @@ function checkPerf() {
       add('VAL-PERF-001', `missing perf verdict ${rowName}`);
       continue;
     }
-    if (row.measured !== true || typeof row.ms !== 'number' || !Number.isFinite(row.ms)) {
+    if (row.measured !== true || typeof row.stats?.p95 !== 'number' || !Number.isFinite(row.stats.p95)) {
       add('VAL-PERF-001', `perf verdict ${rowName} is not measured`);
+    }
+    if ((row.sampleCount ?? 0) < (row.minimumSamples ?? Number.POSITIVE_INFINITY)) {
+      add('VAL-PERF-001', `perf verdict ${rowName} has insufficient samples`);
     }
     if (row.pass !== true) add('VAL-PERF-001', `perf verdict ${rowName} did not pass threshold`);
     if (forbiddenPerfSources.some((fragment) => String(row.source ?? '').includes(fragment))) {
       add('VAL-PERF-001', `perf verdict ${rowName} uses forbidden placeholder source ${row.source}`);
     }
+  }
+  if (matched.pass !== true) add('VAL-PERF-001', 'matched macOS/Linux performance did not pass');
+  if (matched.profile !== 'pr' && matched.profile !== 'nightly') {
+    add('VAL-PERF-001', `matched performance profile must be pr or nightly, got ${matched.profile ?? 'missing'}`);
+  }
+  if ((matched.workloads ?? []).length !== 4) {
+    add('VAL-PERF-001', `matched performance must contain four workloads, got ${(matched.workloads ?? []).length}`);
+  }
+  if (!(matched.workloads ?? []).every((row) => row.pass === true && row.checks?.checksumMatch === true)) {
+    add('VAL-PERF-001', 'matched workload correctness or tail checks failed');
+  }
+  if (matched.resources?.macos?.pass !== true || matched.resources?.linux?.pass !== true) {
+    add('VAL-PERF-001', 'matched resource soak checks failed');
   }
   if (trend.pass !== true) add('VAL-PERF-001', 'trend/threshold enforcement did not pass');
 }
