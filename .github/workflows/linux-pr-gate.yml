@@ -27,10 +27,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  macos-matched-performance:
+    name: macOS matched performance reference
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      OB_EVIDENCE_OUT: ${{ runner.temp }}/openburnbar-matched-performance
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Matched performance comparator mutation tests
+        run: node --test scripts/linux-port/matched-performance-contract.test.mjs
+
+      - name: Capture macOS matched performance reference
+        run: node scripts/linux-port/run-matched-performance.mjs --macos-only --profile pr
+
+      - name: Upload macOS matched performance reference
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: linux-parity-macos-performance-pr
+          path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json
+          if-no-files-found: error
+
   linux-fast:
     name: Linux fast package and parity gate
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+    needs: [macos-matched-performance]
+    timeout-minutes: 30
     env:
       OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ runner.temp }}/openburnbar-linux-evidence
     steps:
@@ -83,7 +110,9 @@ jobs:
           node --test \
             scripts/linux-port/verify-linux-workflow-wiring.test.mjs \
             scripts/linux-port/runtime-capability-contract.test.mjs \
-            scripts/linux-port/accessibility-harness-contract.test.mjs
+            scripts/linux-port/accessibility-harness-contract.test.mjs \
+            scripts/linux-port/matched-performance-contract.test.mjs \
+            scripts/linux-port/perf-budget-contract.test.mjs
 
       - name: Install Linux desktop dependencies
         run: npm ci --prefix apps/linux-desktop
@@ -99,6 +128,20 @@ jobs:
 
       - name: Toolchain smoke
         run: docker run --rm -v "$PWD:/workspace" -w /workspace openburnbar-linux-toolchain:mission-001 bash tools/linux-toolchain/smoke.sh
+
+      - name: Download macOS matched performance reference
+        uses: actions/download-artifact@abefc31eafcfbdf6c5336127a9045ea00bc7c9e4 # v6.0.0 (node24-native)
+        with:
+          name: linux-parity-macos-performance-pr
+          path: ${{ runner.temp }}/openburnbar-macos-performance
+
+      - name: Compare Linux against macOS matched workloads
+        env:
+          OB_EVIDENCE_OUT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}
+        run: >
+          node scripts/linux-port/run-matched-performance.mjs
+          --profile pr
+          --macos-input "${{ runner.temp }}/openburnbar-macos-performance/matched-performance-macos.json"
 
       - name: Linux Swift and Rust behavior tests
         run: >

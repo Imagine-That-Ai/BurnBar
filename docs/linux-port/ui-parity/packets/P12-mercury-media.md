@@ -4,7 +4,7 @@
 
 ## Mission
 
-Surface Mercury media on Linux: paired-device list, media session status (screen-share/file-transfer/call state), and the media-control staging readout that backs the `media.control.stage` perf sample. v1 is **observe + stage**: full call UX is gated on W5 (Computer Use/Mercury engine) reaching Linux; render real engine state, never a demo call UI.
+Surface Mercury media on Linux: paired-device list and media session status (screen-share/file-transfer/call state). v1 is **observe + stage**: full call UX is gated on W5 (Computer Use/Mercury engine) reaching Linux; render real engine state, never a demo call UI. Media status is not a performance proxy.
 
 ## Read first
 
@@ -28,7 +28,7 @@ Surface Mercury media on Linux: paired-device list, media session status (screen
 1. `DeviceRow`: platform glyph, name, last-seen relative time; no actions in v1 beyond "Forget" **only if** the daemon exposes an unpair method.
 2. `SessionStatusCard`: kind badge, peer, state timeline (staged → connecting → active → ended) rendered as the step-rail idiom from onboarding.
 3. Shimmer for connecting state: CSS gradient sweep, killed by reduced motion.
-4. Keep `media.control.stage` measurement untouched (it flows through the existing support-route perf path).
+4. Do not add staged media-control operations to the performance evidence path.
 
 ## Required states
 

@@ -31,6 +31,22 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
   for (const command of [
+    'macos-matched-performance',
+    'run-matched-performance.mjs',
+    '--profile pr',
+    'matched-performance-contract.test.mjs',
+    'perf-budget-contract.test.mjs',
+    'linux-parity-macos-performance-pr'
+  ]) requireText(input.pr, command, 'PR matched performance gate');
+  for (const command of [
+    'macos-matched-performance',
+    'linux-matched-performance',
+    '--profile nightly',
+    'OB_MATCHED_MACOS_INPUT',
+    'OB_MATCHED_LINUX_INPUT',
+    'linux-parity-matched-performance-nightly'
+  ]) requireText(input.nightly, command, 'nightly matched performance gate');
+  for (const command of [
     'run_swift_suite',
     'OpenBurnBarLinuxCoreFoundationTests',
     'OpenBurnBarLinuxSecurityTests',
@@ -106,6 +122,9 @@ export function verifyLinuxWorkflowWiring(input) {
   }
   if (input.pr.includes('mission-001-release') || input.nightly.includes('mission-001-release')) {
     failures.push('PR/nightly workflows may not write or upload sealed mission-001 evidence.');
+  }
+  if (/matched performance[\s\S]{0,300}continue-on-error:\s*true/i.test(input.pr + input.nightly)) {
+    failures.push('matched performance gates may not continue on error.');
   }
   if (/\#\[tauri::command\][\s\S]{0,120}fn\s+gateway_auth_token/.test(input.rustBridge)) {
     failures.push('a Tauri command may not return the gateway bearer token to the renderer.');

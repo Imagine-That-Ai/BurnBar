@@ -5,6 +5,7 @@ import {
   type GatewayChatStreamEvent
 } from '../chat/gatewayClient.js';
 import { fixtureConfigSnapshot, fixtureSessionList } from '../daemonFixture.js';
+import { markStart } from '../perfMarks.js';
 import type { ConfigSnapshot, SessionEntry, SessionListResult } from '../tauriBridge.js';
 import type { ChatBackendId, ChatWarningBanner, MemoryCitation } from '../surfaces/chat/chatTypes.js';
 import { useShellStore } from './shellStore.js';
@@ -463,11 +464,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             }
           );
       let firstText = false;
+      const endFirstToken = markStart(
+        'chat.firstToken.progress',
+        fixtureMode ? 'fixture-chat-first-delta' : 'packaged-gateway-first-delta'
+      );
       set({ streaming: true, streamPhase: 'streaming' });
       for await (const event of stream) {
         if (event.type === 'delta' && !firstText) {
           firstText = true;
-          if (bridge) void bridge.measurePerfOperation('chat.firstToken.progress');
+          endFirstToken();
         }
         set((state) => ({
           messages: applyChatStreamEvent(state.messages, assistantId, event)

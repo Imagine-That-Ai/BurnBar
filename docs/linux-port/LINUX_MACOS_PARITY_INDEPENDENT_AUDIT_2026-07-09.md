@@ -675,6 +675,13 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-019 - Replace synthetic accessibility evidence with assistive-tech proof
 
+**Implementation update (2026-07-09): closed in the implementation branch.**
+All 19 routes and important states now run through axe; the installed `.deb`
+is exercised through AT-SPI actions, Orca process/focus observation,
+keyboard-only traversal, and requested 200% zoom. The full shell verifier
+rejects missing or synthetic accessibility artifacts. GNOME/KDE matrix breadth
+remains tracked under GAP-004 rather than keeping this implementation gap open.
+
 - **Difference:** macOS has broad semantic labels/actions and targeted tests.
   Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
   reduced-motion CSS, but its automated scan returns hardcoded rows and its
@@ -695,6 +702,16 @@ Every matrix row maps to a detailed record containing all six requested fields:
   live regions, GNOME High Contrast, reduced motion, and no color-only meaning.
 
 ### GAP-020 - Add real reliability, performance, and installed-shell gates
+
+**Implementation update (2026-07-09): closed in the implementation branch.**
+Linux now records repeated packaged process-start, tray-open, daemon-reconnect,
+and post-paint route percentiles. A production-linked Swift harness runs the
+same deterministic SQLite, FTS, JSONL, and Hermes stream-parser workloads on
+macOS and Linux and compares correctness, p95/p99, RSS, CPU, and soak duration.
+PR and nightly workflows fail closed on missing or malformed evidence; nightly
+uses 100,000 rows and a 30-minute soak. The renderer now has a single-flight,
+lifecycle-aware daemon supervisor with bounded exponential backoff. See
+`performance-reliability-validation.md`.
 
 - **Difference:** macOS has cadence, supervisor, startup recovery, prewarming,
   migration, and frame-budget coverage. Many Linux surfaces refresh on mount or

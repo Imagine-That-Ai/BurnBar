@@ -292,14 +292,14 @@ sbom: ## Generate SPDX Software Bill of Materials
 	echo "==> Generating SBOM for v$$VERSION…"; \
 	python3 scripts/generate-sbom.py --version "$$VERSION" --repo-root .
 
-.PHONY: linux-gate linux-diagnostic release-linux linux-matrix
+.PHONY: linux-gate linux-diagnostic linux-performance-smoke release-linux linux-matrix
 
 linux-gate: ## Linux structural, frontend, and native behavior gate
 	node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
 	node scripts/linux-port/render-parity-ledger.mjs --check
 	node --test scripts/linux-port/validate-parity-ledger.test.mjs scripts/linux-port/render-parity-ledger.test.mjs
 	node --test scripts/linux-port/check-linux-update-feed.test.mjs
-	node --test scripts/linux-port/verify-linux-release.test.mjs scripts/linux-port/resolve-linux-release-version.test.mjs scripts/linux-port/verify-linux-workflow-wiring.test.mjs scripts/linux-port/runtime-capability-contract.test.mjs scripts/linux-port/accessibility-harness-contract.test.mjs
+	node --test scripts/linux-port/verify-linux-release.test.mjs scripts/linux-port/resolve-linux-release-version.test.mjs scripts/linux-port/verify-linux-workflow-wiring.test.mjs scripts/linux-port/runtime-capability-contract.test.mjs scripts/linux-port/accessibility-harness-contract.test.mjs scripts/linux-port/matched-performance-contract.test.mjs scripts/linux-port/perf-budget-contract.test.mjs
 	node scripts/linux-port/verify-linux-workflow-wiring.mjs
 	npm test --prefix apps/linux-desktop
 	npm run build --prefix apps/linux-desktop
@@ -311,6 +311,10 @@ linux-diagnostic: ## Non-promotional Linux readiness report
 	node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
 	node scripts/linux-port/render-parity-ledger.mjs --check
 	node scripts/linux-port/check-linux-docs.mjs
+
+linux-performance-smoke: ## Run identical short macOS/Linux workloads (requires Docker on macOS)
+	docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
+	OB_MATCHED_PERF_PROFILE=smoke node scripts/linux-port/run-matched-performance.mjs --profile smoke
 
 release-linux: ## Linux release gate entry (strict verifier when artifacts present)
 	@echo "==> Linux release config + packaging sync + feed schema"

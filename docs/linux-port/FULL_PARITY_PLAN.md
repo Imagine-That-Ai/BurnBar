@@ -125,7 +125,7 @@ The existing `docs/linux-port/parity-ledger.json` has 64 Tier A/B rows all marke
 1. **Shared file seams** (append-only): `SurfaceRouter.tsx`, `tauriBridge.ts`, `src-tauri/src/lib.rs`, `daemonFixture.ts`, `styles/app.css`.
 2. **Nav geometry frozen** — `scripts/linux-port/linux-desktop-session.sh` clicks fixed coordinates; never alter nav padding/order without updating P15.
 3. **RPC contract** — use exact `BurnBarRPCMethod` strings from `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPC*.swift`.
-4. **Evidence contracts pinned** — `app.start`, `route.navigation`, `ipc.health.roundtrip`, `chat.firstToken.progress`, `db.migration.open.query`, `parser.incremental.run`, `memory.search`, `media.control.stage`, a11y landmarks, and `localStorage` keys must not be renamed.
+4. **Evidence contracts pinned** — repeated `app.start`, post-paint `route.navigation`, repeated `ipc.health.roundtrip`, repeated `tray.click.open`, production-linked matched workload IDs, a11y landmarks, and `localStorage` keys must not be renamed without updating their fail-closed validators.
 5. **Design tokens only** — no hex literals in surfaces; provider accents live in `src/providerGlyphs.ts`.
 6. **Reduced motion absolute** — all animation must be suppressible via `body.reduced-motion` or `prefers-reduced-motion`.
 

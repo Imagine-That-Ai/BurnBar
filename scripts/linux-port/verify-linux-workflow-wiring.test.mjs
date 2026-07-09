@@ -4,8 +4,26 @@ import { verifyLinuxWorkflowWiring } from './verify-linux-workflow-wiring.mjs';
 
 function valid() {
   return {
-    pr: 'bash scripts/linux-port/run-linux-native-tests.sh\nverify-linux-release.test.mjs\nrender-parity-ledger.mjs --check',
-    nightly: 'OPENBURNBAR_LINUX_EVIDENCE_OUT',
+    pr: [
+      'bash scripts/linux-port/run-linux-native-tests.sh',
+      'verify-linux-release.test.mjs',
+      'render-parity-ledger.mjs --check',
+      'macos-matched-performance',
+      'run-matched-performance.mjs',
+      '--profile pr',
+      'matched-performance-contract.test.mjs',
+      'perf-budget-contract.test.mjs',
+      'linux-parity-macos-performance-pr'
+    ].join('\n'),
+    nightly: [
+      'OPENBURNBAR_LINUX_EVIDENCE_OUT',
+      'macos-matched-performance',
+      'linux-matched-performance',
+      '--profile nightly',
+      'OB_MATCHED_MACOS_INPUT',
+      'OB_MATCHED_LINUX_INPUT',
+      'linux-parity-matched-performance-nightly'
+    ].join('\n'),
     release: [
       '- "linux-v*"',
       'resolve-linux-release-version.mjs --github-output',
@@ -172,6 +190,19 @@ test('runtime capability catalog, evaluator, bridge, route, and boundary drift f
     ['surfaceBoundary', 'capabilityBlocksSurface'],
     ['runtimeCatalog', '"schemaVersion": 1'],
     ['runtimeSchema', '"additionalProperties": false']
+  ]) {
+    const input = valid();
+    input[field] = input[field].replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${field}:${marker}`);
+  }
+});
+
+test('removing PR or nightly matched performance wiring fails', () => {
+  for (const [field, marker] of [
+    ['pr', '--profile pr'],
+    ['pr', 'matched-performance-contract.test.mjs'],
+    ['nightly', '--profile nightly'],
+    ['nightly', 'OB_MATCHED_LINUX_INPUT']
   ]) {
     const input = valid();
     input[field] = input[field].replace(marker, '');

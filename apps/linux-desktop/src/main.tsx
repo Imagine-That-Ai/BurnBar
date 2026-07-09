@@ -4,6 +4,7 @@ import { applyReducedMotionClass } from './a11y.js';
 import { App } from './app/App.js';
 import { readOnboarding } from './onboardingStore.js';
 import { markStart } from './perfMarks.js';
+import { DaemonHealthSupervisor, installDaemonHealthLifecycle } from './state/daemonHealthSupervisor.js';
 import { useShellStore } from './state/shellStore.js';
 
 async function boot(): Promise<void> {
@@ -27,6 +28,13 @@ async function boot(): Promise<void> {
 
   await useShellStore.getState().boot();
   end();
+
+  const healthSupervisor = new DaemonHealthSupervisor(async () => {
+    await useShellStore.getState().refreshHealth();
+    return useShellStore.getState().health?.ok === true;
+  });
+  const uninstallHealthLifecycle = installDaemonHealthLifecycle(healthSupervisor);
+  window.addEventListener('beforeunload', uninstallHealthLifecycle, { once: true });
 }
 
 void boot();

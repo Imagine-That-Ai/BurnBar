@@ -91,6 +91,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     exit 1
   fi
   app_start_ms="$(( $(date +%s%3N) - start_ms ))"
+  app_start_samples=("$app_start_ms")
   echo "$window_id" >"$out_dir/openburnbar-window-id.txt"
   xwininfo -id "$window_id" >"$out_dir/window-initial-xwininfo.txt"
   xprop -id "$window_id" >"$out_dir/window-initial-xprop.txt"
@@ -155,7 +156,8 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   # ── Route navigation via AT-SPI command-palette actions ──────────────
   # The shell's command palette reaches all 19 routes and drives the same
   # shellStore.setRoute() path — emitting the
-  # route.navigation perf sample with source packaged-ui-route:<route>.
+  # route.navigation perf sample with source
+  # packaged-ui-route-after-paint:<route>.
   # Named AT-SPI actions survive chrome layout changes and prove the installed
   # app exposes both the palette trigger and every route row as actionable.
   xdotool windowactivate --sync "$window_id" 2>/dev/null || xdotool windowactivate "$window_id"
@@ -164,7 +166,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
 
   samples_file="$out_dir/runtime-perf-samples.jsonl"
   has_route_sample() {
-    [[ -f "$samples_file" ]] && grep -q "packaged-ui-route:${1}" "$samples_file"
+    [[ -f "$samples_file" ]] && grep -q "packaged-ui-route-after-paint:${1}" "$samples_file"
   }
   palette_navigate() {
     local route="$1"
@@ -267,7 +269,7 @@ FOCUS
 
   # ── Navigation truth check ────────────────────────────────────────────
   # Every palette navigation must have produced a route.navigation perf
-  # sample tagged packaged-ui-route:<route>. This catches silent
+  # sample tagged packaged-ui-route-after-paint:<route>. This catches silent
   # mis-navigation (screenshots of the wrong surface) that coordinate
   # drift previously let through.
   node - "$out_dir/runtime-perf-samples.jsonl" "${route_names[@]}" <<'NAVCHECK'
@@ -280,7 +282,7 @@ if (fs.existsSync(samplesPath)) {
     try {
       const row = JSON.parse(line);
       if (row.name === 'route.navigation' && typeof row.source === 'string') {
-        const m = row.source.match(/^packaged-ui-route:(.+)$/);
+        const m = row.source.match(/^packaged-ui-route-after-paint:(.+)$/);
         if (m) seen.add(m[1]);
       }
     } catch {}
@@ -453,29 +455,37 @@ NODE
       uint32:0
   }
 
-  xdotool windowunmap "$window_id"
-  for _ in $(seq 1 50); do
-    if ! xdotool search --onlyvisible --name OpenBurnBar >/dev/null 2>&1; then
-      break
+  tray_open_samples=()
+  reopened_window_id="$window_id"
+  : >"$out_dir/tray-open-menu-event.txt"
+  for sample_index in $(seq 1 10); do
+    xdotool windowunmap "$reopened_window_id"
+    for _ in $(seq 1 50); do
+      if ! xdotool search --onlyvisible --name OpenBurnBar >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+    tray_open_start_ms="$(date +%s%3N)"
+    {
+      echo "== sample $sample_index =="
+      send_menu_event "$OPEN_ID"
+    } >>"$out_dir/tray-open-menu-event.txt" 2>&1
+    reopened_window_id=""
+    for _ in $(seq 1 80); do
+      reopened_window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$reopened_window_id" ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ -z "$reopened_window_id" ]]; then
+      echo "Tray Open dashboard action did not reopen the window for sample $sample_index" >&2
+      exit 1
     fi
-    sleep 0.1
+    tray_open_samples+=("$(( $(date +%s%3N) - tray_open_start_ms ))")
   done
-
-  tray_open_start_ms="$(date +%s%3N)"
-  send_menu_event "$OPEN_ID" >"$out_dir/tray-open-menu-event.txt" 2>&1
-  reopened_window_id=""
-  for _ in $(seq 1 80); do
-    reopened_window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
-    if [[ -n "$reopened_window_id" ]]; then
-      break
-    fi
-    sleep 0.1
-  done
-  if [[ -z "$reopened_window_id" ]]; then
-    echo "Tray Open dashboard action did not reopen the window" >&2
-    exit 1
-  fi
-  tray_open_ms="$(( $(date +%s%3N) - tray_open_start_ms ))"
+  tray_open_ms="${tray_open_samples[0]}"
   xwininfo -id "$reopened_window_id" >"$out_dir/window-after-tray-open-xwininfo.txt"
   scrot "$out_dir/screenshot-linux-desktop-after-tray-open.png"
 
@@ -483,17 +493,31 @@ NODE
   if [[ -f "$out_dir/daemon-shell-session.log" ]]; then
     daemon_log="$out_dir/daemon-shell-session.log"
   fi
-  before_reconnect_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
-  reconnect_start_ms="$(date +%s%3N)"
-  send_menu_event "$RECONNECT_ID" >"$out_dir/tray-reconnect-menu-event.txt" 2>&1
-  for _ in $(seq 1 80); do
-    current_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
-    if [[ "$current_lines" -gt "$before_reconnect_lines" ]]; then
-      break
+  ipc_health_roundtrip_samples=()
+  : >"$out_dir/tray-reconnect-menu-event.txt"
+  for sample_index in $(seq 1 10); do
+    before_reconnect_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
+    reconnect_start_ms="$(date +%s%3N)"
+    {
+      echo "== sample $sample_index =="
+      send_menu_event "$RECONNECT_ID"
+    } >>"$out_dir/tray-reconnect-menu-event.txt" 2>&1
+    reconnect_observed=false
+    for _ in $(seq 1 80); do
+      current_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
+      if [[ "$current_lines" -gt "$before_reconnect_lines" ]]; then
+        reconnect_observed=true
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ "$reconnect_observed" != true ]]; then
+      echo "Tray Reconnect daemon action produced no daemon activity for sample $sample_index" >&2
+      exit 1
     fi
-    sleep 0.1
+    ipc_health_roundtrip_samples+=("$(( $(date +%s%3N) - reconnect_start_ms ))")
   done
-  ipc_health_roundtrip_ms="$(( $(date +%s%3N) - reconnect_start_ms ))"
+  ipc_health_roundtrip_ms="${ipc_health_roundtrip_samples[0]}"
 
   quit_start_ms="$(date +%s%3N)"
   send_menu_event "$QUIT_ID" >"$out_dir/tray-quit-menu-event.txt" 2>&1
@@ -509,6 +533,45 @@ NODE
   fi
   tray_quit_ms="$(( $(date +%s%3N) - quit_start_ms ))"
 
+  # Add nine warm relaunches to the first cold launch. The process is fully
+  # terminated between samples, and each sample ends only when the real X11
+  # window becomes visible.
+  for sample_index in $(seq 2 10); do
+    relaunch_start_ms="$(date +%s%3N)"
+    "$installed_bin" >>"$out_dir/openburnbar-linux-desktop.stdout.log" 2>>"$out_dir/openburnbar-linux-desktop.stderr.log" &
+    relaunch_pid="$!"
+    relaunch_window_id=""
+    for _ in $(seq 1 120); do
+      relaunch_window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$relaunch_window_id" ]]; then
+        break
+      fi
+      if ! kill -0 "$relaunch_pid" 2>/dev/null; then
+        echo "OpenBurnBar exited during startup sample $sample_index" >&2
+        exit 1
+      fi
+      sleep 0.25
+    done
+    if [[ -z "$relaunch_window_id" ]]; then
+      echo "Startup sample $sample_index never produced a visible window" >&2
+      kill "$relaunch_pid" 2>/dev/null || true
+      exit 1
+    fi
+    app_start_samples+=("$(( $(date +%s%3N) - relaunch_start_ms ))")
+    kill "$relaunch_pid" 2>/dev/null || true
+    wait "$relaunch_pid" 2>/dev/null || true
+    for _ in $(seq 1 40); do
+      if ! xdotool search --onlyvisible --name OpenBurnBar >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+  done
+
+  app_start_samples_json="$(IFS=,; echo "[${app_start_samples[*]}]")"
+  tray_open_samples_json="$(IFS=,; echo "[${tray_open_samples[*]}]")"
+  ipc_health_roundtrip_samples_json="$(IFS=,; echo "[${ipc_health_roundtrip_samples[*]}]")"
+
   {
     echo "== dbus names after app =="
     gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames
@@ -517,6 +580,27 @@ NODE
   node - "$out_dir/linux-desktop-session-report.json" "$out_dir" <<NODE
 const fs = require('fs');
 const outDir = process.argv[3];
+const summarize = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const percentile = (quantile) => {
+    const position = quantile * (sorted.length - 1);
+    const lower = Math.floor(position);
+    const upper = Math.ceil(position);
+    return lower === upper
+      ? sorted[lower]
+      : sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+  };
+  return {
+    minimum: sorted[0],
+    p50: percentile(0.50),
+    p95: percentile(0.95),
+    p99: percentile(0.99),
+    maximum: sorted[sorted.length - 1]
+  };
+};
+const appStartSamples = $app_start_samples_json;
+const trayClickOpenSamples = $tray_open_samples_json;
+const ipcHealthRoundTripSamples = $ipc_health_roundtrip_samples_json;
 const report = {
   generatedAt: new Date().toISOString(),
   profile: 'dbus-x11-xvfb-xfce-statusnotifier',
@@ -531,9 +615,15 @@ const report = {
     reopenedWindowId: '$reopened_window_id'
   },
   performance: {
-    appStartMs: Number('$app_start_ms'),
-    trayClickOpenMs: Number('$tray_open_ms'),
-    ipcHealthRoundTripMs: Number('$ipc_health_roundtrip_ms'),
+    appStartMs: summarize(appStartSamples).p95,
+    trayClickOpenMs: summarize(trayClickOpenSamples).p95,
+    ipcHealthRoundTripMs: summarize(ipcHealthRoundTripSamples).p95,
+    appStartSamples,
+    trayClickOpenSamples,
+    ipcHealthRoundTripSamples,
+    appStartPercentiles: summarize(appStartSamples),
+    trayClickOpenPercentiles: summarize(trayClickOpenSamples),
+    ipcHealthRoundTripPercentiles: summarize(ipcHealthRoundTripSamples),
     trayQuitMs: Number('$tray_quit_ms')
   },
   accessibility: {
