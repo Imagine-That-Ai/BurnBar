@@ -1190,6 +1190,17 @@ jobs:
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
+      # Structural remediation ratchets (audit 2026-06-30 findings #4/#5).
+      # Core UI purity: no new SwiftUI/AppKit imports in OpenBurnBarCore's main
+      # module; pure sibling targets assert-zero. Mission split-brain: the
+      # GUI-side mission-authority cluster may only shrink as authority moves
+      # to the daemon MissionControl.
+      - name: Core UI-purity budget (shrink-only ratchet)
+        run: ./scripts/debt/check-core-ui-purity-budget.sh
+
+      - name: Mission split-brain budget (shrink-only ratchet)
+        run: ./scripts/debt/check-mission-splitbrain-budget.sh
+
       # Windows per-tree size ratchet (rooted at windows/, partitioned by
       # app/pal/native/tests). Blocking Windows check on every PR — a red
       # Windows budget fails HERE at merge time. Pure bash + python3.
