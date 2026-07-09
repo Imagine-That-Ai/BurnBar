@@ -17,12 +17,12 @@ export interface CommunityDocumentReference {
   delete(): Promise<unknown>;
 }
 
-export interface CommunityQueryDocumentSnapshot extends CommunityDocumentSnapshot {
+interface CommunityQueryDocumentSnapshot extends CommunityDocumentSnapshot {
   readonly id: string;
   readonly ref: CommunityDocumentReference;
 }
 
-export interface CommunityQuerySnapshot { readonly docs: readonly CommunityQueryDocumentSnapshot[]; readonly empty?: boolean; readonly size?: number; }
+interface CommunityQuerySnapshot { readonly docs: readonly CommunityQueryDocumentSnapshot[]; readonly empty?: boolean; readonly size?: number; }
 
 export interface CommunityQuery { get(): Promise<CommunityQuerySnapshot>; }
 

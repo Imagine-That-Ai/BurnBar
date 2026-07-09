@@ -148,27 +148,26 @@ final class CommunityConsentStore: ObservableObject {
         countryCode: String?,
         regionKey: String?,
         cityKey: String?
-    ) -> [String: Any] {
-        var payload: [String: Any] = [
-            "l1Analytics": triStateString(l1Analytics),
-            "l2Rankings": triStateString(l2Rankings),
-            "l2World": triStateString(l2World),
-            "l2Country": triStateString(l2Country),
-            "l2Region": triStateString(l2Region),
-            "l2City": triStateString(l2City),
-            "locationConsent": triStateString(locationConsent),
-            "l3LookingGlass": triStateString(l3LookingGlass)
-        ]
-        payload["timezone"] = TimeZone.current.identifier
-        payload["locale"] = Locale.current.identifier
-        if let handle, !handle.isEmpty { payload["handle"] = handle }
+    ) -> CommunityJoinRequest {
         let effectiveCountry = countryCode ?? resolvedCountryCode
         let effectiveRegion = regionKey ?? resolvedRegionKey
         let effectiveCity = cityKey ?? resolvedCityKey
-        if l2Country == .granted, let effectiveCountry { payload["countryCode"] = effectiveCountry }
-        if l2Region == .granted, let effectiveRegion { payload["regionKey"] = effectiveRegion }
-        if l2City == .granted, locationConsent == .granted, let effectiveCity { payload["cityKey"] = effectiveCity }
-        return payload
+        return CommunityJoinRequest(
+            l1Analytics: triStateString(l1Analytics),
+            l2Rankings: triStateString(l2Rankings),
+            l2World: triStateString(l2World),
+            l2Country: triStateString(l2Country),
+            l2Region: triStateString(l2Region),
+            l2City: triStateString(l2City),
+            locationConsent: triStateString(locationConsent),
+            l3LookingGlass: triStateString(l3LookingGlass),
+            timezone: TimeZone.current.identifier,
+            locale: Locale.current.identifier,
+            handle: handle?.nilIfBlank,
+            countryCode: l2Country == .granted ? effectiveCountry : nil,
+            regionKey: l2Region == .granted ? effectiveRegion : nil,
+            cityKey: l2City == .granted && locationConsent == .granted ? effectiveCity : nil
+        )
     }
 
     private func triStateString(_ value: CommunityConsentLadder) -> String {

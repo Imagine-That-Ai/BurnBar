@@ -41,7 +41,7 @@ enum CommunityCallableClient {
                     continuation.resume(throwing: error)
                     return
                 }
-                guard let dict = result?.data as? [String: Any] else {
+                guard let dict = result?.data as? NSDictionary else {
                     continuation.resume(throwing: CommunityStoreError.malformedResponse)
                     return
                 }

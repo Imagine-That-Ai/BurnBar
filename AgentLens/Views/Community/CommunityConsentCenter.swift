@@ -207,11 +207,11 @@ struct CommunityConsentCenter: View {
             )
             _ = try await service.joinCommunity(payload: payload)
             if let handle = handleDraft.nilIfBlank() {
-                try await service.updateProfile([
-                    "handle": handle,
-                    "timezone": TimeZone.current.identifier,
-                    "locale": Locale.current.identifier
-                ])
+                try await service.updateProfile(CommunityProfileUpdateRequest(
+                    handle: handle,
+                    timezone: TimeZone.current.identifier,
+                    locale: Locale.current.identifier
+                ))
             }
             statusMessage = "Community preferences saved."
         } catch {

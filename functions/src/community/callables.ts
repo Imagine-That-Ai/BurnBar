@@ -15,7 +15,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { appendAuditEventRequired, AUDIT_ACTIONS, auditActorLabel } from "../callables/auditLog.js";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
 import { onCallProduction, logInfo } from "../logging.js";
@@ -24,6 +24,7 @@ import { firestoreWithResilience } from "../resilienceHelpers.js";
 import { COMMUNITY_SCHEMA_VERSION, CommunityPaths } from "./consent.js";
 import { deriveGeoKeys, populateGeoKeys, normalizeGeoKey } from "./geo.js";
 import { assertCommunityRuntimeEnabled } from "./rollout.js";
+import { optionalEnumField, parseCallableInput } from "../validation/callableSchema.js";
 import { refreshCommunityShareSnapshotForUser } from "./snapshot.js";
 import type { CommunityConsentDoc, CommunityProfileDoc } from "../types/generated/community.js";
 import type { ColumnSource } from "hyparquet-writer";
@@ -37,6 +38,36 @@ const COMMUNITY_CALLABLE_OPTS = {
   timeoutSeconds: 60,
   memory: "256MiB" as const,
 };
+
+type HandleClaimTransaction<TRef> = {
+  get(ref: TRef): Promise<unknown>;
+  set(ref: TRef, data: Record<string, unknown>): unknown;
+  delete(ref: TRef): unknown;
+};
+
+type HandleClaimFirestore<TRef> = {
+  doc(path: string): TRef;
+  runTransaction(fn: (tx: HandleClaimTransaction<TRef>) => Promise<void>): Promise<unknown>;
+};
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function handleClaimExists(snapshot: unknown): boolean {
+  if (!isRecordValue(snapshot)) throw new HttpsError("internal", "Invalid handle claim transaction snapshot.");
+  const exists = Reflect.get(snapshot, "exists");
+  if (typeof exists !== "boolean") throw new HttpsError("internal", "Invalid handle claim existence state.");
+  return exists;
+}
+
+function handleClaimOwner(snapshot: unknown): unknown {
+  if (!isRecordValue(snapshot)) throw new HttpsError("internal", "Invalid handle claim transaction snapshot.");
+  const data = Reflect.get(snapshot, "data");
+  if (typeof data !== "function") throw new HttpsError("internal", "Invalid handle claim data reader.");
+  const raw = data.call(snapshot);
+  return isRecordValue(raw) ? raw.uid : undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Handle validation
@@ -85,8 +116,8 @@ export function isValidHandle(handle: string): boolean {
  * `oldHandleLower` (if any) is released in the same transaction so a handle
  * change is atomic.
  */
-export async function claimHandleTransaction(
-  db: Firestore,
+async function claimHandleTransaction<TRef>(
+  db: HandleClaimFirestore<TRef>,
   uid: string,
   newHandleLower: string,
   oldHandleLower: string | null,
@@ -95,8 +126,8 @@ export async function claimHandleTransaction(
     const claimRef = db.doc(CommunityPaths.handleClaim(newHandleLower));
     const claimSnap = await tx.get(claimRef);
 
-    if (claimSnap.exists) {
-      const owner = claimSnap.data()?.uid;
+    if (handleClaimExists(claimSnap)) {
+      const owner = handleClaimOwner(claimSnap);
       if (owner !== uid) {
         throw new HttpsError("already-exists", "That handle is taken.");
       }
@@ -113,12 +144,16 @@ export async function claimHandleTransaction(
 }
 
 /** Release a handle claim — used when clearing the handle or revoking. */
-async function claimHandleRelease(db: Firestore, uid: string, handleLower: string): Promise<void> {
+async function claimHandleRelease<TRef>(
+  db: HandleClaimFirestore<TRef>,
+  uid: string,
+  handleLower: string,
+): Promise<void> {
   await db.runTransaction(async (tx) => {
     const ref = db.doc(CommunityPaths.handleClaim(handleLower));
     const snap = await tx.get(ref);
     // Only delete if it belongs to this user (defensive).
-    if (snap.exists && snap.data()?.uid === uid) {
+    if (handleClaimExists(snap) && handleClaimOwner(snap) === uid) {
       tx.delete(ref);
     }
   });
@@ -302,8 +337,8 @@ function communityTierGrants(consent: Record<string, unknown>): CommunityTierGra
   return out;
 }
 
-async function applyProfileHandleUpdate(
-  db: Firestore,
+async function applyProfileHandleUpdate<TRef>(
+  db: HandleClaimFirestore<TRef>,
   uid: string,
   handle: string | undefined,
   oldHandleLower: string | null,
@@ -471,6 +506,9 @@ export const revokeCommunityParticipation = onCallProduction(
 const SIGNED_URL_TTL_SECONDS = 15 * 60;
 const MAX_EXPORT_TRACES = 10_000;
 type LookingGlassExportFormat = "jsonl" | "parquet";
+const LOOKING_GLASS_EXPORT_INPUT = {
+  format: optionalEnumField(["jsonl", "parquet"]),
+} as const;
 
 interface SerializedLookingGlassBundle {
   buffer: Buffer;
@@ -544,11 +582,14 @@ export const exportLookingGlassBundle = onCallProduction(
     memory: "512MiB" as const,
   },
   async (request: CallableRequest<{ format?: string }>) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in to export your data.");
-    assertCommunityRuntimeEnabled("Looking Glass export");
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in to export your data.");
+  assertCommunityRuntimeEnabled("Looking Glass export");
 
-    const format = requestedLookingGlassExportFormat(request.data?.format);
+    const input = parseCallableInput("exportLookingGlassBundle", LOOKING_GLASS_EXPORT_INPUT, request.data, {
+      rejectUnknownKeys: true,
+    });
+    const format = requestedLookingGlassExportFormat(input.format);
     const db = getFirestore();
 
     // Verify L3 consent server-side.
@@ -620,6 +661,5 @@ export const exportLookingGlassBundle = onCallProduction(
 /** Test-only bundle for unit tests (not re-exported from community barrel). */
 export const __communityCallableTestExports = {
   isValidHandle,
-  claimHandleTransaction,
   SIGNED_URL_TTL_SECONDS,
 };

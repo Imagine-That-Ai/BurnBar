@@ -1,8 +1,6 @@
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Firestore } from "firebase-admin/firestore";
 
 import {
   buildLeaderboard,
@@ -11,14 +9,8 @@ import {
   groupByGeoTier,
   type Participant,
 } from "../community/aggregation.js";
+import { classifyPurpose, signalFingerprint } from "../community/classifier.js";
 import {
-  classifyPurpose,
-  signalFingerprint,
-  type ClassifierSignals,
-  type PurposeCorrection,
-} from "../community/classifier.js";
-import {
-  claimHandleTransaction,
   exportLookingGlassBundle,
   isValidHandle,
   joinCommunity,
@@ -30,6 +22,13 @@ import { communityRuntimeStatus } from "../community/rollout.js";
 import { COMMUNITY_SCHEMA_VERSION, CommunityPaths, recheckConsent } from "../community/consent.js";
 import { normalizeGeoKey } from "../community/geo.js";
 import type { CommunityWindowTotals } from "../types/generated/community.js";
+import {
+  communityDb,
+  loadGoldenFixtures,
+  requireNumberField,
+  requireRecord,
+  requireStringField,
+} from "./support/communityTestGuards.js";
 import {
   ALICE_UID,
   BOB_UID,
@@ -43,20 +42,11 @@ const FRESH_SHARE_SNAPSHOT_UPDATED_AT = new Date().toISOString();
 
 const goldensPath = resolve(process.cwd(), "../tests/fixtures/classifier-goldens.json");
 
-type GoldenFixture = {
-  name: string;
-  signals: ClassifierSignals;
-  expected?: string;
-  minConfidence?: number;
-  expectedFingerprint?: string;
-  corrections?: PurposeCorrection[];
-};
-
 const store: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
 
 const { appendAuditEventRequired, storageSaveMock } = vi.hoisted(() => ({
   appendAuditEventRequired: vi.fn(async () => undefined),
-  storageSaveMock: vi.fn(async () => undefined),
+  storageSaveMock: vi.fn(async (_data: Buffer, _options: { contentType: string }) => undefined),
 }));
 
 vi.mock("../resilienceHelpers.js", () => ({
@@ -124,7 +114,7 @@ describe("recheckConsent", () => {
   beforeEach(() => store.clear());
 
   it("returns fully dark when consent doc is missing", async () => {
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     const snap = await recheckConsent(db, "missing-user");
     expect(snap).toEqual({
       l1Analytics: false,
@@ -140,7 +130,7 @@ describe("recheckConsent", () => {
 
   it("returns fully dark for malformed consent payload", async () => {
     seedDoc(store, CommunityPaths.consent("bad-user"), { notAConsentDoc: true });
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     const snap = await recheckConsent(db, "bad-user");
     expect(snap.l2Rankings).toBe(false);
     expect(snap.l3LookingGlass).toBe(false);
@@ -159,7 +149,7 @@ describe("recheckConsent", () => {
       l3LookingGlass: "granted",
       locationConsent: "declined",
     });
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     const snap = await recheckConsent(db, "alice");
     expect(snap.l1Analytics).toBe(true);
     expect(snap.l2World).toBe(true);
@@ -176,7 +166,7 @@ describe("recheckConsent", () => {
       l2Tiers: { world: "declined", country: "declined", region: "declined", city: "granted" },
       locationConsent: "granted",
     });
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     const snap = await recheckConsent(db, "bob");
     expect(snap.l2City).toBe(true);
     expect(snap.l2Rankings).toBe(true);
@@ -194,7 +184,7 @@ describe("recheckConsent", () => {
       });
     }
 
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     for (const uid of ["carol", "dave"]) {
       await expect(recheckConsent(db, uid)).resolves.toMatchObject({ l2Rankings: false, l2World: false });
     }
@@ -239,7 +229,7 @@ describe("collectValidParticipants anonId privacy", () => {
       updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
     });
 
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     const participants = await collectValidParticipants(db);
 
     expect(participants).toEqual([]);
@@ -263,7 +253,7 @@ describe("collectValidParticipants anonId privacy", () => {
       updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
     });
 
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     const participants = await collectValidParticipants(db);
     expect(participants).toHaveLength(0);
     expect(participants.some((p) => p.anonId === LEAK_UID)).toBe(false);
@@ -284,7 +274,7 @@ describe("collectValidParticipants anonId privacy", () => {
       updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
     });
 
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     const participants = await collectValidParticipants(db);
 
     expect(participants).toHaveLength(1);
@@ -317,7 +307,7 @@ describe("collectValidParticipants anonId privacy", () => {
       updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
     });
 
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb(store);
     const participants = await collectValidParticipants(db);
     expect(participants.map((p) => p.uid)).not.toContain(staleUid);
     expect(participants.map((p) => p.uid)).not.toContain(malformedUid);
@@ -412,7 +402,7 @@ describe("computePercentiles", () => {
 });
 
 describe("classifier goldens", () => {
-  const goldens = JSON.parse(readFileSync(goldensPath, "utf8")) as GoldenFixture[];
+  const goldens = loadGoldenFixtures(goldensPath);
 
   for (const golden of goldens) {
     it(`golden: ${golden.name}`, () => {
@@ -439,10 +429,13 @@ describe("handle validation and claims", () => {
     expect(isValidHandle("valid_handle-1")).toBe(true);
   });
 
-  it("claimHandleTransaction rejects when handle is already taken", async () => {
+  it("joinCommunity rejects when handle is already taken", async () => {
     seedDoc(store, CommunityPaths.handleClaim("taken"), { uid: BOB_UID });
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
-    await expect(claimHandleTransaction(db, ALICE_UID, "taken", null)).rejects.toMatchObject({
+    const run = callableRunner(joinCommunity);
+
+    await expect(
+      run(callableRequest(ALICE_UID, { l2Rankings: "granted", l2World: "granted", handle: "taken" })),
+    ).rejects.toMatchObject({
       code: "already-exists",
     });
   });
@@ -543,19 +536,14 @@ describe("exportLookingGlassBundle", () => {
     seedDoc(store, `users/${ALICE_UID}/looking_glass_traces/t2`, { sessionId: "s2" });
 
     const run = callableRunner(exportLookingGlassBundle);
-    const result = (await run(callableRequest(ALICE_UID, {}))) as {
-      signedUrl: string;
-      downloadUrl: string;
-      traceCount: number;
-      format: string;
-      expiresIn: number;
-    };
+    const result = requireRecord(await run(callableRequest(ALICE_UID, {})), "Looking Glass JSONL result");
+    const signedUrl = requireStringField(result, "signedUrl");
 
-    expect(result.signedUrl).toMatch(/^https:\/\//);
-    expect(result.downloadUrl).toBe(result.signedUrl);
-    expect(result.traceCount).toBe(2);
-    expect(result.format).toBe("jsonl");
-    expect(result.expiresIn).toBe(__communityCallableTestExports.SIGNED_URL_TTL_SECONDS);
+    expect(signedUrl).toMatch(/^https:\/\//);
+    expect(requireStringField(result, "downloadUrl")).toBe(signedUrl);
+    expect(requireNumberField(result, "traceCount")).toBe(2);
+    expect(requireStringField(result, "format")).toBe("jsonl");
+    expect(requireNumberField(result, "expiresIn")).toBe(__communityCallableTestExports.SIGNED_URL_TTL_SECONDS);
     expect(storageSaveMock).toHaveBeenCalledWith(expect.any(Buffer), { contentType: "application/x-ndjson" });
   });
 
@@ -575,17 +563,17 @@ describe("exportLookingGlassBundle", () => {
     });
 
     const run = callableRunner(exportLookingGlassBundle);
-    const result = (await run(callableRequest(ALICE_UID, { format: "parquet" }))) as {
-      traceCount: number;
-      format: string;
-    };
+    const result = requireRecord(
+      await run(callableRequest(ALICE_UID, { format: "parquet" })),
+      "Looking Glass Parquet result",
+    );
 
-    expect(result.traceCount).toBe(1);
-    expect(result.format).toBe("parquet");
+    expect(requireNumberField(result, "traceCount")).toBe(1);
+    expect(requireStringField(result, "format")).toBe("parquet");
     expect(storageSaveMock).toHaveBeenCalledWith(expect.any(Buffer), {
       contentType: "application/vnd.apache.parquet",
     });
-    const firstSaveCall = storageSaveMock.mock.calls.at(0) as unknown[] | undefined;
+    const firstSaveCall = storageSaveMock.mock.calls.at(0);
     const parquetBuffer = firstSaveCall?.[0];
     expect(Buffer.isBuffer(parquetBuffer)).toBe(true);
     if (!Buffer.isBuffer(parquetBuffer)) throw new Error("Parquet export did not save a Buffer.");

@@ -257,6 +257,16 @@ function zeroScores(): Record<ModelPurposeCategory, number> {
   return { ...CATEGORY_WEIGHT };
 }
 
+function applyCategoryBias(
+  scores: Record<ModelPurposeCategory, number>,
+  bias: Partial<Record<ModelPurposeCategory, number>>,
+): void {
+  for (const cat of PURPOSE_CATEGORIES) {
+    const weight = bias[cat];
+    if (weight !== undefined) scores[cat] += weight;
+  }
+}
+
 /**
  * Classify a session's purpose from metadata signals.
  *
@@ -329,9 +339,7 @@ export function classifyPurpose(
     const modelLower = signals.model.toLowerCase();
     for (const [key, bias] of MODEL_BIAS) {
       if (modelLower.includes(key)) {
-        for (const [cat, weight] of Object.entries(bias)) {
-          scores[cat as ModelPurposeCategory] += weight;
-        }
+        applyCategoryBias(scores, bias);
         contributingSignals.push(`model:${key}`);
         break;
       }
@@ -342,9 +350,7 @@ export function classifyPurpose(
   if (signals.appSurface) {
     const surfaceBias = SURFACE_BIAS[signals.appSurface.toLowerCase()];
     if (surfaceBias) {
-      for (const [cat, weight] of Object.entries(surfaceBias)) {
-        scores[cat as ModelPurposeCategory] += weight;
-      }
+      applyCategoryBias(scores, surfaceBias);
       contributingSignals.push(`surface:${signals.appSurface}`);
     }
   }

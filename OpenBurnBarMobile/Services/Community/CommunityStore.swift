@@ -164,12 +164,7 @@ final class CommunityStore {
             guard let geoKey, !geoKey.isEmpty else { continue }
             let docID = "\(window)_\(tier.rawValue)_\(geoKey)"
             do {
-                guard let data = try await firestore.fetchCommunityLeaderboard(docID: docID),
-                      let doc = firestore.decodeWithDocID(
-                        FirestoreCommunityLeaderboardDoc.self,
-                        from: data,
-                        docID: docID
-                      ) else { continue }
+                guard let doc = try await firestore.fetchCommunityLeaderboard(docID: docID) else { continue }
                 fetched[tier] = doc
             } catch {
                 continue

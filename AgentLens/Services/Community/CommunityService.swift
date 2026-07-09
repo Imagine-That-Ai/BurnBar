@@ -19,6 +19,43 @@ enum CommunityServiceError: LocalizedError {
     }
 }
 
+struct CommunityJoinRequest: Encodable, Sendable {
+    let l1Analytics: String
+    let l2Rankings: String
+    let l2World: String
+    let l2Country: String
+    let l2Region: String
+    let l2City: String
+    let locationConsent: String
+    let l3LookingGlass: String
+    let timezone: String
+    let locale: String
+    let handle: String?
+    let countryCode: String?
+    let regionKey: String?
+    let cityKey: String?
+}
+
+struct CommunityProfileUpdateRequest: Encodable, Sendable {
+    let handle: String?
+    let timezone: String
+    let locale: String
+}
+
+private struct CommunityEmptyRequest: Encodable {}
+
+private struct CommunityOKResponse: Decodable {
+    let ok: Bool?
+}
+
+private struct CommunityJoinResponse: Decodable {
+    let anonId: String
+}
+
+private struct CommunityExportResponse: Decodable {
+    let downloadUrl: String
+}
+
 /// Community windows match `functions/src/community/aggregation.ts`.
 enum CommunityLeaderboardWindow: String, CaseIterable, Identifiable, Sendable {
     case today
@@ -90,50 +127,81 @@ final class CommunityService: ObservableObject {
     }
 
     @discardableResult
-    func joinCommunity(payload: [String: Any]) async throws -> String {
-        let result = try await call("joinCommunity", payload)
-        guard let dict = result.data as? [String: Any],
-              let anonId = dict["anonId"] as? String else {
-            throw CommunityServiceError.malformedResponse
-        }
+    func joinCommunity(payload: CommunityJoinRequest) async throws -> String {
+        let response = try await call("joinCommunity", payload, response: CommunityJoinResponse.self)
         await refreshOwnerDocs()
-        return anonId
+        return response.anonId
     }
 
-    func updateProfile(_ payload: [String: Any]) async throws {
-        _ = try await call("updateCommunityProfile", payload)
+    func updateProfile(_ payload: CommunityProfileUpdateRequest) async throws {
+        let _: CommunityOKResponse = try await call("updateCommunityProfile", payload)
         await refreshOwnerDocs()
     }
 
     func revokeParticipation() async throws {
-        _ = try await call("revokeCommunityParticipation", [:] as [String: Any])
+        let _: CommunityOKResponse = try await call("revokeCommunityParticipation", CommunityEmptyRequest())
         remoteConsent = nil
         profile = nil
         await refreshOwnerDocs()
     }
 
     func exportLookingGlassBundle(format: String = "jsonl") async throws -> URL {
-        let result = try await call("exportLookingGlassBundle", ["format": format])
-        guard let dict = result.data as? [String: Any],
-              let urlString = dict["downloadUrl"] as? String,
-              let url = URL(string: urlString) else {
+        let response = try await call(
+            "exportLookingGlassBundle",
+            CommunityExportRequest(format: format),
+            response: CommunityExportResponse.self
+        )
+        guard let url = URL(string: response.downloadUrl) else {
             throw CommunityServiceError.malformedResponse
         }
         return url
     }
 
-    private func call(_ name: String, _ payload: [String: Any]) async throws -> HTTPSCallableResult {
+    private struct CommunityExportRequest: Encodable {
+        let format: String
+    }
+
+    private func call<Request: Encodable, Response: Decodable>(
+        _ name: String,
+        _ payload: Request,
+        response: Response.Type = Response.self
+    ) async throws -> Response {
         guard uidProvider() != nil else { throw CommunityServiceError.notSignedIn }
         do {
-            return try await functions.httpsCallable(name).call(payload)
+            let payloadObject = try Self.encodeJSONObject(payload)
+            let result = try await functions.httpsCallable(name).call(payloadObject)
+            return try Self.decodeResponse(response, from: result.data)
         } catch {
             throw CommunityServiceError.server(error.localizedDescription)
         }
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from data: [String: Any]?) throws -> T {
+    private func decode<T: Decodable>(_ type: T.Type, from data: Any?) throws -> T {
         guard let data else { throw CommunityServiceError.malformedResponse }
         let sanitized = Self.sanitizeForJSON(data)
+        guard JSONSerialization.isValidJSONObject(sanitized) else {
+            throw CommunityServiceError.malformedResponse
+        }
+        do {
+            let json = try JSONSerialization.data(withJSONObject: sanitized)
+            return try JSONDecoder().decode(type, from: json)
+        } catch {
+            throw CommunityServiceError.malformedResponse
+        }
+    }
+
+    private static func encodeJSONObject<Request: Encodable>(_ request: Request) throws -> NSDictionary {
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let dictionary = object as? NSDictionary else {
+            throw CommunityServiceError.malformedResponse
+        }
+        return dictionary
+    }
+
+    private static func decodeResponse<Response: Decodable>(_ type: Response.Type, from raw: Any?) throws -> Response {
+        guard let raw else { throw CommunityServiceError.malformedResponse }
+        let sanitized = sanitizeForJSON(raw)
         guard JSONSerialization.isValidJSONObject(sanitized) else {
             throw CommunityServiceError.malformedResponse
         }
@@ -151,12 +219,15 @@ final class CommunityService: ObservableObject {
             return iso8601String(from: timestamp.dateValue())
         case let date as Date:
             return iso8601String(from: date)
-        case let dict as [String: Any]:
-            return dict.reduce(into: [String: Any]()) { result, entry in
-                result[entry.key] = sanitizeForJSON(entry.value)
+        case let dict as NSDictionary:
+            let sanitized = NSMutableDictionary(capacity: dict.count)
+            for (key, value) in dict {
+                guard let key = key as? String else { continue }
+                sanitized[key] = sanitizeForJSON(value)
             }
-        case let array as [Any]:
-            return array.map(sanitizeForJSON)
+            return sanitized
+        case let array as NSArray:
+            return array.map(sanitizeForJSON) as NSArray
         case is NSNull:
             return NSNull()
         default:

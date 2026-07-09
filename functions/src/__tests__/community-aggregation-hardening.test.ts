@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Firestore } from "firebase-admin/firestore";
 
 import { cleanupStaleLeaderboards, loadPreviousRanks, loadPreviousRanksForBoards } from "../community/aggregation.js";
 import { CommunityPaths } from "../community/consent.js";
+import type { CommunityFirestore } from "../community/firestoreTypes.js";
 import { pathKeyedFirestore, seedDoc } from "./bola/callableBolaHarness.js";
 
 vi.mock("../resilienceHelpers.js", () => ({
@@ -10,6 +10,11 @@ vi.mock("../resilienceHelpers.js", () => ({
 }));
 
 const store = new Map<string, Record<string, unknown>>();
+
+function communityDb(): CommunityFirestore {
+  const db: CommunityFirestore = pathKeyedFirestore(store);
+  return db;
+}
 
 describe("loadPreviousRanks cohort doc id", () => {
   beforeEach(() => store.clear());
@@ -29,7 +34,7 @@ describe("loadPreviousRanks cohort doc id", () => {
       percentiles: { p50: 1, p75: 1, p90: 1, p99: 1 },
     });
 
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb();
     const prev = await loadPreviousRanks(db, "30d", "city", geoKey);
 
     expect(prev.get("cohort-anon")).toBe(4);
@@ -50,7 +55,7 @@ describe("loadPreviousRanks cohort doc id", () => {
       percentiles: { p50: 1, p75: 1, p90: 1, p99: 1 },
     });
 
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb();
     const prev = await loadPreviousRanksForBoards(db, [
       { window: "7d", tier: "world", geoKey: "world" },
       { window: "7d", tier: "world", geoKey: "world" },
@@ -74,7 +79,7 @@ describe("cleanupStaleLeaderboards", () => {
     seedDoc(store, stalePath, { updatedAt: "2026-07-08T23:00:00.000Z" });
     seedDoc(store, freshPath, { updatedAt: "2026-07-09T00:30:00.000Z" });
 
-    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const db = communityDb();
     const deleted = await cleanupStaleLeaderboards(db, new Set([activePath]), new Date("2026-07-09T00:00:00.000Z"));
 
     expect(deleted).toBe(1);

@@ -99,7 +99,7 @@ function snapshotRecord(snapshot: CommunityShareSnapshotDoc): Record<string, unk
   return out;
 }
 
-export async function buildCommunityShareSnapshotFromTrustedRollups(
+async function buildCommunityShareSnapshotFromTrustedRollups(
   db: CommunityFirestore,
   uid: string,
   now: Date = new Date(),
@@ -143,10 +143,10 @@ export async function buildCommunityShareSnapshotFromTrustedRollups(
 
   const countryCode = consent.l2Country ? optionalGeo(profile.countryCode) : undefined;
   const regionKey = consent.l2Region ? optionalGeo(profile.regionKey) : undefined;
-  const consentedCity = consent.l2City ? optionalGeo(profile.cityKey) : undefined;
+  const cityGeo = consent.l2City ? optionalGeo(profile.cityKey) : undefined;
   if (countryCode !== undefined) snapshot.countryCode = countryCode;
   if (regionKey !== undefined) snapshot.regionKey = regionKey;
-  if (consentedCity !== undefined) snapshot.cityKey = consentedCity;
+  if (cityGeo !== undefined) snapshot.cityKey = cityGeo;
 
   return snapshot;
 }

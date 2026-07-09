@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 import OSLog
 
 private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "FirestoreRepository")
@@ -149,11 +150,13 @@ final class FirestoreRepository {
             .addSnapshotListener(handler)
     }
 
-    func fetchCommunityLeaderboard(docID: String) async throws -> [String: Any]? {
-        try await db.collection("community_leaderboards")
+    func fetchCommunityLeaderboard(docID: String) async throws -> FirestoreCommunityLeaderboardDoc? {
+        let data = try await db.collection("community_leaderboards")
             .document(docID)
             .getDocument()
             .data()
+        guard let data else { return nil }
+        return decodeWithDocID(FirestoreCommunityLeaderboardDoc.self, from: data, docID: docID)
     }
 
     /// `TokenUsage` decode for the incremental live listener: identical to

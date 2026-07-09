@@ -352,7 +352,7 @@ async function collectValidParticipants(db: CommunityFirestore): Promise<Partici
 
     const countryCode = consent.l2Country ? (parseOptionalGeoKey(profile.countryCode) ?? null) : null;
     const regionKey = consent.l2Region ? (parseOptionalGeoKey(profile.regionKey) ?? null) : null;
-    const consentedCity = consent.l2City ? (parseOptionalGeoKey(profile.cityKey) ?? null) : null;
+    const cityGeo = consent.l2City ? (parseOptionalGeoKey(profile.cityKey) ?? null) : null;
 
     participants.push({
       uid,
@@ -362,7 +362,7 @@ async function collectValidParticipants(db: CommunityFirestore): Promise<Partici
       costUSD: 0,
       countryCode,
       regionKey,
-      cityKey: consentedCity,
+      cityKey: cityGeo,
       prevRank: null,
       windowTotals: data.windows,
     });
