@@ -36,6 +36,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case xAI = "xAI"
     case mimo = "MiMo"
     case cursorAgent = "Cursor Agent"
+    case junie = "Junie"
 
     public var id: String { rawValue }
 
@@ -52,6 +53,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .omp,
         .hermes,
         .geminiCLI,
+        .junie,
         .antigravity,
         .openAI,
         .openBurnBar,
@@ -279,6 +281,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .xAI
         case "mimo", "xiaomi", "xiaomimimo":
             return .mimo
+        case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie":
+            return .junie
         default:
             if let direct = fromPersistedToken(normalized) {
                 return direct
@@ -322,6 +326,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .xAI:        return "GrokLogo"
         case .mimo:       return "MimoLogo"
         case .cursorAgent: return "CursorLogo"
+        case .junie:      return "JunieLogo"
         }
     }
 
@@ -360,6 +365,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .xAI: return "bolt.fill"
         case .mimo: return "sparkles"
         case .cursorAgent: return "cursor.rays"
+        case .junie: return "j.circle.fill"
         }
     }
 

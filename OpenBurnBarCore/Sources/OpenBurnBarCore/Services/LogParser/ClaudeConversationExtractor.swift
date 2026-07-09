@@ -42,6 +42,10 @@ public final class ClaudeConversationAccumulator {
         }
     }
 
+    public func ingest(jsonLine: [String: BurnBarJSONValue]) {
+        ingest(jsonLine: jsonLine.untypedJSONDictionary)
+    }
+
     /// Picks up timestamps from several Factory / Claude JSONL shapes (string ISO8601, epoch seconds/ms, camelCase keys).
     private func applyTimeline(from json: [String: Any]) {
         let keys = ["timestamp", "created_at", "createdAt"]

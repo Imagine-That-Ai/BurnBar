@@ -215,6 +215,18 @@ public enum TokenExtractionUtility {
         )
     }
 
+    public static func extractUsageTokens(
+        _ usage: [String: BurnBarJSONValue],
+        inputHint: Int = 0,
+        outputHint: Int = 0
+    ) -> ExtractedTokenUsage {
+        extractUsageTokens(
+            usage.untypedJSONDictionary,
+            inputHint: inputHint,
+            outputHint: outputHint
+        )
+    }
+
     // MARK: - Content Metrics
 
     /// Keys in content dictionaries that should not contribute to character counts.
@@ -254,6 +266,10 @@ public enum TokenExtractionUtility {
         default:
             return (0, 0)
         }
+    }
+
+    public static func contentMetrics(from value: BurnBarJSONValue, key: String? = nil) -> (visibleChars: Int, reasoningChars: Int) {
+        contentMetrics(from: value.untypedJSONValue, key: key)
     }
 
     private static func previewAdjustedVisibleCharCount(for text: String) -> Int {

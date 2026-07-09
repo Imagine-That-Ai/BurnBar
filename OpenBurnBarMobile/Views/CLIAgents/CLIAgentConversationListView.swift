@@ -539,6 +539,8 @@ struct CLIAgentConversationListView: View {
             return "Start a Grok Build chat here. The Mac streams replies back into this mobile thread."
         case .cursorAgent:
             return "Start a Cursor Agent chat here. The Mac streams replies back into this mobile thread."
+        case .junie:
+            return "Start a Junie chat here. The Mac streams replies back into this mobile thread."
         case .openClaude:
             return "Start an OpenClaude chat here. The Mac streams replies back into this mobile thread."
         case .omp:
@@ -558,6 +560,7 @@ struct CLIAgentConversationListView: View {
         case .antigravity: return Color(hex: "6C63FF")
         case .grok: return Color(hex: "111111")
         case .cursorAgent: return Color(hex: "00E5FF")
+        case .junie:    return Color(hex: "48E054")
         }
     }
 
@@ -931,6 +934,7 @@ struct CLIAgentChatThreadView: View {
         case .antigravity: return Color(hex: "6C63FF")
         case .grok: return Color(hex: "111111")
         case .cursorAgent: return Color(hex: "00E5FF")
+        case .junie: return Color(hex: "48E054")
         }
     }
 }
@@ -1106,6 +1110,7 @@ private extension CLIAgentRuntime {
         case .antigravity: return .antigravity
         case .grok:        return .xAI
         case .cursorAgent: return .cursorAgent
+        case .junie:       return .junie
         }
     }
 }

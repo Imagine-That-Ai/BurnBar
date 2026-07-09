@@ -57,6 +57,7 @@ public extension AgentProvider {
         case .openClaw: return "~/.openclaw/sessions"
         case .openClaude: return "~/.openclaude/sessions"
         case .omp: return "~/.omp/agent/sessions"
+        case .junie: return "~/.junie/sessions"
         case .ollama: return "~/.ollama/logs"
         case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
         case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"

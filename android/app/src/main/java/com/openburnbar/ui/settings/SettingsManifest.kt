@@ -363,6 +363,7 @@ object SettingsManifest {
             AgentProvider.MINIMAX -> keywords.addAll(listOf("mini max", "minimax"))
             AgentProvider.COPILOT -> keywords.addAll(listOf("github", "github copilot"))
             AgentProvider.ANTIGRAVITY -> keywords.addAll(listOf("antigravity", "antigravity cli", "antigravity-cli", "gemini", "deepmind"))
+            AgentProvider.JUNIE -> keywords.addAll(listOf("junie", "junie cli", "jetbrains", "jetbrains junie", "jetbrains-junie"))
             else -> Unit
         }
 

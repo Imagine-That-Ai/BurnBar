@@ -49,9 +49,32 @@ public enum BurnBarJSONValue: Codable, Hashable, Sendable {
     }
 }
 
+public extension BurnBarJSONValue {
+    var untypedJSONValue: Any {
+        switch self {
+        case .string(let value):
+            return value
+        case .number(let value):
+            return value
+        case .object(let value):
+            return value.untypedJSONDictionary
+        case .array(let value):
+            return value.map(\.untypedJSONValue)
+        case .bool(let value):
+            return value
+        case .null:
+            return NSNull()
+        }
+    }
+}
+
 // MARK: - Ad hoc JSON object helpers (tool output, nested objects)
 
 extension Dictionary where Key == String, Value == BurnBarJSONValue {
+    public var untypedJSONDictionary: [String: Any] {
+        mapValues(\.untypedJSONValue)
+    }
+
     public func stringValue(forKey key: String) -> String? {
         guard case .string(let value)? = self[key] else { return nil }
         return value
