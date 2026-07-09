@@ -49,6 +49,10 @@ public partial class App : Application
         AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
+
+        // Production Liquid Glass prefs (registry) — InMemory is reserved for unit tests.
+        LiquidGlassEnvironment.Current = new LiquidGlassEnvironment(new RegistryLiquidGlassPreferenceStore());
+
         _state = new AppStatePersistence();
         _theme = new ThemeService(_state);
         automation?.WriteLaunchMarker();
@@ -93,6 +97,9 @@ public partial class App : Application
 
     /// <summary>Open the full main window from the flyout's "Open full window" action.</summary>
     public void ShowMainWindowFromFlyout() => ShowMainWindow();
+
+    /// <summary>Live shell when the main window is open (flyout deep-links).</summary>
+    public AppShell? MainWindowShell => _mainWindow?.Shell;
 
     private void ToggleFlyout()
     {

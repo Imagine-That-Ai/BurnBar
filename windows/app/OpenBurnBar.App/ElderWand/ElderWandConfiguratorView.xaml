@@ -29,7 +29,7 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
     </UserControl.Resources>
 
-    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Background="Transparent">
         <ScrollViewer Padding="20"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">

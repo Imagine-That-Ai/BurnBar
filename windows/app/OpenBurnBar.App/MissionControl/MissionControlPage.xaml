@@ -16,7 +16,7 @@
     mc:Ignorable="d"
     AutomationProperties.AutomationId="RouteRoot.missionControl">
 
-    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Background="Transparent">
         <!-- Ambient particle backdrop (added in code-behind: SwarmCanvasHost.Control). -->
         <Border x:Name="BackdropHost" IsHitTestVisible="False" Opacity="0.7" />
 
@@ -46,7 +46,7 @@
                 <Border Grid.Column="1" Background="{StaticResource PensieveColorGlassLineBrush}" Opacity="0.6" />
 
                 <local:MissionSituationRoomView x:Name="SituationRoom" Grid.Column="2"
-                                                Background="{StaticResource PensieveColorInkBaseBrush}" />
+                                                Background="Transparent" />
             </Grid>
         </Grid>
 

@@ -11,6 +11,7 @@
     x:Class="OpenBurnBar.App.ElderWand.ElderWandJudgeSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:ew="using:OpenBurnBar.App.Presentation.ElderWand"
     xmlns:local="using:OpenBurnBar.App.ElderWand"
     xmlns:conv="using:OpenBurnBar.App.Converters"
@@ -38,10 +39,7 @@
         </StackPanel>
 
         <!-- Empty hint -->
-        <Border CornerRadius="{StaticResource PensieveRadiusMdCorner}"
-                Background="{StaticResource OBBSurfaceBrush}"
-                BorderBrush="{StaticResource OBBStrokeBrush}"
-                BorderThickness="1"
+        <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" CornerRadius="{StaticResource PensieveRadiusMdCorner}"
                 Padding="12"
                 Visibility="{x:Bind Cloud.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
             <TextBlock Text="No live models advertised yet. Refresh the chat gateway to choose a judge."
@@ -75,10 +73,7 @@
                                             BorderThickness="0"
                                             Padding="0">
                                         <Grid>
-                                            <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                                                    Background="{StaticResource OBBSurfaceBrush}"
-                                                    BorderBrush="{StaticResource OBBStrokeBrush}"
-                                                    BorderThickness="1"
+                                            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
                                                     Padding="12,7">
                                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                                     <Grid Width="12" Height="12">

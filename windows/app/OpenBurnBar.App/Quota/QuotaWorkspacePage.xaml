@@ -17,7 +17,7 @@
       exactly as the SwiftUI @State selectedProvider does. In production this page reads configured
       quota snapshots; explicit sample mode can still seed representative rows.
     -->
-    <ScrollViewer Background="{StaticResource PensieveColorInkBaseBrush}">
+    <ScrollViewer Background="Transparent">
         <StackPanel Padding="24"
                     MaxWidth="1100"
                     HorizontalAlignment="Stretch"

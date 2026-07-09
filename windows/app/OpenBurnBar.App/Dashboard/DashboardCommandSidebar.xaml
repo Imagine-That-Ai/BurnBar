@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Command sidebar — lockstep with macOS DashboardSidebarView.swift:
+    • "COMMAND" eyebrow + Agents/Models title + caption
+    • Segmented Agents | Models
+    • Overview (All Providers) row + provider/model metric rows
+    • Window glass card + Cursor install card
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.DashboardCommandSidebar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Elevated glass plate so the rail is never “invisible” on Mica/kernel. -->
+    <Border Style="{StaticResource LiquidGlassSurfaceStyle}"
+            theme:LiquidGlass.Surface="True"
+            Background="{StaticResource PensieveColorGlassBgElevatedBrush}"
+            BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+            BorderThickness="0,0,1,0"
+            CornerRadius="0">
+        <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollMode="Disabled"
+                      Padding="16,16,16,20">
+            <StackPanel Spacing="16">
+                <!-- Header: COMMAND / title / caption -->
+                <StackPanel Spacing="6">
+                    <TextBlock Text="COMMAND"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                    <TextBlock x:Name="ModeTitle"
+                               Text="Agent providers"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <TextBlock x:Name="ModeCaption"
+                               Text="Scan, compare spend, and drill into model behavior from one workspace."
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                </StackPanel>
+
+                <!-- Agents | Models segmented (macOS .pickerStyle(.segmented)) -->
+                <Border Background="{StaticResource PensieveColorGlassBgBrush}"
+                        BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="3">
+                    <Grid ColumnSpacing="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="AgentsModeButton"
+                                Grid.Column="0"
+                                Click="OnAgentsModeClick"
+                                HorizontalAlignment="Stretch"
+                                Padding="8,6"
+                                CornerRadius="8"
+                                Background="{StaticResource PensieveColorGlassBgElevatedBrush}"
+                                BorderThickness="0">
+                            <TextBlock Text="Agents" FontSize="12" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        </Button>
+                        <Button x:Name="ModelsModeButton"
+                                Grid.Column="1"
+                                Click="OnModelsModeClick"
+                                HorizontalAlignment="Stretch"
+                                Padding="8,6"
+                                CornerRadius="8"
+                                Background="Transparent"
+                                BorderThickness="0">
+                            <TextBlock Text="Models" FontSize="12" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- Overview + provider/model rows -->
+                <StackPanel x:Name="RowsHost" Spacing="6" />
+
+                <!-- Window card (macOS GlassCard) -->
+                <Border Style="{StaticResource LiquidGlassSurfaceStyle}"
+                        theme:LiquidGlass.Surface="True"
+                        CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                        Padding="14">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="WINDOW"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   CharacterSpacing="80"
+                                   Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                        <TextBlock x:Name="WindowRange"
+                                   Text="Today"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock x:Name="WindowProviders"
+                                   Text="0 active providers"
+                                   FontSize="12"
+                                   Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Cursor card -->
+                <Border Style="{StaticResource LiquidGlassSurfaceStyle}"
+                        theme:LiquidGlass.Surface="True"
+                        CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                        Padding="14">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="CURSOR"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   CharacterSpacing="80"
+                                   Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                        <Button Click="OnCursorClick"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Padding="0"
+                                ToolTipService.ToolTip="Install OpenBurnBar in Cursor">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0"
+                                        Width="36" Height="36"
+                                        CornerRadius="18"
+                                        Background="{StaticResource PensieveColorGlassBgElevatedBrush}">
+                                    <FontIcon Glyph="&#xE943;" FontSize="16"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Add OpenBurnBar to Cursor"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                    <TextBlock Text="Opens the extension install page"
+                                               FontSize="11"
+                                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                </StackPanel>
+                                <FontIcon Grid.Column="2" Glyph="&#xE8A7;" FontSize="16"
+                                          VerticalAlignment="Center"
+                                          Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                            </Grid>
+                        </Button>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock x:Name="EmptyHint"
+                           Visibility="Collapsed"
+                           Text="No providers in this window"
+                           FontSize="12"
+                           HorizontalAlignment="Center"
+                           Margin="0,12,0,0"
+                           Foreground="{StaticResource PensieveColorTextDimBrush}" />
+            </StackPanel>
+        </ScrollViewer>
+        </Grid>
+    </Border>
+</UserControl>

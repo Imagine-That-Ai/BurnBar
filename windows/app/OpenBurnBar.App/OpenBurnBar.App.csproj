@@ -163,6 +163,29 @@
   </ItemGroup>
 
   <!--
+    Shared WebGL2 kernel backdrop field (AgentLens/Resources/KernelBackdrop/).
+    Copied beside the exe so KernelBackdropHost can map a virtual host to the folder
+    and Navigate to index.html — the same offline bundle macOS WKWebView loads.
+  -->
+  <ItemGroup>
+    <Content Include="..\..\..\AgentLens\Resources\KernelBackdrop\index.html"
+             Link="Resources\KernelBackdrop\index.html"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\AgentLens\Resources\KernelBackdrop\kernel-backdrop.js"
+             Link="Resources\KernelBackdrop\kernel-backdrop.js"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Brand + provider logos (macOS AppLogo / Linux openburnbar.png parity). -->
+  <ItemGroup>
+    <Content Include="Assets\AppLogo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo-32.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo-64.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\ProviderLogos\*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
     Managed PE-hardening props (Phase 5 · R19): HighEntropyVA + Deterministic so the shipped
     OpenBurnBar.App.exe gets full ASLR entropy + a reproducible image. The exact required
     flags are asserted against this file by windows/tests/dist (HardeningPolicy). Imported last

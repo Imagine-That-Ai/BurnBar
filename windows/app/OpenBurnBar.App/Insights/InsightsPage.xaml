@@ -15,7 +15,7 @@
     mc:Ignorable="d"
     AutomationProperties.AutomationId="RouteRoot.insights">
 
-    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
