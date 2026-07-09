@@ -35,6 +35,7 @@ const [repoRoot, baselinePath, mode] = process.argv.slice(2);
 const sourcesRoot = path.join(repoRoot, "OpenBurnBarCore", "Sources");
 const monolithTarget = "OpenBurnBarCore";
 const pureTargets = [
+  "OpenBurnBarKernel",
   "OpenBurnBarComputerUseCore",
   "OpenBurnBarMedia",
   "OpenBurnBarIrohRelay",
