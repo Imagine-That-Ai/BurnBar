@@ -85,7 +85,7 @@ extension ChatSessionController {
         }
 
         switch backend {
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? await dataStore.chatThreadExists(id: legacy)) == true {
                 if persistsViewState { UserDefaults.standard.set(legacy, forKey: key) }

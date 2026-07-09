@@ -34,6 +34,7 @@ final class AgentChildProcessEnvironmentTests: XCTestCase {
             // (a) provider/API-key env the user intends the agent to use — PRESENT
             "ANTHROPIC_API_KEY": "anthropic_required_placeholder",
             "OPENAI_API_KEY": "openai_required_placeholder",
+            "JUNIE_API_KEY": "junie_profile_scoped_secret",
             // (b) app/daemon-INTERNAL secrets — must be ABSENT
             "OPENBURNBAR_DAEMON_TOKEN": "daemon-internal-secret",
             "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "socket-internal-secret",
@@ -60,6 +61,7 @@ final class AgentChildProcessEnvironmentTests: XCTestCase {
         XCTAssertNil(env["AWS_SECRET_ACCESS_KEY"], "arbitrary ambient secret must not leak")
         XCTAssertNil(env["GITHUB_TOKEN"], "arbitrary ambient secret must not leak")
         XCTAssertNil(env["SOME_RANDOM_AMBIENT_VAR"], "arbitrary ambient var must not leak")
+        XCTAssertNil(env["JUNIE_API_KEY"], "Junie API key is profile-scoped and must not leak to every agent child process")
     }
 
     func test_allowlistedBaseline_preservesRequiredRuntimeEnv() {
@@ -98,6 +100,7 @@ final class AgentChildProcessEnvironmentTests: XCTestCase {
         XCTAssertFalse(AgentChildProcessEnvironment.isAllowlisted("OPENBURNBAR_GATEWAY_AUTH_TOKEN"))
         XCTAssertFalse(AgentChildProcessEnvironment.isAllowlisted("AWS_SECRET_ACCESS_KEY"))
         XCTAssertFalse(AgentChildProcessEnvironment.isAllowlisted("GITHUB_TOKEN"))
+        XCTAssertFalse(AgentChildProcessEnvironment.isAllowlisted("JUNIE_API_KEY"))
     }
 
     // MARK: - enrichedProcessEnvironment (per-CLI + CLIProcessStreamRunner path)
@@ -113,6 +116,7 @@ final class AgentChildProcessEnvironmentTests: XCTestCase {
         XCTAssertNil(env["OPENBURNBAR_GATEWAY_AUTH_TOKEN"])
         XCTAssertNil(env["AWS_SECRET_ACCESS_KEY"])
         XCTAssertNil(env["GITHUB_TOKEN"])
+        XCTAssertNil(env["JUNIE_API_KEY"])
 
         // (a) required env present; provider API key the agent needs present.
         XCTAssertNotNil(env["PATH"])

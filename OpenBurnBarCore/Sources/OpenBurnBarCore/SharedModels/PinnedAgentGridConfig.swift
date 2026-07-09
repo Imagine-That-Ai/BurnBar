@@ -109,6 +109,7 @@ public struct PinnedAgentGridConfig: Codable, Sendable, Hashable {
         }
         if lastRearrangedAt == nil,
            trimmed == Self.legacyDefaultPinnedURIsBeforeDroidForge {
+            // Keep untouched legacy defaults aligned with the current built-in runtime set.
             trimmed = Array(Self.defaultPinnedURIs.prefix(Self.maxSlots))
         }
         return PinnedAgentGridConfig(
@@ -184,7 +185,7 @@ public struct PinnedAgentGridConfig: Codable, Sendable, Hashable {
     public static func from(jsonString raw: String) -> PinnedAgentGridConfig {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else {
-            return .default
+            return .default.sanitized()
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

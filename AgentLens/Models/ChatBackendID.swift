@@ -14,6 +14,7 @@ enum ChatBackendID: String, Identifiable, Codable {
     case forge
     case antigravity
     case cursorAgent
+    case junie
 
     var id: String { rawValue }
 
@@ -30,6 +31,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         backends.append(.forge)
         backends.append(.antigravity)
         backends.append(.cursorAgent)
+        backends.append(.junie)
         return backends
     }
 
@@ -46,6 +48,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .forge: return "Forge"
         case .antigravity: return "Antigravity"
         case .cursorAgent: return "Cursor Agent"
+        case .junie: return "Junie"
         }
     }
 
@@ -63,6 +66,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .forge: return "Forge"
         case .antigravity: return "AGY"
         case .cursorAgent: return "Cursor"
+        case .junie: return "Junie"
         }
     }
 
@@ -82,6 +86,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .forge:     return "\u{25B0}"
         case .antigravity: return "\u{2727}"
         case .cursorAgent: return "\u{27A4}"
+        case .junie:     return "\u{273D}"
         }
     }
 
@@ -92,7 +97,7 @@ enum ChatBackendID: String, Identifiable, Codable {
             return DesignSystem.Colors.mercuryGradient
         case .piAgent:
             return DesignSystem.Colors.piGradient
-        case .codex, .claude, .openclaw, .openClaude, .omp, .droid, .forge, .antigravity, .cursorAgent:
+        case .codex, .claude, .openclaw, .openClaude, .omp, .droid, .forge, .antigravity, .cursorAgent, .junie:
             return DesignSystem.Colors.accentGradient
         }
     }
@@ -119,13 +124,14 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .forge: return .forgeDev
         case .antigravity: return .antigravity
         case .cursorAgent: return .cursorAgent
+        case .junie: return .junie
         }
     }
 
     /// Whether this backend uses the local Codex/Claude CLIs (privacy-gated).
     var requiresCLIAssistantConsent: Bool {
         switch self {
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent: return true
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .junie: return true
         case .openClaude, .omp: return true
         case .hermes, .openclaw, .piAgent: return false
         }

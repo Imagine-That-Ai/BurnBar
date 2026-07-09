@@ -64,7 +64,7 @@ extension ChatSessionController {
                 )
                 return false
             }
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
             guard settingsManager.cliAssistantAllowed else {
                 await appendAndPersistAssistantError(
                     "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
@@ -115,6 +115,12 @@ extension ChatSessionController {
                 "omp",
                 "OMP CLI was not found. Install Oh My Pi and ensure `omp` is on your PATH.",
                 "OMP not found"
+            )
+        case .junie:
+            requirement = (
+                "junie",
+                "Junie CLI was not found. Install JetBrains Junie and ensure `junie` is on your PATH.",
+                "Junie not found"
             )
         case .codex:
             requirement = (

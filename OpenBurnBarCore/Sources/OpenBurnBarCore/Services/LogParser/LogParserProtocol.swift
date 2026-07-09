@@ -62,7 +62,8 @@ public struct ParserConversationCacheScrubber {
         var urls = [
             appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json"),
             appPaths.claudeCodeParserCacheURL,
-            appPaths.factoryDroidParserCacheURL
+            appPaths.factoryDroidParserCacheURL,
+            appPaths.junieParserCacheURL
         ]
 
         if let dynamicURLs = try? fileManager.contentsOfDirectory( // try?-ok(optional cache directory scan)

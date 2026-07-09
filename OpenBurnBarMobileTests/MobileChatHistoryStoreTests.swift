@@ -34,6 +34,55 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.threads(for: .claude).map(\.id), ["claude-1"])
     }
 
+    func testThreadInboxIncludesJunieHistoryThreads() async {
+        let local = InMemoryLocalStore()
+        let historyStore = MobileChatHistoryStore(local: local, cloud: nil)
+        historyStore.upsert(Self.makeThread(id: "junie-1", runtime: .junie, title: "Junie chat"))
+
+        let inbox = ThreadInboxStore(historyStore: historyStore, cliReader: nil, missionHost: nil)
+        await inbox.refresh()
+
+        XCTAssertEqual(inbox.items.map(\.id), ["cli_mirror:junie-1"])
+        XCTAssertEqual(inbox.items.first?.agentURI, AgentIdentity.builtInURI(.junie))
+        XCTAssertEqual(inbox.items.first?.source, .cliMirror)
+    }
+
+    func testThreadInboxIncludesAllCLIHistoryRuntimeAliases() async {
+        let local = InMemoryLocalStore()
+        let historyStore = MobileChatHistoryStore(local: local, cloud: nil)
+        for (id, runtime) in [
+            ("codex-1", "codex"),
+            ("claude-1", "claude"),
+            ("openclaw-1", "openclaw"),
+            ("droid-1", "droid"),
+            ("forge-1", "forge"),
+            ("antigravity-1", "antigravity"),
+            ("grok-1", "grok"),
+            ("cursor-1", "cursor-agent"),
+            ("openclaude-1", "openclaude"),
+            ("junie-1", "jetbrains-junie")
+        ] {
+            historyStore.upsert(Self.makeThread(id: id, rawRuntime: runtime, title: runtime))
+        }
+
+        let inbox = ThreadInboxStore(historyStore: historyStore, cliReader: nil, missionHost: nil)
+        await inbox.refresh()
+
+        XCTAssertEqual(Set(inbox.items.map(\.id)), [
+            "cli_mirror:codex-1",
+            "cli_mirror:claude-1",
+            "cli_mirror:openclaw-1",
+            "cli_mirror:droid-1",
+            "cli_mirror:forge-1",
+            "cli_mirror:antigravity-1",
+            "cli_mirror:grok-1",
+            "cli_mirror:cursor-1",
+            "cli_mirror:openclaude-1",
+            "cli_mirror:junie-1"
+        ])
+        XCTAssertTrue(inbox.items.allSatisfy { $0.source == .cliMirror })
+    }
+
     func testLoadFromDiskRestoresThreads() throws {
         let local = InMemoryLocalStore()
         let seed = Self.makeThread(id: "seed", runtime: .hermes, title: "Restored")
@@ -625,6 +674,22 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         messageCount: Int = 1,
         updatedAt: Date = Date()
     ) -> MobileChatThread {
+        makeThread(
+            id: id,
+            rawRuntime: runtime.rawValue,
+            title: title,
+            messageCount: messageCount,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func makeThread(
+        id: String,
+        rawRuntime: String,
+        title: String,
+        messageCount: Int = 1,
+        updatedAt: Date = Date()
+    ) -> MobileChatThread {
         let messages = (0..<messageCount).map { idx in
             MobileChatMessage(
                 id: "\(id)-m\(idx)",
@@ -635,7 +700,7 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         }
         return MobileChatThread(
             id: id,
-            runtime: runtime.rawValue,
+            runtime: rawRuntime,
             title: title,
             preview: "Preview for \(title)",
             modelName: nil,
