@@ -296,3 +296,5 @@ node_modules/
 
 # Mac mini UI-automation local pull-back artifacts (never commit)
 .artifacts/
+# Transient AppImage extraction dir from package smoke (--appimage-extract)
+squashfs-root/

@@ -188,7 +188,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         )
                         continue
                     }
-                    let markdown = SessionLogMarkdownFormatter.markdown(for: record)
+                    let markdown = OpenBurnBarCore.SessionLogMarkdownFormatter.markdown(for: record)
                     // Project/path text is private. It is fed into keyed local
                     // search hashes, then stripped from every cloud document.
                     let privateProjectSearchText = Self.clampedPrivateSearchText(record.projectName)
@@ -525,7 +525,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private static func sessionLogTombstoneFields(for record: ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
+    private static func sessionLogTombstoneFields(for record: OpenBurnBarCore.ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
         var fields: [String: Any] = [
             "id": record.id,
             "deviceId": deviceId,
@@ -715,7 +715,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private static func progressLabel(for record: ConversationRecord) -> String {
+    private static func progressLabel(for record: OpenBurnBarCore.ConversationRecord) -> String {
         let title = record.summaryTitle ?? record.inferredTaskTitle
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -724,7 +724,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         return "\(record.provider.displayName) · \(trimmed)"
     }
 
-    /// Root session id used to align a `ConversationRecord` with the aggregated usage facets,
+    /// Root session id used to align a `OpenBurnBarCore.ConversationRecord` with the aggregated usage facets,
     /// which group `token_usage` rows under the portion before the first `/` sub-path.
     private static func rootSessionKey(provider: AgentProvider, sessionId: String) -> String {
         let root: Substring
@@ -739,7 +739,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
     /// Builds the server-visible cockpit facet block merged onto a session-log manifest. Pure metadata:
     /// no message text or path/project text, only counters, cost, timing, model/provider, and generic tool tags.
     static func facetFields(
-        for record: ConversationRecord,
+        for record: OpenBurnBarCore.ConversationRecord,
         facets: SessionUsageFacets?,
         model: String
     ) -> [String: Any] {

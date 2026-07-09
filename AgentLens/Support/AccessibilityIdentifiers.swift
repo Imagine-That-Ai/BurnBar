@@ -7,6 +7,7 @@ enum OBBAccessibilityID {
     static let popoverSettingsButton = "popover.settingsButton"
     static let dashboardRoot = "dashboard.root"
     static let dashboardLayoutSwitcher = "dashboard.layoutSwitcher"
+    static let dashboardViewModeSwitcher = "dashboard.viewModeSwitcher"
     static let dashboardOverflowButton = "dashboard.overflowButton"
     static let dashboardSettingsButton = "dashboard.settingsButton"
     static let settingsRoot = "settings.root"
@@ -22,10 +23,6 @@ enum OBBAccessibilityID {
 
     static func providersRow(_ providerID: String) -> String {
         "providers.row.\(normalized(providerID))"
-    }
-
-    static func dashboardViewMode(_ mode: String) -> String {
-        "dashboard.viewMode.\(normalized(mode))"
     }
 
     private static func normalized(_ raw: String) -> String {

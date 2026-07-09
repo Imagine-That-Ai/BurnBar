@@ -8,24 +8,24 @@ import OpenBurnBarCore
 
 /// Reads token usage from Codex's SQLite store and JSONL session files.
 /// Prefers exact token breakdowns from JSONL `token_count` events over the aggregate `tokens_used` in SQLite.
-final class CodexParser: LogParser, Sendable {
+final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .codex
     private let fileManager: FileManager
-    private let appPaths: OpenBurnBarAppPaths
+    private let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     private let cacheURL: URL
     private let homeDirectoryURL: URL
-    private let cacheStore: ParserDiskCacheStore<CodexCacheEntry>
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<CodexCacheEntry>
 
     init(
         fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live(),
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
         self.homeDirectoryURL = homeDirectoryURL
         self.cacheURL = appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json")
-        self.cacheStore = ParserDiskCacheStore(
+        self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
             schemaVersion: 1,
@@ -34,33 +34,33 @@ final class CodexParser: LogParser, Sendable {
         ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
     }
 
-    func parse() async throws -> ParseResult {
+    func parse() async throws -> OpenBurnBarCore.ParseResult {
         try await parse(options: .default)
     }
 
-    func parse(options: LogParseOptions) async throws -> ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         let dbPath = homeDirectoryURL
             .appendingPathComponent(".codex", isDirectory: true)
             .appendingPathComponent("state_5.sqlite", isDirectory: false)
             .path
 
         guard fileManager.fileExists(atPath: dbPath) else {
-            return ParseResult(usages: [], conversations: [])
+            return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
         let parsed = try parseCodexDatabase(
             dbPath: dbPath,
             includeConversationBodies: options.includeConversationBodies
         )
-        return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
+        return OpenBurnBarCore.ParseResult(usages: parsed.usages, conversations: parsed.conversations)
     }
 
     private func parseCodexDatabase(
         dbPath: String,
         includeConversationBodies: Bool
-    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    ) throws -> (usages: [TokenUsage], conversations: [OpenBurnBarCore.ConversationRecord]) {
         var usages: [TokenUsage] = []
-        var conversations: [ConversationRecord] = []
+        var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var sessionCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
@@ -129,7 +129,7 @@ final class CodexParser: LogParser, Sendable {
                     let cacheKey = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
                     activePaths.insert(cacheKey)
 
-                    if let signature = FileSignature(for: URL(fileURLWithPath: expandedPath)),
+                    if let signature = OpenBurnBarCore.FileSignature(for: URL(fileURLWithPath: expandedPath)),
                        let cached = sessionCache.fileEntries[cacheKey],
                        cached.signature == signature {
                         let cachedTokenUsage = cached.tokenUsage
@@ -177,7 +177,7 @@ final class CodexParser: LogParser, Sendable {
                             : nil
                         shouldEmitConversation = includeConversationBodies && parsedConversation != nil
 
-                        if let signature = FileSignature(for: URL(fileURLWithPath: expandedPath)) {
+                        if let signature = OpenBurnBarCore.FileSignature(for: URL(fileURLWithPath: expandedPath)) {
                             sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
                                 signature: signature,
                                 tokenUsage: parsed.map {
@@ -205,7 +205,7 @@ final class CodexParser: LogParser, Sendable {
                 }
 
                 if inputTokens > 0 || outputTokens > 0 {
-                    let pricing = ModelPricing.lookup(model: model)
+                    let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
                     let cost = pricing.cost(
                         inputTokens: inputTokens,
                         outputTokens: outputTokens,
@@ -237,8 +237,8 @@ final class CodexParser: LogParser, Sendable {
                         ?? threadId
                     let fullText = parsedConversation?.markdown
                         ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let conversation = ConversationRecord(
-                        id: ConversationRecord.stableId(provider: .codex, sessionId: threadId),
+                    let conversation = OpenBurnBarCore.ConversationRecord(
+                        id: OpenBurnBarCore.ConversationRecord.stableId(provider: .codex, sessionId: threadId),
                         provider: .codex,
                         sessionId: threadId,
                         projectName: projectName,
@@ -304,13 +304,13 @@ final class CodexParser: LogParser, Sendable {
                 continue
             }
 
-            guard let info = TokenExtractionUtility.codexTokenCountInfo(from: json) else {
+            guard let info = OpenBurnBarCore.TokenExtractionUtility.codexTokenCountInfo(from: json) else {
                 continue
             }
 
             // VAL-TOKEN-010: Cumulative totals take precedence over delta events.
             // If we've already found cumulative totals, skip processing delta events.
-            if let extracted = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
+            if let extracted = OpenBurnBarCore.TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
                 // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
                 // Subtract the cached portion so the non-cached input and cached
                 // buckets stay disjoint (VAL-TOKEN-002 / matches delta path below).
@@ -475,7 +475,7 @@ final class CodexParser: LogParser, Sendable {
 /// OpenClaw is intentionally treated as a provider-log source, not a live
 /// runtime bridge. The live OpenClaw chat path remains `ChatSessionController`;
 /// this parser only gives mobile and cloud search a durable archive surface.
-final class OpenClawParser: LogParser, Sendable {
+final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .openClaw
 
     private let fileManager: FileManager
@@ -489,13 +489,13 @@ final class OpenClawParser: LogParser, Sendable {
         self.sessionsDirectory = sessionsDirectory
     }
 
-    func parse() async throws -> ParseResult {
+    func parse() async throws -> OpenBurnBarCore.ParseResult {
         guard fileManager.fileExists(atPath: sessionsDirectory.path) else {
-            return ParseResult(usages: [], conversations: [])
+            return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
         let files = sessionFiles(in: sessionsDirectory)
-        var conversations: [ConversationRecord] = []
+        var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var usages: [TokenUsage] = []
 
         for file in files {
@@ -506,7 +506,7 @@ final class OpenClawParser: LogParser, Sendable {
             }
         }
 
-        return ParseResult(usages: usages, conversations: conversations)
+        return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
     }
 
     private func sessionFiles(in directory: URL) -> [URL] {
@@ -531,7 +531,7 @@ final class OpenClawParser: LogParser, Sendable {
         }
     }
 
-    private func parseSession(file: URL) -> (usage: TokenUsage?, conversation: ConversationRecord)? {
+    private func parseSession(file: URL) -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord)? {
         let data: Data
         if file.pathExtension.lowercased() == "jsonl" || file.pathExtension.lowercased() == "log" {
             guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
@@ -557,7 +557,7 @@ final class OpenClawParser: LogParser, Sendable {
             if let discoveredModel = Self.nonBlank(Self.firstString(in: object, keys: ["model", "modelName", "model_name"])) {
                 model = discoveredModel
             }
-            let usage = TokenExtractionUtility.extractUsageTokens(object["usage"] as? [String: Any] ?? object["tokenUsage"] as? [String: Any] ?? [:])
+            let usage = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(object["usage"] as? [String: Any] ?? object["tokenUsage"] as? [String: Any] ?? [:])
             inputTokens += usage.input
             outputTokens += usage.output
             cacheReadTokens += usage.cacheRead
@@ -588,8 +588,8 @@ final class OpenClawParser: LogParser, Sendable {
         let title = firstUser.map { String($0.prefix(120)) } ?? "OpenClaw Session"
 
         if inputTokens == 0 && outputTokens == 0 {
-            inputTokens = TokenExtractionUtility.estimatedTokenCount(for: userText.joined(separator: "\n").count, charsPerToken: 3.5)
-            outputTokens = TokenExtractionUtility.estimatedTokenCount(for: assistantText.joined(separator: "\n").count, charsPerToken: 3.5)
+            inputTokens = OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: userText.joined(separator: "\n").count, charsPerToken: 3.5)
+            outputTokens = OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: assistantText.joined(separator: "\n").count, charsPerToken: 3.5)
         }
 
         let usage: TokenUsage? = (inputTokens > 0 || outputTokens > 0) ? TokenUsage(
@@ -601,16 +601,16 @@ final class OpenClawParser: LogParser, Sendable {
             outputTokens: outputTokens,
             cacheCreationTokens: 0,
             cacheReadTokens: cacheReadTokens,
-            costUSD: ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens, cacheReadTokens: cacheReadTokens),
+            costUSD: OpenBurnBarCore.ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens, cacheReadTokens: cacheReadTokens),
             startTime: effectiveStart,
             endTime: effectiveEnd,
             provenanceMethod: cacheReadTokens > 0 ? .providerLog : .heuristicEstimate,
             provenanceConfidence: cacheReadTokens > 0 ? .exact : .lowConfidenceEstimate,
-            estimatorVersion: cacheReadTokens > 0 ? "" : TokenExtractionUtility.currentEstimatorVersion
+            estimatorVersion: cacheReadTokens > 0 ? "" : OpenBurnBarCore.TokenExtractionUtility.currentEstimatorVersion
         ) : nil
 
-        let conversation = ConversationRecord(
-            id: ConversationRecord.stableId(provider: .openClaw, sessionId: sessionId),
+        let conversation = OpenBurnBarCore.ConversationRecord(
+            id: OpenBurnBarCore.ConversationRecord.stableId(provider: .openClaw, sessionId: sessionId),
             provider: .openClaw,
             sessionId: sessionId,
             projectName: "OpenClaw",
@@ -728,7 +728,7 @@ struct CodexConversationCacheEntry: Codable, Equatable {
 }
 
 struct CodexCacheEntry: Codable, Equatable {
-    let signature: FileSignature
+    let signature: OpenBurnBarCore.FileSignature
     let tokenUsage: CodexTokenUsage?
     let conversation: CodexConversationCacheEntry?
 }

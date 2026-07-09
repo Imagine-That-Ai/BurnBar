@@ -93,7 +93,7 @@ extension ComputerUseSessionCoordinator {
 
     func finalizeAuditSignedHeadIfPossible() {
         guard let logger = auditLogger else { return }
-        let legacyKey = OpenBurnBarAppPaths.live().supportDirectory
+        let legacyKey = OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
             .appendingPathComponent("computer-use-audit", isDirectory: true)
             .appendingPathComponent("keys", isDirectory: true)
             .appendingPathComponent("audit-export-ed25519.raw", isDirectory: false)

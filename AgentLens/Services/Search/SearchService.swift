@@ -77,7 +77,7 @@ actor SearchService {
     /// list), but it must be **observable**: a swallowed `try?` makes a genuine read
     /// fault indistinguishable from an empty store. Log the failure and only then
     /// fall back to `[]`.
-    func recentConversations(limit: Int = 80) async -> [ConversationRecord] {
+    func recentConversations(limit: Int = 80) async -> [OpenBurnBarCore.ConversationRecord] {
         let bounded = max(1, min(limit, 1_000))
         do {
             return try await dataStore.fetchConversations(limit: bounded)
@@ -87,12 +87,12 @@ actor SearchService {
         }
     }
 
-    func latestConversation(limit: Int = 200) async -> ConversationRecord? {
+    func latestConversation(limit: Int = 200) async -> OpenBurnBarCore.ConversationRecord? {
         let conversations = await recentConversations(limit: limit)
         return latestConversation(in: conversations)
     }
 
-    nonisolated func latestConversation(in conversations: [ConversationRecord]) -> ConversationRecord? {
+    nonisolated func latestConversation(in conversations: [OpenBurnBarCore.ConversationRecord]) -> OpenBurnBarCore.ConversationRecord? {
         conversations.max(by: { a, b in
             let ad = a.endTime ?? a.startTime ?? .distantPast
             let bd = b.endTime ?? b.startTime ?? .distantPast

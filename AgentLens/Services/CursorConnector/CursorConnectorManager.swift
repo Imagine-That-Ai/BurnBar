@@ -45,8 +45,8 @@ final class CursorConnectorManager {
 
     init(settingsManager: SettingsManager = .shared) {
         self.settingsManager = settingsManager
-        OpenBurnBarMigration.migrateUserDefaults()
-        self.supportDirectory = (try? OpenBurnBarMigration.prepareSupportDirectory()) ?? OpenBurnBarAppPaths.live().supportDirectory // try?-ok(fallback live path)
+        OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
+        self.supportDirectory = (try? OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory()) ?? OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory // try?-ok(fallback live path)
         self.proxyScriptURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.py")
         self.proxyConfigURL = supportDirectory.appendingPathComponent("cursor_connector_proxy_config.json")
         self.proxyLogURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.log")
@@ -728,7 +728,7 @@ final class CursorConnectorManager {
             let reasoningTokens = normalizedUsage.reasoningTokens
             let totalTokens = normalizedUsage.totalTokens
             let timestamp = (json["timestamp"] as? String).flatMap(Self.isoDateFormatter.date(from:)) ?? Date()
-            let cost = ModelPricing.lookup(model: model).cost(
+            let cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
                 inputTokens: promptTokens,
                 outputTokens: completionTokens,
                 cacheCreationTokens: cacheCreationTokens,

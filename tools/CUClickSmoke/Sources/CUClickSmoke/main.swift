@@ -647,16 +647,8 @@ func containsOpenBurnBarStatusItem(_ snapshot: AXSnapshot) -> Bool {
 
 func containsOpenBurnBarDashboardRoot(_ snapshot: AXSnapshot) -> Bool {
     let hasApplicationRoot = snapshot.roles.contains(kAXApplicationRole as String)
-    let hasWindow = snapshot.roles.contains(kAXWindowRole as String)
-    let hasKnownRootText = snapshot.texts.contains { text in
-        let lowercased = text.lowercased()
-        return lowercased.contains("openburnbar")
-            || lowercased.contains("dashboard")
-            || lowercased.contains("burn")
-            || lowercased.contains("hermes")
-            || lowercased.contains("settings")
-    }
-    return hasApplicationRoot && (hasWindow || hasKnownRootText)
+    let hasDashboardRoot = snapshot.texts.contains("dashboard.root")
+    return hasApplicationRoot && hasDashboardRoot
 }
 
 func captureScreenshot(path: String) throws {
@@ -699,7 +691,7 @@ func runOpenBurnBarScenario(appPath: String, evidencePath: String?) throws {
 
         let hasRoot = containsOpenBurnBarDashboardRoot(lastAppSnapshot)
         let hasStatusItem = containsOpenBurnBarStatusItem(lastStatusSnapshot)
-        if hasRoot || hasStatusItem {
+        if hasRoot {
             print("[cu-click-smoke] openburnbar AX ready root=\(hasRoot) statusItem=\(hasStatusItem)")
             print("[cu-click-smoke] openburnbar app snapshot \(lastAppSnapshot.summary)")
             // Screenshot evidence is best-effort: it needs Screen Recording

@@ -13,7 +13,7 @@ struct SearchQueryCacheKey: Hashable, Sendable {
     let dateRangeUpper: Date?
     let ownership: String
     let sourceIDs: Set<String>?
-    let conversationSources: Set<ConversationSourceType>?
+    let conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?
     let lexicalCandidateLimit: Int
     let semanticCandidateLimit: Int
     let rerankCandidateLimit: Int

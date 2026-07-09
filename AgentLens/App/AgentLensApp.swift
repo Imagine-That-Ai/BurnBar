@@ -59,7 +59,11 @@ enum OpenBurnBarRuntime {
     }
 
     static func isUITestLaunch(environment: [String: String], arguments: [String]) -> Bool {
+        #if DEBUG
         environment["OPENBURNBAR_UITEST"] == "1" || arguments.contains("--uitest")
+        #else
+        false
+        #endif
     }
 
     static var shouldOpenSettingsForUITest: Bool {
@@ -176,7 +180,7 @@ struct OpenBurnBarApp: App {
             // opaque `"test runner hung before establishing connection"`
             // failure mode). We therefore skip every form of synchronous boot:
             //   - No Firebase / Sentry / Google Sign-In configuration.
-            //   - No `OpenBurnBarMigration.migrateUserDefaults()` (the legacy-
+            //   - No `OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()` (the legacy-
             //     domain scan can stall briefly under XCTest sandboxing).
             //   - No `DataStore` open. The live menu-bar scene is short-
             //     circuited to `EmptyView` for both content and label by
@@ -190,6 +194,8 @@ struct OpenBurnBarApp: App {
             return
         }
 
+        Self.seedUITestDefaultsIfNeeded()
+
         StartupProfiler.interval("configure_firebase") {
             Self.configureFirebaseIfAvailable(accountManager: .shared)
         }
@@ -200,13 +206,23 @@ struct OpenBurnBarApp: App {
             Self.configureAnalytics()
         }
         StartupProfiler.interval("migrate_user_defaults") {
-            OpenBurnBarMigration.migrateUserDefaults()
+            OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
         }
 
         _startupState = State(initialValue: StartupProfiler.interval("make_startup_state") {
             Self.makeStartupState()
         })
         StartupProfiler.event("app_init_end")
+    }
+
+    private static func seedUITestDefaultsIfNeeded() {
+        guard OpenBurnBarRuntime.isUITestLaunch else { return }
+        UserDefaults.standard.set(true, forKey: "hasOnboarded")
+        UserDefaults.standard.set(true, forKey: "hasShownInitialDashboard")
+        UserDefaults.standard.set(true, forKey: "conversationIndexingConsentShown")
+        UserDefaults.standard.set(true, forKey: "cliAssistantConsentShown")
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
     }
 
     @MainActor
@@ -364,12 +380,11 @@ struct OpenBurnBarApp: App {
         guard startupState.runtimeContext != nil else { return }
         didOpenUITestDashboard = true
 
-        UserDefaults.standard.set(true, forKey: "hasOnboarded")
-        UserDefaults.standard.set(true, forKey: "hasShownInitialDashboard")
-        UserDefaults.standard.set(true, forKey: "conversationIndexingConsentShown")
-        UserDefaults.standard.set(true, forKey: "cliAssistantConsentShown")
-        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
-        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
+        Self.seedUITestDefaultsIfNeeded()
+        if case .ready(let context) = startupState {
+            context.settingsManager.conversationIndexingConsentShown = true
+            context.settingsManager.cliAssistantConsentShown = true
+        }
 
         DispatchQueue.main.async {
             AppCommandRouter.shared.openDashboard?()

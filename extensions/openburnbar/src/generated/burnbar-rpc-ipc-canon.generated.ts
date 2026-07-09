@@ -812,6 +812,26 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.quota.signals.clear",
+    "caseName": "quotaSignalsClear",
+    "domain": "observability",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.quota.signals.clear",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.quota.signals.recent",
+    "caseName": "quotaSignalsRecent",
+    "domain": "observability",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.quota.signals",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.search.query",
     "caseName": "searchQuery",
     "domain": "search",

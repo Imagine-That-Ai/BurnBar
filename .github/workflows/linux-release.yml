@@ -52,11 +52,13 @@ jobs:
         run: >
           docker run --rm
           -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
+          -e ACTIONS_ID_TOKEN_REQUEST_TOKEN
+          -e ACTIONS_ID_TOKEN_REQUEST_URL
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
-          node scripts/linux-port/build-linux-release.mjs
-          --version "${{ inputs.version }}"
+          bash -c "git config --global --add safe.directory /workspace &&
+          node scripts/linux-port/build-linux-release.mjs --version '${{ inputs.version }}'"
 
       - name: Package install/uninstall/update smoke
         run: >
@@ -64,7 +66,14 @@ jobs:
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
-          node scripts/linux-port/smoke-linux-packages.mjs
+          bash -c "git config --global --add safe.directory /workspace &&
+          node scripts/linux-port/smoke-linux-packages.mjs"
+
+      - name: Take ownership of container-generated release evidence
+        # The build/smoke containers run as root and create artifacts/ + sidecars/
+        # owned by root; the later runner steps (attest, publish) write next to
+        # those files, so hand ownership back to the runner user first.
+        run: sudo chown -R "$(id -u):$(id -g)" docs/linux-port/evidence/mission-001-release
 
       - name: Restore SPM resolved files mutated by the Linux build
         # The container Linux build deterministically re-resolves and drops the

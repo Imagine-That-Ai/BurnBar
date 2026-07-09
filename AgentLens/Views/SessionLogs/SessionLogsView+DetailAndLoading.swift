@@ -135,7 +135,7 @@ extension SessionLogsView {
     }
 
     @MainActor
-    private func resolveExportBody(for record: ConversationRecord) async -> String {
+    private func resolveExportBody(for record: OpenBurnBarCore.ConversationRecord) async -> String {
         switch dataSource {
         case .local:
             if let full = try? await dataStore.fetchConversation(id: record.id)?.fullText, !full.isEmpty {
@@ -156,7 +156,7 @@ extension SessionLogsView {
 
     // MARK: - Data Loading
 
-    private func selectedConversationSources() -> Set<ConversationSourceType>? {
+    private func selectedConversationSources() -> Set<OpenBurnBarCore.ConversationSourceType>? {
         switch sourceFilter {
         case .all:
             return nil

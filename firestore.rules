@@ -1,7 +1,7 @@
 rules_version = '2';
 // OpenBurnBar currently syncs explicit owner-scoped collections:
 // - users/{uid}/usage, conversations, chat_threads, text_snippets, session_logs (+ chunks), devices
-// - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
+// - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups, roaming_profile
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
 // - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events, incoming_call_contexts
@@ -967,6 +967,12 @@ service cloud.firestore {
       return "OpenBurnBar-CloudVault-aad-v2|" + userId + "|" + collection + "|" + docID + "|" + field + "|2|" + field;
     }
 
+    function roamingProfileAADContext(userId) {
+      return "OpenBurnBar-CloudVault-aad-v2|"
+        + userId
+        + "|roaming_profile|current|sealedPayload|2|OpenBurnBar-RoamingProfile-v1";
+    }
+
     function validCloudVaultAAD(value) {
       return value is string
         && value.matches("^OpenBurnBar-CloudVault-aad-v2\\|[^|]+\\|[^|]+\\|[^|]+\\|[^|]+\\|[2-9][0-9]*\\|[^|]+$");
@@ -1167,6 +1173,55 @@ service cloud.firestore {
         && value.sealedBoxBase64.size() > 0
         && value.sealedBoxBase64.size() <= 900000
         && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validRoamingProfileSealedPayload(userId, value) {
+      return value is map
+        && value.keys().hasOnly([
+          "schemaVersion",
+          "algorithm",
+          "keyVersion",
+          "vaultKeyID",
+          "sealedBoxBase64",
+          "aad"
+        ])
+        && value.schemaVersion == 2
+        && value.algorithm == "AES-256-GCM"
+        && value.keyVersion is int
+        && value.keyVersion >= 1
+        && value.keyVersion <= 100
+        && validVaultKeyID(value.vaultKeyID)
+        && matchesCurrentVaultKey(userId, value.vaultKeyID)
+        && value.aad == roamingProfileAADContext(userId)
+        && value.sealedBoxBase64 is string
+        && value.sealedBoxBase64.size() > 0
+        && value.sealedBoxBase64.size() <= 900000
+        && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validRoamingProfileDocument(userId, profileId) {
+      return profileId == "current"
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "schemaVersion",
+          "payloadSchemaVersion",
+          "sourceDeviceID",
+          "updatedAt",
+          "sealedPayload"
+        ])
+        && request.resource.data.keys().hasAll([
+          "uid",
+          "schemaVersion",
+          "payloadSchemaVersion",
+          "updatedAt",
+          "sealedPayload"
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.payloadSchemaVersion == 1
+        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
+        && request.resource.data.updatedAt is timestamp
+        && validRoamingProfileSealedPayload(userId, request.resource.data.sealedPayload);
     }
 
     // M-007: use this only on writers that already emit path-bound AAD. Today
@@ -3426,6 +3481,13 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && validProviderAccountDocument();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/roaming_profile/{profileId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validRoamingProfileDocument(userId, profileId);
       allow delete: if ownsUserNamespace(userId);
     }
 

@@ -14,14 +14,14 @@ final class ConversationStore: Sendable {
 
     // MARK: - Row Decoding
 
-    static func fetchConversationRow(_ db: Database, id: String) throws -> ConversationRecord? {
+    static func fetchConversationRow(_ db: Database, id: String) throws -> OpenBurnBarCore.ConversationRecord? {
         guard let row = try Row.fetchOne(db, sql: "SELECT * FROM conversations WHERE id = ?", arguments: [id]) else {
             return nil
         }
         return conversation(from: row)
     }
 
-    static func conversation(from row: Row) -> ConversationRecord? {
+    static func conversation(from row: Row) -> OpenBurnBarCore.ConversationRecord? {
         guard let id = row["id"] as? String,
               let providerRaw = row["provider"] as? String,
               let provider = AgentProvider(rawValue: providerRaw),
@@ -46,9 +46,9 @@ final class ConversationStore: Sendable {
         let fileModifiedAt = OpenBurnBarDatabase.parseDateValue(row["fileModifiedAt"])
 
         let sourceTypeRaw = (row["sourceType"] as? String) ?? "provider_log"
-        let sourceType = ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
+        let sourceType = OpenBurnBarCore.ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
 
-        return ConversationRecord(
+        return OpenBurnBarCore.ConversationRecord(
             id: id,
             provider: provider,
             sessionId: sessionId,
@@ -149,8 +149,8 @@ final class ConversationStore: Sendable {
     }
 
     static func shouldPreserveConversationSyncedAt(
-        existing: ConversationRecord,
-        incoming: ConversationRecord,
+        existing: OpenBurnBarCore.ConversationRecord,
+        incoming: OpenBurnBarCore.ConversationRecord,
         resolvedSummary: String?,
         resolvedSummaryTitle: String?,
         resolvedSummaryUpdatedAt: Date?,

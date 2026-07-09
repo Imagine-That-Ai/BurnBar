@@ -46,7 +46,7 @@ while [[ "$#" -gt 0 ]]; do
             mode="local"
             shift
             ;;
-        --dry-run|--ax-smoke|--timeout-seconds|--poll-timeout-seconds)
+        --dry-run|--ax-smoke|--products-dir|--timeout-seconds|--poll-timeout-seconds)
             option="$1"
             forward_args+=("$option")
             if [[ "$option" != "--dry-run" ]]; then
@@ -111,8 +111,6 @@ xcodebuild_args=(
     SWIFT_ENABLE_EXPLICIT_MODULES=NO
     SWIFT_COMPILATION_MODE=singlefile
     SWIFT_ENABLE_BATCH_MODE=NO
-    CODE_SIGNING_ALLOWED=NO
-    CODE_SIGNING_REQUIRED=NO
 )
 if ((${#filters[@]})); then
     for filter in "${filters[@]}"; do

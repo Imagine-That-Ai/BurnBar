@@ -191,8 +191,10 @@ if [[ -n "$ax_smoke_app" ]]; then
     # the app into the console GUI session where its window is AX-visible.
     mkdir -p "$local_artifact_dir"
     log "running AX smoke on the mini (direct exec)"
+    remote_smoke_cmd="set -o pipefail; pkill -f 'OpenBurnBar.app/Contents/MacOS' 2>/dev/null || true; sleep 1; mkdir -p $remote_result_q; $runner_root_q/bin/CUClickSmoke --scenario openburnbar --app-path $remote_app_path_q --evidence-path $remote_result_q/openburnbar-ax.png 2>&1 | tee $remote_result_q/runner.log"
+    remote_smoke_cmd_q="$(printf '%q' "$remote_smoke_cmd")"
     set +e
-    mini_ssh "pkill -f 'OpenBurnBar.app/Contents/MacOS' 2>/dev/null; sleep 1; mkdir -p $remote_result_q; $runner_root_q/bin/CUClickSmoke --scenario openburnbar --app-path $remote_app_path_q --evidence-path $remote_result_q/openburnbar-ax.png 2>&1 | tee $remote_result_q/runner.log; exit \${PIPESTATUS[0]}"
+    mini_ssh "bash -lc $remote_smoke_cmd_q"
     ax_exit=$?
     set -e
     mini_rsync "$MACMINI_USER@$MACMINI_HOST:$remote_result/" "$local_artifact_dir/" 2>/dev/null || true

@@ -22,6 +22,7 @@ let BLOB_ENVELOPE_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
 let BLOB_INTEGRITY_HASH_VERSION = 1
 let CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION = 2
 let SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"
+let ROAMING_PROFILE_AAD_DOMAIN = "OpenBurnBar-RoamingProfile-v1"
 let ESCROW_HKDF_INFO = "OpenBurnBar-Escrow-v1"
 let HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
 let HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
@@ -67,6 +68,14 @@ func keyedHMACHex(_ data: Data, key: Data, purpose: String) -> String {
     return hex(Data(mac))
 }
 func vaultKeyID(_ key: Data) -> String { "v1_" + String(sha256Hex(key).prefix(32)) }
+
+struct AADContext {
+    let uid: String
+    let collection: String
+    let docID: String
+    let field: String
+    let purpose: String
+}
 
 // ── fixed inputs ─────────────────────────────────────────────────────────────
 let keyA = bytes(0, 32)     // 0x00..0x1f
@@ -124,7 +133,7 @@ root["escrowWrap"] = [
 ]
 
 // ── sealText ─────────────────────────────────────────────────────────────────
-func sealTextVector(name: String, key: Data, nonce: Data, text: String, aad: (uid: String, collection: String, docID: String, field: String, purpose: String)?) throws -> [String: Any] {
+func sealTextVector(name: String, key: Data, nonce: Data, text: String, aad: AADContext?) throws -> [String: Any] {
     let aadData: Data
     let aadString: String?
     let schemaVersion: Int?
@@ -159,14 +168,14 @@ func sealTextVector(name: String, key: Data, nonce: Data, text: String, aad: (ui
 }
 root["sealText"] = [
     try sealTextVector(name: "sealtext-v1-no-aad", key: keyA, nonce: hexToData("000102030405060708090a0b"), text: "private launch plan", aad: nil),
-    try sealTextVector(name: "sealtext-v2-with-aad", key: keyA, nonce: hexToData("101112131415161718191a1b"), text: "context-bound title", aad: ("user_alice", "cloudSessions", "doc_123", "title", "title"))
+    try sealTextVector(name: "sealtext-v2-with-aad", key: keyA, nonce: hexToData("101112131415161718191a1b"), text: "context-bound title", aad: AADContext(uid: "user_alice", collection: "cloudSessions", docID: "doc_123", field: "title", purpose: "title"))
 ]
 
 // ── sealBlob ─────────────────────────────────────────────────────────────────
-func sealBlobVector(name: String, key: Data, nonce: Data, data: Data, aad: (uid: String, collection: String, docID: String, field: String, purpose: String)?) throws -> [String: Any] {
+func sealBlobVector(name: String, key: Data, nonce: Data, data: Data, aad: AADContext?) throws -> [String: Any] {
     let aeadAad: Data
     let envAad: String
-    var aadContextDict: [String: Any]? = nil
+    var aadContextDict: [String: Any]?
     if let a = aad {
         let s = aadContextString(uid: a.uid, collection: a.collection, docID: a.docID, field: a.field, schemaVersion: CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION, purpose: a.purpose)
         aeadAad = Data(s.utf8); envAad = s
@@ -195,15 +204,15 @@ func sealBlobVector(name: String, key: Data, nonce: Data, data: Data, aad: (uid:
 }
 root["sealBlob"] = [
     try sealBlobVector(name: "sealblob-v2-default-ctx", key: keyB, nonce: hexToData("202122232425262728292a2b"), data: bytes(0, 64), aad: nil),
-    try sealBlobVector(name: "sealblob-v2-path-aad", key: keyB, nonce: hexToData("303132333435363738393a3b"), data: Data("release policy".utf8), aad: ("user_alice", "cloudSessions", "doc_9", "body", "body"))
+    try sealBlobVector(name: "sealblob-v2-path-aad", key: keyB, nonce: hexToData("303132333435363738393a3b"), data: Data("release policy".utf8), aad: AADContext(uid: "user_alice", collection: "cloudSessions", docID: "doc_9", field: "body", purpose: "body"))
 ]
 
 // ── sealPayload ──────────────────────────────────────────────────────────────
-func sealPayloadVector(name: String, key: Data, nonce: Data, data: Data, aad: (uid: String, collection: String, docID: String, field: String, purpose: String)?) throws -> [String: Any] {
+func sealPayloadVector(name: String, key: Data, nonce: Data, data: Data, aad: AADContext?) throws -> [String: Any] {
     let vkid = vaultKeyID(key)
     let aeadAad: Data
     let envAad: String
-    var aadContextDict: [String: Any]? = nil
+    var aadContextDict: [String: Any]?
     if let a = aad {
         let s = aadContextString(uid: a.uid, collection: a.collection, docID: a.docID, field: a.field, schemaVersion: CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION, purpose: a.purpose)
         aeadAad = Data(s.utf8); envAad = s
@@ -232,8 +241,60 @@ func sealPayloadVector(name: String, key: Data, nonce: Data, data: Data, aad: (u
 }
 root["sealPayload"] = [
     try sealPayloadVector(name: "sealpayload-v2-default", key: keyC, nonce: hexToData("404142434445464748494a4b"), data: Data("sealed payload body".utf8), aad: nil),
-    try sealPayloadVector(name: "sealpayload-v2-path-aad", key: keyC, nonce: hexToData("505152535455565758595a5b"), data: Data("mission event".utf8), aad: ("user_alice", "cloudMissions", "m_1", "sealedPayload", "sealedPayload"))
+    try sealPayloadVector(name: "sealpayload-v2-path-aad", key: keyC, nonce: hexToData("505152535455565758595a5b"), data: Data("mission event".utf8), aad: AADContext(uid: "user_alice", collection: "cloudMissions", docID: "m_1", field: "sealedPayload", purpose: "sealedPayload"))
 ]
+
+// ── RoamingProfilePayload CloudVault envelope ───────────────────────────────
+let roamingProfilePayload: [String: Any] = [
+    "schemaVersion": 1,
+    "routerMode": "same_model_failover",
+    "crossProviderFailoverEnabled": false,
+    "accountOrder": ["anthropic-primary"],
+    "providerAccounts": [
+        [
+            "id": "anthropic-primary",
+            "providerID": "anthropic",
+            "label": "Claude Code",
+            "identityHint": "user@example.com",
+            "status": "connected",
+            "credentialKind": "bearer",
+            "storageScope": "device_keychain",
+            "redactedLabel": "Stored in Mac Keychain",
+            "sourceDeviceID": "mac-vector",
+            "isDefault": true,
+            "sortKey": 0,
+            "schemaVersion": 2,
+            "createdAt": "2026-05-29T10:00:00Z",
+            "updatedAt": "2026-05-29T10:05:00Z"
+        ]
+    ],
+    "ollamaEndpoints": [
+        ["id": "local", "baseURL": "http://127.0.0.1:11434", "label": "Local Ollama", "priority": 1]
+    ],
+    "equivalenceOverrides": [
+        ["canonicalModelID": "gpt-5.5", "action": "pin", "classID": "frontier"]
+    ],
+    "quotaDisplayPreferences": [
+        "providerOrder": ["anthropic", "openai"],
+        "visibleProviders": ["anthropic"],
+        "hiddenBuckets": ["anthropic:daily"],
+        "bucketOrders": ["anthropic": ["5h", "weekly"]],
+        "percentageDisplayMode": "remainingPercent",
+        "cumulativeAcrossAccounts": false
+    ],
+    "updatedAt": "2026-05-29T10:05:00Z",
+    "sourceDeviceID": "mac-vector"
+]
+let roamingPlaintext = try JSONSerialization.data(withJSONObject: roamingProfilePayload, options: [.sortedKeys])
+var roamingVector = try sealPayloadVector(
+    name: "roaming-profile-v1",
+    key: keyC,
+    nonce: hexToData("5c5d5e5f6061626364656667"),
+    data: roamingPlaintext,
+    aad: AADContext(uid: "user_alice", collection: "roaming_profile", docID: "current", field: "sealedPayload", purpose: ROAMING_PROFILE_AAD_DOMAIN)
+)
+roamingVector["payload"] = roamingProfilePayload
+root["roamingProfile"] = [roamingVector]
 
 // ── recovery wrap ────────────────────────────────────────────────────────────
 func recoveryVector(name: String, recoveryKey: String, vaultKey: Data, nonce: Data) throws -> [String: Any] {

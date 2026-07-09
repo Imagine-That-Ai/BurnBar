@@ -3,8 +3,8 @@ import Foundation
 
 enum OpenBurnBarDaemonSocketClient {
     private static let controllerRuntimeSecrets = KeychainStore(
-        service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.controllerRuntimeKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
     private static let daemonSocketAuthTokenLock = NSLock()
     // AUDIT(nonisolated): all reads/writes go through
@@ -1216,7 +1216,7 @@ enum OpenBurnBarDaemonSocketClient {
             return fileToken
         }
         if let storedToken = secrets.credentialIfPresent(
-            for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount,
+            for: OpenBurnBarCore.OpenBurnBarIdentity.daemonSocketAuthTokenAccount,
             allowUserInteraction: false,
             event: "daemon_socket_token_read_failed"
         ) {
