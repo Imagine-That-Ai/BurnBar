@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -7,9 +9,11 @@ using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
+using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Settings;
 using Windows.Storage.Pickers;
 using Windows.Storage;
+using Windows.System;
 
 namespace OpenBurnBar.App.Settings.Winui;
 
@@ -44,6 +48,7 @@ public sealed partial class DataSourceSettingsPage : Page
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "SQLCipher: configured"
             : SecretSummary(snap);
+        RenderStorageStatus(WindowsStorageDevHost.InitializeRuntime());
     }
 
     private async void OnBrowseDb(object sender, RoutedEventArgs e)
@@ -93,10 +98,100 @@ public sealed partial class DataSourceSettingsPage : Page
         });
 
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        RenderStorageStatus(WindowsStorageDevHost.InitializeRuntime());
 
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "Saved. SQLCipher active — reopen surfaces to reload stores."
             : "Saved. Secrets were written to protected storage; cloud settings applied where UID + token are set.";
+    }
+
+    private void OnRetryStorage(object sender, RoutedEventArgs e)
+    {
+        RenderStorageStatus(WindowsStorageDevHost.RetryRecovery());
+    }
+
+    private async void OnArchiveResetStorage(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Archive and reset storage?",
+            Content = "OpenBurnBar will move the current encrypted database and recovery files into an archive folder, then create a new encrypted database. This cannot read damaged or wrong-key data.",
+            PrimaryButtonText = "Archive and reset",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var archive = WindowsStorageDevHost.ArchiveAndReset(confirmDestructiveReset: true);
+        RenderStorageStatus(WindowsStorageDevHost.Status);
+        StatusLabel.Text = "Archived storage at " + archive.ArchiveDirectory + ".";
+    }
+
+    private async void OnRevealLog(object sender, RoutedEventArgs e)
+    {
+        string? logPath = WindowsStorageDevHost.RecoveryLogPath;
+        if (string.IsNullOrWhiteSpace(logPath))
+        {
+            StatusLabel.Text = "No recovery log is available yet.";
+            return;
+        }
+
+        string? folder = System.IO.Path.GetDirectoryName(logPath);
+        if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+        {
+            _ = await Launcher.LaunchFolderPathAsync(folder);
+        }
+
+        StatusLabel.Text = "Recovery log: " + logPath;
+    }
+
+    private void RenderStorageStatus(WindowsStorageRuntimeStatus status)
+    {
+        RetryStorageButton.Visibility = Visibility.Collapsed;
+        ArchiveResetButton.Visibility = Visibility.Collapsed;
+        RevealLogButton.Visibility = Visibility.Collapsed;
+
+        if (status.IsReady && status.Report is { } report)
+        {
+            StorageStatusTitle.Text = "SQLCipher storage is ready.";
+            StorageStatusMessage.Text = report.Created
+                ? "A clean profile database was created with a generated protected key."
+                : "The existing encrypted database opened successfully.";
+            StorageEvidenceText.Text =
+                $"Path: {report.DatabasePath}\n"
+                + $"Key: {report.KeyProvenance}\n"
+                + $"Owner: {report.PathOwner}\n"
+                + $"Cipher: {report.CipherVersion}\n"
+                + $"Migration: {report.SchemaEndpoint} ({report.MigrationCount})\n"
+                + $"Schema hash: {report.SchemaHash}";
+            RevealLogButton.Visibility = Visibility.Visible;
+            return;
+        }
+
+        if (status.RecoveryState is { } recovery)
+        {
+            StorageStatusTitle.Text = recovery.Title;
+            StorageStatusMessage.Text = recovery.Message;
+            StorageEvidenceText.Text =
+                $"Path: {recovery.DatabasePath}\n"
+                + $"Failure: {recovery.Kind}\n"
+                + $"Journal: {recovery.JournalPath ?? "none"}\n"
+                + $"Log: {recovery.RedactedLogPath ?? "none"}";
+            RetryStorageButton.Visibility = recovery.Actions.Contains(WindowsStorageRecoveryAction.Retry) ? Visibility.Visible : Visibility.Collapsed;
+            ArchiveResetButton.Visibility = recovery.Actions.Contains(WindowsStorageRecoveryAction.Reset) ? Visibility.Visible : Visibility.Collapsed;
+            RevealLogButton.Visibility = recovery.Actions.Contains(WindowsStorageRecoveryAction.RevealRedactedLog) ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
+
+        StorageStatusTitle.Text = "SQLCipher storage has not started.";
+        StorageStatusMessage.Text = "OpenBurnBar will provision encrypted storage on launch.";
+        StorageEvidenceText.Text = string.Empty;
     }
 
     private static string? NullIfEmpty(string? text) =>

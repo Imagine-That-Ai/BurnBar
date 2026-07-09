@@ -6,6 +6,7 @@ using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
+using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
 
 namespace OpenBurnBar.App;
@@ -53,6 +54,11 @@ public partial class App : Application
         {
             AppDiagnostics.LogException("configuration.security", ex);
             throw;
+        }
+        var storageStatus = WindowsStorageDevHost.InitializeRuntime();
+        if (!storageStatus.IsReady && storageStatus.RecoveryState is { } recovery)
+        {
+            AppDiagnostics.LogEvent("storage.recovery-required", $"{recovery.Kind}: {recovery.Title}");
         }
 
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Data Source — SQLCipher Mac DB path + passphrase, and optional Firebase dev-host tokens.
+  Data Source — Windows-owned SQLCipher storage and optional Firebase credentials.
 -->
 <Page
     x:Class="OpenBurnBar.App.Settings.Winui.DataSourceSettingsPage"
@@ -22,17 +22,30 @@
                 Margin="0,0,0,8"
                 Foreground="{StaticResource PensieveColorTextMuteBrush}"
                 TextWrapping="Wrap"
-                Text="Point OpenBurnBar at your SQLCipher database and optional cloud sync credentials. Non-secret settings are saved to app_config.json; credentials are stored in protected Windows storage." />
+                Text="OpenBurnBar provisions encrypted local storage automatically. Non-secret settings are saved to app_config.json; credentials are stored in protected Windows storage." />
 
-            <tk:SettingsCard x:Name="DbPathCard" Header="SQLCipher database" Description="Path to the .sqlite file produced on macOS">
+            <tk:SettingsCard x:Name="StorageStatusCard" Header="Protected local storage" Description="SQLCipher status and recovery">
+                <StackPanel Spacing="8" MinWidth="320">
+                    <TextBlock x:Name="StorageStatusTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="StorageStatusMessage" TextWrapping="Wrap" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock x:Name="StorageEvidenceText" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="RetryStorageButton" Content="Retry" Click="OnRetryStorage" Visibility="Collapsed" />
+                        <Button x:Name="ArchiveResetButton" Content="Archive and reset" Click="OnArchiveResetStorage" Visibility="Collapsed" />
+                        <Button x:Name="RevealLogButton" Content="Reveal log" Click="OnRevealLog" Visibility="Collapsed" />
+                    </StackPanel>
+                </StackPanel>
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="DbPathCard" Header="SQLCipher database" Description="Optional override. Leave blank for the user-owned default profile path.">
                 <StackPanel Spacing="8" MinWidth="280">
-                    <TextBox x:Name="DbPathBox" PlaceholderText="C:\path\to\openburnbar.sqlite" />
+                    <TextBox x:Name="DbPathBox" PlaceholderText="C:\Users\you\AppData\Local\OpenBurnBar\openburnbar.sqlite" />
                     <Button x:Name="BrowseDbButton" Content="Browse…" Click="OnBrowseDb" HorizontalAlignment="Left" />
                 </StackPanel>
             </tk:SettingsCard>
 
-            <tk:SettingsCard x:Name="PassphraseCard" Header="Database passphrase" Description="Leave blank to keep the protected value already configured for this PC">
-                <PasswordBox x:Name="PassphraseBox" MinWidth="280" PlaceholderText="Passphrase" />
+            <tk:SettingsCard x:Name="PassphraseCard" Header="Database key" Description="Normally generated and protected automatically. Enter only when importing a known database/key pair.">
+                <PasswordBox x:Name="PassphraseBox" MinWidth="280" PlaceholderText="Leave blank to keep or generate protected key" />
             </tk:SettingsCard>
 
             <TextBlock
