@@ -34,18 +34,8 @@ public sealed class AppConfiguration
 
     public static AppConfiguration Current => Instance.Value;
 
-    /// <summary><c>%LOCALAPPDATA%\OpenBurnBar\app_config.json</c> on Windows; <c>~/.openburnbar/app_config.json</c> elsewhere.</summary>
-    public static string DefaultFilePath()
-    {
-        string? local = Environment.GetEnvironmentVariable("LOCALAPPDATA");
-        if (!string.IsNullOrWhiteSpace(local))
-        {
-            return Path.Combine(local, "OpenBurnBar", "app_config.json");
-        }
-
-        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".openburnbar", "app_config.json");
-    }
+    /// <summary><c>%LOCALAPPDATA%\OpenBurnBar\app_config.json</c>, or the automation profile root when set.</summary>
+    public static string DefaultFilePath() => RuntimePaths.AppDataFile("app_config.json");
 
     public string ConfigFilePath => _filePath;
 

@@ -6,14 +6,21 @@
     xmlns:shell="using:OpenBurnBar.App.Shell"
     Title="OpenBurnBar">
 
-    <Grid RowSpacing="0" Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid RowSpacing="0"
+          Background="{StaticResource PensieveColorInkBaseBrush}"
+          AutomationProperties.AutomationId="MainWindow.Root">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <!-- Custom draggable title bar (window-level title-bar region set in code-behind). -->
-        <Grid x:Name="TitleBar" Grid.Row="0" Height="40" Padding="16,0" ColumnSpacing="10">
+        <Grid x:Name="TitleBar"
+              Grid.Row="0"
+              Height="40"
+              Padding="16,0"
+              ColumnSpacing="10"
+              AutomationProperties.AutomationId="MainWindow.TitleBar">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -29,6 +36,8 @@
         </Grid>
 
         <!-- The NavigationView app frame (12 stubbed destinations + content Frame). -->
-        <shell:AppShell x:Name="ShellControl" Grid.Row="1" />
+        <shell:AppShell x:Name="ShellControl"
+                        Grid.Row="1"
+                        AutomationProperties.AutomationId="MainWindow.Shell" />
     </Grid>
 </Window>
