@@ -151,5 +151,6 @@ try {
     throw "Timed out waiting for scheduled task '$taskName'. Console log: $consolePath"
 }
 finally {
+    Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Out-Null
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 }

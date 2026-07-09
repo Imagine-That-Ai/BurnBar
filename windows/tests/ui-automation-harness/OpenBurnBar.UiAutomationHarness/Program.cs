@@ -57,26 +57,52 @@ internal static class Program
 
         var routes = new List<RouteSmokeEvidence>();
         var runner = new RouteSmokeRunner(appExe, output, options.TimeoutMilliseconds);
+        bool cancellationRequested = false;
         foreach (UiHarnessRoute route in manifest)
         {
             Console.WriteLine($"[route] {route.Key}");
-            routes.Add(await runner.RunAsync(route, cts.Token).ConfigureAwait(false));
+            try
+            {
+                routes.Add(await runner.RunAsync(route, cts.Token).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                cancellationRequested = true;
+                notes.Add("Run cancelled by operator request; partial evidence was written.");
+                routes.Add(CancelledRoute(route));
+                break;
+            }
         }
 
         SemanticProbeEvidence? semanticProbe = null;
-        if (options.SkipSemanticProbe)
+        if (cancellationRequested)
+        {
+            semanticProbe = CancelledSemanticProbe("Semantic main-window probe was not run because cancellation was requested.");
+        }
+        else if (options.SkipSemanticProbe)
         {
             notes.Add("Semantic main-window probe skipped by --skip-semantic-probe.");
         }
         else
         {
             Console.WriteLine("[semantic] main window");
-            semanticProbe = await new SemanticProbeRunner(appExe, output, options.TimeoutMilliseconds)
-                .RunAsync(cts.Token)
-                .ConfigureAwait(false);
+            try
+            {
+                semanticProbe = await new SemanticProbeRunner(appExe, output, options.TimeoutMilliseconds)
+                    .RunAsync(cts.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                cancellationRequested = true;
+                notes.Add("Run cancelled by operator request; partial evidence was written.");
+                semanticProbe = CancelledSemanticProbe("Semantic main-window probe was cancelled by operator request.");
+            }
         }
 
-        IReadOnlyList<InputRouteEvidence> inputRoutes = InputRouteProbe.Capture();
+        IReadOnlyList<InputRouteEvidence> inputRoutes = cancellationRequested
+            ? Array.Empty<InputRouteEvidence>()
+            : InputRouteProbe.Capture();
         var summary = new UiHarnessRunSummary(
             GeneratedAtUtc: DateTimeOffset.UtcNow.ToString("O"),
             RepoRoot: repoRoot,
@@ -90,7 +116,7 @@ internal static class Program
 
         var redactor = new ArtifactRedactor(repoRoot, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         string summaryPath = Path.Combine(output, "summary.json");
-        await File.WriteAllTextAsync(summaryPath, redactor.Redact(JsonSerializer.Serialize(summary, JsonOptions)), cts.Token).ConfigureAwait(false);
+        await File.WriteAllTextAsync(summaryPath, redactor.Redact(JsonSerializer.Serialize(summary, JsonOptions)), CancellationToken.None).ConfigureAwait(false);
         JUnitReportWriter.Write(Path.Combine(output, "junit.xml"), summary, redactor);
         HtmlReportWriter.Write(Path.Combine(output, "index.html"), summary, redactor);
 
@@ -106,4 +132,32 @@ internal static class Program
 
         return summary.Verdict == HarnessVerdict.Pass ? 0 : 1;
     }
+
+    private static RouteSmokeEvidence CancelledRoute(UiHarnessRoute route) =>
+        new(
+            route.Key,
+            HarnessVerdict.Fail,
+            ExitCode: 130,
+            TimedOut: false,
+            NearUniform: true,
+            ScreenshotPath: null,
+            ResultPath: null,
+            Width: 0,
+            Height: 0,
+            LumaStdDev: 0,
+            ElapsedMs: 0,
+            Message: "Route smoke probe was cancelled by operator request.",
+            ExpectedAutomationId: route.ExpectedAutomationId,
+            ExpectedAutomationIdFound: false);
+
+    private static SemanticProbeEvidence CancelledSemanticProbe(string message) =>
+        new(
+            HarnessVerdict.Fail,
+            ProcessImageName: null,
+            WindowTitle: null,
+            IsPasswordField: false,
+            IsSecureDesktop: false,
+            IsCredentialPrompt: false,
+            ScreenshotPath: null,
+            Message: message);
 }
