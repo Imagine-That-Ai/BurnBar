@@ -5,8 +5,7 @@ using Xunit;
 namespace OpenBurnBar.App.Shell.Tests;
 
 /// <summary>
-/// IA-1 route scaffolding: database + projects keys must appear in the catalog and
-/// map to deferred SurfaceStubPage logical registration (depth remains deferred).
+/// Route scaffolding: database + projects are product pages (IA-2/IA-4), not deferred stubs.
 /// </summary>
 public sealed class NavCatalogTests
 {
@@ -22,8 +21,6 @@ public sealed class NavCatalogTests
     {
         Assert.Equal("Database", NavCatalog.Find("database")!.Title);
         Assert.Equal("Projects", NavCatalog.Find("projects")!.Title);
-        Assert.Contains("deferred", NavCatalog.Find("database")!.Subtitle, System.StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("deferred", NavCatalog.Find("projects")!.Subtitle, System.StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -41,15 +38,14 @@ public sealed class NavCatalogTests
     }
 
     [Theory]
-    [InlineData("database")]
-    [InlineData("projects")]
-    public void Ia1Keys_ResolveToDeferredStub_NotProductPages(string key)
+    [InlineData("database", "DatabasePage")]
+    [InlineData("projects", "ProjectsPage")]
+    public void DatabaseAndProjects_ResolveToProductPages_NotStub(string key, string logical)
     {
-        Assert.True(SurfaceRouteMap.IsIa1DeferredDisclosure(key));
-        Assert.Equal(SurfaceRouteMap.DeferredStubPage, SurfaceRouteMap.LogicalPageType(key));
-        Assert.NotEqual("InsightsPage", SurfaceRouteMap.LogicalPageType(key));
-        Assert.NotEqual("DashboardPage", SurfaceRouteMap.LogicalPageType(key));
-        Assert.Contains(key, SurfaceRouteMap.Ia1DeferredDisclosureKeys);
+        Assert.False(SurfaceRouteMap.IsIa1DeferredDisclosure(key));
+        Assert.Equal(logical, SurfaceRouteMap.LogicalPageType(key));
+        Assert.NotEqual(SurfaceRouteMap.DeferredStubPage, SurfaceRouteMap.LogicalPageType(key));
+        Assert.Contains(logical, SurfaceRouteMap.ProductLogicalPageNames);
     }
 
     [Fact]
@@ -66,25 +62,23 @@ public sealed class NavCatalogTests
             else
             {
                 Assert.NotEqual(SurfaceRouteMap.DeferredStubPage, logical);
-                // Non-stub catalog keys must land on a product logical name WinUI must bind.
                 Assert.Contains(logical, SurfaceRouteMap.ProductLogicalPageNames);
             }
         }
     }
 
     [Fact]
-    public void ProductLogicalPageNames_IsNonEmpty_AndExcludesStub()
+    public void ProductLogicalPageNames_IncludesDatabaseAndProjects()
     {
-        Assert.NotEmpty(SurfaceRouteMap.ProductLogicalPageNames);
+        Assert.Contains("DatabasePage", SurfaceRouteMap.ProductLogicalPageNames);
+        Assert.Contains("ProjectsPage", SurfaceRouteMap.ProductLogicalPageNames);
         Assert.DoesNotContain(SurfaceRouteMap.DeferredStubPage, SurfaceRouteMap.ProductLogicalPageNames);
-        Assert.Contains("InsightsPage", SurfaceRouteMap.ProductLogicalPageNames);
-        Assert.Contains("DashboardPage", SurfaceRouteMap.ProductLogicalPageNames);
     }
 
     [Fact]
     public void AssertWinUiBindingsCoverProductLogicalNames_FailsWhenMissing()
     {
-        var incomplete = new[] { "BudgetPage" }; // missing most product names
+        var incomplete = new[] { "BudgetPage" };
         var ex = Assert.Throws<System.InvalidOperationException>(
             () => SurfaceRouteMap.AssertWinUiBindingsCoverProductLogicalNames(incomplete));
         Assert.Contains("missing WinUI bindings", ex.Message, System.StringComparison.OrdinalIgnoreCase);

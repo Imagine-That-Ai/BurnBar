@@ -19,8 +19,11 @@ public static class SurfaceRouteMap
     /// <summary>Logical name for the deferred-disclosure / unknown-key host page.</summary>
     public const string DeferredStubPage = "SurfaceStubPage";
 
-    /// <summary>IA-1 macOS primary keys that intentionally host deferred disclosure only.</summary>
-    public static readonly string[] Ia1DeferredDisclosureKeys = { "database", "projects" };
+    /// <summary>
+    /// Keys that previously used intentional IA-1 deferred stubs. Now product pages
+    /// (Database System / Projects list); kept empty for API stability.
+    /// </summary>
+    public static readonly string[] Ia1DeferredDisclosureKeys = Array.Empty<string>();
 
     /// <summary>
     /// Explicit product (non-stub) key → logical page name. Add new destinations here first;
@@ -42,19 +45,20 @@ public static class SurfaceRouteMap
             ["elderWand"] = "ElderWandPage",
             ["onboarding"] = "OnboardingPage",
             ["settings"] = "SettingsPage",
+            ["database"] = "DatabasePage",
+            ["projects"] = "ProjectsPage",
         });
 
     /// <summary>Distinct non-stub logical page names that WinUI must bind.</summary>
     public static IReadOnlyList<string> ProductLogicalPageNames { get; } =
         ProductKeyToLogical.Values.Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal).ToList();
 
-    /// <summary>Whether <paramref name="key"/> is an intentional IA-1 deferred stub route.</summary>
+    /// <summary>Whether <paramref name="key"/> is an intentional deferred stub route (none after IA-2/IA-4).</summary>
     public static bool IsIa1DeferredDisclosure(string key) =>
-        key is "database" or "projects";
+        Array.IndexOf(Ia1DeferredDisclosureKeys, key) >= 0;
 
     /// <summary>
-    /// Logical page type name for a nav key. IA-1 deferred keys and unknown keys
-    /// return <see cref="DeferredStubPage"/>.
+    /// Logical page type name for a nav key. Unknown keys return <see cref="DeferredStubPage"/>.
     /// </summary>
     public static string LogicalPageType(string key)
     {
@@ -63,7 +67,6 @@ public static class SurfaceRouteMap
             return logical;
         }
 
-        // IA-1 explicit deferred disclosure + unknown keys.
         return DeferredStubPage;
     }
 

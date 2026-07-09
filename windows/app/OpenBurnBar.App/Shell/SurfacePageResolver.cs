@@ -6,10 +6,9 @@ namespace OpenBurnBar.App.Shell;
 
 /// <summary>
 /// Maps a <see cref="NavDestination.Key"/> to the real <c>Page</c> type that renders it.
-/// Unknown keys and intentional IA-1 deferred routes (<c>database</c>, <c>projects</c>)
-/// resolve to <see cref="SurfaceStubPage"/> (honest disclosure, not fake Real). Logical
-/// names live in <see cref="SurfaceRouteMap"/> so shell unit tests can pin registration
-/// without WinUI. Static construction fails if a product logical name lacks a typeof arm.
+/// Unknown keys resolve to <see cref="SurfaceStubPage"/>. Logical names live in
+/// <see cref="SurfaceRouteMap"/> so shell unit tests can pin registration without WinUI.
+/// Static construction fails if a product logical name lacks a typeof arm.
 /// </summary>
 public static class SurfacePageResolver
 {
@@ -30,6 +29,8 @@ public static class SurfacePageResolver
             ["ElderWandPage"] = typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
             ["OnboardingPage"] = typeof(OpenBurnBar.App.Onboarding.OnboardingPage),
             ["SettingsPage"] = typeof(OpenBurnBar.App.Settings.Winui.SettingsPage),
+            ["DatabasePage"] = typeof(OpenBurnBar.App.Database.DatabasePage),
+            ["ProjectsPage"] = typeof(OpenBurnBar.App.Projects.ProjectsPage),
             [SurfaceRouteMap.DeferredStubPage] = typeof(SurfaceStubPage),
         });
 

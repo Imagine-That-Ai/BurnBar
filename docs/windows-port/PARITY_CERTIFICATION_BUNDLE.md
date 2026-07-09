@@ -12,15 +12,16 @@
 
 ## 0. Finish lines: F1 Ship Peer vs F2 True 1:1
 
-> **Never claim “100% parity” without naming F1 or F2.** Default launch target is **F1**.
+> **Never claim “100% parity” without naming F1 or F2.** **100% parity = F2 True 1:1**
+> (ledger `finish_line: F2_True_1to1`, WPD-0009). Practical **launch** target remains **F1**.
 > Canonical execution plan: [`WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md`](WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md).
 >
 > **Engine Room surface status:** the F1/F2 matrix is authored on the portable
 > `WindowsFinishLineScope` / `DaemonSettingsViewModel` (unit-tested) and mirrored in this
 > bundle. The Daemon **WinUI tab still routes to `SettingsPlaceholderPage`** (H6 residual) —
-> it does **not** yet bind FinishLine* properties in XAML. Treat F1 column cells as **exit
-> criteria for Ship Peer**, not as “present in the current build.” Current build status is
-> the ledger row only.
+> it does **not** yet bind FinishLine* properties in XAML. Treat F1/F2 column cells as **exit
+> criteria**, not as “present in the current build.” Current build status is the ledger row
+> only (many F1 depth/host rows are **DeferredApproved** under WPD-0008/0010).
 
 | Area | F1 — Ship Peer **exit criteria** (default) | F2 — True 1:1 **exit criteria** |
 |------|--------------------------------------------|----------------------------------|

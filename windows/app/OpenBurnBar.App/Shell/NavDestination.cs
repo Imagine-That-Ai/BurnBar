@@ -57,9 +57,9 @@ public static class NavCatalog
         new("chat",              "Chat",               "Full-canvas chat",                "\uE8BD"),
         new("insights",          "Insights",           "Editorial brief & anomalies",     "\uE9D2"),
         new("quota",             "Quota",              "Subscriptions & limits",          "\uE9D9"),
-        // IA-1: macOS primary-section keys (Command Deck) — honest deferred disclosure only.
-        new("database",          "Database",           "Browse tracked sessions · depth deferred (IA-1)", "\uE8F1"),
-        new("projects",          "Projects",           "Group by project · depth deferred (IA-1)",        "\uE8B7"),
+        // macOS primary sections: IA-2 System browse + IA-4 list-level projects.
+        new("database",          "Database",           "Browse tracked sessions (System mode)", "\uE8F1"),
+        new("projects",          "Projects",           "Group by project (list-level peer)",      "\uE8B7"),
         new("sessionLogs",       "Session Logs",       "Indexed conversations",           "\uE81C"),
         new("memory",            "Memory",             "Review what OpenBurnBar learned", "\uEA37"),
         new("missionControl",    "Mission Control",    "Active runs & tasks",             "\uE7C1"),

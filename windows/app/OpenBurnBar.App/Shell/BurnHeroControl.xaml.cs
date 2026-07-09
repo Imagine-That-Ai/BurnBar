@@ -29,10 +29,13 @@ public sealed partial class BurnHeroControl : UserControl
         {
             DashboardUsageSummary summary = DashboardUsageSampleData.Summary();
             SetValue($"${summary.SpendThisMonthUsd:0.00}", SampleSpark());
+            // H0 honesty: the capsule is rendering sample spend, so label it as such.
+            SampleChip.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
         }
         else
         {
             SetValue("—", Array.Empty<double>());
+            SampleChip.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
         }
     }
 

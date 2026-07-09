@@ -21,10 +21,10 @@ public static class WindowsFinishLineScope
     public const string DefaultLabel = "F1 — Ship Peer (default launch target)";
 
     public const string Explainer =
-        "Do not claim \"100% parity\" without naming F1 or F2. Rows below are Ship Peer / True 1:1 " +
-        "exit criteria — not current-build capability claims (see ledger for status). F1 is the " +
-        "default launch target under accepted WPDs; F2 adds deferred daemon/gateway depth " +
-        "(WPD-0006 / WPD-0003). WinUI Daemon tab binding is H6 residual.";
+        "100% parity means F2 True 1:1 (ledger finish_line + WPD-0009) — never bare \"100%\". " +
+        "Rows below are Ship Peer / True 1:1 exit criteria, not current-build claims (see ledger). " +
+        "F1 is the practical launch target; host-gated and depth residuals are DeferredApproved " +
+        "(WPD-0008/0010). WinUI Daemon tab binding is H6 residual.";
 
     public static IReadOnlyList<WindowsFinishLineScopeRow> Rows { get; } = new List<WindowsFinishLineScopeRow>
     {

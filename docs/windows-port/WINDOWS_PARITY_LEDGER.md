@@ -2,8 +2,8 @@
 
 **Machine source of truth:** [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml)  
 **Scanner:** [`scripts/ci/verify-windows-parity-ledger.py`](../../scripts/ci/verify-windows-parity-ledger.py)  
-**Updated:** 2026-07-09 (Phase 0 + H0 honesty / IA-1 scaffolding)  
-**Finish line:** **F1 Ship Peer** default (`finish_line: F1_Ship_Peer` in YAML). F2 is post-F1 unless product overrides.
+**Updated:** 2026-07-09 (H0 honesty + IA-2/IA-4 + WPD-0008/0009/0010 reclassification)  
+**Finish line:** **F2 True 1:1** is the named **100% parity** endpoint (`finish_line: F2_True_1to1`). F1 Ship Peer remains the practical launch target; residual depth is DeferredApproved under WPDs, not silent gaps.
 
 ## Why this exists
 
@@ -62,10 +62,10 @@ From `DashboardMainRoute.primarySections`:
 
 Plus required peers: `overview`, `insights`, `settings`, `flyout`, `budget`, `elderWand`.
 
-**Current gaps (Blocked):**
+**Primary routes (not Blocked):**
 
-- `database` / `projects` — **IA-1** `NavCatalog` keys exist and resolve to `SurfaceStubPage` **deferred disclosure** only; depth (IA-2+) is required before leaving `Blocked` (not Real).
-- `nav-chat` — remains `Blocked` until a production `IChatStreamDriver` streams live assistant tokens (ConPTY alone is insufficient).
+- `database` / `projects` — **Real** IA-2 System browse + IA-4 list-level pages over the session-log SQLCipher seam (empty when unconfigured).
+- `nav-chat` — **DeferredApproved** (WPD-0010): portable `CliJsonLineChatStreamDriver` + stream-json parser shipped; revive when a configured Win11 host streams live tokens through `ChatSurfaceViewModel`.
 
 ## Status counts
 

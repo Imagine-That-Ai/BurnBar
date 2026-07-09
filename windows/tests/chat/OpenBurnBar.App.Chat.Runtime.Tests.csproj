@@ -24,7 +24,13 @@
 
   <ItemGroup>
     <Compile Include="../../app/OpenBurnBar.App/Chat/ChatStreamDriver.cs" Link="ChatStreamDriver.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/CliJsonLineChatStreamDriver.cs" Link="CliJsonLineChatStreamDriver.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatStreamDriverFactory.cs" Link="ChatStreamDriverFactory.cs" />
     <Compile Include="ChatStreamDriverRuntimeTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
   </ItemGroup>
 
 </Project>
