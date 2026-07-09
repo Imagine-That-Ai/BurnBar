@@ -24,13 +24,24 @@
   <ItemGroup>
     <ProjectReference Include="../../app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../../app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="../../pretext/OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj" />
     <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="../../app/OpenBurnBar.App/Storage/WindowsStorageDevHost.cs" Link="WindowsStorageDevHost.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Chat/ChatConversationStore.cs" Link="ChatConversationStore.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatExecutableInventory.cs" Link="ChatExecutableInventory.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatMessageRowModels.cs" Link="ChatMessageRowModels.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatProcessRunner.cs" Link="ChatProcessRunner.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatStreamDriver.cs" Link="ChatStreamDriver.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatStreamDriverFactory.cs" Link="ChatStreamDriverFactory.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatSurfaceViewModel.cs" Link="ChatSurfaceViewModel.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/CliJsonLineChatStreamDriver.cs" Link="CliJsonLineChatStreamDriver.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/CliProcessLineSource.cs" Link="CliProcessLineSource.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/RelayCommand.cs" Link="RelayCommand.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Chat/WindowsChatAttachmentStager.cs" Link="WindowsChatAttachmentStager.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/ToolCallModels.cs" Link="ToolCallModels.cs" />
     <Compile Include="WindowsStorageTestCollection.cs" />
     <Compile Include="WindowsStorageDevHostRuntimeTests.cs" />
     <Compile Include="ChatConversationStoreTests.cs" />

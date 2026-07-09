@@ -9,6 +9,7 @@ public static class AppSecretNames
     public const string CloudVaultKeyB64 = "openburnbar.windows.cloud-vault.key-b64";
     public const string OAuthRefreshToken = "openburnbar.windows.oauth.refresh-token";
     public const string OAuthSession = "openburnbar.windows.oauth.session";
+    public const string ChatApprovedExecutables = "openburnbar.windows.chat.approved-executables.v1";
 
     public static string ProviderSecret(string providerId, string accountId, string secretKind)
     {

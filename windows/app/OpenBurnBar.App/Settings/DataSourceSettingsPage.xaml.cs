@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using OpenBurnBar.App.Chat;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
@@ -20,6 +21,8 @@ namespace OpenBurnBar.App.Settings.Winui;
 public sealed partial class DataSourceSettingsPage : Page
 {
     private SettingsPageContext? _context;
+    private readonly IChatExecutableInventory _chatExecutableInventory =
+        ProtectedChatExecutableInventoryStore.CreateDefault();
 
     public DataSourceSettingsPage()
     {
@@ -49,6 +52,7 @@ public sealed partial class DataSourceSettingsPage : Page
             ? "SQLCipher: configured"
             : SecretSummary(snap);
         RenderStorageStatus(WindowsStorageDevHost.InitializeRuntime());
+        RenderChatExecutableStatus();
     }
 
     private async void OnBrowseDb(object sender, RoutedEventArgs e)
@@ -103,6 +107,69 @@ public sealed partial class DataSourceSettingsPage : Page
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "Saved. SQLCipher active — reopen surfaces to reload stores."
             : "Saved. Secrets were written to protected storage; cloud settings applied where UID + token are set.";
+    }
+
+    private void OnApproveChatExecutable(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ApprovedChatExecutable executable = _chatExecutableInventory.ApproveExecutable(ChatExecutablePathBox.Text);
+            StatusLabel.Text = "Approved chat executable " + executable.Id + ".";
+        }
+        catch (ChatProcessException ex)
+        {
+            StatusLabel.Text = ex.Message;
+        }
+        catch (SecretStoreException ex)
+        {
+            StatusLabel.Text = ex.Message;
+        }
+
+        RenderChatExecutableStatus();
+    }
+
+    private void OnRotateChatExecutable(object sender, RoutedEventArgs e)
+    {
+        ChatExecutableInventorySnapshot snapshot = _chatExecutableInventory.LoadSnapshot();
+        ApprovedChatExecutable? current = snapshot.PrimaryExecutable;
+        if (current is null)
+        {
+            OnApproveChatExecutable(sender, e);
+            return;
+        }
+
+        try
+        {
+            ApprovedChatExecutable executable = _chatExecutableInventory.RotateExecutable(current.Id, ChatExecutablePathBox.Text);
+            StatusLabel.Text = "Rotated chat executable " + executable.Id + ".";
+        }
+        catch (ChatProcessException ex)
+        {
+            StatusLabel.Text = ex.Message;
+        }
+        catch (SecretStoreException ex)
+        {
+            StatusLabel.Text = ex.Message;
+        }
+
+        RenderChatExecutableStatus();
+    }
+
+    private void OnRemoveChatExecutable(object sender, RoutedEventArgs e)
+    {
+        ChatExecutableInventorySnapshot snapshot = _chatExecutableInventory.LoadSnapshot();
+        ApprovedChatExecutable? current = snapshot.PrimaryExecutable;
+        if (current is not null)
+        {
+            _chatExecutableInventory.RemoveExecutable(current.Id);
+            StatusLabel.Text = "Removed chat executable " + current.Id + ".";
+        }
+        else
+        {
+            StatusLabel.Text = "No chat executable is approved.";
+        }
+
+        RenderChatExecutableStatus();
     }
 
     private void OnRetryStorage(object sender, RoutedEventArgs e)
@@ -192,6 +259,21 @@ public sealed partial class DataSourceSettingsPage : Page
         StorageStatusTitle.Text = "SQLCipher storage has not started.";
         StorageStatusMessage.Text = "OpenBurnBar will provision encrypted storage on launch.";
         StorageEvidenceText.Text = string.Empty;
+    }
+
+    private void RenderChatExecutableStatus()
+    {
+        ChatExecutableInventorySnapshot snapshot = _chatExecutableInventory.LoadSnapshot();
+        ChatExecutableStatusTitle.Text = snapshot.Status.Title;
+        ChatExecutableStatusMessage.Text = snapshot.Status.Message;
+
+        ApprovedChatExecutable? executable = snapshot.PrimaryExecutable;
+        ChatExecutableCurrentText.Text = executable is null
+            ? string.Empty
+            : "Current: " + executable.Id + "\nPath: " + executable.Path + "\nSHA-256: " + executable.Sha256;
+        ChatExecutablePathBox.Text = executable?.Path ?? ChatExecutablePathBox.Text;
+        RotateChatExecutableButton.Visibility = executable is null ? Visibility.Collapsed : Visibility.Visible;
+        RemoveChatExecutableButton.Visibility = executable is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private static string? NullIfEmpty(string? text) =>

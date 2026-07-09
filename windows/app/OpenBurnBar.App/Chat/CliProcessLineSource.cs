@@ -25,23 +25,22 @@ public static class CliProcessLineSource
     public const string DefaultCommandTemplate =
         "claude -p <structured-prompt> --output-format stream-json --verbose";
 
-    public static string ResolveCommandLine(string userText)
+    public static string ResolveCommandLine(string userText, string? commandTemplateForTests = null)
     {
-        ChildProcessSpec spec = ResolveProcessSpec(userText);
+        ChildProcessSpec spec = ResolveProcessSpec(userText, commandTemplateForTests);
         return spec.DisplayCommandLine;
     }
 
-    public static ChildProcessSpec ResolveProcessSpec(string userText)
+    public static ChildProcessSpec ResolveProcessSpec(string userText, string? commandTemplateForTests = null)
     {
-        string? overrideCmd = Environment.GetEnvironmentVariable(ChatStreamDriverFactory.CliCommandEnv);
-        if (!string.IsNullOrWhiteSpace(overrideCmd))
+        if (!string.IsNullOrWhiteSpace(commandTemplateForTests))
         {
-            if (overrideCmd.Contains("{0}", StringComparison.Ordinal))
+            if (commandTemplateForTests.Contains("{0}", StringComparison.Ordinal))
             {
-                return ChildProcessSpec.Parse(string.Format(null, overrideCmd, QuoteForCommandLine(userText)));
+                return ChildProcessSpec.Parse(string.Format(null, commandTemplateForTests, QuoteForCommandLine(userText)));
             }
 
-            ChildProcessSpec parsed = ChildProcessSpec.Parse(overrideCmd.Trim());
+            ChildProcessSpec parsed = ChildProcessSpec.Parse(commandTemplateForTests.Trim());
             return parsed.WithAdditionalArguments("-p", userText);
         }
 
@@ -106,7 +105,9 @@ public static class CliProcessLineSource
 
     internal static ProcessStartInfo CreateStartInfo(ChildProcessSpec spec)
     {
-        return ChatProcessRunner.CreateStartInfo(spec, ApprovedChatExecutableCatalog.Empty);
+        return ChatProcessRunner.CreateStartInfo(
+            spec,
+            ProtectedChatExecutableInventoryStore.CreateDefault().LoadCatalog());
     }
 
     private static string ErrorLine(ChatFailureKind kind, string message)

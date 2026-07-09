@@ -21,7 +21,7 @@
 | `InsightsBuiltInTemplates` | InsightSampleData fallback | `SampleFallbackEnabled` default false; empty via `InsightEmptyData`; production prefers RealDataResolver | **GATED** (H0) |
 | `InsightsPage` SampleChip | UI label | Visible only when sample payloads install (`SampleModeEnabled && !HasData` via `ShowsSamplePreviewChip`); hidden under hybrid live+sample mode | **GATED** (H0) |
 | `InsightsProductionComposition` | stamp wiring | Re-Installs resolver + fresh usage summary on every stamp/Back | **HONEST** (H0 audit fix) |
-| `ChatStreamDriverFactory` | composition | Sample → scripted; `OPENBURNBAR_CLI_COMMAND` set → `CliJsonLineChatStreamDriver`; else honest unavailable | **HONEST** / **GATED** |
+| `ChatStreamDriverFactory` | composition | Sample → scripted; production → `CliJsonLineChatStreamDriver` with protected executable approval; else honest unavailable | **HONEST** / **GATED** |
 | `CliJsonLineChatStreamDriver` | stream-json | Maps NDJSON lines through `ClaudeCodeStreamJsonParser` (shipped H3 portable path) | **HONEST** production path when CLI configured |
 | `UnavailableChatStreamDriver` | Unavailable* | Explicit config guidance when CLI not configured (not scripted demo) | **HONEST** (nav-chat **DeferredApproved** WPD-0010 until Win11 live stream) |
 | `MissionDispatchHostFactory` | DemoHost | Demo only when sample mode; else empty/Firestore | **GATED** |

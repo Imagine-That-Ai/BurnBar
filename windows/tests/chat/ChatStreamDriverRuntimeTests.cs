@@ -11,7 +11,6 @@ namespace OpenBurnBar.App.Chat.Tests;
 
 public sealed class ChatStreamDriverRuntimeTests
 {
-    private const string CliEnv = ChatStreamDriverFactory.CliCommandEnv;
     private const string SampleEnv = "OPENBURNBAR_SAMPLE_MODE";
 
     [Fact]
@@ -137,14 +136,12 @@ public sealed class ChatStreamDriverRuntimeTests
         try
         {
             Environment.SetEnvironmentVariable(SampleEnv, "1");
-            Environment.SetEnvironmentVariable(CliEnv, null);
             IChatStreamDriver driver = ChatStreamDriverFactory.CreateDefault();
             Assert.IsType<ScriptedChatStreamDriver>(driver);
         }
         finally
         {
             Environment.SetEnvironmentVariable(SampleEnv, null);
-            Environment.SetEnvironmentVariable(CliEnv, null);
         }
     }
 
@@ -155,7 +152,6 @@ public sealed class ChatStreamDriverRuntimeTests
         {
             Environment.SetEnvironmentVariable(SampleEnv, null);
             Environment.SetEnvironmentVariable(ChatStreamDriverFactory.CliDisableEnv, null);
-            Environment.SetEnvironmentVariable(CliEnv, null);
             IChatStreamDriver driver = ChatStreamDriverFactory.CreateDefault();
             Assert.IsType<CliJsonLineChatStreamDriver>(driver);
             Assert.True(ChatStreamDriverFactory.IsCliConfigured());
@@ -164,7 +160,6 @@ public sealed class ChatStreamDriverRuntimeTests
         {
             Environment.SetEnvironmentVariable(SampleEnv, null);
             Environment.SetEnvironmentVariable(ChatStreamDriverFactory.CliDisableEnv, null);
-            Environment.SetEnvironmentVariable(CliEnv, null);
         }
     }
 

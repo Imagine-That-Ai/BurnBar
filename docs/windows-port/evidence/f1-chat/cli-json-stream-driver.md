@@ -6,7 +6,7 @@ stream-json path — not Unavailable as the normal default.
 1. `ChatStreamDriverFactory.CreateDefault()` returns `CliJsonLineChatStreamDriver`
    unless sample mode or `OPENBURNBAR_CLI_DISABLE=1`.
 2. Line source is `CliProcessLineSource.ForChatTurn` which spawns the platform
-   shell with `claude -p … --output-format stream-json` (or `OPENBURNBAR_CLI_COMMAND`).
+   shell with the product-owned direct CLI process path.
 3. Each stdout NDJSON line is parsed by shipped `ClaudeCodeStreamJsonParser` into
    `ChatStreamEvent` values consumed by `ChatSurfaceViewModel` / state machine.
 4. Process start failures emit explicit stream-json text errors (fail-closed, not silent).

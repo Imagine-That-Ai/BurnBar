@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using Microsoft.Data.Sqlite;
 using OpenBurnBar.App.Chat;
 using OpenBurnBar.App.Configuration;
@@ -108,6 +111,77 @@ public sealed class ChatConversationStoreTests : IDisposable
     }
 
     [Fact]
+    public void UnavailableStore_LoadMostRecentThreadThrowsTypedFailure()
+    {
+        var store = new UnavailableChatConversationStore(
+            ChatPersistenceFailureKind.Locked,
+            "Chat history is locked.",
+            "The database is locked by another process.");
+
+        ChatPersistenceException ex = Assert.Throws<ChatPersistenceException>(() => store.LoadMostRecentThread());
+        Assert.Equal(ChatPersistenceFailureKind.Locked, ex.Kind);
+        Assert.Contains("locked", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ChatSurfaceViewModel_InitialLoadFailureShowsDegradedStateInsteadOfEmptyHistory()
+    {
+        var store = new FailingConversationStore(new ChatPersistenceException(
+            ChatPersistenceFailureKind.Corrupt,
+            "The chat database could not be decoded."));
+
+        var viewModel = new ChatSurfaceViewModel(
+            new EmptyChatStreamDriver(),
+            store: store,
+            executableInventory: ReadyExecutableInventory.CurrentProcess());
+
+        Assert.True(viewModel.HasHistoryDegradedState);
+        Assert.False(viewModel.ShowEmptyState);
+        Assert.False(viewModel.ShowMessageList);
+        Assert.False(viewModel.CanSend);
+        Assert.Equal(ChatPersistenceFailureKind.Corrupt.ToString(), viewModel.HistoryStateKind);
+        Assert.Contains("could not be decoded", viewModel.HistoryStateMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ChatSurfaceViewModel_RestartRehydratesDurableThread()
+    {
+        using TestProfile profile = TestProfile.Create();
+        WindowsStorageDevHost.InitializeRuntime();
+        var (_, passphrase) = WindowsStorageDevHost.ResolveCredentials();
+        var store = new SqlCipherChatConversationStore(profile.DatabasePath, passphrase!);
+        string threadId = "thread-restart-001";
+        store.SaveMessages(
+            threadId,
+            new[]
+            {
+                new ChatMessageRecord(
+                    ChatMessageRole.User,
+                    "restart recovery question",
+                    id: "restart-user-001",
+                    timestamp: DateTimeOffset.Parse("2026-07-09T22:00:00Z")),
+                new ChatMessageRecord(
+                    ChatMessageRole.Assistant,
+                    "restart recovery answer",
+                    id: "restart-assistant-001",
+                    timestamp: DateTimeOffset.Parse("2026-07-09T22:00:01Z")),
+            });
+
+        var restarted = new ChatSurfaceViewModel(
+            new EmptyChatStreamDriver(),
+            store: new SqlCipherChatConversationStore(profile.DatabasePath, passphrase!),
+            executableInventory: ReadyExecutableInventory.CurrentProcess());
+
+        Assert.False(restarted.HasHistoryDegradedState);
+        Assert.False(restarted.ShowEmptyState);
+        Assert.True(restarted.ShowMessageList);
+        Assert.Equal(2, restarted.Messages.Count);
+        Assert.Equal("restart recovery question", restarted.Messages[0].UserText);
+        Assert.True(SqlCipherConnection.FileIsEncrypted(profile.DatabasePath));
+        AssertFileDoesNotContain(profile.DatabasePath, "restart recovery question");
+    }
+
+    [Fact]
     public void AttachmentStager_ImportsPasteDropReferencesAndMarksMissingFiles()
     {
         using TestProfile profile = TestProfile.Create();
@@ -210,5 +284,74 @@ public sealed class ChatConversationStoreTests : IDisposable
                 // Best-effort cleanup.
             }
         }
+    }
+
+    private sealed class EmptyChatStreamDriver : IChatStreamDriver
+    {
+        public async IAsyncEnumerable<ChatStreamEvent> StreamAsync(
+            string userText,
+            IReadOnlyList<ChatMessageRecord> history,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await System.Threading.Tasks.Task.CompletedTask.ConfigureAwait(false);
+            yield break;
+        }
+    }
+
+    private sealed class FailingConversationStore : IChatConversationStore
+    {
+        private readonly ChatPersistenceException _failure;
+
+        public FailingConversationStore(ChatPersistenceException failure)
+        {
+            _failure = failure;
+        }
+
+        public ChatThreadSnapshot LoadMostRecentThread() => throw _failure;
+
+        public void SaveMessages(
+            string threadId,
+            IReadOnlyList<ChatMessageRecord> messages,
+            ChatFailureKind? failureKind = null,
+            string? failureMessage = null) =>
+            throw _failure;
+
+        public void RecordRetrievalState(string threadId, string messageId, ChatFailureKind kind, string detail) =>
+            throw _failure;
+    }
+
+    private sealed class ReadyExecutableInventory : IChatExecutableInventory
+    {
+        private readonly ApprovedChatExecutable _executable;
+
+        private ReadyExecutableInventory(ApprovedChatExecutable executable)
+        {
+            _executable = executable;
+        }
+
+        public static ReadyExecutableInventory CurrentProcess()
+        {
+            string path = Environment.ProcessPath!;
+            return new ReadyExecutableInventory(new ApprovedChatExecutable(
+                "test-process",
+                path,
+                ApprovedChatExecutableCatalog.ComputeSha256(path)));
+        }
+
+        public ChatExecutableInventorySnapshot LoadSnapshot() =>
+            new(
+                new[] { _executable },
+                new ChatExecutableInventoryStatus(
+                    ChatExecutableInventoryStatusKind.Ready,
+                    "Chat CLI executable approved.",
+                    _executable.Path));
+
+        public ApprovedChatExecutableCatalog LoadCatalog() => new(new[] { _executable });
+
+        public ApprovedChatExecutable ApproveExecutable(string path, string? id = null) => _executable;
+
+        public ApprovedChatExecutable RotateExecutable(string id, string path) => _executable;
+
+        public bool RemoveExecutable(string id) => true;
     }
 }

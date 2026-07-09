@@ -14,9 +14,6 @@ namespace OpenBurnBar.App.Chat;
 /// </summary>
 public static class ChatStreamDriverFactory
 {
-    /// <summary>Env var for the CLI command line (same family as ConPTY factory).</summary>
-    public const string CliCommandEnv = "OPENBURNBAR_CLI_COMMAND";
-
     /// <summary>Set to 1/true to force unavailable (honest disable) instead of process spawn.</summary>
     public const string CliDisableEnv = "OPENBURNBAR_CLI_DISABLE";
 

@@ -119,7 +119,7 @@
                         VerticalAlignment="Center"
                         Spacing="8"
                         Padding="24"
-                        Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                        Visibility="{x:Bind ViewModel.ShowEmptyState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <FontIcon Glyph="&#xE8BD;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
                           FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
                 <TextBlock Text="Chat is ready for a configured backend"
@@ -134,10 +134,37 @@
                            Foreground="{StaticResource PensieveColorTextMuteBrush}" />
             </StackPanel>
 
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="10"
+                        Padding="24"
+                        MaxWidth="620"
+                        Visibility="{x:Bind ViewModel.HasHistoryDegradedState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <FontIcon Glyph="&#xE783;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                <TextBlock Text="{x:Bind ViewModel.HistoryStateTitle, Mode=OneWay}"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <TextBlock Text="{x:Bind ViewModel.HistoryStateMessage, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                    <Button Content="Retry"
+                            Command="{x:Bind ViewModel.RetryHistoryCommand}"
+                            Visibility="{x:Bind ViewModel.CanRetryHistory, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                    <Button Content="Restart recovery"
+                            Command="{x:Bind ViewModel.RestartRecoveryCommand}"
+                            Visibility="{x:Bind ViewModel.CanRestartHistory, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                </StackPanel>
+            </StackPanel>
+
             <ScrollViewer x:Name="MessageScroller"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollMode="Disabled"
-                          Visibility="{x:Bind ViewModel.IsEmpty, Converter={StaticResource NegatedBoolToVisibility}, Mode=OneWay}">
+                          Visibility="{x:Bind ViewModel.ShowMessageList, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <ItemsRepeater x:Name="MessagesRepeater"
                                ItemsSource="{x:Bind ViewModel.Messages}"
                                ItemTemplate="{StaticResource MessageSelector}" />
@@ -146,6 +173,49 @@
 
         <!-- Composer -->
         <StackPanel Grid.Row="2" Spacing="8">
+            <Border Padding="10,8"
+                    CornerRadius="8"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    Visibility="{x:Bind ViewModel.RequiresExecutableSetup, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{x:Bind ViewModel.ExecutableSetupTitle, Mode=OneWay}"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.ExecutableSetupMessage, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.ApprovedExecutableSummary, Mode=OneWay}"
+                               Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="ExecutablePathBox"
+                                 Grid.Column="0"
+                                 PlaceholderText="C:\Program Files\Claude\claude.exe" />
+                        <Button Grid.Column="1"
+                                Content="Approve"
+                                Click="OnApproveChatExecutable" />
+                        <Button Grid.Column="2"
+                                Content="Rotate"
+                                Click="OnRotateChatExecutable"
+                                Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                        <Button Grid.Column="3"
+                                Content="Remove"
+                                Command="{x:Bind ViewModel.RemoveApprovedExecutableCommand}"
+                                Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
             <Border Padding="10,8"
                     CornerRadius="8"
                     BorderThickness="1"

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,6 +13,16 @@ using OpenBurnBar.Storage;
 namespace OpenBurnBar.App.Chat;
 
 public sealed record ChatThreadSnapshot(string ThreadId, IReadOnlyList<ChatMessageRecord> Messages);
+
+public enum ChatPersistenceFailureKind
+{
+    StorageUnavailable,
+    ReadDenied,
+    Locked,
+    Corrupt,
+    Missing,
+    WriteDenied,
+}
 
 public interface IChatConversationStore
 {
@@ -50,24 +61,55 @@ public static class ChatConversationStoreFactory
         WindowsStorageRuntimeStatus status = WindowsStorageDevHost.InitializeRuntime();
         if (!status.IsReady)
         {
-            return new UnavailableChatConversationStore(status.RecoveryState?.Title ?? "Storage is unavailable.");
+            WindowsStorageRecoveryState? recovery = status.RecoveryState;
+            return new UnavailableChatConversationStore(
+                MapRecoveryKind(recovery?.Kind),
+                recovery?.Title ?? "Storage is unavailable.",
+                recovery?.Message ?? "Chat history cannot be opened until protected storage recovers.");
         }
 
         var (path, passphrase) = WindowsStorageDevHost.ResolveCredentials();
-        return new SqlCipherChatConversationStore(path!, passphrase!);
+        try
+        {
+            return new SqlCipherChatConversationStore(path!, passphrase!);
+        }
+        catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException or ChatPersistenceException)
+        {
+            ChatPersistenceException typed = ChatPersistenceException.From(ex, ChatPersistenceFailureKind.StorageUnavailable);
+            return new UnavailableChatConversationStore(
+                typed.Kind,
+                "Chat history is unavailable.",
+                typed.Message);
+        }
     }
+
+    private static ChatPersistenceFailureKind MapRecoveryKind(WindowsStorageFailureKind? kind) =>
+        kind switch
+        {
+            WindowsStorageFailureKind.AccessDenied => ChatPersistenceFailureKind.ReadDenied,
+            WindowsStorageFailureKind.LockedFile => ChatPersistenceFailureKind.Locked,
+            WindowsStorageFailureKind.CorruptDatabase => ChatPersistenceFailureKind.Corrupt,
+            _ => ChatPersistenceFailureKind.StorageUnavailable,
+        };
 }
 
 public sealed class UnavailableChatConversationStore : IChatConversationStore
 {
+    private readonly ChatPersistenceFailureKind _kind;
     private readonly string _reason;
 
     public UnavailableChatConversationStore(string reason)
+        : this(ChatPersistenceFailureKind.StorageUnavailable, reason, reason)
     {
-        _reason = reason;
     }
 
-    public ChatThreadSnapshot LoadMostRecentThread() => new(Guid.NewGuid().ToString(), Array.Empty<ChatMessageRecord>());
+    public UnavailableChatConversationStore(ChatPersistenceFailureKind kind, string title, string reason)
+    {
+        _kind = kind;
+        _reason = string.IsNullOrWhiteSpace(reason) ? title : reason;
+    }
+
+    public ChatThreadSnapshot LoadMostRecentThread() => throw new ChatPersistenceException(_kind, _reason);
 
     public void SaveMessages(
         string threadId,
@@ -75,21 +117,56 @@ public sealed class UnavailableChatConversationStore : IChatConversationStore
         ChatFailureKind? failureKind = null,
         string? failureMessage = null)
     {
-        throw new ChatPersistenceException(_reason);
+        throw new ChatPersistenceException(ChatPersistenceFailureKind.WriteDenied, _reason);
     }
 
     public void RecordRetrievalState(string threadId, string messageId, ChatFailureKind kind, string detail)
     {
-        throw new ChatPersistenceException(_reason);
+        throw new ChatPersistenceException(ChatPersistenceFailureKind.WriteDenied, _reason);
     }
 }
 
 public sealed class ChatPersistenceException : Exception
 {
-    public ChatPersistenceException(string message, Exception? innerException = null)
+    public ChatPersistenceFailureKind Kind { get; }
+
+    public ChatPersistenceException(ChatPersistenceFailureKind kind, string message, Exception? innerException = null)
         : base(message, innerException)
     {
+        Kind = kind;
     }
+
+    public ChatPersistenceException(string message, Exception? innerException = null)
+        : this(ChatPersistenceFailureKind.StorageUnavailable, message, innerException)
+    {
+    }
+
+    public static ChatPersistenceException From(Exception ex, ChatPersistenceFailureKind fallback)
+    {
+        if (ex is ChatPersistenceException typed)
+        {
+            return typed;
+        }
+
+        ChatPersistenceFailureKind kind = ex switch
+        {
+            UnauthorizedAccessException => ChatPersistenceFailureKind.ReadDenied,
+            FileNotFoundException or DirectoryNotFoundException => ChatPersistenceFailureKind.Missing,
+            IOException io when IsLock(io) => ChatPersistenceFailureKind.Locked,
+            SqliteException sqlite when IsCorrupt(sqlite) => ChatPersistenceFailureKind.Corrupt,
+            _ => fallback,
+        };
+        return new ChatPersistenceException(kind, ex.Message, ex);
+    }
+
+    private static bool IsCorrupt(SqliteException ex) =>
+        ex.SqliteErrorCode == 11
+        || ex.Message.Contains("file is not a database", StringComparison.OrdinalIgnoreCase)
+        || ex.Message.Contains("database disk image is malformed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLock(IOException ex) =>
+        ex.Message.Contains("lock", StringComparison.OrdinalIgnoreCase)
+        || ex.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class SqlCipherChatConversationStore : IChatConversationStore
@@ -114,15 +191,22 @@ public sealed class SqlCipherChatConversationStore : IChatConversationStore
 
     public ChatThreadSnapshot LoadMostRecentThread()
     {
-        using SqliteConnection connection = OpenConnection();
-        EnsureSchema(connection);
-        string? threadId = ReadMostRecentThreadId(connection);
-        if (threadId is null)
+        try
         {
-            return new ChatThreadSnapshot(Guid.NewGuid().ToString(), Array.Empty<ChatMessageRecord>());
-        }
+            using SqliteConnection connection = OpenConnection();
+            EnsureSchema(connection);
+            string? threadId = ReadMostRecentThreadId(connection);
+            if (threadId is null)
+            {
+                return new ChatThreadSnapshot(Guid.NewGuid().ToString(), Array.Empty<ChatMessageRecord>());
+            }
 
-        return new ChatThreadSnapshot(threadId, ReadMessages(connection, threadId));
+            return new ChatThreadSnapshot(threadId, ReadMessages(connection, threadId));
+        }
+        catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
+        {
+            throw ChatPersistenceException.From(ex, ChatPersistenceFailureKind.StorageUnavailable);
+        }
     }
 
     public void SaveMessages(
@@ -131,53 +215,67 @@ public sealed class SqlCipherChatConversationStore : IChatConversationStore
         ChatFailureKind? failureKind = null,
         string? failureMessage = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
-        using SqliteConnection connection = OpenConnection();
-        EnsureSchema(connection);
-        using var transaction = connection.BeginTransaction();
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        DateTimeOffset createdAt = messages.Count == 0 ? now : messages.Min(message => message.Timestamp);
-        DateTimeOffset updatedAt = messages.Count == 0 ? now : messages.Max(message => message.Timestamp);
-        UpsertThread(connection, transaction, threadId, createdAt, updatedAt);
-
-        using (var delete = connection.CreateCommand())
+        try
         {
-            delete.Transaction = transaction;
-            delete.CommandText = "DELETE FROM chat_messages WHERE threadId = $threadId";
-            delete.Parameters.AddWithValue("$threadId", threadId);
-            delete.ExecuteNonQuery();
-        }
+            ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+            using SqliteConnection connection = OpenConnection();
+            EnsureSchema(connection);
+            using var transaction = connection.BeginTransaction();
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            DateTimeOffset createdAt = messages.Count == 0 ? now : messages.Min(message => message.Timestamp);
+            DateTimeOffset updatedAt = messages.Count == 0 ? now : messages.Max(message => message.Timestamp);
+            UpsertThread(connection, transaction, threadId, createdAt, updatedAt);
 
-        foreach (ChatMessageRecord message in messages)
+            using (var delete = connection.CreateCommand())
+            {
+                delete.Transaction = transaction;
+                delete.CommandText = "DELETE FROM chat_messages WHERE threadId = $threadId";
+                delete.Parameters.AddWithValue("$threadId", threadId);
+                delete.ExecuteNonQuery();
+            }
+
+            foreach (ChatMessageRecord message in messages)
+            {
+                InsertMessage(connection, transaction, threadId, message, failureKind, failureMessage);
+            }
+
+            if (failureKind is not null && messages.Count > 0)
+            {
+                InsertFailure(connection, transaction, threadId, messages[^1].Id, failureKind.Value, failureMessage ?? string.Empty);
+            }
+
+            transaction.Commit();
+        }
+        catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
         {
-            InsertMessage(connection, transaction, threadId, message, failureKind, failureMessage);
+            throw ChatPersistenceException.From(ex, ChatPersistenceFailureKind.WriteDenied);
         }
-
-        if (failureKind is not null && messages.Count > 0)
-        {
-            InsertFailure(connection, transaction, threadId, messages[^1].Id, failureKind.Value, failureMessage ?? string.Empty);
-        }
-
-        transaction.Commit();
     }
 
     public void RecordRetrievalState(string threadId, string messageId, ChatFailureKind kind, string detail)
     {
-        using SqliteConnection connection = OpenConnection();
-        EnsureSchema(connection);
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            INSERT INTO chat_retrieval_events (id, threadId, messageId, kind, detail, createdAt)
-            VALUES ($id, $threadId, $messageId, $kind, $detail, $createdAt)
-            """;
-        command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString());
-        command.Parameters.AddWithValue("$threadId", threadId);
-        command.Parameters.AddWithValue("$messageId", messageId);
-        command.Parameters.AddWithValue("$kind", kind.ToString());
-        command.Parameters.AddWithValue("$detail", detail);
-        command.Parameters.AddWithValue("$createdAt", FormatDate(DateTimeOffset.UtcNow));
-        command.ExecuteNonQuery();
+        try
+        {
+            using SqliteConnection connection = OpenConnection();
+            EnsureSchema(connection);
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO chat_retrieval_events (id, threadId, messageId, kind, detail, createdAt)
+                VALUES ($id, $threadId, $messageId, $kind, $detail, $createdAt)
+                """;
+            command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString());
+            command.Parameters.AddWithValue("$threadId", threadId);
+            command.Parameters.AddWithValue("$messageId", messageId);
+            command.Parameters.AddWithValue("$kind", kind.ToString());
+            command.Parameters.AddWithValue("$detail", detail);
+            command.Parameters.AddWithValue("$createdAt", FormatDate(DateTimeOffset.UtcNow));
+            command.ExecuteNonQuery();
+        }
+        catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
+        {
+            throw ChatPersistenceException.From(ex, ChatPersistenceFailureKind.WriteDenied);
+        }
     }
 
     public static void EnsureSchema(SqliteConnection connection)

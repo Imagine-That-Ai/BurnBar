@@ -33,9 +33,6 @@ public sealed class ApprovedChatExecutableCatalog
         _executables = executables.ToArray();
     }
 
-    public static ApprovedChatExecutableCatalog Empty { get; } =
-        new(Array.Empty<ApprovedChatExecutable>());
-
     public bool HasEntries => _executables.Count > 0;
 
     public ChatExecutableResolution Resolve(string requestedExecutable)
@@ -49,12 +46,14 @@ public sealed class ApprovedChatExecutableCatalog
         string? requestedFullPath = FullyQualifiedPathOrNull(requested);
         string requestedFileName = System.IO.Path.GetFileName(requested);
         ApprovedChatExecutable? approved = _executables.FirstOrDefault(entry =>
-            PathMatches(entry.Path, requestedFullPath, requestedFileName));
+            PathMatches(entry, requested, requestedFullPath, requestedFileName));
         if (approved is null)
         {
             throw new ChatProcessException(
                 ChatFailureKind.ExecutableDenied,
-                "Chat executable is not in the approved identity catalog.");
+                _executables.Count == 0
+                    ? "No chat executable has been approved in the protected inventory."
+                    : "Chat executable is not in the approved identity catalog.");
         }
 
         string approvedPath = System.IO.Path.GetFullPath(approved.Path);
@@ -82,15 +81,35 @@ public sealed class ApprovedChatExecutableCatalog
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
-    private static bool PathMatches(string approvedPath, string? requestedFullPath, string requestedFileName)
+    private static bool PathMatches(
+        ApprovedChatExecutable approved,
+        string requested,
+        string? requestedFullPath,
+        string requestedFileName)
     {
+        string approvedPath = approved.Path;
         string fullApproved = System.IO.Path.GetFullPath(approvedPath);
         if (requestedFullPath is not null)
         {
             return string.Equals(fullApproved, requestedFullPath, PathComparison);
         }
 
-        return string.Equals(System.IO.Path.GetFileName(fullApproved), requestedFileName, FileNameComparison);
+        if (string.Equals(approved.Id, requested, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        string approvedFileName = System.IO.Path.GetFileName(fullApproved);
+        if (string.Equals(approvedFileName, requestedFileName, FileNameComparison))
+        {
+            return true;
+        }
+
+        return OperatingSystem.IsWindows()
+            && string.Equals(
+                System.IO.Path.GetFileNameWithoutExtension(approvedFileName),
+                requestedFileName,
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? FullyQualifiedPathOrNull(string value)
@@ -137,7 +156,6 @@ public static class ChatProcessRunner
         ChatProcessLimits? limits = null,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        catalog ??= ApprovedChatExecutableCatalog.Empty;
         limits ??= ChatProcessLimits.ContractDefault;
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Process? process = null;
@@ -148,7 +166,9 @@ public static class ChatProcessRunner
         ChatProcessException? startFailure = null;
         try
         {
-            ProcessStartInfo startInfo = CreateStartInfo(spec, catalog);
+            ApprovedChatExecutableCatalog resolvedCatalog =
+                catalog ?? ProtectedChatExecutableInventoryStore.CreateDefault().LoadCatalog();
+            ProcessStartInfo startInfo = CreateStartInfo(spec, resolvedCatalog);
             process = ChildProcessLaunchPolicy.Start(startInfo, ChildProcessProfile.Chat);
 
             if (spec.StandardInput is not null)

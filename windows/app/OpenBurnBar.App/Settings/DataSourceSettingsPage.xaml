@@ -48,6 +48,20 @@
                 <PasswordBox x:Name="PassphraseBox" MinWidth="280" PlaceholderText="Leave blank to keep or generate protected key" />
             </tk:SettingsCard>
 
+            <tk:SettingsCard x:Name="ChatExecutableCard" Header="Chat CLI executable" Description="Protected path and SHA-256 approval for direct chat execution">
+                <StackPanel Spacing="8" MinWidth="320">
+                    <TextBlock x:Name="ChatExecutableStatusTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ChatExecutableStatusMessage" TextWrapping="Wrap" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock x:Name="ChatExecutableCurrentText" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBox x:Name="ChatExecutablePathBox" PlaceholderText="C:\Program Files\Claude\claude.exe" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="ApproveChatExecutableButton" Content="Approve" Click="OnApproveChatExecutable" />
+                        <Button x:Name="RotateChatExecutableButton" Content="Rotate" Click="OnRotateChatExecutable" Visibility="Collapsed" />
+                        <Button x:Name="RemoveChatExecutableButton" Content="Remove" Click="OnRemoveChatExecutable" Visibility="Collapsed" />
+                    </StackPanel>
+                </StackPanel>
+            </tk:SettingsCard>
+
             <TextBlock
                 Margin="0,10,0,2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"

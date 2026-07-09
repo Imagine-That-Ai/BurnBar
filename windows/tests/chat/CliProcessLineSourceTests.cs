@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using OpenBurnBar.App.Chat;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.Chat;
 using Xunit;
 
@@ -20,19 +21,28 @@ public sealed class CliProcessLineSourceTests
     }
 
     [Fact]
-    public void ResolveCommandLine_EnvOverride_Used()
+    public void ResolveCommandLine_IgnoresLegacyEnvironmentCommandOverride()
     {
         try
         {
-            System.Environment.SetEnvironmentVariable(ChatStreamDriverFactory.CliCommandEnv, "mycli --json {0}");
+            System.Environment.SetEnvironmentVariable("OPENBURNBAR_CLI_COMMAND", "mycli --json {0}");
             string cmd = CliProcessLineSource.ResolveCommandLine("x");
-            Assert.StartsWith("mycli", cmd, System.StringComparison.Ordinal);
+            Assert.StartsWith("claude", cmd, System.StringComparison.Ordinal);
             Assert.Contains("x", cmd, System.StringComparison.Ordinal);
         }
         finally
         {
-            System.Environment.SetEnvironmentVariable(ChatStreamDriverFactory.CliCommandEnv, null);
+            System.Environment.SetEnvironmentVariable("OPENBURNBAR_CLI_COMMAND", null);
         }
+    }
+
+    [Fact]
+    public void ResolveProcessSpec_TestCommandTemplateInjection_UsedOnlyByCaller()
+    {
+        ChildProcessSpec spec = CliProcessLineSource.ResolveProcessSpec("x", "mycli --json {0}");
+
+        Assert.Equal("mycli", spec.FileName);
+        Assert.Equal(new[] { "--json", "x" }, spec.Arguments.ToArray());
     }
 
     [Fact]
@@ -91,6 +101,55 @@ public sealed class CliProcessLineSourceTests
 
         ChatProcessException ex = Assert.Throws<ChatProcessException>(() => catalog.Resolve(helper));
         Assert.Equal(ChatFailureKind.ExecutableReplaced, ex.Kind);
+    }
+
+    [Fact]
+    public void ProtectedInventory_ApprovesPersistsRotatesAndRemovesExecutable()
+    {
+        var secrets = new MemorySecretStore();
+        var inventory = new ProtectedChatExecutableInventoryStore(secrets);
+        string helper = CopyExecutableForMutation();
+
+        ApprovedChatExecutable approved = inventory.ApproveExecutable(helper, "helper");
+        Assert.True(secrets.Contains(AppSecretNames.ChatApprovedExecutables));
+
+        var reopened = new ProtectedChatExecutableInventoryStore(secrets);
+        ChatExecutableResolution resolution = reopened.LoadCatalog().Resolve("helper");
+        Assert.Equal(helper, resolution.Path);
+        Assert.Equal(approved.Sha256, resolution.Sha256);
+
+        File.AppendAllText(helper, "mutation");
+        Assert.Equal(ChatExecutableInventoryStatusKind.ExecutableReplaced, reopened.LoadSnapshot().Status.Kind);
+        ChatProcessException replaced = Assert.Throws<ChatProcessException>(() => reopened.LoadCatalog().Resolve("helper"));
+        Assert.Equal(ChatFailureKind.ExecutableReplaced, replaced.Kind);
+
+        ApprovedChatExecutable rotated = reopened.RotateExecutable("helper", helper);
+        Assert.NotEqual(approved.Sha256, rotated.Sha256);
+        Assert.Equal(ChatExecutableInventoryStatusKind.Ready, reopened.LoadSnapshot().Status.Kind);
+
+        Assert.True(reopened.RemoveExecutable("helper"));
+        Assert.False(secrets.Contains(AppSecretNames.ChatApprovedExecutables));
+        Assert.Equal(ChatExecutableInventoryStatusKind.SetupRequired, reopened.LoadSnapshot().Status.Kind);
+    }
+
+    [Fact]
+    public void ProtectedInventory_DeniesMissingInventoryAndMissingExecutable()
+    {
+        var secrets = new MemorySecretStore();
+        var inventory = new ProtectedChatExecutableInventoryStore(secrets);
+
+        ChatProcessException denied = Assert.Throws<ChatProcessException>(() =>
+            inventory.LoadCatalog().Resolve(System.Environment.ProcessPath!));
+        Assert.Equal(ChatFailureKind.ExecutableDenied, denied.Kind);
+
+        string helper = CopyExecutableForMutation();
+        inventory.ApproveExecutable(helper, "helper");
+        File.Delete(helper);
+
+        Assert.Equal(ChatExecutableInventoryStatusKind.ExecutableUnavailable, inventory.LoadSnapshot().Status.Kind);
+        ChatProcessException unavailable = Assert.Throws<ChatProcessException>(() =>
+            inventory.LoadCatalog().Resolve("helper"));
+        Assert.Equal(ChatFailureKind.ExecutableUnavailable, unavailable.Kind);
     }
 
     [Fact]
@@ -234,5 +293,25 @@ public sealed class CliProcessLineSourceTests
         }
 
         return null;
+    }
+
+    private sealed class MemorySecretStore : IAppSecretStore
+    {
+        private readonly System.Collections.Generic.Dictionary<string, string> _secrets = new();
+
+        public string BackendName => "test-memory";
+
+        public SecretWriteReceipt Write(string secretName, string value)
+        {
+            _secrets[secretName] = value;
+            return new SecretWriteReceipt(secretName, BackendName, "memory://" + secretName, System.DateTimeOffset.UtcNow);
+        }
+
+        public string? Read(string secretName) =>
+            _secrets.TryGetValue(secretName, out string? value) ? value : null;
+
+        public bool Contains(string secretName) => _secrets.ContainsKey(secretName);
+
+        public void Delete(string secretName) => _secrets.Remove(secretName);
     }
 }

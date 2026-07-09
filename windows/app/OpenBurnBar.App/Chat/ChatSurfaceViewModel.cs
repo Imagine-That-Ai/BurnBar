@@ -10,6 +10,13 @@ using OpenBurnBar.App.Presentation.Chat;
 
 namespace OpenBurnBar.App.Chat;
 
+public sealed record ChatHistoryDegradedState(
+    ChatPersistenceFailureKind Kind,
+    string Title,
+    string Message,
+    bool CanRetry,
+    bool CanRestart);
+
 // MARK: - Chat surface view-model
 //
 // The WinUI binding surface over the PORTABLE ChatSessionStateMachine. It owns:
@@ -26,6 +33,7 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
     private readonly ChatSessionStateMachine _machine = new();
     private readonly IChatStreamDriver _driver;
     private readonly IChatConversationStore _store;
+    private readonly IChatExecutableInventory _executableInventory;
     private readonly Dictionary<string, ChatMessageViewModel> _index = new();
 
     private CancellationTokenSource? _cts;
@@ -33,25 +41,33 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
     private readonly string _backendLabel;
     private string _threadId = Guid.NewGuid().ToString();
     private string? _persistenceWarning;
+    private ChatHistoryDegradedState? _historyDegradedState;
+    private ChatExecutableInventorySnapshot _executableSnapshot = ChatExecutableInventorySnapshot.SetupRequired();
     private readonly List<ChatAttachmentRecord> _pendingAttachments = new();
     private string _workspaceRoot = DefaultWorkspaceRoot();
 
     public ChatSurfaceViewModel(
         IChatStreamDriver? driver = null,
         string backendLabel = "hermes",
-        IChatConversationStore? store = null)
+        IChatConversationStore? store = null,
+        IChatExecutableInventory? executableInventory = null)
     {
         _driver = driver ?? ChatStreamDriverFactory.CreateDefault();
         _store = store ?? ChatConversationStoreFactory.CreateDefault();
+        _executableInventory = executableInventory ?? ProtectedChatExecutableInventoryStore.CreateDefault();
         _backendLabel = backendLabel;
 
         Messages = new ObservableCollection<ChatMessageViewModel>();
         SendCommand = new RelayCommand(() => _ = SendAsync(), () => CanSend);
         StopCommand = new RelayCommand(() => _machine.CancelGeneration(), () => IsStreaming);
         RegenerateCommand = new RelayCommand(() => _ = RegenerateAsync(), () => CanRegenerate);
+        RemoveApprovedExecutableCommand = new RelayCommand(RemoveApprovedExecutable, () => HasApprovedExecutable);
+        RetryHistoryCommand = new RelayCommand(RecoverLastThread, () => HasHistoryDegradedState);
+        RestartRecoveryCommand = new RelayCommand(RecoverLastThread, () => HasHistoryDegradedState);
 
         _machine.Changed += OnMachineChanged;
         _machine.CancelRequested += () => _cts?.Cancel();
+        RefreshExecutableInventoryStatus();
         RecoverLastThread();
     }
 
@@ -64,6 +80,12 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
     public RelayCommand StopCommand { get; }
 
     public RelayCommand RegenerateCommand { get; }
+
+    public RelayCommand RemoveApprovedExecutableCommand { get; }
+
+    public RelayCommand RetryHistoryCommand { get; }
+
+    public RelayCommand RestartRecoveryCommand { get; }
 
     /// The Pretext engine the streaming bubbles measure against. Set by the view
     /// once its offscreen WebView2 host is ready; null until then (bubbles fall
@@ -88,6 +110,22 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 
     public bool IsEmpty => Messages.Count == 0;
 
+    public bool ShowEmptyState => IsEmpty && !HasHistoryDegradedState;
+
+    public bool ShowMessageList => !IsEmpty && !HasHistoryDegradedState;
+
+    public bool HasHistoryDegradedState => _historyDegradedState is not null;
+
+    public string HistoryStateKind => _historyDegradedState?.Kind.ToString() ?? string.Empty;
+
+    public string HistoryStateTitle => _historyDegradedState?.Title ?? string.Empty;
+
+    public string HistoryStateMessage => _historyDegradedState?.Message ?? string.Empty;
+
+    public bool CanRetryHistory => _historyDegradedState?.CanRetry ?? false;
+
+    public bool CanRestartHistory => _historyDegradedState?.CanRestart ?? false;
+
     public bool HasFailure => _machine.LastFailureKind is not null || !string.IsNullOrWhiteSpace(_machine.StreamError);
 
     public string FailureText
@@ -110,7 +148,30 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 
     public string PersistenceWarning => _persistenceWarning ?? string.Empty;
 
+    public bool HasApprovedExecutable => _executableSnapshot.HasEntries;
+
+    public bool IsExecutableReady => _executableSnapshot.CanLaunch;
+
+    public bool RequiresExecutableSetup => !IsExecutableReady;
+
+    public string ExecutableSetupTitle => _executableSnapshot.Status.Title;
+
+    public string ExecutableSetupMessage => _executableSnapshot.Status.Message;
+
+    public string ApprovedExecutableSummary
+    {
+        get
+        {
+            ApprovedChatExecutable? executable = _executableSnapshot.PrimaryExecutable;
+            return executable is null
+                ? string.Empty
+                : executable.Id + " -> " + executable.Path;
+        }
+    }
+
     public bool CanSend => !_machine.IsSendBusy
+        && IsExecutableReady
+        && !HasHistoryDegradedState
         && (!string.IsNullOrWhiteSpace(InputText) || _pendingAttachments.Count > 0);
 
     public bool HasPendingAttachments => _pendingAttachments.Count > 0;
@@ -122,6 +183,8 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 
     public bool CanRegenerate =>
         !_machine.IsSendBusy
+        && IsExecutableReady
+        && !HasHistoryDegradedState
         && _machine.Messages.Count > 0
         && _machine.Messages[^1].Role == ChatMessageRole.Assistant;
 
@@ -203,6 +266,8 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
         PersistCurrentTranscript();
         Raise(nameof(IsStreaming));
         Raise(nameof(IsEmpty));
+        Raise(nameof(ShowEmptyState));
+        Raise(nameof(ShowMessageList));
         Raise(nameof(HasFailure));
         Raise(nameof(FailureText));
         RaiseCommandStates();
@@ -214,19 +279,39 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
         {
             ChatThreadSnapshot snapshot = _store.LoadMostRecentThread();
             _threadId = snapshot.ThreadId;
+            SetHistoryDegradedState(null);
             if (snapshot.Messages.Count > 0)
             {
                 _machine.LoadTranscript(snapshot.Messages);
             }
+            else
+            {
+                Raise(nameof(IsEmpty));
+                Raise(nameof(ShowEmptyState));
+                Raise(nameof(ShowMessageList));
+            }
+        }
+        catch (ChatPersistenceException ex)
+        {
+            SetHistoryDegradedState(DegradedStateFor(ex));
+            SetPersistenceWarning(null);
         }
         catch (Exception ex)
         {
-            SetPersistenceWarning("Chat history could not be reopened: " + ex.Message);
+            SetHistoryDegradedState(DegradedStateFor(ChatPersistenceException.From(
+                ex,
+                ChatPersistenceFailureKind.StorageUnavailable)));
+            SetPersistenceWarning(null);
         }
     }
 
     private void PersistCurrentTranscript()
     {
+        if (HasHistoryDegradedState)
+        {
+            return;
+        }
+
         try
         {
             _store.SaveMessages(
@@ -236,9 +321,17 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
                 _machine.StreamError);
             SetPersistenceWarning(null);
         }
+        catch (ChatPersistenceException ex)
+        {
+            SetHistoryDegradedState(DegradedStateFor(ex, "Chat history is not being saved."));
+            SetPersistenceWarning(null);
+        }
         catch (Exception ex)
         {
-            SetPersistenceWarning("Chat history is not being saved: " + ex.Message);
+            SetHistoryDegradedState(DegradedStateFor(
+                ChatPersistenceException.From(ex, ChatPersistenceFailureKind.WriteDenied),
+                "Chat history is not being saved."));
+            SetPersistenceWarning(null);
         }
     }
 
@@ -272,6 +365,70 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
         Raise(nameof(PendingAttachmentSummary));
         Raise(nameof(CanSend));
         SendCommand.RaiseCanExecuteChanged();
+    }
+
+    public void ApproveExecutablePath(string path)
+    {
+        try
+        {
+            _executableInventory.ApproveExecutable(path);
+        }
+        catch (ChatProcessException ex)
+        {
+            _executableSnapshot = new ChatExecutableInventorySnapshot(
+                Array.Empty<ApprovedChatExecutable>(),
+                new ChatExecutableInventoryStatus(
+                    ex.Kind == ChatFailureKind.ExecutableUnavailable
+                        ? ChatExecutableInventoryStatusKind.ExecutableUnavailable
+                        : ChatExecutableInventoryStatusKind.InventoryUnavailable,
+                    "Chat CLI executable was not approved.",
+                    ex.Message));
+            RaiseExecutableState();
+            return;
+        }
+
+        RefreshExecutableInventoryStatus();
+    }
+
+    public void RotateExecutablePath(string path)
+    {
+        ApprovedChatExecutable? current = _executableSnapshot.PrimaryExecutable;
+        if (current is null)
+        {
+            ApproveExecutablePath(path);
+            return;
+        }
+
+        try
+        {
+            _executableInventory.RotateExecutable(current.Id, path);
+        }
+        catch (ChatProcessException ex)
+        {
+            _executableSnapshot = new ChatExecutableInventorySnapshot(
+                _executableSnapshot.Executables,
+                new ChatExecutableInventoryStatus(
+                    ex.Kind == ChatFailureKind.ExecutableUnavailable
+                        ? ChatExecutableInventoryStatusKind.ExecutableUnavailable
+                        : ChatExecutableInventoryStatusKind.InventoryUnavailable,
+                    "Chat CLI executable rotation failed.",
+                    ex.Message));
+            RaiseExecutableState();
+            return;
+        }
+
+        RefreshExecutableInventoryStatus();
+    }
+
+    private void RemoveApprovedExecutable()
+    {
+        ApprovedChatExecutable? current = _executableSnapshot.PrimaryExecutable;
+        if (current is not null)
+        {
+            _executableInventory.RemoveExecutable(current.Id);
+        }
+
+        RefreshExecutableInventoryStatus();
     }
 
     internal void ConfigureWorkspaceForTests(string workspaceRoot)
@@ -335,6 +492,65 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
         SendCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();
         RegenerateCommand.RaiseCanExecuteChanged();
+        RemoveApprovedExecutableCommand.RaiseCanExecuteChanged();
+        RetryHistoryCommand.RaiseCanExecuteChanged();
+        RestartRecoveryCommand.RaiseCanExecuteChanged();
+    }
+
+    private void RefreshExecutableInventoryStatus()
+    {
+        _executableSnapshot = _executableInventory.LoadSnapshot();
+        RaiseExecutableState();
+    }
+
+    private void RaiseExecutableState()
+    {
+        Raise(nameof(HasApprovedExecutable));
+        Raise(nameof(IsExecutableReady));
+        Raise(nameof(RequiresExecutableSetup));
+        Raise(nameof(ExecutableSetupTitle));
+        Raise(nameof(ExecutableSetupMessage));
+        Raise(nameof(ApprovedExecutableSummary));
+        RaiseCommandStates();
+    }
+
+    private void SetHistoryDegradedState(ChatHistoryDegradedState? state)
+    {
+        if (Equals(_historyDegradedState, state))
+        {
+            return;
+        }
+
+        _historyDegradedState = state;
+        Raise(nameof(HasHistoryDegradedState));
+        Raise(nameof(HistoryStateKind));
+        Raise(nameof(HistoryStateTitle));
+        Raise(nameof(HistoryStateMessage));
+        Raise(nameof(CanRetryHistory));
+        Raise(nameof(CanRestartHistory));
+        Raise(nameof(ShowEmptyState));
+        Raise(nameof(ShowMessageList));
+        RaiseCommandStates();
+    }
+
+    private static ChatHistoryDegradedState DegradedStateFor(
+        ChatPersistenceException ex,
+        string? title = null)
+    {
+        string resolvedTitle = title ?? ex.Kind switch
+        {
+            ChatPersistenceFailureKind.Locked => "Chat history is locked.",
+            ChatPersistenceFailureKind.Corrupt => "Chat history needs recovery.",
+            ChatPersistenceFailureKind.Missing => "Chat history is missing.",
+            ChatPersistenceFailureKind.ReadDenied => "Chat history access was denied.",
+            _ => "Chat history is unavailable.",
+        };
+        return new ChatHistoryDegradedState(
+            ex.Kind,
+            resolvedTitle,
+            ex.Message,
+            CanRetry: true,
+            CanRestart: true);
     }
 
     private void Raise(string name) =>

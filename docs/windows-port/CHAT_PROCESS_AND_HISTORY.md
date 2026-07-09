@@ -18,7 +18,10 @@ production path is:
 directly. `cmd.exe`, PowerShell, and shell string construction are not part of
 the chat launch path.
 
-The executable must be present in `OPENBURNBAR_CHAT_APPROVED_EXECUTABLES`:
+The executable identity must be approved through the product-owned protected
+chat executable inventory. The Data Source settings page and the Chat setup
+panel write the inventory through `IAppSecretStore`; the protected payload stores
+the executable id, absolute path, and SHA-256 hash:
 
 ```json
 [
@@ -33,6 +36,9 @@ The executable must be present in `OPENBURNBAR_CHAT_APPROVED_EXECUTABLES`:
 The runner resolves the requested executable against that catalog, verifies the
 file still exists, recomputes SHA-256 immediately before launch, and denies both
 unapproved paths and replaced executables with typed stream failures.
+Environment variables do not approve release executables. Tests may inject a
+command template or in-memory inventory directly, but shipped resolution reads
+only the protected product inventory.
 
 ## Bounds And Failure States
 
@@ -76,8 +82,10 @@ the chat workspace by reference; the encrypted database stores only the metadata
 and workspace-relative path.
 
 On app start, `ChatSurfaceViewModel` reopens the most recent thread through the
-SQLCipher store and rehydrates the visible transcript. Storage failures render a
-persistence warning instead of silently showing an empty history.
+SQLCipher store and rehydrates the visible transcript. Storage unavailable,
+unreadable, locked, corrupt, or missing states become a typed degraded state with
+retry/restart recovery controls. The view model does not synthesize a legitimate
+empty history for those failures.
 
 ## Paste And Drop
 

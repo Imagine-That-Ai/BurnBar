@@ -196,4 +196,14 @@ public sealed partial class ChatSurfaceView : UserControl
         ViewModel.StagePastedText(text);
         return true;
     }
+
+    private void OnApproveChatExecutable(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ApproveExecutablePath(ExecutablePathBox.Text);
+    }
+
+    private void OnRotateChatExecutable(object sender, RoutedEventArgs e)
+    {
+        ViewModel.RotateExecutablePath(ExecutablePathBox.Text);
+    }
 }

@@ -65,6 +65,7 @@ public sealed record ChatStreamSettleOutcome
 public enum ChatFailureKind
 {
     BackendUnavailable,
+    ExecutableInventoryUnavailable,
     ExecutableDenied,
     ExecutableUnavailable,
     ExecutableReplaced,
