@@ -58,6 +58,11 @@ export interface CommunityShareSnapshotDoc {
   purposeMix: Record<string, number>;
 }
 
+export interface CommunityLiveData {
+  shareSnapshot?: CommunityShareSnapshotDoc | null;
+  leaderboards?: CommunityLeaderboardCard[];
+}
+
 export const GEO_TIER_ORDER: GeographyTier[] = ['city', 'region', 'country', 'world'];
 
 export const TIME_WINDOWS: { id: CommunityTimeWindow; label: string }[] = [

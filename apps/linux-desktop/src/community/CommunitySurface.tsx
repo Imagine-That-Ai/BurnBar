@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useCommunityLiveData } from '../state/communityStore.js';
 import { Banner } from '../components/Banner.js';
 import { CommunityConsentPanel } from './CommunityConsentPanel.js';
 import { CommunityLeaderboardCards } from './CommunityLeaderboardCards.js';
@@ -17,8 +18,9 @@ export function CommunitySurface() {
   const [consent, setConsent] = useState<CommunityConsentState>(() => readCommunityConsent());
   const [window, setWindow] = useState<CommunityTimeWindow>('30d');
   const [statusMessage, setStatusMessage] = useState('');
+  const { liveData, loading: loadingLiveData, error: liveDataError } = useCommunityLiveData();
 
-  const view = useMemo(() => buildCommunityView(consent, window), [consent, window]);
+  const view = useMemo(() => buildCommunityView(consent, window, liveData ?? undefined), [consent, window, liveData]);
 
   const persistConsent = (next: CommunityConsentState) => {
     setConsent(next);
@@ -35,8 +37,16 @@ export function CommunitySurface() {
             Share anonymized usage to see where you stand — every tier is opt-in and unset stays dark.
           </Banner>
         ) : null}
-        {view.isPreviewData ? (
-          <Banner tone="info">{view.statusMessage}</Banner>
+        {view.statusMessage ? (
+          <Banner tone={view.isPreviewData ? 'degraded' : 'ok'} role="status">{view.statusMessage}</Banner>
+        ) : null}
+        {loadingLiveData ? (
+          <Banner tone="ok" role="status">Checking Linux daemon for live Community snapshot…</Banner>
+        ) : null}
+        {liveDataError && view.isPreviewData ? (
+          <Banner tone="degraded" role="status">
+            Linux live Community sync awaits daemon support; this surface is showing preview-only data.
+          </Banner>
         ) : null}
         <div className="community-hero-metrics">
           <div>

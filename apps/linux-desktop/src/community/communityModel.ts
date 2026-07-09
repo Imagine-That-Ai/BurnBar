@@ -3,6 +3,7 @@ import type { CommunityConsentState } from './consentStore.js';
 import { isConsentActive } from './consentStore.js';
 import type {
   CommunityLeaderboardCard,
+  CommunityLiveData,
   CommunityShareSnapshotDoc,
   CommunityTimeWindow,
   CommunityUsageTotal,
@@ -25,10 +26,6 @@ export type LookingGlassExportCopy = {
   message: string;
 };
 
-export type CommunityLiveData = {
-  shareSnapshot?: CommunityShareSnapshotDoc | null;
-  leaderboards?: CommunityLeaderboardCard[];
-};
 
 export const LOCAL_PARTICIPATION_PAUSED_COPY =
   'Participation paused locally. Sync revoke when signed in online.';

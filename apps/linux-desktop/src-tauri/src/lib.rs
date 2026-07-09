@@ -611,6 +611,15 @@ fn usage_insights() -> Result<serde_json::Value, String> {
     )
 }
 
+// ───────────────── Community live data relay ─────────────────
+// Wire: daemon.community.live_data (future daemon relay for consent-gated
+// share_snapshot + public leaderboard docs). Until the daemon exposes it, the
+// frontend treats the rejected command as an honest preview state.
+#[tauri::command]
+fn community_live_data() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.community.live_data", None)
+}
+
 // ───────────────── P06: mission list ─────────────────
 // Wire: daemon.mission.list (BurnBarRPCMethod.missionsList)
 #[tauri::command]
@@ -1202,6 +1211,7 @@ pub fn run() {
             session_list,
             session_search,
             usage_insights,
+            community_live_data,
             mission_list,
             mission_create,
             mission_approval_decision,
