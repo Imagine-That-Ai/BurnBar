@@ -18,19 +18,22 @@ uid="$(mini_ssh "id -u")"
 log "creating runner directories under $runner_root"
 mini_ssh "mkdir -p $runner_root_q/{queue,payloads,results,logs,bin} ~/Library/LaunchAgents"
 
-log "building CUClickSmoke release binary locally"
-swift build -c release --package-path "$repo_root/tools/CUClickSmoke"
-cu_binary="$repo_root/tools/CUClickSmoke/.build/release/CUClickSmoke"
-[[ -x "$cu_binary" ]] || die "missing built CUClickSmoke binary at $cu_binary"
-
 plist_tmp="$(mktemp "${TMPDIR:-/tmp}/openburnbar-uitest-runner-plist.XXXXXX")"
 trap 'rm -f "$plist_tmp"' EXIT
 sed "s#__RUNNER_ROOT__#$runner_root#g" "$script_dir/com.openburnbar.uitest-runner.plist" > "$plist_tmp"
 
 log "pushing runner bits to the mini"
 mini_rsync "$script_dir/runner-daemon.sh" "$MACMINI_USER@$MACMINI_HOST:$runner_root/bin/runner-daemon.sh"
-mini_rsync "$cu_binary" "$MACMINI_USER@$MACMINI_HOST:$runner_root/bin/CUClickSmoke"
 mini_rsync "$plist_tmp" "$MACMINI_USER@$MACMINI_HOST:$runner_root/bin/com.openburnbar.uitest-runner.plist"
+
+# Build CUClickSmoke natively ON the mini. Cross-machine transfer of a
+# controller-built ad-hoc binary trips Gatekeeper ("damaged and can't be
+# opened") and, once granted, an ad-hoc re-sign changes the cdhash and voids
+# the Accessibility grant. A native build gives a stable path-keyed binary the
+# operator grants once.
+log "building CUClickSmoke natively on the mini"
+mini_rsync_opts --delete --exclude '.build' "$repo_root/tools/CUClickSmoke/" "$MACMINI_USER@$MACMINI_HOST:$runner_root/src/CUClickSmoke/"
+mini_ssh "cd $runner_root_q/src/CUClickSmoke && swift build -c release && cp -f .build/release/CUClickSmoke $runner_root_q/bin/CUClickSmoke && xattr -c $runner_root_q/bin/CUClickSmoke && codesign --force --sign - $runner_root_q/bin/CUClickSmoke"
 
 mini_ssh "chmod +x $runner_root_q/bin/runner-daemon.sh $runner_root_q/bin/CUClickSmoke && cp $runner_root_q/bin/com.openburnbar.uitest-runner.plist ~/Library/LaunchAgents/com.openburnbar.uitest-runner.plist"
 

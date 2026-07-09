@@ -71,7 +71,59 @@ mini_rsync() {
     while IFS= read -r -d '' opt; do
         opts+=("$opt")
     done < <(macmini_ssh_args)
-    rsync -az --delete -e "$(printf 'ssh %q ' "${opts[@]}")" "$@"
+    rsync -az --delete -e "ssh $(printf '%q ' "${opts[@]}")" "$@"
+}
+
+# Same transport as mini_rsync but callers supply their own flags/paths (e.g.
+# --exclude). Kept separate so the common path stays terse.
+mini_rsync_opts() {
+    local opts=()
+    while IFS= read -r -d '' opt; do
+        opts+=("$opt")
+    done < <(macmini_ssh_args)
+    rsync -az -e "ssh $(printf '%q ' "${opts[@]}")" "$@"
+}
+
+# Products are built with CODE_SIGNING_ALLOWED=NO, leaving linker ad-hoc
+# signatures without entitlements. testmanagerd on the runner SIGKILLs test
+# runners lacking get-task-allow, and the mini's LaunchAgent context cannot
+# re-sign bundles itself (App Management TCC). Sign here on the controller so
+# payloads arrive ready to execute.
+adhoc_sign_products() {
+    local products_dir="$1"
+    local ents
+    ents="$(mktemp "${TMPDIR:-/tmp}/openburnbar-gta.XXXXXX.plist")"
+    cat > "$ents" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.get-task-allow</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
+    xattr -cr "$products_dir" 2>/dev/null || true
+
+    log "ad-hoc signing build products (deepest-first, get-task-allow on apps)"
+    local item
+    while IFS= read -r item; do
+        codesign --force --sign - "$item" 2>/dev/null || true
+    done < <(find "$products_dir" \( -name '*.framework' -o -name '*.xctest' -o -name '*.dylib' -o -name '*.bundle' \) | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-)
+
+    local app helper
+    while IFS= read -r app; do
+        while IFS= read -r helper; do
+            codesign --force --sign - --entitlements "$ents" "$helper" 2>/dev/null || true
+        done < <(find "$app/Contents/Helpers" -type f -perm +111 2>/dev/null)
+        codesign --force --sign - --entitlements "$ents" "$app" ||
+            die "controller-side ad-hoc signing failed for $app"
+        codesign --verify --strict "$app" ||
+            die "signature verification failed for $app"
+    done < <(find "$products_dir" -maxdepth 2 -name '*.app')
+
+    rm -f "$ents"
 }
 
 mini_resolve_runner_root() {

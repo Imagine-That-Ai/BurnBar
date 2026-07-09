@@ -82,6 +82,58 @@ run_with_timeout() {
     wait "$child_pid"
 }
 
+# Payloads are built with CODE_SIGNING_ALLOWED=NO on the controller, so on the
+# mini they carry linker ad-hoc signatures without entitlements and with stale
+# CodeResources after transfer. testmanagerd SIGKILLs runners without
+# get-task-allow, so re-sign everything ad-hoc here, deepest-first, and stamp
+# app bundles with the get-task-allow entitlement a local Debug build would have.
+resign_payload() {
+    local payload="$1"
+    local ents="$BIN_DIR/get-task-allow.plist"
+    cat > "$ents" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.get-task-allow</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
+    local marker="$payload/.openburnbar-resigned"
+    if [[ -f "$marker" ]]; then
+        log "payload already re-signed; skipping"
+        return 0
+    fi
+
+    log "re-signing payload bundles (ad-hoc + get-task-allow)"
+    # transferred files carry provenance/quarantine xattrs that make codesign
+    # fail with "Operation not permitted" — strip them first
+    xattr -cr "$payload" 2>/dev/null || true
+    local item
+    while IFS= read -r item; do
+        codesign --force --sign - "$item" 2>/dev/null || true
+    done < <(find "$payload" \( -name '*.framework' -o -name '*.xctest' -o -name '*.dylib' -o -name '*.bundle' \) -not -path '*.app/*' -not -path '*.framework/*.framework*' | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-)
+
+    local app
+    while IFS= read -r app; do
+        # inner code first, then the container with entitlements
+        while IFS= read -r item; do
+            codesign --force --sign - "$item" 2>/dev/null || true
+        done < <(find "$app" \( -name '*.framework' -o -name '*.xctest' -o -name '*.dylib' -o -name '*.bundle' -o -path '*/Contents/Helpers/*' -type f -perm +111 \) | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-)
+        if ! codesign --force --sign - --entitlements "$ents" "$app"; then
+            # The LaunchAgent context lacks the App Management TCC grant, so
+            # this can fail with EPERM even when the ssh path succeeds. The
+            # canonical fix is controller-side signing before rsync; keep this
+            # best-effort and let the test run surface any real problem.
+            printf 'warning: re-sign failed for %s; continuing with existing signature\n' "$app" >&2
+        fi
+    done < <(find "$payload" -maxdepth 2 -name '*.app')
+
+    touch "$marker"
+}
+
 run_xcuitest_job() {
     local job_json="$1"
     local result_dir="$2"
@@ -95,6 +147,8 @@ run_xcuitest_job() {
         printf 'No .xctestrun found under %s\n' "$payload" >&2
         return 66
     fi
+
+    resign_payload "$payload" || return $?
 
     run_with_timeout "$timeout_seconds" xcodebuild \
         test-without-building \

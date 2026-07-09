@@ -16,6 +16,8 @@ Options:
   --dry-run                  Print the controller/mini plan without SSH.
   --ax-smoke <OpenBurnBar.app>
                              Push a built app and run CUClickSmoke openburnbar.
+  --products-dir <path>      Reuse an existing Build/Products dir (skip the
+                             controller build-for-testing step).
   --timeout-seconds <n>      Job timeout on the mini (default 1800).
   --poll-timeout-seconds <n> Controller polling timeout (default 1800).
   -only-testing:<target>     Forward one XCUITest filter.
@@ -34,6 +36,7 @@ EOF
 
 dry_run=0
 ax_smoke_app=""
+products_dir_override=""
 timeout_seconds="${OPENBURNBAR_UI_TIMEOUT_SECONDS:-1800}"
 poll_timeout_seconds="${OPENBURNBAR_UI_POLL_TIMEOUT_SECONDS:-1800}"
 cli_filters=()
@@ -48,6 +51,12 @@ while [[ "$#" -gt 0 ]]; do
             shift
             [[ "$#" -gt 0 ]] || die "--ax-smoke requires an app path"
             ax_smoke_app="$1"
+            shift
+            ;;
+        --products-dir)
+            shift
+            [[ "$#" -gt 0 ]] || die "--products-dir requires a path"
+            products_dir_override="$1"
             shift
             ;;
         --timeout-seconds)
@@ -160,42 +169,53 @@ trap 'rm -f "$job_json"; rm -rf "$derived_data_dir"' EXIT
 
 if [[ -n "$ax_smoke_app" ]]; then
     [[ -d "$ax_smoke_app" ]] || die "app path does not exist: $ax_smoke_app"
-    log "building CUClickSmoke release binary"
-    swift build -c release --package-path "$repo_root/tools/CUClickSmoke"
+    # CUClickSmoke is built natively on the mini by bootstrap-mini.sh and granted
+    # Accessibility once. Do NOT re-push a controller-built binary here: it trips
+    # Gatekeeper and voids the grant (cdhash change). Verify it is present.
+    mini_ssh "test -x $runner_root_q/bin/CUClickSmoke" ||
+        die "CUClickSmoke missing on mini; run scripts/macmini/bootstrap-mini.sh first"
+    adhoc_sign_products "$ax_smoke_app"
 
     log "preparing remote payload $remote_payload"
-    mini_ssh "rm -rf $remote_payload_q && mkdir -p $remote_payload_q $runner_root_q/bin"
+    mini_ssh "rm -rf $remote_payload_q && mkdir -p $remote_payload_q"
     mini_rsync "$ax_smoke_app" "$MACMINI_USER@$MACMINI_HOST:$remote_payload/"
-    mini_rsync "$repo_root/tools/CUClickSmoke/.build/release/CUClickSmoke" "$MACMINI_USER@$MACMINI_HOST:$runner_root/bin/CUClickSmoke"
     app_basename="$(basename "$ax_smoke_app")"
     remote_app_path="$remote_payload/$app_basename"
+    remote_app_path_q="$(printf "%q" "$remote_app_path")"
 
-    python3 - "$job_json" "$job_id" "$timeout_seconds" "$remote_app_path" <<'PY'
-import json
-import sys
-
-path, job_id, timeout, app_path = sys.argv[1:]
-with open(path, "w", encoding="utf-8") as handle:
-    json.dump({
-        "id": job_id,
-        "kind": "axsmoke",
-        "payload": {"appPath": app_path, "scenario": "openburnbar"},
-        "timeoutSeconds": int(timeout),
-    }, handle, sort_keys=True)
-    handle.write("\n")
-PY
+    # AX smoke runs DIRECTLY over SSH, not through the LaunchAgent queue. TCC
+    # attributes an ad-hoc CLI tool's Accessibility grant to the leaf process
+    # only when it is the responsible process; under the LaunchAgent the grant
+    # resolves to the daemon's parent and AXIsProcessTrusted returns false. A
+    # direct ssh exec keeps CUClickSmoke responsible, and `open` still launches
+    # the app into the console GUI session where its window is AX-visible.
+    mkdir -p "$local_artifact_dir"
+    log "running AX smoke on the mini (direct exec)"
+    set +e
+    mini_ssh "pkill -f 'OpenBurnBar.app/Contents/MacOS' 2>/dev/null; sleep 1; mkdir -p $remote_result_q; $runner_root_q/bin/CUClickSmoke --scenario openburnbar --app-path $remote_app_path_q --evidence-path $remote_result_q/openburnbar-ax.png 2>&1 | tee $remote_result_q/runner.log; exit \${PIPESTATUS[0]}"
+    ax_exit=$?
+    set -e
+    mini_rsync "$MACMINI_USER@$MACMINI_HOST:$remote_result/" "$local_artifact_dir/" 2>/dev/null || true
+    printf '\nAX smoke summary\n  id: %s\n  exitCode: %s\n  artifacts: %s\n' "$job_id" "$ax_exit" "$local_artifact_dir"
+    exit "$ax_exit"
 else
-    build_args+=(
-        -derivedDataPath "$derived_data_dir"
-        -resultBundlePath "$derived_data_dir/build-for-testing.xcresult"
-    )
-    log "building OpenBurnBarUITests for testing on the controller"
-    xcodebuild build-for-testing "${build_args[@]}"
+    if [[ -n "$products_dir_override" ]]; then
+        [[ -d "$products_dir_override" ]] || die "products dir does not exist: $products_dir_override"
+        log "reusing existing build products at $products_dir_override"
+        products_dir="$products_dir_override"
+    else
+        build_args+=(
+            -derivedDataPath "$derived_data_dir"
+            -resultBundlePath "$derived_data_dir/build-for-testing.xcresult"
+        )
+        log "building OpenBurnBarUITests for testing on the controller"
+        xcodebuild build-for-testing "${build_args[@]}"
 
-    products_dir="$derived_data_dir/Build/Products"
+        products_dir="$derived_data_dir/Build/Products"
+    fi
     xctestrun="$(find "$products_dir" -name '*.xctestrun' -type f | head -1)"
     [[ -n "$xctestrun" ]] || die "no .xctestrun found under $products_dir"
-    xattr -cr "$products_dir" || true
+    adhoc_sign_products "$products_dir"
 
     log "preparing remote payload $remote_payload"
     mini_ssh "rm -rf $remote_payload_q && mkdir -p $remote_payload_q"
