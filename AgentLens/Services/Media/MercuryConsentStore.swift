@@ -32,18 +32,6 @@ final class MercuryConsentStore: ObservableObject {
     private static let grantsKey = "mercuryMirrorAutoAcceptGrants.v2"
     private static let grantTTL: TimeInterval = 365 * 24 * 60 * 60
 
-    private final class DefaultsObserverToken: @unchecked Sendable {
-        private let token: NSObjectProtocol
-
-        init(_ token: NSObjectProtocol) {
-            self.token = token
-        }
-
-        deinit {
-            NotificationCenter.default.removeObserver(token)
-        }
-    }
-
     @Published var rememberAcceptedMirrorPeers: Bool {
         didSet {
             defaults.set(rememberAcceptedMirrorPeers, forKey: Self.rememberAcceptedPeersKey)
@@ -54,7 +42,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
-    private var defaultsObserver: DefaultsObserverToken?
+    private var defaultsObserver: AnyCancellable?
 
     init(
         defaults: UserDefaults = .standard,
@@ -80,20 +68,17 @@ final class MercuryConsentStore: ObservableObject {
                 self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
             }
         }
-        defaultsObserver = DefaultsObserverToken(NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: nil
-        ) { [weak self, weak defaults] notification in
-            if let changedDefaults = notification.object as? UserDefaults,
-               let defaults,
-               changedDefaults !== defaults {
-                return
+        defaultsObserver = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .sink { [weak self, weak defaults] notification in
+                if let changedDefaults = notification.object as? UserDefaults,
+                   let defaults,
+                   changedDefaults !== defaults {
+                    return
+                }
+                Task { @MainActor [weak self] in
+                    self?.reloadRememberAcceptedMirrorPeers()
+                }
             }
-            Task { @MainActor [weak self] in
-                self?.reloadRememberAcceptedMirrorPeers()
-            }
-        })
         pruneExpired()
     }
 
