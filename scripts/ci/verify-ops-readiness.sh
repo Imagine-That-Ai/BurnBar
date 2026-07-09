@@ -27,6 +27,17 @@ node functions/scripts/test-ops-alert-policy-definitions.mjs
 node --check functions/scripts/apply-ops-alert-policies.mjs
 node --check functions/scripts/create-ops-log-metrics.mjs
 
+echo "==> drift-check scripts (offline self-tests: prove MATCH/DRIFT detection)"
+# Both drift checks gate LIVE state == committed source of truth in CI (they need
+# creds). Here we run their creds-free self-tests so the DIFF LOGIC is itself gated
+# offline: a broken drift check that can no longer detect drift must fail loud.
+node --check scripts/lib/branch-protection-drift.mjs
+node --check scripts/ops/check-branch-protection-drift.mjs
+node --test scripts/ops/check-branch-protection-drift.test.mjs
+node --check scripts/lib/ops-alert-plane-drift.mjs
+node --check scripts/ops/check-ops-alert-plane-drift.mjs
+node --test scripts/ops/check-ops-alert-plane-drift.test.mjs
+
 echo "==> post-deploy health gate script"
 bash -n scripts/ci/post-deploy-health-gate.sh
 bash scripts/ci/verify-hosted-mcp-deploy-health.sh
