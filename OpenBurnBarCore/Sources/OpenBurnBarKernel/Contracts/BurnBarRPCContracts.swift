@@ -76,6 +76,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case missionCancel = "daemon.mission.cancel"
     case missionDispatchPacket = "daemon.mission.packet.dispatch"
     case missionRecordResult = "daemon.mission.result.record"
+    /// M2 (split-brain remediation Phase 2): daemon-side authorization verdict
+    /// for a remote (mobile/Wand) mission whose sealed payload the GUI
+    /// transport has already unsealed and decoded. Additive — no shipped
+    /// client calls it yet; M3 wires the GUI listener in shadow mode.
+    case missionAuthorizeRemote = "daemon.mission.authorizeRemote"
     case notificationConfigGet = "daemon.notification.config.get"
     case notificationConfigUpdate = "daemon.notification.config.update"
     case notificationHealth = "daemon.notification.health"

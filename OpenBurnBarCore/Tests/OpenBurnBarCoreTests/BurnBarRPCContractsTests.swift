@@ -69,6 +69,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .missionCancel: "daemon.mission.cancel",
         .missionDispatchPacket: "daemon.mission.packet.dispatch",
         .missionRecordResult: "daemon.mission.result.record",
+        // Added with M2 of the split-brain remediation (Phase 2): daemon-side
+        // remote-mission authorization. Additive; the GUI wires it in M3.
+        .missionAuthorizeRemote: "daemon.mission.authorizeRemote",
         .notificationConfigGet: "daemon.notification.config.get",
         .notificationConfigUpdate: "daemon.notification.config.update",
         .notificationHealth: "daemon.notification.health",
