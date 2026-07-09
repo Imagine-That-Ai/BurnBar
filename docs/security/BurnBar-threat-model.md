@@ -591,7 +591,7 @@ Audit note: this is a local trust boundary. A signed app compromise or local pri
 - `android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt:39-409` - Android CloudVault AAD and envelope compatibility.
 - `android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt:817-992` - Android device keypair and local secret box.
 - `OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift:62-268` - Signal at-rest payload seal/open and sender authentication.
-- `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/SignalEnvelopeAAD.swift:3-128` - Signal envelope canonical AAD binding.
+- `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SignalEnvelopeAAD.swift:3-128` - Signal envelope canonical AAD binding.
 - `functions/src/callables/encryptedSearch.ts:52-907` - encrypted session blob upload/download, search index, project memory, search/query APIs.
 - `functions/src/callables/conversationQuery.ts:132-163` - plaintext facets and sealed row projection.
 

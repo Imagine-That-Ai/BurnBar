@@ -565,28 +565,11 @@ public enum BurnBarCatalogError: Error, LocalizedError {
     }
 }
 
-public enum BurnBarCatalogLoader {
-    public static let bundledCatalog: BurnBarCatalog = {
-        do {
-            return try loadBundledCatalog()
-        } catch {
-            assertionFailure("Failed to load bundled OpenBurnBar catalog: \(error)")
-            return BurnBarCatalog(schemaVersion: 1, providers: [])
-        }
-    }()
-
-    public static func loadBundledCatalog() throws -> BurnBarCatalog {
-        guard let url = Bundle.module.url(forResource: "catalog", withExtension: "json") else {
-            throw BurnBarCatalogError.missingBundledCatalog
-        }
-        let data = try Data(contentsOf: url)
-        return try decode(data)
-    }
-
-    public static func decode(_ data: Data) throws -> BurnBarCatalog {
-        let decoder = JSONDecoder()
-        let catalog = try decoder.decode(BurnBarCatalog.self, from: data)
-        try catalog.validate()
-        return catalog
-    }
-}
+// NOTE(K1 kernel extraction): `BurnBarCatalogLoader` stays in OpenBurnBarCore
+// (`OpenBurnBarCatalogLoader.swift`) because it reads `catalog.json` via
+// `Bundle.module` from Core's resource bundle
+// (`OpenBurnBarCore_OpenBurnBarCore.bundle`), whose exact name the AgentLens
+// daemon installer stages next to the installed daemon. Moving the loader here
+// would change the resource-bundle name the installed daemon expects and break
+// catalog loading at runtime. The pure catalog model + validation types above
+// are kernel-safe.

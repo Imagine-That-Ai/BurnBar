@@ -69,6 +69,18 @@ let packageProductsBase: [Product] = [
         name: "OpenBurnBarCore",
         targets: ["OpenBurnBarCore"]
     ),
+    // Phase-1 K1 of docs/SURFACE_SPRAWL_AND_SPLITBRAIN_REMEDIATION_PLAN.md: the
+    // UI-free contract/model kernel (RPC contracts, canon, budget/membership/
+    // entitlement/metrics primitives, Foundation-only SharedModels). Leaf
+    // target: Foundation (+ swift-crypto off-Apple, CryptoKit on Apple via
+    // canImport) + OpenBurnBarFirestoreModels only — ZERO SwiftUI/AppKit.
+    // OpenBurnBarCore `@_exported import`s it so existing consumers keep
+    // compiling unchanged; K2 repoints the daemon/ComputerUseCore at this
+    // product directly.
+    .library(
+        name: "OpenBurnBarKernel",
+        targets: ["OpenBurnBarKernel"]
+    ),
     // Windows-port WPD-0007: C-ABI dynamic library for in-process P/Invoke (C# DllImport).
     .library(
         name: "OpenBurnBarCoreCAbi",
@@ -491,16 +503,24 @@ let firstPartyTargetsBase: [Target] = [
                 .brew(["zlib"])
             ]
         ),
+        // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
+        // remediation(typespec-strangler): the generated Firestore canon stays
+        // linked into the production graph — the `import OpenBurnBarFirestoreModels`
+        // consumer (ProviderAccountDeviceLinkTypes+Generated.swift) moved here,
+        // so anything that links the kernel (which includes OpenBurnBarCore and
+        // everything downstream) still transitively links the generated models
+        // and drift in the generated wire schema still fails the production build.
+        .target(
+            name: "OpenBurnBarKernel",
+            dependencies: [
+                "OpenBurnBarFirestoreModels",
+                swiftCryptoNonAppleDependency
+            ]
+        ),
         .target(
             name: "OpenBurnBarCore",
-            // remediation(typespec-strangler): link the generated Firestore
-            // canon into the production graph so it is no longer test-only.
-            // Core gains a real `import OpenBurnBarFirestoreModels` consumer
-            // (ProviderAccountDeviceLinkTypes+Generated.swift); anything that
-            // links OpenBurnBarCore now transitively links the generated
-            // models, so drift in the generated wire schema fails the
-            // production build, not just the test target.
             dependencies: [
+                "OpenBurnBarKernel",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
             ] + coreSQLiteDependencies,

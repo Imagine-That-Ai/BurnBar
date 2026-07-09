@@ -34,7 +34,7 @@ def test_source_provenance_manifest_covers_agpl_signal_release_inputs() -> None:
         "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
         "OpenBurnBarCore/Package.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
-        "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/SignalEnvelopeAAD.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SignalEnvelopeAAD.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift",
         "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/SignalEnvelopeAADTests.swift",

@@ -44,8 +44,8 @@ if [[ ${#stray_gates[@]} -gt 0 ]]; then
   fail=1
 fi
 
-if [[ ! -f "OpenBurnBarCore/Sources/OpenBurnBarCore/Budget/BudgetGate.swift" ]]; then
-  echo "FAIL: OpenBurnBarCore/Sources/OpenBurnBarCore/Budget/BudgetGate.swift is missing." >&2
+if [[ ! -f "OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget/BudgetGate.swift" ]]; then
+  echo "FAIL: OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget/BudgetGate.swift is missing." >&2
   echo "      The shared BudgetGate implementation must live in OpenBurnBarCore." >&2
   fail=1
 fi
@@ -65,7 +65,7 @@ for seam in "${seam_files[@]}"; do
   if [[ "$lines" -gt "$MAX_SEAM_LINES" ]]; then
     echo "FAIL: $seam has $lines lines (budget: $MAX_SEAM_LINES)." >&2
     echo "      Seam files hold ONLY protocol conformances + the platform logging factory." >&2
-    echo "      Shared gate behavior belongs in OpenBurnBarCore/Sources/OpenBurnBarCore/Budget/BudgetGate.swift." >&2
+    echo "      Shared gate behavior belongs in OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget/BudgetGate.swift." >&2
     fail=1
   fi
 done
