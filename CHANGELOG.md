@@ -26,6 +26,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archived to mobile, handoff-only (not native-resume eligible).
 
 ### Added
+- **Community — consent-gated cross-platform leaderboards + Looking Glass Mode**
+  — a new opt-in social layer that lets burners compare their token usage
+  against their city, region, country, and the world, behind strict
+  k-anonymity thresholds (k=10). All seven platforms (macOS, iOS, Android,
+  Windows, Linux, Web) share an identical information architecture with
+  native design skins.
+  - **Three tri-state consent ladders** (L1 Private Analytics / L2 Community
+    Rankings / L3 Looking Glass Mode), each independently opt-in with
+    per-geography-tier sub-toggles. Default is fully dark — no collection,
+    no location lookup, no network — until explicit opt-in.
+  - **Hourly leaderboard aggregation** (`aggregateCommunityLeaderboards`)
+    collectionGroups over share snapshots with server-side consent recheck,
+    computes public boards per time window (today/7d/30d/90d/all_time) ×
+    geography tier (world/country/region/city), with k-anonymity gating,
+    percentile bands (p50/p75/p90/p99), and movement arrows.
+  - **k-Anonymity invariant**: boards with fewer than 10 members publish
+    zero individual data (no entries, zeroed percentiles, suppressed cohort
+    size). The UI falls back to the next-broader tier.
+  - **Model-purpose classifier** — canonical heuristic spec ported to
+    Swift/Kotlin/TS/C# — infers session purpose (ui/backend/logic/writing/
+    research/debugging/orchestration/other) from metadata signals, with
+    user correction biasing and golden-fixture cross-platform parity tests.
+  - **Looking Glass Mode** (L3) — richer private traces + JSONL export bundles
+    via signed Storage URLs. (Parquet format is planned, not yet shipped.)
+  - **Transactional handle uniqueness** via `community_handles/{handleLower}`
+    doc-ID claims — atomic, no TOCTOU race, no collectionGroup scan.
+  - **Schema**: TypeSpec-first in `tools/schema-sync/typespec/domains/community.tsp`,
+    emitting TS/Swift/Kotlin.
+  - **Geography**: timezone/locale-derived country + region keys (no location
+    permission needed). OS coarse-location pipeline for city tier (CoreLocation,
+    ACCESS_COARSE_LOCATION, Windows.Devices.Geolocation) is planned.
+  - See `docs/COMMUNITY.md` for full architecture, ranking algorithm,
+    k-anonymity thresholds, geo fallback ladder, and platform UI map.
 
 - **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
   `POST /v1/chat/completions` through the shared provider router, relays

@@ -43,7 +43,7 @@ enum class AnalyticsSurface(val wire: String) {
                 "streams" -> DASHBOARD
                 "hermes", "assistants", "agent", "mercury_call" -> CHAT
                 "you" -> ACCOUNT
-                "cloud_store", "control_center" -> ACCOUNT
+                "cloud_store", "control_center", "community" -> ACCOUNT
                 "computer_use_agent", "paired_mac" -> DASHBOARD_PROVIDER
                 "settings" -> SETTINGS
                 "dashboard" -> DASHBOARD

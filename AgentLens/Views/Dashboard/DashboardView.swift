@@ -138,6 +138,7 @@ struct DashboardView: View {
         switch route {
         case .overview: return "Overview"
         case .insights: return "Insights"
+        case .community: return "Community"
         case .database: return "Database"
         case .projects: return "Projects"
         case .missions: return "Missions"
@@ -203,11 +204,24 @@ struct DashboardView: View {
             .allowsHitTesting(false)
         }
         .onAppear {
+            if let route = navigationCoordinator.pendingMainRoute {
+                withAnimation(DesignSystem.Animation.standard) {
+                    navigate(to: route)
+                }
+                navigationCoordinator.pendingMainRoute = nil
+            }
             autoExpandTimeRangeIfNeeded()
             if missionConsoleController == nil {
                 missionConsoleController = MissionConsoleWindowController.bind(to: operatingLayer)
             }
             Task { await refreshPendingMemoryReviewCount() }
+        }
+        .onChange(of: navigationCoordinator.pendingMainRoute) { _, route in
+            guard let route else { return }
+            withAnimation(DesignSystem.Animation.standard) {
+                navigate(to: route)
+            }
+            navigationCoordinator.pendingMainRoute = nil
         }
         .onChange(of: dataStore.totalUsageSessionCount) { _, _ in
             autoExpandTimeRangeIfNeeded()
@@ -483,6 +497,16 @@ struct DashboardView: View {
                         dataStore: dataStore,
                         settingsManager: settingsManager,
                         chatController: chatController
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .community:
+                    CommunityView(
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        accountManager: accountManager,
+                        selectedTimeRange: selectedTimeRange,
+                        usageWindow: dashboardUsageWindow,
+                        topModels: topModels
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:

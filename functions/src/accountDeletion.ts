@@ -88,7 +88,7 @@ const ACCOUNT_ERASURE_AUDIT_SCHEMA_VERSION = 1;
  * and therefore are not reached by the `users/{uid}` subtree walk. Account erase
  * must delete the caller's documents in each (GDPR Art.17).
  */
-const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound"] as const;
+const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound", "community_handles"] as const;
 
 export function userWorkspaceID(uid: string): string {
   return `workspace-${uid}`;
@@ -249,19 +249,25 @@ export async function eraseUserCloudData(
   await batcher.flush();
 
   // Purge the user's Cloud Storage objects too — sealed session-log bodies,
-  // Hermes gateway attachments, and the avatar. Without this, account erase left
-  // orphaned ciphertext blobs behind (the Firestore manifests were gone but the
-  // bytes remained). Best-effort: a storage failure must not fail the erase.
+  // Hermes gateway attachments, avatars, and Looking Glass export bundles.
+  // Without this, account erase left orphaned bytes behind (the Firestore
+  // manifests were gone but the storage payload remained). Best-effort: a
+  // storage failure must not fail the erase.
   const deleteStorageObjects =
     options.deleteStorageObjects ??
     (async (prefix: string) => {
       await getStorage().bucket().deleteFiles({ prefix, force: true });
     });
-  for (const prefix of [`users/${uid}/`, `avatars/${uid}`]) {
+  for (const prefix of [`users/${uid}/`, `avatars/${uid}`, `looking_glass_exports/${uid}/`]) {
     try {
       await deleteStorageObjects(prefix);
     } catch (error) {
-      safeWarn("Failed to delete Cloud Storage objects", error, { storage_prefix_kind: prefix.startsWith("avatars/") ? "avatars" : "users" });
+      const storagePrefixKind = prefix.startsWith("avatars/")
+        ? "avatars"
+        : prefix.startsWith("looking_glass_exports/")
+          ? "looking_glass_exports"
+          : "users";
+      safeWarn("Failed to delete Cloud Storage objects", error, { storage_prefix_kind: storagePrefixKind });
     }
   }
 

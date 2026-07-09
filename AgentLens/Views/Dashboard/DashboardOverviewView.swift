@@ -43,6 +43,7 @@ struct DashboardOverviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
                     heroMetricsRow
+                    communityEntryCard
                     liveCostCurve
                     NarrativeCardView(dataStore: dataStore)
                     lanesRow
@@ -133,6 +134,34 @@ struct DashboardOverviewView: View {
                 detail: "\(dataStore.totalUsageSessionCount.formatted()) total tracked"
             )
             CacheHitStatCard(efficiency: cacheEfficiency)
+        }
+    }
+
+    private var communityEntryCard: some View {
+        GlassCard {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Community")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Rankings, percentiles, and consent — opt in when you're ready.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(DesignSystem.Spacing.md)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(DesignSystem.Animation.standard) {
+                    onNavigate(.community)
+                }
+            }
         }
     }
 

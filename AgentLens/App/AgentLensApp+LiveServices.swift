@@ -57,6 +57,11 @@ extension OpenBurnBarApp {
                         onDismiss()
                         openDashboard(context: context)
                     },
+                    onOpenCommunity: {
+                        onDismiss()
+                        navigationCoordinator.pendingMainRoute = .community
+                        openDashboard(context: context)
+                    },
                     onOpenSettings: {
                         onDismiss()
                         windowManager.openSettings(

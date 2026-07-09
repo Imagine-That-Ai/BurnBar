@@ -1,0 +1,122 @@
+[
+  {
+    "name": "ascii-clean",
+    "cityName": "San Francisco",
+    "countryCode": "US",
+    "regionCode": "CA",
+    "expected": "US-CA-san-francisco"
+  },
+  {
+    "name": "decomposable-umlaut",
+    "cityName": "München",
+    "countryCode": "DE",
+    "regionCode": "BY",
+    "expected": "DE-BY-munchen"
+  },
+  {
+    "name": "decomposable-tilde",
+    "cityName": "São Paulo",
+    "countryCode": "BR",
+    "regionCode": "SP",
+    "expected": "BR-SP-sao-paulo"
+  },
+  {
+    "name": "decomposable-caron",
+    "cityName": "České Budějovice",
+    "countryCode": "CZ",
+    "regionCode": "JC",
+    "expected": "CZ-JC-ceske-budejovice"
+  },
+  {
+    "name": "non-decomposable-oslash",
+    "cityName": "Tromsø",
+    "countryCode": "NO",
+    "regionCode": "19",
+    "expected": "NO-19-tromso"
+  },
+  {
+    "name": "non-decomposable-l-slash",
+    "cityName": "Łódź",
+    "countryCode": "PL",
+    "regionCode": "LD",
+    "expected": "PL-LD-lodz"
+  },
+  {
+    "name": "non-decomposable-dotted-i",
+    "cityName": "İstanbul",
+    "countryCode": "TR",
+    "regionCode": "34",
+    "expected": "TR-34-istanbul"
+  },
+  {
+    "name": "non-decomposable-eth",
+    "cityName": "Reykjavík",
+    "countryCode": "IS",
+    "regionCode": "1",
+    "expected": "IS-1-reykjavik"
+  },
+  {
+    "name": "non-decomposable-thorn",
+    "cityName": "Þorlákshöfn",
+    "countryCode": "IS",
+    "regionCode": "23",
+    "expected": "IS-23-torlakshofn"
+  },
+  {
+    "name": "eszett",
+    "cityName": "Straße",
+    "countryCode": "DE",
+    "regionCode": "BY",
+    "expected": "DE-BY-strasse"
+  },
+  {
+    "name": "non-decomposable-d-stroke",
+    "cityName": "Hà Nội",
+    "countryCode": "VN",
+    "regionCode": "HN",
+    "expected": "VN-HN-ha-noi"
+  },
+  {
+    "name": "cjk-japanese-empty-slug",
+    "cityName": "東京",
+    "countryCode": "JP",
+    "regionCode": "13",
+    "expected": "JP-13-",
+    "note": "CJK produces empty slug — acceptable (city tier falls back, or client uses romanized name)"
+  },
+  {
+    "name": "doc-id-unsafe-chars",
+    "cityName": "St. John's / Québec",
+    "countryCode": "CA",
+    "regionCode": "QC",
+    "expected": "CA-QC-st-john-s-quebec"
+  },
+  {
+    "name": "hyphenated-name",
+    "cityName": "Winston-Salem",
+    "countryCode": "US",
+    "regionCode": "NC",
+    "expected": "US-NC-winston-salem"
+  },
+  {
+    "name": "long-name-truncation",
+    "cityName": "Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch",
+    "countryCode": "GB",
+    "regionCode": "WLS",
+    "expected": "GB-WLS-llanfairpwllgwyngyllgogerychwyrndrobwlll"
+  },
+  {
+    "name": "prefixed-region-code",
+    "cityName": "San Francisco",
+    "countryCode": "US",
+    "regionCode": "US-CA",
+    "expected": "US-CA-san-francisco"
+  },
+  {
+    "name": "truncation-trailing-hyphen",
+    "cityName": "alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa",
+    "countryCode": "US",
+    "regionCode": "CA",
+    "expected": "US-CA-alpha-beta-gamma-delta-epsilon-zeta-eta"
+  }
+]
