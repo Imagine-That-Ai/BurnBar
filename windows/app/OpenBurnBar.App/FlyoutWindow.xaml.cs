@@ -99,7 +99,9 @@ public sealed partial class FlyoutWindow : Window
 
     private void OnGlassPreferencesChanged(object? sender, EventArgs e)
     {
-        LiquidGlass.ApplyWindowBackdrop(this, LiquidGlassEnvironment.Current);
+        // Window SystemBackdrop is owned by ThemeService.Register (High Contrast /
+        // ReduceTransparency override). Do NOT re-apply LiquidGlass.ApplyWindowBackdrop
+        // here — that would override the accessibility gate. Only refresh the blend scrim.
         LiquidGlassWindowBlend.ApplyScrim(WindowBlendScrim, LiquidGlassEnvironment.Current);
     }
 

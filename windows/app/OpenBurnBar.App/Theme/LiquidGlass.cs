@@ -217,7 +217,14 @@ public sealed class LiquidGlassEnvironment
     /// <summary>Write a bool preference and raise <see cref="PreferencesChanged"/>.</summary>
     public void SetBool(string key, bool value)
     {
-        // Always write so first-set from default still persists, then notify.
+        // Skip no-op writes when the key is already explicitly stored as value.
+        // Probe with both defaults: if both return the same value, the key is present.
+        // First write from an implicit default still persists (defaults disagree).
+        if (_store.GetBool(key, value) == value && _store.GetBool(key, !value) == value)
+        {
+            return;
+        }
+
         _store.SetBool(key, value);
         RaisePreferencesChanged();
     }
