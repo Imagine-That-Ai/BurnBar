@@ -195,7 +195,7 @@ make install</code></pre>
       </div>
 
       <p class="linux-note muted small">
-        Hosted on the signed GitHub Release{" "}
+        {SITE.linuxStatusDetail}. Hosted on the signed GitHub Release{" "}
         <a href={`${SITE.github}/releases/tag/linux-v${SITE.linuxReleaseLatest}`}
           >linux-v{SITE.linuxReleaseLatest}</a
         >. x86_64 builds are next.
@@ -482,7 +482,7 @@ npm run build</code></pre>
     padding: 1rem 1.05rem 0.95rem;
     border-radius: var(--r-md, 12px);
     border: 1px solid var(--ink-line);
-    background: color-mix(in oklab, var(--ink-elevated, #121018) 88%, transparent);
+    background: color-mix(in oklab, var(--glass-bg-elevated) 88%, transparent);
     text-decoration: none;
     color: inherit;
     transition:
@@ -500,7 +500,7 @@ npm run build</code></pre>
     background: linear-gradient(
       160deg,
       color-mix(in oklab, var(--ember-core) 14%, transparent),
-      color-mix(in oklab, var(--ink-elevated, #121018) 92%, transparent) 55%
+      color-mix(in oklab, var(--glass-bg-elevated) 92%, transparent) 55%
     );
   }
   .platcard--pending {
@@ -529,7 +529,7 @@ npm run build</code></pre>
     margin-top: 0.45rem;
     font-family: var(--font-mono);
     font-size: 0.72rem;
-    color: var(--text-soft, var(--text-mute));
+    color: var(--text-mute);
   }
   .platcard--live .platcard__cta {
     color: var(--ember-bright, var(--ember-core));
@@ -592,7 +592,7 @@ npm run build</code></pre>
     padding: 1.15rem 1.2rem;
     border-radius: var(--r-md, 12px);
     border: 1px solid var(--ink-line);
-    background: color-mix(in oklab, var(--ink-elevated, #121018) 90%, transparent);
+    background: color-mix(in oklab, var(--glass-bg-elevated) 90%, transparent);
     text-decoration: none;
     color: inherit;
     transition:
@@ -610,7 +610,7 @@ npm run build</code></pre>
     background: linear-gradient(
       155deg,
       color-mix(in oklab, var(--ember-core) 18%, transparent),
-      color-mix(in oklab, var(--ink-elevated, #121018) 90%, transparent) 60%
+      color-mix(in oklab, var(--glass-bg-elevated) 90%, transparent) 60%
     );
   }
   .linux-dl__kind {
