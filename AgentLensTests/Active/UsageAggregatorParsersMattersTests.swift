@@ -290,7 +290,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             entry["usage"] = NSNull()
         }
 
-        [
+        return [
             "schemaVersion": 2,
             "fileEntries": [
                 "session": entry
