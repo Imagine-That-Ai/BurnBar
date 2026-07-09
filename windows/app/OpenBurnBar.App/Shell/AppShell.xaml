@@ -50,10 +50,12 @@
                         ToolTipService.ToolTip="OpenBurnBar — Dashboard">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <components:AppLogoView Size="26" VerticalAlignment="Center" />
-                        <TextBlock VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold">
-                            <Run Text="Open" Foreground="{StaticResource PensieveColorTextBaseBrush}" />
-                            <Run Text="BurnBar" Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                        </TextBlock>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="0">
+                            <TextBlock Text="Open" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                            <TextBlock Text="BurnBar" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        </StackPanel>
                     </StackPanel>
                 </Button>
 

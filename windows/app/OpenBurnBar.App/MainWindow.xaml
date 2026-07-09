@@ -30,11 +30,9 @@
                 <components:AppLogoView Grid.Column="0" Size="18" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
                            VerticalAlignment="Center"
+                           Text="OpenBurnBar"
                            FontWeight="SemiBold"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}">
-                    <Run Text="Open" />
-                    <Run Text="BurnBar" FontWeight="Bold" />
-                </TextBlock>
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
             </Grid>
         </Border>
 

@@ -304,7 +304,7 @@ public sealed partial class FlyoutWindow : Window
         }
 
         geo.Figures.Add(fig);
-        canvas.Children.Add(new Path
+        canvas.Children.Add(new Microsoft.UI.Xaml.Shapes.Path
         {
             Data = geo,
             Stroke = new SolidColorBrush(Color.FromArgb(0xFF, 0xFA, 0x6B, 0x06)),
