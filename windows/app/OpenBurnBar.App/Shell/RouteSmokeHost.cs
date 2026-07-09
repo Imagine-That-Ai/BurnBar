@@ -39,7 +39,8 @@ internal static class RouteSmokeHost
                 DateTimeOffset.UtcNow - started,
                 root.ActualWidth,
                 root.ActualHeight,
-                root.ActualTheme.ToString());
+                root.ActualTheme.ToString(),
+                ExpectedAutomationId(options.RouteKey));
         }
         catch (Exception ex)
         {
@@ -149,6 +150,7 @@ internal static class RouteSmokeHost
         double ActualWidth,
         double ActualHeight,
         string? Theme,
+        string ExpectedAutomationId,
         string? ExceptionType,
         string? Message)
     {
@@ -159,7 +161,8 @@ internal static class RouteSmokeHost
             TimeSpan elapsed,
             double actualWidth,
             double actualHeight,
-            string theme) =>
+            string theme,
+            string expectedAutomationId) =>
             new(
                 routeKey,
                 stats.NearUniform ? 2 : 0,
@@ -173,6 +176,7 @@ internal static class RouteSmokeHost
                 actualWidth,
                 actualHeight,
                 theme,
+                expectedAutomationId,
                 null,
                 stats.NearUniform ? "Screenshot is near-uniform/blank." : null);
 
@@ -190,9 +194,12 @@ internal static class RouteSmokeHost
                 0,
                 0,
                 null,
+                RouteSmokeHost.ExpectedAutomationId(routeKey),
                 exception.GetType().FullName,
                 exception.Message);
     }
+
+    private static string ExpectedAutomationId(string routeKey) => $"RouteRoot.{routeKey}";
 }
 
 internal static class DispatcherQueueExtensions

@@ -15,7 +15,8 @@
     xmlns:switcher="using:OpenBurnBar.App.Switcher"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.switcher">
 
     <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
         <switcher:SwitcherSettingsView x:Name="SwitcherView" />
