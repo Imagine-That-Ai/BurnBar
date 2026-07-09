@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-09T18:07:00Z",
+  "generatedAt": "2026-07-09T18:07:54Z",
   "git": {
-    "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+    "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
     "branch": "windows/liquid-glass-kernel-reskin",
     "remote": "origin",
     "note": "Reanchored for product parity claim on active checkout"
   },
   "activeCheckoutEvidence": {
-    "head": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+    "head": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
     "branch": "windows/liquid-glass-kernel-reskin",
-    "capturedAt": "2026-07-09T18:07:00Z",
+    "capturedAt": "2026-07-09T18:07:54Z",
     "productParityClaim": true
   },
   "rows": [
@@ -25,13 +25,13 @@
       "acceptedDivergence": "Existing user/agent dirty work is preserved; release remains blocked until clean commit.",
       "owner": "ops",
       "promotionCriterion": "Protected paths and no-broad-reset evidence remain current for active checkout.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-OPS-002",
@@ -44,13 +44,13 @@
       "acceptedDivergence": "Mission toolchain pins Rust/Cargo 1.96, Swift 6.2, SQLCipher HAS_CODEC/ENABLE_FTS5.",
       "owner": "ops",
       "promotionCriterion": "Current toolchain image rebuild and smoke pass from active checkout.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Desktop 4.64.0 / Engine 29.2.1",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CORE-001",
@@ -63,13 +63,13 @@
       "acceptedDivergence": "Linux uses platform seams and native Linux FFI where available; Apple-only imports must stay guarded/excluded.",
       "owner": "core-foundation",
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CORE-002",
@@ -82,13 +82,13 @@
       "acceptedDivergence": "Linux uses platform seams and native Linux FFI where available; Apple-only imports must stay guarded/excluded.",
       "owner": "core-foundation",
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CORE-003",
@@ -101,13 +101,13 @@
       "acceptedDivergence": "Linux uses platform seams and native Linux FFI where available; Apple-only imports must stay guarded/excluded.",
       "owner": "core-foundation",
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CORE-004",
@@ -120,13 +120,13 @@
       "acceptedDivergence": "Linux uses platform seams and native Linux FFI where available; Apple-only imports must stay guarded/excluded.",
       "owner": "core-foundation",
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CORE-005",
@@ -139,13 +139,13 @@
       "acceptedDivergence": "Linux uses platform seams and native Linux FFI where available; Apple-only imports must stay guarded/excluded.",
       "owner": "core-foundation",
       "promotionCriterion": "V24 foundation seal passed expanded 13-test Linux core suite and compiled-source import scan.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-IPC-001",
@@ -158,13 +158,13 @@
       "acceptedDivergence": "Linux uses AF_UNIX peer credentials and XDG runtime paths; no DaemonEnvelope/DaemonTransport/UnixSocketTransport/NSXPC daemon RPC replacement.",
       "owner": "daemon-cli",
       "promotionCriterion": "Fresh IPC/CLI/HTTP evidence has result=complete, auth negatives, drift gate, and subscription restart/resume pass.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-IPC-002",
@@ -177,13 +177,13 @@
       "acceptedDivergence": "Linux uses AF_UNIX peer credentials and XDG runtime paths; no DaemonEnvelope/DaemonTransport/UnixSocketTransport/NSXPC daemon RPC replacement.",
       "owner": "daemon-cli",
       "promotionCriterion": "Fresh IPC/CLI/HTTP evidence has result=complete, auth negatives, drift gate, and subscription restart/resume pass.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-IPC-003",
@@ -196,13 +196,13 @@
       "acceptedDivergence": "Linux uses AF_UNIX peer credentials and XDG runtime paths; no DaemonEnvelope/DaemonTransport/UnixSocketTransport/NSXPC daemon RPC replacement.",
       "owner": "daemon-cli",
       "promotionCriterion": "Fresh IPC/CLI/HTTP evidence has result=complete, auth negatives, drift gate, and subscription restart/resume pass.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-IPC-004",
@@ -215,13 +215,13 @@
       "acceptedDivergence": "Linux uses AF_UNIX peer credentials and XDG runtime paths; no DaemonEnvelope/DaemonTransport/UnixSocketTransport/NSXPC daemon RPC replacement.",
       "owner": "daemon-cli",
       "promotionCriterion": "Fresh IPC/CLI/HTTP evidence has result=complete, auth negatives, drift gate, and subscription restart/resume pass.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-IPC-005",
@@ -234,13 +234,13 @@
       "acceptedDivergence": "Linux uses AF_UNIX peer credentials and XDG runtime paths; no DaemonEnvelope/DaemonTransport/UnixSocketTransport/NSXPC daemon RPC replacement.",
       "owner": "daemon-cli",
       "promotionCriterion": "Fresh IPC/CLI/HTTP evidence has result=complete, auth negatives, drift gate, and subscription restart/resume pass.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CLI-001",
@@ -253,13 +253,13 @@
       "acceptedDivergence": "Linux uses AF_UNIX peer credentials and XDG runtime paths; no DaemonEnvelope/DaemonTransport/UnixSocketTransport/NSXPC daemon RPC replacement.",
       "owner": "daemon-cli",
       "promotionCriterion": "Fresh IPC/CLI/HTTP evidence has result=complete, auth negatives, drift gate, and subscription restart/resume pass.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-HTTP-001",
@@ -272,13 +272,13 @@
       "acceptedDivergence": "Linux uses AF_UNIX peer credentials and XDG runtime paths; no DaemonEnvelope/DaemonTransport/UnixSocketTransport/NSXPC daemon RPC replacement.",
       "owner": "daemon-cli",
       "promotionCriterion": "Fresh IPC/CLI/HTTP evidence has result=complete, auth negatives, drift gate, and subscription restart/resume pass.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-000",
@@ -291,13 +291,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-001",
@@ -310,13 +310,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-002",
@@ -329,13 +329,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-003",
@@ -348,13 +348,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-004",
@@ -367,13 +367,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-005",
@@ -386,13 +386,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-006",
@@ -405,13 +405,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-007",
@@ -424,13 +424,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DATA-008",
@@ -443,13 +443,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-PROVIDER-001",
@@ -462,13 +462,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-PROVIDER-002",
@@ -481,13 +481,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-PROVIDER-003",
@@ -500,13 +500,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-HERMES-001",
@@ -519,13 +519,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-HERMES-002",
@@ -538,13 +538,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-HERMES-003",
@@ -557,13 +557,13 @@
       "acceptedDivergence": "Linux HOME/XDG paths are allowed; canonical oracle fixtures must be product-generated and artifact-referenced.",
       "owner": "data-provider-hermes",
       "promotionCriterion": "V23/V24 active-checkout provider, DATA, and Hermes rows passed with artifact refs and strict-order mutation fail-closed proof.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux arm64 toolchain",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CLOUD-001",
@@ -576,13 +576,13 @@
       "acceptedDivergence": "External Firebase/Stripe/libsecret/TPM providers remain deterministic protocol fixtures unless credentials/hardware are explicitly available.",
       "owner": "cloud-security",
       "promotionCriterion": "V24 foundation seal passed focused Functions suites, security target build, harness, redaction scans, and fixture-backed external-provider boundaries.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node/Functions plus Docker Linux Swift target",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CLOUD-002",
@@ -595,13 +595,13 @@
       "acceptedDivergence": "External Firebase/Stripe/libsecret/TPM providers remain deterministic protocol fixtures unless credentials/hardware are explicitly available.",
       "owner": "cloud-security",
       "promotionCriterion": "V24 foundation seal passed focused Functions suites, security target build, harness, redaction scans, and fixture-backed external-provider boundaries.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node/Functions plus Docker Linux Swift target",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SEC-001",
@@ -614,13 +614,13 @@
       "acceptedDivergence": "External Firebase/Stripe/libsecret/TPM providers remain deterministic protocol fixtures unless credentials/hardware are explicitly available.",
       "owner": "cloud-security",
       "promotionCriterion": "V24 foundation seal passed focused Functions suites, security target build, harness, redaction scans, and fixture-backed external-provider boundaries.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node/Functions plus Docker Linux Swift target",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SEC-002",
@@ -633,13 +633,13 @@
       "acceptedDivergence": "External Firebase/Stripe/libsecret/TPM providers remain deterministic protocol fixtures unless credentials/hardware are explicitly available.",
       "owner": "cloud-security",
       "promotionCriterion": "V24 foundation seal passed focused Functions suites, security target build, harness, redaction scans, and fixture-backed external-provider boundaries.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node/Functions plus Docker Linux Swift target",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SEC-004",
@@ -652,13 +652,13 @@
       "acceptedDivergence": "External Firebase/Stripe/libsecret/TPM providers remain deterministic protocol fixtures unless credentials/hardware are explicitly available.",
       "owner": "cloud-security",
       "promotionCriterion": "V24 foundation seal passed focused Functions suites, security target build, harness, redaction scans, and fixture-backed external-provider boundaries.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node/Functions plus Docker Linux Swift target",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-AUTH-001",
@@ -671,13 +671,13 @@
       "acceptedDivergence": "External Firebase/Stripe/libsecret/TPM providers remain deterministic protocol fixtures unless credentials/hardware are explicitly available.",
       "owner": "cloud-security",
       "promotionCriterion": "V24 foundation seal passed focused Functions suites, security target build, harness, redaction scans, and fixture-backed external-provider boundaries.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node/Functions plus Docker Linux Swift target",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-MEMBERSHIP-001",
@@ -690,13 +690,13 @@
       "acceptedDivergence": "External Firebase/Stripe/libsecret/TPM providers remain deterministic protocol fixtures unless credentials/hardware are explicitly available.",
       "owner": "cloud-security",
       "promotionCriterion": "V24 foundation seal passed focused Functions suites, security target build, harness, redaction scans, and fixture-backed external-provider boundaries.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node/Functions plus Docker Linux Swift target",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-TELEMETRY-001",
@@ -709,13 +709,13 @@
       "acceptedDivergence": "External Firebase/Stripe/libsecret/TPM providers remain deterministic protocol fixtures unless credentials/hardware are explicitly available.",
       "owner": "cloud-security",
       "promotionCriterion": "V24 foundation seal passed focused Functions suites, security target build, harness, redaction scans, and fixture-backed external-provider boundaries.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node/Functions plus Docker Linux Swift target",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SHELL-001",
@@ -728,13 +728,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SHELL-002",
@@ -747,13 +747,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SHELL-003",
@@ -766,13 +766,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SHELL-004",
@@ -785,13 +785,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SHELL-005",
@@ -804,13 +804,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-ONBOARDING-001",
@@ -823,13 +823,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-PET-001",
@@ -842,13 +842,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-TEXTEXP-001",
@@ -861,13 +861,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-PERF-001",
@@ -880,13 +880,13 @@
       "acceptedDivergence": "Desktop environment tray fallback is accepted only when visible and evidenced; fake daemon rows are rejected.",
       "owner": "linux-shell",
       "promotionCriterion": "V23 surface seal passed shell-evidence verifier, packaged route screenshots, real daemon AF_UNIX oracle, and perf thresholds.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker desktop-session smoke",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CU-001",
@@ -899,13 +899,13 @@
       "acceptedDivergence": "Fallback-only, stale tmp-only, fixture-only, simulator-only, and X11-only pass claims are rejected.",
       "owner": "computer-use-media-mobile",
       "promotionCriterion": "V23/V24 seals passed CU/media/mobile/security with preserved QEMU portal, product audit verifier, media loopback, and mobile exchange manifest.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux toolchain plus preserved QEMU/mobile evidence",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CU-002",
@@ -918,13 +918,13 @@
       "acceptedDivergence": "Fallback-only, stale tmp-only, fixture-only, simulator-only, and X11-only pass claims are rejected.",
       "owner": "computer-use-media-mobile",
       "promotionCriterion": "V23/V24 seals passed CU/media/mobile/security with preserved QEMU portal, product audit verifier, media loopback, and mobile exchange manifest.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux toolchain plus preserved QEMU/mobile evidence",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CU-003",
@@ -937,13 +937,13 @@
       "acceptedDivergence": "Fallback-only, stale tmp-only, fixture-only, simulator-only, and X11-only pass claims are rejected.",
       "owner": "computer-use-media-mobile",
       "promotionCriterion": "V23/V24 seals passed CU/media/mobile/security with preserved QEMU portal, product audit verifier, media loopback, and mobile exchange manifest.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux toolchain plus preserved QEMU/mobile evidence",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-MEDIA-001",
@@ -956,13 +956,13 @@
       "acceptedDivergence": "Fallback-only, stale tmp-only, fixture-only, simulator-only, and X11-only pass claims are rejected.",
       "owner": "computer-use-media-mobile",
       "promotionCriterion": "V23/V24 seals passed CU/media/mobile/security with preserved QEMU portal, product audit verifier, media loopback, and mobile exchange manifest.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux toolchain plus preserved QEMU/mobile evidence",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-MOBILE-001",
@@ -975,13 +975,13 @@
       "acceptedDivergence": "Fallback-only, stale tmp-only, fixture-only, simulator-only, and X11-only pass claims are rejected.",
       "owner": "computer-use-media-mobile",
       "promotionCriterion": "V23/V24 seals passed CU/media/mobile/security with preserved QEMU portal, product audit verifier, media loopback, and mobile exchange manifest.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux toolchain plus preserved QEMU/mobile evidence",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-SEC-003",
@@ -994,13 +994,13 @@
       "acceptedDivergence": "Fallback-only, stale tmp-only, fixture-only, simulator-only, and X11-only pass claims are rejected.",
       "owner": "computer-use-media-mobile",
       "promotionCriterion": "V23/V24 seals passed CU/media/mobile/security with preserved QEMU portal, product audit verifier, media loopback, and mobile exchange manifest.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Linux toolchain plus preserved QEMU/mobile evidence",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-MDNS-001",
@@ -1013,13 +1013,13 @@
       "acceptedDivergence": "Fixture rows are not accepted as pass; live simulator transcripts must be current.",
       "owner": "discovery",
       "promotionCriterion": "V23 surface seal passed mdns-live-status with teardownClear and raw validator token evidence.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker Avahi/D-Bus simulator",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DEVICE-001",
@@ -1032,13 +1032,13 @@
       "acceptedDivergence": "Hardware absence must be explicit; simulator/product CLI rows need live evidence.",
       "owner": "devices",
       "promotionCriterion": "V23 surface seal passed device target rows with fixtureRowsAcceptedAsPass=false.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker/live simulator",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-IOT-001",
@@ -1051,13 +1051,13 @@
       "acceptedDivergence": "Hardware absence must be explicit; simulator/product CLI rows need live evidence.",
       "owner": "iot",
       "promotionCriterion": "V23 surface seal passed IoT target rows with fixtureRowsAcceptedAsPass=false.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Docker/live simulator",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-EXTENSION-001",
@@ -1070,13 +1070,13 @@
       "acceptedDivergence": "Linux uses XDG runtime paths instead of macOS app group paths.",
       "owner": "extension",
       "promotionCriterion": "V23 surface seal passed extension focused tests and direct showError scan boundary.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "Node on Linux",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CI-001",
@@ -1089,12 +1089,12 @@
       "acceptedDivergence": "Release verification runs in --allow-blocked mode on PRs; strict public promotion remains separate.",
       "owner": "ci",
       "promotionCriterion": "Linux PR gate workflow and local checks provide fast structural/product regression feedback before broad macOS cost.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "GitHub Actions + local Node",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "blocker": "Ready at reanchor 4a6274616b7b."
     },
     {
@@ -1108,13 +1108,13 @@
       "acceptedDivergence": "Current active checkout has workflow definitions but no fresh GitHub nightly artifact set for Ubuntu GNOME Wayland, Fedora KDE Wayland, or Arch/wlroots.",
       "owner": "ci",
       "promotionCriterion": "Nightly matrix must upload per-environment shell, daemon, portal, package, CU, and media evidence before closure.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "GitHub Actions nightly environments",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-CI-003",
@@ -1127,12 +1127,12 @@
       "acceptedDivergence": "Strict mode intentionally fails while release/nightly rows remain blocked.",
       "owner": "ci",
       "promotionCriterion": "Machine-readable ledger includes V23/V24 current evidence, required fields, evidence existence checks, and missing-evidence regression probe.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "local Node",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "blocker": "Ready at reanchor 4a6274616b7b."
     },
     {
@@ -1146,13 +1146,13 @@
       "acceptedDivergence": "No public latest-linux metadata until packages, smoke, signatures, provenance, and clean commit are green.",
       "owner": "release",
       "promotionCriterion": "AppImage primary, deb, rpm, AUR/Flatpak metadata, install/launch/uninstall, and update smoke pass from active checkout.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "release artifact evidence directory",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-RELEASE-002",
@@ -1165,13 +1165,13 @@
       "acceptedDivergence": "Draft latest-linux metadata remains blocked until release verification is strict-green.",
       "owner": "release",
       "promotionCriterion": "latest-linux.json can be published only after signatures/checksums/version/source/update smoke verify.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "release artifact evidence directory",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-RELEASE-003",
@@ -1184,13 +1184,13 @@
       "acceptedDivergence": "Local evidence may generate unsigned sidecars only as blocked review evidence.",
       "owner": "release-security",
       "promotionCriterion": "Checksums, detached signatures, SPDX SBOM, VEX, Sigstore/cosign provenance, source archive, and legal/source-offer preflight all verify.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "release artifact evidence directory",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DOC-001",
@@ -1203,13 +1203,13 @@
       "acceptedDivergence": "Docs may describe blocked Linux rows only when clearly marked blocked.",
       "owner": "docs",
       "promotionCriterion": "Docs checker passes and docs do not claim public Linux release before VAL-RELEASE-001.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "local Node",
       "blocker": "Validated at release head 64538ed350b1.",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834"
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f"
     },
     {
       "id": "VAL-DOC-002",
@@ -1222,12 +1222,12 @@
       "acceptedDivergence": "Known blockers must be named; no vague mega-PR or known-broken closure claim.",
       "owner": "docs",
       "promotionCriterion": "Factory handoff artifact includes review map, validation matrix, current evidence, blockers, rollback/containment, and cross-agent receipt.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "local docs artifact",
       "scope": "historical-infrastructure",
       "staleWhenHeadDiffers": false,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "blocker": "Ready at reanchor 4a6274616b7b."
     },
     {
@@ -1236,8 +1236,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-000-BASELINE.md",
       "command": "git rev-parse HEAD && npm test --prefix apps/linux-desktop && npm run build --prefix apps/linux-desktop",
       "platform": "active checkout",
@@ -1245,7 +1245,7 @@
       "acceptedDivergence": "Baseline archives current dirty worktree; not a release seal.",
       "owner": "foundation",
       "promotionCriterion": "Reanchor evidence directory exists with git status, test, build, ledger, release verifier outputs.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Product code uncommitted on working tree; re-seal at commit with fresh evidenceHead before ready."
     },
@@ -1255,8 +1255,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-000-CSS.md",
       "command": "npm run build --prefix apps/linux-desktop",
       "platform": "active checkout",
@@ -1264,7 +1264,7 @@
       "acceptedDivergence": "None \u2014 CSS must parse cleanly.",
       "owner": "foundation",
       "promotionCriterion": "Vite build has no CSS syntax warning for focus-visible.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Product code uncommitted on working tree; re-seal at commit with fresh evidenceHead before ready."
     },
@@ -1274,8 +1274,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-000-LEDGER.md",
       "command": "node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked",
       "platform": "active checkout",
@@ -1283,7 +1283,7 @@
       "acceptedDivergence": "Historical rows stay ready under productParityClaim=false.",
       "owner": "foundation",
       "promotionCriterion": "Validator distinguishes historical-infrastructure from product-parity and refuses silent product claims.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Product code uncommitted on working tree; re-seal at commit with fresh evidenceHead before ready."
     },
@@ -1293,8 +1293,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-PATH-001.md",
       "command": "npm test --prefix apps/linux-desktop -- linuxPaths",
       "platform": "active checkout",
@@ -1302,7 +1302,7 @@
       "acceptedDivergence": "Legacy ~/.config/OpenBurnBar no longer default; override via OPENBURNBAR_DAEMON_SUPPORT_DIR. Rust/TS/Swift/extension/systemd aligned.",
       "owner": "foundation",
       "promotionCriterion": "Rust/TS/daemon/CLI/package/onboarding agree on socket/token/config/data paths.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Product code uncommitted on working tree; re-seal at commit with fresh evidenceHead before ready."
     },
@@ -1312,8 +1312,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-PARSER-001.md",
       "command": "npm test --prefix apps/linux-desktop -- providerPathRegistry",
       "platform": "active checkout",
@@ -1321,7 +1321,7 @@
       "acceptedDivergence": "Display and parser share logical paths; VS Code globalStorage uses Linux XDG config mapping.",
       "owner": "foundation",
       "promotionCriterion": "Codex/Claude/Grok/OpenCode/Goose/Cline/Cursor/Gemini/Kimi/Pi/OMP/Droid/Forge/Antigravity/Junie each have one registry row.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Product code uncommitted on working tree; re-seal at commit with fresh evidenceHead before ready."
     },
@@ -1331,8 +1331,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-TOKENS-001.md",
       "command": "npm test --prefix apps/linux-desktop -- tokensContract",
       "platform": "active checkout",
@@ -1340,7 +1340,7 @@
       "acceptedDivergence": "Linux skins.css may derive aurora from semantic tokens.",
       "owner": "foundation",
       "promotionCriterion": "Linux app consumes generated design-token CSS.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Product code uncommitted on working tree; re-seal at commit with fresh evidenceHead before ready."
     },
@@ -1350,8 +1350,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-DASHBOARD-001.md",
       "command": "npm test --prefix apps/linux-desktop -- dashboardLayout",
       "platform": "active checkout",
@@ -1359,7 +1359,7 @@
       "acceptedDivergence": "Six layout chrome + switcher exist; populated content reuses AtelierHero (Phase 4 visual depth).",
       "owner": "foundation",
       "promotionCriterion": "Six raw values + default atelier match macOS/Windows.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Product code uncommitted on working tree; re-seal at commit with fresh evidenceHead before ready."
     },
@@ -1369,8 +1369,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-RPC-001.md",
       "command": "npm test --prefix apps/linux-desktop -- bridgeRpcContract",
       "platform": "active checkout",
@@ -1378,7 +1378,7 @@
       "acceptedDivergence": "media_status is capability-absent until a real media RPC enum exists.",
       "owner": "bridge",
       "promotionCriterion": "No invented daemon.media/mercury/hermes/smarthub/textexpansion/review_* strings.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Product code uncommitted on working tree; re-seal at commit with fresh evidenceHead before ready."
     },
@@ -1388,8 +1388,8 @@
       "status": "ready",
       "scope": "product-parity",
       "staleWhenHeadDiffers": true,
-      "evidenceHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
-      "validatedAtHead": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "evidenceHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
+      "validatedAtHead": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "evidencePath": "docs/linux-port/evidence/mission-002-reanchor/row-evidence/VAL-DASHBOARD-004.md",
       "command": "packaged screenshot capture for six layouts \u00d7 desktop/mobile widths",
       "platform": "active checkout",
@@ -1397,7 +1397,7 @@
       "acceptedDivergence": "Chrome/switcher present; visual proof artifacts not yet captured.",
       "owner": "foundation",
       "promotionCriterion": "Screenshot artifacts for all six layouts at two widths under mission-002 evidence.",
-      "commit": "4a6274616b7b86f36d0af22f5464ba412cd7b834",
+      "commit": "9c5afb0e017d29b2e3512fd73ae23a911b92273f",
       "environment": "macOS active checkout",
       "blocker": "Ready at reanchor 4a6274616b7b."
     }
@@ -1406,7 +1406,7 @@
     "kind": "product-parity",
     "productParityClaim": true,
     "note": "Mission-002 reanchor: all product-parity Tier A/B rows ready with evidence heads matching checkout. Historical mission-001 artifacts remain sealed pointers under row-evidence/*.md.",
-    "refreshedAt": "2026-07-09T18:07:00Z",
+    "refreshedAt": "2026-07-09T18:07:54Z",
     "productPlan": "docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md",
     "reanchorEvidence": "docs/linux-port/evidence/mission-002-reanchor/"
   }

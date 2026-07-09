@@ -1,12 +1,13 @@
 # VAL-RELEASE-003
 
 - id: VAL-RELEASE-003
+- evidenceHead: 9c5afb0e017d29b2e3512fd73ae23a911b92273f
+- validatedAt: 2026-07-09T18:07:54Z
+- branch: windows/liquid-glass-kernel-reskin
+
 - tier: A
 - scope: historical-infrastructure
 - status: ready
-- validatedAt: 2026-07-09T18:07:00Z
-- evidenceHead: 4a6274616b7b86f36d0af22f5464ba412cd7b834
-- branch: windows/liquid-glass-kernel-reskin
 
 ## Proof
 
