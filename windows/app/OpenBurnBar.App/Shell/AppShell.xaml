@@ -57,12 +57,12 @@
                 </StackPanel>
 
                 <!-- Section switcher (macOS DashboardSectionSwitcher Menu) -->
-                <DropDownButton x:Name="SectionSwitcher"
-                                Grid.Column="1"
-                                Style="{StaticResource LiquidGlassInteractiveStyle}"
-                                theme:LiquidGlass.Interactive="True"
-                                VerticalAlignment="Center"
-                                ToolTipService.ToolTip="Switch section">
+                <Button x:Name="SectionSwitcher"
+                        Grid.Column="1"
+                        Style="{StaticResource LiquidGlassInteractiveStyle}"
+                        theme:LiquidGlass.Interactive="True"
+                        VerticalAlignment="Center"
+                        ToolTipService.ToolTip="Switch section">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon x:Name="SectionGlyph"
                                   FontFamily="Segoe MDL2 Assets"
@@ -79,10 +79,10 @@
                                   Glyph="&#xE70D;"
                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
                     </StackPanel>
-                    <DropDownButton.Flyout>
+                    <Button.Flyout>
                         <MenuFlyout x:Name="SectionMenu" Placement="Bottom" />
-                    </DropDownButton.Flyout>
-                </DropDownButton>
+                    </Button.Flyout>
+                </Button>
 
                 <!-- Spacer -->
                 <Border Grid.Column="2" />
