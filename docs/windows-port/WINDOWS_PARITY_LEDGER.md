@@ -24,7 +24,7 @@ This ledger is the anti-false-green gate:
 1. Wire production composition (no default sample/stub/demo/mock path).
 2. Add or point to an automated **test-shaped** path (`*Tests*`, `windows/tests/`, `Fixtures`, `*Parity*`, golden fixtures).
 3. Commit an evidence artifact under `docs/windows-port/evidence/` with markers `Ledger row:` and `What this proves` (≥200 chars). No `PLACEHOLDER`.
-4. List only **production** files in `blocking_paths` (prefix `windows/`, `OpenBurnBarCore/`, `packages/`, or `crates/`). Do **not** put evidence markdown there.
+4. List only **non-test production** files in `blocking_paths` (prefix `windows/`, `OpenBurnBarCore/`, `packages/`, or `crates/`). Test trees (`windows/tests/`, `*.Tests`, `*Tests.cs`) do **not** earn Real production credit. Do **not** put evidence markdown there.
 5. Run:
 
 ```bash

@@ -61,7 +61,7 @@
 | **Quota adapters (4 mechanisms: parse + acquisition)** | `Services/ProviderQuota/` | Portable C# parse core (`app/OpenBurnBar.App.Presentation/Quota/`) + acquisition halves (`app/OpenBurnBar.App.Quota.Acquisition` + `.Windows`) | `OpenBurnBar.App.Quota.Tests` (4 parsers + fixtures) + `OpenBurnBar.App.Quota.Acquisition.Tests` (57: sources, hook installer, coordinator, watcher) | **Acquisition built + tested on macOS** (statusline file+hook, Cursor `state.vscdb`, Codex `wham/usage`, Anthropic headers, coordinator); **live-host proof WS-D** (real `FileSystemWatcher`/`%APPDATA%`/hook + WinUI XAML build) | `windows/quota-acquisition-adapters` |
 | **SQLite / SQLCipher seam (C4)** | GRDB + 53 migrations (`AgentLens/`) | `windows/storage/OpenBurnBar.Storage` + `Microsoft.Data.Sqlite` + `bundle_e_sqlcipher` — the **permanent** Windows storage owner per **WPD-0005** (Engine computes, shell persists) | `windows/storage/OpenBurnBar.Storage.Tests` (`DbByteCompatVectorTests`, 10/10 per WPD-0004) | **Byte-compat proven** (read seam); prune = architecture, gated by `verify-windows-storage-architecture.sh` | **#1251**; **WPD-0004**; **WPD-0005** |
 | **CloudVault / E2EE** | `CloudVaultCrypto` (Swift) | `windows/cloudsync/OpenBurnBar.CloudSync.Crypto` | `windows/tests/cloudsync/*Crypto.Tests` + KAT `cloudvault-kat-vectors.json` | **KAT parity** on macOS host | **#1251**; shared KAT triplets |
-| **Firestore REST + models** | Native Firebase SDK | `OpenBurnBar.CloudSync` gateway + model codecs | `OpenBurnBar.CloudSync.Tests` (`ModelParityTests`, REST fakes) | **Authored**; live TPM App Check pending | R14; `windows/cloudsync/appcheck/` |
+| **Firestore REST + models** | Native Firebase SDK | `OpenBurnBar.CloudSync` gateway + model codecs | `OpenBurnBar.CloudSync.Tests` (`ModelParityTests`, REST fakes) | **Substituted** (codecs/tests); live TPM App Check **Blocked** | R14; `windows/cloudsync/appcheck/` |
 | **App Check (R14)** | Apple App Attest | TPM `NCryptCreateClaim` + mint backend | `OpenBurnBar.CloudSync.AppCheck.Tests` | **Server half built**; Win11 Pro TPM pass **Alberto** | HANDOFF §R14; not **#1253** alone |
 | **Rust transport** | `burnbar-remote`, `openburnbar-iroh` | `*-pc-windows-msvc` targets | `build-*-windows.yml` workflows | **Targets authored** | **WPD-0002**; **#1253** (A3 CI) |
 | **Engine host (Option A)** | `OpenBurnBarCore` Engine subset | Swift-on-Windows compile + walking skeleton | `openburnbar-engine-windows.yml` | **Proven on dev host**; CI gate hardening | **#1252** (B0 ADR **WPD-0007** narrative); **#1257** (B0 spike) |
@@ -84,14 +84,14 @@
 | **Distribution: MSIX** | B | DMG + notarize | MSIX + Authenticode | `openburnbar-release-windows.yml`, `pr-windows-dist.yml` | **Pipeline authored** | **#1255** (E2 MSIX) |
 | **Distribution: update feed** | A | Ed25519 appcast | Pinned Ed25519 feed verifier | `OpenBurnBar.Updater.Tests`, `OpenBurnBar.Dist.Tests` | **Verifier tests green** | R19; dist tests |
 | **Distribution: winget/choco** | B | Homebrew cask | winget + Chocolatey manifests | Release workflow + §6 W0 | **Pending** external publisher | W0 Alberto |
-| **SBOM / Sigstore** | A | Release pipeline | Windows release job (keyless attest) | `release.yml` pattern / `openburnbar-release-windows.yml` | **Authored**; attach logs in §5 | G5 bundle |
+| **SBOM / Sigstore** | A | Release pipeline | Windows release job (keyless attest) | `release.yml` pattern / `openburnbar-release-windows.yml` | **Blocked** (pipeline present — not Real until signed release evidence in §5) | G5 bundle |
 | **Integrations: Cast** | B | `Services/Cast/` | `OpenBurnBar.Integrations.Cast.Tests` | Protocol + mDNS tests | **Unit parity** | W9 |
 | **Integrations: Home Assistant** | B | `Services/HomeAssistant/` | `OpenBurnBar.Integrations.Tests` | Client + mapper tests | **Unit parity** | W9 |
 | **Integrations: Mercury** | B | AVFoundation pipeline | RFB + media codec port | `OpenBurnBar.Integrations.Mercury.Tests` | **Protocol tests**; AV G4 | W9 |
 | **Pet / glTF** | B | SceneKit + `.glb` | `WebView2PetGltfHost` + overlay | `OpenBurnBar.App.Pet.Tests` | **Behavior + overlay tests** | G4 |
 | **Theme / glass** | B | `LiquidGlass.swift` | Mica/Acrylic shim | `OpenBurnBar.App.Theme.Tests` | **Transparency contract** | Accepted drift §4 R7 |
 | **mDNS / SmartHub** | B | Bonjour | DNS-SD seam | `MdnsAdvertisementTests` in integrations | **Partial** | W1 PAL |
-| **CI: Windows fast** | — | — | `pr-windows-fast.yml` + `pr-windows-gate` | Path-filtered aggregate | **Authored** | **#1253** (A3) |
+| **CI: Windows fast** | — | — | `pr-windows-fast.yml` + `pr-windows-gate` | Path-filtered aggregate | **Substituted** (gate wired; not the required full suite) | **#1253** (A3) |
 | **CI: full XamlCompiler** | — | — | `pr-windows-full.yml` (Win11 `windows-latest`) | Full WinUI build | **Required on Windows**; macOS ceiling documented | Assignment A2 flip §6 |
 
 ---
@@ -193,7 +193,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 | Verdict | When |
 |---------|------|
 | **GO (G5)** | §5 has no missing **test/CI** rows; MSIX + feed verifiers green; §1–3 have no **undeclared** stub labeled “parity”; Alberto placeholders for screenshots/TPM are explicitly outstanding but **do not** block engine/distribution evidence already green |
-| **FIX** | Any Tier-A row lacks committed vector/test; `pr-windows-full` red; App Check production path unproven **and** not covered by written risk acceptance; parity matrix row marked **Authored** without cited test project |
+| **FIX** | Any Tier-A row lacks committed vector/test; `pr-windows-full` red; App Check production path unproven **and** not covered by written risk acceptance; any claim of parity that uses forbidden **Authored**/route-resolves language instead of ledger Real/Substituted/DeferredApproved/Blocked |
 | **PIVOT** | SQLCipher byte-compat regresses; App Check TPM path fails on Win11 Pro with no approved cloud posture (`HANDOFF.md` open decision #6) |
 
 ---

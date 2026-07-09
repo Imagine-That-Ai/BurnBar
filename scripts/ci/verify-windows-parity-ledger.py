@@ -216,21 +216,43 @@ def skip_token_scan(norm: str) -> bool:
     return any(norm == p.rstrip("/") or norm.startswith(p) for p in SKIP_TOKEN_SCAN_PREFIXES)
 
 
-def is_test_path(norm: str) -> bool:
-    """Heuristic: path must look like a test harness, not arbitrary production code."""
+def is_test_tree_path(norm: str) -> bool:
+    """True when the path lives in a test project/tree (not production code).
+
+    Used to deny Real production-prefix *credit* for ``windows/tests/…`` and
+    ``*.Tests`` projects so a Real row cannot satisfy blocking_paths with only
+    test sources. Does **not** treat Sources/*Parity harnesses as test trees.
+    """
+    parts = Path(norm).parts
+    for part in parts:
+        if part in {"tests", "Tests", "Fixtures", "AgentLensTests", "__tests__"}:
+            return True
+        # e.g. OpenBurnBar.Storage.Tests
+        if part.endswith(".Tests"):
+            return True
     name = Path(norm).name
-    parts = set(Path(norm).parts)
-    if parts & {"tests", "Tests", "Fixtures", "AgentLensTests", "__tests__"}:
-        return True
     if re.search(r"Tests?\.(cs|swift|py|sh|mjs|ts|tsx)$", name, re.I):
-        return True
-    if re.search(r"Parity\.(swift|cs)$", name):
-        return True
-    if "golden" in name.lower() and name.endswith((".json", ".jsonl", ".txt")):
         return True
     if name.endswith(".test.sh") or name.endswith(".test.mjs") or name.endswith(".test.py"):
         return True
     return False
+
+
+def is_test_path(norm: str) -> bool:
+    """Heuristic: path must look like a test harness for the Real *tests* field."""
+    if is_test_tree_path(norm):
+        return True
+    name = Path(norm).name
+    if re.search(r"Parity\.(swift|cs)$", name):
+        return True
+    if "golden" in name.lower() and name.endswith((".json", ".jsonl", ".txt")):
+        return True
+    return False
+
+
+def counts_as_production_blocking(norm: str) -> bool:
+    """Production-prefix path that is not a test tree — eligible for Real credit."""
+    return is_production_prefix(norm) and not is_test_tree_path(norm)
 
 
 def iter_scan_files(root: Path, *, code_only: bool = False) -> list[Path]:
@@ -504,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
             elif evidence and tests and test_ok == 0:
                 errors.append(f"{rid}: Real row requires ≥1 test-shaped path")
 
-            # Production-prefix + scannable blocking paths
+            # Production-prefix + scannable blocking paths (test trees do not count)
             prod_count = 0
             rels_for_scan: list[str] = []
             for b in blocking:
@@ -521,7 +543,7 @@ def main(argv: list[str] | None = None) -> int:
                 if not root.exists():
                     errors.append(f"{rid}: blocking path missing: {norm}")
                     continue
-                if is_production_prefix(norm):
+                if counts_as_production_blocking(norm):
                     prod_count += 1
                     files = iter_scan_files(root, code_only=False)
                     if root.is_dir() and not files:
@@ -532,11 +554,14 @@ def main(argv: list[str] | None = None) -> int:
                         errors.append(
                             f"{rid}: production blocking file is not scannable text: {norm}"
                         )
+                elif is_production_prefix(norm) and is_test_tree_path(norm):
+                    # Still token-scan test paths if listed, but they earn no credit.
+                    pass
             if blocking and prod_count == 0:
                 errors.append(
-                    f"{rid}: Real row requires ≥1 blocking_paths entry under "
-                    f"production prefixes {list(PRODUCTION_PREFIXES)} "
-                    f"(docs-only paths cannot satisfy Real)"
+                    f"{rid}: Real row requires ≥1 non-test production blocking_paths "
+                    f"entry under {list(PRODUCTION_PREFIXES)} "
+                    f"(docs-only and test trees such as windows/tests/ cannot satisfy Real)"
                 )
 
             for msg in collect_token_hits(repo, rels_for_scan):

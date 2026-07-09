@@ -331,9 +331,32 @@ $(all_routes_rows Blocked)
     owner_lane: test
 EOF
 )"
-run_case fail "production prefixes" \
+run_case fail "non-test production blocking_paths" \
   --repo-root "$tmproot/docsonly" \
   --ledger "$tmproot/docsonly/docs/windows-port/WINDOWS_PARITY_LEDGER.yml"
+
+# ── 3g2. Test-tree-only blocking_paths fails (windows/tests/ is not production) ─
+mk_repo "$tmproot/testonly"
+write_ledger "$tmproot/testonly" "$(cat <<EOF
+$(all_routes_rows Blocked)
+  - id: real-test-tree-only
+    macos_route: extra-tt
+    macos_capability: "x"
+    windows_route: "y"
+    windows_capability: "z"
+    status: Real
+    evidence:
+      - docs/windows-port/evidence/ok.md
+    tests:
+      - windows/tests/CleanCoreTests.cs
+    blocking_paths:
+      - windows/tests/CleanCoreTests.cs
+    owner_lane: test
+EOF
+)"
+run_case fail "test trees such as windows/tests/" \
+  --repo-root "$tmproot/testonly" \
+  --ledger "$tmproot/testonly/docs/windows-port/WINDOWS_PARITY_LEDGER.yml"
 
 # ── 3h. Absolute / .. path fails ────────────────────────────────────────────
 mk_repo "$tmproot/escape"
