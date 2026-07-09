@@ -46,6 +46,7 @@ struct RootNavigationView: View {
     @State private var burnQuotaStore = QuotaStore()
     @State private var burnDashboardStore = DashboardStore()
     @State private var burnActivityStore = ActivityStore()
+    @State private var communityStore = CommunityStore()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var showHermesSheet = false
@@ -372,7 +373,8 @@ struct RootNavigationView: View {
                         dashboard: pulseDashboardStore,
                         quotaStore: pulseQuotaStore,
                         sessionsStore: pulseSessionsStore,
-                        hermesService: pulseHermesService
+                        hermesService: pulseHermesService,
+                        communityStore: communityStore
                     )
                     case .burn:     BurnView(
                         quotaStore: burnQuotaStore,
@@ -402,11 +404,18 @@ struct RootNavigationView: View {
                     )
                     case .dataVault: DataVaultAdaptiveControlView()
                     case .memory: PensieveMemorySearchView()
+                    case .community:
+                        CommunityView(dashboard: pulseDashboardStore, communityStore: communityStore)
+                            .navigationTitle("Community")
                     }
                 }
                 .navigationDestination(for: SettingsPageRoute.self) { route in
                     SettingsHubView.destination(for: route, authStore: authStore)
                         .environment(settingsRouter)
+                }
+                .navigationDestination(for: CommunityRoute.self) { _ in
+                    CommunityView(dashboard: pulseDashboardStore, communityStore: communityStore)
+                        .navigationTitle("Community")
                 }
                 .navigationDestination(for: TokenUsage.self) { usage in
                     SessionDetailView(usage: usage)

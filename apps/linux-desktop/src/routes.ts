@@ -1,6 +1,7 @@
 export type ShellRoute =
   | 'overview'
   | 'insights'
+  | 'community'
   | 'database'
   | 'providers'
   | 'projects'
@@ -25,7 +26,8 @@ export type RouteMeta = {
 
 export const ROUTES: RouteMeta[] = [
   { id: 'overview', label: 'Overview', group: 'dashboard', description: 'Local peer health and recent activity.' },
-  { id: 'insights', label: 'Insights', group: 'dashboard', description: 'Usage and investigation surfaces backed by the daemon when available.' },
+  { id: 'community', label: 'Community', group: 'dashboard', description: 'Anonymous rankings, percentiles, and consent-first sharing.' },
+  { id: 'insights', label: 'Insights', group: 'dashboard', description: 'Editorial observatory briefs, anomalies, and recommendations.' },
   { id: 'database', label: 'Database', group: 'dashboard', description: 'Encrypted local store status and migration health.' },
   { id: 'providers', label: 'Providers & models', group: 'dashboard', description: 'Provider credentials, routing, and model catalog.' },
   { id: 'projects', label: 'Projects', group: 'dashboard', description: 'Workspace projects and code memory scope.' },

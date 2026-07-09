@@ -153,6 +153,17 @@ object DataDomains {
             sealingScheme = null,
         ),
         DataDomain(
+            id = "community", title = "Community", icon = "person.3.fill",
+            encryptionTier = EncryptionTier.SERVER_READABLE, summary = "Consent-gated Community participation: local-only L1 state, anonymous leaderboard profile metadata, server-owned share snapshots, public k-anonymous leaderboard aggregates, and opt-in Looking Glass trace export metadata. City sharing uses approximate city keys only; raw coordinates are never stored.",
+            serverSees = listOf("consent ladder states", "anonymous handles and anonIds", "coarse country/region/city keys", "per-window token and cost aggregates", "model/purpose mix totals", "Looking Glass trace metadata and export bundle references"), deviceOnly = listOf("raw location coordinates", "private analytics when L2/L3 are not granted", "manual city text before sync"),
+            firestorePaths = listOf("community", "looking_glass_traces", "looking_glass_exports"), storagePaths = listOf("looking_glass_exports/{uid}/{exportID}.{format}"),
+            countSource = "community", byteSource = "looking_glass_exports.sizeBytes",
+            retention = "until_revoked", actions = listOf("view", "export", "delete", "revoke"),
+            entitlementGate = null, suspensionSurface = null,
+            cloudVaultRewrapStrategy = null,
+            sealingScheme = null,
+        ),
+        DataDomain(
             id = "audit_timeline", title = "Access Audit Timeline", icon = "list.bullet.rectangle.portrait.fill",
             encryptionTier = EncryptionTier.SERVER_READABLE, summary = "A unified, tamper-evident log of who/what accessed your data, when — across every device, agent, and grant.",
             serverSees = listOf("actor", "action", "domain", "timestamp", "hash-chain links", "generic notification routing ids"), deviceOnly = listOf(),

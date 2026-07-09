@@ -338,6 +338,7 @@ struct RootTabView: View {
     @State private var burnQuotaStore = QuotaStore()
     @State private var burnDashboardStore = DashboardStore()
     @State private var burnActivityStore = ActivityStore()
+    @State private var communityStore = CommunityStore()
 
     private var insightsStack: some View {
         AgentInsightsTabScreen(
@@ -355,10 +356,15 @@ struct RootTabView: View {
                 dashboard: pulseDashboardStore,
                 quotaStore: pulseQuotaStore,
                 sessionsStore: pulseSessionsStore,
-                hermesService: pulseHermesService
+                hermesService: pulseHermesService,
+                communityStore: communityStore
             )
                 .navigationDestination(for: TokenUsage.self) { SessionDetailView(usage: $0) }
                 .navigationDestination(for: AgentProvider.self) { ProviderDashboardView(provider: $0) }
+                .navigationDestination(for: CommunityRoute.self) { _ in
+                    CommunityView(dashboard: pulseDashboardStore, communityStore: communityStore)
+                        .navigationTitle("Community")
+                }
         }
     }
 
@@ -412,6 +418,9 @@ struct RootTabView: View {
                 )
                 case .dataVault: DataVaultAdaptiveControlView()
                 case .memory: PensieveMemorySearchView()
+                case .community:
+                    CommunityView(dashboard: pulseDashboardStore, communityStore: communityStore)
+                        .navigationTitle("Community")
                 }
             }
             .navigationDestination(for: SettingsPageRoute.self) { route in

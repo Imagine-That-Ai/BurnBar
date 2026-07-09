@@ -123,6 +123,11 @@ export const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
   },
   entitlements_billing: { countCollection: "entitlements" },
   device_trust_keys: { countCollection: "escrow_devices" },
+  community: {
+    countCollection: "community",
+    byteCollection: "looking_glass_exports",
+    byteField: "sizeBytes",
+  },
   audit_timeline: { countCollection: "unified_audit_log" },
 };
 

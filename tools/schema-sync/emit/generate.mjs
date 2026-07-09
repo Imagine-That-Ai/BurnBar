@@ -1546,6 +1546,465 @@ data class FirestoreModelBenchmarkSourceStatusDoc(
       },
     },
   },
+  "community": {
+    models: {
+      CommunityConsent: {
+        ts: `export type ConsentTriState = "unset" | "granted" | "declined";
+
+export type GeographyTier = "world" | "country" | "region" | "city";
+
+export interface CommunityTierConsent {
+  world: string;
+  country: string;
+  region: string;
+  city: string;
+}
+
+/// Firestore: users/{uid}/community/consent
+export interface CommunityConsentDoc {
+  l1Analytics: string;
+  l2Rankings: string;
+  l2Tiers: CommunityTierConsent;
+  l3LookingGlass: string;
+  locationConsent: string;
+  schemaVersion: number;
+  updatedAt: string;
+  optedInAt?: string;
+}`,
+        swift: `public enum FirestoreConsentTriState: String, Codable, Sendable, CaseIterable {
+    case unset
+    case granted
+    case declined
+}
+
+public enum FirestoreGeographyTier: String, Codable, Sendable, CaseIterable {
+    case world
+    case country
+    case region
+    case city
+}
+
+public struct FirestoreCommunityTierConsent: Codable, Sendable, Equatable {
+    public var world: String
+    public var country: String
+    public var region: String
+    public var city: String
+}
+
+/// Firestore: users/{uid}/community/consent
+public struct FirestoreCommunityConsentDoc: Codable, Sendable, Equatable {
+    public var l1Analytics: String
+    public var l2Rankings: String
+    public var l2Tiers: FirestoreCommunityTierConsent
+    public var l3LookingGlass: String
+    public var locationConsent: String
+    public var schemaVersion: Int
+    public var updatedAt: String
+    public var optedInAt: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityTierConsent(
+    val world: String = "unset",
+    val country: String = "unset",
+    val region: String = "unset",
+    val city: String = "unset",
+)
+
+/// Firestore: users/{uid}/community/consent
+@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityConsentDoc(
+    val l1Analytics: String = "unset",
+    val l2Rankings: String = "unset",
+    val l2Tiers: FirestoreCommunityTierConsent = FirestoreCommunityTierConsent(),
+    val l3LookingGlass: String = "unset",
+    val locationConsent: String = "unset",
+    val schemaVersion: Long = 1,
+    val updatedAt: String = "",
+    val optedInAt: String? = null,
+)`,
+      },
+      CommunityProfile: {
+        ts: `/// Firestore: users/{uid}/community/profile
+export interface CommunityProfileDoc {
+  handle?: string;
+  anonId: string;
+  countryCode?: string;
+  regionKey?: string;
+  cityKey?: string;
+  schemaVersion: number;
+  updatedAt: string;
+}`,
+        swift: `/// Firestore: users/{uid}/community/profile
+public struct FirestoreCommunityProfileDoc: Codable, Sendable, Equatable {
+    public var handle: String?
+    public var anonId: String
+    public var countryCode: String?
+    public var regionKey: String?
+    public var cityKey: String?
+    public var schemaVersion: Int
+    public var updatedAt: String
+}`,
+        kotlin: `/// Firestore: users/{uid}/community/profile
+@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityProfileDoc(
+    val handle: String? = null,
+    val anonId: String = "",
+    val countryCode: String? = null,
+    val regionKey: String? = null,
+    val cityKey: String? = null,
+    val schemaVersion: Long = 1,
+    val updatedAt: String = "",
+)`,
+      },
+      CommunityShareSnapshot: {
+        ts: `export interface CommunityUsageTotal {
+  totalTokens: number;
+  costUSD: number;
+}
+
+export interface CommunityWindowTotals {
+  today: CommunityUsageTotal;
+  "7d": CommunityUsageTotal;
+  "30d": CommunityUsageTotal;
+  "90d": CommunityUsageTotal;
+  all_time: CommunityUsageTotal;
+}
+
+/// Firestore: users/{uid}/community/share_snapshot
+export interface CommunityShareSnapshotDoc {
+  windows: CommunityWindowTotals;
+  modelMix: Record<string, number>;
+  purposeMix: Record<string, number>;
+  sessionCount?: number;
+  countryCode?: string;
+  regionKey?: string;
+  cityKey?: string;
+  revoked?: boolean;
+  schemaVersion: number;
+  updatedAt: string;
+}`,
+        swift: `public struct FirestoreCommunityUsageTotal: Codable, Sendable, Equatable {
+    public var totalTokens: Int64
+    public var costUSD: Double
+
+    public init(totalTokens: Int64 = 0, costUSD: Double = 0) {
+        self.totalTokens = totalTokens
+        self.costUSD = costUSD
+    }
+}
+
+/// Uses CodingKeys to map the non-identifier Firestore keys (7d, 30d, 90d, all_time).
+public struct FirestoreCommunityWindowTotals: Codable, Sendable, Equatable {
+    public var today: FirestoreCommunityUsageTotal
+    public var sevenDay: FirestoreCommunityUsageTotal
+    public var thirtyDay: FirestoreCommunityUsageTotal
+    public var ninetyDay: FirestoreCommunityUsageTotal
+    public var allTime: FirestoreCommunityUsageTotal
+
+    enum CodingKeys: String, CodingKey {
+        case today
+        case sevenDay = "7d"
+        case thirtyDay = "30d"
+        case ninetyDay = "90d"
+        case allTime = "all_time"
+    }
+
+    public init(
+        today: FirestoreCommunityUsageTotal = .init(),
+        sevenDay: FirestoreCommunityUsageTotal = .init(),
+        thirtyDay: FirestoreCommunityUsageTotal = .init(),
+        ninetyDay: FirestoreCommunityUsageTotal = .init(),
+        allTime: FirestoreCommunityUsageTotal = .init()
+    ) {
+        self.today = today
+        self.sevenDay = sevenDay
+        self.thirtyDay = thirtyDay
+        self.ninetyDay = ninetyDay
+        self.allTime = allTime
+    }
+}
+
+/// Firestore: users/{uid}/community/share_snapshot
+public struct FirestoreCommunityShareSnapshotDoc: Codable, Sendable, Equatable {
+    public var windows: FirestoreCommunityWindowTotals
+    public var modelMix: [String: Double]
+    public var purposeMix: [String: Double]
+    public var sessionCount: Int?
+    public var countryCode: String?
+    public var regionKey: String?
+    public var cityKey: String?
+    public var revoked: Bool?
+    public var schemaVersion: Int
+    public var updatedAt: String
+
+    public init(
+        windows: FirestoreCommunityWindowTotals = .init(),
+        modelMix: [String: Double] = [:],
+        purposeMix: [String: Double] = [:],
+        sessionCount: Int? = nil,
+        countryCode: String? = nil,
+        regionKey: String? = nil,
+        cityKey: String? = nil,
+        revoked: Bool? = nil,
+        schemaVersion: Int = 1,
+        updatedAt: String = ""
+    ) {
+        self.windows = windows
+        self.modelMix = modelMix
+        self.purposeMix = purposeMix
+        self.sessionCount = sessionCount
+        self.countryCode = countryCode
+        self.regionKey = regionKey
+        self.cityKey = cityKey
+        self.revoked = revoked
+        self.schemaVersion = schemaVersion
+        self.updatedAt = updatedAt
+    }
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityUsageTotal(
+    val totalTokens: Long = 0,
+    val costUSD: Double = 0.0,
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityWindowTotals(
+    @get:PropertyName("today") @set:PropertyName("today")
+    var today: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+    @get:PropertyName("7d") @set:PropertyName("7d")
+    var sevenDay: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+    @get:PropertyName("30d") @set:PropertyName("30d")
+    var thirtyDay: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+    @get:PropertyName("90d") @set:PropertyName("90d")
+    var ninetyDay: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+    @get:PropertyName("all_time") @set:PropertyName("all_time")
+    var allTime: FirestoreCommunityUsageTotal = FirestoreCommunityUsageTotal(),
+)
+
+/// Firestore: users/{uid}/community/share_snapshot
+@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityShareSnapshotDoc(
+    val windows: FirestoreCommunityWindowTotals = FirestoreCommunityWindowTotals(),
+    val modelMix: Map<String, Double> = emptyMap(),
+    val purposeMix: Map<String, Double> = emptyMap(),
+    val sessionCount: Long? = null,
+    val countryCode: String? = null,
+    val regionKey: String? = null,
+    val cityKey: String? = null,
+    val revoked: Boolean? = null,
+    val schemaVersion: Long = 1,
+    val updatedAt: String = "",
+)`,
+      },
+      CommunityLeaderboard: {
+        ts: `export type RankMovement = "up" | "down" | "same" | "new";
+
+export interface LeaderboardEntry {
+  rank: number;
+  percentile: number;
+  handle?: string;
+  anonId: string;
+  totalTokens: number;
+  costUSD: number;
+  movement: string;
+}
+
+export interface PercentileBands {
+  p50: number;
+  p75: number;
+  p90: number;
+  p99: number;
+}
+
+/// Firestore: community_leaderboards/{window}_{tier}_{geoKey}
+export interface CommunityLeaderboardDoc {
+  window: string;
+  tier: string;
+  geoKey: string;
+  entries: LeaderboardEntry[];
+  percentiles: PercentileBands;
+  cohortSize: number;
+  belowThreshold: boolean;
+  kThreshold: number;
+  updatedAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public enum FirestoreRankMovement: String, Codable, Sendable, CaseIterable {
+    case up
+    case down
+    case same
+    case new
+}
+
+public struct FirestoreLeaderboardEntry: Codable, Sendable, Equatable, Identifiable {
+    public var rank: Int
+    public var percentile: Double
+    public var handle: String?
+    public var anonId: String
+    public var totalTokens: Int64
+    public var costUSD: Double
+    public var movement: String
+
+    public var id: String { anonId }
+}
+
+public struct FirestorePercentileBands: Codable, Sendable, Equatable {
+    public var p50: Double
+    public var p75: Double
+    public var p90: Double
+    public var p99: Double
+}
+
+/// Firestore: community_leaderboards/{window}_{tier}_{geoKey}
+public struct FirestoreCommunityLeaderboardDoc: Codable, Sendable, Equatable {
+    public var window: String
+    public var tier: String
+    public var geoKey: String
+    public var entries: [FirestoreLeaderboardEntry]
+    public var percentiles: FirestorePercentileBands
+    public var cohortSize: Int
+    public var belowThreshold: Bool
+    public var kThreshold: Int
+    public var updatedAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreLeaderboardEntry(
+    val rank: Long = 0,
+    val percentile: Double = 0.0,
+    val handle: String? = null,
+    val anonId: String = "",
+    val totalTokens: Long = 0,
+    val costUSD: Double = 0.0,
+    val movement: String = "new",
+) {
+    val id: String get() = anonId
+}
+
+@Keep
+@IgnoreExtraProperties
+data class FirestorePercentileBands(
+    val p50: Double = 0.0,
+    val p75: Double = 0.0,
+    val p90: Double = 0.0,
+    val p99: Double = 0.0,
+)
+
+/// Firestore: community_leaderboards/{window}_{tier}_{geoKey}
+@Keep
+@IgnoreExtraProperties
+data class FirestoreCommunityLeaderboardDoc(
+    val window: String = "",
+    val tier: String = "world",
+    val geoKey: String = "",
+    val entries: List<FirestoreLeaderboardEntry> = emptyList(),
+    val percentiles: FirestorePercentileBands = FirestorePercentileBands(),
+    val cohortSize: Long = 0,
+    val belowThreshold: Boolean = false,
+    val kThreshold: Long = 10,
+    val updatedAt: String = "",
+    val schemaVersion: Long = 1,
+)`,
+      },
+      LookingGlass: {
+        ts: `export type ModelPurposeCategory = "ui" | "backend" | "logic" | "writing" | "research" | "debugging" | "orchestration" | "other";
+
+/// Firestore: users/{uid}/looking_glass_traces/{id}
+export interface LookingGlassTraceDoc {
+  sessionId: string;
+  model: string;
+  provider: string;
+  purpose: string;
+  corrected: boolean;
+  inferredPurpose?: string;
+  totalTokens: number;
+  costUSD: number;
+  signals?: string[];
+  recordedAt: string;
+  schemaVersion: number;
+}
+
+/// Firestore: users/{uid}/looking_glass_exports/{id}
+export interface LookingGlassExportDoc {
+  storagePath: string;
+  format: string;
+  traceCount: number;
+  sizeBytes: number;
+  createdAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public enum FirestoreModelPurposeCategory: String, Codable, Sendable, CaseIterable {
+    case ui
+    case backend
+    case logic
+    case writing
+    case research
+    case debugging
+    case orchestration
+    case other
+}
+
+/// Firestore: users/{uid}/looking_glass_traces/{id}
+public struct FirestoreLookingGlassTraceDoc: Codable, Sendable, Equatable {
+    public var sessionId: String
+    public var model: String
+    public var provider: String
+    public var purpose: String
+    public var corrected: Bool
+    public var inferredPurpose: String?
+    public var totalTokens: Int64
+    public var costUSD: Double
+    public var signals: [String]?
+    public var recordedAt: String
+    public var schemaVersion: Int
+}
+
+/// Firestore: users/{uid}/looking_glass_exports/{id}
+public struct FirestoreLookingGlassExportDoc: Codable, Sendable, Equatable {
+    public var storagePath: String
+    public var format: String
+    public var traceCount: Int
+    public var sizeBytes: Int64
+    public var createdAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreLookingGlassTraceDoc(
+    val sessionId: String = "",
+    val model: String = "",
+    val provider: String = "",
+    val purpose: String = "other",
+    val corrected: Boolean = false,
+    val inferredPurpose: String? = null,
+    val totalTokens: Long = 0,
+    val costUSD: Double = 0.0,
+    val signals: List<String> = emptyList(),
+    val recordedAt: String = "",
+    val schemaVersion: Long = 1,
+)
+
+/// Firestore: users/{uid}/looking_glass_exports/{id}
+@Keep
+@IgnoreExtraProperties
+data class FirestoreLookingGlassExportDoc(
+    val storagePath: String = "",
+    val format: String = "jsonl",
+    val traceCount: Long = 0,
+    val sizeBytes: Long = 0,
+    val createdAt: String = "",
+    val schemaVersion: Long = 1,
+)`,
+      },
+    },
+  },
 };
 
 function emitTypeScript(domainId, models) {

@@ -6,6 +6,8 @@ import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
@@ -88,6 +90,11 @@ class FirestoreRepository {
 
     private val modelBenchmarkSnapshotsCollection: CollectionReference
         get() = db.collection("model_benchmark_snapshots")
+
+    suspend fun fetchDocument(path: String): DocumentSnapshot = db.document(path).get().await()
+
+    fun listenDocument(path: String, listener: (DocumentSnapshot?, FirebaseFirestoreException?) -> Unit): ListenerRegistration =
+        db.document(path).addSnapshotListener(listener)
 
     // ── Rollups ──
     suspend fun fetchRollups(): UsageRollups {

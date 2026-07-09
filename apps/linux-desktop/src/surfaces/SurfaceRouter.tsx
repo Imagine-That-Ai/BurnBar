@@ -13,6 +13,7 @@ import { UpdatesSurface } from './UpdatesSurface.js';
 import { ActivitySurface } from './activity/ActivitySurface.js';
 import { DatabaseSurface } from './database/DatabaseSurface.js';
 import { InsightsSurface } from './insights/InsightsSurface.js';
+import { CommunitySurface } from '../community/CommunitySurface.js';
 import { MemorySurface } from './memory/MemorySurface.js';
 import { ChatSurface } from './chat/ChatSurface.js';
 import { MissionsSurface } from './missions/MissionsSurface.js';
@@ -32,6 +33,7 @@ function makeDaemonSurface(route: ShellRoute, label: string): ComponentType {
 
 const SURFACES: Record<ShellRoute, ComponentType> = {
   overview: OverviewSurface,
+  community: CommunitySurface,
   insights: InsightsSurface,
   database: DatabaseSurface,
   providers: ProvidersSurface,

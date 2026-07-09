@@ -77,7 +77,7 @@ class FakeFirestore {
     // queues (voip_outbound / fcm_outbound) — T-PRV-02. Return a registered
     // collection if present, otherwise an empty one so the walk is a no-op.
     assert.ok(
-      ["provider_account_secret_refs", "voip_outbound", "fcm_outbound"].includes(path),
+      ["provider_account_secret_refs", "voip_outbound", "fcm_outbound", "community_handles"].includes(path),
       `unexpected root collection read: ${path}`,
     );
     return this.rootCollections.get(path) ?? new FakeCollection(path);
@@ -342,6 +342,10 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
 
   assert.ok(deletedPrefixes.includes("users/alice/"), "must delete the user storage prefix");
   assert.ok(deletedPrefixes.includes("avatars/alice"), "must delete the avatar object");
+  assert.ok(
+    deletedPrefixes.includes("looking_glass_exports/alice/"),
+    "must purge Looking Glass export objects under looking_glass_exports/{uid}/",
+  );
 }
 
 // A storage deletion failure must NOT fail the erase (best-effort), but must warn.
@@ -361,7 +365,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   });
 
   assert.equal(summary.failedSecretDestroys, 0, "storage failure is not a secret failure");
-  assert.equal(warnings.length, 2, "one warning per failed storage prefix");
+  assert.equal(warnings.length, 3, "one warning per failed storage prefix");
   assert.ok(db.deletedPaths.includes("users/alice"), "Firestore tree still erased despite storage failure");
 }
 

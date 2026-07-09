@@ -90,6 +90,15 @@ jobs:
         # the memory subsystem) and runs the app XCTest suite.
         run: OPENBURNBAR_ENABLE_COVERAGE=NO ./scripts/test-openburnbar-app.sh
 
+      - name: Run Community macOS app tests
+        # Named Community focus lane: the broad app step above catches general
+        # compile/test regressions; this step makes Community regressions visible
+        # as their own PR-gate failure.
+        run: |
+          OPENBURNBAR_ENABLE_COVERAGE=NO \
+          OPENBURNBAR_APP_TEST_FILTERS="OpenBurnBarTests/ModelPurposeClassifierTests" \
+            ./scripts/test-openburnbar-app.sh
+
   mobile-build-gate:
     name: Mobile build (compile gate)
     runs-on: macos-26

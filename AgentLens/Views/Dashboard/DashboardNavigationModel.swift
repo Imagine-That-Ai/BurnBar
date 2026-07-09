@@ -5,6 +5,7 @@ import SwiftUI
 enum DashboardMainRoute: Hashable {
     case overview
     case insights
+    case community
     case database
     case projects
     case missions
@@ -31,6 +32,7 @@ enum DashboardMainRoute: Hashable {
         switch self {
         case .overview: return "Overview"
         case .insights: return "Insights"
+        case .community: return "Community"
         case .database: return "Database"
         case .projects: return "Projects"
         case .missions: return "Missions"
@@ -47,6 +49,7 @@ enum DashboardMainRoute: Hashable {
         switch self {
         case .overview: return "chart.bar.xaxis"
         case .insights: return "lightbulb.max"
+        case .community: return "person.3.fill"
         case .database: return "archivebox"
         case .projects: return "folder"
         case .missions: return "flag"
@@ -87,6 +90,7 @@ enum DashboardMainRoute: Hashable {
         case .memoryReview: return "Review what OpenBurnBar learned"
         case .overview: return "All providers + models"
         case .insights: return "Editorial brief & anomalies"
+        case .community: return "Rankings, percentiles & consent"
         case .provider: return "Provider deep dive"
         case .model: return "Model deep dive"
         }
