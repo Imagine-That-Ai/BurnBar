@@ -84,6 +84,16 @@ public sealed class KernelBackdropBridgeTests
     }
 
     [Fact]
+    public void Catalog_ContainsLayoutMappedKernels()
+    {
+        // Dashboard layout switcher maps concepts → these ids (FamilyFor parity).
+        foreach (string id in new[] { "volumetric", "constellation", "mesh", "aurora", "flow" })
+        {
+            Assert.True(KernelCatalog.IsValid(id), "missing layout-mapped kernel: " + id);
+        }
+    }
+
+    [Fact]
     public void HashFragmentFor_UsesResolvedId()
     {
         Assert.Equal("mesh", KernelBackdropBridge.HashFragmentFor("mesh"));

@@ -122,11 +122,21 @@ public sealed partial class DashboardPage : Page
         bool capable = _webView2Capable && _kernel is not null;
         bool showKernel = KernelBackdropSelection.ShouldShowKernel(
             _kernelEnabled, capable, HostReady, HostFailed, _backdrop is not null);
+        // Prefer Win2D whenever the kernel is not ready/active so layout switches
+        // always have a live animated field to drive.
         bool showWin2D = KernelBackdropSelection.ShouldShowWin2D(
-            _kernelEnabled, capable, HostReady, HostFailed, _backdrop is not null);
+            _kernelEnabled, capable, HostReady, HostFailed, _backdrop is not null)
+            || (!showKernel && _backdrop is not null);
 
         KernelHost.Visibility = showKernel ? Visibility.Visible : Visibility.Collapsed;
         BackdropHost.Visibility = showWin2D ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_backdrop is not null)
+        {
+            _backdrop.Control.Paused = !showWin2D;
+            _backdrop.Control.Visibility = showWin2D ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         _kernel?.SetBackdropActive(showKernel);
     }
 
@@ -143,9 +153,49 @@ public sealed partial class DashboardPage : Page
     private void ShowLayout(DashboardLayout layout)
     {
         ContentHost.Content = CreateLayoutView(layout);
+
+        // Win2D swarm family follows the concept layout (macOS ConstellationBackground parity).
         _backdrop?.SetLayout(layout);
+        if (_backdrop is not null)
+        {
+            // Ensure the animated control is running after visibility toggles.
+            _backdrop.Control.Paused = false;
+        }
+
+        // When the WebGL2 kernel field is active, also switch its kernel so the
+        // background actually changes with the layout switcher (FamilyFor map).
+        if (_kernelEnabled && _kernel is not null && !_kernel.IsFailed)
+        {
+            string layoutKernel = KernelForLayout(layout);
+            _kernel.SetKernel(layoutKernel);
+            // Keep settings picker in sync without a no-op storm when already equal.
+            if (!string.Equals(
+                    LiquidGlassEnvironment.Current.GetString(KernelBackdropPreferences.KernelKey, KernelCatalog.DefaultId),
+                    layoutKernel,
+                    StringComparison.Ordinal))
+            {
+                LiquidGlassEnvironment.Current.SetString(KernelBackdropPreferences.KernelKey, layoutKernel);
+            }
+        }
+
+        ApplyBackdropLayers();
         ContentScroll.ChangeView(null, 0, null, true);
     }
+
+    /// <summary>
+    /// Map each dashboard concept to a signature WebGL2 kernel id — mirrors
+    /// <c>DashboardBackdrop.FamilyFor</c> (Volumetric / Constellation / Mesh / Aurora / Flow).
+    /// </summary>
+    internal static string KernelForLayout(DashboardLayout layout) => layout switch
+    {
+        DashboardLayout.Atelier => "volumetric",
+        DashboardLayout.Constellation => "constellation",
+        DashboardLayout.Nebula => "mesh",
+        DashboardLayout.Aurora => "aurora",
+        DashboardLayout.Cockpit => "flow",
+        DashboardLayout.Classic => "constellation",
+        _ => KernelCatalog.DefaultId,
+    };
 
     private static UIElement CreateLayoutView(DashboardLayout layout) => layout switch
     {

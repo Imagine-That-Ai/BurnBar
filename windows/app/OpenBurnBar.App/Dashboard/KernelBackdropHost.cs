@@ -152,21 +152,25 @@ public sealed class KernelBackdropHost : IDisposable
         }
 
         string resolved = KernelCatalog.Resolve(kernelId);
-        if (string.Equals(_kernelId, resolved, StringComparison.Ordinal) && _isLoaded)
-        {
-            return;
-        }
-
+        bool same = string.Equals(_kernelId, resolved, StringComparison.Ordinal);
         _kernelId = resolved;
+
         if (!_isLoaded || _core is null)
         {
             return;
         }
 
+        // Always re-dispatch when loaded so a re-selection of the current id still
+        // restarts the field (layout switcher may re-apply the same mapped id after
+        // a pause/failover cycle).
         string? script = KernelBackdropBridge.SetKernelScript(resolved);
         if (script is not null)
         {
             _ = ExecuteScriptAsync(script);
+        }
+        else if (!same)
+        {
+            AppDiagnostics.LogEvent("kernel-backdrop.set-kernel-skip", resolved);
         }
     }
 
