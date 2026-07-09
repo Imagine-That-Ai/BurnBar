@@ -1,18 +1,16 @@
 {
-  "generatedAt": "2026-07-09T18:10:38.206Z",
+  "generatedAt": "2026-07-09T18:11:06.218Z",
   "allowBlocked": false,
   "git": {
-    "commit": "5c726535e878c48e8c0de474db27391f52fd50e1",
+    "commit": "1e0f0c6e35a979aace55ef7763b8568bafa4cdb4",
     "dirtyEntries": [
+      " M docs/linux-port/evidence/mission-002-reanchor/latest-linux.draft.json",
+      " M docs/linux-port/evidence/mission-002-reanchor/package-closure.json",
       " M docs/linux-port/evidence/mission-002-reanchor/parity-ledger-validation.json",
       " M docs/linux-port/evidence/mission-002-reanchor/release-verification.json",
-      "?? docs/linux-port/evidence/mission-002-reanchor/latest-linux.draft.json",
-      "?? docs/linux-port/evidence/mission-002-reanchor/latest-linux.json",
-      "?? docs/linux-port/evidence/mission-002-reanchor/package-closure.json",
-      "?? docs/linux-port/evidence/mission-002-reanchor/sidecars/",
-      "?? docs/linux-port/evidence/mission-002-reanchor/smoke/",
-      "?? docs/linux-port/evidence/mission-002-reanchor/vm-e2e/branch-daemon/live-reverify.json",
-      "?? website/public/downloads/latest-linux.json"
+      " M docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
+      " M docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.provenance-predicate.json",
+      " M docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.spdx.json"
     ]
   },
   "semantics": {

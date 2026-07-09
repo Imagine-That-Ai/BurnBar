@@ -1,9 +1,9 @@
 {
   "predicateType": "https://openburnbar.dev/attestations/linux-release-artifact/v1",
-  "generatedAt": "2026-07-09T18:10:14.035Z",
+  "generatedAt": "2026-07-09T18:11:05.324Z",
   "expectedCosignIdentity": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/v0.1.0",
   "git": {
-    "commit": "5c726535e878c48e8c0de474db27391f52fd50e1",
+    "commit": "1e0f0c6e35a979aace55ef7763b8568bafa4cdb4",
     "branch": "windows/liquid-glass-kernel-reskin",
     "remote": "https://github.com/Imagine-That-Ai/BurnBar.git",
     "dirty": false,
@@ -101,8 +101,8 @@
   "sbom": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
   "vex": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
   "sourceArchive": {
-    "file": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-source-5c726535e878.tar",
-    "sha256": "fb726a382202b198b484258b8e6c9a34936ea4161f95d229ba34e43bdba6a1ab",
+    "file": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-source-1e0f0c6e35a9.tar",
+    "sha256": "d511ab9c8c87e4aed52f0bfa4990cd1f5917a667456957f0fc79176a2fdd0f09",
     "represents": "HEAD only"
   },
   "signatures": [

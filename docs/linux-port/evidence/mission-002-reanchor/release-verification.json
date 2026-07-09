@@ -1,15 +1,8 @@
 {
-  "generatedAt": "2026-07-09T18:10:37.776Z",
+  "generatedAt": "2026-07-09T18:11:06.063Z",
   "outDir": "docs/linux-port/evidence/mission-002-reanchor",
   "allowBlocked": false,
-  "passed": false,
-  "failures": [
-    {
-      "message": "release checkout has unexpected dirty files outside generated Linux release evidence.",
-      "dirtyEntries": [
-        "?? website/public/downloads/latest-linux.json"
-      ]
-    }
-  ],
+  "passed": true,
+  "failures": [],
   "warnings": []
 }

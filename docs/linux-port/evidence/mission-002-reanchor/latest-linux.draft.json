@@ -3,8 +3,8 @@
   "product": "OpenBurnBar",
   "platform": "linux",
   "version": "0.1.0",
-  "commit": "5c726535e878c48e8c0de474db27391f52fd50e1",
-  "generatedAt": "2026-07-09T18:10:14.324Z",
+  "commit": "1e0f0c6e35a979aace55ef7763b8568bafa4cdb4",
+  "generatedAt": "2026-07-09T18:11:05.640Z",
   "promotionState": "candidate",
   "primaryArtifact": {
     "type": "appimage",

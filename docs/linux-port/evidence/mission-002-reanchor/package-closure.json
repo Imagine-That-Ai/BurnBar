@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-09T18:10:14.324Z",
+  "generatedAt": "2026-07-09T18:11:05.640Z",
   "manifest": "packaging/linux/release-manifest.json",
   "git": {
-    "commit": "5c726535e878c48e8c0de474db27391f52fd50e1",
+    "commit": "1e0f0c6e35a979aace55ef7763b8568bafa4cdb4",
     "branch": "windows/liquid-glass-kernel-reskin",
     "remote": "https://github.com/Imagine-That-Ai/BurnBar.git",
     "dirty": false,
