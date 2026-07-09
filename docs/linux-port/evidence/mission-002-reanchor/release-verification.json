@@ -1,110 +1,15 @@
 {
-  "generatedAt": "2026-07-09T14:47:54.070Z",
-  "outDir": "docs/linux-port/evidence/mission-001-release",
-  "allowBlocked": true,
+  "generatedAt": "2026-07-09T18:10:37.776Z",
+  "outDir": "docs/linux-port/evidence/mission-002-reanchor",
+  "allowBlocked": false,
   "passed": false,
   "failures": [
     {
-      "message": "appimage artifact is missing",
-      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage"
-    },
-    {
-      "message": "deb artifact is missing",
-      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_arm64.deb"
-    },
-    {
-      "message": "rpm artifact is missing",
-      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm"
-    },
-    {
-      "message": "daemon artifact is missing",
-      "file": "docs/linux-port/evidence/mission-001-release/artifacts/openburnbar-daemon-0.1.0-linux-aarch64"
-    },
-    {
-      "message": "checksum target is missing",
-      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage"
-    },
-    {
-      "message": "checksum target is missing",
-      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_arm64.deb"
-    },
-    {
-      "message": "checksum target is missing",
-      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm"
-    },
-    {
-      "message": "checksum target is missing",
-      "file": "docs/linux-port/evidence/mission-001-release/artifacts/openburnbar-daemon-0.1.0-linux-aarch64"
-    },
-    {
-      "message": "latest-linux draft is not promotable.",
-      "promotionState": "blocked",
-      "primaryArtifact": {
-        "type": "appimage",
-        "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage",
-        "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/appimage/OpenBurnBar_0.1.0_aarch64.AppImage",
-        "size": 79886856,
-        "sha256": "4ba109b88237d111c655adf70863f73c91c7b38698990c785ae70571f4d6856c"
-      }
-    },
-    {
       "message": "release checkout has unexpected dirty files outside generated Linux release evidence.",
       "dirtyEntries": [
-        " M .github/workflows/linux-pr-gate.yml",
-        " M OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/OpenBurnBarLinuxPaths.swift",
-        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift",
-        " M apps/linux-desktop/index.html",
-        " M apps/linux-desktop/package-lock.json",
-        " M apps/linux-desktop/package.json",
-        " M apps/linux-desktop/src-tauri/src/lib.rs",
-        " M apps/linux-desktop/src/app/App.tsx",
-        " M apps/linux-desktop/src/components/KernelBackdrop.tsx",
-        " M apps/linux-desktop/src/daemonFixture.ts",
-        " M apps/linux-desktop/src/linuxPaths.test.ts",
-        " M apps/linux-desktop/src/linuxPaths.ts",
-        " M apps/linux-desktop/src/onboardingSteps.ts",
-        " M apps/linux-desktop/src/styles/app.css",
-        " M apps/linux-desktop/src/styles/tokens.css",
-        " M apps/linux-desktop/src/surfaces/OnboardingSurface.tsx",
-        " M apps/linux-desktop/src/surfaces/OverviewSurface.tsx",
-        " M apps/linux-desktop/src/surfaces/chat/ChatSurface.tsx",
-        " M apps/linux-desktop/src/surfaces/chat/ChatWorkspacePanel.tsx",
-        " M apps/linux-desktop/src/surfaces/chat/chat.css",
-        " M apps/linux-desktop/src/surfaces/media/MediaSection.test.tsx",
-        " M apps/linux-desktop/src/surfaces/media/MediaSection.tsx",
-        " M apps/linux-desktop/src/surfaces/settings/settings.css",
-        " M apps/linux-desktop/src/tauriBridge.ts",
-        " M apps/linux-desktop/vite.config.ts",
-        " M docs/linux-port/README.md",
-        " M docs/linux-port/factory-pr-handoff.md",
-        " M docs/linux-port/parity-ledger.json",
-        " M docs/linux-port/parity-ledger.md",
-        " M docs/windows-port/HANDOFF.md",
-        " M docs/windows-port/PARITY_100_REMEDIATION_PLAN.md",
-        " M docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md",
-        " M docs/windows-port/WINDOWS_PARITY_LEDGER.md",
-        " M docs/windows-port/WINDOWS_PARITY_LEDGER.yml",
-        " M packages/design-tokens/package.json",
-        " M packaging/linux/autostart/openburnbar.desktop",
-        " M packaging/linux/openburnbar-daemon.service",
-        " M packaging/linux/openburnbar.desktop",
-        " M scripts/ci/verify-windows-parity-ledger.py",
-        " M scripts/ci/verify-windows-parity-ledger.test.sh"
+        "?? website/public/downloads/latest-linux.json"
       ]
     }
   ],
-  "warnings": [
-    {
-      "message": "public latest-linux.json is absent, as expected until promotion is green."
-    },
-    {
-      "message": "release blockers are recorded in package metadata.",
-      "blockers": [
-        {
-          "kind": "cosign-oidc",
-          "message": "GitHub OIDC request token is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC."
-        }
-      ]
-    }
-  ]
+  "warnings": []
 }

@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-07-09T18:09:39.863Z",
+  "status": "blocked",
+  "reason": "No previous stable Linux artifact exists yet; first promotable Linux release must attach previous/prerelease artifacts before this smoke can pass.",
+  "requiredFlow": [
+    "install previous stable or prerelease package",
+    "verify daemon and shell launch",
+    "apply latest-linux candidate update",
+    "verify version/commit move forward",
+    "roll back to previous artifact and verify user data remains"
+  ]
+}
