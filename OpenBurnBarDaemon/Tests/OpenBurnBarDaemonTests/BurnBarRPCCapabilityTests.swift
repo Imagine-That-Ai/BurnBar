@@ -113,6 +113,30 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertEqual(stillNarrow.permittedMethods, BurnBarPeerCapabilityProfile.readOnly.permittedMethods)
     }
 
+    func test_missionAuthorizeRemoteIsMissionControlScopedAndRefusedForAttenuatedPeers() {
+        // M2 (split-brain remediation): the new remote-mission authorization
+        // verdict is a mission-control-capability surface. Peers outside that
+        // group — read-only posture and the exact-allowlist CLI profile — must
+        // be refused fail-closed BEFORE the handler runs.
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .missionAuthorizeRemote),
+            .missionControl
+        )
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.full.permits(.missionAuthorizeRemote))
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.runClient.permits(.missionAuthorizeRemote))
+        XCTAssertFalse(
+            BurnBarPeerCapabilityProfile.readOnly.permits(.missionAuthorizeRemote),
+            "a read-only peer must not obtain mission authorization verdicts"
+        )
+        XCTAssertFalse(
+            BurnBarPeerCapabilityProfile.cliSupport.permits(.missionAuthorizeRemote),
+            "the CLI allowlist must not inherit the new method implicitly"
+        )
+        // Attenuation can only ever narrow away the new method, never add it.
+        let narrowed = BurnBarPeerCapabilityProfile.full.attenuated(to: .readOnly)
+        XCTAssertFalse(narrowed.permits(.missionAuthorizeRemote))
+    }
+
     func test_attenuationPreservesMethodScopedCLIBoundary() {
         let narrowed = BurnBarPeerCapabilityProfile.full.attenuated(to: .cliSupport)
         XCTAssertEqual(narrowed.permittedMethods, BurnBarPeerCapabilityProfile.cliSupport.permittedMethods)

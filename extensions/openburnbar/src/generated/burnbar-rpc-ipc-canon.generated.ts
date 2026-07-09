@@ -532,6 +532,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.mission.authorizeRemote",
+    "caseName": "missionAuthorizeRemote",
+    "domain": "mission_control",
+    "capability": "mission_control",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.mission.authorizeRemote",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.mission.cancel",
     "caseName": "missionCancel",
     "domain": "mission_control",

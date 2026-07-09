@@ -86,6 +86,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .missionCancel,
         .missionDispatchPacket,
         .missionRecordResult,
+        .missionAuthorizeRemote,
         .notificationConfigGet,
         .notificationConfigUpdate,
         .notificationHealth,

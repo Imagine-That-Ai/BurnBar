@@ -669,4 +669,84 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
         }
     }
 
+    // MARK: - M2: daemon.mission.authorizeRemote round trip
+
+    func testMissionAuthorizeRemote_roundTripsVerdictsThroughTheHandler() async throws {
+        // The new authorization RPC (M2, split-brain remediation) must decode
+        // the request envelope, evaluate the pure policy, and answer in the
+        // result lane — never the error lane — for every verdict class.
+        let now = Date(timeIntervalSince1970: 1_710_011_200)
+        let service = StubMissionControlService(now: now)
+        let server = makeServer(service: service)
+
+        func request(
+            trust: String,
+            approvalMode: String?,
+            approvalStatus: String?,
+            fanOut: Int = 1
+        ) -> BurnBarRemoteMissionAuthorizeRequest {
+            BurnBarRemoteMissionAuthorizeRequest(
+                missionID: "mission-authz-rpc-1",
+                originDeviceID: "phone-1",
+                originPlatform: "ios",
+                executorTrustState: trust,
+                promptSummary: "Summarize the failing lane",
+                promptSHA256: String(repeating: "cd", count: 32),
+                requestedRuntime: "hermes",
+                requestedGrant: BurnBarRemoteMissionCapabilityGrantRequest(
+                    commandsAllowed: false,
+                    fileEditsAllowed: false
+                ),
+                approvalMode: approvalMode,
+                approvalStatus: approvalStatus,
+                entitlementTier: "ultra",
+                requestedFanOutCount: fanOut
+            )
+        }
+
+        struct Row {
+            let name: String
+            let params: BurnBarRemoteMissionAuthorizeRequest
+            let expectedVerdict: BurnBarRemoteMissionAuthorizationVerdict
+            let expectedReason: BurnBarRemoteMissionDenialReason?
+        }
+        let rows: [Row] = [
+            Row(name: "authorized",
+                params: request(trust: "trusted", approvalMode: "existing_policy", approvalStatus: "approved"),
+                expectedVerdict: .authorized, expectedReason: nil),
+            Row(name: "requires approval",
+                params: request(trust: "trusted", approvalMode: "manual_all", approvalStatus: nil),
+                expectedVerdict: .requiresApproval, expectedReason: nil),
+            Row(name: "denied untrusted",
+                params: request(trust: "pending", approvalMode: nil, approvalStatus: "approved"),
+                expectedVerdict: .denied, expectedReason: .untrustedDevice),
+            Row(name: "denied unknown trust (fail closed)",
+                params: request(trust: "who-knows", approvalMode: nil, approvalStatus: "approved"),
+                expectedVerdict: .denied, expectedReason: .unknownTrustState),
+            Row(name: "denied fan-out",
+                params: request(trust: "trusted", approvalMode: nil, approvalStatus: "approved", fanOut: 99),
+                expectedVerdict: .denied, expectedReason: .fanOutCapExceeded)
+        ]
+
+        for row in rows {
+            let response: BurnBarRPCResponseEnvelope<BurnBarRemoteMissionAuthorizeResponse> = try await invoke(
+                server,
+                method: .missionAuthorizeRemote,
+                params: row.params,
+                id: "authorize-remote-\(row.name)"
+            )
+            XCTAssertEqual(response.id, "authorize-remote-\(row.name)")
+            XCTAssertNil(response.error, "\(row.name): verdicts ride the result lane")
+            let result = try XCTUnwrap(response.result, row.name)
+            XCTAssertEqual(result.verdict, row.expectedVerdict, row.name)
+            XCTAssertEqual(result.deniedReason, row.expectedReason, row.name)
+        }
+
+        // The default protocol implementation is a pure policy evaluation: it
+        // must never touch the mission-control store surface.
+        XCTAssertEqual(
+            service.calls, [],
+            "authorizeRemote must not call into mission-control storage RPCs"
+        )
+    }
 }
