@@ -2,28 +2,37 @@
  * @fileoverview Hourly community leaderboard aggregation.
  *
  * Scheduled function that:
- *   1. collectionGroup over all `share_snapshot` docs.
- *   2. Server-side consent recheck — drops any user whose consent was revoked
+ *   1. Publishes the Community runtime status used by Firestore rules.
+ *   2. collectionGroup over all `share_snapshot` docs.
+ *   3. Server-side consent recheck — drops any user whose consent was revoked
  *      or is no longer granted for a given tier.
- *   3. Groups by geography tier (world/country/region/city) × time window
+ *   4. Validates share snapshots against poisoning, freshness, and shape limits.
+ *   5. Groups by geography tier (world/country/region/city) × time window
  *      (today/7d/30d/90d/all_time).
- *   4. Applies k-anonymity threshold (k=10): boards with fewer than K members
+ *   6. Applies k-anonymity threshold (k=10): boards with fewer than K members
  *      get `belowThreshold: true` (UI falls back to the next-broader tier).
- *   5. Writes public `community_leaderboards/{window}_{tier}_{geoKey}` docs.
- *   6. Computes percentile bands (p50/p75/p90/p99) and movement arrows.
+ *   7. Writes public `community_leaderboards/{window}_{tier}_{geoKey}` docs.
+ *   8. Computes percentile bands (p50/p75/p90/p99) and movement arrows.
+ *   9. Removes stale public boards not produced by the current generation.
  *
  * Reuses `firestoreWithResilience` for all Firestore reads/writes and
  * `runScheduledJob` for observability wrapping.
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import {
+  getFirestore,
+  type DocumentReference,
+  type DocumentSnapshot,
+  type Firestore,
+} from "firebase-admin/firestore";
 import { runScheduledJob } from "../scheduledOps.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { logInfo, logWarn } from "../logging.js";
-import { recheckConsent, COMMUNITY_K_THRESHOLD, CommunityPaths } from "./consent.js";
+import { recheckConsent, COMMUNITY_K_THRESHOLD, COMMUNITY_SCHEMA_VERSION, CommunityPaths } from "./consent.js";
 import { normalizeGeoKey } from "./geo.js";
-import type { CommunityShareSnapshotDoc } from "./shareTypes.js";
+import { communityRuntimeStatus, publishCommunityRuntimeStatus } from "./rollout.js";
+import type { CommunityShareSnapshotDoc, CommunityUsageTotal, CommunityWindowTotals } from "./shareTypes.js";
 import type {
   LeaderboardEntry,
   CommunityLeaderboardDoc,
@@ -41,6 +50,18 @@ type Tier = "world" | "country" | "region" | "city";
 const WINDOWS: readonly WindowKey[] = ["today", "7d", "30d", "90d", "all_time"];
 const TIERS: readonly Tier[] = ["world", "country", "region", "city"];
 
+const MAX_SHARE_SNAPSHOT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_SHARE_SNAPSHOT_FUTURE_SKEW_MS = 10 * 60 * 1000;
+const MAX_TOTAL_TOKENS = 50_000_000_000;
+const MAX_COST_USD = 1_000_000;
+const MAX_SESSION_COUNT = 1_000_000;
+const MAX_MIX_KEYS = 128;
+const MAX_MIX_KEY_LENGTH = 128;
+const MAX_BATCH_GET_DOCS = 300;
+const MAX_CLEANUP_BATCH_WRITES = 400;
+const MIX_KEY_PATTERN = /^[\p{L}\p{N}._:@/+ -]+$/u;
+const GEO_KEY_PATTERN = /^[A-Za-z0-9_-]+$/u;
+
 interface Participant {
   uid: string;
   anonId: string;
@@ -52,10 +73,18 @@ interface Participant {
   regionKey: string | null;
   cityKey: string | null;
   prevRank: number | null;
+  windowTotals?: CommunityWindowTotals;
+}
+
+interface BoardWorkItem {
+  window: WindowKey;
+  tier: Tier;
+  geoKey: string;
+  group: Participant[];
 }
 
 // ---------------------------------------------------------------------------
-// Scheduled export
+// Scheduled exports
 // ---------------------------------------------------------------------------
 
 /**
@@ -77,60 +106,231 @@ export const aggregateCommunityLeaderboards = onSchedule(
 );
 
 /**
+ * Daily public-board cleanup safety net. `runAggregation` already sweeps stale
+ * boards after each successful generation; this scheduled job clears old docs if
+ * aggregation was disabled, interrupted, or no valid participants remained.
+ */
+export const cleanupStaleCommunityLeaderboards = onSchedule(
+  {
+    schedule: "every 24 hours",
+    region: FUNCTIONS_REGION,
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async () =>
+    runScheduledJob("cleanupStaleCommunityLeaderboards", async () => {
+      const db = getFirestore();
+      const status = await publishCommunityRuntimeStatus(db);
+      if (!status.enabled) {
+        const deleted = await cleanupStaleLeaderboards(db, new Set(), new Date());
+        logInfo({ event: "community_leaderboard_cleanup_kill_switch", deleted });
+        return;
+      }
+      const deleted = await cleanupStaleLeaderboards(db, new Set(), new Date(Date.now() - MAX_SHARE_SNAPSHOT_AGE_MS));
+      logInfo({ event: "community_leaderboard_cleanup_complete", deleted });
+    }),
+);
+
+/**
  * Pure aggregation pipeline — exported for test injection. Takes a Firestore
  * instance, reads all snapshots, rechecks consent, computes boards, writes them.
  */
 export async function runAggregation(db: Firestore): Promise<void> {
-  const participants = await collectValidParticipants(db);
-  if (participants.length === 0) {
-    logInfo({ event: "community_aggregation_empty", message: "No valid participants" });
+  const runStartedAt = new Date();
+  const status = await publishCommunityRuntimeStatus(db);
+  if (!status.enabled) {
+    logInfo({ event: "community_aggregation_disabled", reason: status.reason });
     return;
   }
 
+  const participants = await collectValidParticipants(db);
+  if (participants.length === 0) {
+    const staleDeleted = await cleanupStaleLeaderboards(db, new Set(), runStartedAt);
+    logInfo({ event: "community_aggregation_empty", message: "No valid participants", staleDeleted });
+    return;
+  }
 
-  let boardsWritten = 0;
+  const workItems: BoardWorkItem[] = [];
   for (const window of WINDOWS) {
     for (const tier of TIERS) {
       const groups = groupByGeoTier(participants, tier);
       for (const [geoKey, group] of Object.entries(groups)) {
-        const prevRankMap = await loadPreviousRanks(db, window, tier, geoKey);
-        const board = buildLeaderboard(window, tier, geoKey, group, prevRankMap);
-        await writeLeaderboard(db, board);
-        boardsWritten++;
+        workItems.push({ window, tier, geoKey, group });
       }
     }
   }
+
+  const previousRanks = await loadPreviousRanksForBoards(db, workItems);
+  const activeDocPaths = new Set<string>();
+  let boardsWritten = 0;
+
+  for (const item of workItems) {
+    const board = buildLeaderboard(
+      item.window,
+      item.tier,
+      item.geoKey,
+      item.group,
+      previousRanks.get(previousRankKey(item.window, item.tier, item.geoKey)) ?? new Map(),
+    );
+    await writeLeaderboard(db, board);
+    activeDocPaths.add(CommunityPaths.leaderboard(board.window, board.tier, board.geoKey));
+    boardsWritten++;
+  }
+
+  const staleDeleted = await cleanupStaleLeaderboards(db, activeDocPaths, runStartedAt);
 
   logInfo({
     event: "community_aggregation_complete",
     participants: participants.length,
     boardsWritten,
+    staleDeleted,
   });
 }
 
 // ---------------------------------------------------------------------------
-// Participant collection (consent recheck)
+// Participant collection (consent recheck + share snapshot validation)
 // ---------------------------------------------------------------------------
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown, max: number, integer = false): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > max) return null;
+  if (integer && (!Number.isInteger(value) || !Number.isSafeInteger(value))) return null;
+  return value;
+}
+
+function parseUsageTotal(value: unknown): CommunityUsageTotal | null {
+  if (!isRecord(value)) return null;
+  const totalTokens = finiteNumber(value.totalTokens, MAX_TOTAL_TOKENS, true);
+  const costUSD = finiteNumber(value.costUSD, MAX_COST_USD);
+  if (totalTokens === null || costUSD === null) return null;
+  return { totalTokens, costUSD };
+}
+
+function parseWindowTotals(value: unknown): CommunityWindowTotals | null {
+  if (!isRecord(value)) return null;
+  const parsed = Object.fromEntries(
+    WINDOWS.map((window) => [window, parseUsageTotal(value[window])]),
+  ) as Record<WindowKey, CommunityUsageTotal | null>;
+  if (WINDOWS.some((window) => parsed[window] === null)) return null;
+
+  for (let i = 1; i < WINDOWS.length; i++) {
+    const previous = parsed[WINDOWS[i - 1]]!;
+    const current = parsed[WINDOWS[i]]!;
+    if (current.totalTokens < previous.totalTokens || current.costUSD < previous.costUSD) return null;
+  }
+
+  return parsed as CommunityWindowTotals;
+}
+
+function parseMix(value: unknown): Record<string, number> | null {
+  if (!isRecord(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length > MAX_MIX_KEYS) return null;
+  const out: Record<string, number> = {};
+  for (const [key, raw] of entries) {
+    if (key.length === 0 || key.length > MAX_MIX_KEY_LENGTH || !MIX_KEY_PATTERN.test(key)) return null;
+    const parsed = finiteNumber(raw, MAX_TOTAL_TOKENS);
+    if (parsed === null) return null;
+    out[key] = parsed;
+  }
+  return out;
+}
+
+function parseOptionalGeoKey(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || value.length > 160 || value.includes("/") || value.includes("\\")) return undefined;
+  const normalized = normalizeGeoKey(value);
+  if (!normalized || !GEO_KEY_PATTERN.test(normalized)) return undefined;
+  return normalized;
+}
+
+function freshUpdatedAt(value: unknown, nowMs: number): string | null {
+  if (typeof value !== "string" || value.length > 80) return null;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed > nowMs + MAX_SHARE_SNAPSHOT_FUTURE_SKEW_MS) return null;
+  if (parsed < nowMs - MAX_SHARE_SNAPSHOT_AGE_MS) return null;
+  return new Date(parsed).toISOString();
+}
+
+export function parseCommunityShareSnapshotDoc(
+  raw: unknown,
+  nowMs: number = Date.now(),
+): CommunityShareSnapshotDoc | null {
+  if (!isRecord(raw)) return null;
+  if (raw.schemaVersion !== COMMUNITY_SCHEMA_VERSION) return null;
+
+  const windows = parseWindowTotals(raw.windows);
+  if (!windows) return null;
+
+  const modelMix = parseMix(raw.modelMix);
+  const purposeMix = parseMix(raw.purposeMix);
+  if (!modelMix || !purposeMix) return null;
+
+  const updatedAt = freshUpdatedAt(raw.updatedAt, nowMs);
+  if (!updatedAt) return null;
+
+  const out: CommunityShareSnapshotDoc = {
+    windows,
+    modelMix,
+    purposeMix,
+    schemaVersion: COMMUNITY_SCHEMA_VERSION,
+    updatedAt,
+  };
+
+  const sessionCount = finiteNumber(raw.sessionCount, MAX_SESSION_COUNT, true);
+  if (raw.sessionCount !== undefined) {
+    if (sessionCount === null) return null;
+    out.sessionCount = sessionCount;
+  }
+
+  const countryCode = parseOptionalGeoKey(raw.countryCode);
+  const regionKey = parseOptionalGeoKey(raw.regionKey);
+  const cityKey = parseOptionalGeoKey(raw.cityKey);
+  if (raw.countryCode !== undefined && countryCode === undefined) return null;
+  if (raw.regionKey !== undefined && regionKey === undefined) return null;
+  if (raw.cityKey !== undefined && cityKey === undefined) return null;
+  if (countryCode) out.countryCode = countryCode;
+  if (regionKey) out.regionKey = regionKey;
+  if (cityKey) out.cityKey = cityKey;
+  if (raw.revoked === true) out.revoked = true;
+
+  return out;
+}
+
+export function validateCommunityShareSnapshotDoc(raw: unknown, nowMs: number = Date.now()): boolean {
+  return parseCommunityShareSnapshotDoc(raw, nowMs) !== null;
+}
 
 /**
  * collectionGroup over `share_snapshot`, server-side consent recheck, and
  * tombstone cleanup. Returns only participants whose L2 consent is still
- * granted for at least one tier.
+ * granted for at least one tier and whose share snapshot is publishable.
  */
 async function collectValidParticipants(db: Firestore): Promise<Participant[]> {
   const snapshot = await db.collectionGroup("share_snapshot").get();
   const participants: Participant[] = [];
+  const nowMs = Date.now();
 
   for (const doc of snapshot.docs) {
     const uid = doc.ref.parent.parent?.id;
     if (!uid) continue;
 
-    const data = doc.data() as Partial<CommunityShareSnapshotDoc>;
+    const raw = doc.data();
 
     // Tombstone sweep: a revoked snapshot means the user opted out since the
-    // last sweep. Delete the snapshot doc and skip.
-    if (data.revoked === true) {
+    // last sweep. Delete the snapshot doc and skip before applying shape checks.
+    if (isRecord(raw) && raw.revoked === true) {
       await doc.ref.delete();
+      continue;
+    }
+
+    const data = parseCommunityShareSnapshotDoc(raw, nowMs);
+    if (!data) {
+      logWarn({ event: "community_share_snapshot_invalid", uid_prefix: uid.slice(0, 8) });
       continue;
     }
 
@@ -149,28 +349,19 @@ async function collectValidParticipants(db: Firestore): Promise<Participant[]> {
     const profileDoc = await db.doc(CommunityPaths.profile(uid)).get();
     const profile = profileDoc.data() as { anonId?: string; handle?: string } | undefined;
     if (!profile?.anonId) continue;
-    const anonId = profile.anonId;
-
-    const windowTotals = data.windows;
-    if (!windowTotals) continue;
 
     participants.push({
       uid,
-      anonId,
+      anonId: profile.anonId,
       handle: profile?.handle ?? null,
-      totalTokens: 0, // Set per-window below
+      totalTokens: 0,
       costUSD: 0,
       countryCode,
       regionKey,
       cityKey,
       prevRank: null,
+      windowTotals: data.windows,
     });
-
-    // Store the last participant index for window-specific totals
-    // (we attach per-window totals during grouping).
-    const lastIdx = participants.length - 1;
-    (participants[lastIdx] as Participant & { windowTotals: typeof windowTotals }).windowTotals =
-      windowTotals;
   }
 
   return participants;
@@ -195,33 +386,25 @@ function geoKeyForTier(p: Participant, tier: Tier): string | null {
 }
 
 /** Resolve the window total for a participant at a given window. */
-function windowTotal(p: Participant & { windowTotals?: CommunityShareSnapshotDoc["windows"] }, window: WindowKey): {
+function windowTotal(p: Participant, window: WindowKey): {
   totalTokens: number;
   costUSD: number;
 } {
-  const w = p.windowTotals;
-  if (!w) return { totalTokens: 0, costUSD: 0 };
-  const slot = w[window];
-  if (!slot) return { totalTokens: 0, costUSD: 0 };
-  return {
-    totalTokens: typeof slot.totalTokens === "number" ? slot.totalTokens : 0,
-    costUSD: typeof slot.costUSD === "number" ? slot.costUSD : 0,
-  };
+  const slot = p.windowTotals?.[window];
+  return slot ?? { totalTokens: 0, costUSD: 0 };
 }
 
 /**
  * Group participants by their geo key at the given tier. Participants whose
  * tier is not consented are excluded (their geo key is null at that tier).
  */
-function groupByGeoTier(
-  participants: Array<Participant & { windowTotals?: CommunityShareSnapshotDoc["windows"] }>,
-  tier: Tier,
-): Record<string, Participant[]> {
+function groupByGeoTier(participants: Participant[], tier: Tier): Record<string, Participant[]> {
   const groups: Record<string, Participant[]> = {};
   for (const p of participants) {
     const key = geoKeyForTier(p, tier);
-    if (key === null) continue;
-    (groups[key] ??= []).push(p);
+    const safeKey = key === null ? null : normalizeGeoKey(key);
+    if (!safeKey) continue;
+    (groups[safeKey] ??= []).push(p);
   }
   return groups;
 }
@@ -231,7 +414,7 @@ function buildLeaderboard(
   window: WindowKey,
   tier: Tier,
   geoKey: string,
-  group: Array<Participant & { windowTotals?: CommunityShareSnapshotDoc["windows"] }>,
+  group: Participant[],
   prevRankMap: Map<string, number>,
 ): CommunityLeaderboardDoc {
   const scored = group.map((p) => {
@@ -335,30 +518,84 @@ function percentile(sorted: number[], p: number): number {
 // Previous rank loading (for movement arrows)
 // ---------------------------------------------------------------------------
 
+function previousRankKey(window: WindowKey, tier: Tier, geoKey: string): string {
+  return `${window}|${tier}|${normalizeGeoKey(geoKey) ?? "unknown"}`;
+}
+
+function rankMapFromSnapshot(snapshot: DocumentSnapshot): Map<string, number> {
+  const rankMap = new Map<string, number>();
+  if (!snapshot.exists) return rankMap;
+  const data = snapshot.data() as Partial<CommunityLeaderboardDoc> | undefined;
+  if (!Array.isArray(data?.entries)) return rankMap;
+  for (const entry of data.entries) {
+    if (entry && typeof entry.anonId === "string" && typeof entry.rank === "number") {
+      rankMap.set(entry.anonId, entry.rank);
+    }
+  }
+  return rankMap;
+}
+
+async function getAllDocuments(
+  db: Firestore,
+  refs: DocumentReference[],
+): Promise<DocumentSnapshot[]> {
+  const getAll = (db as Firestore & { getAll?: (...refsToRead: DocumentReference[]) => Promise<DocumentSnapshot[]> }).getAll;
+  if (typeof getAll === "function") {
+    const docs: DocumentSnapshot[] = [];
+    for (let i = 0; i < refs.length; i += MAX_BATCH_GET_DOCS) {
+      docs.push(...(await getAll.call(db, ...refs.slice(i, i + MAX_BATCH_GET_DOCS))));
+    }
+    return docs;
+  }
+  return Promise.all(refs.map((ref) => ref.get()));
+}
+
+async function loadPreviousRanksForBoards(
+  db: Firestore,
+  boards: Array<Pick<BoardWorkItem, "window" | "tier" | "geoKey">>,
+): Promise<Map<string, Map<string, number>>> {
+  const result = new Map<string, Map<string, number>>();
+  if (boards.length === 0) return result;
+
+  const unique = new Map<string, { window: WindowKey; tier: Tier; geoKey: string; path: string }>();
+  for (const board of boards) {
+    const safeGeoKey = normalizeGeoKey(board.geoKey) ?? "unknown";
+    const key = previousRankKey(board.window, board.tier, safeGeoKey);
+    unique.set(key, {
+      window: board.window,
+      tier: board.tier,
+      geoKey: safeGeoKey,
+      path: CommunityPaths.leaderboard(board.window, board.tier, safeGeoKey),
+    });
+  }
+
+  const descriptors = [...unique.entries()];
+  const refs = descriptors.map(([, descriptor]) => db.doc(descriptor.path));
+  try {
+    const snapshots = await getAllDocuments(db, refs);
+    snapshots.forEach((snapshot, index) => {
+      const [key] = descriptors[index];
+      result.set(key, rankMapFromSnapshot(snapshot));
+    });
+  } catch {
+    logWarn({ event: "community_prev_rank_batch_load_failed", boards: descriptors.length });
+    for (const [key] of descriptors) result.set(key, new Map());
+  }
+  return result;
+}
+
 async function loadPreviousRanks(
   db: Firestore,
   window: WindowKey,
   tier: Tier,
   geoKey: string,
 ): Promise<Map<string, number>> {
-  const rankMap = new Map<string, number>();
-  try {
-    const safeGeoKey = normalizeGeoKey(geoKey) ?? "unknown";
-    const prevDoc = await db.doc(CommunityPaths.leaderboard(window, tier, safeGeoKey)).get();
-    if (prevDoc.exists) {
-      const data = prevDoc.data() as CommunityLeaderboardDoc;
-      for (const entry of data.entries) {
-        rankMap.set(entry.anonId, entry.rank);
-      }
-    }
-  } catch {
-    logWarn({ event: "community_prev_rank_load_failed", window, tier });
-  }
-  return rankMap;
+  const ranks = await loadPreviousRanksForBoards(db, [{ window, tier, geoKey }]);
+  return ranks.get(previousRankKey(window, tier, geoKey)) ?? new Map();
 }
 
 // ---------------------------------------------------------------------------
-// Write
+// Write + cleanup
 // ---------------------------------------------------------------------------
 
 async function writeLeaderboard(db: Firestore, board: CommunityLeaderboardDoc): Promise<void> {
@@ -366,9 +603,52 @@ async function writeLeaderboard(db: Firestore, board: CommunityLeaderboardDoc): 
   await db.doc(docPath).set(board);
 }
 
+function isStaleLeaderboardDoc(data: Record<string, unknown> | undefined, runStartedAt: Date): boolean {
+  const updatedAt = typeof data?.updatedAt === "string" ? Date.parse(data.updatedAt) : Number.NaN;
+  return !Number.isFinite(updatedAt) || updatedAt < runStartedAt.getTime();
+}
+
+async function cleanupStaleLeaderboards(
+  db: Firestore,
+  activeDocPaths: Set<string>,
+  runStartedAt: Date,
+): Promise<number> {
+  const snapshot = await db.collection("community_leaderboards").get();
+  let batch = db.batch();
+  let pending = 0;
+  let deleted = 0;
+
+  const commitPending = async () => {
+    if (pending === 0) return;
+    await batch.commit();
+    batch = db.batch();
+    pending = 0;
+  };
+
+  for (const doc of snapshot.docs) {
+    if (activeDocPaths.has(doc.ref.path)) continue;
+    if (!isStaleLeaderboardDoc(doc.data() as Record<string, unknown> | undefined, runStartedAt)) continue;
+    batch.delete(doc.ref);
+    pending++;
+    deleted++;
+    if (pending >= MAX_CLEANUP_BATCH_WRITES) await commitPending();
+  }
+
+  await commitPending();
+  return deleted;
+}
+
 // ---------------------------------------------------------------------------
 // Test exports (pure functions for unit testing)
 // ---------------------------------------------------------------------------
 
-export { computePercentiles, groupByGeoTier, buildLeaderboard, collectValidParticipants, loadPreviousRanks };
+export {
+  computePercentiles,
+  groupByGeoTier,
+  buildLeaderboard,
+  collectValidParticipants,
+  loadPreviousRanks,
+  loadPreviousRanksForBoards,
+  cleanupStaleLeaderboards,
+};
 export type { Participant, WindowKey, Tier };

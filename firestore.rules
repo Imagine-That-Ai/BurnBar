@@ -39,6 +39,11 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.get('burnbarOperator', false) == true;
     }
 
+    function communityPublicReadsEnabled() {
+      return exists(/databases/$(database)/documents/ops/community_status/state/current)
+        && get(/databases/$(database)/documents/ops/community_status/state/current).data.enabled == true;
+    }
+
     function requestWithinBasicLimits() {
       return request.resource.size() < 1048576
         && request.resource.data.keys().size() < 80;
@@ -66,6 +71,67 @@ service cloud.firestore {
         && !("authorization" in request.resource.data)
         && !("bearer" in request.resource.data)
         && !("credential" in request.resource.data);
+    }
+
+    function validCommunityStringKey(value, maxLen) {
+      return value is string
+        && value.size() > 0
+        && value.size() <= maxLen
+        && value.matches("^[A-Za-z0-9][A-Za-z0-9_-]*$");
+    }
+
+    function validCommunityUsageTotal(total) {
+      return total is map
+        && total.keys().hasOnly(["totalTokens", "costUSD"])
+        && total.keys().hasAll(["totalTokens", "costUSD"])
+        && total.totalTokens is number
+        && total.totalTokens >= 0
+        && total.totalTokens <= 1000000000000
+        && total.costUSD is number
+        && total.costUSD >= 0
+        && total.costUSD <= 100000000;
+    }
+
+    function validCommunityWindowTotals(windows) {
+      return windows is map
+        && windows.keys().hasOnly(["today", "7d", "30d", "90d", "all_time"])
+        && windows.keys().hasAll(["today", "7d", "30d", "90d", "all_time"])
+        && validCommunityUsageTotal(windows.today)
+        && validCommunityUsageTotal(windows["7d"])
+        && validCommunityUsageTotal(windows["30d"])
+        && validCommunityUsageTotal(windows["90d"])
+        && validCommunityUsageTotal(windows.all_time);
+    }
+
+    function validCommunityMixMap(value) {
+      return value is map
+        && value.keys().size() <= 24;
+    }
+
+    function validCommunityShareSnapshot() {
+      return requestWithinBasicLimits()
+        && hasNoPlaintextSecretFields()
+        && request.resource.data.keys().hasOnly([
+          "windows", "modelMix", "purposeMix", "sessionCount",
+          "countryCode", "regionKey", "cityKey",
+          "updatedAt", "revoked", "schemaVersion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "windows", "modelMix", "purposeMix", "updatedAt", "schemaVersion"
+        ])
+        && validCommunityWindowTotals(request.resource.data.windows)
+        && validCommunityMixMap(request.resource.data.modelMix)
+        && validCommunityMixMap(request.resource.data.purposeMix)
+        && (!("sessionCount" in request.resource.data) || (request.resource.data.sessionCount is number && request.resource.data.sessionCount >= 0 && request.resource.data.sessionCount <= 1000000000))
+        && (!("countryCode" in request.resource.data) || validCommunityStringKey(request.resource.data.countryCode, 16))
+        && (!("regionKey" in request.resource.data) || validCommunityStringKey(request.resource.data.regionKey, 64))
+        && (!("cityKey" in request.resource.data) || validCommunityStringKey(request.resource.data.cityKey, 160))
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() <= 80
+        && (!("revoked" in request.resource.data) || request.resource.data.revoked is bool)
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.schemaVersion <= 100;
     }
 
     function ownerWritableNonSecret(userId) {
@@ -1751,9 +1817,15 @@ service cloud.firestore {
 
     // --- Community: public read-only leaderboards + handle claims ---
 
-    // Public read-only: any signed-in user can read leaderboards; NO client
-    // writes (admin-write only via the onSchedule aggregation function).
+    // Public read-only: any signed-in user can read leaderboards while the
+    // backend-published rollout envelope is enabled; NO client writes
+    // (admin-write only via the onSchedule aggregation function).
     match /community_leaderboards/{docId} {
+      allow read: if isSignedIn() && communityPublicReadsEnabled();
+      allow write: if false;
+    }
+
+    match /ops/community_status/state/current {
       allow read: if isSignedIn();
       allow write: if false;
     }
@@ -4833,7 +4905,10 @@ service cloud.firestore {
     }
 
     match /users/{userId}/community/share_snapshot {
-      allow read, write: if ownsUserNamespace(userId);
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && validCommunityShareSnapshot();
+      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/looking_glass_traces/{traceId} {

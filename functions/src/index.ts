@@ -210,4 +210,4 @@ export {
   revokeCommunityParticipation,
   exportLookingGlassBundle,
 } from "./community/callables.js";
-export { aggregateCommunityLeaderboards } from "./community/aggregation.js";
+export { aggregateCommunityLeaderboards, cleanupStaleCommunityLeaderboards } from "./community/aggregation.js";

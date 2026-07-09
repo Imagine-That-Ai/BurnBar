@@ -115,6 +115,8 @@ export const CommunityPaths = {
   },
   lookingGlassTraces: (uid: string) => `users/${uid}/looking_glass_traces`,
   lookingGlassExports: (uid: string) => `users/${uid}/looking_glass_exports`,
+  /** Rules-facing rollout envelope for public leaderboard reads. */
+  publicReadStatus: () => "ops/community_status/state/current",
   /** Global uniqueness claim — doc ID IS the lowercased handle. */
   handleClaim: (handleLower: string) => `community_handles/${handleLower}`,
 } as const;

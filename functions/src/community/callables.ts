@@ -23,7 +23,9 @@ import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { firestoreWithResilience } from "../resilienceHelpers.js";
 import { COMMUNITY_SCHEMA_VERSION, CommunityPaths } from "./consent.js";
 import { deriveGeoKeys, populateGeoKeys, normalizeGeoKey } from "./geo.js";
+import { assertCommunityRuntimeEnabled } from "./rollout.js";
 import type { CommunityConsentDoc, CommunityProfileDoc } from "../types/generated/community.js";
+import type { ColumnSource } from "hyparquet-writer";
 
 // ---------------------------------------------------------------------------
 // Callable options
@@ -142,6 +144,7 @@ export const joinCommunity = onCallProduction(
   async (request: CallableRequest<JoinCommunityInput>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to join the community.");
+    assertCommunityRuntimeEnabled("join");
 
     const data = request.data ?? {};
     const now = new Date().toISOString();
@@ -255,6 +258,7 @@ export const updateCommunityProfile = onCallProduction(
   async (request: CallableRequest<UpdateProfileInput>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to update your profile.");
+    assertCommunityRuntimeEnabled("profile update");
 
     const data = request.data ?? {};
     const db = getFirestore();
@@ -408,10 +412,71 @@ export const revokeCommunityParticipation = onCallProduction(
 
 const SIGNED_URL_TTL_SECONDS = 15 * 60;
 const MAX_EXPORT_TRACES = 10_000;
+type LookingGlassExportFormat = "jsonl" | "parquet";
+
+interface SerializedLookingGlassBundle {
+  buffer: Buffer;
+  extension: LookingGlassExportFormat;
+  contentType: string;
+}
+
+function requestedLookingGlassExportFormat(raw: unknown): LookingGlassExportFormat {
+  if (raw === undefined || raw === null || raw === "") return "jsonl";
+  if (raw === "jsonl" || raw === "parquet") return raw;
+  throw new HttpsError("invalid-argument", "Looking Glass export format must be jsonl or parquet.");
+}
+
+async function serializeLookingGlassBundle(
+  rows: Array<Record<string, unknown>>,
+  format: LookingGlassExportFormat,
+): Promise<SerializedLookingGlassBundle> {
+  if (format === "jsonl") {
+    return {
+      buffer: Buffer.from(rows.map((row) => JSON.stringify(row)).join("\n"), "utf-8"),
+      extension: "jsonl",
+      contentType: "application/x-ndjson",
+    };
+  }
+
+  const jsonRows = rows.map((row) => JSON.stringify(row));
+  const columnData: ColumnSource[] = [
+    { name: "json", data: jsonRows, type: "STRING", nullable: false },
+    {
+      name: "sessionId",
+      data: rows.map((row) => (typeof row.sessionId === "string" ? row.sessionId : null)),
+      type: "STRING",
+      nullable: true,
+    },
+    {
+      name: "recordedAt",
+      data: rows.map((row) => (typeof row.recordedAt === "string" ? row.recordedAt : null)),
+      type: "STRING",
+      nullable: true,
+    },
+  ];
+
+  // hyparquet-writer is ESM-only while this Functions package compiles as
+  // CommonJS under NodeNext; a static value import fails TS1479 at build time.
+  const { parquetWriteBuffer } = await import("hyparquet-writer");
+  const arrayBuffer = parquetWriteBuffer({
+    columnData,
+    rowGroupSize: Math.min(Math.max(rows.length, 1), 1000),
+    kvMetadata: [
+      { key: "openburnbar.domain", value: "looking_glass" },
+      { key: "openburnbar.schema_version", value: String(COMMUNITY_SCHEMA_VERSION) },
+    ],
+  });
+
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    extension: "parquet",
+    contentType: "application/vnd.apache.parquet",
+  };
+}
 
 /**
- * Exports the user's Looking Glass traces as a JSONL bundle in Cloud Storage
- * and returns a signed download URL. Requires L3 consent.
+ * Exports the user's Looking Glass traces as a JSONL or Parquet bundle in Cloud
+ * Storage and returns a signed download URL. Requires L3 consent.
  */
 export const exportLookingGlassBundle = onCallProduction(
   "exportLookingGlassBundle",
@@ -423,7 +488,9 @@ export const exportLookingGlassBundle = onCallProduction(
   async (request: CallableRequest<{ format?: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to export your data.");
+    assertCommunityRuntimeEnabled("Looking Glass export");
 
+    const format = requestedLookingGlassExportFormat(request.data?.format);
     const db = getFirestore();
 
     // Verify L3 consent server-side.
@@ -441,12 +508,10 @@ export const exportLookingGlassBundle = onCallProduction(
       throw new HttpsError("not-found", "No Looking Glass traces to export.");
     }
 
-    // Build JSONL bundle.
-    const lines = tracesSnapshot.docs.map((doc) => JSON.stringify(doc.data()));
-    const jsonl = lines.join("\n");
-    const buffer = Buffer.from(jsonl, "utf-8");
+    const rows = tracesSnapshot.docs.map((doc) => ({ traceId: doc.id, ...doc.data() }));
+    const bundle = await serializeLookingGlassBundle(rows, format);
     const exportId = `${Date.now()}_${randomBytes(4).toString("hex")}`;
-    const storagePath = `looking_glass_exports/${uid}/${exportId}.jsonl`;
+    const storagePath = `looking_glass_exports/${uid}/${exportId}.${bundle.extension}`;
 
     // Required audit event before writing export bytes/metadata. If audit fails,
     // the export does not leave the process.
@@ -458,7 +523,7 @@ export const exportLookingGlassBundle = onCallProduction(
 
     const bucket = getStorage().bucket();
     const file = bucket.file(storagePath);
-    await file.save(buffer, { contentType: "application/x-ndjson" });
+    await file.save(bundle.buffer, { contentType: bundle.contentType });
 
     const [signedUrl] = await file.getSignedUrl({
       action: "read",
@@ -469,22 +534,28 @@ export const exportLookingGlassBundle = onCallProduction(
     await firestoreWithResilience("community-lg-export-write", () =>
       db.collection(CommunityPaths.lookingGlassExports(uid)).add({
         storagePath,
-        format: "jsonl",
+        format: bundle.extension,
         traceCount: tracesSnapshot.size,
-        sizeBytes: buffer.length,
+        sizeBytes: bundle.buffer.length,
         createdAt: new Date().toISOString(),
         schemaVersion: COMMUNITY_SCHEMA_VERSION,
       }),
     );
 
-
     logInfo({
       event: "community_lg_export",
       uid_prefix: uid.slice(0, 8),
       traceCount: tracesSnapshot.size,
+      format: bundle.extension,
     });
 
-    return { signedUrl, traceCount: tracesSnapshot.size, expiresIn: SIGNED_URL_TTL_SECONDS };
+    return {
+      signedUrl,
+      downloadUrl: signedUrl,
+      traceCount: tracesSnapshot.size,
+      format: bundle.extension,
+      expiresIn: SIGNED_URL_TTL_SECONDS,
+    };
   },
 );
 

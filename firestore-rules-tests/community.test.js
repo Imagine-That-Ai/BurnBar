@@ -29,6 +29,17 @@ const shareSnapshotPayload = {
   },
   modelMix: {},
   purposeMix: {},
+  countryCode: "US",
+  regionKey: "US-CA",
+  cityKey: "US-CA-san-francisco",
+  schemaVersion: 1,
+  updatedAt: "2026-07-09T00:00:00.000Z",
+};
+
+const worldOnlyShareSnapshotPayload = {
+  windows: shareSnapshotPayload.windows,
+  modelMix: {},
+  purposeMix: {},
   schemaVersion: 1,
   updatedAt: "2026-07-09T00:00:00.000Z",
 };
@@ -79,7 +90,21 @@ async function main() {
     });
   });
 
-  await step("authenticated read on community_leaderboards", async () => {
+  await step("leaderboard read fails closed before rollout status", async () => {
+    await assertFails(getDoc(doc(aliceDB, "community_leaderboards", "7d_world_world")));
+  });
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const adminDb = ctx.firestore();
+    await setDoc(doc(adminDb, "ops", "community_status", "state", "current"), {
+      enabled: true,
+      publicReadsEnabled: true,
+      updatedAt: "2026-07-09T00:00:00.000Z",
+      schemaVersion: 1,
+    });
+  });
+
+  await step("authenticated read on community_leaderboards after rollout status", async () => {
     await assertSucceeds(getDoc(doc(aliceDB, "community_leaderboards", "7d_world_world")));
   });
 
@@ -115,6 +140,21 @@ async function main() {
   await step("owner can write share_snapshot", async () => {
     await assertSucceeds(
       setDoc(doc(aliceDB, "users", aliceUid, "community", "share_snapshot"), shareSnapshotPayload),
+    );
+  });
+
+  await step("owner can write realistic world-only share_snapshot", async () => {
+    await assertSucceeds(
+      setDoc(doc(aliceDB, "users", aliceUid, "community", "share_snapshot"), worldOnlyShareSnapshotPayload),
+    );
+  });
+
+  await step("owner cannot write malformed share_snapshot", async () => {
+    await assertFails(
+      setDoc(doc(aliceDB, "users", aliceUid, "community", "share_snapshot"), {
+        ...shareSnapshotPayload,
+        cityKey: "not allowed with spaces",
+      }),
     );
   });
 

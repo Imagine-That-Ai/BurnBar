@@ -17,8 +17,8 @@ Local usage → Consent gate
 
 1. **Client** computes `CommunityShareSnapshotDoc` from existing `UsageRollupDoc` merge (tokens, costUSD, model mix, purpose mix per window).
 2. **Client** writes the snapshot to `users/{uid}/community/share_snapshot` only while L2 is granted.
-3. **Hourly onSchedule** (`aggregateCommunityLeaderboards`) collectionGroups over all share snapshots, server-side consent recheck, computes leaderboards per window × tier, applies k-anonymity, and writes public `community_leaderboards/{window}_{tier}_{geoKey}` docs.
-4. **Clients** read leaderboards (public authenticated read-only) and render the UI.
+3. **Hourly onSchedule** (`aggregateCommunityLeaderboards`) publishes the Community public-read status, collectionGroups over all share snapshots, server-side consent rechecks, validates freshness/shape, computes leaderboards per window × tier, applies k-anonymity, and writes public `community_leaderboards/{window}_{tier}_{geoKey}` docs.
+4. **Clients** read leaderboards only after the backend-published public-read envelope enables authenticated public reads.
 
 ## Consent Model
 
@@ -81,7 +81,7 @@ The UI falls back to the next-broader tier (city → region → country → worl
 
 ### Movement arrows
 
-Each entry carries a `movement` field computed by comparing the entry's rank against the previous aggregation cycle's all_time world board:
+Each entry carries a `movement` field computed by comparing the entry's rank against the previous aggregation cycle for the same `window × tier × geoKey` board:
 
 | Movement | Condition |
 |----------|-----------|
@@ -97,6 +97,10 @@ Computed using nearest-rank linear interpolation on the sorted token totals: p50
 ### Tiebreaker
 
 Sort by `totalTokens` descending, then `costUSD` descending.
+
+### Snapshot validation and cleanup
+
+Aggregation rejects malformed or implausible share snapshots before ranking: missing windows, non-monotonic window totals, negative or unsafe token/cost values, oversized mix maps, invalid geo keys, timestamps older than seven days, and timestamps more than ten minutes in the future. Revoked snapshots are tombstones and are deleted before publication. A successful aggregation deletes stale public board docs that were not produced in the current generation; `cleanupStaleCommunityLeaderboards` also runs daily as a safety net.
 
 ## Geography
 
@@ -131,14 +135,19 @@ Golden fixtures: `tests/fixtures/classifier-goldens.json` verify cross-platform 
 | Module | Purpose |
 |--------|---------|
 | `consent.ts` | Server-side consent recheck (`recheckConsent`), K_THRESHOLD, CommunityPaths |
-| `aggregation.ts` | Hourly `onSchedule`: collectionGroup, consent recheck, leaderboard computation |
-| `callables.ts` | `joinCommunity`, `updateCommunityProfile`, `revokeCommunityParticipation`, `exportLookingGlassBundle` |
+| `rollout.ts` | Runtime kill switch and Firestore public-read status publisher |
+| `aggregation.ts` | Hourly `onSchedule`: collectionGroup, consent recheck, plausibility validation, per-cohort previous-rank reads, leaderboard computation, stale cleanup |
+| `callables.ts` | `joinCommunity`, `updateCommunityProfile`, `revokeCommunityParticipation`, `exportLookingGlassBundle` (`jsonl` default, optional `parquet`) |
 | `classifier.ts` | Canonical model-purpose classifier (shared spec) |
 | `shareTypes.ts` | Hand-maintained types for Record/@encodedName models |
 
 ### Handle uniqueness
 
 Transactional `community_handles/{handleLower}` doc-ID claim — atomic, no TOCTOU race, no collectionGroup scan or index. Released on handle change and revoke.
+
+### Rollout gates and exports
+
+`OPENBURNBAR_COMMUNITY_KILL_SWITCH` / `community_kill_switch` hard-disable joins, profile updates, Looking Glass exports, and aggregation while preserving owner reads and cleanup paths. `OPENBURNBAR_COMMUNITY_PUBLIC_READS_ENABLED` / `community_public_reads_enabled` controls the `/ops/community_status/state/current` envelope that Firestore rules require before public leaderboard reads. Looking Glass exports default to JSONL and accept `format: "parquet"` for typed Parquet bundles with `sessionId`, `recordedAt`, and a raw `json` column.
 
 ## Platform UI Map
 
@@ -169,11 +178,11 @@ Empty states invite opt-in without pressure. Threshold states explain "needs N m
 
 | Area | Location | Coverage |
 |------|----------|----------|
-| Functions | `functions/src/__tests__/community.test.ts` | Dark gate, k-threshold, geography fallback, revoke sweep, export bundle shape, handle validation/collision |
-| Firestore rules | `firestore-rules-tests/community.test.js` | Leaderboard read-only, owner-only private docs, share_snapshot client write, no client writes to aggregates |
+| Functions | `functions/src/__tests__/community.test.ts` | Dark gate, k-threshold, per-cohort previous-rank movement, share snapshot plausibility, stale cleanup, revoke sweep, JSONL/Parquet export bundle shape, handle validation/collision |
+| Firestore rules | `firestore-rules-tests/community.test.js` | Leaderboard fail-closed public reads, rollout status gate, owner-only private docs, realistic world-only/city share_snapshot writes, malformed shape rejection, no client writes to aggregates |
 | Swift | `AgentLensTests/` + `OpenBurnBarMobileTests/` | Consent store, classifier goldens, render states (opted-out/empty/threshold/live), revocation UI |
 | Kotlin JVM | `android/app/src/test/` | Consent store, classifier goldens, snapshot merge, Compose screen states |
-| Schema | `./tools/schema-sync/check-drift.sh` | TypeSpec canon parity, hand-mirror drift |
+| Schema | `./tools/schema-sync/check-drift.sh` | TypeSpec canon parity, hand-mirror drift, Community golden fixture mirror drift |
 
 ## Validation
 
@@ -184,14 +193,14 @@ Run the cheapest relevant checks per area:
 bash tools/schema-sync/check-drift.sh
 
 # Functions tests
-cd functions && npx jest --testPathPattern community
+cd functions && npm run test:community
 
 # Firestore rules tests
-cd firestore-rules-tests && npx jest community
+cd firestore-rules-tests && npm run test:community
 
 # Android JVM tests
-cd android && ./gradlew :app:testDebugUnitTest --tests "*Community*" --tests "*Classifier*"
+cd android && ./gradlew :app:testDebugUnitTest --tests "com.openburnbar.data.community.*"
 
-# macOS app tests
-./scripts/test-openburnbar-app.sh -only-testing:OpenBurnBarTests/CommunityTests
+# macOS app Community classifier focus
+OPENBURNBAR_ENABLE_COVERAGE=NO OPENBURNBAR_APP_TEST_FILTERS="OpenBurnBarTests/ModelPurposeClassifierTests" ./scripts/test-openburnbar-app.sh
 ```

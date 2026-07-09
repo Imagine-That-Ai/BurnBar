@@ -1,7 +1,7 @@
 {
   "name": "openburnbar-functions",
   "version": "1.0.0",
-  "description": "OpenBurnBar Cloud Functions v2 backend \u2014 provider credential vault, quota refresh, and usage rollups.",
+  "description": "OpenBurnBar Cloud Functions v2 backend — provider credential vault, quota refresh, and usage rollups.",
   "engines": {
     "node": "22"
   },
@@ -83,6 +83,7 @@
     "firebase-admin": "13.10.0",
     "firebase-functions": "^7.2.5",
     "googleapis": "173.0.0",
+    "hyparquet-writer": "0.16.1",
     "stripe": "19.3.0"
   },
   "devDependencies": {

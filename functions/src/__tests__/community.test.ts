@@ -7,9 +7,11 @@ import type { Firestore } from "firebase-admin/firestore";
 import {
   buildLeaderboard,
   collectValidParticipants,
+  cleanupStaleLeaderboards,
   computePercentiles,
   groupByGeoTier,
   loadPreviousRanks,
+  loadPreviousRanksForBoards,
   type Participant,
 } from "../community/aggregation.js";
 import {
@@ -27,6 +29,7 @@ import {
   updateCommunityProfile,
   __communityCallableTestExports,
 } from "../community/callables.js";
+import { communityRuntimeStatus } from "../community/rollout.js";
 import { COMMUNITY_SCHEMA_VERSION, CommunityPaths, recheckConsent } from "../community/consent.js";
 import { normalizeGeoKey } from "../community/geo.js";
 import type { CommunityWindowTotals } from "../community/shareTypes.js";
@@ -38,6 +41,8 @@ import {
   pathKeyedFirestore,
   seedDoc,
 } from "./bola/callableBolaHarness.js";
+
+const FRESH_SHARE_SNAPSHOT_UPDATED_AT = new Date().toISOString();
 
 const goldensPath = resolve(process.cwd(), "../tests/fixtures/classifier-goldens.json");
 
@@ -182,6 +187,27 @@ describe("recheckConsent", () => {
   });
 });
 
+describe("communityRuntimeStatus", () => {
+  it("hard-disables mutation and public reads when the kill switch is on", () => {
+    expect(
+      communityRuntimeStatus({
+        communityKillSwitch: true,
+        communityPublicReadsEnabled: true,
+      }),
+    ).toEqual({ enabled: false, publicReadsEnabled: false, reason: "kill_switch" });
+  });
+
+  it("can keep mutation enabled while fail-closing public reads", () => {
+    expect(
+      communityRuntimeStatus({
+        communityKillSwitch: false,
+        communityPublicReadsEnabled: false,
+      }),
+    ).toEqual({ enabled: true, publicReadsEnabled: false, reason: "public_reads_disabled" });
+  });
+});
+
+
 describe("collectValidParticipants anonId privacy", () => {
   const LEAK_UID = "firebase-auth-uid-must-not-publish";
 
@@ -196,7 +222,7 @@ describe("collectValidParticipants anonId privacy", () => {
       modelMix: {},
       purposeMix: {},
       schemaVersion: COMMUNITY_SCHEMA_VERSION,
-      updatedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
     });
 
     const db = pathKeyedFirestore(store) as unknown as Firestore;
@@ -219,7 +245,7 @@ describe("collectValidParticipants anonId privacy", () => {
       modelMix: {},
       purposeMix: {},
       schemaVersion: COMMUNITY_SCHEMA_VERSION,
-      updatedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
     });
 
     const db = pathKeyedFirestore(store) as unknown as Firestore;
@@ -239,7 +265,7 @@ describe("collectValidParticipants anonId privacy", () => {
       modelMix: {},
       purposeMix: {},
       schemaVersion: COMMUNITY_SCHEMA_VERSION,
-      updatedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
     });
 
     const db = pathKeyedFirestore(store) as unknown as Firestore;
@@ -248,6 +274,36 @@ describe("collectValidParticipants anonId privacy", () => {
     expect(participants).toHaveLength(1);
     expect(participants[0]?.anonId).toBe(anonId);
     expect(participants[0]?.anonId).not.toBe(LEAK_UID);
+  });
+
+  it("skips malformed or stale share snapshots before ranking", async () => {
+    const staleUid = "stale-share-snapshot";
+    const malformedUid = "malformed-share-snapshot";
+    for (const uid of [staleUid, malformedUid]) {
+      seedDoc(store, CommunityPaths.consent(uid), {
+        l2Tiers: { world: "granted", country: "declined", region: "declined", city: "declined" },
+      });
+      seedDoc(store, CommunityPaths.profile(uid), { anonId: `${uid}-anon`, schemaVersion: COMMUNITY_SCHEMA_VERSION });
+    }
+    seedDoc(store, CommunityPaths.shareSnapshot(staleUid), {
+      windows: windowTotals(2),
+      modelMix: {},
+      purposeMix: {},
+      schemaVersion: COMMUNITY_SCHEMA_VERSION,
+      updatedAt: "2000-01-01T00:00:00.000Z",
+    });
+    seedDoc(store, CommunityPaths.shareSnapshot(malformedUid), {
+      windows: { today: { totalTokens: -1, costUSD: 0 } },
+      modelMix: {},
+      purposeMix: {},
+      schemaVersion: COMMUNITY_SCHEMA_VERSION,
+      updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
+    });
+
+    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const participants = await collectValidParticipants(db);
+    expect(participants.map((p) => p.uid)).not.toContain(staleUid);
+    expect(participants.map((p) => p.uid)).not.toContain(malformedUid);
   });
 });
 
@@ -315,6 +371,53 @@ describe("loadPreviousRanks cohort doc id", () => {
     const prev = await loadPreviousRanks(db, "30d", "city", geoKey);
     expect(prev.get("cohort-anon")).toBe(4);
     expect(prev.get("cohort-anon")).not.toBe(99);
+  });
+
+  it("loads previous ranks for unique board descriptors", async () => {
+    seedDoc(store, CommunityPaths.leaderboard("7d", "world", "world"), {
+      entries: [{ anonId: "world-anon", rank: 2, movement: "same" }],
+      belowThreshold: false,
+      cohortSize: 12,
+      percentiles: { p50: 1, p75: 1, p90: 1, p99: 1 },
+    });
+    seedDoc(store, CommunityPaths.leaderboard("7d", "country", "US"), {
+      entries: [{ anonId: "country-anon", rank: 7, movement: "same" }],
+      belowThreshold: false,
+      cohortSize: 12,
+      percentiles: { p50: 1, p75: 1, p90: 1, p99: 1 },
+    });
+
+    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const prev = await loadPreviousRanksForBoards(db, [
+      { window: "7d", tier: "world", geoKey: "world" },
+      { window: "7d", tier: "world", geoKey: "world" },
+      { window: "7d", tier: "country", geoKey: "US" },
+    ]);
+
+    expect(prev.size).toBe(2);
+    expect(prev.get("7d|world|world")?.get("world-anon")).toBe(2);
+    expect(prev.get("7d|country|US")?.get("country-anon")).toBe(7);
+  });
+});
+
+describe("cleanupStaleLeaderboards", () => {
+  beforeEach(() => store.clear());
+
+  it("deletes only inactive boards older than the current run", async () => {
+    const activePath = CommunityPaths.leaderboard("7d", "world", "world");
+    const stalePath = CommunityPaths.leaderboard("7d", "country", "DE");
+    const freshPath = CommunityPaths.leaderboard("7d", "country", "US");
+    seedDoc(store, activePath, { updatedAt: "2026-07-09T00:00:00.000Z" });
+    seedDoc(store, stalePath, { updatedAt: "2026-07-08T23:00:00.000Z" });
+    seedDoc(store, freshPath, { updatedAt: "2026-07-09T00:30:00.000Z" });
+
+    const db = pathKeyedFirestore(store) as unknown as Firestore;
+    const deleted = await cleanupStaleLeaderboards(db, new Set([activePath]), new Date("2026-07-09T00:00:00.000Z"));
+
+    expect(deleted).toBe(1);
+    expect(store.has(activePath)).toBe(true);
+    expect(store.has(stalePath)).toBe(false);
+    expect(store.has(freshPath)).toBe(true);
   });
 });
 
@@ -480,9 +583,14 @@ describe("updateCommunityProfile geo normalization", () => {
 });
 
 describe("exportLookingGlassBundle", () => {
-  beforeEach(() => store.clear());
+  beforeEach(() => {
+    store.clear();
+    storageSaveMock.mockClear();
+    vi.mocked(appendAuditEventRequired).mockReset();
+    vi.mocked(appendAuditEventRequired).mockResolvedValue(undefined);
+  });
 
-  it("returns signedUrl, traceCount, and expiresIn", async () => {
+  it("defaults to JSONL and records signedUrl, traceCount, format, and expiresIn", async () => {
     seedDoc(store, CommunityPaths.consent(ALICE_UID), { l3LookingGlass: "granted" });
     seedDoc(store, `users/${ALICE_UID}/looking_glass_traces/t1`, { sessionId: "s1" });
     seedDoc(store, `users/${ALICE_UID}/looking_glass_traces/t2`, { sessionId: "s2" });
@@ -490,13 +598,64 @@ describe("exportLookingGlassBundle", () => {
     const run = callableRunner(exportLookingGlassBundle);
     const result = (await run(callableRequest(ALICE_UID, {}))) as {
       signedUrl: string;
+      downloadUrl: string;
       traceCount: number;
+      format: string;
       expiresIn: number;
     };
 
     expect(result.signedUrl).toMatch(/^https:\/\//);
+    expect(result.downloadUrl).toBe(result.signedUrl);
     expect(result.traceCount).toBe(2);
+    expect(result.format).toBe("jsonl");
     expect(result.expiresIn).toBe(__communityCallableTestExports.SIGNED_URL_TTL_SECONDS);
+    expect(storageSaveMock).toHaveBeenCalledWith(expect.any(Buffer), { contentType: "application/x-ndjson" });
+  });
+
+  it("writes Parquet bundles when requested", async () => {
+    seedDoc(store, CommunityPaths.consent(ALICE_UID), { l3LookingGlass: "granted" });
+    seedDoc(store, `users/${ALICE_UID}/looking_glass_traces/t1`, {
+      sessionId: "s1",
+      model: "gpt-5.5",
+      provider: "openai",
+      purpose: "logic",
+      corrected: false,
+      totalTokens: 42,
+      costUSD: 0.02,
+      signals: ["file_edit"],
+      recordedAt: "2026-07-09T00:00:00.000Z",
+      schemaVersion: COMMUNITY_SCHEMA_VERSION,
+    });
+
+    const run = callableRunner(exportLookingGlassBundle);
+    const result = (await run(callableRequest(ALICE_UID, { format: "parquet" }))) as {
+      traceCount: number;
+      format: string;
+    };
+
+    expect(result.traceCount).toBe(1);
+    expect(result.format).toBe("parquet");
+    expect(storageSaveMock).toHaveBeenCalledWith(expect.any(Buffer), {
+      contentType: "application/vnd.apache.parquet",
+    });
+    const firstSaveCall = storageSaveMock.mock.calls.at(0) as unknown[] | undefined;
+    const parquetBuffer = firstSaveCall?.[0];
+    expect(Buffer.isBuffer(parquetBuffer)).toBe(true);
+    if (!Buffer.isBuffer(parquetBuffer)) throw new Error("Parquet export did not save a Buffer.");
+    expect(parquetBuffer.subarray(0, 4).toString("utf8")).toBe("PAR1");
+    expect(parquetBuffer.includes("recordedAt")).toBe(true);
+    expect(parquetBuffer.includes("createdAt")).toBe(false);
+  });
+
+  it("rejects unknown export formats before writing storage", async () => {
+    seedDoc(store, CommunityPaths.consent(ALICE_UID), { l3LookingGlass: "granted" });
+    seedDoc(store, `users/${ALICE_UID}/looking_glass_traces/t1`, { sessionId: "s1" });
+
+    const run = callableRunner(exportLookingGlassBundle);
+    await expect(run(callableRequest(ALICE_UID, { format: "csv" }))).rejects.toMatchObject({
+      code: "invalid-argument",
+    });
+    expect(storageSaveMock).not.toHaveBeenCalled();
   });
 
   it("requires L3 consent", async () => {
@@ -527,7 +686,7 @@ describe("revokeCommunityParticipation — fail-closed audit", () => {
     seedDoc(store, CommunityPaths.shareSnapshot(ALICE_UID), {
       windows: windowTotals(1),
       schemaVersion: COMMUNITY_SCHEMA_VERSION,
-      updatedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: FRESH_SHARE_SNAPSHOT_UPDATED_AT,
     });
     seedDoc(store, CommunityPaths.handleClaim("revoke_me"), { uid: ALICE_UID });
 
