@@ -18,6 +18,7 @@
 
     <NavigationView x:Name="Nav"
                     Background="{StaticResource PensieveColorInkBaseBrush}"
+                    AutomationProperties.AutomationId="AppShell.Root"
                     IsBackButtonVisible="Collapsed"
                     IsSettingsVisible="False"
                     PaneDisplayMode="Left"
@@ -36,12 +37,15 @@
                            Grid.Column="0"
                            VerticalAlignment="Center"
                            FontSize="20"
-                           FontWeight="SemiBold" />
+                           FontWeight="SemiBold"
+                           AutomationProperties.AutomationId="Shell.HeaderTitle" />
 
                 <!-- Command Palette entry (Ctrl+K). -->
-                <Button Grid.Column="1"
+                <Button x:Name="CommandPaletteButton"
+                        Grid.Column="1"
                         Click="Palette_Click"
-                        ToolTipService.ToolTip="Command palette (Ctrl+K)">
+                        ToolTipService.ToolTip="Command palette (Ctrl+K)"
+                        AutomationProperties.AutomationId="Shell.CommandPaletteButton">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE721;" />
                         <TextBlock Text="Search" />
@@ -50,7 +54,10 @@
                 </Button>
 
                 <!-- Appearance flyout (theme/appearance-mode plumbing). -->
-                <Button Grid.Column="2" ToolTipService.ToolTip="Appearance">
+                <Button x:Name="AppearanceButton"
+                        Grid.Column="2"
+                        ToolTipService.ToolTip="Appearance"
+                        AutomationProperties.AutomationId="Shell.AppearanceButton">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;" />
                     <Button.Flyout>
                         <Flyout x:Name="AppearanceFlyout" Opening="AppearanceFlyout_Opening">
@@ -61,6 +68,8 @@
             </Grid>
         </NavigationView.Header>
 
-        <Frame x:Name="ContentFrame" Background="{StaticResource PensieveColorInkBaseBrush}" />
+        <Frame x:Name="ContentFrame"
+               Background="{StaticResource PensieveColorInkBaseBrush}"
+               AutomationProperties.AutomationId="Shell.ContentFrame" />
     </NavigationView>
 </UserControl>

@@ -19,7 +19,7 @@ internal sealed class RouteSmokeOptions
 
     public static RouteSmokeOptions? Parse(string? arguments)
     {
-        IReadOnlyList<string> parts = Split(arguments);
+        IReadOnlyList<string> parts = CommandLineParts.Split(arguments);
         if (parts.Count == 0)
         {
             return null;
@@ -59,45 +59,4 @@ internal sealed class RouteSmokeOptions
         return new RouteSmokeOptions(route.Trim(), output, timeout);
     }
 
-    private static IReadOnlyList<string> Split(string? arguments)
-    {
-        if (string.IsNullOrWhiteSpace(arguments))
-        {
-            return Array.Empty<string>();
-        }
-
-        var parts = new List<string>();
-        var current = new System.Text.StringBuilder();
-        var quoted = false;
-        foreach (char c in arguments)
-        {
-            if (c == '"')
-            {
-                quoted = !quoted;
-                continue;
-            }
-
-            if (char.IsWhiteSpace(c) && !quoted)
-            {
-                Flush();
-                continue;
-            }
-
-            current.Append(c);
-        }
-
-        Flush();
-        return parts;
-
-        void Flush()
-        {
-            if (current.Length == 0)
-            {
-                return;
-            }
-
-            parts.Add(current.ToString());
-            current.Clear();
-        }
-    }
 }

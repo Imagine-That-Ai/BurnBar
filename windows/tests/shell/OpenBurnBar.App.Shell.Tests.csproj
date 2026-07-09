@@ -31,8 +31,12 @@
 
   <ItemGroup>
     <Compile Include="../../app/OpenBurnBar.App/Shell/AppStatePersistence.cs" />
+    <Compile Include="../../app/OpenBurnBar.App.Configuration/RuntimePaths.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/AutomationLaunchOptions.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/CommandLineParts.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Shell/RouteSmokeOptions.cs" />
     <Compile Include="AppStatePersistenceTests.cs" />
+    <Compile Include="AutomationLaunchOptionsTests.cs" />
     <Compile Include="RouteSmokeOptionsTests.cs" />
   </ItemGroup>
 

@@ -67,6 +67,16 @@ packages:
     from: "1.18.0"
 
 schemes:
+  OpenBurnBarUITests:
+    build:
+      targets:
+        OpenBurnBar: all
+        OpenBurnBarUITests: test
+    test:
+      config: Debug
+      targets:
+        - OpenBurnBarUITests
+
   OpenBurnBarMobileUnitTests:
     build:
       targets:
@@ -691,6 +701,25 @@ targets:
         product: ViewInspector
       - package: SnapshotTesting
         product: SnapshotTesting
+
+  OpenBurnBarUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: OpenBurnBarUITests
+        excludes:
+          - "**/.DS_Store"
+      - path: AgentLens/Support/AccessibilityIdentifiers.swift
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        PRODUCT_NAME: OpenBurnBarUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.uitests
+        TEST_TARGET_NAME: OpenBurnBar
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
+    dependencies:
+      - target: OpenBurnBar
 
   OpenBurnBarDaemonTests:
     type: bundle.unit-test

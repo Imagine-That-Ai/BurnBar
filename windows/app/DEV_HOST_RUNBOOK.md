@@ -111,17 +111,41 @@ Tick each — these are the WINUI-016 behaviors the spike claims, proven live:
 
 ---
 
-## 6. Route-smoke automation
+## 6. Windows UI automation harness
 
-After a successful build, run the route smoke harness before doing the manual recording:
+After a successful build, run the full UI automation harness before doing the manual recording:
 
 ```powershell
-..\scripts\windows-port\run-route-smoke.ps1 `
-  -AppExe .\app\OpenBurnBar.App\bin\ARM64\Debug\net8.0-windows10.0.19041.0\win-arm64\OpenBurnBar.App.exe `
-  -OutputDirectory .\route-smoke
+..\scripts\windows-port\run-ui-automation.ps1 `
+  -Configuration Debug `
+  -Platform ARM64
 ```
 
-The harness launches each registered destination with `--route-smoke`, captures a PNG, writes one JSON result per route, and fails if a route crashes or renders a near-uniform/blank screenshot. Results land under `windows\route-smoke\`; archive `route-smoke-summary.json` and the route PNGs with the parity evidence.
+By default the script builds the app + harness, then runs the harness through a one-shot interactive
+Scheduled Task. That matters when you are connected over SSH: the WinUI process must launch in the
+logged-in desktop session, not in the non-interactive SSH window station. Use `-Direct` only from an
+already-interactive PowerShell prompt.
+
+The harness writes artifacts under `.artifacts\windows-ui-automation\<timestamp>\`:
+
+| Artifact | Purpose |
+|---|---|
+| `summary.json` | Redacted machine-readable verdict for the whole run. |
+| `junit.xml` | CI/check-run friendly failures for each route and semantic probe. |
+| `index.html` | Human evidence index with links to screenshots. |
+| `route-manifest.json` | Route keys, expected root `AutomationId`s, and source XAML paths. |
+| `routes\<route>\*.png` + `*-result.json` | Per-route in-app render capture and pixel stats. |
+| `semantic\main-window.png` | External window bitmap capture from the persistent main-window launch. |
+| `launches\*\automation-launch.json` | Proof that the app redirected state/log/config into a throwaway automation profile. |
+
+The harness fails if a route crashes, times out, renders near-uniform/blank, the persistent main
+window cannot be inspected, or UIA classifies the foreground window as a password/secure-desktop/
+credential-prompt deny region. It also records the PAL input route contract: click/type/key/shortcut/
+drag actions must stay on the non-bypassable ViGEm/driver path, while pointer move/scroll/inspect
+remain advisory.
+
+The older `run-route-smoke.ps1` remains useful for a narrow screenshot-only pass, but it is no longer
+the release-grade Windows UI evidence path.
 
 Set these only when the dev VM lacks optional render runtimes:
 
@@ -136,7 +160,7 @@ Those switches keep the page route alive with a degraded visible state; they are
 
 ## 7. Screen-record the run
 
-Record one continuous take covering the checklist above after the route-smoke harness passes.
+Record one continuous take covering the checklist above after the UI automation harness passes.
 
 - **Xbox Game Bar (built in):** `Win + Alt + R` to start/stop; clips land in
   `%USERPROFILE%\Videos\Captures\`. (Game Bar records the focused window; for the tray + flyout
@@ -169,7 +193,7 @@ Then record the go/no-go for WINUI-017 (pass = every checklist item observed).
 | Tray icon missing after a crash | Windows caches dead tray icons; hover the notification area or restart Explorer. On a clean Quit the icon is removed via `NIM_DELETE`. |
 | `dotnet build` can't find WinUI targets | Open the `.sln` in VS 2022 once to install components, or install the **"Windows App SDK C# Templates"** individual component. |
 | `NETSDK1045` for `net10.0` projects | Install the .NET 10 SDK. A .NET 8-only host can target the app TFM but cannot build the shared multi-targeted Windows libraries. |
-| Route-smoke PNG is blank/near-uniform | Open `%LOCALAPPDATA%\OpenBurnBar\logs\winui-crash.log` and `route-breadcrumbs.log`; the app records the active route and native renderer exceptions there. |
+| Harness route PNG is blank/near-uniform | Open the failing route's `launches\<route>\automation-launch.json`, then inspect that profile's `logs\winui-crash.log` and `route-breadcrumbs.log`; the app records the active route and native renderer exceptions there. |
 
 ---
 
