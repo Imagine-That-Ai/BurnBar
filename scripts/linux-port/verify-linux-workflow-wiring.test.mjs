@@ -33,6 +33,29 @@ function valid() {
       'run_xctest_case',
       'Executed 1 test',
       'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked'
+    ].join('\n'),
+    rustBridge: [
+      'gateway_probe',
+      'gateway_chat_stream',
+      'gateway_chat_cancel',
+      '.bearer_auth(token)',
+      'gateway_non_loopback_host_refused',
+      'Policy::none()',
+      'validate_external_url',
+      'open_external_url',
+      'external_url_host_refused',
+      'trusted_openburnbar_cli',
+      '/usr/bin/openburnbar-cli'
+    ].join('\n'),
+    capability: '{"permissions":["core:default"]}',
+    tauriConfig: '{"csp":"connect-src self ipc: tauri:"}',
+    fixturePolicy: 'DAEMON_FIXTURE_AVAILABLE\nenabled && DAEMON_FIXTURE_AVAILABLE',
+    desktopPackage: 'vite build && node ../../scripts/linux-port/verify-linux-production-bundle.mjs',
+    rendererBridge: [
+      "invoke<boolean>('gateway_probe')",
+      "invoke<void>('gateway_chat_stream'",
+      "invoke<void>('gateway_chat_cancel'",
+      "invoke<void>('open_external_url'"
     ].join('\n')
   };
 }
@@ -89,4 +112,44 @@ test('attestation and publish order drift fails', () => {
   const result = verifyLinuxWorkflowWiring(input);
   assert.equal(result.passed, false);
   assert.ok(result.failures.some((failure) => /out of order/.test(failure)));
+});
+
+test('gateway bearer exposure or native boundary removal fails', () => {
+  for (const forbidden of ['gatewayAuthToken', 'bearerToken', 'Authorization']) {
+    const input = valid();
+    input.rendererBridge += `\n${forbidden}`;
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, forbidden);
+  }
+  const exposed = valid();
+  exposed.rustBridge += '\n#[tauri::command]\nfn gateway_auth_token() -> Option<String> { None }';
+  assert.equal(verifyLinuxWorkflowWiring(exposed).passed, false);
+
+  const missingProxy = valid();
+  missingProxy.rustBridge = missingProxy.rustBridge.replace('gateway_chat_stream', '');
+  assert.equal(verifyLinuxWorkflowWiring(missingProxy).passed, false);
+});
+
+test('generic shell, renderer network, and production fixture activation drift fail', () => {
+  const broadShell = valid();
+  broadShell.capability = '{"permissions":["core:default","shell:default"]}';
+  assert.equal(verifyLinuxWorkflowWiring(broadShell).passed, false);
+
+  const rendererNetwork = valid();
+  rendererNetwork.rendererBridge += '\nfetch("http://127.0.0.1:8642/health")';
+  assert.equal(verifyLinuxWorkflowWiring(rendererNetwork).passed, false);
+
+  const broadCSP = valid();
+  broadCSP.tauriConfig = '{"csp":"connect-src self http://127.0.0.1:* ipc:"}';
+  assert.equal(verifyLinuxWorkflowWiring(broadCSP).passed, false);
+
+  const unguardedFixture = valid();
+  unguardedFixture.fixturePolicy = unguardedFixture.fixturePolicy.replace(
+    'enabled && DAEMON_FIXTURE_AVAILABLE',
+    'enabled'
+  );
+  assert.equal(verifyLinuxWorkflowWiring(unguardedFixture).passed, false);
+
+  const ambientPathCommand = valid();
+  ambientPathCommand.rustBridge += '\nCommand::new("openburnbar-cli")';
+  assert.equal(verifyLinuxWorkflowWiring(ambientPathCommand).passed, false);
 });

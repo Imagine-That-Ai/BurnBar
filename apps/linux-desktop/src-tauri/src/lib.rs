@@ -1,14 +1,19 @@
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
+use tauri::ipc::Channel;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
+use tauri_plugin_shell::ShellExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -99,9 +104,10 @@ fn first_non_empty_env(keys: &[&str]) -> Option<String> {
 }
 
 fn linux_support_dir() -> PathBuf {
-    if let Some(override_dir) =
-        first_non_empty_env(&["OPENBURNBAR_DAEMON_SUPPORT_DIR", "BURNBAR_DAEMON_SUPPORT_DIR"])
-    {
+    if let Some(override_dir) = first_non_empty_env(&[
+        "OPENBURNBAR_DAEMON_SUPPORT_DIR",
+        "BURNBAR_DAEMON_SUPPORT_DIR",
+    ]) {
         return PathBuf::from(override_dir);
     }
     if let Some(xdg) = first_non_empty_env(&["XDG_DATA_HOME"]) {
@@ -137,21 +143,20 @@ fn read_auth_token() -> Option<String> {
 /// Read a token file only when it is a regular file with mode 0600 or tighter.
 fn read_token_file_secure(path: &std::path::Path) -> Option<String> {
     use std::os::unix::fs::FileTypeExt;
-    use std::os::unix::fs::PermissionsExt;
-    let meta = fs::metadata(path).ok()?;
-    // Reject symlinks/FIFOs/devices: follow-up reads would race a replace.
-    // metadata() follows symlinks — also check symlink_metadata for the path itself.
-    if let Ok(link_meta) = fs::symlink_metadata(path) {
-        if link_meta.file_type().is_symlink() {
-            eprintln!(
-                "openburnbar: refusing token path {} (symlink not allowed)",
-                path.display()
-            );
-            return None;
-        }
-    }
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .open(path)
+        .ok()?;
+    let meta = file.metadata().ok()?;
     let ft = meta.file_type();
-    if !ft.is_file() || ft.is_fifo() || ft.is_socket() || ft.is_block_device() || ft.is_char_device() {
+    if !ft.is_file()
+        || ft.is_fifo()
+        || ft.is_socket()
+        || ft.is_block_device()
+        || ft.is_char_device()
+    {
         eprintln!(
             "openburnbar: refusing token path {} (not a regular file)",
             path.display()
@@ -167,10 +172,24 @@ fn read_token_file_secure(path: &std::path::Path) -> Option<String> {
         );
         return None;
     }
-    fs::read_to_string(path)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    if meta.uid() != unsafe { libc::geteuid() } || meta.nlink() != 1 {
+        eprintln!(
+            "openburnbar: refusing token file {} with invalid owner or link count",
+            path.display()
+        );
+        return None;
+    }
+    if meta.len() > 16_384 {
+        eprintln!(
+            "openburnbar: refusing oversized token file {}",
+            path.display()
+        );
+        return None;
+    }
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).ok()?;
+    let token = contents.trim().to_string();
+    (!token.is_empty()).then_some(token)
 }
 
 fn read_gateway_auth_token() -> Option<String> {
@@ -195,13 +214,221 @@ fn read_gateway_auth_token() -> Option<String> {
     None
 }
 
-/// Returns the gateway bearer for the HTTP gateway client (chat stream).
-/// Security note (Issue 20): this enters the renderer JS heap. Mitigations:
-/// restrictive CSP (tauri.conf.json), token file over env, short-lived tokens.
-/// Full fix is a Rust-side gateway proxy (Phase 4) that never returns the secret.
+const GATEWAY_MAX_MESSAGES: usize = 256;
+const GATEWAY_MAX_CONTENT_BYTES: usize = 1_048_576;
+const GATEWAY_MAX_RESPONSE_BYTES: usize = 16_777_216;
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayProxyMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayProxyRequest {
+    request_id: String,
+    model: String,
+    messages: Vec<GatewayProxyMessage>,
+}
+
+static GATEWAY_CANCELLATIONS: OnceLock<
+    Mutex<HashMap<String, tokio_util::sync::CancellationToken>>,
+> = OnceLock::new();
+
+fn gateway_cancellations() -> &'static Mutex<HashMap<String, tokio_util::sync::CancellationToken>> {
+    GATEWAY_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn validate_gateway_request(request: &GatewayProxyRequest) -> Result<(), String> {
+    let request_id_is_valid = !request.request_id.is_empty()
+        && request.request_id.len() <= 128
+        && request
+            .request_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+    if !request_id_is_valid {
+        return Err("gateway_invalid_request_id".into());
+    }
+
+    let model = request.model.trim();
+    if model.is_empty() || model.len() > 256 {
+        return Err("gateway_invalid_model".into());
+    }
+    if request.messages.is_empty() || request.messages.len() > GATEWAY_MAX_MESSAGES {
+        return Err("gateway_invalid_message_count".into());
+    }
+    let content_bytes = request.messages.iter().try_fold(0usize, |total, message| {
+        if !matches!(
+            message.role.as_str(),
+            "system" | "user" | "assistant" | "tool"
+        ) {
+            return Err("gateway_invalid_message_role".to_string());
+        }
+        total
+            .checked_add(message.content.len())
+            .ok_or_else(|| "gateway_request_too_large".to_string())
+    })?;
+    if content_bytes > GATEWAY_MAX_CONTENT_BYTES {
+        return Err("gateway_request_too_large".into());
+    }
+    Ok(())
+}
+
+fn gateway_endpoint_from_health(health: &DaemonHealth, path: &str) -> Result<reqwest::Url, String> {
+    if !health.ok || health.gateway_enabled != Some(true) {
+        return Err("gateway_disabled".into());
+    }
+    let host = health.gateway_host.as_deref().unwrap_or("127.0.0.1");
+    if !matches!(host, "127.0.0.1" | "::1" | "localhost") {
+        return Err("gateway_non_loopback_host_refused".into());
+    }
+    let port = health
+        .gateway_port
+        .filter(|port| *port > 0)
+        .ok_or("gateway_missing_port")?;
+    let authority = if host == "::1" {
+        format!("[::1]:{port}")
+    } else {
+        format!("{host}:{port}")
+    };
+    let url = reqwest::Url::parse(&format!("http://{authority}{path}"))
+        .map_err(|_| "gateway_invalid_endpoint".to_string())?;
+    if url.scheme() != "http"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("gateway_invalid_endpoint".into());
+    }
+    Ok(url)
+}
+
+fn gateway_http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(120))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| format!("gateway_client_init:{error}"))
+}
+
 #[tauri::command]
-fn gateway_auth_token() -> Option<String> {
-    read_gateway_auth_token()
+async fn gateway_probe() -> Result<bool, String> {
+    let health = probe_daemon_health();
+    let url = gateway_endpoint_from_health(&health, "/health")?;
+    let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
+    let response = gateway_http_client()?
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|error| format!("gateway_unreachable:{error}"))?;
+    Ok(response.status().is_success())
+}
+
+async fn run_gateway_chat_stream(
+    request: &GatewayProxyRequest,
+    on_event: &Channel<String>,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<(), String> {
+    validate_gateway_request(request)?;
+    let health = probe_daemon_health();
+    let url = gateway_endpoint_from_health(&health, "/v1/chat/completions")?;
+    let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
+    let body = serde_json::json!({
+        "model": request.model.trim(),
+        "stream": true,
+        "stream_options": { "include_usage": true },
+        "messages": &request.messages,
+    });
+    let send = gateway_http_client()?
+        .post(url)
+        .bearer_auth(token)
+        .header(reqwest::header::ACCEPT, "text/event-stream")
+        .json(&body)
+        .send();
+    let response = tokio::select! {
+        _ = cancellation.cancelled() => return Err("gateway_aborted".into()),
+        result = send => result.map_err(|error| format!("gateway_unreachable:{error}"))?,
+    };
+
+    let status = response.status();
+    if !status.is_success() {
+        let detail = response.text().await.unwrap_or_default();
+        let bounded = detail.chars().take(4096).collect::<String>();
+        return Err(format!("gateway_http:{}:{bounded}", status.as_u16()));
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    if !content_type
+        .split(';')
+        .next()
+        .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("text/event-stream"))
+    {
+        return Err("gateway_invalid_content_type".into());
+    }
+
+    let mut total_bytes = 0usize;
+    let mut stream = response.bytes_stream();
+    loop {
+        let next = tokio::select! {
+            _ = cancellation.cancelled() => return Err("gateway_aborted".into()),
+            next = stream.next() => next,
+        };
+        let Some(chunk) = next else { break };
+        let bytes = chunk.map_err(|error| format!("gateway_stream_interrupted:{error}"))?;
+        total_bytes = total_bytes
+            .checked_add(bytes.len())
+            .ok_or("gateway_response_too_large")?;
+        if total_bytes > GATEWAY_MAX_RESPONSE_BYTES {
+            return Err("gateway_response_too_large".into());
+        }
+        let text = String::from_utf8(bytes.to_vec()).map_err(|_| "gateway_invalid_utf8")?;
+        on_event
+            .send(text)
+            .map_err(|_| "gateway_renderer_disconnected".to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn gateway_chat_stream(
+    request: GatewayProxyRequest,
+    on_event: Channel<String>,
+) -> Result<(), String> {
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    {
+        let mut requests = gateway_cancellations()
+            .lock()
+            .map_err(|_| "gateway_cancellation_registry_poisoned")?;
+        if requests.contains_key(&request.request_id) {
+            return Err("gateway_duplicate_request_id".into());
+        }
+        requests.insert(request.request_id.clone(), cancellation.clone());
+    }
+
+    let result = run_gateway_chat_stream(&request, &on_event, &cancellation).await;
+    if let Ok(mut requests) = gateway_cancellations().lock() {
+        requests.remove(&request.request_id);
+    }
+    result
+}
+
+#[tauri::command]
+fn gateway_chat_cancel(request_id: String) -> Result<(), String> {
+    let requests = gateway_cancellations()
+        .lock()
+        .map_err(|_| "gateway_cancellation_registry_poisoned")?;
+    if let Some(cancellation) = requests.get(&request_id) {
+        cancellation.cancel();
+    }
+    Ok(())
 }
 
 fn probe_daemon_health() -> DaemonHealth {
@@ -360,20 +587,38 @@ fn call_daemon_perf_measure(name: &str) -> Result<(bool, String, Option<String>)
 
 #[tauri::command]
 fn daemon_health() -> DaemonHealth {
-    if let Ok(output) = Command::new("openburnbar-cli")
-        .args(["health", "--json"])
-        .output()
-    {
-        if output.status.success() {
-            if let Ok(mut parsed) = serde_json::from_slice::<DaemonHealth>(&output.stdout) {
-                if parsed.socket_path.is_none() {
-                    parsed.socket_path = Some(linux_socket_path().display().to_string());
-                }
-                return parsed;
-            }
-        }
-    }
     probe_daemon_health()
+}
+
+fn trusted_openburnbar_cli() -> Result<PathBuf, String> {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+
+    for path in [
+        "/usr/bin/openburnbar-cli",
+        "/usr/local/bin/openburnbar-cli",
+        "/opt/openburnbar/bin/openburnbar-cli",
+    ] {
+        let candidate = PathBuf::from(path);
+        let metadata = match fs::symlink_metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        let file_type = metadata.file_type();
+        if !file_type.is_file()
+            || file_type.is_symlink()
+            || file_type.is_fifo()
+            || file_type.is_socket()
+            || file_type.is_block_device()
+            || file_type.is_char_device()
+            || metadata.uid() != 0
+            || metadata.nlink() != 1
+            || metadata.permissions().mode() & 0o022 != 0
+        {
+            continue;
+        }
+        return Ok(candidate);
+    }
+    Err("trusted_openburnbar_cli_unavailable".to_string())
 }
 
 fn integration_label(kind: &str) -> &'static str {
@@ -389,10 +634,16 @@ fn integration_label(kind: &str) -> &'static str {
 
 fn integration_dependency(kind: &str, discovery_method: &str) -> Option<String> {
     match kind {
-        "pixel_clock" => Some("AWTRIX HTTP endpoint, runtime agent, or _http._tcp mDNS".to_string()),
-        "google_cast" => Some("avahi-daemon + avahi-utils for _googlecast._tcp discovery".to_string()),
+        "pixel_clock" => {
+            Some("AWTRIX HTTP endpoint, runtime agent, or _http._tcp mDNS".to_string())
+        }
+        "google_cast" => {
+            Some("avahi-daemon + avahi-utils for _googlecast._tcp discovery".to_string())
+        }
         "awtrix_http" => Some("avahi-daemon + avahi-utils for _http._tcp discovery".to_string()),
-        "home_assistant" => Some("OPENBURNBAR_HOME_ASSISTANT_URL and daemon-held Home Assistant token".to_string()),
+        "home_assistant" => {
+            Some("OPENBURNBAR_HOME_ASSISTANT_URL and daemon-held Home Assistant token".to_string())
+        }
         "smart_hub_bridge" => Some("Linux SmartHub bridge on loopback HTTP".to_string()),
         _ if discovery_method.is_empty() => None,
         _ => Some(discovery_method.to_string()),
@@ -412,12 +663,21 @@ fn integration_config_location(kind: &str) -> &'static str {
 
 fn map_integration_state(kind: &str, status: &str, blocker: Option<&str>) -> &'static str {
     match status {
-        "control_ok" | "cast_reachable" | "home_assistant_control_ok" | "bridge_control_ok" => "connected",
-        "runtime_agent_detected" | "discoverable" | "api_reachable_control_blocked" | "bridge_reachable_control_blocked" => "configured",
+        "control_ok" | "cast_reachable" | "home_assistant_control_ok" | "bridge_control_ok" => {
+            "connected"
+        }
+        "runtime_agent_detected"
+        | "discoverable"
+        | "api_reachable_control_blocked"
+        | "bridge_reachable_control_blocked" => "configured",
         "disabled" => "disabled",
-        "blocked" | "blocked_no_runtime_agent_or_device" | "blocked_missing_home_assistant_url"
-        | "blocked_home_assistant_api_unreachable" | "blocked_bridge_not_reachable"
-        | "blocked_googlecast_control_unreachable" | "blocked_no_googlecast_instances"
+        "blocked"
+        | "blocked_no_runtime_agent_or_device"
+        | "blocked_missing_home_assistant_url"
+        | "blocked_home_assistant_api_unreachable"
+        | "blocked_bridge_not_reachable"
+        | "blocked_googlecast_control_unreachable"
+        | "blocked_no_googlecast_instances"
         | "blocked_until_bridge_health_reachable" => "unavailable",
         "configured" if kind == "home_assistant" => "configured",
         _ if blocker.map(|b| !b.trim().is_empty()).unwrap_or(false) => "unavailable",
@@ -431,7 +691,8 @@ fn map_parity_row(row: DeviceParityRow) -> Option<IntegrationStatusRow> {
         "pixel_clock" | "google_cast" | "awtrix_http" | "home_assistant" | "smart_hub_bridge" => {}
         _ => return None,
     }
-    let state = map_integration_state(kind, row.status.as_str(), row.blocker.as_deref()).to_string();
+    let state =
+        map_integration_state(kind, row.status.as_str(), row.blocker.as_deref()).to_string();
     let status_detail = row.status.replace('_', " ");
     let detail = row
         .blocker
@@ -457,23 +718,50 @@ fn map_parity_row(row: DeviceParityRow) -> Option<IntegrationStatusRow> {
 
 #[tauri::command]
 fn integrations_status() -> Result<IntegrationsStatusPayload, String> {
-    let output = Command::new("openburnbar-cli")
+    let cli = trusted_openburnbar_cli()?;
+    let output = Command::new(cli)
         .args(["devices", "parity", "--json"])
         .output()
-        .map_err(|e| format!("openburnbar-cli devices parity --json unavailable: {e}"))?;
+        .map_err(|_| "openburnbar_cli_launch_failed".to_string())?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            "openburnbar-cli devices parity --json failed".to_string()
-        } else {
-            stderr
-        });
+        return Err("openburnbar_cli_integrations_failed".to_string());
     }
     let rows = serde_json::from_slice::<Vec<DeviceParityRow>>(&output.stdout)
         .map_err(|e| format!("Invalid devices parity JSON: {e}"))?;
     Ok(IntegrationsStatusPayload {
         integrations: rows.into_iter().filter_map(map_parity_row).collect(),
     })
+}
+
+fn validate_external_url(raw_url: &str) -> Result<String, String> {
+    if raw_url.len() > 2_048 {
+        return Err("external_url_too_long".to_string());
+    }
+    let url = reqwest::Url::parse(raw_url).map_err(|_| "external_url_invalid".to_string())?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(url.port(), None | Some(443))
+    {
+        return Err("external_url_origin_refused".to_string());
+    }
+    let allowed_host = matches!(
+        url.host_str(),
+        Some("checkout.stripe.com" | "billing.stripe.com" | "buy.stripe.com")
+    );
+    if !allowed_host {
+        return Err("external_url_host_refused".to_string());
+    }
+    Ok(url.to_string())
+}
+
+#[tauri::command]
+fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
+    let validated = validate_external_url(&url)?;
+    #[allow(deprecated)]
+    app.shell()
+        .open(validated, None)
+        .map_err(|_| "external_url_open_failed".to_string())
 }
 
 #[tauri::command]
@@ -597,10 +885,7 @@ fn call_daemon_method_with_timeout(
         .ok_or_else(|| "RPC response missing result".to_string())
 }
 
-fn call_daemon_method_report(
-    method: &str,
-    params: Option<serde_json::Value>,
-) -> serde_json::Value {
+fn call_daemon_method_report(method: &str, params: Option<serde_json::Value>) -> serde_json::Value {
     match call_daemon_method(method, params) {
         Ok(result) => serde_json::json!({
             "ok": true,
@@ -1397,8 +1682,13 @@ fn validate_cu_approval_decision(decision: &str) -> Result<(), String> {
 
 fn validate_cu_panic_source(source: &str) -> Result<(), String> {
     match source {
-        "hotkey" | "phone_gesture" | "mac_lock" | "remote_config" | "accessibility_revoked"
-        | "stalled" | "revoked" => Ok(()),
+        "hotkey"
+        | "phone_gesture"
+        | "mac_lock"
+        | "remote_config"
+        | "accessibility_revoked"
+        | "stalled"
+        | "revoked" => Ok(()),
         other => Err(format!(
             "computer use panic source must be a ComputerUsePanicSource raw value, got {other}"
         )),
@@ -1417,7 +1707,9 @@ fn cap_json_value_size(value: &serde_json::Value, label: &str) -> Result<(), Str
 }
 
 #[tauri::command]
-fn computer_use_session_start(params: ComputerUseSessionStartParams) -> Result<serde_json::Value, String> {
+fn computer_use_session_start(
+    params: ComputerUseSessionStartParams,
+) -> Result<serde_json::Value, String> {
     validate_cu_mode(&params.mode)?;
     validate_cu_trust_mode(&params.trust_mode)?;
     let client_id = params
@@ -1517,7 +1809,9 @@ fn computer_use_approval_respond(
 }
 
 #[tauri::command]
-fn computer_use_panic_halt(params: ComputerUsePanicHaltParams) -> Result<serde_json::Value, String> {
+fn computer_use_panic_halt(
+    params: ComputerUsePanicHaltParams,
+) -> Result<serde_json::Value, String> {
     if params.session_id.trim().is_empty() {
         return Err("computer_use_panic_halt requires sessionId".into());
     }
@@ -1646,7 +1940,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             daemon_health,
-            gateway_auth_token,
+            gateway_probe,
+            gateway_chat_stream,
+            gateway_chat_cancel,
+            open_external_url,
             open_dashboard,
             quit_app,
             tray_degraded,
@@ -1748,5 +2045,97 @@ mod tests {
         assert_eq!(method, "daemon.mission.cancel");
         assert_eq!(params["missionID"], "m-43");
         assert_eq!(params["actor"], "linux-shell");
+    }
+
+    #[test]
+    fn gateway_endpoint_is_fixed_to_loopback_health_authority() {
+        let mut health = DaemonHealth {
+            ok: true,
+            gateway_enabled: Some(true),
+            gateway_host: Some("127.0.0.1".into()),
+            gateway_port: Some(8642),
+            ..Default::default()
+        };
+        let endpoint = gateway_endpoint_from_health(&health, "/v1/chat/completions").unwrap();
+        assert_eq!(
+            endpoint.as_str(),
+            "http://127.0.0.1:8642/v1/chat/completions"
+        );
+
+        health.gateway_host = Some("api.example.com".into());
+        assert_eq!(
+            gateway_endpoint_from_health(&health, "/v1/chat/completions").unwrap_err(),
+            "gateway_non_loopback_host_refused"
+        );
+        health.gateway_host = Some("127.0.0.1@evil.example".into());
+        assert!(gateway_endpoint_from_health(&health, "/health").is_err());
+    }
+
+    #[test]
+    fn gateway_proxy_request_validation_is_bounded_and_role_allowlisted() {
+        let valid = GatewayProxyRequest {
+            request_id: "request-123".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "hello".into(),
+            }],
+        };
+        assert!(validate_gateway_request(&valid).is_ok());
+
+        let invalid_role = GatewayProxyRequest {
+            request_id: "request-124".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "developer".into(),
+                content: "hello".into(),
+            }],
+        };
+        assert_eq!(
+            validate_gateway_request(&invalid_role).unwrap_err(),
+            "gateway_invalid_message_role"
+        );
+
+        let invalid_id = GatewayProxyRequest {
+            request_id: "../../escape".into(),
+            model: "hermes".into(),
+            messages: valid.messages,
+        };
+        assert_eq!(
+            validate_gateway_request(&invalid_id).unwrap_err(),
+            "gateway_invalid_request_id"
+        );
+    }
+
+    #[test]
+    fn external_url_validation_is_https_and_stripe_host_allowlisted() {
+        assert_eq!(
+            validate_external_url("https://checkout.stripe.com/c/pay/cs_live_123").unwrap(),
+            "https://checkout.stripe.com/c/pay/cs_live_123"
+        );
+        assert_eq!(
+            validate_external_url("https://buy.stripe.com/test_123?prefilled_email=a%40b.test")
+                .unwrap(),
+            "https://buy.stripe.com/test_123?prefilled_email=a%40b.test"
+        );
+        for refused in [
+            "http://checkout.stripe.com/c/pay/cs_live_123",
+            "https://checkout.stripe.com.evil.example/c/pay/cs_live_123",
+            "https://user@checkout.stripe.com/c/pay/cs_live_123",
+            "https://127.0.0.1/c/pay/cs_live_123",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+        ] {
+            assert!(validate_external_url(refused).is_err(), "{refused}");
+        }
+    }
+
+    #[test]
+    fn trusted_cli_candidates_are_fixed_absolute_package_paths() {
+        let source = include_str!("lib.rs");
+        assert!(source.contains("/usr/bin/openburnbar-cli"));
+        assert!(source.contains("/usr/local/bin/openburnbar-cli"));
+        assert!(source.contains("/opt/openburnbar/bin/openburnbar-cli"));
+        assert!(!source.contains("Command::new(\"openburnbar-cli\")"));
     }
 }

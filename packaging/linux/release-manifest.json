@@ -30,6 +30,27 @@
     "systemdUserService": "/usr/lib/systemd/user/openburnbar-daemon.service",
     "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
   },
+  "credentialStorage": {
+    "requiredCommand": "secret-tool",
+    "primaryBackend": "org.freedesktop.secrets",
+    "optionalBackend": "kwallet-query",
+    "debian": {
+      "depends": ["libsecret-tools"],
+      "recommends": ["gnome-keyring", "libkf5wallet-bin", "libkf6wallet-bin"]
+    },
+    "rpm": {
+      "depends": ["libsecret"]
+    },
+    "arch": {
+      "depends": ["libsecret"],
+      "optdepends": ["kwallet"]
+    },
+    "flatpak": {
+      "status": "unpromoted",
+      "requiredBusName": "org.freedesktop.secrets",
+      "blocker": "Sandboxed secret-tool and locked/unlocked keyring lifecycle are not yet proven on a real Flatpak runner."
+    }
+  },
   "updateMetadata": {
     "draftName": "latest-linux.draft.json",
     "publishedName": "latest-linux.json",

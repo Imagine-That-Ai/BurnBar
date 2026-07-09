@@ -2,30 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   GatewayChatError,
   OpenAICompatibleSSEParser,
-  probeGatewayHealth,
-  streamGatewayChat
+  streamGatewayChatNative,
+  type NativeGatewayChatTransport
 } from './gatewayClient.js';
-
-function streamFromChunks(chunks: string[], signal?: AbortSignal, closeAfterChunks = true): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      signal?.addEventListener(
-        'abort',
-        () => controller.error(new DOMException('aborted', 'AbortError')),
-        { once: true }
-      );
-      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-      if (closeAfterChunks) controller.close();
-    }
-  });
-}
-
-async function collect(request: Parameters<typeof streamGatewayChat>[0]) {
-  const events = [];
-  for await (const event of streamGatewayChat(request)) events.push(event);
-  return events;
-}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -70,99 +49,86 @@ describe('OpenAICompatibleSSEParser', () => {
   });
 });
 
-describe('streamGatewayChat', () => {
-  it('streams the OpenAI-compatible happy path', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(streamFromChunks(['data: {"choices":[{"delta":{"content":"ok"}}]}\n\n', 'data: [DONE]\n\n'])))
-    );
-    const events = await collect({
-      baseURL: 'http://127.0.0.1:8642',
-      model: 'hermes',
-      messages: [{ role: 'user', content: 'hello' }]
+describe('streamGatewayChatNative', () => {
+  it('streams through the native transport without a URL or bearer in renderer data', async () => {
+    const start: NativeGatewayChatTransport['start'] = vi.fn(async (request, onChunk) => {
+      expect(request).not.toHaveProperty('baseURL');
+      expect(request).not.toHaveProperty('bearerToken');
+      onChunk('data: {"choices":[{"delta":{"content":"native"}}]}\n\n');
+      onChunk('data: [DONE]\n\n');
     });
+    const events = [];
+    for await (const event of streamGatewayChatNative(
+      { start, cancel: vi.fn(async () => undefined) },
+      {
+        requestId: 'gateway-test-1',
+        model: 'hermes',
+        messages: [{ role: 'user', content: 'hello' }]
+      }
+    )) {
+      events.push(event);
+    }
     expect(events).toEqual([
-      { type: 'delta', text: 'ok' },
+      { type: 'delta', text: 'native' },
       { type: 'done', finishReason: 'stop' }
     ]);
-    expect(fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:8642/v1/chat/completions',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          model: 'hermes',
-          stream: true,
-          stream_options: { include_usage: true },
-          messages: [{ role: 'user', content: 'hello' }]
-        })
-      })
-    );
   });
 
-  it('classifies gateway-unreachable failures', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new TypeError('connect ECONNREFUSED');
-      })
-    );
-    await expect(
-      collect({ baseURL: 'http://127.0.0.1:8642', model: 'hermes', messages: [] })
-    ).rejects.toMatchObject({ kind: 'unreachable' });
-  });
-
-  it('classifies the Linux gateway 503 stub as unimplemented', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('{"error":{"message":"chat completions unimplemented"}}', { status: 503 }))
-    );
-    await expect(
-      collect({ baseURL: 'http://127.0.0.1:8642', model: 'hermes', messages: [] })
-    ).rejects.toMatchObject({ kind: 'unimplemented', status: 503 });
-  });
-
-  it('treats EOF before DONE as an interrupted stream', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(streamFromChunks(['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'])))
-    );
-    await expect(
-      collect({ baseURL: 'http://127.0.0.1:8642', model: 'hermes', messages: [] })
-    ).rejects.toMatchObject({ kind: 'stream_interrupted' });
-  });
-
-  it('aborts an active stream', async () => {
+  it('cancels the native request when the renderer aborts', async () => {
     const abort = new AbortController();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (_url, init) => {
-        const signal = (init as RequestInit).signal ?? abort.signal;
-        return new Response(streamFromChunks(['data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'], signal, false));
-      })
+    const cancel = vi.fn(async () => undefined);
+    const iterator = streamGatewayChatNative(
+      {
+        start: () => new Promise<void>(() => undefined),
+        cancel
+      },
+      {
+        requestId: 'gateway-test-abort',
+        model: 'hermes',
+        messages: [{ role: 'user', content: 'hello' }],
+        signal: abort.signal
+      }
     );
-    const iterator = streamGatewayChat({
-      baseURL: 'http://127.0.0.1:8642',
-      model: 'hermes',
-      messages: [],
-      signal: abort.signal
-    });
-    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'delta', text: 'partial' } });
+    const pending = iterator.next();
     abort.abort();
-    await expect(iterator.next()).rejects.toBeInstanceOf(GatewayChatError);
+    await expect(pending).rejects.toMatchObject({ kind: 'aborted' });
+    expect(cancel).toHaveBeenCalledWith('gateway-test-abort');
   });
 
-  it('uses /health as the reachability probe', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
-    await expect(probeGatewayHealth('http://127.0.0.1:8642')).resolves.toBe(true);
-    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8642/health', expect.objectContaining({ method: 'GET' }));
-  });
-
-  it('passes bearer tokens to health probes', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
-    await expect(probeGatewayHealth('http://127.0.0.1:8642', 'secret-token')).resolves.toBe(true);
-    expect(fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:8642/health',
-      expect.objectContaining({ headers: { Authorization: 'Bearer secret-token' } })
+  it('classifies a native 503 stub response as unimplemented', async () => {
+    const iterator = streamGatewayChatNative(
+      {
+        start: async () => {
+          throw new Error('gateway_http:503:chat completions unimplemented');
+        },
+        cancel: vi.fn(async () => undefined)
+      },
+      {
+        requestId: 'gateway-test-unimplemented',
+        model: 'hermes',
+        messages: [{ role: 'user', content: 'hello' }]
+      }
     );
+
+    await expect(iterator.next()).rejects.toMatchObject({ kind: 'unimplemented', status: 503 });
+  });
+
+  it('treats native EOF before DONE as an interrupted stream', async () => {
+    const iterator = streamGatewayChatNative(
+      {
+        start: async (_request, onChunk) => {
+          onChunk('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');
+        },
+        cancel: vi.fn(async () => undefined)
+      },
+      {
+        requestId: 'gateway-test-interrupted',
+        model: 'hermes',
+        messages: [{ role: 'user', content: 'hello' }]
+      }
+    );
+
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'delta', text: 'partial' } });
+    await expect(iterator.next()).rejects.toMatchObject({ kind: 'stream_interrupted' });
   });
 });

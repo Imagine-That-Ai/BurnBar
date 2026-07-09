@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import {
+  DAEMON_FIXTURE_AVAILABLE,
   fixtureDaemonHealth,
   isDaemonFixtureMode,
   setDaemonFixtureMode
@@ -162,8 +163,9 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   },
 
   setFixtureMode(enabled) {
-    setDaemonFixtureMode(enabled);
-    set({ fixtureMode: enabled });
+    const next = enabled && DAEMON_FIXTURE_AVAILABLE;
+    setDaemonFixtureMode(next);
+    set({ fixtureMode: next });
     void get().refreshHealth();
   },
 

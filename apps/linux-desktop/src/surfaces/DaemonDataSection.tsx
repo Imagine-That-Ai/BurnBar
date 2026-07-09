@@ -16,7 +16,7 @@ export function DaemonDataSection({ route, label }: { route: ShellRoute; label: 
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const status = useDaemonStatusCopy();
 
-  const useFixture = fixtureMode || (health?.daemonVersion?.startsWith('fixture') ?? false);
+  const useFixture = fixtureMode;
   if (!useFixture && !health?.ok) {
     const summary =
       route === 'overview'

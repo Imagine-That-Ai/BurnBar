@@ -27,6 +27,8 @@ public enum LinuxHighValueSecretClass: String, Codable, CaseIterable, Sendable {
     case capabilityRoot = "capability_root"
     case localAuthPIN = "local_auth_pin"
     case auditSigningKey = "audit_signing_key"
+    case providerCredential = "provider_credential"
+    case connectorCredential = "connector_credential"
 }
 
 public struct LinuxSecretMetadata: Codable, Equatable, Sendable {
@@ -67,6 +69,11 @@ public struct LinuxSecretRecord: Equatable, Sendable {
 public enum LinuxSecretStoreError: Error, Equatable, CustomStringConvertible {
     case missingSecret(String)
     case backendUnavailable(String)
+    case mutationUnavailable(String)
+    case commandFailed(backend: String, operation: String, detail: String)
+    case invalidSecretID(String)
+    case invalidSecretValue(String)
+    case secretTooLarge(Int)
     case trustLevelRefused(secretClass: LinuxHighValueSecretClass, trustLevel: LinuxSecretTrustLevel)
     case plaintextFallbackRefused(secretClass: LinuxHighValueSecretClass)
 
@@ -76,6 +83,16 @@ public enum LinuxSecretStoreError: Error, Equatable, CustomStringConvertible {
             return "No secret is available for \(id). Configure Secret Service, KWallet, systemd credentials, or a headless passphrase."
         case let .backendUnavailable(reason):
             return "SecretStore backend unavailable: \(reason)"
+        case let .mutationUnavailable(backend):
+            return "SecretStore backend \(backend) does not support secret mutations."
+        case let .commandFailed(backend, operation, detail):
+            return "SecretStore backend \(backend) failed to \(operation): \(detail)"
+        case let .invalidSecretID(id):
+            return "SecretStore id is invalid: \(id)"
+        case let .invalidSecretValue(reason):
+            return "SecretStore value is invalid: \(reason)"
+        case let .secretTooLarge(bytes):
+            return "SecretStore value exceeds the 16384-byte limit (\(bytes) bytes)."
         case let .trustLevelRefused(secretClass, trustLevel):
             return "\(secretClass.rawValue) cannot use trust level \(trustLevel.rawValue)."
         case let .plaintextFallbackRefused(secretClass):
@@ -87,7 +104,33 @@ public enum LinuxSecretStoreError: Error, Equatable, CustomStringConvertible {
 public protocol LinuxSecretStoreBackend: Sendable {
     var backendName: String { get }
     var trustLevel: LinuxSecretTrustLevel { get }
+    var supportsMutations: Bool { get }
     func readSecret(id: String, secretClass: LinuxHighValueSecretClass) throws -> LinuxSecretRecord?
+    func storeSecret(
+        _ secret: String,
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretMetadata
+    func deleteSecret(id: String, secretClass: LinuxHighValueSecretClass) throws
+    func healthCheck() throws
+}
+
+public extension LinuxSecretStoreBackend {
+    var supportsMutations: Bool { false }
+
+    func storeSecret(
+        _ secret: String,
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretMetadata {
+        throw LinuxSecretStoreError.mutationUnavailable(backendName)
+    }
+
+    func deleteSecret(id: String, secretClass: LinuxHighValueSecretClass) throws {
+        throw LinuxSecretStoreError.mutationUnavailable(backendName)
+    }
+
+    func healthCheck() throws {}
 }
 
 public struct LinuxInMemorySecretStoreBackend: LinuxSecretStoreBackend {
@@ -130,6 +173,7 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
     public var environment: [String: String]
     public var credentialReader: @Sendable (String) throws -> String
     public var nowMillis: Int64
+    public var allowsEnvironmentSecrets: Bool
 
     public init(
         trustLevel: LinuxSecretTrustLevel = .headlessPassphrase,
@@ -137,18 +181,20 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
         credentialReader: @escaping @Sendable (String) throws -> String = { path in
             try String(contentsOfFile: path, encoding: .utf8)
         },
-        nowMillis: Int64 = 1_800_000_000_000
+        nowMillis: Int64 = 1_800_000_000_000,
+        allowsEnvironmentSecrets: Bool = false
     ) {
         self.trustLevel = trustLevel
         self.environment = environment
         self.credentialReader = credentialReader
         self.nowMillis = nowMillis
+        self.allowsEnvironmentSecrets = allowsEnvironmentSecrets
     }
 
     public func readSecret(id: String, secretClass: LinuxHighValueSecretClass) throws -> LinuxSecretRecord? {
         let envKey = "OPENBURNBAR_\(id.uppercased().replacingOccurrences(of: "-", with: "_"))"
         let value: String?
-        if let env = environment[envKey]?.trimmedNonEmpty {
+        if allowsEnvironmentSecrets, let env = environment[envKey]?.trimmedNonEmpty {
             value = env
         } else if let directory = environment["CREDENTIALS_DIRECTORY"]?.trimmedNonEmpty {
             let path = URL(fileURLWithPath: directory).appendingPathComponent(id).path
@@ -235,13 +281,66 @@ public struct LinuxSecretCustodian: Sendable {
         throw LinuxSecretStoreError.missingSecret(id)
     }
 
+    @discardableResult
+    public func storeHighValueSecret(
+        _ secret: String,
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretMetadata {
+        guard let normalized = secret.trimmedNonEmpty else {
+            throw LinuxSecretStoreError.missingSecret(id)
+        }
+        var lastError: Error?
+        for backend in backends where backend.supportsMutations {
+            guard backend.trustLevel.approvedForHighValueSecrets else {
+                throw LinuxSecretStoreError.trustLevelRefused(
+                    secretClass: secretClass,
+                    trustLevel: backend.trustLevel
+                )
+            }
+            do {
+                try backend.healthCheck()
+                return try backend.storeSecret(normalized, id: id, secretClass: secretClass)
+            } catch {
+                lastError = error
+            }
+        }
+        if let lastError { throw lastError }
+        throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+    }
+
+    public func deleteHighValueSecret(
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws {
+        var foundWritableBackend = false
+        var lastError: Error?
+        for backend in backends where backend.supportsMutations {
+            guard backend.trustLevel.approvedForHighValueSecrets else { continue }
+            foundWritableBackend = true
+            do {
+                guard try backend.readSecret(id: id, secretClass: secretClass) != nil else {
+                    continue
+                }
+                try backend.deleteSecret(id: id, secretClass: secretClass)
+            } catch {
+                lastError = error
+            }
+        }
+        if let lastError { throw lastError }
+        if foundWritableBackend == false {
+            throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+        }
+    }
+
     public static func setupMessage(for error: LinuxSecretStoreError) -> String {
         switch error {
         case .missingSecret:
             return "Connect GNOME Secret Service, KWallet, systemd credentials, or set the documented headless passphrase before starting cloud features."
-        case .backendUnavailable:
+        case .backendUnavailable, .commandFailed:
             return "Install and unlock Secret Service or KWallet, then retry. Headless servers may use systemd credentials."
-        case .trustLevelRefused, .plaintextFallbackRefused:
+        case .trustLevelRefused, .plaintextFallbackRefused, .mutationUnavailable,
+             .invalidSecretID, .invalidSecretValue, .secretTooLarge:
             return "OpenBurnBar refused to place high-value secrets in plaintext. Choose an approved SecretStore trust level."
         }
     }
@@ -397,6 +496,22 @@ public struct LinuxAuthTokenStore: Sendable {
     public func restoreRefreshToken() throws -> LinuxSecretMetadata {
         try custodian.requireHighValueSecret(id: "firebase-refresh-token", secretClass: .refreshToken).metadata
     }
+
+    @discardableResult
+    public func storeRefreshToken(_ token: String) throws -> LinuxSecretMetadata {
+        try custodian.storeHighValueSecret(
+            token,
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        )
+    }
+
+    public func clearRefreshToken() throws {
+        try custodian.deleteHighValueSecret(
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        )
+    }
 }
 
 public struct LinuxAuthSignOutResult: Codable, Equatable, Sendable {
@@ -429,7 +544,13 @@ public struct LinuxAuthSessionController: Sendable {
 
     public func signOut() async throws -> LinuxAuthSignOutResult {
         let metadata = try tokenStore.restoreRefreshToken()
-        try await revokeRemoteSession(metadata)
+        do {
+            try await revokeRemoteSession(metadata)
+        } catch {
+            try? tokenStore.clearRefreshToken()
+            throw error
+        }
+        try tokenStore.clearRefreshToken()
         return LinuxAuthSignOutResult(
             tokenMetadata: metadata,
             remoteRevocationAttempted: true,

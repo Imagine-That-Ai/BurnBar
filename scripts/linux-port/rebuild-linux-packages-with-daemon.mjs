@@ -113,7 +113,8 @@ function buildDeb() {
       'Architecture: arm64',
       'Maintainer: OpenBurnBar <ops@openburnbar.dev>',
       `Installed-Size: ${installedSize}`,
-      'Depends: libc6',
+      'Depends: libc6, libsecret-tools',
+      'Recommends: gnome-keyring | libkf5wallet-bin | libkf6wallet-bin',
       'Description: OpenBurnBar Linux desktop + daemon (product parity payload)',
       ' Ships openburnbar-daemon, launch wrapper, systemd user unit, and Swift runtime.',
       ''
@@ -154,6 +155,8 @@ function buildRpm() {
       '--force',
       '--description',
       'OpenBurnBar Linux desktop + daemon (product parity payload)',
+      '--depends',
+      'libsecret',
       '.'
     ]);
   } else if (spawnSync('alien', ['--version'], { encoding: 'utf8' }).status === 0) {
@@ -259,7 +262,13 @@ const report = {
     'usr/libexec/openburnbar-daemon-launch',
     'usr/lib/systemd/user/openburnbar-daemon.service',
     'opt/openburnbar/lib/swift'
-  ]
+  ],
+  credentialStorage: {
+    requiredCommand: 'secret-tool',
+    primaryBackend: 'org.freedesktop.secrets',
+    optionalBackend: 'kwallet-query',
+    lockedBackendPolicy: 'fail-closed'
+  }
 };
 fs.writeFileSync(path.join(outDir, 'package-rebuild-report.json'), JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report, null, 2));

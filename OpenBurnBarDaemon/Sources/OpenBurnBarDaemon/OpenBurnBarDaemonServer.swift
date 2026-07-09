@@ -54,6 +54,8 @@ public actor BurnBarDaemonServer {
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
     private var listenerFileDescriptor: Int32?
+    private var socketOwnership: BurnBarDaemonSocketOwnership?
+    private var boundSocketIdentity: BurnBarSocketIdentity?
     private var acceptLoopTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var oauthRefreshTask: Task<Void, Never>?
@@ -295,19 +297,46 @@ public actor BurnBarDaemonServer {
         )
 
         try BurnBarUnixDomainSocket.ensureParentDirectory(for: configuration.socketPath)
-        if let removedType = try BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath) {
-            logger.notice(
-                "stale_socket_removed",
-                metadata: [
-                    "socket_path": configuration.socketPath,
-                    "item_type": removedType
-                ]
-            )
+        let ownership = try BurnBarDaemonSocketOwnership.acquire(for: configuration.socketPath)
+        var startupFileDescriptor: Int32?
+        var startupSocketIdentity: BurnBarSocketIdentity?
+        do {
+            if try BurnBarUnixDomainSocket.preparePathForBind(at: configuration.socketPath) {
+                logger.notice(
+                    "stale_socket_removed",
+                    metadata: [
+                        "socket_path": configuration.socketPath,
+                        "item_type": "socket"
+                    ]
+                )
+            }
+
+            let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
+            startupFileDescriptor = fileDescriptor
+            let identity = try BurnBarUnixDomainSocket.socketIdentity(at: configuration.socketPath)
+            startupSocketIdentity = identity
+            try BurnBarUnixDomainSocket.restrictSocketPermissions(at: configuration.socketPath)
+            listenerFileDescriptor = fileDescriptor
+            socketOwnership = ownership
+            boundSocketIdentity = identity
+        } catch {
+            if let startupFileDescriptor {
+                close(startupFileDescriptor)
+            }
+            if let startupSocketIdentity {
+                _ = try? BurnBarUnixDomainSocket.removeSocket(
+                    at: configuration.socketPath,
+                    ifIdentityMatches: startupSocketIdentity
+                )
+            }
+            ownership.release()
+            throw error
         }
 
-        let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
-        try BurnBarUnixDomainSocket.restrictSocketPermissions(at: configuration.socketPath)
-        listenerFileDescriptor = fileDescriptor
+        guard let fileDescriptor = listenerFileDescriptor else {
+            ownership.release()
+            throw BurnBarDaemonError.failedToCreateSocket(code: EIO, detail: "listener ownership was not retained")
+        }
 
         do {
             try await configStore.seedDefaultModelVariantsIfNeeded()
@@ -406,6 +435,10 @@ public actor BurnBarDaemonServer {
         )
 
         self.listenerFileDescriptor = nil
+        let ownership = socketOwnership
+        socketOwnership = nil
+        let socketIdentity = boundSocketIdentity
+        boundSocketIdentity = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
         oauthRefreshTask?.cancel()
@@ -419,13 +452,25 @@ public actor BurnBarDaemonServer {
         _ = await acceptTask?.result
 
         do {
-            _ = try BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath)
+            if let socketIdentity {
+                let removed = try BurnBarUnixDomainSocket.removeSocket(
+                    at: configuration.socketPath,
+                    ifIdentityMatches: socketIdentity
+                )
+                if removed == false {
+                    logger.warning(
+                        "socket_cleanup_skipped_identity_mismatch",
+                        metadata: ["socket_path": configuration.socketPath]
+                    )
+                }
+            }
         } catch {
             logger.warning(
-                "remove_stale_socket_failed",
+                "remove_owned_socket_failed",
                 metadata: ["socket_path": configuration.socketPath, "error": "\(error)"]
             )
         }
+        ownership?.release()
         await missionControlService.stopBackgroundLoops()
 
         // Stop HTTP gateway
@@ -782,6 +827,59 @@ public actor BurnBarDaemonServer {
     }
 }
 
+private struct BurnBarSocketIdentity: Equatable {
+    let device: dev_t
+    let inode: ino_t
+
+    init(status: stat) {
+        self.device = status.st_dev
+        self.inode = status.st_ino
+    }
+}
+
+private struct BurnBarDaemonSocketOwnership {
+    let lockFileDescriptor: Int32
+
+    static func acquire(for socketPath: String) throws -> BurnBarDaemonSocketOwnership {
+        let lockPath = socketPath + ".lock"
+        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
+        guard descriptor != -1 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+
+        do {
+            var status = stat()
+            guard fstat(descriptor, &status) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            guard status.st_mode & S_IFMT == S_IFREG,
+                  status.st_uid == geteuid(),
+                  status.st_nlink == 1 else {
+                throw BurnBarDaemonError.unexpectedExistingItem(lockPath)
+            }
+            guard fchmod(descriptor, S_IRUSR | S_IWUSR) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+                let code = errno
+                if code == EWOULDBLOCK || code == EAGAIN {
+                    throw BurnBarDaemonError.daemonAlreadyRunning(socketPath)
+                }
+                throw POSIXError(.init(rawValue: code) ?? .EIO)
+            }
+            return BurnBarDaemonSocketOwnership(lockFileDescriptor: descriptor)
+        } catch {
+            close(descriptor)
+            throw error
+        }
+    }
+
+    func release() {
+        _ = flock(lockFileDescriptor, LOCK_UN)
+        close(lockFileDescriptor)
+    }
+}
+
 private enum BurnBarUnixDomainSocket {
     static func ensureParentDirectory(for socketPath: String) throws {
         let socketURL = URL(fileURLWithPath: socketPath)
@@ -798,23 +896,92 @@ private enum BurnBarUnixDomainSocket {
         }
     }
 
-    static func removeStaleItemIfPresent(at socketPath: String) throws -> String? {
+    static func preparePathForBind(at socketPath: String) throws -> Bool {
         var fileStatus = stat()
         let result = lstat(socketPath, &fileStatus)
         if result == -1 {
             if errno == ENOENT {
-                return nil
+                return false
             }
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
 
         let itemType = fileStatus.st_mode & S_IFMT
-        guard itemType == S_IFSOCK || itemType == S_IFREG else {
+        guard itemType == S_IFSOCK else {
             throw BurnBarDaemonError.unexpectedExistingItem(socketPath)
         }
 
-        try FileManager.default.removeItem(atPath: socketPath)
-        return itemType == S_IFSOCK ? "socket" : "file"
+        if try isAcceptingConnections(at: socketPath) {
+            throw BurnBarDaemonError.activeSocketAlreadyExists(socketPath)
+        }
+
+        let originalIdentity = BurnBarSocketIdentity(status: fileStatus)
+        guard try removeSocket(at: socketPath, ifIdentityMatches: originalIdentity) else {
+            throw BurnBarDaemonError.socketPathChanged(socketPath)
+        }
+        return true
+    }
+
+    static func socketIdentity(at socketPath: String) throws -> BurnBarSocketIdentity {
+        var fileStatus = stat()
+        guard lstat(socketPath, &fileStatus) == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+        guard fileStatus.st_mode & S_IFMT == S_IFSOCK else {
+            throw BurnBarDaemonError.unexpectedExistingItem(socketPath)
+        }
+        return BurnBarSocketIdentity(status: fileStatus)
+    }
+
+    static func removeSocket(
+        at socketPath: String,
+        ifIdentityMatches expectedIdentity: BurnBarSocketIdentity
+    ) throws -> Bool {
+        var currentStatus = stat()
+        guard lstat(socketPath, &currentStatus) == 0 else {
+            if errno == ENOENT {
+                return false
+            }
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+        guard currentStatus.st_mode & S_IFMT == S_IFSOCK else {
+            return false
+        }
+        guard BurnBarSocketIdentity(status: currentStatus) == expectedIdentity else {
+            return false
+        }
+        guard unlink(socketPath) == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+        return true
+    }
+
+    static func isAcceptingConnections(at socketPath: String) throws -> Bool {
+        #if canImport(Glibc)
+        let socketType = Int32(SOCK_STREAM.rawValue)
+        #else
+        let socketType = SOCK_STREAM
+        #endif
+        let descriptor = socket(AF_UNIX, socketType, 0)
+        guard descriptor != -1 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+        defer { close(descriptor) }
+
+        var address = try makeSocketAddress(for: socketPath)
+        let result = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
+                connect(descriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
+            }
+        }
+        if result == 0 {
+            return true
+        }
+        let code = errno
+        if code == ECONNREFUSED || code == ENOENT {
+            return false
+        }
+        throw POSIXError(.init(rawValue: code) ?? .EIO)
     }
 
     static func makeListeningSocket(at socketPath: String) throws -> Int32 {
