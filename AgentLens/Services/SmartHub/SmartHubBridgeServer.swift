@@ -660,14 +660,25 @@ final class SmartHubBridgeServer {
         }
         """
 
-        let voiceRequestedAt = lastVoiceRefreshAt.map(formatter.string(from:)) ?? ""
+        let voiceTimestampFields: String
+        if let lastVoiceRefreshAt {
+            let voiceRequestedAt = formatter.string(from: lastVoiceRefreshAt)
+            voiceTimestampFields = """
+          "queuedAt": "\(voiceRequestedAt)",
+          "requestedAt": "\(voiceRequestedAt)"
+        """
+        } else {
+            voiceTimestampFields = """
+          "queuedAt": null,
+          "requestedAt": null
+        """
+        }
         let voiceJSON = """
         {
           "eventId": \(voiceRefreshVersion),
           "status": "\(voiceRefreshVersion == 0 ? "idle" : "queued")",
           "message": "\(escape(lastVoiceRefreshMessage))",
-          "queuedAt": "\(voiceRequestedAt)",
-          "requestedAt": "\(voiceRequestedAt)"
+        \(voiceTimestampFields)
         }
         """
 

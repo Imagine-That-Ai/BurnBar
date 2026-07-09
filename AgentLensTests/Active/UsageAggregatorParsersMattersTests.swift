@@ -147,32 +147,32 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         let redacted = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(redacted.usages.count, 1)
         XCTAssertTrue(redacted.conversations.isEmpty)
-        let redactedCache = try String(contentsOf: cacheURL, encoding: .utf8)
-        XCTAssertFalse(redactedCache.contains(privatePrompt))
-        XCTAssertFalse(redactedCache.contains(privateAnswer))
+        let redactedCache = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(redactedCache.containsRawString(privatePrompt))
+        XCTAssertFalse(redactedCache.containsRawString(privateAnswer))
 
         let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         XCTAssertEqual(indexed.conversations.count, 1)
         XCTAssertEqual(indexed.conversations.first?.fullText.contains(privatePrompt), true)
-        let warmedCache = try String(contentsOf: cacheURL, encoding: .utf8)
-        XCTAssertTrue(warmedCache.contains(privatePrompt))
-        XCTAssertTrue(warmedCache.contains(privateAnswer))
+        let warmedCache = try Data(contentsOf: cacheURL)
+        XCTAssertTrue(warmedCache.containsRawString(privatePrompt))
+        XCTAssertTrue(warmedCache.containsRawString(privateAnswer))
 
         try harness.fileManager.removeItem(at: rolloutURL)
         let missingFileScrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(missingFileScrubbed.usages.count, 1)
         XCTAssertTrue(missingFileScrubbed.conversations.isEmpty)
-        let missingFileScrubbedCache = try String(contentsOf: cacheURL, encoding: .utf8)
-        XCTAssertFalse(missingFileScrubbedCache.contains(privatePrompt))
-        XCTAssertFalse(missingFileScrubbedCache.contains(privateAnswer))
+        let missingFileScrubbedCache = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(missingFileScrubbedCache.containsRawString(privatePrompt))
+        XCTAssertFalse(missingFileScrubbedCache.containsRawString(privateAnswer))
 
         try session.write(to: rolloutURL, atomically: true, encoding: .utf8)
         _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         let scrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertTrue(scrubbed.conversations.isEmpty)
-        let scrubbedCache = try String(contentsOf: cacheURL, encoding: .utf8)
-        XCTAssertFalse(scrubbedCache.contains(privatePrompt))
-        XCTAssertFalse(scrubbedCache.contains(privateAnswer))
+        let scrubbedCache = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(scrubbedCache.containsRawString(privatePrompt))
+        XCTAssertFalse(scrubbedCache.containsRawString(privateAnswer))
     }
 
     func testParserConversationCacheScrubberRedactsKnownParserCaches() throws {
@@ -206,8 +206,33 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             )
             let entries = try XCTUnwrap(root["fileEntries"] as? [String: Any])
             let entry = try XCTUnwrap(entries["session"] as? [String: Any])
-            XCTAssertTrue(entry["conversation"] is NSNull)
+            XCTAssertNil(entry["conversation"])
         }
+    }
+
+    func testParserConversationCacheScrubberRedactsBinaryPlistCaches() throws {
+        let supportRoot = uniqueTempURL()
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
+        try FileManager.default.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
+
+        let privateMarker = "private binary parser cache body \(UUID().uuidString)"
+        let cacheURL = appPaths.claudeCodeParserCacheURL
+        try seedBinaryParserCache(at: cacheURL, marker: privateMarker)
+
+        ParserConversationCacheScrubber(
+            fileManager: .default,
+            appPaths: appPaths
+        ).scrubKnownParserCaches()
+
+        let scrubbed = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(scrubbed.containsRawString(privateMarker))
+
+        let root = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: scrubbed, options: [], format: nil) as? [String: Any]
+        )
+        let entries = try XCTUnwrap(root["fileEntries"] as? [String: Any])
+        let entry = try XCTUnwrap(entries["session"] as? [String: Any])
+        XCTAssertNil(entry["conversation"])
     }
 
     /// `ModelFilterParser` (used for Zai / MiniMax) must likewise stay constructible
@@ -240,20 +265,42 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
     }
 
     private func seedParserCache(at cacheURL: URL, marker: String) throws {
-        let json: [String: Any] = [
-            "schemaVersion": 2,
-            "fileEntries": [
-                "session": [
-                    "signature": ["size": 1, "modifiedAt": 1],
-                    "usage": NSNull(),
-                    "conversation": [
-                        "id": "session",
-                        "fullText": marker
-                    ]
-                ]
+        let data = try JSONSerialization.data(withJSONObject: parserCacheRoot(marker: marker), options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: cacheURL, options: .atomic)
+    }
+
+    private func seedBinaryParserCache(at cacheURL: URL, marker: String) throws {
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: parserCacheRoot(marker: marker, includeNullUsage: false),
+            format: .binary,
+            options: 0
+        )
+        try data.write(to: cacheURL, options: .atomic)
+    }
+
+    private func parserCacheRoot(marker: String, includeNullUsage: Bool = true) -> [String: Any] {
+        var entry: [String: Any] = [
+            "signature": ["size": 1, "modifiedAt": 1],
+            "conversation": [
+                "id": "session",
+                "fullText": marker
             ]
         ]
-        let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: cacheURL, options: .atomic)
+        if includeNullUsage {
+            entry["usage"] = NSNull()
+        }
+
+        return [
+            "schemaVersion": 2,
+            "fileEntries": [
+                "session": entry
+            ]
+        ]
+    }
+}
+
+private extension Data {
+    func containsRawString(_ string: String) -> Bool {
+        range(of: Data(string.utf8)) != nil
     }
 }

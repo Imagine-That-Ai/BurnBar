@@ -2,7 +2,6 @@ import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarIrohRelay
-import os.log
 
 /// Loads NodeIds that may dial the Mac iroh host for a given connection.
 enum FirestoreIrohInboundPeerAllowlist {
