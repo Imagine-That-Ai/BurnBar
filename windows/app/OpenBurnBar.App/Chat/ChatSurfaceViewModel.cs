@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Presentation.Chat;
@@ -23,15 +25,24 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 {
     private readonly ChatSessionStateMachine _machine = new();
     private readonly IChatStreamDriver _driver;
+    private readonly IChatConversationStore _store;
     private readonly Dictionary<string, ChatMessageViewModel> _index = new();
 
     private CancellationTokenSource? _cts;
     private string _inputText = string.Empty;
     private readonly string _backendLabel;
+    private string _threadId = Guid.NewGuid().ToString();
+    private string? _persistenceWarning;
+    private readonly List<ChatAttachmentRecord> _pendingAttachments = new();
+    private string _workspaceRoot = DefaultWorkspaceRoot();
 
-    public ChatSurfaceViewModel(IChatStreamDriver? driver = null, string backendLabel = "hermes")
+    public ChatSurfaceViewModel(
+        IChatStreamDriver? driver = null,
+        string backendLabel = "hermes",
+        IChatConversationStore? store = null)
     {
         _driver = driver ?? ChatStreamDriverFactory.CreateDefault();
+        _store = store ?? ChatConversationStoreFactory.CreateDefault();
         _backendLabel = backendLabel;
 
         Messages = new ObservableCollection<ChatMessageViewModel>();
@@ -41,6 +52,7 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 
         _machine.Changed += OnMachineChanged;
         _machine.CancelRequested += () => _cts?.Cancel();
+        RecoverLastThread();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -76,7 +88,37 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 
     public bool IsEmpty => Messages.Count == 0;
 
-    public bool CanSend => !_machine.IsSendBusy && !string.IsNullOrWhiteSpace(InputText);
+    public bool HasFailure => _machine.LastFailureKind is not null || !string.IsNullOrWhiteSpace(_machine.StreamError);
+
+    public string FailureText
+    {
+        get
+        {
+            if (_machine.LastFailureKind is null && string.IsNullOrWhiteSpace(_machine.StreamError))
+            {
+                return string.Empty;
+            }
+
+            string kind = _machine.LastFailureKind?.ToString() ?? "StreamError";
+            return string.IsNullOrWhiteSpace(_machine.StreamError)
+                ? kind
+                : kind + ": " + _machine.StreamError;
+        }
+    }
+
+    public bool HasPersistenceWarning => !string.IsNullOrWhiteSpace(_persistenceWarning);
+
+    public string PersistenceWarning => _persistenceWarning ?? string.Empty;
+
+    public bool CanSend => !_machine.IsSendBusy
+        && (!string.IsNullOrWhiteSpace(InputText) || _pendingAttachments.Count > 0);
+
+    public bool HasPendingAttachments => _pendingAttachments.Count > 0;
+
+    public string PendingAttachmentSummary =>
+        _pendingAttachments.Count == 0
+            ? string.Empty
+            : string.Join(", ", _pendingAttachments.Select(attachment => attachment.DisplayName));
 
     public bool CanRegenerate =>
         !_machine.IsSendBusy
@@ -87,11 +129,15 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 
     private async Task SendAsync()
     {
-        var user = _machine.TryBeginUserTurn(InputText);
+        var user = _machine.TryBeginUserTurnWithAttachments(InputText, _pendingAttachments.ToArray());
         if (user is null)
         {
             return;
         }
+        _pendingAttachments.Clear();
+        Raise(nameof(HasPendingAttachments));
+        Raise(nameof(PendingAttachmentSummary));
+        Raise(nameof(CanSend));
         InputText = string.Empty;
         await RunTurnAsync(user.Content).ConfigureAwait(true);
     }
@@ -111,6 +157,7 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
         _machine.BeginAssistantStream(_backendLabel);
         _cts = new CancellationTokenSource();
         RaiseCommandStates();
+        var terminalFromStreamEvent = false;
         try
         {
             await foreach (var streamEvent in _driver
@@ -118,8 +165,18 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
                 .ConfigureAwait(true))
             {
                 _machine.Ingest(streamEvent);
+                if (streamEvent is ChatStreamEvent.StreamFailure)
+                {
+                    terminalFromStreamEvent = true;
+                    break;
+                }
             }
-            _machine.CompleteStream();
+            if (!terminalFromStreamEvent
+                && _machine.Phase != ChatStreamPhase.Failed
+                && _machine.Phase != ChatStreamPhase.Cancelled)
+            {
+                _machine.CompleteStream();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -127,12 +184,13 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            _machine.FailStream(cancelled: false, errorMessage: ex.Message);
+            _machine.FailStream(cancelled: false, ChatFailureKind.StreamError, ex.Message);
         }
         finally
         {
             _cts?.Dispose();
             _cts = null;
+            PersistCurrentTranscript();
             RaiseCommandStates();
         }
     }
@@ -142,9 +200,92 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
     private void OnMachineChanged()
     {
         Reconcile();
+        PersistCurrentTranscript();
         Raise(nameof(IsStreaming));
         Raise(nameof(IsEmpty));
+        Raise(nameof(HasFailure));
+        Raise(nameof(FailureText));
         RaiseCommandStates();
+    }
+
+    private void RecoverLastThread()
+    {
+        try
+        {
+            ChatThreadSnapshot snapshot = _store.LoadMostRecentThread();
+            _threadId = snapshot.ThreadId;
+            if (snapshot.Messages.Count > 0)
+            {
+                _machine.LoadTranscript(snapshot.Messages);
+            }
+        }
+        catch (Exception ex)
+        {
+            SetPersistenceWarning("Chat history could not be reopened: " + ex.Message);
+        }
+    }
+
+    private void PersistCurrentTranscript()
+    {
+        try
+        {
+            _store.SaveMessages(
+                _threadId,
+                _machine.Messages,
+                _machine.LastFailureKind,
+                _machine.StreamError);
+            SetPersistenceWarning(null);
+        }
+        catch (Exception ex)
+        {
+            SetPersistenceWarning("Chat history is not being saved: " + ex.Message);
+        }
+    }
+
+    private void SetPersistenceWarning(string? warning)
+    {
+        if (_persistenceWarning == warning)
+        {
+            return;
+        }
+
+        _persistenceWarning = warning;
+        Raise(nameof(HasPersistenceWarning));
+        Raise(nameof(PersistenceWarning));
+    }
+
+    public void StageAttachmentFromFile(string path)
+    {
+        ChatAttachmentRecord attachment = WindowsChatAttachmentStager.ImportFile(path, _workspaceRoot);
+        _pendingAttachments.Add(attachment);
+        Raise(nameof(HasPendingAttachments));
+        Raise(nameof(PendingAttachmentSummary));
+        Raise(nameof(CanSend));
+        SendCommand.RaiseCanExecuteChanged();
+    }
+
+    public void StagePastedText(string text, string? suggestedName = null)
+    {
+        ChatAttachmentRecord attachment = WindowsChatAttachmentStager.ImportPastedText(text, _workspaceRoot, suggestedName);
+        _pendingAttachments.Add(attachment);
+        Raise(nameof(HasPendingAttachments));
+        Raise(nameof(PendingAttachmentSummary));
+        Raise(nameof(CanSend));
+        SendCommand.RaiseCanExecuteChanged();
+    }
+
+    internal void ConfigureWorkspaceForTests(string workspaceRoot)
+    {
+        _workspaceRoot = workspaceRoot;
+    }
+
+    private static string DefaultWorkspaceRoot()
+    {
+        string? local = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        string root = !string.IsNullOrWhiteSpace(local)
+            ? Path.Combine(local, "OpenBurnBar")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".openburnbar");
+        return Path.Combine(root, "chat-workspaces", "default");
     }
 
     private void Reconcile()

@@ -29,7 +29,11 @@
 
   <ItemGroup>
     <Compile Include="../../app/OpenBurnBar.App/Storage/WindowsStorageDevHost.cs" Link="WindowsStorageDevHost.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatConversationStore.cs" Link="ChatConversationStore.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/WindowsChatAttachmentStager.cs" Link="WindowsChatAttachmentStager.cs" />
+    <Compile Include="WindowsStorageTestCollection.cs" />
     <Compile Include="WindowsStorageDevHostRuntimeTests.cs" />
+    <Compile Include="ChatConversationStoreTests.cs" />
   </ItemGroup>
 
 </Project>

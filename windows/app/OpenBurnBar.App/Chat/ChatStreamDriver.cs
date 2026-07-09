@@ -37,7 +37,9 @@ public sealed class UnavailableChatStreamDriver : IChatStreamDriver
     {
         await Task.Yield();
         cancellationToken.ThrowIfCancellationRequested();
-        yield return new ChatStreamEvent.Text("Chat backend is not configured on this Windows build. Connect the Hermes/CLI bridge in Settings → Data Sources, or launch with OPENBURNBAR_SAMPLE_MODE=1 for a labeled scripted demo.");
+        yield return new ChatStreamEvent.StreamFailure(
+            ChatFailureKind.BackendUnavailable,
+            "Chat backend is not configured on this Windows build. Connect the Hermes/CLI bridge in Settings -> Data Sources, or launch with OPENBURNBAR_SAMPLE_MODE=1 for a labeled scripted demo.");
     }
 }
 

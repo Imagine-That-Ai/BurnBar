@@ -429,6 +429,61 @@ public sealed class WindowsSqlCipherProvisioner
         "CREATE INDEX IF NOT EXISTS conversations_indexed_at_idx ON conversations(indexedAt DESC)",
         "CREATE VIRTUAL TABLE IF NOT EXISTS conversations_fts USING fts5(fullText, inferredTaskTitle, tokenize='porter unicode61', content='conversations', content_rowid='rowid')",
         """
+        CREATE TABLE IF NOT EXISTS chat_threads (
+            id TEXT NOT NULL PRIMARY KEY,
+            title TEXT,
+            backend TEXT NOT NULL DEFAULT 'cli',
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL,
+            projectPath TEXT,
+            sessionId TEXT
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS chat_threads_updated_idx ON chat_threads(updatedAt DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id TEXT NOT NULL PRIMARY KEY,
+            threadId TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            cliUsed TEXT,
+            transcriptPiecesJSON TEXT,
+            attachmentsJSON TEXT,
+            errorKind TEXT,
+            errorMessage TEXT,
+            retrievalStateJSON TEXT,
+            modelUsed TEXT,
+            backend TEXT,
+            isStreaming INTEGER NOT NULL DEFAULT 0,
+            metadata TEXT
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS chat_messages_thread_time_idx ON chat_messages(threadId, timestamp)",
+        "CREATE INDEX IF NOT EXISTS chat_messages_timestamp_idx ON chat_messages(timestamp DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS chat_stream_failures (
+            id TEXT NOT NULL PRIMARY KEY,
+            threadId TEXT NOT NULL,
+            messageId TEXT,
+            kind TEXT NOT NULL,
+            message TEXT NOT NULL,
+            createdAt TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS chat_stream_failures_thread_idx ON chat_stream_failures(threadId, createdAt DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS chat_retrieval_events (
+            id TEXT NOT NULL PRIMARY KEY,
+            threadId TEXT NOT NULL,
+            messageId TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            detail TEXT NOT NULL,
+            createdAt TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS chat_retrieval_events_message_idx ON chat_retrieval_events(messageId, createdAt DESC)",
+        """
         CREATE TABLE IF NOT EXISTS budget_rules (
             id TEXT NOT NULL PRIMARY KEY,
             scope TEXT NOT NULL,

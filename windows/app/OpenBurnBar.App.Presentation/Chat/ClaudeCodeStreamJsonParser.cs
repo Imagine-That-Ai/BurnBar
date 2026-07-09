@@ -66,6 +66,56 @@ public static class ClaudeCodeStreamJsonParser
         }
     }
 
+    public static IReadOnlyList<ChatStreamEvent> EventsFromLineStrict(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return Array.Empty<ChatStreamEvent>();
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(line);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return new ChatStreamEvent[]
+                {
+                    new ChatStreamEvent.StreamFailure(
+                        ChatFailureKind.MalformedStream,
+                        "The chat backend returned a non-object stream record."),
+                };
+            }
+
+            if (TryOpenBurnBarStreamFailure(root, out ChatStreamEvent.StreamFailure? failure) && failure is not null)
+            {
+                return new ChatStreamEvent[] { failure };
+            }
+        }
+        catch (JsonException ex)
+        {
+            return new ChatStreamEvent[]
+            {
+                new ChatStreamEvent.StreamFailure(
+                    ChatFailureKind.MalformedStream,
+                    "The chat backend returned malformed stream JSON: " + ex.Message),
+            };
+        }
+
+        IReadOnlyList<ChatStreamEvent> events = EventsFromLine(line);
+        if (events.Count == 0)
+        {
+            return new ChatStreamEvent[]
+            {
+                new ChatStreamEvent.StreamFailure(
+                    ChatFailureKind.MalformedStream,
+                    "The chat backend returned an unsupported stream record."),
+            };
+        }
+
+        return events;
+    }
+
     private static List<ChatStreamEvent> EventsFromMessageContent(JsonElement root)
     {
         var outEvents = new List<ChatStreamEvent>();
@@ -289,6 +339,28 @@ public static class ClaudeCodeStreamJsonParser
 
         return new ChatStreamEvent.Usage(
             new CliUsageSnapshot(input, output, cacheCreate, cacheRead, reasoning));
+    }
+
+    private static bool TryOpenBurnBarStreamFailure(JsonElement root, out ChatStreamEvent.StreamFailure? failure)
+    {
+        failure = null;
+        if (!root.TryGetProperty("openburnbar_stream_error", out JsonElement error)
+            || error.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        string? kindText = GetString(error, "kind");
+        string? message = GetString(error, "message");
+        if (!Enum.TryParse(kindText, ignoreCase: true, out ChatFailureKind kind))
+        {
+            kind = ChatFailureKind.StreamError;
+        }
+
+        failure = new ChatStreamEvent.StreamFailure(
+            kind,
+            string.IsNullOrWhiteSpace(message) ? "The chat backend failed." : message);
+        return true;
     }
 
     private static string? GetString(JsonElement obj, string name)

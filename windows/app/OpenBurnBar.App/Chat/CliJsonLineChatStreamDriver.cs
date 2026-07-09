@@ -30,9 +30,13 @@ public sealed class CliJsonLineChatStreamDriver : IChatStreamDriver
         await foreach (string line in _lines(userText, history, cancellationToken).ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            foreach (ChatStreamEvent evt in ClaudeCodeStreamJsonParser.EventsFromLine(line))
+            foreach (ChatStreamEvent evt in ClaudeCodeStreamJsonParser.EventsFromLineStrict(line))
             {
                 yield return evt;
+                if (evt is ChatStreamEvent.StreamFailure)
+                {
+                    yield break;
+                }
             }
         }
     }

@@ -56,9 +56,16 @@
                 <Border Padding="14,10"
                         CornerRadius="14,14,4,14"
                         Background="{StaticResource PensieveColorBrassDeepBrush}">
-                    <TextBlock Text="{x:Bind UserText}"
-                               TextWrapping="Wrap"
-                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{x:Bind UserText}"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock Text="{x:Bind AttachmentSummary}"
+                                   Visibility="{x:Bind HasAttachments, Converter={StaticResource BoolToVisibility}}"
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
                 </Border>
             </Grid>
         </DataTemplate>
@@ -138,39 +145,77 @@
         </Grid>
 
         <!-- Composer -->
-        <Grid Grid.Row="2" ColumnSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <StackPanel Grid.Row="2" Spacing="8">
+            <Border Padding="10,8"
+                    CornerRadius="8"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    Visibility="{x:Bind ViewModel.HasFailure, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <TextBlock Text="{x:Bind ViewModel.FailureText, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            </Border>
+            <Border Padding="10,8"
+                    CornerRadius="8"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    Visibility="{x:Bind ViewModel.HasPersistenceWarning, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <TextBlock Text="{x:Bind ViewModel.PersistenceWarning, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            </Border>
 
-            <TextBox x:Name="InputBox" Grid.Column="0"
-                     PlaceholderText="Message OpenBurnBar…"
-                     Text="{x:Bind ViewModel.InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     AcceptsReturn="False"
-                     KeyDown="OnInputKeyDown" />
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-            <Button x:Name="RegenerateButton" Grid.Column="1"
-                    Command="{x:Bind ViewModel.RegenerateCommand}"
-                    ToolTipService.ToolTip="Regenerate last response">
-                <FontIcon Glyph="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
-            </Button>
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="3"
+                           Text="{x:Bind ViewModel.PendingAttachmentSummary, Mode=OneWay}"
+                           Visibility="{x:Bind ViewModel.HasPendingAttachments, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           FontSize="11"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
 
-            <Button x:Name="SendButton" Grid.Column="2"
-                    Command="{x:Bind ViewModel.SendCommand}"
-                    Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource NegatedBoolToVisibility}, Mode=OneWay}"
-                    Style="{StaticResource AccentButtonStyle}">
-                <FontIcon Glyph="&#xE724;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
-            </Button>
+                <TextBox x:Name="InputBox" Grid.Row="1" Grid.Column="0"
+                         PlaceholderText="Message OpenBurnBar…"
+                         Text="{x:Bind ViewModel.InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="False"
+                         AllowDrop="True"
+                         DragOver="OnInputDragOver"
+                         Drop="OnInputDrop"
+                         Paste="OnInputPaste"
+                         KeyDown="OnInputKeyDown" />
 
-            <Button x:Name="StopButton" Grid.Column="2"
-                    Command="{x:Bind ViewModel.StopCommand}"
-                    Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
-                    ToolTipService.ToolTip="Stop generating">
-                <FontIcon Glyph="&#xE71A;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
-            </Button>
-        </Grid>
+                <Button x:Name="RegenerateButton" Grid.Row="1" Grid.Column="1"
+                        Command="{x:Bind ViewModel.RegenerateCommand}"
+                        ToolTipService.ToolTip="Regenerate last response">
+                    <FontIcon Glyph="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
+                </Button>
+
+                <Button x:Name="SendButton" Grid.Row="1" Grid.Column="2"
+                        Command="{x:Bind ViewModel.SendCommand}"
+                        Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource NegatedBoolToVisibility}, Mode=OneWay}"
+                        Style="{StaticResource AccentButtonStyle}">
+                    <FontIcon Glyph="&#xE724;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
+                </Button>
+
+                <Button x:Name="StopButton" Grid.Row="1" Grid.Column="2"
+                        Command="{x:Bind ViewModel.StopCommand}"
+                        Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                        ToolTipService.ToolTip="Stop generating">
+                    <FontIcon Glyph="&#xE71A;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
+                </Button>
+            </Grid>
+        </StackPanel>
 
         <!-- Optional offscreen Pretext measurement host. Created in code only when WebView2 is enabled. -->
         <Grid x:Name="PretextHost" Grid.Row="0" Width="0" Height="0"

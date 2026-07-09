@@ -25,9 +25,10 @@ public sealed class ChatStreamDriverRuntimeTests
             events.Add(evt);
         }
 
-        ChatStreamEvent.Text text = Assert.IsType<ChatStreamEvent.Text>(Assert.Single(events));
-        Assert.Contains("not configured", text.Chunk, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("OPENBURNBAR_SAMPLE_MODE=1", text.Chunk);
+        ChatStreamEvent.StreamFailure failure = Assert.IsType<ChatStreamEvent.StreamFailure>(Assert.Single(events));
+        Assert.Equal(ChatFailureKind.BackendUnavailable, failure.Kind);
+        Assert.Contains("not configured", failure.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("OPENBURNBAR_SAMPLE_MODE=1", failure.Message);
     }
 
     [Fact]
@@ -81,6 +82,53 @@ public sealed class ChatStreamDriverRuntimeTests
         var usage = Assert.IsType<ChatStreamEvent.Usage>(events[4]);
         Assert.Equal(10, usage.Snapshot.InputTokens);
         Assert.Equal(5, usage.Snapshot.OutputTokens);
+    }
+
+    [Fact]
+    public async Task CliJsonLineDriver_MalformedLine_EmitsTypedFailure()
+    {
+        async IAsyncEnumerable<string> Lines(
+            string userText,
+            IReadOnlyList<ChatMessageRecord> history,
+            [EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.Yield();
+            yield return "{not-json";
+        }
+
+        var driver = new CliJsonLineChatStreamDriver(Lines);
+        var events = new List<ChatStreamEvent>();
+        await foreach (ChatStreamEvent evt in driver.StreamAsync("hi", Array.Empty<ChatMessageRecord>(), CancellationToken.None))
+        {
+            events.Add(evt);
+        }
+
+        ChatStreamEvent.StreamFailure failure = Assert.IsType<ChatStreamEvent.StreamFailure>(Assert.Single(events));
+        Assert.Equal(ChatFailureKind.MalformedStream, failure.Kind);
+    }
+
+    [Fact]
+    public async Task CliJsonLineDriver_ProcessFailureRecord_EmitsTypedFailure()
+    {
+        async IAsyncEnumerable<string> Lines(
+            string userText,
+            IReadOnlyList<ChatMessageRecord> history,
+            [EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.Yield();
+            yield return """{"openburnbar_stream_error":{"kind":"ExecutableDenied","message":"not approved"}}""";
+        }
+
+        var driver = new CliJsonLineChatStreamDriver(Lines);
+        var events = new List<ChatStreamEvent>();
+        await foreach (ChatStreamEvent evt in driver.StreamAsync("hi", Array.Empty<ChatMessageRecord>(), CancellationToken.None))
+        {
+            events.Add(evt);
+        }
+
+        ChatStreamEvent.StreamFailure failure = Assert.IsType<ChatStreamEvent.StreamFailure>(Assert.Single(events));
+        Assert.Equal(ChatFailureKind.ExecutableDenied, failure.Kind);
+        Assert.Equal("not approved", failure.Message);
     }
 
     [Fact]

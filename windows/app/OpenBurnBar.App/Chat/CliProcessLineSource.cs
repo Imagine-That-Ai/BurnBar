@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Configuration;
@@ -20,9 +21,9 @@ namespace OpenBurnBar.App.Chat;
 /// </summary>
 public static class CliProcessLineSource
 {
-    /// <summary>Default Claude Code print + stream-json command (overridable via env).</summary>
+    /// <summary>Default Claude Code print + stream-json command, displayed only for diagnostics.</summary>
     public const string DefaultCommandTemplate =
-        "claude -p \"{0}\" --output-format stream-json --verbose";
+        "claude -p <structured-prompt> --output-format stream-json --verbose";
 
     public static string ResolveCommandLine(string userText)
     {
@@ -49,10 +50,7 @@ public static class CliProcessLineSource
             new[] { "-p", userText, "--output-format", "stream-json", "--verbose" });
     }
 
-    /// <summary>
-    /// Run <paramref name="commandLine"/> without a shell and yield stdout lines.
-    /// On failure to start, yields a single stream-json text error line (fail-closed, not silent).
-    /// </summary>
+    /// <summary>Compatibility overload for tests that still pass a display command.</summary>
     public static async IAsyncEnumerable<string> ReadLinesAsync(
         string commandLine,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -66,71 +64,34 @@ public static class CliProcessLineSource
 
     public static async IAsyncEnumerable<string> ReadLinesAsync(
         ChildProcessSpec spec,
+        ApprovedChatExecutableCatalog? catalog,
+        ChatProcessLimits? limits,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        ProcessStartInfo psi = CreateStartInfo(spec);
-
-        Process? process = null;
-        string? startError = null;
-        try
+        await foreach (ChatProcessLine output in ChatProcessRunner
+            .StreamStdoutLinesAsync(spec, catalog, limits, cancellationToken)
+            .ConfigureAwait(false))
         {
-            process = Process.Start(psi);
-            if (process is null)
+            if (output.IsFailure)
             {
-                startError = "CLI process failed to start (null Process).";
-            }
-        }
-        catch (Exception ex)
-        {
-            startError = "Failed to start CLI process: " + ex.Message;
-        }
-
-        if (startError is not null)
-        {
-            yield return ErrorLine(startError);
-            yield break;
-        }
-
-        if (process is null)
-        {
-            yield return ErrorLine("CLI process failed to start (null Process).");
-            yield break;
-        }
-
-        try
-        {
-            using StreamReader reader = process.StandardOutput;
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                string? line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                if (line is null)
-                {
-                    break;
-                }
-
-                if (line.Length > 0)
-                {
-                    yield return line;
-                }
+                yield return ErrorLine(
+                    output.FailureKind ?? ChatFailureKind.StreamError,
+                    output.FailureMessage ?? "The chat process failed.");
+                yield break;
             }
 
-            string stderr = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-            if (!process.HasExited)
+            if (!string.IsNullOrEmpty(output.Line))
             {
-                try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+                yield return output.Line;
             }
+        }
+    }
 
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            if (process.ExitCode != 0 && !string.IsNullOrWhiteSpace(stderr))
-            {
-                string snippet = stderr.Length <= 400 ? stderr : stderr[..400];
-                yield return ErrorLine("CLI exited " + process.ExitCode + ": " + snippet.Replace('\n', ' '));
-            }
-        }
-        finally
-        {
-            process.Dispose();
-        }
+    public static IAsyncEnumerable<string> ReadLinesAsync(
+        ChildProcessSpec spec,
+        CancellationToken cancellationToken)
+    {
+        return ReadLinesAsync(spec, null, null, cancellationToken);
     }
 
     /// <summary>Factory adapter for <see cref="CliJsonLineChatStreamDriver"/>.</summary>
@@ -145,39 +106,30 @@ public static class CliProcessLineSource
 
     internal static ProcessStartInfo CreateStartInfo(ChildProcessSpec spec)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = spec.FileName,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        foreach (string argument in spec.Arguments)
-        {
-            psi.ArgumentList.Add(argument);
-        }
-
-        ChildProcessEnvironment.Apply(psi, ChildProcessProfile.Chat);
-        return psi;
+        return ChatProcessRunner.CreateStartInfo(spec, ApprovedChatExecutableCatalog.FromEnvironment());
     }
 
-    private static string ErrorLine(string message)
+    private static string ErrorLine(ChatFailureKind kind, string message)
     {
         message = SecretRedactor.Shared.Redact(message);
-        string escaped = message
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\"", "\\\"", StringComparison.Ordinal);
-        return "{\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"" + escaped + "\"}]}}";
+        return JsonSerializer.Serialize(new
+        {
+            openburnbar_stream_error = new
+            {
+                kind = kind.ToString(),
+                message,
+            },
+        });
     }
 
     private static string QuoteForCommandLine(string value) =>
         "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 }
 
-public sealed record ChildProcessSpec(string FileName, IReadOnlyList<string> Arguments)
+public sealed record ChildProcessSpec(
+    string FileName,
+    IReadOnlyList<string> Arguments,
+    string? StandardInput = null)
 {
     public string DisplayCommandLine =>
         FileName + (Arguments.Count == 0 ? string.Empty : " " + string.Join(" ", Arguments.Select(QuoteIfNeeded)));
@@ -194,7 +146,7 @@ public sealed record ChildProcessSpec(string FileName, IReadOnlyList<string> Arg
     }
 
     public ChildProcessSpec WithAdditionalArguments(params string[] arguments) =>
-        new(FileName, Arguments.Concat(arguments).ToArray());
+        new(FileName, Arguments.Concat(arguments).ToArray(), StandardInput);
 
     private static IReadOnlyList<string> SplitCommandLine(string commandLine)
     {

@@ -26,6 +26,8 @@ public abstract record ChatStreamEvent
     public sealed record ToolResult(string Name, string? Detail) : ChatStreamEvent;
 
     public sealed record Usage(CliUsageSnapshot Snapshot) : ChatStreamEvent;
+
+    public sealed record StreamFailure(ChatFailureKind Kind, string Message) : ChatStreamEvent;
 }
 
 /// Token-usage rollup carried by a <see cref="ChatStreamEvent.Usage"/> event
@@ -58,6 +60,24 @@ public sealed record ChatStreamSettleOutcome
     public static readonly ChatStreamSettleOutcome CompletedOutcome = new(completed: true, cancelled: false);
 
     public static ChatStreamSettleOutcome Failed(bool cancelled) => new(completed: false, cancelled: cancelled);
+}
+
+public enum ChatFailureKind
+{
+    BackendUnavailable,
+    ExecutableDenied,
+    ExecutableUnavailable,
+    ExecutableReplaced,
+    ProcessStartFailed,
+    NonZeroExit,
+    TimedOut,
+    Cancelled,
+    OutputLimitExceeded,
+    MalformedStream,
+    StreamError,
+    StorageUnavailable,
+    AttachmentMissing,
+    RetrievalDegraded,
 }
 
 /// The coarse phase of the active turn, walked by <see cref="ChatSessionStateMachine"/>.

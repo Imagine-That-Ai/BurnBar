@@ -8,6 +8,7 @@ using Xunit;
 
 namespace OpenBurnBar.App.Storage.Tests;
 
+[Collection(WindowsStorageTestCollection.Name)]
 public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
 {
     private const string SampleEnv = "OPENBURNBAR_SAMPLE_MODE";
