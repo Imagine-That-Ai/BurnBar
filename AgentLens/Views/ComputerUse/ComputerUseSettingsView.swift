@@ -223,9 +223,6 @@ struct ComputerUseSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
-        // Expose the scroll container as its own AX element so UI tests can
-        // anchor on the Computer Use root; `.contain` keeps children accessible.
-        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(OBBAccessibilityID.computerUseSettingsRoot)
         .onAppear {
             configureModels()
