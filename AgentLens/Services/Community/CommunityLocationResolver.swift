@@ -1,6 +1,7 @@
 import CoreLocation
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 /// Coarse OS location → stable geography keys for community city-tier leaderboards.
 /// Never persists or transmits raw coordinates.
@@ -15,7 +16,7 @@ struct CommunityResolvedGeo: Equatable, Sendable {
 
 enum CommunityLocationResolver {
     /// Fixed-locale reverse geocode (en_US_POSIX) so city names match across platforms.
-    private static let geocodeLocale = Locale(identifier: "en_US_POSIX")
+    fileprivate static let geocodeLocale = Locale(identifier: "en_US_POSIX")
 
     @MainActor
     static func resolve() async -> CommunityResolvedGeo? {
@@ -56,9 +57,9 @@ private final class LocationResolverSession: NSObject, CLLocationManagerDelegate
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
             guard !didFinish else { return }
-            switch manager.authorizationStatus {
+            switch self.manager.authorizationStatus {
             case .authorizedAlways, .authorizedWhenInUse:
-                manager.requestLocation()
+                self.manager.requestLocation()
             case .denied, .restricted:
                 finish(nil)
             case .notDetermined:
@@ -120,14 +121,6 @@ private final class LocationResolverSession: NSObject, CLLocationManagerDelegate
 
     /// ISO 3166-2 subdivision without country prefix (e.g. "CA", "BY").
     private static func regionSubdivisionCode(from placemark: CLPlacemark) -> String? {
-        if let iso = placemark.iso3166_2, !iso.isEmpty {
-            let upper = iso.uppercased()
-            if let dash = upper.firstIndex(of: "-") {
-                let suffix = upper[upper.index(after: dash)...]
-                return String(suffix)
-            }
-            return upper
-        }
         if let admin = placemark.administrativeArea?.trimmingCharacters(in: .whitespacesAndNewlines),
            !admin.isEmpty,
            admin.count <= 3 {

@@ -4888,9 +4888,10 @@ service cloud.firestore {
 
     // --- Community (consent-gated leaderboards + Looking Glass Mode) ---
     // Read/write split:
-    //   consent, profile, exports → owner READ only (callables write via Admin
-    //     SDK which bypasses rules; closing client write prevents consent spoofing).
-    //   share_snapshot, traces    → owner READ + WRITE (client-written per spec).
+    //   consent, profile, share_snapshot, exports → owner READ only (callables
+    //     and scheduled workers write via Admin SDK which bypasses rules; closing
+    //     client write prevents consent spoofing and self-reported leaderboard totals).
+    //   traces → owner READ + WRITE (private L3 trace source, never public ranking input).
     // Leaderboards are public authenticated read-only; community_handles is
     // fully closed (managed exclusively by callables).
 
@@ -4906,9 +4907,7 @@ service cloud.firestore {
 
     match /users/{userId}/community/share_snapshot {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
-        && validCommunityShareSnapshot();
-      allow delete: if ownsUserNamespace(userId);
+      allow write: if false;
     }
 
     match /users/{userId}/looking_glass_traces/{traceId} {

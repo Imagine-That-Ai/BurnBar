@@ -44,18 +44,12 @@ final class CommunityViewModel: ObservableObject {
         ]
         if let cc = profile?.countryCode, !cc.isEmpty {
             specs.append((.country, cc.uppercased(), cc))
-        } else {
-            specs.append((.country, "Country", "unknown"))
         }
         if let rk = profile?.regionKey, !rk.isEmpty {
             specs.append((.region, rk, rk))
-        } else {
-            specs.append((.region, "Region", "unknown"))
         }
         if let ck = profile?.cityKey, !ck.isEmpty {
             specs.append((.city, ck, ck))
-        } else {
-            specs.append((.city, "City", "unknown"))
         }
 
         specs.reverse()

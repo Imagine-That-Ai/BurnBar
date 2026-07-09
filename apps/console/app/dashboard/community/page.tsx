@@ -68,12 +68,20 @@ export default function CommunityDashboardPage() {
           Opt in to L2 community rankings to preview leaderboards. Unset and declined stay dark.
         </div>
       ) : null}
+      {view.isPreviewData ? (
+        <div className="lg-bar mb-token-4 text-sm text-content-mute">
+          {view.statusMessage}
+        </div>
+      ) : null}
 
       <section className="lg-card mb-token-4 p-token-4">
         <h2 className="font-display text-lg">Personal hero</h2>
         <p className="font-mono text-2xl">{view.hero.tokens.toLocaleString()} tokens</p>
         <p className="text-content-mute">${view.hero.costUSD.toFixed(2)} estimated · Δ {view.hero.trendDeltaPct}%</p>
         <p className="text-sm text-content-mute">{view.hero.modelMixSummary}</p>
+        {view.isPreviewData ? (
+          <p className="text-xs text-content-mute">Preview — not live usage or rankings.</p>
+        ) : null}
         <p className="text-sm text-content-mute">{view.cityConfidenceCopy}</p>
       </section>
 
@@ -125,7 +133,9 @@ export default function CommunityDashboardPage() {
         <h3>Peer comparison (anonymized cohort)</h3>
         <p className="text-sm text-content-mute">
           {view.peerCohortTokens.length === 0
-            ? "Unlocks when a tier clears k-anonymity."
+            ? view.isPreviewData
+              ? "Preview only — cohort chart stays empty until live boards sync."
+              : "Unlocks when a tier clears k-anonymity."
             : view.peerCohortTokens.map((v) => v.toLocaleString()).join(" · ")}
         </p>
       </section>
@@ -145,6 +155,7 @@ export default function CommunityDashboardPage() {
       <section className="lg-card p-token-4">
         <h3>Consent center</h3>
         <p className="mb-token-3 text-sm text-content-mute">{view.consentPreview}</p>
+        {status ? <p className="mb-token-3 text-sm text-content-mute">{status}</p> : null}
         <p className="mb-token-3 text-sm text-content-mute">{lookingGlassExport.message}</p>
         {lookingGlassExportUrl ? (
           <a className="btn-outline mb-token-3 inline-flex" href={lookingGlassExportUrl}>

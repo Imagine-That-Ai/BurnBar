@@ -44,7 +44,8 @@ public sealed record CommunityConsentState(
     CommunityTierConsent L2Tiers,
     ConsentTriState L3LookingGlass,
     ConsentTriState LocationConsent,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? ManualCityInput = null);
 
 public sealed record CommunityUsageTotal(long TotalTokens, double CostUsd);
 

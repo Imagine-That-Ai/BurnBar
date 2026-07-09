@@ -5,8 +5,7 @@ namespace OpenBurnBar.App.Community;
 
 /// <summary>
 /// MVVM state for the Community surface — personal hero, leaderboards, consent center.
-/// Sample leaderboard data is shown only when L2 rankings consent is active locally;
-/// below-threshold boards never surface individual rows.
+/// Live Firestore leaderboards are not wired on Windows yet; opted-in users see explicit preview/empty states.
 /// </summary>
 public sealed class CommunityViewModel : INotifyPropertyChanged
 {
@@ -17,7 +16,7 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
     private double _trendDeltaPct;
     private string _modelMixSummary = "—";
     private string _statusMessage = string.Empty;
-    private bool _useSamplePreview;
+    private bool _isPreviewData;
 
     public CommunityViewModel(CommunityConsentStore? consentStore = null)
     {
@@ -72,11 +71,14 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
         private set { if (_statusMessage == value) return; _statusMessage = value; OnPropertyChanged(); }
     }
 
-    public bool UseSamplePreview
+    public bool IsPreviewData
     {
-        get => _useSamplePreview;
-        private set { if (_useSamplePreview == value) return; _useSamplePreview = value; OnPropertyChanged(); }
+        get => _isPreviewData;
+        private set { if (_isPreviewData == value) return; _isPreviewData = value; OnPropertyChanged(); }
     }
+
+    public string LookingGlassExportMessage { get; private set; } =
+        "Looking Glass export is not wired on Windows yet. Grant L3 for when signed-in export is available; leaderboards never use traces.";
 
     public IReadOnlyList<CommunityLeaderboardCard> Leaderboards { get; private set; } = Array.Empty<CommunityLeaderboardCard>();
 
@@ -98,6 +100,9 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
     public void CycleL3() => SetConsent(c => c with { L3LookingGlass = c.L3LookingGlass.Cycle() });
 
     public void CycleLocation() => SetConsent(c => c with { LocationConsent = c.LocationConsent.Cycle() });
+
+    public void SetManualCityInput(string? value) =>
+        SetConsent(c => c with { ManualCityInput = string.IsNullOrWhiteSpace(value) ? null : value.Trim() });
 
     public void CycleTier(GeographyTier tier)
     {
@@ -122,7 +127,8 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
             tiers,
             declined,
             declined,
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow,
+            ManualCityInput: null));
         StatusMessage = "Participation paused locally. Sync revoke via your signed-in account when online.";
     }
 
@@ -139,8 +145,13 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
     private void RefreshDerived()
     {
         var l2Active = Consent.L2Rankings.IsActive();
-        UseSamplePreview = l2Active;
+        IsPreviewData = l2Active;
         ShowInviteEmptyState = !l2Active;
+        ConsentPreviewSummary = BuildConsentPreview();
+        CityConfidenceCopy = BuildCityConfidenceCopy();
+        LookingGlassExportMessage = Consent.L3LookingGlass.IsActive()
+            ? "Looking Glass export is not wired on Windows yet. Grant L3 for when signed-in export is available; leaderboards never use traces."
+            : "Looking Glass export: grant L3 to create a private bundle; leaderboard rankings never use traces.";
 
         if (!l2Active)
         {
@@ -152,30 +163,18 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
             PercentileStrip = new(0, 0, 0, 0);
             PeerCohortTokens = Array.Empty<double>();
             PurposeBreakdown = Array.Empty<PurposeSlice>();
-            ConsentPreviewSummary = BuildConsentPreview();
-            CityConfidenceCopy = BuildCityConfidenceCopy();
             return;
         }
 
-        HeroTokens = Window switch
-        {
-            CommunityTimeWindow.Today => 42_000,
-            CommunityTimeWindow.SevenDay => 310_000,
-            CommunityTimeWindow.NinetyDay => 1_450_000,
-            CommunityTimeWindow.All => 3_200_000,
-            _ => 890_000,
-        };
-        HeroCostUsd = Math.Round(HeroTokens * 0.0000028, 2);
-        TrendDeltaPct = 12.4;
-        ModelMixSummary = "claude-3.5-sonnet 42% · gpt-4o 31% · deepseek 27%";
-
-        Leaderboards = BuildSampleLeaderboards();
-        PercentileStrip = ResolvePercentileStrip(Leaderboards);
-        PeerCohortTokens = new[] { 120_000d, 185_000, 240_000, 310_000, 420_000, 580_000 };
-        PurposeBreakdown = BuildPurposeBreakdown();
-        ConsentPreviewSummary = BuildConsentPreview();
-        CityConfidenceCopy = BuildCityConfidenceCopy();
-        StatusMessage = string.Empty;
+        HeroTokens = 0;
+        HeroCostUsd = 0;
+        TrendDeltaPct = 0;
+        ModelMixSummary = "Preview only — live leaderboards sync after community preferences save.";
+        StatusMessage = "Preview layout only — no live leaderboard or cohort data is shown on this surface yet.";
+        Leaderboards = BuildPreviewCards();
+        PercentileStrip = new(0, 0, 0, 0);
+        PeerCohortTokens = Array.Empty<double>();
+        PurposeBreakdown = Array.Empty<PurposeSlice>();
     }
 
     private IReadOnlyList<CommunityLeaderboardCard> BuildThresholdOnlyCards()
@@ -183,15 +182,14 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
         var cards = new List<CommunityLeaderboardCard>();
         foreach (var tier in CommunityTierOrder.Display)
         {
-            var needs = tier == GeographyTier.City ? 10 : 10;
             cards.Add(new CommunityLeaderboardCard(
                 tier,
-                SampleGeoLabel(tier),
+                CommunityGeoDisplay.ResolveLabel(Consent, tier),
                 Array.Empty<LeaderboardEntry>(),
                 new PercentileBands(0, 0, 0, 0),
                 0,
                 BelowThreshold: true,
-                KThreshold: needs,
+                KThreshold: 10,
                 YourRank: null,
                 YourMovement: null));
         }
@@ -199,102 +197,24 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
         return cards;
     }
 
-    private IReadOnlyList<CommunityLeaderboardCard> BuildSampleLeaderboards()
+    private IReadOnlyList<CommunityLeaderboardCard> BuildPreviewCards()
     {
         var cards = new List<CommunityLeaderboardCard>();
         foreach (var tier in CommunityTierOrder.Display)
         {
-            var below = tier == GeographyTier.City && !Consent.LocationConsent.IsActive();
-            if (below)
-            {
-                cards.Add(new CommunityLeaderboardCard(
-                    tier,
-                    SampleGeoLabel(tier),
-                    Array.Empty<LeaderboardEntry>(),
-                    new PercentileBands(0, 0, 0, 0),
-                    0,
-                    true,
-                    10,
-                    null,
-                    null));
-                continue;
-            }
-
-            var entries = SampleEntries(tier);
             cards.Add(new CommunityLeaderboardCard(
                 tier,
-                SampleGeoLabel(tier),
-                entries,
-                new PercentileBands(180_000, 320_000, 510_000, 920_000),
-                CohortSize: 48,
-                BelowThreshold: false,
+                CommunityGeoDisplay.ResolveLabel(Consent, tier),
+                Array.Empty<LeaderboardEntry>(),
+                new PercentileBands(0, 0, 0, 0),
+                0,
+                BelowThreshold: true,
                 KThreshold: 10,
-                YourRank: 12,
-                YourMovement: RankMovement.Up));
+                YourRank: null,
+                YourMovement: null));
         }
 
         return cards;
-    }
-
-    private static PercentileBands ResolvePercentileStrip(IReadOnlyList<CommunityLeaderboardCard> cards)
-    {
-        foreach (var tier in CommunityTierOrder.Display)
-        {
-            var card = cards.FirstOrDefault(c => c.Tier == tier);
-            if (card is null || card.BelowThreshold)
-            {
-                continue;
-            }
-
-            return card.Percentiles;
-        }
-
-        return new PercentileBands(0, 0, 0, 0);
-    }
-
-    private static IReadOnlyList<LeaderboardEntry> SampleEntries(GeographyTier tier)
-    {
-        var prefix = tier switch
-        {
-            GeographyTier.City => "city",
-            GeographyTier.Region => "region",
-            GeographyTier.Country => "country",
-            _ => "world",
-        };
-
-        return new[]
-        {
-            new LeaderboardEntry(1, $"{prefix}-a1", 1_200_000, 3.4, RankMovement.Same, "ember-fox"),
-            new LeaderboardEntry(2, $"{prefix}-b2", 980_000, 2.8, RankMovement.Up, "quiet-orbit"),
-            new LeaderboardEntry(3, $"{prefix}-c3", 860_000, 2.1, RankMovement.Down, "glass-pine"),
-        };
-    }
-
-    private static string SampleGeoLabel(GeographyTier tier) => tier switch
-    {
-        GeographyTier.City => "San Francisco",
-        GeographyTier.Region => "California",
-        GeographyTier.Country => "United States",
-        _ => "Global",
-    };
-
-    private IReadOnlyList<PurposeSlice> BuildPurposeBreakdown()
-    {
-        var demo = new ClassifierSignals(
-            FileExtensions: new[] { "swift", "ts" },
-            Keywords: new[] { "refactor", "ui" },
-            Model: "claude-3.5-sonnet",
-            AppSurface: "editor");
-
-        var primary = ModelPurposeClassifier.ClassifyPurpose(demo);
-        return new[]
-        {
-            new PurposeSlice(ModelPurposeClassifier.CategoryRaw(primary.Category), 0.34),
-            new PurposeSlice("logic", 0.28),
-            new PurposeSlice("backend", 0.18),
-            new PurposeSlice("writing", 0.12),
-            new PurposeSlice("other", 0.08),
-        };
     }
 
     private string BuildConsentPreview()
@@ -314,6 +234,11 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
         if (!c.LocationConsent.IsActive())
         {
             return "City confidence: city rank is paused until approximate location is granted; broader tiers still use locale/timezone.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(c.ManualCityInput))
+        {
+            return "City confidence: manual city label only; BurnBar stores the canonical city key, never raw coordinates.";
         }
 
         return "City confidence: Windows approximate location resolves on save; BurnBar stores only the city key, never raw coordinates.";

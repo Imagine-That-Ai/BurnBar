@@ -330,6 +330,38 @@ describe("buildLeaderboard k-anonymity", () => {
     expect(board.percentiles).toEqual({ p50: 0, p75: 0, p90: 0, p99: 0 });
   });
 
+  it("sets belowThreshold when cohort has exactly 9 members (k=10 boundary)", () => {
+    const group = Array.from({ length: 9 }, (_, i) =>
+      participant({
+        uid: `b${i}`,
+        anonId: `banon${i}`,
+        windowTotals: windowTotals(i + 1),
+      }),
+    );
+    const board = buildLeaderboard("7d", "world", "world", group, new Map());
+    expect(board.belowThreshold).toBe(true);
+    expect(board.entries).toEqual([]);
+    expect(board.cohortSize).toBe(0);
+  });
+
+  it("publishes when cohort has exactly 10 members (k=10 boundary)", () => {
+    const group = Array.from({ length: 10 }, (_, i) =>
+      participant({
+        uid: `t${i}`,
+        anonId: `tanon${i}`,
+        handle: `ten_${i}`,
+        windowTotals: windowTotals(10 - i),
+      }),
+    );
+    const board = buildLeaderboard("7d", "world", "world", group, new Map());
+    expect(board.belowThreshold).toBe(false);
+    expect(board.cohortSize).toBe(10);
+    expect(board.entries).toHaveLength(10);
+    for (const entry of board.entries) {
+      expect(entry.movement).toBe("new");
+    }
+  });
+
   it("publishes ranked entries with movement when cohort has >= 10 members", () => {
     const group = Array.from({ length: 12 }, (_, i) =>
       participant({
@@ -342,6 +374,7 @@ describe("buildLeaderboard k-anonymity", () => {
     const prevRankMap = new Map<string, number>([
       ["anon0", 5],
       ["anon1", 1],
+      ["anon2", 3],
     ]);
     const board = buildLeaderboard("7d", "world", "world", group, prevRankMap);
     expect(board.belowThreshold).toBe(false);
@@ -353,6 +386,8 @@ describe("buildLeaderboard k-anonymity", () => {
     expect(anon0Entry?.movement).toBe("up");
     const anon1Entry = board.entries.find((e) => e.anonId === "anon1");
     expect(anon1Entry?.movement).toBe("down");
+    const anon2Entry = board.entries.find((e) => e.anonId === "anon2");
+    expect(anon2Entry?.movement).toBe("same");
   });
 });
 

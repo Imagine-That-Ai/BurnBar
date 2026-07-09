@@ -153,7 +153,13 @@ function androidScenario(mode, options) {
 
   if (mode === "denied") {
     base.commands.push(
-      command("reset package permission state", "adb", [...adbArgs, "shell", "pm", "reset-permissions"]),
+      command("reset target app permission state", "adb", [
+        ...adbArgs,
+        "shell",
+        "pm",
+        "clear-permission-state",
+        options.androidPackage,
+      ]),
       command("force coarse location denied", "adb", [...adbArgs, "shell", "appops", "set", options.androidPackage, "COARSE_LOCATION", "deny"]),
       command("launch Community deep link", "adb", [...adbArgs, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", "burnbar://community"]),
       command("capture screenshot", "adb", [...adbArgs, "exec-out", "screencap", "-p"], [`redirect stdout to ${base.evidence[0]}`]),

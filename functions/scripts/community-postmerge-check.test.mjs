@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   isActiveCommunityConsent,
   isStaleLeaderboard,
+  parseArgs,
   summarizeCommunityState,
 } from "./community-postmerge-check.mjs";
 
@@ -80,4 +81,26 @@ test("summarizeCommunityState identifies stale leaderboards and reports cleaned 
   assert.equal(summary.stalePublicLeaderboards.cleaned, 3);
   assert.deepEqual(summary.stalePublicLeaderboards.ids, ["stale-board"]);
   assert.equal(isStaleLeaderboard({ updatedAt: old }, NOW_MS, STALE_MS), true);
+});
+
+test("parseArgs accepts --stale-hours 0 for rollback cleanup", () => {
+  const options = parseArgs(["node", "script", "--stale-hours", "0"], {});
+  assert.equal(options.staleHours, 0);
+});
+
+test("staleMs 0 marks every leaderboard with a timestamp as eligible", () => {
+  const summary = summarizeCommunityState(
+    {
+      communityDocs: [],
+      leaderboardDocs: [
+        {
+          id: "fresh-board",
+          data: { window: "7d", tier: "world", belowThreshold: false, updatedAt: new Date(NOW_MS - 1).toISOString() },
+        },
+      ],
+    },
+    { nowMs: NOW_MS, staleMs: 0, includeIds: true },
+  );
+  assert.equal(summary.stalePublicLeaderboards.eligible, 1);
+  assert.deepEqual(summary.stalePublicLeaderboards.ids, ["fresh-board"]);
 });

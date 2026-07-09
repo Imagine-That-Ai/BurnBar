@@ -53,7 +53,8 @@ private struct CommunityJoinResponse: Decodable {
 }
 
 private struct CommunityExportResponse: Decodable {
-    let downloadUrl: String
+    let downloadUrl: String?
+    let signedUrl: String?
 }
 
 /// Community windows match `functions/src/community/aggregation.ts`.
@@ -134,12 +135,18 @@ final class CommunityService: ObservableObject {
     }
 
     func updateProfile(_ payload: CommunityProfileUpdateRequest) async throws {
-        let _: CommunityOKResponse = try await call("updateCommunityProfile", payload)
+        let response: CommunityOKResponse = try await call("updateCommunityProfile", payload)
+        guard response.ok == true else {
+            throw CommunityServiceError.malformedResponse
+        }
         await refreshOwnerDocs()
     }
 
     func revokeParticipation() async throws {
-        let _: CommunityOKResponse = try await call("revokeCommunityParticipation", CommunityEmptyRequest())
+        let response: CommunityOKResponse = try await call("revokeCommunityParticipation", CommunityEmptyRequest())
+        guard response.ok == true else {
+            throw CommunityServiceError.malformedResponse
+        }
         remoteConsent = nil
         profile = nil
         await refreshOwnerDocs()
@@ -151,7 +158,8 @@ final class CommunityService: ObservableObject {
             CommunityExportRequest(format: format),
             response: CommunityExportResponse.self
         )
-        guard let url = URL(string: response.downloadUrl) else {
+        guard let urlString = response.downloadUrl ?? response.signedUrl,
+              let url = URL(string: urlString) else {
             throw CommunityServiceError.malformedResponse
         }
         return url

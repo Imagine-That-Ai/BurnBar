@@ -35,6 +35,7 @@ final class CommunityConsentStore: ObservableObject {
         static let tierCountryKey = "communityConsent.tier.country"
         static let tierRegionKey = "communityConsent.tier.region"
         static let tierCityKey = "communityConsent.tier.city"
+        static let localUpdatedAtKey = "communityConsent.localUpdatedAt"
         static let geoCityKey = "communityConsent.geo.cityKey"
         static let geoCountryKey = "communityConsent.geo.countryCode"
         static let geoRegionKey = "communityConsent.geo.regionKey"
@@ -88,13 +89,14 @@ final class CommunityConsentStore: ObservableObject {
     private(set) var resolvedRegionKey: String?
 #endif
 
+    private var localConsentUpdatedAt: Date
     private let defaults: UserDefaults
-
     init(defaults: UserDefaults? = nil) {
         let resolved = defaults
             ?? UserDefaults(suiteName: Storage.suiteName)
             ?? .standard
         self.defaults = resolved
+        localConsentUpdatedAt = Self.loadDate(key: Storage.localUpdatedAtKey, defaults: resolved)
         l1Analytics = Self.loadTriState(key: Storage.l1Key, defaults: resolved)
         l2Rankings = Self.loadTriState(key: Storage.l2Key, defaults: resolved)
         l3LookingGlass = Self.loadTriState(key: Storage.l3Key, defaults: resolved)
@@ -112,10 +114,25 @@ final class CommunityConsentStore: ObservableObject {
 
     var participatesInRankings: Bool { l2Rankings == .granted }
 
-    func setL1(_ state: FirestoreConsentTriState) { l1Analytics = state }
-    func setL2Rankings(_ state: FirestoreConsentTriState) { l2Rankings = state }
-    func setL3(_ state: FirestoreConsentTriState) { l3LookingGlass = state }
-    func setLocation(_ state: FirestoreConsentTriState) { locationConsent = state }
+    func setL1(_ state: FirestoreConsentTriState) {
+        l1Analytics = state
+        markLocalConsentUpdated()
+    }
+
+    func setL2Rankings(_ state: FirestoreConsentTriState) {
+        l2Rankings = state
+        markLocalConsentUpdated()
+    }
+
+    func setL3(_ state: FirestoreConsentTriState) {
+        l3LookingGlass = state
+        markLocalConsentUpdated()
+    }
+
+    func setLocation(_ state: FirestoreConsentTriState) {
+        locationConsent = state
+        markLocalConsentUpdated()
+    }
 
     func setTier(_ tier: FirestoreGeographyTier, state: FirestoreConsentTriState) {
         switch tier {
@@ -130,6 +147,7 @@ final class CommunityConsentStore: ObservableObject {
                 clearResolvedGeo()
             }
         }
+        markLocalConsentUpdated()
     }
 
     func tierState(_ tier: FirestoreGeographyTier) -> FirestoreConsentTriState {
@@ -149,21 +167,36 @@ final class CommunityConsentStore: ObservableObject {
         resolvedRegionKey = geo.regionKey
     }
 
-    /// Apply server consent doc (owner read); does not downgrade granted local prefs silently.
+    /// Apply server consent doc (owner read) using last-writer-wins timestamps.
+    /// Older listener snapshots are ignored so a just-submitted local opt-in does
+    /// not flicker dark, while newer server revocations from another device win.
     func applyServerConsent(_ doc: FirestoreCommunityConsentDoc) {
-        l1Analytics = FirestoreConsentTriState(rawValue: doc.l1Analytics) ?? .unset
-        l2Rankings = FirestoreConsentTriState(rawValue: doc.l2Rankings) ?? .unset
-        l3LookingGlass = FirestoreConsentTriState(rawValue: doc.l3LookingGlass) ?? .unset
-        locationConsent = FirestoreConsentTriState(rawValue: doc.locationConsent) ?? .unset
+        let serverUpdatedAt = Self.parseDate(doc.updatedAt)
+        if let serverUpdatedAt, serverUpdatedAt < localConsentUpdatedAt {
+            return
+        }
+
+        l1Analytics = Self.serverConsent(doc.l1Analytics)
+        l2Rankings = Self.serverConsent(doc.l2Rankings)
+        l3LookingGlass = Self.serverConsent(doc.l3LookingGlass)
+        locationConsent = Self.serverConsent(doc.locationConsent)
         l2Tiers = CommunityLocalTierConsent(
-            world: FirestoreConsentTriState(rawValue: doc.l2Tiers.world) ?? .unset,
-            country: FirestoreConsentTriState(rawValue: doc.l2Tiers.country) ?? .unset,
-            region: FirestoreConsentTriState(rawValue: doc.l2Tiers.region) ?? .unset,
-            city: FirestoreConsentTriState(rawValue: doc.l2Tiers.city) ?? .unset
+            world: Self.serverConsent(doc.l2Tiers.world),
+            country: Self.serverConsent(doc.l2Tiers.country),
+            region: Self.serverConsent(doc.l2Tiers.region),
+            city: Self.serverConsent(doc.l2Tiers.city)
         )
+        if let serverUpdatedAt {
+            persistConsentUpdatedAt(serverUpdatedAt)
+        }
+    }
+
+    private static func serverConsent(_ rawValue: String) -> FirestoreConsentTriState {
+        FirestoreConsentTriState(rawValue: rawValue) ?? .unset
     }
 
     func revokeAll() {
+        markLocalConsentUpdated()
         l1Analytics = .declined
         l2Rankings = .declined
         l3LookingGlass = .declined
@@ -218,6 +251,36 @@ final class CommunityConsentStore: ObservableObject {
 
     private func persist(_ state: FirestoreConsentTriState, key: String) {
         defaults.set(state.rawValue, forKey: key)
+    }
+
+    private func markLocalConsentUpdated() {
+        persistConsentUpdatedAt(Date())
+    }
+
+    private func persistConsentUpdatedAt(_ date: Date) {
+        localConsentUpdatedAt = date
+        defaults.set(Self.formatDate(date), forKey: Storage.localUpdatedAtKey)
+    }
+
+    private static func loadDate(key: String, defaults: UserDefaults) -> Date {
+        guard let raw = defaults.string(forKey: key),
+              let date = parseDate(raw)
+        else { return .distantPast }
+        return date
+    }
+
+    private static func parseDate(_ rawValue: String) -> Date? {
+        let standard = ISO8601DateFormatter()
+        if let date = standard.date(from: rawValue) { return date }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: rawValue)
+    }
+
+    private static func formatDate(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 
     private func persistOptional(_ value: String?, key: String) {

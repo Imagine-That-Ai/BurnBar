@@ -1,6 +1,7 @@
 import XCTest
 import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 @testable import OpenBurnBarMobile
 
 /// Validates that FirestoreRepository correctly normalizes Cloud Function / desktop-sync
@@ -470,6 +471,114 @@ final class FirestoreNormalizationTests: XCTestCase {
                 "Expected raw confidence \(fixture.raw ?? "nil") to normalize to \(fixture.expected.rawValue)"
             )
         }
+    }
+
+    func testCommunityExportCallableResponseDecodesBackendDownloadUrl() throws {
+        let json = #"{"downloadUrl":"https://storage.example/export.jsonl","signedUrl":"https://storage.example/export.jsonl","traceCount":2}"#
+            .data(using: .utf8)!
+        let response = try JSONDecoder().decode(CommunityCallableResponse.self, from: json)
+        XCTAssertEqual(response.downloadUrl, "https://storage.example/export.jsonl")
+    }
+
+    func testCommunityConsentStoreIgnoresOlderServerConsentSnapshot() throws {
+        let local = makeCommunityConsentStore(state: .granted, localUpdatedAt: "2026-07-09T00:01:00Z")
+        defer { local.defaults.removePersistentDomain(forName: local.suiteName) }
+
+        let staleServerDoc = try makeCommunityConsentDoc(state: .declined, updatedAt: "2026-07-09T00:00:00Z")
+        local.store.applyServerConsent(staleServerDoc)
+
+        XCTAssertEqual(local.store.l1Analytics, .granted)
+        XCTAssertEqual(local.store.l2Rankings, .granted)
+        XCTAssertEqual(local.store.l3LookingGlass, .granted)
+        XCTAssertEqual(local.store.locationConsent, .granted)
+        XCTAssertEqual(local.store.l2Tiers.world, .granted)
+        XCTAssertEqual(local.store.l2Tiers.country, .granted)
+        XCTAssertEqual(local.store.l2Tiers.region, .granted)
+        XCTAssertEqual(local.store.l2Tiers.city, .granted)
+    }
+
+    func testCommunityConsentStoreAppliesNewerServerRevocation() throws {
+        let local = makeCommunityConsentStore(state: .granted, localUpdatedAt: "2026-07-09T00:00:00Z")
+        defer { local.defaults.removePersistentDomain(forName: local.suiteName) }
+
+        let newerServerDoc = try makeCommunityConsentDoc(state: .declined, updatedAt: "2026-07-09T00:01:00Z")
+        local.store.applyServerConsent(newerServerDoc)
+
+        XCTAssertEqual(local.store.l1Analytics, .declined)
+        XCTAssertEqual(local.store.l2Rankings, .declined)
+        XCTAssertEqual(local.store.l3LookingGlass, .declined)
+        XCTAssertEqual(local.store.locationConsent, .declined)
+        XCTAssertEqual(local.store.l2Tiers.world, .declined)
+        XCTAssertEqual(local.store.l2Tiers.country, .declined)
+        XCTAssertEqual(local.store.l2Tiers.region, .declined)
+        XCTAssertEqual(local.store.l2Tiers.city, .declined)
+    }
+
+    func testCommunityConsentStoreAppliesServerConsentWhenTimestampIsUnparseable() throws {
+        let local = makeCommunityConsentStore(state: .granted, localUpdatedAt: "2026-07-09T00:01:00Z")
+        defer { local.defaults.removePersistentDomain(forName: local.suiteName) }
+
+        let serverDoc = try makeCommunityConsentDoc(state: .declined, updatedAt: "not-a-date")
+        local.store.applyServerConsent(serverDoc)
+
+        XCTAssertEqual(local.store.l1Analytics, .declined)
+        XCTAssertEqual(local.store.l2Rankings, .declined)
+        XCTAssertEqual(local.store.locationConsent, .declined)
+        XCTAssertEqual(local.store.l2Tiers.city, .declined)
+    }
+
+    func testCommunityConsentDocDecodesThroughPreservingFirestorePath() throws {
+        let doc = try makeCommunityConsentDoc(state: .granted, updatedAt: "2026-07-09T00:00:00Z")
+        XCTAssertEqual(doc.updatedAt, "2026-07-09T00:00:00Z")
+        XCTAssertEqual(doc.l2Rankings, "granted")
+    }
+
+    private func makeCommunityConsentStore(
+        state: FirestoreConsentTriState,
+        localUpdatedAt: String
+    ) -> (store: CommunityConsentStore, defaults: UserDefaults, suiteName: String) {
+        let suiteName = "CommunityConsentStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        [
+            CommunityConsentStore.Storage.l1Key,
+            CommunityConsentStore.Storage.l2Key,
+            CommunityConsentStore.Storage.l3Key,
+            CommunityConsentStore.Storage.locationKey,
+            CommunityConsentStore.Storage.tierWorldKey,
+            CommunityConsentStore.Storage.tierCountryKey,
+            CommunityConsentStore.Storage.tierRegionKey,
+            CommunityConsentStore.Storage.tierCityKey,
+        ].forEach { defaults.set(state.rawValue, forKey: $0) }
+        defaults.set(localUpdatedAt, forKey: CommunityConsentStore.Storage.localUpdatedAtKey)
+        return (CommunityConsentStore(defaults: defaults), defaults, suiteName)
+    }
+
+    private func makeCommunityConsentDoc(
+        state: FirestoreConsentTriState,
+        updatedAt: String
+    ) throws -> FirestoreCommunityConsentDoc {
+        let raw = state.rawValue
+        let rawDoc: [String: Any] = [
+            "l1Analytics": raw,
+            "l2Rankings": raw,
+            "l2Tiers": [
+                "world": raw,
+                "country": raw,
+                "region": raw,
+                "city": raw,
+            ],
+            "l3LookingGlass": raw,
+            "locationConsent": raw,
+            "schemaVersion": 1,
+            "updatedAt": updatedAt,
+        ]
+        return try XCTUnwrap(
+            repo.decodeWithDocIDPreservingStringValues(
+                FirestoreCommunityConsentDoc.self,
+                from: rawDoc,
+                docID: "consent"
+            )
+        )
     }
 
     /// Bug B regression. Firestore-native docs carry `resetsAt` as a

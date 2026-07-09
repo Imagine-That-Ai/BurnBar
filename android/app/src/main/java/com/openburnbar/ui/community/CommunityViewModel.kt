@@ -52,6 +52,8 @@ data class CommunityUiState(
     val percentiles: FirestorePercentileBands = FirestorePercentileBands(),
     val cohortSize: Long = 0,
     val hasJoined: Boolean = false,
+    val isExportingLookingGlass: Boolean = false,
+    val lookingGlassExportUrl: String? = null,
 )
 
 class CommunityViewModel(
@@ -134,7 +136,7 @@ class CommunityViewModel(
         }
     }
 
-    fun joinCommunity(handle: String? = null) {
+    fun joinCommunity(handle: String? = null, successMessage: String? = null) {
         viewModelScope.launch {
             _uiState.update { it.copy(isJoining = true, actionMessage = null, error = null) }
             try {
@@ -148,7 +150,8 @@ class CommunityViewModel(
                         regionKey = profile?.regionKey,
                     )
                 functions.joinCommunity(payload)
-                _uiState.update { it.copy(isJoining = false, actionMessage = "Community preferences saved.") }
+                val message = successMessage ?: "Community preferences saved."
+                _uiState.update { it.copy(isJoining = false, actionMessage = message) }
                 refresh()
             } catch (e: Exception) {
                 _uiState.update {
@@ -164,13 +167,59 @@ class CommunityViewModel(
                 _uiState.value.consentDraft.copy(
                     l2City = ConsentTriState.DECLINED,
                     locationConsent = ConsentTriState.DECLINED,
+                    resolvedCityKey = null,
                 )
             consentStore.applyDraftChange(next)
+            joinCommunity(
+                successMessage =
+                    "Approximate location was denied. World, country, and region preferences were saved; city ranking is off.",
+            )
+        }
+    }
+
+    fun exportLookingGlassBundle() {
+        viewModelScope.launch {
             _uiState.update {
                 it.copy(
-                    error = "City leaderboard needs approximate location permission. City sharing is off.",
-                    isJoining = false,
+                    isExportingLookingGlass = true,
+                    error = null,
+                    actionMessage = null,
+                    lookingGlassExportUrl = null,
                 )
+            }
+            try {
+                val response = functions.exportLookingGlassBundle()
+                val url = parseLookingGlassDownloadUrl(response)
+                if (url == null) {
+                    _uiState.update {
+                        it.copy(
+                            isExportingLookingGlass = false,
+                            error = "Looking Glass export link was missing or invalid.",
+                        )
+                    }
+                    return@launch
+                }
+                val traceCount = (response["traceCount"] as? Number)?.toLong()
+                val message =
+                    if (traceCount != null && traceCount > 0) {
+                        "Looking Glass export ready ($traceCount traces). Link expires in about 15 minutes."
+                    } else {
+                        "Looking Glass export link ready. It expires in about 15 minutes."
+                    }
+                _uiState.update {
+                    it.copy(
+                        isExportingLookingGlass = false,
+                        lookingGlassExportUrl = url,
+                        actionMessage = message,
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isExportingLookingGlass = false,
+                        error = e.message ?: "Could not export Looking Glass bundle.",
+                    )
+                }
             }
         }
     }
@@ -192,6 +241,10 @@ class CommunityViewModel(
 
     fun clearActionMessage() {
         _uiState.update { it.copy(actionMessage = null) }
+    }
+
+    fun clearLookingGlassExportUrl() {
+        _uiState.update { it.copy(lookingGlassExportUrl = null) }
     }
 
     private fun restartLeaderboardListening() {

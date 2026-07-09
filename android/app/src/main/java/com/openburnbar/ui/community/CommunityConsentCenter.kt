@@ -31,9 +31,13 @@ fun CommunityConsentCenter(
     hasJoined: Boolean,
     isJoining: Boolean,
     isRevoking: Boolean,
+    isExportingLookingGlass: Boolean = false,
+    lookingGlassExportUrl: String? = null,
     onDraftChange: (CommunityConsentDraft) -> Unit,
     onSave: () -> Unit,
     onRevoke: () -> Unit,
+    onExportLookingGlass: () -> Unit = {},
+    onOpenLookingGlassExport: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     AuroraGlassCard(
@@ -133,6 +137,26 @@ fun CommunityConsentCenter(
                     )
                 },
             )
+
+            if (draft.l3LookingGlass == ConsentTriState.GRANTED) {
+                Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
+                    AuroraSecondaryButton(
+                        onClick = onExportLookingGlass,
+                        enabled = !isExportingLookingGlass && !isJoining,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(if (isExportingLookingGlass) "Preparing export…" else "Export Looking Glass bundle")
+                    }
+                    lookingGlassExportUrl?.let { url ->
+                        AuroraSecondaryButton(
+                            onClick = { onOpenLookingGlassExport(url) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Open export download")
+                        }
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

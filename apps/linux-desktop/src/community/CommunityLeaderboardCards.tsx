@@ -28,11 +28,6 @@ export function CommunityLeaderboardCards({ cards }: Props) {
                     {entry.costUSD.toFixed(2)} · {entry.movement}
                   </li>
                 ))}
-                {card.yourRank ? (
-                  <li className="community-you">
-                    You · rank {card.yourRank} · {card.yourMovement}
-                  </li>
-                ) : null}
               </ul>
             )}
           </article>

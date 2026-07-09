@@ -35,6 +35,9 @@ export function CommunitySurface() {
             Share anonymized usage to see where you stand — every tier is opt-in and unset stays dark.
           </Banner>
         ) : null}
+        {view.isPreviewData ? (
+          <Banner tone="info">{view.statusMessage}</Banner>
+        ) : null}
         <div className="community-hero-metrics">
           <div>
             <span className="community-kpi">{view.hero.tokens.toLocaleString()}</span>
@@ -50,6 +53,9 @@ export function CommunitySurface() {
           </div>
         </div>
         <p className="community-muted">{view.hero.modelMixSummary}</p>
+        {view.isPreviewData ? (
+          <p className="community-muted">Preview — not live usage or rankings.</p>
+        ) : null}
         <p className="community-muted">{view.cityConfidenceCopy}</p>
       </header>
 
@@ -83,9 +89,10 @@ export function CommunitySurface() {
         <h3>Peer comparison chart (anonymized cohort)</h3>
         <p className="community-muted">
           {view.peerCohortTokens.length === 0
-            ? 'Cohort chart unlocks once a leaderboard tier clears the anonymity threshold.'
+            ? view.isPreviewData
+              ? 'Preview only — cohort chart stays empty until live boards sync.'
+              : 'Cohort chart unlocks once a leaderboard tier clears the anonymity threshold.'
             : view.peerCohortTokens.map((v) => v.toLocaleString()).join(' · ')}
-        </p>
       </section>
 
       <section className="community-panel glass-card">

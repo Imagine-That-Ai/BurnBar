@@ -23,6 +23,7 @@ function grantedConsent(partial: Partial<CommunityConsentState> = {}): Community
 function stableVisualSnapshot(view: CommunityViewState) {
   return {
     showInvite: view.showInvite,
+    isPreviewData: view.isPreviewData,
     hero: view.hero.modelMixSummary,
     peerCohortCount: view.peerCohortTokens.length,
     purposeCategories: view.purposeBreakdown.map((slice) => slice.category),
@@ -43,73 +44,38 @@ function stableVisualSnapshot(view: CommunityViewState) {
 describe('community visual states (linux)', () => {
   it('opted-out L2 shows invite and withheld cohort chart', () => {
     const view = buildCommunityView(defaultCommunityConsent(), '30d');
-    expect(stableVisualSnapshot(view)).toMatchInlineSnapshot(`
-      {
-        "cityConfidenceCopy": "City confidence: no city lookup. Country and region can use locale/timezone; world ranking needs no location.",
-        "consentPreview": "L1 unset · L2 unset · L3 unset · Location unset",
-        "hero": "Opt in to L2 rankings to preview your share snapshot.",
-        "leaderboards": [
-          {
-            "belowThreshold": true,
-            "cohortSize": 0,
-            "entryAnonIds": [],
-            "geoLabel": "San Francisco",
-            "tier": "city",
-          },
-          {
-            "belowThreshold": true,
-            "cohortSize": 0,
-            "entryAnonIds": [],
-            "geoLabel": "California",
-            "tier": "region",
-          },
-          {
-            "belowThreshold": true,
-            "cohortSize": 0,
-            "entryAnonIds": [],
-            "geoLabel": "United States",
-            "tier": "country",
-          },
-          {
-            "belowThreshold": true,
-            "cohortSize": 0,
-            "entryAnonIds": [],
-            "geoLabel": "Global",
-            "tier": "world",
-          },
-        ],
-        "lookingGlassExport": {
-          "message": "Looking Glass export: grant L3 to create a private bundle; leaderboard rankings never use traces.",
-          "state": "idle",
-        },
-        "peerCohortCount": 0,
-        "purposeCategories": [],
-        "showInvite": true,
-        "statusMessage": "",
-      }
-    `);
+    expect(stableVisualSnapshot(view)).toMatchObject({
+      showInvite: true,
+      isPreviewData: false,
+      peerCohortCount: 0,
+      purposeCategories: [],
+    });
+    expect(view.leaderboards.every((b) => b.geoLabel !== 'San Francisco' || b.tier !== 'city')).toBe(true);
+    expect(view.leaderboards.find((b) => b.tier === 'city')?.geoLabel).toMatch(/unavailable|manual/i);
   });
 
   it('city location denied keeps city board empty without inventing a raw city key', () => {
-    const view = buildCommunityView(
-      grantedConsent({ locationConsent: 'declined' }),
-      '30d',
-    );
+    const view = buildCommunityView(grantedConsent({ locationConsent: 'declined' }), '30d');
     const city = view.leaderboards.find((board) => board.tier === 'city');
     expect(city?.belowThreshold).toBe(true);
     expect(city?.entries).toEqual([]);
-    expect(city?.geoLabel).toBe('San Francisco');
+    expect(city?.geoLabel).not.toBe('San Francisco');
     expect(view.cityConfidenceCopy).toMatch(/paused until city consent and a manual city label/i);
   });
 
-  it('live participation renders anonymized leaderboard rows', () => {
-    const view = buildCommunityView(grantedConsent(), '30d');
+  it('opted-in L2 renders preview-only empty leaderboards', () => {
+    const view = buildCommunityView(grantedConsent({ manualCityInput: 'Berlin' }), '30d');
     expect(view.showInvite).toBe(false);
-    expect(view.peerCohortTokens.length).toBeGreaterThan(0);
-    const region = view.leaderboards.find((board) => board.tier === 'region');
-    expect(region?.belowThreshold).toBe(false);
-    expect(region?.entries.map((e) => e.anonId)).toEqual(['region-a1', 'region-b2', 'region-c3']);
-    expect(view.cityConfidenceCopy).toMatch(/manual city label required/i);
+    expect(view.isPreviewData).toBe(true);
+    expect(view.peerCohortTokens).toEqual([]);
+    expect(view.leaderboards.every((b) => b.entries.length === 0)).toBe(true);
+    expect(view.leaderboards.find((b) => b.tier === 'city')?.geoLabel).toBe('Berlin');
+    expect(view.lookingGlassExport.state).toBe('unavailable');
+  });
+
+  it('all_time window id is accepted for view build', () => {
+    const view = buildCommunityView(grantedConsent(), 'all_time');
+    expect(view.isPreviewData).toBe(true);
   });
 
   it('local revoke copy matches paused participation messaging', () => {
@@ -121,5 +87,6 @@ describe('community visual states (linux)', () => {
   it('Looking Glass export ready and error copy stay stable', () => {
     expect(lookingGlassExportCopy('ready').message).toContain('15 minutes');
     expect(lookingGlassExportCopy('error').message).toMatch(/no traces left the device/i);
+    expect(lookingGlassExportCopy('unavailable').message).toMatch(/not wired on Linux/i);
   });
 });

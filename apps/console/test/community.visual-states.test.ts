@@ -24,6 +24,7 @@ function grantedConsent(partial: Partial<CommunityConsentDoc> = {}): CommunityCo
 function stableVisualSnapshot(view: CommunityViewState) {
   return {
     showInvite: view.showInvite,
+    isPreviewData: view.isPreviewData,
     hero: view.hero.modelMixSummary,
     peerCohortCount: view.peerCohortTokens.length,
     purposeCategories: view.purposeBreakdown.map((slice) => slice.category),
@@ -43,50 +44,16 @@ function stableVisualSnapshot(view: CommunityViewState) {
 describe("community visual states (console)", () => {
   it("opted-out L2 shows invite and empty cohort", () => {
     const view = buildCommunityView(defaultCommunityConsent(), "30d");
-    expect(stableVisualSnapshot(view)).toMatchInlineSnapshot(`
-      {
-        "cityConfidenceCopy": "City confidence: no city lookup. Country and region can use locale/timezone; world ranking needs no location.",
-        "consentPreview": "L1 unset · L2 unset · L3 unset · Location unset",
-        "hero": "Opt in to L2 rankings to preview your share snapshot.",
-        "leaderboards": [
-          {
-            "belowThreshold": true,
-            "cohortSize": 0,
-            "entryAnonIds": [],
-            "geoKey": "city",
-            "tier": "city",
-          },
-          {
-            "belowThreshold": true,
-            "cohortSize": 0,
-            "entryAnonIds": [],
-            "geoKey": "region",
-            "tier": "region",
-          },
-          {
-            "belowThreshold": true,
-            "cohortSize": 0,
-            "entryAnonIds": [],
-            "geoKey": "country",
-            "tier": "country",
-          },
-          {
-            "belowThreshold": true,
-            "cohortSize": 0,
-            "entryAnonIds": [],
-            "geoKey": "world",
-            "tier": "world",
-          },
-        ],
-        "lookingGlassExport": {
-          "message": "Looking Glass export: grant L3 to create a private bundle; leaderboard rankings never use traces.",
-          "state": "idle",
-        },
-        "peerCohortCount": 0,
-        "purposeCategories": [],
-        "showInvite": true,
-      }
-    `);
+    expect(stableVisualSnapshot(view)).toMatchObject({
+      showInvite: true,
+      isPreviewData: false,
+      peerCohortCount: 0,
+      purposeCategories: [],
+      leaderboards: expect.arrayContaining([
+        expect.objectContaining({ tier: "city", belowThreshold: true, entryAnonIds: [] }),
+      ]),
+    });
+    expect(view.leaderboards.every((b) => b.entries.length === 0)).toBe(true);
   });
 
   it("city tier with location denied stays below threshold without individual rows", () => {
@@ -97,22 +64,24 @@ describe("community visual states (console)", () => {
     const city = view.leaderboards.find((board) => board.tier === "city");
     expect(city?.belowThreshold).toBe(true);
     expect(city?.entries).toEqual([]);
-    expect(city?.geoKey).toBe("city");
+    expect(city?.geoKey).not.toBe("San Francisco");
     expect(view.cityConfidenceCopy).toMatch(/paused until city consent and a manual city label/i);
   });
 
-  it("live participation exposes anonymous leaderboard rows", () => {
-    const view = buildCommunityView(grantedConsent(), "30d");
-    const world = view.leaderboards.find((board) => board.tier === "world");
+  it("opted-in L2 shows preview-only empty boards without fabricated ranks", () => {
+    const view = buildCommunityView(grantedConsent({ manualCityInput: "Portland" }), "30d");
     expect(view.showInvite).toBe(false);
-    expect(world?.belowThreshold).toBe(false);
-    expect(world?.entries.every((entry) => entry.anonId && !("uid" in entry))).toBe(true);
-    expect(stableVisualSnapshot(view).leaderboards.find((b) => b.tier === "world")?.entryAnonIds).toEqual([
-      "world-a1",
-      "world-b2",
-      "world-c3",
-    ]);
-    expect(view.cityConfidenceCopy).toMatch(/manual city label required/i);
+    expect(view.isPreviewData).toBe(true);
+    expect(view.peerCohortTokens).toEqual([]);
+    expect(view.leaderboards.every((b) => b.entries.length === 0 && b.belowThreshold)).toBe(true);
+    const city = view.leaderboards.find((b) => b.tier === "city");
+    expect(city?.geoKey).toBe("Portland");
+    expect(view.hero.modelMixSummary).toMatch(/preview only/i);
+  });
+
+  it("all_time window id is accepted for view build", () => {
+    const view = buildCommunityView(grantedConsent(), "all_time");
+    expect(view.isPreviewData).toBe(true);
   });
 
   it("local revoke copy matches paused participation messaging", () => {

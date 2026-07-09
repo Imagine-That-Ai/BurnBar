@@ -2,6 +2,8 @@ package com.openburnbar.ui.community
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
@@ -121,6 +123,7 @@ fun CommunityScreen(viewModel: CommunityViewModel = viewModel(), modifier: Modif
 
             CommunityPeerComparisonChart(
                 cohortSize = uiState.cohortSize,
+                percentiles = uiState.percentiles,
                 yourTokens = uiState.heroTokens,
             )
 
@@ -131,9 +134,17 @@ fun CommunityScreen(viewModel: CommunityViewModel = viewModel(), modifier: Modif
                 hasJoined = uiState.hasJoined,
                 isJoining = uiState.isJoining,
                 isRevoking = uiState.isRevoking,
+                isExportingLookingGlass = uiState.isExportingLookingGlass,
+                lookingGlassExportUrl = uiState.lookingGlassExportUrl,
                 onDraftChange = { newDraft -> viewModel.updateConsentDraft { _ -> newDraft } },
                 onSave = { saveCommunityPreferences() },
                 onRevoke = { viewModel.revokeParticipation() },
+                onExportLookingGlass = { viewModel.exportLookingGlassBundle() },
+                onOpenLookingGlassExport = { url ->
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                },
             )
         }
     }
@@ -222,7 +233,13 @@ private fun PercentileChip(label: String, value: Double) {
 }
 
 @Composable
-private fun CommunityPeerComparisonChart(cohortSize: Long, yourTokens: Long) {
+private fun CommunityPeerComparisonChart(
+    cohortSize: Long,
+    percentiles: com.openburnbar.data.models.generated.FirestorePercentileBands,
+    yourTokens: Long,
+) {
+    if (!shouldShowPeerComparisonChart(cohortSize, percentiles, yourTokens)) return
+    val sparkline = peerComparisonSparklineData(percentiles, yourTokens) ?: return
     AuroraGlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = AuroraRadius.LG,
@@ -231,26 +248,12 @@ private fun CommunityPeerComparisonChart(cohortSize: Long, yourTokens: Long) {
         Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             Text(text = "Peer comparison", style = AuroraType.headline)
             Text(
-                text =
-                if (cohortSize > 0) {
-                    "Anonymized cohort of $cohortSize burners (no individual data below k=10)."
-                } else {
-                    "Cohort chart fills in once enough burners opt in at your tier."
-                },
+                text = "Anonymized cohort of $cohortSize burners — p50/p75/p90/p99 bands with your burn.",
                 style = AuroraType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            val baseline = (yourTokens.coerceAtLeast(1)).toFloat()
-            val data =
-                listOf(
-                    baseline * 0.45f,
-                    baseline * 0.62f,
-                    baseline * 0.78f,
-                    baseline,
-                    baseline * 1.15f,
-                )
             AuroraSparkline(
-                data = data,
+                data = sparkline,
                 modifier = Modifier.fillMaxWidth().padding(top = AuroraSpacing.SM.dp),
                 strokeColor = AuroraColors.whimsy,
             )

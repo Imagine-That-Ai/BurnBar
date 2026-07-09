@@ -37,6 +37,16 @@ test("buildValidationMatrix covers required platform/mode pairs", () => {
   assert.ok(keys.has("windows/unavailable"));
 });
 
+test("android denied scenario uses package-scoped permission reset", () => {
+  const matrix = buildValidationMatrix(matrixOptions({ platforms: ["android"], modes: ["denied"] }));
+  const scenario = matrix.scenarios[0];
+  const reset = scenario.commands.find((c) => c.label === "reset target app permission state");
+  assert.ok(reset);
+  assert.deepEqual(reset.args.slice(-2), ["clear-permission-state", "com.openburnbar"]);
+  const joined = JSON.stringify(scenario.commands);
+  assert.doesNotMatch(joined, /reset-permissions/);
+});
+
 test("evidence paths are deterministic under a fixed evidence directory", () => {
   const matrix = buildValidationMatrix(matrixOptions());
   for (const scenario of matrix.scenarios) {

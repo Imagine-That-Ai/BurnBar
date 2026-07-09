@@ -16,7 +16,7 @@ and stale public leaderboard docs. Pass --delete-stale to clean stale public boa
 Options:
   --project <id>       Firebase project id. Defaults to FIREBASE_PROJECT, OPENBURNBAR_FIREBASE_PROJECT, or GCLOUD_PROJECT.
   --database <id>      Firestore database id. Default ${DEFAULT_DATABASE}.
-  --stale-hours <n>    Leaderboards older than this are stale. Default ${DEFAULT_STALE_HOURS}.
+  --stale-hours <n>    Leaderboards older than this are stale; 0 treats every board as stale (rollback cleanup). Default ${DEFAULT_STALE_HOURS}.
   --delete-stale       Delete stale community_leaderboards docs after counting them.
   --json               Emit JSON only.
   --help               Show this help.
@@ -56,8 +56,8 @@ export function parseArgs(argv = process.argv, env = process.env) {
     }
     if (arg === "--stale-hours") {
       options.staleHours = Number.parseFloat(requireValue(argv, ++index, arg));
-      if (!Number.isFinite(options.staleHours) || options.staleHours <= 0) {
-        throw new Error("--stale-hours must be a positive number");
+      if (!Number.isFinite(options.staleHours) || options.staleHours < 0) {
+        throw new Error("--stale-hours must be a non-negative number");
       }
       continue;
     }
@@ -187,7 +187,8 @@ async function deleteDocs(db, docs) {
 async function runLiveReport(options) {
   const db = initFirestore(options);
   const nowMs = Date.now();
-  const staleMs = options.staleHours * 60 * 60 * 1000;
+  const staleMs =
+    options.staleHours === 0 ? 0 : options.staleHours * 60 * 60 * 1000;
   const [communityDocs, leaderboardDocs] = await Promise.all([loadCommunityDocs(db), loadLeaderboardDocs(db)]);
   const staleDocs = leaderboardDocs.filter((doc) => isStaleLeaderboard(doc.data, nowMs, staleMs));
   const cleaned = options.deleteStale ? await deleteDocs(db, staleDocs) : 0;

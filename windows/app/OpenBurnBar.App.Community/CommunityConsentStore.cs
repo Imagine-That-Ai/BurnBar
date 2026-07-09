@@ -96,6 +96,7 @@ public sealed class CommunityConsentStore
         public string? L2Country { get; set; }
         public string? L2Region { get; set; }
         public string? L2City { get; set; }
+        public string? ManualCityInput { get; set; }
         public string? UpdatedAt { get; set; }
 
         public static CommunityConsentDto FromState(CommunityConsentState state) => new()
@@ -108,6 +109,7 @@ public sealed class CommunityConsentStore
             L2Country = state.L2Tiers.Country.Raw(),
             L2Region = state.L2Tiers.Region.Raw(),
             L2City = state.L2Tiers.City.Raw(),
+            ManualCityInput = state.ManualCityInput,
             UpdatedAt = state.UpdatedAt.ToString("o"),
         };
 
@@ -131,7 +133,8 @@ public sealed class CommunityConsentStore
                 L2Tiers: tiers,
                 L3LookingGlass: ConsentTriStateExtensions.Parse(L3LookingGlass),
                 LocationConsent: ConsentTriStateExtensions.Parse(LocationConsent),
-                UpdatedAt: updated);
+                UpdatedAt: updated,
+                ManualCityInput: ManualCityInput);
         }
     }
 }

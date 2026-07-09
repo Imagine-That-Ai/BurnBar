@@ -200,13 +200,13 @@ struct CommunityConsentCenter: View {
         do {
             await consentStore.refreshGeoFromOSIfNeeded()
             let payload = consentStore.joinPayload(
-                handle: handleDraft.nilIfBlank(),
+                handle: handleDraft.nilIfBlank,
                 countryCode: service.profile?.countryCode,
                 regionKey: service.profile?.regionKey,
                 cityKey: service.profile?.cityKey
             )
             _ = try await service.joinCommunity(payload: payload)
-            if let handle = handleDraft.nilIfBlank() {
+            if let handle = handleDraft.nilIfBlank {
                 try await service.updateProfile(CommunityProfileUpdateRequest(
                     handle: handle,
                     timezone: TimeZone.current.identifier,
@@ -244,9 +244,3 @@ struct CommunityConsentCenter: View {
     }
 }
 
-private extension String {
-    func nilIfBlank() -> String? {
-        let t = trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
-    }
-}

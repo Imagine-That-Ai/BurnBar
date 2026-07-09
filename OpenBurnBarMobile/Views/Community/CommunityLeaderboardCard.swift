@@ -36,12 +36,16 @@ struct CommunityLeaderboardCard: View {
         }
     }
 
+    private var neededForThreshold: Int {
+        max(board.kThreshold - board.cohortSize, 1)
+    }
+
     private var belowThresholdFallback: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "person.3.sequence")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
-            Text("Needs \(board.kThreshold) more burners in \(tierLabel.lowercased())")
+            Text("Needs \(neededForThreshold) more burners in \(tierLabel.lowercased())")
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
             Text("We never show individual ranks until the cohort is large enough. Try a broader geography above.")

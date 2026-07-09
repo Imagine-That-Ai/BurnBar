@@ -193,13 +193,14 @@ Looking Glass export copy has explicit idle/ready/error states. Ready copy state
 
 | Area | Location | Coverage |
 |------|----------|----------|
-| Functions | `functions/src/__tests__/community.test.ts` | Dark gate, k-threshold, per-cohort previous-rank movement, share snapshot plausibility, stale cleanup, revoke sweep, JSONL/Parquet export bundle shape, handle validation/collision |
+| Functions | `functions/src/__tests__/community.test.ts` | Dark gate, k-threshold (including k=10 boundary), per-cohort previous-rank movement (`up`/`down`/`same`/`new`), share snapshot plausibility, stale cleanup, revoke sweep, JSONL/Parquet export bundle shape, handle validation/collision |
 | Firestore rules | `firestore-rules-tests/community.test.js` | Leaderboard fail-closed public reads, rollout status gate, owner-only private docs, realistic world-only/city share_snapshot writes, malformed shape rejection, no client writes to aggregates |
 | Swift | `AgentLensTests/` + `OpenBurnBarMobileTests/` | Consent store, classifier goldens, render states (opted-out/empty/threshold/live), revocation UI |
 | Kotlin JVM | `android/app/src/test/` | Consent store, classifier goldens, snapshot merge, Compose screen states |
 | Schema | `./tools/schema-sync/check-drift.sh` | TypeSpec canon parity, hand-mirror drift, Community golden fixture mirror drift |
-| Ops scripts | `functions/scripts/community-leaderboard-canary.mjs`, `functions/scripts/community-postmerge-check.mjs` | Synthetic authenticated reads for threshold/live boards, revoked anonId exclusion, active participant counts, below-threshold grouping, stale public board cleanup reporting |
-| Real-device validation | `scripts/e2e/community-permission-validation.mjs` | Android/iOS/macOS/Windows denied/granted/unavailable location-permission checklist and evidence paths |
+| Ops scripts | `functions/scripts/community-leaderboard-canary.mjs`, `functions/scripts/community-postmerge-check.mjs` | Synthetic authenticated reads for threshold/live boards, revoked anonId exclusion, active participant counts, below-threshold grouping, stale public board cleanup reporting (`--stale-hours`, including `0` for rollback) |
+| Ops script tests | `cd functions && npm run test:community-ops` | Unit tests for canary/postmerge parsers and aggregate summaries (no live Firebase) |
+| Real-device validation | `node scripts/e2e/community-permission-validation.mjs` | Android/iOS/macOS/Windows denied/granted/unavailable location-permission checklist and evidence paths; Android `--execute` uses package-scoped permission reset |
 | Visual states | `apps/console/test/community.visual-states.test.ts`, `apps/linux-desktop/src/community/community.visual-states.test.tsx` | Opted-out, below-threshold, live, revoked/local-paused, Looking Glass ready/error, city-confidence copy snapshots |
 
 ## Operator Runbook
@@ -214,8 +215,8 @@ Looking Glass export copy has explicit idle/ready/error states. Ready copy state
 
 1. Set `OPENBURNBAR_COMMUNITY_PUBLIC_READS_ENABLED=false` or the matching Remote Config value so Firestore rules fail closed for `community_leaderboards`.
 2. Leave owner reads intact; private `users/{uid}/community/*` docs remain readable by their owner.
-3. If a bad public generation shipped, run `cd functions && npm run community:postmerge-check -- --project <project> --stale-hours 0 --delete-stale` after confirming the rollback window. This deletes public leaderboard docs only; it does not touch consent, profiles, share snapshots, traces, or exports.
-4. Re-enable public reads only after `npm run community:canary` passes against known threshold/live docs.
+3. If a bad public generation shipped, run `cd functions && npm run community:postmerge-check -- --project <project> --stale-hours 0 --delete-stale` after confirming the rollback window. `--stale-hours 0` treats every public leaderboard doc as stale (full public-board cleanup); the script deletes public leaderboard docs only and does not touch consent, profiles, share snapshots, traces, or exports.
+4. Re-enable public reads (`OPENBURNBAR_COMMUNITY_PUBLIC_READS_ENABLED=true` or Remote Config) only after `npm run community:canary` passes against known threshold/live docs.
 
 ### Kill switch
 
@@ -268,6 +269,9 @@ bash tools/schema-sync/check-drift.sh
 # Functions tests
 cd functions && npm run test:community
 
+# Ops script unit tests (canary + postmerge parsers)
+cd functions && npm run test:community-ops
+
 # Firestore rules tests
 cd firestore-rules-tests && npm run test:community
 
@@ -276,4 +280,7 @@ cd android && ./gradlew :app:testDebugUnitTest --tests "com.openburnbar.data.com
 
 # macOS app Community classifier focus
 OPENBURNBAR_ENABLE_COVERAGE=NO OPENBURNBAR_APP_TEST_FILTERS="OpenBurnBarTests/ModelPurposeClassifierTests" ./scripts/test-openburnbar-app.sh
+
+# Real-device permission matrix (dry-run)
+node scripts/e2e/community-permission-validation.mjs --platform all --mode all
 ```

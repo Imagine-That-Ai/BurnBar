@@ -7,7 +7,7 @@ import {
   assertFails,
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -137,25 +137,18 @@ async function main() {
     );
   });
 
-  await step("owner can write share_snapshot", async () => {
-    await assertSucceeds(
+  await step("owner can read share_snapshot; client write denied", async () => {
+    await assertSucceeds(getDoc(doc(aliceDB, "users", aliceUid, "community", "share_snapshot")));
+    await assertFails(
       setDoc(doc(aliceDB, "users", aliceUid, "community", "share_snapshot"), shareSnapshotPayload),
     );
-  });
-
-  await step("owner can write realistic world-only share_snapshot", async () => {
-    await assertSucceeds(
-      setDoc(doc(aliceDB, "users", aliceUid, "community", "share_snapshot"), worldOnlyShareSnapshotPayload),
-    );
-  });
-
-  await step("owner cannot write malformed share_snapshot", async () => {
     await assertFails(
-      setDoc(doc(aliceDB, "users", aliceUid, "community", "share_snapshot"), {
-        ...shareSnapshotPayload,
-        cityKey: "not allowed with spaces",
-      }),
+      setDoc(
+        doc(aliceDB, "users", aliceUid, "community", "share_snapshot"),
+        worldOnlyShareSnapshotPayload,
+      ),
     );
+    await assertFails(deleteDoc(doc(aliceDB, "users", aliceUid, "community", "share_snapshot")));
   });
 
   await step("non-owner cannot read or write share_snapshot", async () => {
