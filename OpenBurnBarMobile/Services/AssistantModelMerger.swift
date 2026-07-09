@@ -158,6 +158,8 @@ struct AssistantModelMerger {
             return ["grok", "grok-build", "xai", "grok-agent"]
         case .cursorAgent:
             return ["cursor", "cursor-agent", "cursoragent"]
+        case .junie:
+            return ["junie", "junie-agent", "jetbrains-junie"]
         case .openClaude:
             return ["openclaude", "open-claude"]
         case .omp:

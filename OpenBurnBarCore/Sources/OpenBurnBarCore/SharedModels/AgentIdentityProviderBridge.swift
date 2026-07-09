@@ -49,6 +49,7 @@ extension AgentIdentity {
         case .antigravity: return .antigravity
         case .grok: return .xAI
         case .cursorAgent: return .cursorAgent
+        case .junie:    return .junie
         }
     }
 }

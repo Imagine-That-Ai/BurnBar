@@ -391,7 +391,7 @@ struct AgentBrandZoneView: View {
                 dispatchPreset = .newThread
                 showDispatchSheet = true
             }
-        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp:
+        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
             dispatchPreset = .newThread
             showDispatchSheet = true
         }
@@ -421,6 +421,60 @@ struct AgentBrandZoneView: View {
     private func handleSubscribe() {
         showSubscribeSheet = true
         HapticBus.primaryAction()
+    }
+
+    private func runtimeToken(for identity: AgentIdentity) -> String? {
+        if let runtime = identity.runtimeID {
+            return runtime.rawValue
+        }
+        switch identity.dispatchTransport {
+        case .macRelay(let runtime):
+            return runtime.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        case .nativeRelay, .httpGateway, .mcpServer:
+            return nil
+        }
+    }
+
+    private func performForward(to destination: AgentIdentity, note: String) async -> String {
+        let prompt = AgentBrandQuickActionComposer.forwardPrompt(
+            source: identity,
+            destination: destination,
+            context: forwardContext,
+            note: note
+        )
+
+        if let runtime = destination.runtimeID,
+           [.hermes, .pi].contains(runtime),
+           let onOpenRuntimeThread {
+            AssistantPendingPrompt.shared.stash(assistant: runtime, prompt: prompt)
+            onOpenRuntimeThread(runtime)
+            return "Forwarded to \(destination.displayName) and opened a new thread."
+        }
+
+        guard let runtimeID = runtimeToken(for: destination) else {
+            return "Couldn't resolve a dispatch runtime for \(destination.displayName)."
+        }
+
+        let request = MissionConsoleDispatchRequest(
+            title: "Forward · \(identity.displayName) → \(destination.displayName)",
+            prompt: prompt,
+            kind: .diligence,
+            runtimeID: runtimeID,
+            targetProject: nil,
+            depth: .standard,
+            approvalMode: .existingPolicy,
+            commandsAllowed: false,
+            fileEditsAllowed: false
+        )
+        switch await missionHost.dispatch(request) {
+        case .dispatched(let missionID):
+            if let runtime = destination.runtimeID {
+                onOpenRuntimeList?(runtime)
+            }
+            return "Forwarded to \(destination.displayName). Mission queued (\(missionID))."
+        case .failed(let message):
+            return "Forward failed: \(message)"
+        }
     }
 
 }

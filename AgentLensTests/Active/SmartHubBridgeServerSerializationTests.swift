@@ -212,7 +212,7 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertTrue(json.contains(#""voice": {"#))
         XCTAssertTrue(json.contains(#""eventId": 1"#))
         XCTAssertTrue(json.contains(#""queuedAt": "#))
-        XCTAssertFalse(json.contains(#""queuedAt": ""#))
+        XCTAssertFalse(json.contains("\"queuedAt\": \"\""))
         XCTAssertTrue(json.contains("OpenBurnBar last 5 hours."))
         XCTAssertTrue(json.contains("Claude Code is at 42%. Resets in 2h"))
     }

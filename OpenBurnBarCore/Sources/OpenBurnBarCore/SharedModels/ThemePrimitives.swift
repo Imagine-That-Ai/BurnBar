@@ -243,6 +243,7 @@ extension DesignSystemColors {
         case .xAI:        return Color(hex: "1A1A1A")
         case .mimo:       return Color(hex: "FF6900")
         case .openBurnBar: return Color(hex: "FA5053")
+        case .junie:      return Color(hex: "48E054")
         }
     }
 
@@ -280,6 +281,7 @@ extension DesignSystemColors {
         case .xAI:        return Color(hex: "4A4A4A")
         case .mimo:       return Color(hex: "FF8533")
         case .openBurnBar: return Color(hex: "FF7578")
+        case .junie:      return Color(hex: "6FE87F")
         }
     }
     public static func colorForModel(_ modelName: String) -> Color {

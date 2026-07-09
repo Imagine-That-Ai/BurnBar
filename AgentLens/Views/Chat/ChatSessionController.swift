@@ -117,6 +117,10 @@ final class ChatSessionController {
         didSet { if persistsViewState { UserDefaults.standard.set(chatModelOMP, forKey: Self.udChatModelOMP) } }
     }
 
+    var chatModelJunie: String = "" {
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelJunie, forKey: Self.udChatModelJunie) } }
+    }
+
     var hermesAvailable: Bool = false
 
     /// Mirror of `CLIBridge.hermesCatalogAuthRejected`: the gateway is up but
@@ -284,6 +288,7 @@ final class ChatSessionController {
     static let udChatModelCursorAgent = "chatPanel.model.cursoragent"
     static let udChatModelOpenClaude = "chatPanel.model.openclaude"
     static let udChatModelOMP = "chatPanel.model.omp"
+    static let udChatModelJunie = "chatPanel.model.junie"
 
     /// Legacy keys (migrated once into per-backend keys).
     static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
@@ -400,6 +405,7 @@ final class ChatSessionController {
         chatModelCursorAgent = UserDefaults.standard.string(forKey: Self.udChatModelCursorAgent) ?? ""
         chatModelOpenClaude = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaude) ?? ""
         chatModelOMP = UserDefaults.standard.string(forKey: Self.udChatModelOMP) ?? ""
+        chatModelJunie = UserDefaults.standard.string(forKey: Self.udChatModelJunie) ?? ""
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }

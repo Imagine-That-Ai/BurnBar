@@ -24,6 +24,40 @@ class CLIRuntimeModelCatalogTest {
         assertEquals("Anthropic via OpenBurnBar API/OAuth", response.options[0].providerName)
     }
 
+    @Test
+    fun cliRuntimeModelCatalogResponseDecodesJunieDefaultProfileOption() {
+        // Mirrors the Swift CLIRuntimeModelCatalog default profile option for
+        // Junie: empty model id, provider "jetbrains" / "JetBrains via Junie CLI",
+        // sourced from the CLI profile.
+        val response = CliRuntimeModelCatalogResponse.decode(junieWireShapeJson())
+
+        assertEquals("junie", response.runtime)
+        assertEquals(1, response.options.size)
+        val option = response.options[0]
+        assertEquals("", option.modelID)
+        assertEquals("jetbrains", option.providerID)
+        assertEquals("JetBrains via Junie CLI", option.providerName)
+        assertEquals(CliModelSource.CLI_PROFILE, option.source)
+    }
+
+    private fun junieWireShapeJson(): String = """
+        {
+          "runtime": "junie",
+          "machineName": "Alberto Mac",
+          "generatedAtEpochMillis": 42,
+          "options": [
+            {
+              "modelID": "",
+              "displayName": "Junie default profile",
+              "providerID": "jetbrains",
+              "providerName": "JetBrains via Junie CLI",
+              "tier": "mid",
+              "source": "cliProfile"
+            }
+          ]
+        }
+    """.trimIndent()
+
     private fun swiftWireShapeJson(): String = """
         {
           "runtime": "droid",

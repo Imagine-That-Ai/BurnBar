@@ -56,6 +56,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     case gemini
     case kimi
     case pi
+    case junie
 
     public var displayName: String {
         switch self {
@@ -71,6 +72,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .gemini: return "Gemini CLI"
         case .kimi: return "Kimi"
         case .pi: return "Pi"
+        case .junie: return "Junie"
         }
     }
 
@@ -89,6 +91,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .gemini: return "GeminiCLILogo"
         case .kimi: return "KimiLogo"
         case .pi: return "PiAgentLogo"
+        case .junie: return "JunieLogo"
         }
     }
 
@@ -107,6 +110,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .gemini: return "gemini"
         case .kimi: return "kimi"
         case .pi: return "pi"
+        case .junie: return "junie"
         }
     }
 
@@ -198,6 +202,13 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "$HOME/.pi/bin/pi",
                 "$HOME/.local/bin/pi"
             ]
+        case .junie:
+            return [
+                "/usr/local/bin/junie",
+                "/opt/homebrew/bin/junie",
+                "$HOME/.junie/bin/junie",
+                "$HOME/.local/bin/junie"
+            ]
         }
     }
 
@@ -227,6 +238,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .gemini: return .geminiCLI
         case .kimi: return .kimi
         case .pi: return .piAgent
+        case .junie: return .junie
         }
     }
 

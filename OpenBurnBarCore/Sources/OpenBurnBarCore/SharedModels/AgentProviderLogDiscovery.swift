@@ -93,6 +93,8 @@ public enum AgentProviderLogDiscovery {
             return "~/.openclaude/sessions"
         case .omp:
             return "~/.omp/agent/sessions"
+        case .junie:
+            return "~/.junie/sessions"
         case .ollama:
             return "~/.ollama/logs"
         case .windsurf:
@@ -114,7 +116,7 @@ public enum AgentProviderLogDiscovery {
 
     public static func filePattern(for provider: AgentProvider) -> String {
         switch provider {
-        case .factory, .claudeCode, .copilot, .aider, .zai, .minimax, .forgeDev, .hermes, .piAgent, .cursorAgent, .openClaw, .openClaude, .omp:
+        case .factory, .claudeCode, .copilot, .aider, .zai, .minimax, .forgeDev, .hermes, .piAgent, .cursorAgent, .openClaw, .openClaude, .omp, .junie:
             return "*.jsonl"
         case .cursor:
             return "*.db"

@@ -510,6 +510,14 @@ extension ChatSessionController {
                             model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .junie:
+                        return self.cliBridge.chatJunieStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
                     }
                 }
                 for try await event in stream {

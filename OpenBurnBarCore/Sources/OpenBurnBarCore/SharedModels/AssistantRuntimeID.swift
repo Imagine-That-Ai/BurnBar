@@ -25,6 +25,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     case antigravity
     case grok
     case cursorAgent = "cursorAgent"
+    case junie
 
     public var displayName: String {
         switch self {
@@ -40,6 +41,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .antigravity: return "Antigravity"
         case .grok:     return "Grok Build"
         case .cursorAgent: return "Cursor Agent"
+        case .junie:    return "Junie"
         }
     }
 
@@ -58,6 +60,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .antigravity: return URL(string: "http://127.0.0.1:8642")!
         case .grok:     return URL(string: "http://127.0.0.1:8642")!
         case .cursorAgent: return URL(string: "http://127.0.0.1:8642")!
+        case .junie:    return URL(string: "http://127.0.0.1:8642")!
         }
     }
 
@@ -76,6 +79,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .antigravity: return "\u{2727}" // ✧
         case .grok:     return "\u{03A8}" // Ψ
         case .cursorAgent: return "\u{27A4}" // ➤
+        case .junie:    return "\u{273D}" // ✽ (Junie bloom)
         }
     }
 
@@ -84,7 +88,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     /// model while execution stays on the trusted Mac.
     public var hasMobileChatSurface: Bool {
         switch self {
-        case .hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent: return true
+        case .hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie: return true
         }
     }
 
