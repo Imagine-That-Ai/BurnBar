@@ -764,7 +764,6 @@ export {
   collectValidParticipants,
   loadPreviousRanksForBoards,
   loadPreviousRanks,
-  loadPreviousBoardHistoriesForBoards,
   cleanupStaleLeaderboards,
 };
 export type { Participant, PreviousBoardHistory };

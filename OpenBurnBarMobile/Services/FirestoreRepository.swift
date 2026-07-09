@@ -134,19 +134,19 @@ final class FirestoreRepository {
 
     /// Injects the Firestore document ID as `id` when the payload lacks it,
     /// remaps `deviceId` → `sourceDeviceId`, sanitizes for JSON, then decodes.
-    nonisolated func decodeWithDocID<T: Decodable>(_ type: T.Type, from data: [String: Any], docID: String) -> T? {
-        decodeWithDocID(type, from: data, docID: docID, preserveStringValues: false, projectNameOpener: nil)
-    }
-
-    /// Generated TypeSpec Firestore models keep server ISO date fields as strings.
-    /// Use this path for those models so the generic legacy decoder does not
-    /// coerce ISO strings into `Date`'s numeric deferred representation.
-    nonisolated func decodeWithDocIDPreservingStringValues<T: Decodable>(
+    nonisolated func decodeWithDocID<T: Decodable>(
         _ type: T.Type,
         from data: [String: Any],
-        docID: String
+        docID: String,
+        preservingStringValues: Bool = false
     ) -> T? {
-        decodeWithDocID(type, from: data, docID: docID, preserveStringValues: true, projectNameOpener: nil)
+        decodeWithDocID(
+            type,
+            from: data,
+            docID: docID,
+            preserveStringValues: preservingStringValues,
+            projectNameOpener: nil
+        )
     }
 
     func listenCommunityDocument(
@@ -167,7 +167,12 @@ final class FirestoreRepository {
             .getDocument()
             .data()
         guard let data else { return nil }
-        return decodeWithDocIDPreservingStringValues(FirestoreCommunityLeaderboardDoc.self, from: data, docID: docID)
+        return decodeWithDocID(
+            FirestoreCommunityLeaderboardDoc.self,
+            from: data,
+            docID: docID,
+            preservingStringValues: true
+        )
     }
 
     /// `TokenUsage` decode for the incremental live listener: identical to

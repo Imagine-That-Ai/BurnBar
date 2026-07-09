@@ -34,7 +34,6 @@ enum CommunityCallableClient {
         return url
     }
 
-
     private static func call(_ name: String, data: [String: String]) async throws -> CommunityCallableResponse {
         let callable = Functions.functions(region: region).httpsCallable(
             name,

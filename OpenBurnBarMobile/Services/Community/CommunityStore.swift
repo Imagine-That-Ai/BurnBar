@@ -100,10 +100,11 @@ final class CommunityStore {
                     self.consentDoc = nil
                     return
                 }
-                if let doc = self.firestore.decodeWithDocIDPreservingStringValues(
+                if let doc = self.firestore.decodeWithDocID(
                     FirestoreCommunityConsentDoc.self,
                     from: data,
-                    docID: "consent"
+                    docID: "consent",
+                    preservingStringValues: true
                 ) {
                     self.consentDoc = doc
                     CommunityConsentStore.shared.applyServerConsent(doc)
@@ -118,10 +119,11 @@ final class CommunityStore {
                     self?.leaderboards = [:]
                     return
                 }
-                let decodedProfile = self.firestore.decodeWithDocIDPreservingStringValues(
+                let decodedProfile = self.firestore.decodeWithDocID(
                     FirestoreCommunityProfileDoc.self,
                     from: data,
-                    docID: "profile"
+                    docID: "profile",
+                    preservingStringValues: true
                 )
                 self.profile = decodedProfile
                 if decodedProfile != nil {
@@ -138,10 +140,11 @@ final class CommunityStore {
                     self?.shareSnapshot = nil
                     return
                 }
-                self.shareSnapshot = self.firestore.decodeWithDocIDPreservingStringValues(
+                self.shareSnapshot = self.firestore.decodeWithDocID(
                     FirestoreCommunityShareSnapshotDoc.self,
                     from: data,
-                    docID: "share_snapshot"
+                    docID: "share_snapshot",
+                    preservingStringValues: true
                 )
             }
         })

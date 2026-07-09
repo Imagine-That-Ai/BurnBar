@@ -36,7 +36,6 @@ struct CommunityLeaderboardCard: View {
         }
     }
 
-
     private var belowThresholdFallback: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "person.3.sequence")

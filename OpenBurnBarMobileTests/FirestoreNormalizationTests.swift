@@ -547,7 +547,7 @@ final class FirestoreNormalizationTests: XCTestCase {
             CommunityConsentStore.Storage.tierWorldKey,
             CommunityConsentStore.Storage.tierCountryKey,
             CommunityConsentStore.Storage.tierRegionKey,
-            CommunityConsentStore.Storage.tierCityKey,
+            CommunityConsentStore.Storage.tierCityKey
         ].forEach { defaults.set(state.rawValue, forKey: $0) }
         defaults.set(localUpdatedAt, forKey: CommunityConsentStore.Storage.localUpdatedAtKey)
         return (CommunityConsentStore(defaults: defaults), defaults, suiteName)
@@ -565,18 +565,19 @@ final class FirestoreNormalizationTests: XCTestCase {
                 "world": raw,
                 "country": raw,
                 "region": raw,
-                "city": raw,
+                "city": raw
             ],
             "l3LookingGlass": raw,
             "locationConsent": raw,
             "schemaVersion": 1,
-            "updatedAt": updatedAt,
+            "updatedAt": updatedAt
         ]
         return try XCTUnwrap(
-            repo.decodeWithDocIDPreservingStringValues(
+            repo.decodeWithDocID(
                 FirestoreCommunityConsentDoc.self,
                 from: rawDoc,
-                docID: "consent"
+                docID: "consent",
+                preservingStringValues: true
             )
         )
     }
