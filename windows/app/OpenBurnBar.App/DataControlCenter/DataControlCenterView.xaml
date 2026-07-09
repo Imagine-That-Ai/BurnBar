@@ -34,7 +34,7 @@
                     IsBackButtonVisible="Collapsed"
                     OpenPaneLength="248"
                     SelectionChanged="OnDomainSelected"
-                    Background="{StaticResource PensieveColorInkBaseBrush}">
+                    Background="Transparent">
         <NavigationView.PaneHeader>
             <StackPanel Padding="4,8,4,4" Spacing="2">
                 <TextBlock Text="DATA &amp; PRIVACY" FontSize="10" FontWeight="Bold"
@@ -48,7 +48,7 @@
             </StackPanel>
         </NavigationView.PaneHeader>
 
-        <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+        <Grid Background="Transparent">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="380" />
                 <ColumnDefinition Width="1" />

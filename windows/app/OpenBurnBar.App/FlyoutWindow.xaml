@@ -5,127 +5,147 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:views="using:OpenBurnBar.App.Views"
     xmlns:shell="using:OpenBurnBar.App.Shell"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives">
 
-    <Border Padding="14" CornerRadius="{StaticResource OBBCardCornerRadius}">
-        <Grid RowSpacing="10">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+    <!-- Transparent root so Mica/Acrylic shows through; glass plate wraps the body. -->
+    <Grid Background="Transparent">
+        <Border x:Name="WindowBlendScrim" IsHitTestVisible="False" />
 
-            <!-- Flyout header. -->
-            <Grid Grid.Row="0" ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="0"
-                        Width="10" Height="10" CornerRadius="5"
-                        VerticalAlignment="Center"
-                        Background="{StaticResource OBBAccentBrush}" />
-                <TextBlock Grid.Column="1"
-                           VerticalAlignment="Center"
-                           Text="OpenBurnBar"
-                           FontWeight="SemiBold" />
-                <TextBlock Grid.Column="2"
-                           VerticalAlignment="Center"
-                           Opacity="0.6"
-                           FontSize="12"
-                           Text="live" />
+        <Border Padding="14"
+                CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                Style="{StaticResource LiquidGlassSurfaceStyle}"
+                theme:LiquidGlass.Surface="True"
+                Margin="4">
+            <Grid RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Flyout header. -->
+                <Grid Grid.Row="0" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0"
+                            Width="10" Height="10" CornerRadius="5"
+                            VerticalAlignment="Center"
+                            Background="{StaticResource OBBAccentBrush}" />
+                    <TextBlock Grid.Column="1"
+                               VerticalAlignment="Center"
+                               Text="OpenBurnBar"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <Border Grid.Column="2"
+                            Style="{StaticResource LiquidGlassPillStyle}"
+                            theme:LiquidGlass.Surface="True"
+                            Padding="8,2">
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Opacity="0.75"
+                                   Text="live"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </Border>
+                </Grid>
+
+                <!-- Reorderable module cards (drag to reorder; order persists). -->
+                <ListView x:Name="ModulesList"
+                          Grid.Row="1"
+                          MaxHeight="240"
+                          SelectionMode="None"
+                          CanReorderItems="True"
+                          CanDragItems="True"
+                          AllowDrop="True"
+                          IsItemClickEnabled="False"
+                          Padding="0"
+                          Background="Transparent"
+                          DragItemsCompleted="ModulesList_DragItemsCompleted">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,0,0,6" />
+                            <Setter Property="MinHeight" Value="0" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Background" Value="Transparent" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="shell:FlyoutModule">
+                            <Border Padding="10,8"
+                                    CornerRadius="{StaticResource PensieveRadiusSmCorner}"
+                                    Style="{StaticResource LiquidGlassSurfaceStyle}"
+                                    theme:LiquidGlass.Surface="True">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Grid.Column="0"
+                                              FontFamily="Segoe MDL2 Assets"
+                                              FontSize="14"
+                                              Glyph="{x:Bind Glyph}"
+                                              Foreground="{StaticResource OBBAccentBrush}"
+                                              VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" FontSize="13"
+                                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                        <TextBlock Text="{x:Bind Subtitle}" Opacity="0.65" FontSize="11"
+                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                    </StackPanel>
+                                    <FontIcon Grid.Column="2"
+                                              FontFamily="Segoe MDL2 Assets"
+                                              FontSize="12"
+                                              Glyph="&#xE76F;"
+                                              Opacity="0.4"
+                                              VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <!-- Compact live CLI stream. -->
+                <views:LiveCliStreamView x:Name="StreamView" Grid.Row="2" Compact="True" />
+
+                <!-- Footer: open the full window + a resize grip. -->
+                <Grid Grid.Row="3" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0"
+                            HorizontalAlignment="Left"
+                            Content="Open full window"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                            Click="OpenFull_Click" />
+                    <primitives:Thumb Grid.Column="1"
+                                      x:Name="ResizeGrip"
+                                      Width="18"
+                                      Height="18"
+                                      DragDelta="ResizeGrip_DragDelta"
+                                      DragCompleted="ResizeGrip_DragCompleted">
+                        <ToolTipService.ToolTip>
+                            <ToolTip Content="Drag to resize" />
+                        </ToolTipService.ToolTip>
+                        <primitives:Thumb.Template>
+                            <ControlTemplate TargetType="primitives:Thumb">
+                                <Grid Background="Transparent">
+                                    <FontIcon FontFamily="Segoe MDL2 Assets"
+                                              FontSize="13"
+                                              Glyph="&#xE744;"
+                                              Opacity="0.5" />
+                                </Grid>
+                            </ControlTemplate>
+                        </primitives:Thumb.Template>
+                    </primitives:Thumb>
+                </Grid>
             </Grid>
-
-            <!-- Reorderable module cards (drag to reorder; order persists). -->
-            <ListView x:Name="ModulesList"
-                      Grid.Row="1"
-                      MaxHeight="240"
-                      SelectionMode="None"
-                      CanReorderItems="True"
-                      CanDragItems="True"
-                      AllowDrop="True"
-                      IsItemClickEnabled="False"
-                      Padding="0"
-                      DragItemsCompleted="ModulesList_DragItemsCompleted">
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0,0,0,6" />
-                        <Setter Property="MinHeight" Value="0" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                    </Style>
-                </ListView.ItemContainerStyle>
-                <ListView.ItemTemplate>
-                    <DataTemplate x:DataType="shell:FlyoutModule">
-                        <Border Padding="10,8"
-                                CornerRadius="8"
-                                Background="{StaticResource OBBSurfaceBrush}"
-                                BorderThickness="1"
-                                BorderBrush="{StaticResource OBBStrokeBrush}">
-                            <Grid ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Grid.Column="0"
-                                          FontFamily="Segoe MDL2 Assets"
-                                          FontSize="14"
-                                          Glyph="{x:Bind Glyph}"
-                                          Foreground="{StaticResource OBBAccentBrush}"
-                                          VerticalAlignment="Center" />
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Text="{x:Bind Subtitle}" Opacity="0.65" FontSize="11" />
-                                </StackPanel>
-                                <FontIcon Grid.Column="2"
-                                          FontFamily="Segoe MDL2 Assets"
-                                          FontSize="12"
-                                          Glyph="&#xE76F;"
-                                          Opacity="0.4"
-                                          VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-
-            <!-- Compact live CLI stream. -->
-            <views:LiveCliStreamView x:Name="StreamView" Grid.Row="2" Compact="True" />
-
-            <!-- Footer: open the full window + a resize grip. -->
-            <Grid Grid.Row="3" ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <HyperlinkButton Grid.Column="0"
-                                 HorizontalAlignment="Left"
-                                 Content="Open full window"
-                                 Click="OpenFull_Click" />
-                <primitives:Thumb Grid.Column="1"
-                                  x:Name="ResizeGrip"
-                                  Width="18"
-                                  Height="18"
-                                  DragDelta="ResizeGrip_DragDelta"
-                                  DragCompleted="ResizeGrip_DragCompleted">
-                    <ToolTipService.ToolTip>
-                        <ToolTip Content="Drag to resize" />
-                    </ToolTipService.ToolTip>
-                    <primitives:Thumb.Template>
-                        <ControlTemplate TargetType="primitives:Thumb">
-                            <Grid Background="Transparent">
-                                <FontIcon FontFamily="Segoe MDL2 Assets"
-                                          FontSize="13"
-                                          Glyph="&#xE744;"
-                                          Opacity="0.5" />
-                            </Grid>
-                        </ControlTemplate>
-                    </primitives:Thumb.Template>
-                </primitives:Thumb>
-            </Grid>
-        </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </Window>

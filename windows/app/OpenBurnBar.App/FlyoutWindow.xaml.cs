@@ -6,15 +6,16 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenBurnBar.App.Cli;
 using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Shell;
+using OpenBurnBar.App.Theme;
 using Windows.Graphics;
 
 namespace OpenBurnBar.App;
 
 /// <summary>
-/// Borderless, top-most, Mica-backed flyout dropped from the tray — the Windows analog of the
-/// macOS NSStatusItem + NSPopover. It hides on focus loss (transient popover behavior), toggles
-/// from the tray primary click, and — new in W6-SHELL — is <b>resizable</b> (via the footer grip,
-/// persisted) and hosts a <b>reorderable</b> module list (drag to reorder, persisted).
+/// Borderless, top-most, Liquid-Glass-backed flyout dropped from the tray — the Windows
+/// analog of the macOS NSStatusItem + NSPopover. It hides on focus loss (transient popover
+/// behavior), toggles from the tray primary click, is resizable (via the footer grip,
+/// persisted), and hosts a reorderable module list.
 /// </summary>
 public sealed partial class FlyoutWindow : Window
 {
@@ -42,7 +43,11 @@ public sealed partial class FlyoutWindow : Window
         _width = Clamp(persistence.State.FlyoutWidth, MinWidth, MaxWidth, DefaultWidth);
         _height = Clamp(persistence.State.FlyoutHeight, MinHeight, MaxHeight, DefaultHeight);
 
-        WindowChrome.TryApplyMica(this);
+        // Glass window backdrop through the Liquid Glass chokepoint (not ad-hoc TryApplyMica).
+        LiquidGlass.ApplyWindowBackdrop(this, LiquidGlassEnvironment.Current);
+        LiquidGlassWindowBlend.ApplyScrim(WindowBlendScrim, LiquidGlassEnvironment.Current);
+        LiquidGlassEnvironment.PreferencesChanged += OnGlassPreferencesChanged;
+
         _appWindow = WindowChrome.GetAppWindow(this);
         WindowChrome.ConfigureAsFlyout(_appWindow);
         _appWindow.Hide();
@@ -54,7 +59,7 @@ public sealed partial class FlyoutWindow : Window
 
         // Transient popover: dismiss when focus leaves the flyout.
         Activated += OnActivated;
-        Closed += (_, _) => StreamView.Detach();
+        Closed += OnClosed;
     }
 
     /// <summary>The reorderable module list backing the flyout body.</summary>
@@ -90,6 +95,18 @@ public sealed partial class FlyoutWindow : Window
         {
             Hide();
         }
+    }
+
+    private void OnGlassPreferencesChanged(object? sender, EventArgs e)
+    {
+        LiquidGlass.ApplyWindowBackdrop(this, LiquidGlassEnvironment.Current);
+        LiquidGlassWindowBlend.ApplyScrim(WindowBlendScrim, LiquidGlassEnvironment.Current);
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        LiquidGlassEnvironment.PreferencesChanged -= OnGlassPreferencesChanged;
+        StreamView.Detach();
     }
 
     private void OpenFull_Click(object sender, RoutedEventArgs e)

@@ -38,6 +38,8 @@ public sealed class ThemeService
         _persistence = persistence;
         _mode = AppearanceModeExtensions.ParseOrSystem(persistence.State.AppearanceMode);
         _reduceTransparencyOverride = persistence.State.ReduceTransparency;
+        // Glass transparency / content-surfaces changes re-apply window backdrops.
+        LiquidGlassEnvironment.PreferencesChanged += (_, _) => ApplyToAll();
     }
 
     /// <summary>Raised after any appearance change is applied, so surfaces can re-render dependent chrome.</summary>
