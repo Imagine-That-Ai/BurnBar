@@ -6,6 +6,8 @@ import OpenBurnBarCore
 
 /// Projection jobs, embedding models/versions, chunk embeddings, and retrieval health.
 final class ProjectionStore: Sendable {
+    private static let chunkEmbeddingFetchBatchSize = 900
+
     private let dbQueue: any DatabaseWriter
 
     init(dbQueue: any DatabaseWriter) {
@@ -639,18 +641,27 @@ final class ProjectionStore: Sendable {
     ) async throws -> [ChunkEmbeddingRecord] {
         guard chunkIDs.isEmpty == false else { return [] }
         return try await dbQueue.read { db in
-            let rows = try Row.fetchAll(
-                db,
-                sql: """
-                SELECT *
-                FROM chunk_embeddings
-                WHERE embeddingVersionID = ?
-                  AND chunkID IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: chunkIDs.count)))
-                ORDER BY chunkID ASC
-                """,
-                arguments: StatementArguments([embeddingVersionID] + chunkIDs)
-            )
-            return rows.compactMap(Self.chunkEmbedding(from:))
+            var records: [ChunkEmbeddingRecord] = []
+            records.reserveCapacity(chunkIDs.count)
+            var start = 0
+            while start < chunkIDs.count {
+                let end = min(start + Self.chunkEmbeddingFetchBatchSize, chunkIDs.count)
+                let page = Array(chunkIDs[start..<end])
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT *
+                    FROM chunk_embeddings
+                    WHERE embeddingVersionID = ?
+                      AND chunkID IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: page.count)))
+                    ORDER BY chunkID ASC
+                    """,
+                    arguments: StatementArguments([embeddingVersionID] + page)
+                )
+                records.append(contentsOf: rows.compactMap(Self.chunkEmbedding(from:)))
+                start = end
+            }
+            return records.sorted { $0.chunkID < $1.chunkID }
         }
     }
 
