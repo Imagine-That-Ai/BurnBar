@@ -4,17 +4,13 @@
  * The switcher renders this list and the host constructs from it. Adding a
  * backdrop is: write `kernels/<x>.ts` exporting a factory, add one entry here.
  *
- * Lazy loading: only `constellation` (the default) is imported eagerly so first
- * paint is instant. Every other kernel's heavy GLSL + helpers are loaded
- * on-demand via dynamic `import()` wrapped in `lazyKernel()`. The proxy exposes
- * `id`/`label`/`substrate` synchronously so the host can size the canvas and pick
- * the right context immediately; the real factory is imported on first
- * `init()`/`frame()`.
+ * Lazy loading: every kernel's heavy GLSL is loaded on-demand via dynamic
+ * `import()` wrapped in `lazyKernel()`. The proxy exposes `id`/`label`/
+ * `substrate` synchronously so the host can size the canvas and pick the right
+ * context immediately; the real factory is imported on first `init()`/`frame()`.
  */
 
 import type { GlCapabilities } from "./gl/glCapabilities";
-// Eager: the default kernel — first paint depends on it.
-import { createConstellationKernel } from "./kernels/constellationKernel";
 import { lazyKernel } from "./lazyKernel";
 import type { KernelDescriptor, KernelId, KernelSubstrate } from "./types";
 
@@ -22,17 +18,19 @@ export const KERNELS: KernelDescriptor[] = [
   {
     id: "constellation",
     label: "Constellation",
-    blurb: "Provider marks assemble from the swarm, then whirl off.",
-    substrate: "2d",
-    create: createConstellationKernel,
+    blurb: "Cinematic deep sky — milky-way band, layered emission nebulae, parallax stars with diffraction spikes, and inked constellation chords.",
+    substrate: "webgl2",
+    create: () =>
+      lazyKernel("constellation", "Constellation", "webgl2", () =>
+        import("./kernels/constellationKernel").then((m) => m.createConstellationKernel)),
   },
   {
     id: "flow",
     label: "Flow Field",
-    blurb: "A curl-noise wind drawn as silky streamlines.",
-    substrate: "2d",
+    blurb: "Luminous silk streamlines through a Bridson curl-noise wind — breath, light-beads, pointer bow-wave.",
+    substrate: "webgl2",
     create: () =>
-      lazyKernel("flow", "Flow Field", "2d", () =>
+      lazyKernel("flow", "Flow Field", "webgl2", () =>
         import("./kernels/flowFieldKernel").then((m) => m.createFlowFieldKernel)),
   },
   {
@@ -297,23 +295,23 @@ export const KERNELS: KernelDescriptor[] = [
   },
   // ── CUBELOVE voxel world: eight ways to love a cube. ──
   // ── CUBELOVE premium: WebGPU sparse-voxel path tracer. Degrades to `voxel`. ──
-  // ── Boids murmuration: classic Reynolds flocking on the 2D substrate. ──
+  // ── Boids / Swarm Ember: GPU murmurations (formerly Canvas2D; now WebGL2). ──
   {
     id: "boids",
     label: "Boids",
-    blurb: "A living murmuration — hundreds of birds flocking as one.",
-    substrate: "2d",
+    blurb: "A living GPU murmuration — velocity-aligned silver streaks fold as one organism over curl-noise wind.",
+    substrate: "webgl2",
     create: () =>
-      lazyKernel("boids", "Boids", "2d", () =>
+      lazyKernel("boids", "Boids", "webgl2", () =>
         import("./kernels/boidsKernel").then((m) => m.createBoidsKernel)),
   },
   {
     id: "swarmEmber",
     label: "Swarm Ember",
-    blurb: "Ember particles murmurate, then spell token glyphs and dissolve.",
-    substrate: "2d",
+    blurb: "A living furnace — soft-glow coals, brass embers, and white-hot sparks ride Bridson curl-noise as fire ribbons.",
+    substrate: "webgl2",
     create: () =>
-      lazyKernel("swarmEmber", "Swarm Ember", "2d", () =>
+      lazyKernel("swarmEmber", "Swarm Ember", "webgl2", () =>
         import("./kernels/swarmEmberKernel").then((m) => () => m.createSwarmEmberKernel({ enableSwarmSparkles: false }))),
   },
   ];

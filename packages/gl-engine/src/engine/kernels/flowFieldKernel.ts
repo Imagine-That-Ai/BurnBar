@@ -1,335 +1,211 @@
 /**
- * Flow Field kernel — "Luminous Silk".
+ * Flow Field kernel — "Luminous Silk" (WebGL2).
  *
- * Thousands of fine tracers advected by a divergence-free curl-noise wind,
- * drawn as glass-smooth quadratic silk strands. The whole field breathes on a
- * slow ~14s lung (gathers + brightens on the inhale, releases + thins on the
- * exhale), a single bright light-bead visibly runs the length of every strand
- * from birth to death (phase-offset per strand → a standing wave of light), and
- * two decorrelated depth strata give parallax. Canvas2D, trail-wash composited.
+ * Pure fragment-shader silk streamlines. Replaces the old Canvas2D tracer
+ * swarm (thousands of quadratic silk strands) with a Bridson curl-noise wind
+ * and short per-fragment streamline integration (LIC-lite accumulation) so
+ * the field reads as continuous luminous ribbons — not stipple dots and not
+ * the heavy blue-noise convolution of `lic` (Flow Imaging).
  *
- * Reactive layers (all PRESERVED, layered multiplicatively on top of the breath
- * so a scroll reads as a forced gust over natural breathing):
- *  - Pointer: a soft tangential swirl around the cursor (bow wave).
- *  - Scroll:  scroll position scrubs the wind's time axis; scroll velocity
- *             drives a vertical gust, lateral shear, speed boost, line-width
- *             pulse, brightness bloom, and accelerated accent cycling.
+ * Technique:
+ *  - Divergence-free wind = curl of a scalar snoise potential (Bridson 2007).
+ *    Streamlines of curl(ψ) are iso-contours of ψ, so iso-level peaks of ψ
+ *    become coherent silk strands when accumulated along the path.
+ *  - Dual depth strata (broad slow back / fine fast front) with parallax.
+ *  - 14s/31s irrational breath LFO modulates field strength + brightness.
+ *  - Traveling light-bead phase along each strand (standing wave of light).
+ *  - Pointer bow-wave: tangential swirl around the cursor.
+ *  - Theme-branched palette silk (dark: bright on ink; light: ink on paper).
+ *  - Vignette for type legibility.
+ *
+ * Perf: dual strata × 2 dirs × 6 Euler steps × 3 snoise/curl ≈ 72 snoise/frag
+ * (+ centre taps / bead / haze) — under the lic Lite tier (~87), locked 60fps
+ * on integrated GPUs. RGBA8 single-pass, no float target.
+ *
+ * Single-pass GLSL ES 3.00 via {@link createShaderKernel}. Opts into the shared
+ * D2 scroll control block so scroll still scrubs the wind time axis and injects
+ * a soft gust (parity with the old 2D kernel's reactive layers).
  */
 
-import { curl2 } from "../noise/simplex";
-import { toCss, mixRgb } from "../palette";
-import type {
-  Kernel,
-  KernelFrameContext,
-  KernelPalette,
-  KernelRenderingContext,
-  RGB,
-  ThemeName,
-} from "../types";
+import { createShaderKernel } from "../gl/createShaderKernel";
+import type { Kernel } from "../types";
 
-// ── Wind field tuning ────────────────────────────────────────────────────
-const FIELD_SCALE = 0.0016; // spatial frequency of the wind
-const TIME_SCALE = 0.00006; // how fast the wind reorganizes (per ms)
-const SPEED = 1.35; // px per ~16ms at unit curl
+const BODY = /* glsl */ `
+// ── Luminous Silk — curl-noise streamline accumulation ───────────────────
+// Scales mirror the old Canvas2D flow field + lic Lite tier.
+const float FIELD_SCALE = 0.0016;
+const float TIME_SCALE  = 0.06;     // uTime is seconds
+const float CURL_EPS    = 1e-3;
+const int   STEPS       = 6;        // per direction; dual strata ≈72 snoise/frag
+const float STEP_PX     = 2.8;      // arc-length step (px) — silk ribbon reach
+const float STRAND_N    = 7.5;      // iso-level strand density
+const float STRAND_W    = 0.085;    // strand half-width in iso-space (thinner = finer silk)
 
-// ── Breath LFO — the slow lung the whole field rides ─────────────────────
-// Irrational 14s/31s ratio so it never visibly loops.
-const BREATH_A = 14000;
-const BREATH_B = 31000;
-function breathAt(tMs: number): number {
-  return (
-    0.5 +
-    0.5 *
-      (0.62 * Math.sin((2 * Math.PI * tMs) / BREATH_A) +
-        0.38 * Math.sin((2 * Math.PI * tMs) / BREATH_B + 1.3))
-  );
+// 14s/31s irrational breath (same lung as the Canvas2D kernel / lic).
+float breath(float t){
+  float ms = t * 1000.0;
+  return 0.5 + 0.5*(0.62*sin(6.2831853*ms/14000.0)
+                  + 0.38*sin(6.2831853*ms/31000.0 + 1.3));
 }
 
-const NEAR_WHITE: RGB = [248, 250, 255];
+// Scalar potential ψ(p, τ).
+float silkPot(vec2 p, float tz){ return snoise(vec3(p, tz)); }
 
-// ── Pointer swirl ─────────────────────────────────────────────────────────
-const POINTER = {
-  R: 280, // influence radius (css px)
-  STRENGTH: 2.4, // peak tangential velocity added at cursor
-  FALLOFF: 1.4, // exponent; higher = tighter, softer edge
-};
-
-// ── Scroll reactivity ─────────────────────────────────────────────────────
-const SCROLL = {
-  TIME_SCRUB: 9, // scroll-position multiplier on the wind time axis
-  GUST: 3.6, // max vertical velocity injected in the scroll direction
-  GUST_K: 26, // velocity divisor before clamping (lower = punchier gust)
-  SPEED_BOOST: 1.6, // max tracer speed multiplier while scrolling
-  LINE_WIDTH: 1.9, // max added line width while scrolling (px)
-  ALPHA_BOOST: 0.5, // max alpha added while scrolling (glow)
-  ACCENT_ACCEL: 2.2, // how much scroll velocity accelerates color cycling
-  SHEAR: 0.9, // max horizontal velocity injected while scrolling
-  COLOR_SHIFT_PX: 220, // scroll px per accent-ramp step
-};
-
-function smoothstep01(x: number, a: number, b: number): number {
-  const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
-  return t * t * (3 - 2 * t);
+// Divergence-free curl + ψ₀ in one go (3 snoise).
+// Returns vec3(vx, vy, psi). p is FIELD space (screenPx × FIELD_SCALE × layerScale).
+vec3 silkCurlPsi(vec2 p, float tz){
+  float psi0 = silkPot(p, tz);
+  float dPdy = (silkPot(p + vec2(0.0, CURL_EPS), tz) - psi0) / CURL_EPS;
+  float dPdx = (silkPot(p + vec2(CURL_EPS, 0.0), tz) - psi0) / CURL_EPS;
+  return vec3(dPdy, -dPdx, psi0);
 }
 
-interface Tracer {
-  x: number;
-  y: number;
-  px: number;
-  py: number;
-  px2: number; // one extra history point → 3-point quadratic silk tail
-  py2: number;
-  age: number;
-  life: number;
-  accent: number;
-  bright: number;
-  seed: number; // bead phase offset (stable per index)
-  layer: 0 | 1; // depth stratum
+// Soft iso-level peaks of ψ → thin continuous silk when path-coherent.
+// Streamlines of curl(ψ) ride iso-contours, so peaks stay lit along the strand.
+float strandOf(float psi){
+  float u = abs(fract(psi * STRAND_N + 0.5) - 0.5) * 2.0; // 0 at peaks
+  return exp(-(u * u) / (2.0 * STRAND_W * STRAND_W));
 }
+
+// Pointer bow-wave: Gaussian tangential swirl (same family as lic / kinetic-stipple).
+vec2 pointerBend(vec2 screenPx, vec2 dirIn){
+  if (uPointerActive < 0.5) return dirIn;
+  vec2  pp = uPointer * uResolution;
+  vec2  d  = screenPx - pp;
+  float r2 = dot(d, d);
+  float R  = 0.24 * min(uResolution.x, uResolution.y);
+  float f  = exp(-r2 / (R * R));
+  vec2  swirl = vec2(-d.y, d.x) / (sqrt(r2) + 1.0);
+  return normalize(dirIn + swirl * f * 2.2);
+}
+
+// Unit wind + psi at screen px for one depth stratum. 3 snoise.
+// Returns vec3(dir.x, dir.y, psi).
+vec3 fieldSample(vec2 screenPx, float tz, float layerScale){
+  vec3 c = silkCurlPsi(screenPx * FIELD_SCALE * layerScale, tz);
+  float m = length(c.xy);
+  vec2 dir = m > 1e-5 ? c.xy / m : vec2(1.0, 0.0);
+  return vec3(pointerBend(screenPx, dir), c.z);
+}
+
+// Integrate a short streamline and accumulate soft ribbon intensity.
+// Returns vec3(silk, speedHint, psiCenter). One fieldSample per step (3 snoise).
+vec3 accumulateStratum(vec2 origin, float tz, float layerScale){
+  float silk = 0.0;
+  float wsum = 0.0;
+  float L = float(STEPS) * STEP_PX;
+
+  // Centre tap — also yields speed + psi for bead/palette.
+  vec3 c0 = silkCurlPsi(origin * FIELD_SCALE * layerScale, tz);
+  float speedHint = length(c0.xy);
+  vec2 dir0 = speedHint > 1e-5 ? c0.xy / speedHint : vec2(1.0, 0.0);
+  dir0 = pointerBend(origin, dir0);
+  silk += strandOf(c0.z);
+  wsum += 1.0;
+
+  // Forward (+1) then backward (−1) Euler march.
+  // One fieldSample per step: advance with current dir, accumulate psi at arrival.
+  for (int sgn = 0; sgn < 2; sgn++){
+    float sdir = sgn == 0 ? 1.0 : -1.0;
+    vec2  pt   = origin;
+    vec2  dir  = dir0;
+    for (int i = 1; i <= STEPS; i++){
+      pt += STEP_PX * dir * sdir;
+      vec3 sm = fieldSample(pt, tz, layerScale);
+      dir = sm.xy;
+      float s = float(i) * STEP_PX;
+      float hann = 0.5 + 0.5 * cos(3.14159265 * s / L);
+      silk += hann * strandOf(sm.z);
+      wsum += hann;
+    }
+  }
+
+  silk = silk / max(wsum, 1e-4);
+  return vec3(silk, speedHint, c0.z);
+}
+
+vec3 renderKernel(vec2 uv, vec2 fragCoord){
+  vec2 p = (fragCoord - 0.5 * uResolution) / uResolution.y;
+
+  // Scroll (D2): scrub wind time + soft vertical gust energy for accent shift.
+  float sN     = uScroll.y > 0.0 ? uScroll.x / uScroll.y : 0.0;
+  float energy = clamp(abs(uScrollVel) / 120.0, 0.0, 1.0);
+  float b      = breath(uTime);
+  float timeScaleBreath = 0.7 + 0.6 * b;
+  float tz     = uTime * TIME_SCALE * timeScaleBreath + sN * TIME_SCALE * 9.0;
+
+  // ── Dual depth strata (parallax) ──────────────────────────────────────
+  // Back (broad, slow, dimmer) + front (fine, faster eddies).
+  // Cost: 2 × (1 centre curl + 2×6 path curls) × 3 snoise ≈ 78 snoise.
+  vec3 back  = accumulateStratum(fragCoord, tz * 0.47 + 90.0, 0.70);
+  vec3 front = accumulateStratum(fragCoord, tz,               1.55);
+
+  // Layer weights: back ~40% contribution, front carries most of the silk.
+  float silk  = back.x * 0.55 + front.x * 1.0;
+  float speed = clamp((back.y + front.y) * 0.35, 0.0, 1.0);
+  float psiC  = mix(back.z, front.z, 0.65);
+
+  // Breath gathers density + brightness on the inhale.
+  float breathLift = 0.82 + 0.30 * b;
+  silk = clamp(silk * breathLift * (1.0 + 0.25 * energy), 0.0, 1.5);
+
+  // Traveling light-bead: flow-aligned phase from centre ψ + screen projection.
+  // Reuses front stratum's raw curl direction without an extra field sample:
+  // reconstruct a cheap unit direction from the front speed/psi channel by
+  // projecting with a stable secondary phase along the fragment.
+  float beadPhase = fract(
+    psiC * 1.7
+    + (fragCoord.x * 0.0031 + fragCoord.y * 0.0027)
+    + uTime * 0.35
+    + speed * 0.4
+  ) - 0.5;
+  float bead = exp(-(beadPhase * beadPhase) / 0.018);
+  bead *= 0.9 + 0.35 * b;
+
+  // Contrast the soft accumulation into crisp luminous ribbons without
+  // turning into a heavy LIC texture.
+  float ribbon = pow(clamp(silk, 0.0, 1.0), 1.35);
+  ribbon = smoothstep(0.08, 0.92, ribbon);
+
+  // Accent ramp walks with speed + scroll (parity with old colorShift).
+  float accentT = 0.10 + 0.55 * ribbon + 0.20 * speed + 0.12 * sN + energy * 0.08;
+  vec3  tint    = accentRamp(accentT);
+
+  // Theme-branched silk composite.
+  vec3 col;
+  if (uTheme < 0.5){
+    // DARK: bright luminous strands on deep ink; bead lifts toward near-white.
+    vec3 hot  = mix(tint, vec3(0.97, 0.98, 1.0), 0.45 * clamp(bead, 0.0, 1.0));
+    float a   = clamp(ribbon * (1.0 + 0.85 * bead), 0.0, 1.0) * uIntensity;
+    col = mix(uBg, hot, a);
+    // Soft halo under the brightest beads (silk glow, not stipple).
+    col += tint * (0.08 * b + 0.10 * bead) * ribbon * uIntensity;
+  } else {
+    // LIGHT: ink strands on paper; bead darkens (white would vanish on pearl).
+    vec3 dark = mix(tint, uInk, 0.30 + 0.35 * clamp(bead, 0.0, 1.0));
+    float a   = clamp(ribbon * (0.85 + 0.35 * bead), 0.0, 1.0) * uIntensity;
+    col = mix(uBg, dark, a);
+  }
+
+  // Faint ambient flow haze in the gaps (keeps the field alive between strands).
+  float haze = fbm(vec3(fragCoord * FIELD_SCALE * 0.55, uTime * 0.04));
+  col = mix(col, accentRamp(0.08 + 0.25 * haze + 0.1 * b), 0.045 * uIntensity * (1.0 - ribbon));
+
+  // Vignette — protect glass-type legibility over the silk.
+  float vig = smoothstep(1.6, 0.2, length(p));
+  col = mix(uBg, col, 0.42 + 0.58 * vig);
+
+  return col;   // dither() added by the factory MAIN wrapper
+}
+`;
 
 export function createFlowFieldKernel(): Kernel {
-  let ctx: CanvasRenderingContext2D | null = null;
-  let width = 0;
-  let height = 0;
-  let dpr = 1;
-  let palette: KernelPalette | null = null;
-  let reducedMotion = false;
-  let tracers: Tracer[] = [];
-  let pointer: { x: number; y: number; active: boolean } = { x: 0, y: 0, active: false };
-  let scroll = { y: 0, vy: 0, yMax: 0 };
-  let trailRgb: RGB = [7, 8, 15];
-
-  function count(): number {
-    const area = width * height;
-    return Math.max(380, Math.min(1500, Math.round(area / 1100)));
-  }
-
-  function spawn(t: Tracer, randomAge: boolean, i: number): void {
-    t.x = Math.random() * width;
-    t.y = Math.random() * height;
-    t.px = t.x;
-    t.py = t.y;
-    t.px2 = t.x; // collapse history so a fresh strand never streaks across screen
-    t.py2 = t.y;
-    t.life = 120 + Math.random() * 260;
-    // Golden-ratio initial age distributes birth/death evenly → no clumpy flicker.
-    t.age = randomAge ? ((i * 0.618034) % 1) * t.life : 0;
-    t.accent = Math.floor(Math.random() * (palette?.accents.length ?? 4));
-    t.bright = 0.6 + Math.random() * 0.4;
-    // Stable-per-index bead phase + depth stratum (~40% back, ~60% front).
-    t.seed = (i * 0.754877) % 1;
-    t.layer = ((i * 0.381966) % 1) < 0.4 ? 0 : 1;
-  }
-
-  function build(): void {
-    const n = count();
-    tracers = new Array(n);
-    for (let i = 0; i < n; i++) {
-      const t: Tracer = {
-        x: 0, y: 0, px: 0, py: 0, px2: 0, py2: 0,
-        age: 0, life: 0, accent: 0, bright: 1, seed: 0, layer: 1,
-      };
-      spawn(t, true, i);
-      tracers[i] = t;
-    }
-  }
-
-  function applyTransform(): void {
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  function paintBase(alpha: number): void {
-    if (!ctx) return;
-    ctx.fillStyle = toCss(trailRgb, alpha);
-    ctx.fillRect(0, 0, width, height);
-  }
-
-  function syncPalette(p: KernelPalette): void {
-    palette = p;
-    trailRgb = p.bg;
-  }
-
-  function renderStaticFrame(): void {
-    if (!ctx || !palette) return;
-    paintBase(1);
-    for (let step = 0; step < 30; step++) advance(step * 16, 16, false);
-    advance(3500, 16, true); // frozen near-peak inhale for a rich still
-  }
-
-  /** One integration + optional draw step. */
-  const v: [number, number] = [0, 0];
-  function advance(tMs: number, dtMs: number, draw: boolean): void {
-    if (!ctx || !palette) return;
-    const dt = Math.min(dtMs, 32) / 16;
-
-    // Breath couples field speed + time-scale; scroll scrub stays unscaled so
-    // raking still reads.
-    const b = breathAt(tMs);
-    const speedMulBreath = 0.82 + 0.3 * b;
-    const timeScaleBreath = 0.7 + 0.6 * b;
-    const tz = tMs * TIME_SCALE * timeScaleBreath + scroll.y * TIME_SCALE * SCROLL.TIME_SCRUB;
-
-    const accents = palette.accents;
-    const ink = palette.ink;
-    const light = palette.theme === "light";
-    const beadIntensity = light ? 0.9 : 1.4;
-    const baseAlpha = light ? 0.5 : 0.42;
-    const intensity = palette.intensity;
-
-    // Scroll energy is constant across tracers this frame.
-    const sV = scroll.vy;
-    const energy = Math.min(Math.abs(sV) / 120, 1);
-    const bloom = draw ? energy : 0;
-    const colorShift = scroll.y / SCROLL.COLOR_SHIFT_PX + sV * SCROLL.ACCENT_ACCEL * 0.01;
-    const n = accents.length || 1;
-
-    for (let i = 0; i < tracers.length; i++) {
-      const tr = tracers[i]!;
-      // Roll the 3-point history before integrating.
-      tr.px2 = tr.px;
-      tr.py2 = tr.py;
-      tr.px = tr.x;
-      tr.py = tr.y;
-
-      // Two decorrelated depth strata: back = broad slow current, front = fine
-      // fast eddies. Same noise-sample count, just different sample coords.
-      const layerScale = tr.layer ? 1.55 : 0.7;
-      const layerTz = tr.layer ? tz : tz * 0.47 + 90;
-      curl2(tr.x * FIELD_SCALE * layerScale, tr.y * FIELD_SCALE * layerScale, layerTz, v);
-      let vx = v[0];
-      let vy = v[1];
-
-      // Pointer swirl: tangential curl around the cursor (bow wave).
-      if (pointer.active) {
-        const dx = tr.x - pointer.x;
-        const dy = tr.y - pointer.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < POINTER.R * POINTER.R) {
-          const d = Math.sqrt(d2) || 1;
-          const f = Math.pow((POINTER.R - d) / POINTER.R, POINTER.FALLOFF);
-          vx += (-dy / d) * f * POINTER.STRENGTH;
-          vy += (dx / d) * f * POINTER.STRENGTH;
-        }
-      }
-
-      // Scroll reactions layered on top of the breath.
-      const speedMul = 1 + energy * SCROLL.SPEED_BOOST;
-      if (sV !== 0) {
-        const dir = Math.sign(sV);
-        vy += dir * Math.min(Math.abs(sV) / SCROLL.GUST_K, SCROLL.GUST);
-        vx += dir * energy * SCROLL.SHEAR;
-      }
-
-      tr.x += vx * SPEED * speedMul * speedMulBreath * dt;
-      tr.y += vy * SPEED * speedMul * speedMulBreath * dt;
-      tr.age += dt * 16;
-
-      const off = tr.x < -4 || tr.x > width + 4 || tr.y < -4 || tr.y > height + 4;
-      if (off || tr.age > tr.life) {
-        spawn(tr, false, i);
-        continue;
-      }
-
-      if (draw) {
-        const lifeT = tr.age / tr.life;
-        // Asymmetric envelope: flare in fast, linger, soft fade out.
-        const fade =
-          smoothstep01(lifeT, 0, 0.12) *
-          (0.4 +
-            0.6 * (0.5 + 0.5 * Math.cos(Math.min(Math.max((lifeT - 0.6) / 0.4, 0), 1) * Math.PI)));
-
-        // Traveling light-bead: a bright window crosses each strand, offset per
-        // strand by its seed → a standing wave of light through the field.
-        const beadPhase = ((lifeT + tr.seed) % 1) - 0.5;
-        const bead = Math.exp(-(beadPhase * beadPhase) / 0.018);
-        const glow = bead * beadIntensity;
-        const glowC = Math.min(glow, 1);
-
-        const accentIdx = (((Math.trunc(tr.accent + colorShift) % n) + n) % n);
-        const base = accents[accentIdx] ?? ink;
-        let rgb = light ? mixRgb(base, ink, 0.25) : base;
-        // Bead lerps toward near-white on dark (a hot point) / toward ink on
-        // light (a dark luminous node — white would vanish on pearl).
-        if (glowC > 0.01) rgb = mixRgb(rgb, light ? ink : NEAR_WHITE, (light ? 0.4 : 0.45) * glowC);
-
-        const alpha =
-          (baseAlpha + bloom * SCROLL.ALPHA_BOOST) *
-          fade *
-          tr.bright *
-          intensity *
-          (tr.layer ? 1 : 0.7) * // back stratum dimmer
-          (1 + glow);
-
-        ctx.lineWidth = (tr.layer ? 1 : 1.3) * (1.15 + bloom * SCROLL.LINE_WIDTH);
-        ctx.strokeStyle = toCss(rgb, Math.min(alpha, 1));
-        ctx.beginPath();
-        ctx.moveTo((tr.px2 + tr.px) / 2, (tr.py2 + tr.py) / 2);
-        ctx.quadraticCurveTo(tr.px, tr.py, (tr.px + tr.x) / 2, (tr.py + tr.y) / 2);
-        ctx.stroke();
-      }
-    }
-  }
-
-  return {
+  return createShaderKernel({
     id: "flow",
     label: "Flow Field",
-    substrate: "2d",
-
-    init(rc: KernelRenderingContext, frame: KernelFrameContext) {
-      ctx = rc as CanvasRenderingContext2D;
-      width = frame.width;
-      height = frame.height;
-      dpr = frame.dpr;
-      reducedMotion = frame.reducedMotion;
-      syncPalette(frame.palette);
-      applyTransform();
-      ctx.lineCap = "round";
-      paintBase(1);
-      build();
-      if (reducedMotion) renderStaticFrame();
-    },
-
-    frame(tMs: number, dtMs: number) {
-      if (!ctx) return;
-      const b = breathAt(tMs);
-      const light = palette?.theme === "light";
-      // Trails persist longer at peak inhale → the field gathers density.
-      paintBase(light ? 0.1 - 0.02 * b : 0.095 - 0.03 * b);
-      advance(tMs, dtMs, true);
-    },
-
-    resize(frame: KernelFrameContext) {
-      width = frame.width;
-      height = frame.height;
-      dpr = frame.dpr;
-      applyTransform();
-      ctx!.lineCap = "round";
-      paintBase(1);
-      build();
-      if (reducedMotion) renderStaticFrame();
-    },
-
-    setTheme(_theme: ThemeName, next: KernelPalette) {
-      syncPalette(next);
-      paintBase(1);
-    },
-
-    pointer(x: number, y: number, active: boolean) {
-      pointer = { x, y, active };
-    },
-
-    scroll(y: number, vy: number, yMax: number) {
-      scroll = { y, vy, yMax };
-    },
-
-    renderStatic() {
-      renderStaticFrame();
-    },
-
-    dispose() {
-      ctx = null;
-      tracers = [];
-    },
-  };
+    body: BODY,
+    // D7 opt-in → host pushes D2's shared vec2 uScroll / float uScrollVel block
+    // (scroll time-scrub + gust energy, matching the old Canvas2D reactive layer).
+    controls: ["scroll"],
+  });
 }

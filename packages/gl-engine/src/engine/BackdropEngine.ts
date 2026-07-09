@@ -8,7 +8,7 @@
  *  - pointer routing (window-level, mapped to canvas space)
  *  - prefers-reduced-motion (static frame, no loop)
  *  - crossfade transitions when switching kernels (both run during the fade)
- *  - graceful WebGL2 fallback to a 2D kernel
+ *  - graceful WebGL2 unavailability handling (resolve to default; never black)
  *
  * The React layer ({@link KernelHost}) is a thin wrapper that constructs one
  * engine and forwards prop changes. Kept as a class so it is unit-testable and

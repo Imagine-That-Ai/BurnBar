@@ -128,6 +128,7 @@
       deterministic RNG and glyph sampler. Dashboard/DashboardPage + EasterEggCanvasHost
       STEP + draw this with Win2D; it is unit-tested on macOS (windows/tests/dashboard).
     -->
+    <ProjectReference Include="../OpenBurnBar.App.Community/OpenBurnBar.App.Community.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Dashboard/OpenBurnBar.App.Dashboard.csproj" />
     <!--
       Portable PetCompanion core (net8.0, no WinUI) for the desktop pet (Phase 4 · G4):

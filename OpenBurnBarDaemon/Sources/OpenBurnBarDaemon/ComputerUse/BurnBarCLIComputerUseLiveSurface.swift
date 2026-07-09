@@ -1,12 +1,12 @@
 import Foundation
 
-enum BurnBarCLIComputerUseLiveSurface {
+public enum BurnBarCLIComputerUseLiveSurface {
     private static let usageText = """
     Usage:
       openburnbar-cli computer-use live-surface-proof --panic-url URL --media-url URL [--audit-head HASH] [--json]
     """
 
-    static func run(arguments: [String]) throws -> BurnBarCLIInvocationResult {
+    public static func run(arguments: [String]) throws -> BurnBarCLIInvocationResult {
         guard arguments.first == "live-surface-proof" else {
             throw BurnBarCLIError.missingArgument(usageText)
         }

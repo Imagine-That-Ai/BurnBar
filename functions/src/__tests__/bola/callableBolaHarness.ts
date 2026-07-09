@@ -249,17 +249,58 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
         store.delete(path);
       },
     }),
-    collection: (name: string) => ({
-      doc: (id: string) => pathKeyedFirestore(store).doc(`${name}/${id}`),
-      add: async (data: Record<string, unknown>) => {
-        const id = `auto-${store.size + 1}`;
-        const path = `${name}/${id}`;
-        store.set(path, data);
-        return { id, path };
+    collection: (name: string) => {
+      const collectionPath = (id: string) => `${name}/${id}`;
+      const makeQuery = (limitCount?: number) => ({
+        where: () => makeQuery(limitCount),
+        limit: (n: number) => makeQuery(n),
+        orderBy: () => makeQuery(limitCount),
+        get: async () => {
+          const prefix = `${name}/`;
+          let entries = [...store.entries()].filter(([path]) => path.startsWith(prefix));
+          if (limitCount !== undefined) {
+            entries = entries.slice(0, limitCount);
+          }
+          const docs = entries.map(([path, data]) => {
+            const ref = pathKeyedFirestore(store).doc(path);
+            return {
+              ref,
+              data: () => data,
+              id: path.slice(prefix.length),
+            };
+          });
+          return { docs, empty: docs.length === 0, size: docs.length };
+        },
+      });
+      return {
+        doc: (id: string) => pathKeyedFirestore(store).doc(collectionPath(id)),
+        add: async (data: Record<string, unknown>) => {
+          const id = `auto-${store.size + 1}`;
+          const path = collectionPath(id);
+          store.set(path, data);
+          return { id, path };
+        },
+        where: () => makeQuery(),
+        limit: (n: number) => makeQuery(n),
+        orderBy: () => makeQuery(),
+        get: makeQuery().get,
+      };
+    },
+    collectionGroup: (collectionId: string) => ({
+      get: async () => {
+        const suffix = `/${collectionId}`;
+        const docs = [...store.entries()]
+          .filter(([path]) => path.endsWith(suffix))
+          .map(([path, data]) => {
+            const ref = pathKeyedFirestore(store).doc(path);
+            return {
+              ref,
+              data: () => data,
+              id: path.split("/").pop() ?? "",
+            };
+          });
+        return { docs, empty: docs.length === 0 };
       },
-      where: () => emptyQuery(),
-      limit: () => emptyQuery(),
-      orderBy: () => emptyQuery(),
     }),
     batch: () => {
       const ops: Array<() => void> = [];

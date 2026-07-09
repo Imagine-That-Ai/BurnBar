@@ -54,6 +54,9 @@ struct YouView: View {
                     providerConnectionsRow
                         .staggeredEntrance(delay: 0.15)
 
+                    communityRow
+                        .staggeredEntrance(delay: 0.12)
+
                     computerUseRow
                         .staggeredEntrance(delay: 0.18)
 
@@ -239,6 +242,34 @@ struct YouView: View {
     }
 
     // MARK: - Provider Connections Row
+
+    private var communityRow: some View {
+        NavigationLink(value: YouRoute.community) {
+            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.3.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(MobileTheme.ember)
+                        .frame(width: 44, height: 44)
+                        .background(MobileTheme.ember.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Community")
+                            .font(MobileTheme.Typography.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text("Compare your burn with other burners")
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("you.community.row")
+    }
 
     private var providerConnectionsRow: some View {
         NavigationLink(value: YouRoute.providers) {
@@ -482,6 +513,7 @@ enum YouRoute: Hashable, CaseIterable {
     case computerUse
     case dataVault
     case memory
+    case community
 }
 
 // MARK: - Cloud Member Crest Row

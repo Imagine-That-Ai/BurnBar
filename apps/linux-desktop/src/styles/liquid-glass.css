@@ -43,3 +43,42 @@
   border-color: var(--glass-stroke-bright);
   background: var(--color-frost-veil);
 }
+
+/* Interactive glass control — secondary buttons/chips (tint optional via --glass-interactive-tint). */
+.glass-interactive {
+  background: var(--glass-pill);
+  border: 1px solid var(--glass-pill-stroke);
+  border-radius: var(--glass-radius-pill);
+  backdrop-filter: var(--glass-pill-blur);
+  -webkit-backdrop-filter: var(--glass-pill-blur);
+  box-shadow: var(--glass-pill-shadow);
+  color: var(--color-text-base);
+  transition: var(--glass-transition);
+}
+
+.glass-interactive:hover,
+.glass-interactive:focus-visible {
+  border-color: var(--glass-stroke-bright);
+  background: color-mix(in srgb, var(--color-frost-veil) 50%, var(--glass-pill));
+  color: var(--color-text-bright);
+  outline: none;
+}
+
+/* Primary interactive — meaning tint rides on glass, never a second glass layer. */
+.glass-interactive-primary {
+  border: 1px solid color-mix(in srgb, var(--color-brass-bright) 40%, transparent);
+  border-radius: var(--glass-radius-pill);
+  background: var(--ds-accent-gradient);
+  color: #120804;
+  font-weight: 650;
+  box-shadow:
+    0 6px 20px color-mix(in srgb, var(--color-brass-glow) 38%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  transition: filter 160ms var(--motion-ease-standard), box-shadow 160ms var(--motion-ease-standard);
+}
+
+.glass-interactive-primary:hover,
+.glass-interactive-primary:focus-visible {
+  filter: brightness(1.07);
+  outline: none;
+}

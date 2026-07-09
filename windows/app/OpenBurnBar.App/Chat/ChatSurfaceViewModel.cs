@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.Chat;
+using OpenBurnBar.App.Configuration;
 
 namespace OpenBurnBar.App.Chat;
 

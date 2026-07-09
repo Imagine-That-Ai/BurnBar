@@ -13,8 +13,8 @@ namespace OpenBurnBar.App.Chat;
 
 /// <summary>
 /// Code-behind for the Chat surface. Owns the <see cref="ChatSurfaceViewModel"/>,
-/// boots the offscreen WebView2 Pretext host so the streaming bubbles measure
-/// against the real engine (dev-host-deferred on non-Windows), auto-scrolls to the
+/// boots the optional offscreen WebView2 Pretext host so the streaming bubbles measure
+/// against the real engine when the runtime is available, auto-scrolls to the
 /// newest message, and sends on Enter.
 /// </summary>
 public sealed partial class ChatSurfaceView : UserControl
@@ -89,6 +89,11 @@ public sealed partial class ChatSurfaceView : UserControl
             AppDiagnostics.LogException("chat.pretext", ex);
             // Measurement host unavailable (no WebView2 runtime): the bubbles keep
             // their inline fallback layout. Never blocks the surface.
+            if (_webView is not null)
+            {
+                PretextHost.Children.Remove(_webView);
+                _webView = null;
+            }
             _engine = null;
             _host = null;
             if (_webView is not null)

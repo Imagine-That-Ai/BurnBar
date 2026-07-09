@@ -10,10 +10,9 @@
  * incoming slot at `opacity:0` during the 700ms crossfade, so a blank frame or
  * two is invisible, and a warm dynamic import resolves in tens of milliseconds.
  *
- * Net effect on the bundle: each kernel's GLSL + helpers move from the eager
+ * Net effect on the bundle: every kernel's GLSL + helpers move from the eager
  * app-shell chunk into an on-demand chunk, paid for only when the visitor
- * actually switches to that kernel. The default kernel (constellation) and the
- * small originals stay eager so first paint is instant.
+ * actually mounts that kernel (including the default, constellation).
  */
 
 import type {

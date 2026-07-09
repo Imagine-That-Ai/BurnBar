@@ -13,6 +13,7 @@ struct MenuBarPopoverView: View {
     var smartDisplayRepairCoordinator: SmartDisplayRepairCoordinator?
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     let onOpenDashboard: () -> Void
+    var onOpenCommunity: (() -> Void)?
     let onOpenSettings: () -> Void
     var chatController: ChatSessionController?
     var onOpenDashboardWithChat: (() -> Void)?
@@ -851,6 +852,19 @@ struct MenuBarPopoverView: View {
                 onOpenDashboard()
             }
             .popoverTooltip("Open the full dashboard")
+
+            if let onOpenCommunity {
+                GlassButton(
+                    title: "Community",
+                    icon: "person.3.fill",
+                    style: .regular
+                ) {
+                    Analytics.shared.track(.menubarAction, ["action": "open_community"])
+                    dismiss()
+                    onOpenCommunity()
+                }
+                .popoverTooltip("Rankings and consent")
+            }
 
             GlassButton(
                 title: "Settings",

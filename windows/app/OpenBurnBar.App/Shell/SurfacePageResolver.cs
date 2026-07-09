@@ -27,6 +27,7 @@ public static class SurfacePageResolver
         "memory" => typeof(OpenBurnBar.App.Memory.MemoryPage),
         "elderWand" => typeof(OpenBurnBar.App.ElderWand.ElderWandPage),
         "onboarding" => typeof(OpenBurnBar.App.Onboarding.OnboardingPage),
+        "community" => typeof(OpenBurnBar.App.Community.CommunityPage),
         "settings" => typeof(OpenBurnBar.App.Settings.Winui.SettingsPage),
         _ => typeof(SurfaceStubPage),
     };

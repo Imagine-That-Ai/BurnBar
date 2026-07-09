@@ -83,12 +83,16 @@ struct CommandDeckPalette: View {
 
     // MARK: - Results
 
+    private var paletteSections: [DashboardMainRoute] {
+        DashboardMainRoute.primarySections + [.insights, .community]
+    }
+
     private var filteredSections: [DashboardMainRoute] {
         let q = trimmedQuery.lowercased()
         guard !q.isEmpty else {
-            return DashboardMainRoute.primarySections
+            return paletteSections
         }
-        return DashboardMainRoute.primarySections.filter { route in
+        return paletteSections.filter { route in
             let title = route.title(activeChatBackend: activeChatBackend).lowercased()
             let subtitle = route.subtitle(activeChatBackend: activeChatBackend).lowercased()
             return title.contains(q) || subtitle.contains(q) || matchesSubsequence(q, in: title)

@@ -88,7 +88,7 @@ const ACCOUNT_ERASURE_AUDIT_SCHEMA_VERSION = 1;
  * and therefore are not reached by the `users/{uid}` subtree walk. Account erase
  * must delete the caller's documents in each (GDPR Art.17).
  */
-const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound"] as const;
+const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound", "community_handles"] as const;
 
 export function userWorkspaceID(uid: string): string {
   return `workspace-${uid}`;
