@@ -1,4 +1,5 @@
 using System;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Theme;
@@ -89,16 +90,22 @@ public sealed partial class AppShell : UserControl
         }
     }
 
-    private static NavigationViewItem CreateItem(NavDestination destination) => new()
+    private static NavigationViewItem CreateItem(NavDestination destination)
     {
-        Content = destination.Title,
-        Tag = destination.Key,
-        Icon = new FontIcon
+        var item = new NavigationViewItem
         {
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
-            Glyph = destination.Glyph,
-        },
-    };
+            Content = destination.Title,
+            Tag = destination.Key,
+            Icon = new FontIcon
+            {
+                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
+                Glyph = destination.Glyph,
+            },
+        };
+        AutomationProperties.SetAutomationId(item, $"Shell.NavItem.{destination.Key}");
+        AutomationProperties.SetName(item, destination.Title);
+        return item;
+    }
 
     private void SelectDefault()
     {

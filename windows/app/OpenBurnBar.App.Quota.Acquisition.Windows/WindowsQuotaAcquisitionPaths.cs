@@ -1,30 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using OpenBurnBar.App.Configuration;
 
 namespace OpenBurnBar.App.Quota.Acquisition.Windows;
 
 // Default on-disk locations for the acquisition mechanisms — the Windows peers
 // of OpenBurnBarCore/.../Services/OpenBurnBarIdentity.swift (the Mac keeps its
 // bridge artifacts under ~/Library/Application Support/OpenBurnBar/). Follows
-// the AppConfiguration.DefaultFilePath convention: %LOCALAPPDATA%\OpenBurnBar
-// when the env var is set, else ~/.openburnbar (the macOS dev-host fallback).
+// the RuntimePaths convention: %LOCALAPPDATA%\OpenBurnBar in normal runs,
+// OPENBURNBAR_AUTOMATION_PROFILE_ROOT in harness runs, else ~/.openburnbar.
 
 /// <summary>Default acquisition paths (env-derived; every consumer is path-injected).</summary>
 public static class WindowsQuotaAcquisitionPaths
 {
-    /// <summary><c>%LOCALAPPDATA%\OpenBurnBar</c>; dev-host fallback <c>~/.openburnbar</c>.</summary>
-    public static string SupportDirectory()
-    {
-        string? local = Environment.GetEnvironmentVariable("LOCALAPPDATA");
-        if (!string.IsNullOrWhiteSpace(local))
-        {
-            return Path.Combine(local, "OpenBurnBar");
-        }
-
-        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".openburnbar");
-    }
+    /// <summary><c>%LOCALAPPDATA%\OpenBurnBar</c>, automation profile root, or dev-host fallback <c>~/.openburnbar</c>.</summary>
+    public static string SupportDirectory() => RuntimePaths.AppDataDirectory();
 
     /// <summary>Mac peer: <c>claude_statusline_snapshot.json</c> in the support dir.</summary>
     public static string ClaudeStatuslineSnapshotPath() =>

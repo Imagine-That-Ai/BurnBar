@@ -3,8 +3,10 @@ using System.IO;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using OpenBurnBar.App.Diagnostics;
 using Windows.Graphics.Imaging;
@@ -32,6 +34,8 @@ internal static class RouteSmokeHost
             string screenshotPath = Path.Combine(options.OutputDirectory, $"{SafeName(options.RouteKey)}.png");
             PixelStats stats = await CapturePngAsync(root, screenshotPath).ConfigureAwait(true);
             AppDiagnostics.LogEvent("route-smoke.capture.after-png", $"{options.RouteKey} -> {screenshotPath}");
+            string expectedAutomationId = ExpectedAutomationId(options.RouteKey);
+            bool expectedAutomationIdFound = ContainsAutomationId(root, expectedAutomationId);
             result = RouteSmokeResult.Pass(
                 options.RouteKey,
                 screenshotPath,
@@ -39,7 +43,9 @@ internal static class RouteSmokeHost
                 DateTimeOffset.UtcNow - started,
                 root.ActualWidth,
                 root.ActualHeight,
-                root.ActualTheme.ToString());
+                root.ActualTheme.ToString(),
+                expectedAutomationId,
+                expectedAutomationIdFound);
         }
         catch (Exception ex)
         {
@@ -105,6 +111,25 @@ internal static class RouteSmokeHost
         return routeKey;
     }
 
+    private static bool ContainsAutomationId(DependencyObject root, string expectedAutomationId)
+    {
+        if (string.Equals(AutomationProperties.GetAutomationId(root), expectedAutomationId, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        int childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < childCount; i++)
+        {
+            if (ContainsAutomationId(VisualTreeHelper.GetChild(root, i), expectedAutomationId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private sealed record PixelStats(int Width, int Height, double MeanLuma, double LumaStdDev, bool NearUniform)
     {
         public static PixelStats FromBgra(byte[] bgra, int width, int height)
@@ -149,6 +174,8 @@ internal static class RouteSmokeHost
         double ActualWidth,
         double ActualHeight,
         string? Theme,
+        string ExpectedAutomationId,
+        bool ExpectedAutomationIdFound,
         string? ExceptionType,
         string? Message)
     {
@@ -159,10 +186,12 @@ internal static class RouteSmokeHost
             TimeSpan elapsed,
             double actualWidth,
             double actualHeight,
-            string theme) =>
+            string theme,
+            string expectedAutomationId,
+            bool expectedAutomationIdFound) =>
             new(
                 routeKey,
-                stats.NearUniform ? 2 : 0,
+                stats.NearUniform || !expectedAutomationIdFound ? 2 : 0,
                 screenshotPath,
                 stats.Width,
                 stats.Height,
@@ -173,8 +202,14 @@ internal static class RouteSmokeHost
                 actualWidth,
                 actualHeight,
                 theme,
+                expectedAutomationId,
+                expectedAutomationIdFound,
                 null,
-                stats.NearUniform ? "Screenshot is near-uniform/blank." : null);
+                stats.NearUniform
+                    ? "Screenshot is near-uniform/blank."
+                    : expectedAutomationIdFound
+                        ? null
+                        : $"Expected automation id was not found: {expectedAutomationId}");
 
         public static RouteSmokeResult Fail(string routeKey, TimeSpan elapsed, Exception exception) =>
             new(
@@ -190,9 +225,13 @@ internal static class RouteSmokeHost
                 0,
                 0,
                 null,
+                RouteSmokeHost.ExpectedAutomationId(routeKey),
+                ExpectedAutomationIdFound: false,
                 exception.GetType().FullName,
                 exception.Message);
     }
+
+    private static string ExpectedAutomationId(string routeKey) => $"RouteRoot.{routeKey}";
 }
 
 internal static class DispatcherQueueExtensions

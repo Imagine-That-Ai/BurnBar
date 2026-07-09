@@ -148,7 +148,7 @@ contract, but each platform reduces chunks through the canonical
 - `longToolHint`, `notice`, `messageStop`
 
 The shared Swift model lives in
-`OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesStreamEvent.swift`;
+`OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesStreamEvent.swift`;
 the Android mirror lives in
 `android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/HermesRealtimeRelayFrame.kt`.
 `HermesOpenAICompatibleStreamParser` is the canonical OpenAI/Ollama-style SSE

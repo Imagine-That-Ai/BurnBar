@@ -18,7 +18,7 @@
       },
       "swiftHandMirror": [
         {
-          "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/TokenUsage.swift",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/TokenUsage.swift",
           "interfaces": [
             "UsageEventDoc"
           ]
@@ -60,13 +60,13 @@
       },
       "swiftHandMirror": [
         {
-          "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderAccountTypes.swift",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderAccountTypes.swift",
           "interfaces": [
             "ProviderAccountDoc"
           ]
         },
         {
-          "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarProviderContracts.swift",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarProviderContracts.swift",
           "interfaces": [
             "ProviderAccountConnectContext"
           ]

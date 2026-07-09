@@ -266,15 +266,15 @@ public struct RoamingProfilePayload: Codable, Hashable, Sendable {
     }
 }
 
-enum CloudVaultJSON {
-    static let roamingProfileEncoder: JSONEncoder = {
+public enum CloudVaultJSON {
+    public static let roamingProfileEncoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         return encoder
     }()
 
-    static let roamingProfileDecoder: JSONDecoder = {
+    public static let roamingProfileDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
