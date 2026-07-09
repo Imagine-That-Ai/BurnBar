@@ -157,7 +157,7 @@ final class CommunityConsentStore: ObservableObject {
             "l2Region": triStateString(l2Region),
             "l2City": triStateString(l2City),
             "locationConsent": triStateString(locationConsent),
-            "l3LookingGlass": triStateString(l3LookingGlass),
+            "l3LookingGlass": triStateString(l3LookingGlass)
         ]
         payload["timezone"] = TimeZone.current.identifier
         payload["locale"] = Locale.current.identifier

@@ -10,7 +10,11 @@
 import { firestoreWithResilience } from "../resilienceHelpers.js";
 import { CommunityPaths, COMMUNITY_SCHEMA_VERSION, recheckConsent } from "./consent.js";
 import { normalizeGeoKey } from "./geo.js";
-import type { CommunityShareSnapshotDoc, CommunityUsageTotal, CommunityWindowTotals } from "../types/generated/community.js";
+import type {
+  CommunityShareSnapshotDoc,
+  CommunityUsageTotal,
+  CommunityWindowTotals,
+} from "../types/generated/community.js";
 import type { CommunityFirestore } from "./firestoreTypes.js";
 
 const MAX_TOTAL_TOKENS = 50_000_000_000;
@@ -139,10 +143,10 @@ export async function buildCommunityShareSnapshotFromTrustedRollups(
 
   const countryCode = consent.l2Country ? optionalGeo(profile.countryCode) : undefined;
   const regionKey = consent.l2Region ? optionalGeo(profile.regionKey) : undefined;
-  const cityKey = consent.l2City ? optionalGeo(profile.cityKey) : undefined;
+  const consentedCity = consent.l2City ? optionalGeo(profile.cityKey) : undefined;
   if (countryCode !== undefined) snapshot.countryCode = countryCode;
   if (regionKey !== undefined) snapshot.regionKey = regionKey;
-  if (cityKey !== undefined) snapshot.cityKey = cityKey;
+  if (consentedCity !== undefined) snapshot.cityKey = consentedCity;
 
   return snapshot;
 }

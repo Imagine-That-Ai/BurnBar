@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.location.Address
 import android.location.Geocoder
+import android.location.Geocoder.GeocodeListener
 import android.location.Location
 import android.os.Build
 import androidx.core.content.ContextCompat
@@ -145,7 +146,16 @@ object CommunityLocationResolver {
                             loc.latitude,
                             loc.longitude,
                             1,
-                        ) { list -> cont.resume(list) }
+                            object : GeocodeListener {
+                                override fun onGeocode(addresses: MutableList<Address>) {
+                                    if (cont.isActive) cont.resume(addresses)
+                                }
+
+                                override fun onError(errorMessage: String?) {
+                                    if (cont.isActive) cont.resume(null)
+                                }
+                            },
+                        )
                     }
                 } else {
                     @Suppress("DEPRECATION") // reason: Android 12 and older require the synchronous Geocoder API.
@@ -158,14 +168,13 @@ object CommunityLocationResolver {
         }
     }
 
-    internal fun canonicalCityKeyFromAddress(address: Address): String? =
-        canonicalCityKeyFromComponents(
-            cityName = address.locality,
-            subLocality = address.subLocality,
-            countryCode = address.countryCode,
-            adminArea = address.adminArea,
-            subAdminArea = address.subAdminArea,
-        )
+    internal fun canonicalCityKeyFromAddress(address: Address): String? = canonicalCityKeyFromComponents(
+        cityName = address.locality,
+        subLocality = address.subLocality,
+        countryCode = address.countryCode,
+        adminArea = address.adminArea,
+        subAdminArea = address.subAdminArea,
+    )
 
     internal fun canonicalCityKeyFromComponents(
         cityName: String?,
@@ -188,14 +197,13 @@ object CommunityLocationResolver {
     }
 
     /** ISO 3166-2 subdivision without country prefix (e.g. "CA", not "US-CA"). */
-    internal fun normalizeRegionCode(address: Address, countryCode: String): String? =
-        normalizeRegionCode(address.adminArea, address.subAdminArea, countryCode)
+    internal fun normalizeRegionCode(address: Address, countryCode: String): String? = normalizeRegionCode(
+        address.adminArea,
+        address.subAdminArea,
+        countryCode,
+    )
 
-    internal fun normalizeRegionCode(
-        adminArea: String?,
-        subAdminArea: String?,
-        countryCode: String,
-    ): String? {
+    internal fun normalizeRegionCode(adminArea: String?, subAdminArea: String?, countryCode: String): String? {
         val admin =
             adminArea?.trim()?.takeIf { it.isNotEmpty() }
                 ?: subAdminArea?.trim()?.takeIf { it.isNotEmpty() }

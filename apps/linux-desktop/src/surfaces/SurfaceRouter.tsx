@@ -34,6 +34,7 @@ function makeDaemonSurface(route: ShellRoute, label: string): ComponentType {
 const SURFACES: Record<ShellRoute, ComponentType> = {
   overview: OverviewSurface,
   community: CommunitySurface,
+  insights: InsightsSurface,
   database: DatabaseSurface,
   providers: ProvidersSurface,
   projects: ProjectsSurface,

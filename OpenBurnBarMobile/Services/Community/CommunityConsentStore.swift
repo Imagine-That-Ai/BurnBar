@@ -190,7 +190,7 @@ final class CommunityConsentStore: ObservableObject {
             "locationConsent": wire(locationConsent),
             "l3LookingGlass": wire(l3LookingGlass),
             "timezone": TimeZone.current.identifier,
-            "locale": Locale.current.identifier,
+            "locale": Locale.current.identifier
         ]
         let profileCountry = profile?.countryCode
         let profileRegion = profile?.regionKey

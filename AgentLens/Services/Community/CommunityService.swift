@@ -42,8 +42,7 @@ enum CommunityLeaderboardWindow: String, CaseIterable, Identifiable, Sendable {
 
 @MainActor
 final class CommunityService: ObservableObject {
-    private let functionsRegion = "us-central1"
-    private let firestore: Firestore
+    private let firestore: CloudSyncFirestoreGateway
     private let functions: Functions
     private let uidProvider: () -> String?
 
@@ -52,7 +51,7 @@ final class CommunityService: ObservableObject {
     @Published private(set) var lastError: String?
 
     init(
-        firestore: Firestore = Firestore.firestore(),
+        firestore: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
         functions: Functions = Functions.functions(region: "us-central1"),
         uidProvider: @escaping () -> String? = { Auth.auth().currentUser?.uid }
     ) {
@@ -68,11 +67,12 @@ final class CommunityService: ObservableObject {
             return
         }
         do {
-            async let consentSnap = firestore.document("users/\(uid)/community/consent").getDocument()
-            async let profileSnap = firestore.document("users/\(uid)/community/profile").getDocument()
-            let (consent, prof) = try await (consentSnap, profileSnap)
-            remoteConsent = try consent.data(as: FirestoreCommunityConsentDoc.self)
-            profile = try prof.data(as: FirestoreCommunityProfileDoc.self)
+            let community = firestore.collection("users").document(uid).collection("community")
+            async let consentData = community.document("consent").getData()
+            async let profileData = community.document("profile").getData()
+            let (consent, prof) = try await (consentData, profileData)
+            remoteConsent = try decode(FirestoreCommunityConsentDoc.self, from: consent)
+            profile = try decode(FirestoreCommunityProfileDoc.self, from: prof)
             lastError = nil
         } catch {
             lastError = error.localizedDescription
@@ -85,11 +85,8 @@ final class CommunityService: ObservableObject {
         geoKey: String
     ) async throws -> FirestoreCommunityLeaderboardDoc {
         let docID = "\(window.rawValue)_\(tier.rawValue)_\(geoKey)"
-        let snap = try await firestore.collection("community_leaderboards").document(docID).getDocument()
-        guard snap.exists else {
-            throw CommunityServiceError.malformedResponse
-        }
-        return try snap.data(as: FirestoreCommunityLeaderboardDoc.self)
+        let data = try await firestore.collection("community_leaderboards").document(docID).getData()
+        return try decode(FirestoreCommunityLeaderboardDoc.self, from: data)
     }
 
     @discardableResult
@@ -132,5 +129,44 @@ final class CommunityService: ObservableObject {
         } catch {
             throw CommunityServiceError.server(error.localizedDescription)
         }
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, from data: [String: Any]?) throws -> T {
+        guard let data else { throw CommunityServiceError.malformedResponse }
+        let sanitized = Self.sanitizeForJSON(data)
+        guard JSONSerialization.isValidJSONObject(sanitized) else {
+            throw CommunityServiceError.malformedResponse
+        }
+        do {
+            let json = try JSONSerialization.data(withJSONObject: sanitized)
+            return try JSONDecoder().decode(type, from: json)
+        } catch {
+            throw CommunityServiceError.malformedResponse
+        }
+    }
+
+    private static func sanitizeForJSON(_ value: Any) -> Any {
+        switch value {
+        case let timestamp as Timestamp:
+            return iso8601String(from: timestamp.dateValue())
+        case let date as Date:
+            return iso8601String(from: date)
+        case let dict as [String: Any]:
+            return dict.reduce(into: [String: Any]()) { result, entry in
+                result[entry.key] = sanitizeForJSON(entry.value)
+            }
+        case let array as [Any]:
+            return array.map(sanitizeForJSON)
+        case is NSNull:
+            return NSNull()
+        default:
+            return value
+        }
+    }
+
+    private static func iso8601String(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 }

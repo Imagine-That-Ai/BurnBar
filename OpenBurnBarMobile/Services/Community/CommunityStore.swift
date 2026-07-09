@@ -64,8 +64,6 @@ final class CommunityStore {
     private let firestore = FirestoreRepository.shared
     private var listeners: [ListenerRegistration] = []
 
-
-
     var hasJoinedCommunity: Bool {
         consentDoc?.optedInAt?.isEmpty == false
     }
@@ -94,10 +92,7 @@ final class CommunityStore {
 
     private func startListening(uid: String) {
         stopListening()
-        let db = Firestore.firestore()
-
-        let consentRef = db.collection("users").document(uid).collection("community").document("consent")
-        listeners.append(consentRef.addSnapshotListener { [weak self] snap, error in
+        listeners.append(firestore.listenCommunityDocument(uid: uid, documentID: "consent") { [weak self] snap, error in
             Task { @MainActor in
                 guard let self else { return }
                 if let error { self.errorMessage = error.localizedDescription; return }
@@ -116,23 +111,28 @@ final class CommunityStore {
             }
         })
 
-        let profileRef = db.collection("users").document(uid).collection("community").document("profile")
-        listeners.append(profileRef.addSnapshotListener { [weak self] snap, _ in
+        listeners.append(firestore.listenCommunityDocument(uid: uid, documentID: "profile") { [weak self] snap, _ in
             Task { @MainActor in
                 guard let self, let data = snap?.data() else {
                     self?.profile = nil
+                    self?.leaderboards = [:]
                     return
                 }
-                self.profile = self.firestore.decodeWithDocID(
+                let decodedProfile = self.firestore.decodeWithDocID(
                     FirestoreCommunityProfileDoc.self,
                     from: data,
                     docID: "profile"
                 )
+                self.profile = decodedProfile
+                if decodedProfile != nil {
+                    await self.fetchLeaderboards(uid: uid)
+                } else {
+                    self.leaderboards = [:]
+                }
             }
         })
 
-        let shareRef = db.collection("users").document(uid).collection("community").document("share_snapshot")
-        listeners.append(shareRef.addSnapshotListener { [weak self] snap, _ in
+        listeners.append(firestore.listenCommunityDocument(uid: uid, documentID: "share_snapshot") { [weak self] snap, _ in
             Task { @MainActor in
                 guard let self, let data = snap?.data() else {
                     self?.shareSnapshot = nil
@@ -158,15 +158,13 @@ final class CommunityStore {
             (.city, profile.cityKey),
             (.region, profile.regionKey),
             (.country, profile.countryCode),
-            (.world, "world"),
+            (.world, "world")
         ]
-        let db = Firestore.firestore()
         for (tier, geoKey) in tiers {
             guard let geoKey, !geoKey.isEmpty else { continue }
             let docID = "\(window)_\(tier.rawValue)_\(geoKey)"
             do {
-                let snap = try await db.collection("community_leaderboards").document(docID).getDocument()
-                guard let data = snap.data(),
+                guard let data = try await firestore.fetchCommunityLeaderboard(docID: docID),
                       let doc = firestore.decodeWithDocID(
                         FirestoreCommunityLeaderboardDoc.self,
                         from: data,

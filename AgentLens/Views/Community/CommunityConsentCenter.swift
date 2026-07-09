@@ -210,7 +210,7 @@ struct CommunityConsentCenter: View {
                 try await service.updateProfile([
                     "handle": handle,
                     "timezone": TimeZone.current.identifier,
-                    "locale": Locale.current.identifier,
+                    "locale": Locale.current.identifier
                 ])
             }
             statusMessage = "Community preferences saved."

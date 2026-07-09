@@ -440,4 +440,3 @@ private struct SafariLinkSheet: View {
         .presentationDetents([.medium])
     }
 }
-

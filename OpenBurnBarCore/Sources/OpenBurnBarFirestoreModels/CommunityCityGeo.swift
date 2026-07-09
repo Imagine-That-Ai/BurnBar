@@ -22,7 +22,7 @@ public enum CommunityCityGeo {
         "\u{016E}": "U", "\u{016F}": "u",
         "\u{0147}": "N", "\u{0148}": "n",
         "\u{010E}": "D", "\u{010F}": "d",
-        "\u{0164}": "T", "\u{0165}": "t",
+        "\u{0164}": "T", "\u{0165}": "t"
     ]
 
     private static let combiningMarks = CharacterSet(charactersIn: "\u{0300}"..."\u{036F}")

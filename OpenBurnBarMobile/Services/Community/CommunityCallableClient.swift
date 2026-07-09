@@ -21,7 +21,7 @@ enum CommunityCallableClient {
 
     static func exportLookingGlassBundle() async throws -> URL {
         let response = try await call("exportLookingGlassBundle", data: ["format": "jsonl"])
-        guard let urlString = response.downloadURL,
+        guard let urlString = response.downloadUrl,
               let url = URL(string: urlString) else {
             throw CommunityStoreError.malformedResponse
         }
@@ -30,7 +30,7 @@ enum CommunityCallableClient {
 
     private struct CallableResponse: Sendable {
         let ok: Bool
-        let downloadURL: String?
+        let downloadUrl: String?
     }
 
     private static func call(_ name: String, data: [String: String]) async throws -> CallableResponse {
@@ -47,7 +47,7 @@ enum CommunityCallableClient {
                 }
                 continuation.resume(returning: CallableResponse(
                     ok: dict["ok"] as? Bool == true,
-                    downloadURL: dict["downloadURL"] as? String
+                    downloadUrl: dict["downloadUrl"] as? String
                 ))
             }
         }

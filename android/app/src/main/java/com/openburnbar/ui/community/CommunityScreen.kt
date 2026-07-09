@@ -1,9 +1,9 @@
 package com.openburnbar.ui.community
+
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,10 +25,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
-import com.openburnbar.data.community.ConsentTriState
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.community.CommunityTimeWindow
+import com.openburnbar.data.community.ConsentTriState
 import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.components.AuroraSparkline

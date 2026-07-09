@@ -40,7 +40,7 @@ final class CommunityViewModel: ObservableObject {
 
         let profile = service.profile
         var specs: [(FirestoreGeographyTier, String, String)] = [
-            (.world, "World", "world"),
+            (.world, "World", "world")
         ]
         if let cc = profile?.countryCode, !cc.isEmpty {
             specs.append((.country, cc.uppercased(), cc))

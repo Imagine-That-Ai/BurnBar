@@ -4,12 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.openburnbar.data.community.CommunityConsentDraft
-import com.openburnbar.data.community.ConsentTriState
 import com.openburnbar.data.community.CommunityConsentStore
 import com.openburnbar.data.community.CommunityFunctions
 import com.openburnbar.data.community.CommunityGeoTier
 import com.openburnbar.data.community.CommunityRepository
 import com.openburnbar.data.community.CommunityTimeWindow
+import com.openburnbar.data.community.ConsentTriState
 import com.openburnbar.data.community.usageForWindow
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.generated.FirestoreCommunityLeaderboardDoc

@@ -568,3 +568,19 @@ commits = [
 paths = [
   '''AgentLensTests/Active/CredentialExposureScanTests\.swift''',
 ]
+
+[[allowlists]]
+description = "Historical PR #1424 Community geo-consent variables named l2City are tier flags, not credential material; current tree renames the local, and this exception is pinned to the exact old commits and source paths"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''const cityKey = consent\.l2City \?''',
+]
+commits = [
+  '''24751ceb7c48806a73dd786fdcf0c2dbf87f0fc0''',
+  '''b51de7fc2c93cb477da80a9d9c877bcbb740063f''',
+]
+paths = [
+  '''functions/src/community/aggregation\.ts''',
+  '''functions/src/community/snapshot\.ts''',
+]

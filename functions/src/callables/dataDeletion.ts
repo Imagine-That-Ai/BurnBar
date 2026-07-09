@@ -26,12 +26,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import { DATA_DOMAIN_PATHS } from "./dataExport.js";
-import {
-  appendAuditEvent,
-  appendAuditEventRequired,
-  auditActorLabel,
-  AUDIT_ACTIONS,
-} from "./auditLog.js";
+import { appendAuditEvent, appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 /**
@@ -53,6 +48,13 @@ export const UNDELETABLE_DOMAINS = new Set<string>([
   "entitlements_billing",
   "audit_timeline",
 ]);
+
+function storagePrefixForDomain(uid: string, prefix: string): string {
+  if (prefix === "looking_glass_exports") {
+    return `looking_glass_exports/${uid}/`;
+  }
+  return `users/${uid}/${prefix}/`;
+}
 
 export const deleteDomainData = onCall(
   {
@@ -109,7 +111,7 @@ export const deleteDomainData = onCall(
       if (paths.storagePrefixes.length > 0) {
         const bucket = getStorage().bucket();
         for (const prefix of paths.storagePrefixes) {
-          const fullPrefix = `users/${uid}/${prefix}/`;
+          const fullPrefix = storagePrefixForDomain(uid, prefix);
           const [files] = await bucket.getFiles({ prefix: fullPrefix });
           storageObjects += files.length;
           await bucket.deleteFiles({ prefix: fullPrefix, force: true });

@@ -31,7 +31,7 @@ export function CommunitySurface() {
         <p className="eyebrow">Community</p>
         <h2>Anonymous rankings & consent-first sharing</h2>
         {view.showInvite ? (
-          <Banner tone="info">
+          <Banner tone="ok">
             Share anonymized usage to see where you stand — every tier is opt-in and unset stays dark.
           </Banner>
         ) : null}

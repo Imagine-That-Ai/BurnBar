@@ -42,7 +42,7 @@ enum ModelPurposeClassifier {
         "sql": .backend, "proto": .backend, "grpc": .backend,
         "ts": .logic, "tsx": .logic, "js": .logic, "mjs": .logic, "cjs": .logic, "dart": .logic,
         "md": .writing, "txt": .writing, "rst": .writing, "docx": .writing, "pdf": .writing,
-        "json": .research, "yaml": .research, "yml": .research, "csv": .research, "toml": .research,
+        "json": .research, "yaml": .research, "yml": .research, "csv": .research, "toml": .research
     ]
 
     private static let keywordMap: [String: ModelPurposeCategory] = [
@@ -61,7 +61,7 @@ enum ModelPurposeClassifier {
         "stacktrace": .debugging, "debug": .debugging, "test": .debugging, "fail": .debugging,
         "plan": .orchestration, "workflow": .orchestration, "pipeline": .orchestration,
         "agent": .orchestration, "automate": .orchestration, "schedule": .orchestration,
-        "mission": .orchestration,
+        "mission": .orchestration
     ]
 
     /// ORDERED — first substring match wins (see `model-bias-tie-order` golden).
@@ -71,14 +71,14 @@ enum ModelPurposeClassifier {
         ("deepseek", [.logic: 0.3, .backend: 0.2]),
         ("claude-3.5-sonnet", [.writing: 0.15, .logic: 0.15]),
         ("gpt-4o", [.ui: 0.1, .writing: 0.1]),
-        ("llama", [.backend: 0.15]),
+        ("llama", [.backend: 0.15])
     ]
 
     private static let surfaceBias: [String: [ModelPurposeCategory: Double]] = [
         "chat": [:],
         "dashboard": [.orchestration: 0.1],
         "editor": [.logic: 0.1],
-        "terminal": [.debugging: 0.15, .backend: 0.1],
+        "terminal": [.debugging: 0.15, .backend: 0.1]
     ]
 
     static func signalFingerprint(_ signals: ClassifierSignals) -> String {
@@ -146,14 +146,12 @@ enum ModelPurposeClassifier {
 
         if let model = signals.model {
             let modelLower = model.lowercased()
-            for entry in modelBias {
-                if modelLower.contains(entry.substring) {
-                    for (cat, weight) in entry.bias {
-                        scores[cat, default: 0] += weight
-                    }
-                    contributing.append("model:\(entry.substring)")
-                    break
+            for entry in modelBias where modelLower.contains(entry.substring) {
+                for (cat, weight) in entry.bias {
+                    scores[cat, default: 0] += weight
                 }
+                contributing.append("model:\(entry.substring)")
+                break
             }
         }
 

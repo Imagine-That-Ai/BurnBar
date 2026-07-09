@@ -187,7 +187,6 @@ private fun CommunityTriStateRow(icon: ImageVector, label: String, subtitle: Str
     }
 }
 
-
 private fun cityConfidenceCopy(draft: CommunityConsentDraft): String {
     if (draft.l2Rankings != ConsentTriState.GRANTED || draft.l2City != ConsentTriState.GRANTED) {
         return "City confidence: no city lookup. Country and region can use locale/timezone; world ranking needs no location."
@@ -200,4 +199,5 @@ private fun cityConfidenceCopy(draft: CommunityConsentDraft): String {
     }
     return "City confidence: Android approximate location resolves on save; raw coordinates never leave this device."
 }
+
 private fun tierFromToggle(on: Boolean): ConsentTriState = if (on) ConsentTriState.GRANTED else ConsentTriState.DECLINED

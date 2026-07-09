@@ -137,6 +137,25 @@ final class FirestoreRepository {
         decodeWithDocID(type, from: data, docID: docID, projectNameOpener: nil)
     }
 
+    func listenCommunityDocument(
+        uid: String,
+        documentID: String,
+        handler: @escaping (DocumentSnapshot?, Error?) -> Void
+    ) -> ListenerRegistration {
+        db.collection("users")
+            .document(uid)
+            .collection("community")
+            .document(documentID)
+            .addSnapshotListener(handler)
+    }
+
+    func fetchCommunityLeaderboard(docID: String) async throws -> [String: Any]? {
+        try await db.collection("community_leaderboards")
+            .document(docID)
+            .getDocument()
+            .data()
+    }
+
     /// `TokenUsage` decode for the incremental live listener: identical to
     /// `decodeWithDocID` but routes the sealed-project-name open through a
     /// per-listener `(docID, updatedAt)` memo, so a MODIFIED delivery that

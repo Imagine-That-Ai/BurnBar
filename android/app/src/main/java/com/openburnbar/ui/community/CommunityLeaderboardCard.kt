@@ -77,7 +77,7 @@ fun CommunityLeaderboardCard(state: CommunityLeaderboardCardState, anonId: Strin
                         CommunityLeaderboardRow(entry = entry, isYou = entry.anonId == anonId)
                     }
                     pinned?.let { you ->
-                        if (board.entries.none { it.anonId == you.anonId }) {
+                        if (board.entries.take(5).none { it.anonId == you.anonId }) {
                             Text(
                                 text = "Your rank",
                                 style = AuroraType.caption,

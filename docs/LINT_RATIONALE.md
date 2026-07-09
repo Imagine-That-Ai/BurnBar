@@ -140,6 +140,9 @@ AgentLens/Services/Analytics/AnalyticsShared.swift | OpenBurnBarMobile/Services/
 AgentLens/Services/AppCheckAttestationMonitor.swift | OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift | transport
 AgentLens/Services/Chat/HermesAttachmentLoader.swift | OpenBurnBarMobile/Services/HermesAttachmentLoader.swift | transport
 AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | transport
+AgentLens/Services/Community/CommunityConsentStore.swift | OpenBurnBarMobile/Services/Community/CommunityConsentStore.swift | storage-backend-divergence
+AgentLens/Services/Community/CommunityLocationResolver.swift | OpenBurnBarMobile/Services/Community/CommunityLocationResolver.swift | storage-backend-divergence
+AgentLens/Services/Community/ModelPurposeClassifier.swift | OpenBurnBarMobile/Services/Community/ModelPurposeClassifier.swift | storage-backend-divergence
 AgentLens/Services/DataStore/BudgetEnforcement.swift | OpenBurnBarMobile/Models/BudgetEnforcement.swift | storage-backend-divergence
 AgentLens/Services/DataStore/BudgetForecast.swift | OpenBurnBarMobile/Models/BudgetForecast.swift | storage-backend-divergence
 AgentLens/Services/DataStore/BudgetLedger.swift | OpenBurnBarMobile/Models/BudgetLedger.swift | storage-backend-divergence
@@ -174,6 +177,9 @@ AgentLens/Views/Components/Pro/ProBadgeDot.swift | OpenBurnBarMobile/Views/Compo
 AgentLens/Views/Components/Pro/ProPosterScaffold.swift | OpenBurnBarMobile/Views/Components/Pro/ProPosterScaffold.swift | platform-ui
 AgentLens/Views/Components/ProviderAccount/ProviderAccountChips.swift | OpenBurnBarMobile/Views/Components/ProviderAccountChips.swift | storage-backend-divergence
 AgentLens/Views/Components/ProviderAccount/ProviderRoutingCockpit.swift | OpenBurnBarMobile/Views/Components/ProviderRoutingCockpit.swift | storage-backend-divergence
+AgentLens/Views/Community/CommunityConsentCenter.swift | OpenBurnBarMobile/Views/Community/CommunityConsentCenter.swift | platform-ui
+AgentLens/Views/Community/CommunityLeaderboardCard.swift | OpenBurnBarMobile/Views/Community/CommunityLeaderboardCard.swift | platform-ui
+AgentLens/Views/Community/CommunityView.swift | OpenBurnBarMobile/Views/Community/CommunityView.swift | platform-ui
 AgentLens/Views/Dashboard/Components/ConstellationBackgroundView.swift | OpenBurnBarMobile/Views/Aurora/ConstellationBackgroundView.swift | platform-ui
 AgentLens/Views/Dashboard/Components/EasterEggEventCanvas.swift | OpenBurnBarMobile/Views/Aurora/EasterEgg/EasterEggEventCanvas.swift | platform-ui
 AgentLens/Views/Dashboard/Components/EasterEggOverlay.swift | OpenBurnBarMobile/Views/Aurora/EasterEgg/EasterEggOverlay.swift | platform-ui
