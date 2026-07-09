@@ -94,7 +94,7 @@
                                 Background="{StaticResource PensieveColorMercuryBrightBrush}"
                                 Opacity="0"
                                 IsHitTestVisible="False" />
-                        <!-- Frost-line inner top highlight (Linux --glass-inner-light). -->
+                        <!-- Frost-line inner top highlight (Linux glass-inner-light). -->
                         <Border CornerRadius="{TemplateBinding CornerRadius}"
                                 BorderThickness="0,1,0,0"
                                 BorderBrush="{StaticResource PensieveColorFrostLineBrush}"
