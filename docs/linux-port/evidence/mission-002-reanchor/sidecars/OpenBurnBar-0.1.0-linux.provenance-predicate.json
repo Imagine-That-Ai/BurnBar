@@ -1,9 +1,9 @@
 {
   "predicateType": "https://openburnbar.dev/attestations/linux-release-artifact/v1",
-  "generatedAt": "2026-07-09T18:11:05.324Z",
+  "generatedAt": "2026-07-09T18:19:59.959Z",
   "expectedCosignIdentity": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/v0.1.0",
   "git": {
-    "commit": "1e0f0c6e35a979aace55ef7763b8568bafa4cdb4",
+    "commit": "f0d6a85fe1d5cd3c5cc62ebaba235fa77f4d6fcc",
     "branch": "windows/liquid-glass-kernel-reskin",
     "remote": "https://github.com/Imagine-That-Ai/BurnBar.git",
     "dirty": false,
@@ -23,15 +23,15 @@
       "type": "deb",
       "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb",
       "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.0_arm64.deb",
-      "size": 27893280,
-      "sha256": "e3df0b4f7bd718fb2d573c264c61b440ffead4ad4045fa8515c47cd645c6920c"
+      "size": 53975410,
+      "sha256": "322ff158b4d61e2be2629b649eecd9a195b869639886ac23dfc6ec4fb34d660d"
     },
     {
       "type": "rpm",
       "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm",
       "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/rpm/OpenBurnBar-0.1.0-1.aarch64.rpm",
-      "size": 7358838,
-      "sha256": "03e1bf42480c592dec0c36ed3ed57a36b13a2de50a9c214bb65b2df96fc2d20e"
+      "size": 72955734,
+      "sha256": "6bb31a65e1f0f6f5838acb85cff936b7c36a3474e63fc7ff801b0604508d693a"
     },
     {
       "type": "daemon",
@@ -101,8 +101,8 @@
   "sbom": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
   "vex": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
   "sourceArchive": {
-    "file": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-source-1e0f0c6e35a9.tar",
-    "sha256": "d511ab9c8c87e4aed52f0bfa4990cd1f5917a667456957f0fc79176a2fdd0f09",
+    "file": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-source-f0d6a85fe1d5.tar",
+    "sha256": "e0b447219340d7c452967e789134d4baeffd23a835bc8758d6eca260e1314623",
     "represents": "HEAD only"
   },
   "signatures": [
