@@ -24,7 +24,7 @@ import { firestoreWithResilience } from "../resilienceHelpers.js";
 import { COMMUNITY_SCHEMA_VERSION, CommunityPaths } from "./consent.js";
 import { deriveGeoKeys, populateGeoKeys, normalizeGeoKey } from "./geo.js";
 import { assertCommunityRuntimeEnabled } from "./rollout.js";
-import { optionalEnumField, parseCallableInput } from "../validation/callableSchema.js";
+import { optionalEnumField, optionalString, parseCallableInput } from "../validation/callableSchema.js";
 import { refreshCommunityShareSnapshotForUser } from "./snapshot.js";
 import type { CommunityConsentDoc, CommunityProfileDoc } from "../types/generated/community.js";
 import type { ColumnSource } from "hyparquet-writer";
@@ -325,6 +325,15 @@ interface UpdateProfileInput {
 
 type CommunityTierGrants = Record<string, string>;
 
+const UPDATE_PROFILE_INPUT = {
+  handle: optionalString({ maxLength: HANDLE_MAX_LENGTH }),
+  timezone: optionalString({ maxLength: 128 }),
+  locale: optionalString({ maxLength: 64 }),
+  countryCode: optionalString({ maxLength: 16 }),
+  regionKey: optionalString({ maxLength: 96 }),
+  cityKey: optionalString({ maxLength: 128 }),
+} as const;
+
 function communityTierGrants(consent: Record<string, unknown>): CommunityTierGrants {
   if (consent.l2Rankings !== "granted") return {};
   const tiers = consent.l2Tiers;
@@ -403,7 +412,7 @@ export const updateCommunityProfile = onCallProduction(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to update your profile.");
     assertCommunityRuntimeEnabled("profile update");
 
-    const data = request.data ?? {};
+    const data = parseCallableInput("updateCommunityProfile", UPDATE_PROFILE_INPUT, request.data) as UpdateProfileInput;
     const db = getFirestore();
     const consentDoc = await db.doc(CommunityPaths.consent(uid)).get();
     if (!consentDoc.exists) {
