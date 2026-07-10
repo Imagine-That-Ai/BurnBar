@@ -21,6 +21,10 @@ on:
         required: false
         default: true
         type: boolean
+      previous_version:
+        description: Previous published Linux version for native update/rollback proof; auto-discovers when empty
+        required: false
+        type: string
   push:
     tags:
       - "linux-v*"
@@ -44,6 +48,7 @@ jobs:
       tag: ${{ steps.release-version.outputs.tag }}
       publish_allowed: ${{ steps.release-version.outputs.publish_allowed }}
       channel: ${{ steps.channel.outputs.value }}
+      previous_version: ${{ steps.previous-version.outputs.version }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -68,6 +73,26 @@ jobs:
           if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then channel="prerelease"; fi
           case "$channel" in stable|prerelease|nightly) ;; *) exit 1 ;; esac
           printf 'value=%s\n' "$channel" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve previous Linux release baseline
+        id: previous-version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PREVIOUS_VERSION: ${{ inputs.previous_version }}
+          CURRENT_VERSION: ${{ steps.release-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          previous="${INPUT_PREVIOUS_VERSION:-}"
+          if [[ -z "$previous" ]]; then
+            previous="$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft == false) | .tagName' \
+              | sed -n 's/^linux-v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$/\1/p' \
+              | grep -Fvx "$CURRENT_VERSION" | head -n 1 || true)"
+          fi
+          if [[ -n "$previous" && ! "$previous" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "previous Linux version must be strict X.Y.Z semver" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$previous" >> "$GITHUB_OUTPUT"
 
   build-architecture:
     name: Build Linux ${{ matrix.architecture }} shard
@@ -128,6 +153,54 @@ jobs:
 
       - name: Take ownership of shard output
         run: sudo chown -R "$(id -u):$(id -g)" "$OPENBURNBAR_LINUX_RELEASE_OUT"
+
+      - name: Stage current and previous packages for installed lifecycle proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_VERSION: ${{ needs.resolve-release.outputs.previous_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$OPENBURNBAR_LINUX_RELEASE_OUT/session" "$OPENBURNBAR_LINUX_RELEASE_OUT/previous"
+          mapfile -t candidates < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/artifacts" -maxdepth 1 -name '*.deb' -type f)
+          test "${#candidates[@]}" -eq 1
+          cp "${candidates[0]}" "$OPENBURNBAR_LINUX_RELEASE_OUT/session/"
+          if [[ -n "$PREVIOUS_VERSION" ]]; then
+            case "${{ matrix.architecture }}" in
+              aarch64) pattern="*_${PREVIOUS_VERSION}_arm64.deb" ;;
+              x86_64) pattern="*_${PREVIOUS_VERSION}_amd64.deb" ;;
+            esac
+            gh release download "linux-v${PREVIOUS_VERSION}" \
+              --pattern "$pattern" \
+              --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous"
+          fi
+
+      - name: Run package-owned desktop, daemon, accessibility, tray, and route session
+        run: >
+          docker run --rm
+          -e OB_REPO_ROOT=/workspace
+          -e OB_EVIDENCE_OUT=/workspace/.linux-shard/session
+          -e OB_REUSE_EXISTING_DEB=1
+          -v "$PWD:/workspace"
+          -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          bash scripts/linux-port/linux-desktop-session.sh
+
+      - name: Verify native package update, rollback, and data preservation
+        run: >
+          docker run --rm
+          -e OB_REPO_ROOT=/workspace
+          -e OB_EVIDENCE_OUT=/workspace/.linux-shard/session
+          -v "$PWD:/workspace"
+          -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          bash -c "OB_CANDIDATE_DEB=\$(find /workspace/.linux-shard/session -maxdepth 1 -name '*.deb' -type f | head -n 1)
+          OB_PREVIOUS_DEB=\$(find /workspace/.linux-shard/previous -maxdepth 1 -name '*.deb' -type f | head -n 1)
+          bash scripts/linux-port/verify-linux-package-update-rollback.sh"
+
+      - name: Finalize commit-bound architecture session
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$OPENBURNBAR_LINUX_RELEASE_OUT"
+          node scripts/linux-port/finalize-linux-architecture-session.mjs
 
       - name: Reject tracked dependency-resolution drift
         run: git diff --exit-code -- OpenBurnBarCore/Package.resolved OpenBurnBarDaemon/Package.resolved
@@ -270,4 +343,5 @@ jobs:
           path: |
             ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/
             ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
+            ${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}/
           if-no-files-found: error

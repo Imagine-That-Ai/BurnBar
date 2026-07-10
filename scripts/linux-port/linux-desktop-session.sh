@@ -604,7 +604,14 @@ const ipcHealthRoundTripSamples = $ipc_health_roundtrip_samples_json;
 const report = {
   generatedAt: new Date().toISOString(),
   profile: 'dbus-x11-xvfb-xfce-statusnotifier',
-  package: { name: '$pkg', executable: '$installed_bin' },
+  package: {
+    name: '$pkg',
+    version: fs.readFileSync(outDir + '/package-version.txt', 'utf8').trim(),
+    executable: '$installed_bin',
+    daemonExecutable: fs.readFileSync(outDir + '/package-daemon-path.txt', 'utf8').trim(),
+    shellVersionReadback: fs.readFileSync(outDir + '/shell-version-readback.txt', 'utf8').trim(),
+    daemonHealthReadback: JSON.parse(fs.readFileSync(outDir + '/daemon-health-readback.json', 'utf8'))
+  },
   session: {
     display: process.env.DISPLAY,
     xdgSessionType: process.env.XDG_SESSION_TYPE,
@@ -675,11 +682,14 @@ rm -f \
   "$out_dir"/atspi-zoom-200-requested.json \
   "$out_dir"/daemon-socket-gui-session.log \
   "$out_dir"/daemon-session-oracle.json \
+  "$out_dir"/daemon-health-readback.json \
   "$out_dir"/dbus-after-app.txt \
   "$out_dir"/dbus-before-app.txt \
   "$out_dir"/desktop-package-provision.txt \
   "$out_dir"/desktop-package-versions.txt \
   "$out_dir"/linux-desktop-session-report.json \
+  "$out_dir"/package-daemon-path.txt \
+  "$out_dir"/package-version.txt \
   "$out_dir"/openburnbar-linux-desktop.pid \
   "$out_dir"/openburnbar-linux-desktop.stderr.log \
   "$out_dir"/openburnbar-linux-desktop.stdout.log \
@@ -693,6 +703,7 @@ rm -f \
   "$out_dir"/orca-version.txt \
   "$out_dir"/packaged-route-session-transcript.json \
   "$out_dir"/runtime-perf-samples.jsonl \
+  "$out_dir"/shell-version-readback.txt \
   "$out_dir"/openbox.log \
   "$out_dir"/screenshot-linux-desktop-after-tray-open*.png \
   "$out_dir"/screenshot-linux-desktop-first-run*.png \
@@ -810,14 +821,27 @@ pkg="$(dpkg-deb -f "$deb" Package)"
 dpkg -i "$deb"
 dpkg-query -W -f='${binary:Package}=${Version} ${Status}\n' "$pkg"
 desktop_file="$(dpkg -L "$pkg" | grep '/applications/.*\.desktop$' | head -n 1 || true)"
-installed_bin="$(dpkg -L "$pkg" | grep '/bin/' | head -n 1 || true)"
+installed_bin="$(dpkg -L "$pkg" | grep -E '/usr/bin/openburnbar-linux-desktop$' | head -n 1 || true)"
+installed_daemon="$(dpkg -L "$pkg" | grep -E '/usr/bin/openburnbar-daemon$' | head -n 1 || true)"
 if [[ -z "$installed_bin" || ! -x "$installed_bin" ]]; then
   echo "Could not find installed executable for $pkg" >&2
   dpkg -L "$pkg" >&2
   exit 1
 fi
+if [[ -z "$installed_daemon" || ! -x "$installed_daemon" ]]; then
+  echo "Could not find package-owned daemon executable for $pkg" >&2
+  dpkg -L "$pkg" >&2
+  exit 1
+fi
+pkg_version="$(dpkg-query -W -f='${Version}' "$pkg")"
+"$installed_bin" --version >"$out_dir/shell-version-readback.txt"
+grep -F "$pkg_version" "$out_dir/shell-version-readback.txt" >/dev/null
+printf '%s\n' "$installed_daemon" >"$out_dir/package-daemon-path.txt"
+printf '%s\n' "$pkg_version" >"$out_dir/package-version.txt"
 echo "desktop_file=${desktop_file:-missing}"
 echo "installed_bin=$installed_bin"
+echo "installed_daemon=$installed_daemon"
+echo "package_version=$pkg_version"
 
 echo "== daemon socket for packaged session =="
 home_dir="$work_dir/home"
@@ -825,7 +849,9 @@ runtime_dir="$work_dir/runtime"
 data_dir="$home_dir/.local/share/openburnbar"
 mkdir -p "$data_dir" "$runtime_dir"
 chmod 700 "$runtime_dir"
-socket_path="$("$root/scripts/linux-port/start-shell-session-daemon.sh" "$root" "$out_dir" "$work_dir")"
+socket_path="$(OB_SHELL_DAEMON_BIN="$installed_daemon" OB_SHELL_DAEMON_VERSION="$pkg_version" \
+  OB_SHELL_HEALTH_CLIENT_BIN="$installed_bin" \
+  "$root/scripts/linux-port/start-shell-session-daemon.sh" "$root" "$out_dir" "$work_dir")"
 daemon_pid="$(cat "$work_dir/daemon.pid")"
 ls -l "$socket_path"
 cleanup_outer() {

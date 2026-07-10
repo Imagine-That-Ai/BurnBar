@@ -51,12 +51,20 @@ function fixture() {
   const vex = write('out/vex.json', Buffer.from('{"@context":"https://openvex.dev/ns/v0.2.0"}\n'));
   const sourceArchive = write('out/source.tar', Buffer.from('source'));
   const parityAttestation = write('out/parity.json', Buffer.from(`${JSON.stringify({ targetHead: HEAD, promotionPassed: true, productParityClaim: true })}\n`));
+  const lifecycle = Object.fromEntries(
+    ['guiLaunch', 'daemonLaunch', 'versionReadback', 'update', 'rollback', 'dataPreservation'].map((key) => [key, { status: 'passed' }])
+  );
+  const smokeSummary = { passed: true, failedCount: 0, lifecycle };
+  const architectureSessions = write('out/architecture-sessions.json', Buffer.from('{"schemaVersion":1,"sessions":[]}\n'));
+  const packageSmoke = write('out/package-smoke-summary.json', Buffer.from(`${JSON.stringify(smokeSummary)}\n`));
   const provenance = {
     version: VERSION,
     git: { commit: HEAD },
     expectedCosignIdentity: `https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v${VERSION}`,
     expectedCosignIssuer: 'https://token.actions.githubusercontent.com',
-    signatures
+    signatures,
+    architectureSessions,
+    packageSmoke
   };
   const provenancePredicate = write('out/provenance.json', Buffer.from(`${JSON.stringify(provenance)}\n`));
   const manifest = {
@@ -74,7 +82,16 @@ function fixture() {
     version: VERSION,
     git: { commit: HEAD },
     artifacts,
-    sidecars: { checksums, sbom, vex, provenancePredicate, sourceArchive, parityAttestation },
+    sidecars: {
+      checksums,
+      sbom,
+      vex,
+      provenancePredicate,
+      sourceArchive,
+      parityAttestation,
+      architectureSessions,
+      packageSmoke
+    },
     blockers: []
   };
   const releaseBase = `https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${VERSION}`;
@@ -108,10 +125,6 @@ function fixture() {
   );
   closure.sidecars.updateFeed = updateFeed;
   closure.sidecars.updateFeedSignature = updateFeedSignature;
-  const lifecycle = Object.fromEntries(
-    ['guiLaunch', 'daemonLaunch', 'versionReadback', 'update', 'rollback', 'dataPreservation'].map((key) => [key, { status: 'passed' }])
-  );
-  const smokeSummary = { passed: true, failedCount: 0, lifecycle };
   const input = { repoRoot, manifest, closure, provenance, latest, smokeSummary, publicKeyPem, expectedHead: HEAD, expectedVersion: VERSION };
   return {
     input,

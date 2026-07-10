@@ -16,6 +16,10 @@ import {
 } from './lib/linux-release-common.mjs';
 import { validateFeedDocument } from './lib/linux-update-feed.mjs';
 import { validateArchitectureShardSet } from './lib/linux-release-shards.mjs';
+import {
+  aggregateArchitectureLifecycle,
+  validateArchitectureSessionSet
+} from './lib/linux-package-session.mjs';
 
 const versionIndex = process.argv.indexOf('--version');
 const channelIndex = process.argv.indexOf('--channel');
@@ -144,6 +148,38 @@ for (const message of validateArchitectureShardSet({ manifest, shards: shardDocu
   blockers.push({ kind: 'shard-contract', message });
 }
 
+const sessionFiles = findNamedFiles(shardsDir, 'architecture-session.json');
+const architectureSessions = [];
+for (const sessionFile of sessionFiles) {
+  try {
+    architectureSessions.push(readJson(sessionFile));
+  } catch (error) {
+    blockers.push({ kind: 'architecture-session-json', message: `Architecture session is invalid JSON: ${sessionFile}`, error: String(error) });
+  }
+}
+for (const message of validateArchitectureSessionSet({
+  manifest,
+  sessions: architectureSessions,
+  version,
+  commit: git.commit
+})) {
+  blockers.push({ kind: 'architecture-session', message });
+}
+const architectureSessionFile = path.join(smokeDir, 'architecture-sessions.json');
+writeJson(architectureSessionFile, {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  sessions: architectureSessions
+});
+const packageLifecycle = aggregateArchitectureLifecycle({ manifest, sessions: architectureSessions });
+const packageSmokeFile = path.join(smokeDir, 'package-smoke-summary.json');
+writeJson(packageSmokeFile, {
+  schemaVersion: 2,
+  generatedAt: new Date().toISOString(),
+  architectures: manifest.supportedArchitectures,
+  ...packageLifecycle
+});
+
 const checksumsFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux-checksums.txt`);
 fs.writeFileSync(
   checksumsFile,
@@ -267,6 +303,16 @@ const provenance = {
   updateFeed: fs.existsSync(feedFile) ? { file: relative(feedFile), sha256: sha256(feedFile) } : null,
   updateFeedSignature: fs.existsSync(feedSignatureFile) ? { file: relative(feedSignatureFile), sha256: sha256(feedSignatureFile) } : null,
   signatures,
+  architectureSessions: {
+    file: relative(architectureSessionFile),
+    sha256: sha256(architectureSessionFile),
+    size: fileSize(architectureSessionFile)
+  },
+  packageSmoke: {
+    file: relative(packageSmokeFile),
+    sha256: sha256(packageSmokeFile),
+    size: fileSize(packageSmokeFile)
+  },
   promotionBlocked: blockers.length > 0,
   blockers
 };
@@ -293,6 +339,8 @@ writeJson(path.join(outDir, 'package-closure.json'), {
     provenancePredicate: closureRecord(provenanceFile),
     sourceArchive: closureRecord(sourceFile),
     parityAttestation: closureRecord(parityFile),
+    architectureSessions: closureRecord(architectureSessionFile),
+    packageSmoke: closureRecord(packageSmokeFile),
     updateFeed: closureRecord(feedFile),
     updateFeedSignature: closureRecord(feedSignatureFile)
   },
@@ -306,21 +354,6 @@ writeJson(path.join(smokeDir, 'architecture-smoke-summary.json'), {
   passed: shardRows.length === manifest.supportedArchitectures.length
     && !blockers.some((blocker) => blocker.kind === 'architecture-smoke')
 });
-writeJson(path.join(smokeDir, 'package-smoke-summary.json'), {
-  schemaVersion: 1,
-  generatedAt: new Date().toISOString(),
-  failedCount: 0,
-  lifecycle: {
-    guiLaunch: { status: 'blocked', reason: 'Per-architecture installed GUI session evidence has not been attached to this candidate.' },
-    daemonLaunch: { status: 'blocked', reason: 'Per-architecture package-owned daemon health evidence has not been attached to this candidate.' },
-    versionReadback: { status: 'blocked', reason: 'Shell and daemon version/commit readback is not yet proven for both architectures.' },
-    update: { status: 'blocked', reason: 'A previous compatible artifact set is required for native upgrade proof.' },
-    rollback: { status: 'blocked', reason: 'A previous compatible artifact set is required for native rollback proof.' },
-    dataPreservation: { status: 'blocked', reason: 'Upgrade and rollback must preserve a real user-data sentinel on each architecture.' }
-  },
-  passed: false
-});
-
 console.log(JSON.stringify({
   outDir: relative(outDir),
   architectures: [...seenArchitectures].sort(),
