@@ -320,7 +320,19 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-004 - Ship the architectures and desktop environments users have
 
-- **Difference:** the current Linux release workflow produces ARM64 artifacts
+**Implementation update (2026-07-09): partially closed in the implementation
+branch.** The release workflow now builds native `aarch64` and `x86_64` shards
+on separate GitHub runners, asserts runner architecture, runs per-architecture
+package inspection/install/uninstall smoke, and aggregates only after both
+hash-bound shard closures pass. The schema-3 verifier requires every
+AppImage/deb/rpm/daemon and architecture pair, exact detached-signature and
+checksum coverage, a hash-bound signed feed, source/SBOM/VEX/provenance/parity,
+and final Sigstore bundles. Mutation tests cover missing, duplicate,
+cross-commit, dirty, cross-architecture, and extra shard inputs. Actual x86_64
+package/session evidence and the GNOME Wayland, KDE Wayland, and wlroots
+certification rows remain open, so GAP-004 and P-37 are not closed.
+
+- **Difference:** the audited baseline Linux release workflow produced ARM64 artifacts
   only, and live evidence covers Ubuntu 24.04 GNOME ARM64. macOS parity is being
   claimed without x86_64, KDE Wayland, GNOME Wayland, or wlroots proof.
 - **Why it matters:** most desktop Linux users cannot install the current build,
@@ -1214,7 +1226,12 @@ Primary current evidence and implementation references:
 - Existing implementation plan and accepted substitutions:
   `docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`
 - Public prerelease: `https://github.com/Imagine-That-Ai/BurnBar/releases/tag/linux-v0.1.0`
-- Public update-feed target: `https://burnbar.ai/latest-linux.json`
+- Historical failing marketing-root probe:
+  `https://burnbar.ai/latest-linux.json`
+- Production update-feed target after remediation:
+  `https://downloads.burnbar.ai/latest-linux.json`. Live DNS/R2 activation is
+  still a named release blocker until the release environment runs the
+  Cloudflare domain-setup and verified upload steps successfully.
 
 This audit intentionally treats source existence and generated evidence as
 necessary but insufficient. A parity row becomes ready only when its real user

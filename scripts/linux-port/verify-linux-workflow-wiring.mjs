@@ -27,8 +27,23 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.release, "'*.sigstore.json'", 'published Sigstore bundles');
   requireText(input.release, "'*source-*.tar'", 'published source archive');
   requireText(input.release, "'*parity-attestation.json'", 'published parity attestation');
+  for (const marker of [
+    'architecture: aarch64',
+    'runner: ubuntu-24.04-arm',
+    'architecture: x86_64',
+    'runner: ubuntu-24.04',
+    '--architecture-shard',
+    'linux-release-shard-${{ matrix.architecture }}',
+    'assemble-linux-release.mjs',
+    'merge-multiple: false',
+    "-o -name 'latest-linux.json'",
+    'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
+    'upload-linux-downloads-r2.sh',
+    'https://downloads.burnbar.ai/latest-linux.json'
+  ]) requireText(input.release, marker, 'two-architecture release closure');
   requireText(input.pr, 'bash scripts/linux-port/run-linux-native-tests.sh', 'PR native behavior gate');
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
+  requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
   for (const command of [
     'macos-matched-performance',
@@ -110,13 +125,19 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.desktopPackage, 'verify-linux-production-bundle.mjs', 'production bundle gate');
 
   requireOrder(input.release, [
+    'Resolve and validate Linux release version',
+    'Assert native runner architecture',
+    'Build native architecture artifacts',
+    'Native package inspection/install/uninstall smoke',
+    'Download native architecture shards',
     'Verify product parity at release HEAD',
-    'Build Linux release artifacts',
-    'Package install/uninstall/update smoke',
+    'Assemble signed two-architecture closure and feed',
     'Pre-attestation Linux release verification',
     'Attest Linux release sidecars and packages',
     'Final Linux release verification',
-    'Publish Linux GitHub prerelease',
+    'Publish Linux GitHub release',
+    'Configure branded Linux update origin',
+    'Publish signed update feed to downloads origin',
     'Verify live Linux update feed after publish'
   ], 'release workflow');
 

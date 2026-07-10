@@ -24,11 +24,29 @@ function fixture() {
     fs.writeFileSync(full, bytes);
     return { file: rel, sha256: digest(bytes), size: Buffer.byteLength(bytes) };
   };
-  const artifactBytes = Buffer.from('artifact');
-  const artifact = { type: 'appimage', architecture: 'aarch64', ...write('out/app.AppImage', artifactBytes) };
-  const signature = crypto.sign(null, artifactBytes, privateKey);
-  write('out/app.AppImage.ed25519.sig', signature);
-  const checksums = write('out/checksums.txt', Buffer.from(`${artifact.sha256}  ${artifact.file}\n`));
+  const artifactTypes = ['appimage', 'deb', 'rpm', 'daemon'];
+  const architectures = ['aarch64', 'x86_64'];
+  const extension = { appimage: 'AppImage', deb: 'deb', rpm: 'rpm', daemon: 'bin' };
+  const artifacts = [];
+  const signatures = [];
+  for (const type of artifactTypes) {
+    for (const architecture of architectures) {
+      const artifactBytes = Buffer.from(`artifact:${type}:${architecture}`);
+      const artifact = {
+        type,
+        architecture,
+        ...write(`out/OpenBurnBar-${VERSION}-${architecture}.${extension[type]}`, artifactBytes)
+      };
+      const signatureFile = `${artifact.file}.ed25519.sig`;
+      write(signatureFile, crypto.sign(null, artifactBytes, privateKey));
+      artifacts.push(artifact);
+      signatures.push({ artifact: artifact.file, signature: signatureFile, algorithm: 'Ed25519' });
+    }
+  }
+  const checksums = write(
+    'out/checksums.txt',
+    Buffer.from(`${artifacts.map((artifact) => `${artifact.sha256}  ${artifact.file}`).join('\n')}\n`)
+  );
   const sbom = write('out/sbom.json', Buffer.from('{"spdxVersion":"SPDX-2.3"}\n'));
   const vex = write('out/vex.json', Buffer.from('{"@context":"https://openvex.dev/ns/v0.2.0"}\n'));
   const sourceArchive = write('out/source.tar', Buffer.from('source'));
@@ -38,12 +56,12 @@ function fixture() {
     git: { commit: HEAD },
     expectedCosignIdentity: `https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v${VERSION}`,
     expectedCosignIssuer: 'https://token.actions.githubusercontent.com',
-    signatures: [{ artifact: artifact.file, signature: 'out/app.AppImage.ed25519.sig', algorithm: 'Ed25519' }]
+    signatures
   };
   const provenancePredicate = write('out/provenance.json', Buffer.from(`${JSON.stringify(provenance)}\n`));
   const manifest = {
-    requiredArtifacts: ['appimage'],
-    supportedArchitectures: ['aarch64', 'x86_64'],
+    requiredArtifacts: artifactTypes,
+    supportedArchitectures: architectures,
     signing: {
       publicKeySpkiSha256: fingerprint,
       cosignIssuer: 'https://token.actions.githubusercontent.com',
@@ -51,21 +69,55 @@ function fixture() {
     }
   };
   const closure = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     tag: `linux-v${VERSION}`,
     version: VERSION,
     git: { commit: HEAD },
-    artifacts: [artifact],
+    artifacts,
     sidecars: { checksums, sbom, vex, provenancePredicate, sourceArchive, parityAttestation },
     blockers: []
   };
-  const latest = { version: VERSION, commit: HEAD, promotionState: 'candidate', primaryArtifact: artifact, blockers: [] };
+  const releaseBase = `https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${VERSION}`;
+  const latest = {
+    schemaVersion: 1,
+    product: 'OpenBurnBar',
+    platform: 'linux',
+    version: VERSION,
+    gitCommit: HEAD,
+    publishedAt: '2026-07-09T00:00:00Z',
+    channel: 'stable',
+    artifacts: artifacts.map((artifact) => ({
+      type: artifact.type,
+      architecture: artifact.architecture,
+      url: `${releaseBase}/${path.basename(artifact.file)}`,
+      sha256: artifact.sha256,
+      size: artifact.size,
+      signatureUrl: `${releaseBase}/${path.basename(artifact.file)}.ed25519.sig`
+    })),
+    signature: {
+      algorithm: 'Ed25519',
+      publicKeySpkiSha256: fingerprint,
+      url: `${releaseBase}/latest-linux.json.ed25519.sig`
+    }
+  };
+  const updateFeedBytes = Buffer.from(`${JSON.stringify(latest, null, 2)}\n`);
+  const updateFeed = write('out/latest-linux.draft.json', updateFeedBytes);
+  const updateFeedSignature = write(
+    'out/latest-linux.json.ed25519.sig',
+    crypto.sign(null, updateFeedBytes, privateKey)
+  );
+  closure.sidecars.updateFeed = updateFeed;
+  closure.sidecars.updateFeedSignature = updateFeedSignature;
   const lifecycle = Object.fromEntries(
     ['guiLaunch', 'daemonLaunch', 'versionReadback', 'update', 'rollback', 'dataPreservation'].map((key) => [key, { status: 'passed' }])
   );
   const smokeSummary = { passed: true, failedCount: 0, lifecycle };
   const input = { repoRoot, manifest, closure, provenance, latest, smokeSummary, publicKeyPem, expectedHead: HEAD, expectedVersion: VERSION };
-  return { input, artifactPath: path.join(repoRoot, artifact.file), signaturePath: path.join(repoRoot, 'out/app.AppImage.ed25519.sig') };
+  return {
+    input,
+    artifactPath: path.join(repoRoot, artifacts[0].file),
+    signaturePath: path.join(repoRoot, signatures[0].signature)
+  };
 }
 
 test('valid Ed25519 release closure passes pre-attestation verification', () => {
@@ -109,9 +161,37 @@ test('missing and duplicate signatures fail exact coverage', () => {
   assert.ok(missing.failures.some((failure) => /no detached Ed25519 signature/.test(failure.message)));
 });
 
+test('missing architecture and duplicate type/architecture fail closure coverage', () => {
+  const missing = fixture();
+  missing.input.closure.artifacts = missing.input.closure.artifacts.filter(
+    (artifact) => !(artifact.type === 'rpm' && artifact.architecture === 'x86_64')
+  );
+  const missingResult = verifyLinuxReleaseCandidate(missing.input);
+  assert.ok(missingResult.failures.some((failure) => /required rpm:x86_64/.test(failure.message)));
+
+  const duplicate = fixture();
+  duplicate.input.closure.artifacts.push({ ...duplicate.input.closure.artifacts[0] });
+  const duplicateResult = verifyLinuxReleaseCandidate(duplicate.input);
+  assert.ok(duplicateResult.failures.some((failure) => /duplicate artifact type\/architecture/.test(failure.message)));
+});
+
+test('feed artifact checksum and exact architecture coverage are closure-bound', () => {
+  const mismatch = fixture();
+  mismatch.input.latest.artifacts[0].sha256 = 'f'.repeat(64);
+  assert.ok(verifyLinuxReleaseCandidate(mismatch.input).failures.some(
+    (failure) => /update feed artifact does not match package closure/.test(failure.message)
+  ));
+
+  const missing = fixture();
+  missing.input.latest.artifacts.pop();
+  assert.ok(verifyLinuxReleaseCandidate(missing.input).failures.some(
+    (failure) => /update feed does not exactly cover/.test(failure.message)
+  ));
+});
+
 test('commit and version disagreements fail', () => {
   const value = fixture();
-  value.input.latest.commit = 'wrong';
+  value.input.latest.gitCommit = 'wrong';
   value.input.provenance.version = '9.9.9';
   const result = verifyLinuxReleaseCandidate(value.input);
   assert.ok(result.failures.some((failure) => /update feed commit/.test(failure.message)));
@@ -119,7 +199,16 @@ test('commit and version disagreements fail', () => {
 });
 
 test('sidecar mutation fails closure binding', () => {
-  for (const kind of ['checksums', 'sbom', 'vex', 'provenancePredicate', 'sourceArchive', 'parityAttestation']) {
+  for (const kind of [
+    'checksums',
+    'sbom',
+    'vex',
+    'provenancePredicate',
+    'sourceArchive',
+    'parityAttestation',
+    'updateFeed',
+    'updateFeedSignature'
+  ]) {
     const value = fixture();
     fs.appendFileSync(path.join(value.input.repoRoot, value.input.closure.sidecars[kind].file), 'x');
     const result = verifyLinuxReleaseCandidate(value.input);

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { validateFeedDocument } from './linux-update-feed.mjs';
 
 function sha256Bytes(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
@@ -51,7 +52,7 @@ export function verifyLinuxReleaseCandidate(input) {
     return fs.readFileSync(full);
   };
 
-  if (closure?.schemaVersion !== 2) fail('package closure schemaVersion must be 2.');
+  if (closure?.schemaVersion !== 3) fail('package closure schemaVersion must be 3.');
   const version = expectedVersion ?? closure?.version;
   const commit = expectedHead ?? closure?.git?.commit;
   for (const [label, value] of [
@@ -64,7 +65,7 @@ export function verifyLinuxReleaseCandidate(input) {
   for (const [label, value] of [
     ['closure commit', closure?.git?.commit],
     ['provenance commit', provenance?.git?.commit],
-    ['update feed commit', latest?.commit]
+    ['update feed commit', latest?.gitCommit]
   ]) {
     if (value !== commit) fail(`${label} does not match expected commit`, { expected: commit, actual: value ?? null });
   }
@@ -89,12 +90,13 @@ export function verifyLinuxReleaseCandidate(input) {
   }
 
   const artifacts = Array.isArray(closure?.artifacts) ? closure.artifacts : [];
-  const artifactByType = new Map();
+  const artifactByKey = new Map();
   const artifactByFile = new Map();
   for (const artifact of artifacts) {
-    if (artifactByType.has(artifact.type)) fail(`duplicate artifact type: ${artifact.type}`);
+    const key = `${artifact.type}:${artifact.architecture}`;
+    if (artifactByKey.has(key)) fail(`duplicate artifact type/architecture: ${key}`);
     if (artifactByFile.has(artifact.file)) fail(`duplicate artifact path: ${artifact.file}`);
-    artifactByType.set(artifact.type, artifact);
+    artifactByKey.set(key, artifact);
     artifactByFile.set(artifact.file, artifact);
     const bytes = read(artifact.file, `${artifact.type ?? 'unknown'} artifact`);
     if (!bytes) continue;
@@ -105,11 +107,57 @@ export function verifyLinuxReleaseCandidate(input) {
       fail(`artifact has unsupported or missing architecture: ${artifact.file}`);
     }
   }
+  const expectedArtifactKeys = new Set();
   for (const type of manifest.requiredArtifacts ?? []) {
-    if (!artifactByType.has(type)) fail(`required ${type} artifact is absent from package closure.`);
+    for (const architecture of manifest.supportedArchitectures ?? []) {
+      const key = `${type}:${architecture}`;
+      expectedArtifactKeys.add(key);
+      if (!artifactByKey.has(key)) fail(`required ${key} artifact is absent from package closure.`);
+    }
   }
-  if (artifacts.length !== (manifest.requiredArtifacts ?? []).length) {
+  for (const key of artifactByKey.keys()) {
+    if (!expectedArtifactKeys.has(key)) fail(`unexpected artifact type/architecture: ${key}`);
+  }
+  if (artifacts.length !== expectedArtifactKeys.size) {
     fail('package closure has missing or extra release artifacts.');
+  }
+
+  const feedFailures = validateFeedDocument(latest);
+  for (const message of feedFailures) fail(`update feed schema: ${message}`);
+  if (latest?.signature?.publicKeySpkiSha256 !== manifest.signing?.publicKeySpkiSha256) {
+    fail('update feed signing fingerprint does not match the pinned manifest value.');
+  }
+  const feedArtifacts = Array.isArray(latest?.artifacts) ? latest.artifacts : [];
+  const feedByKey = new Map();
+  for (const artifact of feedArtifacts) {
+    const key = `${artifact?.type}:${artifact?.architecture}`;
+    if (feedByKey.has(key)) fail(`duplicate update feed artifact: ${key}`);
+    feedByKey.set(key, artifact);
+    const closureArtifact = artifactByKey.get(key);
+    if (!closureArtifact) continue;
+    if (artifact.sha256 !== closureArtifact.sha256 || artifact.size !== closureArtifact.size) {
+      fail(`update feed artifact does not match package closure: ${key}`);
+    }
+    let artifactName = null;
+    let signatureName = null;
+    try {
+      artifactName = path.basename(new URL(artifact.url).pathname);
+      signatureName = path.basename(new URL(artifact.signatureUrl).pathname);
+    } catch {
+      // Schema validation already records malformed URLs.
+    }
+    if (artifactName && artifactName !== path.basename(closureArtifact.file)) {
+      fail(`update feed artifact URL does not name the closure artifact: ${key}`);
+    }
+    const signature = Array.isArray(provenance?.signatures)
+      ? provenance.signatures.find((row) => row.artifact === closureArtifact.file)
+      : null;
+    if (signatureName && signature && signatureName !== path.basename(signature.signature)) {
+      fail(`update feed signature URL does not name the detached signature: ${key}`);
+    }
+  }
+  if (feedByKey.size !== expectedArtifactKeys.size) {
+    fail('update feed does not exactly cover the package closure.');
   }
 
   const signatureRows = Array.isArray(provenance?.signatures) ? provenance.signatures : [];
@@ -132,7 +180,16 @@ export function verifyLinuxReleaseCandidate(input) {
   }
   if (signatureRows.length !== artifacts.length) fail('signature set does not exactly cover the artifact closure.');
 
-  const requiredSidecars = ['checksums', 'sbom', 'vex', 'provenancePredicate', 'sourceArchive', 'parityAttestation'];
+  const requiredSidecars = [
+    'checksums',
+    'sbom',
+    'vex',
+    'provenancePredicate',
+    'sourceArchive',
+    'parityAttestation',
+    'updateFeed',
+    'updateFeedSignature'
+  ];
   const sidecarBytes = new Map();
   for (const kind of requiredSidecars) {
     const sidecar = normalizeSidecar(closure?.sidecars?.[kind]);
@@ -184,10 +241,27 @@ export function verifyLinuxReleaseCandidate(input) {
     }
   }
 
-  if (latest?.promotionState !== 'candidate' || !latest?.primaryArtifact) {
-    fail('latest-linux draft is not promotable.');
+  const updateFeedBytes = sidecarBytes.get('updateFeed');
+  const updateFeedSignatureBytes = sidecarBytes.get('updateFeedSignature');
+  if (updateFeedBytes) {
+    try {
+      const boundFeed = JSON.parse(updateFeedBytes.toString('utf8'));
+      if (JSON.stringify(boundFeed) !== JSON.stringify(latest)) {
+        fail('parsed update feed does not equal the hash-bound feed sidecar.');
+      }
+    } catch {
+      fail('hash-bound update feed sidecar is invalid JSON.');
+    }
   }
-  if ((closure?.blockers ?? []).length > 0 || (latest?.blockers ?? []).length > 0) {
+  if (updateFeedBytes && updateFeedSignatureBytes && publicKey) {
+    if (updateFeedSignatureBytes.length !== 64) {
+      fail('update feed Ed25519 signature must be 64 bytes.');
+    } else if (!crypto.verify(null, updateFeedBytes, publicKey, updateFeedSignatureBytes)) {
+      fail('update feed detached Ed25519 signature verification failed.');
+    }
+  }
+
+  if ((closure?.blockers ?? []).length > 0) {
     fail('release metadata contains promotion blockers.');
   }
   const requiredLifecycle = ['guiLaunch', 'daemonLaunch', 'versionReadback', 'update', 'rollback', 'dataPreservation'];
