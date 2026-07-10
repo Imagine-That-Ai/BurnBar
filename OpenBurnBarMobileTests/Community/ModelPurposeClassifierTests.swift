@@ -49,7 +49,7 @@ final class ModelPurposeClassifierTests: XCTestCase {
             signals.hasSearchResults = fixture.signals.hasSearchResults ?? false
             signals.hasMultiStepPlanning = fixture.signals.hasMultiStepPlanning ?? false
 
-            let corrections = (fixture.corrections ?? []).compactMap { correction in
+            let corrections: [ModelPurposeClassifier.Correction] = (fixture.corrections ?? []).compactMap { correction in
                 guard let category = FirestoreModelPurposeCategory(rawValue: correction.correctedTo) else {
                     return nil
                 }
