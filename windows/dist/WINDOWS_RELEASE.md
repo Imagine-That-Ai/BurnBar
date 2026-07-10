@@ -26,8 +26,9 @@ releases: real tags must have Azure Trusted Signing plus the pinned update-feed 
    the documented deferred manifest version so they can prove the build/package boundary before
    the first Windows release bump.
 3. **build-sign** *(windows-latest)* — `dotnet publish` the WinUI app for `win-x64` + `win-arm64`,
-   **Authenticode-sign** via Azure Trusted Signing, package zips + checksums, then **sign the
-   update feed** with the pinned Ed25519 key and self-verify it.
+   discover Visual Studio MSBuild plus the MSIX Packaging/Desktop Bridge component, build the WAP
+   project for x64 + ARM64, **Authenticode-sign** via Azure Trusted Signing, package zips +
+   checksums, then **sign the update feed** with the pinned Ed25519 key and self-verify it.
 4. **supply-chain** *(ubuntu)* — SPDX **SBOM** over the artifacts, **OpenVEX** sidecar, and keyless
    **Sigstore** (`cosign attest-blob`) provenance over every artifact.
 
