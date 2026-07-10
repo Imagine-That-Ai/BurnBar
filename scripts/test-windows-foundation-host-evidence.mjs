@@ -280,5 +280,15 @@ assert.match(
   /Wait-ForJsonOrProcessExit/,
   "runner must fail closed when the interactive collector exits before writing its result",
 );
+assert.match(
+  runnerScript,
+  /Remove-Item[^\n]+\$interactiveProfiles[^\n]+-ErrorAction Stop/,
+  "runner must remove scenario-local protected storage before publishing evidence",
+);
+assert.match(
+  runnerScript,
+  /\^obb-storage-\[0-9a-f\]\{32\}\$/,
+  "secret scanner must recognize its generated storage fixture identifiers",
+);
 
 console.log("windows foundation host evidence validator tests passed");

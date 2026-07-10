@@ -447,7 +447,8 @@ function Test-SecretLeaks([string] $Root) {
         }
         foreach ($match in $highEntropy.Matches($text)) {
             $value = $match.Value
-            if ($value -notmatch '(?i)REDACTED' -and (Measure-Entropy $value) -ge 4.2) {
+            $isEvidenceIdentifier = $value -match '^obb-storage-[0-9a-f]{32}$'
+            if (-not $isEvidenceIdentifier -and $value -notmatch '(?i)REDACTED' -and (Measure-Entropy $value) -ge 4.2) {
                 $findings.Add([ordered]@{ path = $file.FullName; kind = 'high-entropy'; valueLength = $value.Length })
             }
         }
@@ -658,6 +659,13 @@ foreach ($scenario in $interactiveResult.scenarios) {
         artifacts = $refs
     })
     foreach ($ref in $refs) { $artifactRefs.Add($ref) }
+}
+
+# Scenario-local app data can contain DPAPI envelopes and SQLCipher databases. Those inputs are
+# deliberately excluded from the publishable evidence bundle after their UIA artifacts are hashed.
+$interactiveProfiles = Join-Path $interactiveDir 'profiles'
+if (Test-Path -LiteralPath $interactiveProfiles) {
+    Remove-Item -LiteralPath $interactiveProfiles -Recurse -Force -ErrorAction Stop
 }
 
 $focusedRoot = Join-Path $OutputDir 'focused-foundation'

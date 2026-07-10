@@ -214,6 +214,29 @@ public sealed class AppConfigurationTests
     }
 
     [Fact]
+    public void Missing_sqlcipher_ref_loads_typed_recovery_state_without_empty_fallback()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "obb-config-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, "app_config.json");
+        File.WriteAllText(path, """{"sqlCipherPassphraseRef":"openburnbar.windows.sqlcipher.passphrase"}""");
+
+        try
+        {
+            var store = ProtectedFileSecretStore.CreateForTests(Path.Combine(dir, "protected-secrets"));
+            var config = new AppConfiguration(path, store);
+
+            Assert.Equal(AppConfigurationSecurityStatus.ProtectedStorageUnavailable, config.SecurityState.Status);
+            var ex = Assert.Throws<SecretStoreException>(() => config.EffectiveSqlCipherPassphrase());
+            Assert.Equal(SecretStoreFailureKind.SecretMissing, ex.Failure);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
     public void Redactor_and_scanner_cover_exact_encoded_substring_structured_and_entropy()
     {
         string secret = "canary-secret-value-1234567890";
