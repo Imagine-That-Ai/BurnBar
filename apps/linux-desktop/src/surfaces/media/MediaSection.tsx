@@ -48,10 +48,10 @@ export function MediaSection() {
     body = (
       <div className="p12-absent-state" role="status">
         <span className="p12-absent-kicker">Capability absent</span>
-        <h3>Media engine not yet available on this Linux build</h3>
+        <h3>Media engine is unavailable in this Linux session</h3>
         <p>
-          The shell checked the daemon for `daemon.media.status`. This build has no Mercury peer-list
-          RPC yet, so Linux is correctly showing observe-only readiness instead of simulated media.
+          The shell checked the daemon's Mercury capability contract. Repair the daemon, runtime
+          directory, portal, or codec dependency reported in Support, then retry this route.
         </p>
       </div>
     );
@@ -118,7 +118,7 @@ export function MediaSection() {
       <div className="p12-section-head">
         <div>
           <h2 id="p12-media-title">Mercury media</h2>
-          <p>Paired devices and media-control stage readout.</p>
+          <p>Calls, screen sharing, paired devices, and encrypted file transfer.</p>
         </div>
         <span className="p12-media-chip">
           {loadState === 'ready'

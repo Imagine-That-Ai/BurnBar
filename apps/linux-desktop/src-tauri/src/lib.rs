@@ -673,6 +673,15 @@ struct RuntimeCapabilityManifest {
     capabilities: Vec<RuntimeCapabilityEntry>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeMediaCapability {
+    available: bool,
+    codecs_known: bool,
+    source: String,
+    detail: Option<String>,
+}
+
 const RUNTIME_CAPABILITY_CATALOG: &str =
     include_str!("../../../../packaging/linux/runtime-capability-catalog.json");
 
@@ -681,6 +690,7 @@ fn evaluate_runtime_capability(
     health: &DaemonHealth,
     session_type: Option<&str>,
     has_session_bus: bool,
+    media: Option<&RuntimeMediaCapability>,
 ) -> Result<RuntimeCapabilityEntry, String> {
     let available = |reason: &str, source: &str| {
         (
@@ -704,6 +714,32 @@ fn evaluate_runtime_capability(
             available("The authenticated loopback gateway is enabled.", "daemon-health")
         }
         "gateway" => unavailable(),
+        "media" => match media {
+            Some(capability) if capability.available && capability.codecs_known => available(
+                capability
+                    .detail
+                    .as_deref()
+                    .unwrap_or("The daemon media engine and codec pipeline are available."),
+                &capability.source,
+            ),
+            Some(capability) if capability.available => (
+                "degraded".to_string(),
+                capability.detail.clone().unwrap_or_else(|| {
+                    "Mercury control and file transfer are available, but capture codec support is not confirmed."
+                        .to_string()
+                }),
+                capability.source.clone(),
+            ),
+            Some(capability) => (
+                "unavailable".to_string(),
+                capability
+                    .detail
+                    .clone()
+                    .unwrap_or_else(|| definition.unavailable_reason.clone()),
+                capability.source.clone(),
+            ),
+            None => unavailable(),
+        },
         "trusted-cli" if trusted_openburnbar_cli().is_ok() => {
             available("A trusted packaged CLI is installed.", "root-owned-package-path")
         }
@@ -780,6 +816,17 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
     let has_session_bus = std::env::var("DBUS_SESSION_BUS_ADDRESS")
         .ok()
         .is_some_and(|value| !value.trim().is_empty());
+    let media = health
+        .ok
+        .then(|| {
+            call_daemon_method_with_timeout(
+                "daemon.media.capability.get",
+                Some(serde_json::json!({})),
+                Duration::from_secs(2),
+            )
+        })
+        .and_then(Result::ok)
+        .and_then(|value| serde_json::from_value::<RuntimeMediaCapability>(value).ok());
     let capabilities = catalog
         .capabilities
         .into_iter()
@@ -789,6 +836,7 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
                 &health,
                 session_type.as_deref(),
                 has_session_bus,
+                media.as_ref(),
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -2604,6 +2652,7 @@ mod tests {
                 "always"
                     | "daemon"
                     | "gateway"
+                    | "media"
                     | "trusted-cli"
                     | "secret-service"
                     | "kwallet"
@@ -2614,5 +2663,99 @@ mod tests {
             ));
         }
         assert!(ids.len() >= 20);
+    }
+
+    #[test]
+    fn mercury_runtime_capability_follows_daemon_probe() {
+        let definition = RuntimeCapabilityDefinition {
+            id: "media.mercury".to_string(),
+            domain: "platform".to_string(),
+            evaluator: "media".to_string(),
+            unavailable_reason: "Mercury is unavailable.".to_string(),
+            substitute: None,
+        };
+        let available = RuntimeMediaCapability {
+            available: true,
+            codecs_known: true,
+            source: "daemon-media-probe".to_string(),
+            detail: Some("VP9 is available.".to_string()),
+        };
+        let entry = evaluate_runtime_capability(
+            definition,
+            &DaemonHealth::default(),
+            Some("wayland"),
+            true,
+            Some(&available),
+        )
+        .unwrap();
+        assert_eq!(entry.state, "available");
+        assert_eq!(entry.source, "daemon-media-probe");
+        assert_eq!(entry.reason, "VP9 is available.");
+    }
+
+    #[test]
+    fn mercury_runtime_capability_is_degraded_without_confirmed_codecs() {
+        let definition = RuntimeCapabilityDefinition {
+            id: "media.mercury".to_string(),
+            domain: "platform".to_string(),
+            evaluator: "media".to_string(),
+            unavailable_reason: "Mercury is unavailable.".to_string(),
+            substitute: None,
+        };
+        let degraded = RuntimeMediaCapability {
+            available: true,
+            codecs_known: false,
+            source: "daemon-media-probe".to_string(),
+            detail: None,
+        };
+        let entry = evaluate_runtime_capability(
+            definition,
+            &DaemonHealth::default(),
+            Some("x11"),
+            true,
+            Some(&degraded),
+        )
+        .unwrap();
+        assert_eq!(entry.state, "degraded");
+        assert!(entry.reason.contains("capture codec support"));
+    }
+
+    #[test]
+    fn mercury_runtime_capability_fails_closed_without_an_available_probe() {
+        let definition = || RuntimeCapabilityDefinition {
+            id: "media.mercury".to_string(),
+            domain: "platform".to_string(),
+            evaluator: "media".to_string(),
+            unavailable_reason: "Mercury is unavailable.".to_string(),
+            substitute: None,
+        };
+        let unavailable = RuntimeMediaCapability {
+            available: false,
+            codecs_known: true,
+            source: "daemon-media-probe".to_string(),
+            detail: Some("Media socket is unavailable.".to_string()),
+        };
+
+        let explicit = evaluate_runtime_capability(
+            definition(),
+            &DaemonHealth::default(),
+            Some("wayland"),
+            true,
+            Some(&unavailable),
+        )
+        .unwrap();
+        assert_eq!(explicit.state, "unavailable");
+        assert_eq!(explicit.reason, "Media socket is unavailable.");
+
+        let missing = evaluate_runtime_capability(
+            definition(),
+            &DaemonHealth::default(),
+            Some("wayland"),
+            true,
+            None,
+        )
+        .unwrap();
+        assert_eq!(missing.state, "unavailable");
+        assert_eq!(missing.reason, "Mercury is unavailable.");
     }
 }

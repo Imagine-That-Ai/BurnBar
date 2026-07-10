@@ -1467,10 +1467,21 @@ function isCapabilityAbsentError(e: unknown): boolean {
 
 function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
   const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
-  const availableRaw = pick(raw, 'capabilityAvailable', 'capability_available', 'available');
-  const pairedDevices = arr(pick(raw, 'pairedDevices', 'paired_devices', 'devices', 'peers')).map(
+  const capability = pick(raw, 'capability');
+  const availableRaw =
+    pick(capability, 'available', 'capabilityAvailable', 'capability_available') ??
+    pick(raw, 'capabilityAvailable', 'capability_available', 'available');
+  const sessionRaw = pick(raw, 'activeSession', 'active_session', 'session');
+  const sessionPeer = pick(sessionRaw, 'peer');
+  const declaredDevices = arr(pick(raw, 'pairedDevices', 'paired_devices', 'devices', 'peers'));
+  const deviceRows = declaredDevices.length > 0
+    ? declaredDevices
+    : sessionPeer && typeof sessionPeer === 'object' && !Array.isArray(sessionPeer)
+      ? [sessionPeer]
+      : [];
+  const pairedDevices = deviceRows.map(
     (d, i): MercuryPairedDevice => ({
-      id: str(pick(d, 'id', 'deviceId', 'device_id', 'connectionID', 'connectionId'), `device-${i}`),
+      id: str(pick(d, 'id', 'deviceID', 'deviceId', 'device_id', 'connectionID', 'connectionId'), `device-${i}`),
       name: str(pick(d, 'name', 'displayName', 'display_name', 'label'), `Device ${i + 1}`),
       platform: normalizeMercuryPlatform(str(pick(d, 'platform', 'kind', 'os'), 'unknown')),
       isOnline: Boolean(pick(d, 'isOnline', 'is_online', 'online')),
@@ -1478,19 +1489,23 @@ function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
       capabilities: arr(pick(d, 'capabilities', 'features')).map((capability) => str(capability)).filter(Boolean)
     })
   );
-  const sessionRaw = pick(raw, 'activeSession', 'active_session', 'session');
+  const sessionPhase = str(pick(sessionRaw, 'phase', 'state', 'status')).toLowerCase();
   const activeSession =
-    sessionRaw && typeof sessionRaw === 'object'
+    sessionRaw && typeof sessionRaw === 'object' && sessionPhase !== '' && sessionPhase !== 'idle'
       ? {
           kind: normalizeMercuryKind(str(pick(sessionRaw, 'kind', 'type'), 'screen-share')),
           state: normalizeMercuryState(str(pick(sessionRaw, 'state', 'phase', 'status'), 'staged')),
-          peer: str(pick(sessionRaw, 'peer', 'peerName', 'peer_name', 'deviceName'), 'Paired device'),
-          requestId: str(pick(sessionRaw, 'requestId', 'request_id')) || undefined,
+          peer: str(
+            pick(sessionPeer, 'displayName', 'display_name', 'name') ??
+              pick(sessionRaw, 'peerName', 'peer_name', 'deviceName'),
+            'Paired device'
+          ),
+          requestId: str(pick(sessionRaw, 'requestID', 'requestId', 'request_id')) || undefined,
           startedAt: str(pick(sessionRaw, 'startedAt', 'started_at')) || undefined
         }
       : undefined;
   return {
-    capabilityAvailable: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    capabilityAvailable: absent ? false : availableRaw === true,
     pairedDevices,
     activeSession
   };
@@ -1505,6 +1520,7 @@ function mapMercurySessionState(raw: RawJsonValue): MercuryMediaSessionState {
       : activeSession && typeof activeSession === 'object'
         ? activeSession
         : raw;
+  const peer = pick(source, 'peer');
   const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
   const availableRaw = pick(raw, 'capabilityAvailable', 'capability_available', 'available');
   const phaseRaw = str(
@@ -1514,11 +1530,24 @@ function mapMercurySessionState(raw: RawJsonValue): MercuryMediaSessionState {
   const phase = absent ? 'capability-absent' : normalizeMercuryCallPhase(phaseRaw);
   return {
     phase,
-    requestId: str(pick(raw, 'requestId', 'request_id') ?? pick(source, 'requestId', 'request_id')) || undefined,
+    requestId:
+      str(
+        pick(raw, 'requestID', 'requestId', 'request_id') ??
+          pick(source, 'requestID', 'requestId', 'request_id')
+      ) || undefined,
     peerName:
-      str(pick(raw, 'peerName', 'peer_name', 'peer', 'deviceName') ?? pick(source, 'peerName', 'peer_name', 'peer', 'deviceName')) ||
+      str(
+        pick(raw, 'peerName', 'peer_name', 'deviceName') ??
+          pick(source, 'peerName', 'peer_name', 'deviceName') ??
+          pick(peer, 'displayName', 'display_name', 'name')
+      ) ||
       undefined,
-    peerId: str(pick(raw, 'peerId', 'peer_id', 'deviceId') ?? pick(source, 'peerId', 'peer_id', 'deviceId')) || undefined,
+    peerId:
+      str(
+        pick(raw, 'peerID', 'peerId', 'peer_id', 'deviceID', 'deviceId') ??
+          pick(source, 'peerID', 'peerId', 'peer_id', 'deviceID', 'deviceId') ??
+          pick(peer, 'connectionID', 'connectionId', 'id')
+      ) || undefined,
     kind: normalizeMercuryKind(str(pick(raw, 'kind', 'type') ?? pick(source, 'kind', 'type'), 'call')),
     startedAt: str(pick(raw, 'startedAt', 'started_at') ?? pick(source, 'startedAt', 'started_at')) || undefined,
     endedAt: str(pick(raw, 'endedAt', 'ended_at') ?? pick(source, 'endedAt', 'ended_at')) || undefined,
@@ -1531,15 +1560,23 @@ function mapMercuryCapability(raw: RawJsonValue): MercuryMediaCapability {
   const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
   const availableRaw = pick(raw, 'available', 'capabilityAvailable', 'capability_available');
   const rendererRaw = str(pick(raw, 'renderer', 'source'), 'unknown');
-  const renderer = rendererRaw === 'media-gst' || rendererRaw === 'stub' ? rendererRaw : 'unknown';
+  const renderer = rendererRaw === 'media-gst' || /MediaCapture/i.test(rendererRaw)
+    ? 'media-gst'
+    : rendererRaw === 'stub'
+      ? 'stub'
+      : 'unknown';
   const capabilities = arr(pick(raw, 'capabilities', 'features')).map((capability) => str(capability)).filter(Boolean);
+  const available = absent ? false : availableRaw === true;
   return {
-    available: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    available,
     renderer,
-    canReceiveCalls: Boolean(pick(raw, 'canReceiveCalls', 'can_receive_calls')) || capabilities.includes('call.receive'),
+    canReceiveCalls:
+      Boolean(pick(raw, 'canReceiveCalls', 'can_receive_calls')) || capabilities.includes('call.receive') || available,
     canViewScreenShare:
-      Boolean(pick(raw, 'canViewScreenShare', 'can_view_screen_share')) || capabilities.includes('mirror.viewer'),
-    reason: str(pick(raw, 'reason', 'error')) || undefined
+      Boolean(pick(raw, 'canViewScreenShare', 'can_view_screen_share')) ||
+      capabilities.includes('mirror.viewer') ||
+      (available && Boolean(pick(raw, 'supportsDaemonToShellFrames', 'supports_daemon_to_shell_frames'))),
+    reason: str(pick(raw, 'reason', 'detail', 'error')) || undefined
   };
 }
 

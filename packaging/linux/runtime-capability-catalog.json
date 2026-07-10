@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": "2026-07-09",
+  "catalogVersion": "2026-07-10",
   "capabilities": [
     { "id": "usage.read", "domain": "product", "route": "overview", "additionalRoutes": ["insights"], "evaluator": "daemon", "unavailableReason": "The local daemon is not reachable.", "substitute": "Open Support to repair the daemon connection." },
     { "id": "database.read", "domain": "product", "route": "database", "evaluator": "daemon", "unavailableReason": "The encrypted database service is not reachable.", "substitute": "Repair the daemon before inspecting local data." },
@@ -12,7 +12,7 @@
     { "id": "memory.review", "domain": "product", "route": "memory", "evaluator": "daemon", "unavailableReason": "Memory review requires the local daemon.", "substitute": "Repair the daemon connection." },
     { "id": "computer-use.browser", "domain": "platform", "route": "computer-use", "evaluator": "daemon", "unavailableReason": "Browser Computer Use requires a compatible local daemon.", "substitute": "Use the approval and audit view after repairing the daemon." },
     { "id": "computer-use.system", "domain": "platform", "evaluator": "unavailable", "unavailableReason": "Linux system Computer Use does not yet have a proven portal, libei, or constrained X11 adapter.", "substitute": "Browser Computer Use remains the supported Linux automation path." },
-    { "id": "media.mercury", "domain": "platform", "route": "mercury", "evaluator": "unavailable", "unavailableReason": "Mercury media control is not wired to a Linux native transport contract.", "substitute": "Pair and control media from a currently supported mobile or macOS client." },
+    { "id": "media.mercury", "domain": "platform", "route": "mercury", "evaluator": "media", "unavailableReason": "The connected daemon does not expose an available Mercury media runtime.", "substitute": "Pair and control media from a currently supported mobile or macOS client." },
     { "id": "smarthub.control", "domain": "platform", "route": "smarthub", "evaluator": "trusted-cli", "unavailableReason": "A root-owned packaged openburnbar-cli is not available.", "substitute": "Install the full OpenBurnBar package before controlling devices." },
     { "id": "settings.read", "domain": "product", "route": "settings", "evaluator": "daemon", "unavailableReason": "Live settings require the local daemon.", "substitute": "Use Support to repair the daemon; no settings changes are accepted offline." },
     { "id": "account.read", "domain": "product", "route": "account", "evaluator": "daemon", "unavailableReason": "Account and sync status require the local daemon.", "substitute": "Repair the daemon connection." },

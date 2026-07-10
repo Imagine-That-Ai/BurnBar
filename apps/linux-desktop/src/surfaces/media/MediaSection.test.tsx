@@ -85,7 +85,7 @@ describe('P12 Mercury media section', () => {
     useMediaStore.getState().reset();
   });
 
-  it('renders the primary capability-absent state for current Linux daemons', async () => {
+  it('renders the primary capability-absent state when the daemon media runtime is unavailable', async () => {
     useShellStore.setState({
       bridge: bridgeWithMedia(Promise.resolve({ capabilityAvailable: false, pairedDevices: [] }))
     });
@@ -95,7 +95,7 @@ describe('P12 Mercury media section', () => {
     });
     expect(screen.getByText('Capability absent')).toBeTruthy();
     expect(screen.getByText('daemon capability')).toBeTruthy();
-    expect(screen.getByText(/daemon.media.status/)).toBeTruthy();
+    expect(screen.getByText(/Mercury capability contract/)).toBeTruthy();
   });
 
   it('renders loading while the daemon request is unresolved', () => {
