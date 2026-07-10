@@ -49,6 +49,16 @@ assert.match(
   /OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: \$\{\{ github\.event_name == 'workflow_dispatch' && github\.event\.inputs\.allow_unsigned == 'true' && '0' \|\| '1' \}\}/,
   "only an explicit unsigned Windows rehearsal may defer the Windows manifest version",
 );
+assert.match(
+  windowsReleaseWorkflow,
+  /Microsoft\.VisualStudio\.ComponentGroup\.MSIX\.Packaging/,
+  "Windows release workflow must preflight the Visual Studio MSIX Packaging component",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /"\$msbuild" "\$wap" -restore -m/,
+  "WAP packaging must use Visual Studio MSBuild so Desktop Bridge targets resolve",
+);
 
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
 assert.ok(

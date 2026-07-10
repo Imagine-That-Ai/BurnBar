@@ -182,6 +182,33 @@ jobs:
             8.0.x
             10.0.x
 
+      - name: Locate Visual Studio MSBuild + Desktop Bridge
+        id: msbuild
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path -LiteralPath $vswhere)) {
+            throw "vswhere.exe is missing from the Windows runner."
+          }
+          $installPath = & $vswhere -latest -products * `
+            -requires Microsoft.Component.MSBuild Microsoft.VisualStudio.ComponentGroup.MSIX.Packaging `
+            -property installationPath | Select-Object -First 1
+          if (-not $installPath) {
+            throw "Visual Studio with MSBuild and the MSIX Packaging component is not installed."
+          }
+          $msbuild = Join-Path $installPath "MSBuild\Current\Bin\MSBuild.exe"
+          $desktopBridge = Join-Path $installPath "MSBuild\Microsoft\DesktopBridge\Microsoft.DesktopBridge.props"
+          if (-not (Test-Path -LiteralPath $msbuild)) {
+            throw "Visual Studio MSBuild not found at $msbuild."
+          }
+          if (-not (Test-Path -LiteralPath $desktopBridge)) {
+            throw "Desktop Bridge targets not found at $desktopBridge."
+          }
+          "path=$msbuild" >> $env:GITHUB_OUTPUT
+          "Visual Studio MSBuild: $msbuild"
+          "Desktop Bridge props: $desktopBridge"
+
       - name: Preflight signing configuration
         id: config
         env:
@@ -250,12 +277,14 @@ jobs:
         run: |
           set -euo pipefail
           wap="windows/packaging/msix/OpenBurnBar.Packaging.wapproj"
+          msbuild='${{ steps.msbuild.outputs.path }}'
           for plat in x64 ARM64; do
-            dotnet build "$wap" -c Release -p:Platform="$plat" \
+            "$msbuild" "$wap" -restore -m \
+              -p:Configuration=Release -p:Platform="$plat" \
               -p:AppxPackageSigningEnabled=false \
               -p:AppxBundle=Never -p:AppxBundlePlatforms="$plat" \
-              -p:Configuration=Release -p:AppxSymbolPackageEnabled=true \
-              -o "msix/$plat"
+              -p:AppxSymbolPackageEnabled=true -p:GenerateAppxPackageOnBuild=true \
+              -p:AppxPackageDir="$GITHUB_WORKSPACE/msix/$plat/"
           done
           # Collect the .msix into artifacts (MakeAppx output naming includes the
           # version + platform; glob it).
@@ -263,8 +292,8 @@ jobs:
           for plat in x64 ARM64; do
             msix="$(find msix/$plat -name "*.msix" 2>/dev/null | head -1 || true)"
             if [[ -z "$msix" ]]; then
-              echo "::warning::No .msix produced for $plat (WAP build may need the Windows-only DesktopBridge targets)."
-              continue
+              echo "::error::Visual Studio MSBuild completed without producing an MSIX for $plat."
+              exit 1
             fi
             cp "$msix" "artifacts/OpenBurnBar-${VERSION}-${plat}.msix"
             ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${plat}.msix" >> "checksums-windows-v${VERSION}.txt" )
