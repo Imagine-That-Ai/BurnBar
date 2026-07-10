@@ -546,9 +546,15 @@ export function fixtureConfigSnapshot(): ConfigSnapshot {
   return {
     paths: {
       supportDir: '~/.local/share/openburnbar',
-      socketPath: '~/.local/share/openburnbar/openburnbar-daemon.sock',
+      socketPath: '$XDG_RUNTIME_DIR/openburnbar/daemon.sock',
       configDir: '~/.config/openburnbar',
-      providerLogPaths: ['~/.local/share/openburnbar/logs/anthropic', '~/.local/share/openburnbar/logs/openai']
+      providerLogPaths: [
+        '~/.codex/sessions',
+        '~/.claude/projects',
+        '~/.grok/sessions',
+        '~/.local/share/opencode',
+        '~/.local/share/goose/sessions'
+      ]
     },
     secretServiceStatus: 'locked',
     telemetryEnabled: false,

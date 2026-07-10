@@ -2,6 +2,9 @@
 Type=Application
 Name=OpenBurnBar
 Comment=Local-first AI agent cost and control dashboard
+# Hardware GL by default. Virtio/Apple-GPU guests that only expose WebGL1 should
+# use openburnbar-safe-mode.desktop (software GL) instead of forcing softpipe
+# on every real GPU install.
 Exec=openburnbar-linux-desktop %U
 Icon=dev.openburnbar.OpenBurnBar
 Terminal=false

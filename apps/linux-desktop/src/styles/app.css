@@ -9,7 +9,7 @@
  *   packaged desktop-session smoke, which clicks nav items at fixed pixel
  *   coordinates. Visual changes to the rail go through color/shadow only.
  * - Token names come from packages/design-tokens (tokens.css); skins swap
- *   token values on :root[data-skin], never per-component constants.
+ *   token values in skins.css, never per-component constants.
  */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -23,17 +23,8 @@ body.reduced-motion * { animation: none !important; transition: none !important;
   --radius-lg: 20px;
   --mesh-blob-a: color-mix(in srgb, var(--color-brass-core) 12%, transparent);
   --mesh-blob-b: color-mix(in srgb, var(--color-tier-end-to-end) 8%, transparent);
-  --mesh-blob-c: color-mix(in srgb, var(--macos-whimsy, #8b7fe8) 7%, transparent);
+  --mesh-blob-c: color-mix(in srgb, var(--color-skin-aurora-violet) 7%, transparent);
   --focus-ring: 0 0 0 2px var(--color-ink-void), 0 0 0 4px color-mix(in srgb, var(--color-brass-core) 75%, transparent);
-}
-
-:root[data-skin="aurora"] {
-  --color-ink-void: #040610;
-  --color-brass-core: #3cd6c0;
-  --ds-accent-gradient: linear-gradient(135deg, #3cd6c0, #6ee7ff);
-  --mesh-blob-a: color-mix(in srgb, #3cd6c0 13%, transparent);
-  --mesh-blob-b: color-mix(in srgb, #6ee7ff 9%, transparent);
-  --mesh-blob-c: color-mix(in srgb, #8b5cf6 8%, transparent);
 }
 
 #root { min-height: 100vh; display: flex; }
@@ -108,7 +99,7 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 /* -------------------------------------------------------------- backdrop */
 
 .mesh-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.mesh-blob { position: absolute; width: 55vw; height: 55vw; border-radius: 50%; filter: blur(90px); opacity: 0.9; will-change: transform; }
+.mesh-blob { position: absolute; width: 55vw; height: 55vw; border-radius: 50%; opacity: 0.9; will-change: transform; }
 .mesh-blob-a { background: radial-gradient(circle, var(--mesh-blob-a), transparent 65%); top: -18vw; right: -12vw; animation: mesh-drift-a 46s var(--motion-ease-standard) infinite alternate; }
 .mesh-blob-b { background: radial-gradient(circle, var(--mesh-blob-b), transparent 62%); bottom: -22vw; left: -10vw; animation: mesh-drift-b 58s var(--motion-ease-standard) infinite alternate; }
 .mesh-blob-c { background: radial-gradient(circle, var(--mesh-blob-c), transparent 60%); top: 34vh; left: 30vw; width: 38vw; height: 38vw; animation: mesh-drift-c 72s var(--motion-ease-standard) infinite alternate; }
@@ -118,8 +109,9 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 @keyframes mesh-drift-c { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(4vw, 6vh, 0); } }
 
 /* Kernel canvas sits above page void, below shell chrome (z-index: 1). */
-.kernel-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-.kernel-backdrop canvas { display: block; }
+.kernel-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--color-ink-void); }
+.kernel-backdrop canvas { position: absolute !important; inset: 0 !important; display: block !important; width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important; }
+.kernel-backdrop--css { background: radial-gradient(ellipse 90% 70% at 15% 10%, color-mix(in srgb, var(--color-brass-core) 55%, transparent), transparent 55%), radial-gradient(ellipse 80% 60% at 90% 80%, color-mix(in srgb, var(--color-tier-end-to-end) 35%, transparent), transparent 55%), var(--color-ink-base); }
 
 /* -------------------------------------------------------- sidebar card */
 .sidebar-glass-card { display: grid; gap: var(--space-1); margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-glass-line); background: color-mix(in srgb, var(--color-glass-bg-elevated) 30%, transparent); backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%); box-shadow: inset 0 1px 0 var(--color-frost-line); }

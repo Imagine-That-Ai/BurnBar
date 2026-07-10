@@ -1,0 +1,508 @@
+/* Linux first-run wizard — liquid glass (macOS GlassCard vocabulary).
+ *
+ * Invariants (docs/LIQUID_GLASS_PARITY.md):
+ * 1. Exactly one glass layer for this cluster.
+ * 2. Chips/buttons inside the plate stay plain tint — never nested glass.
+ * 3. Tint/wash is for meaning or legibility, not decoration.
+ *
+ * Material recipe: translucent plate + real backdrop blur + single soft
+ * hairline + ambient depth shadow. No dual-background border tricks, no
+ * brass rim rings, no stacked inset strokes.
+ */
+
+/* ── Stage ───────────────────────────────────────────────────────────────── */
+
+.onboarding-stage {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: min(78vh, 720px);
+  padding: var(--space-8) var(--space-6);
+}
+
+.settings-tab-body .onboarding-stage,
+.setting-group .onboarding-stage {
+  min-height: 0;
+  place-items: stretch;
+  padding: var(--space-3) 0 0;
+}
+
+/* ── Glass plate ─────────────────────────────────────────────────────────── */
+
+.onboarding-wizard {
+  --obb-wizard-pad-x: 2rem;
+  --obb-wizard-pad-y: 1.75rem;
+  --obb-wizard-radius: 22px;
+
+  position: relative;
+  display: grid;
+  gap: 1.35rem;
+  width: min(100%, 26.5rem);
+  padding: var(--obb-wizard-pad-y) var(--obb-wizard-pad-x);
+  border-radius: var(--obb-wizard-radius);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  /* Clear, elevated glass — kernel must read through */
+  background:
+    linear-gradient(
+      165deg,
+      rgba(255, 255, 255, 0.09) 0%,
+      rgba(255, 255, 255, 0.03) 42%,
+      rgba(255, 255, 255, 0.015) 100%
+    ),
+    color-mix(in srgb, var(--color-ink-elevated) 42%, transparent);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  box-shadow:
+    /* ambient lift */
+    0 24px 64px rgba(0, 0, 0, 0.45),
+    0 8px 24px rgba(0, 0, 0, 0.28),
+    /* top specular */
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    /* soft bottom weight */
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Single sheen wash on top of glass — not a second material layer */
+.onboarding-wizard::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    110% 70% at 18% -8%,
+    rgba(255, 255, 255, 0.16),
+    transparent 52%
+  );
+  z-index: 0;
+}
+
+/* no ::after rim — hairline border + inset top light is enough */
+
+.onboarding-wizard > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.onboarding-wizard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 1.5rem;
+}
+
+.onboarding-wizard-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.onboarding-wizard-mark {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, var(--color-brass-core) 22%, rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.onboarding-wizard-mark img {
+  width: 0.95rem;
+  height: 0.95rem;
+  object-fit: contain;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--color-brass-glow) 35%, transparent));
+}
+
+.onboarding-wizard-kicker {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step-progress {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Progress ────────────────────────────────────────────────────────────── */
+
+.onboarding-progress {
+  position: relative;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.onboarding-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-brass-core) 88%, transparent),
+    var(--color-brass-bright)
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-brass-glow) 40%, transparent);
+  transition: width 320ms var(--motion-ease-standard);
+}
+
+.step-rail {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+}
+
+.step-dot {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  transition:
+    width 280ms var(--motion-ease-standard),
+    background 200ms var(--motion-ease-standard),
+    box-shadow 200ms var(--motion-ease-standard);
+}
+
+.step-dot.done {
+  background: color-mix(in srgb, var(--color-tier-end-to-end) 78%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-tier-end-to-end) 30%, transparent);
+}
+
+.step-dot.active {
+  width: 18px;
+  background: linear-gradient(90deg, var(--color-brass-core), var(--color-brass-bright));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-brass-glow) 45%, transparent);
+}
+
+.step-dot.skipped {
+  background: color-mix(in srgb, var(--color-tier-server-readable) 55%, transparent);
+  box-shadow: none;
+}
+
+/* ── Step body ───────────────────────────────────────────────────────────── */
+
+.onboarding-step {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.35rem 0 0.15rem;
+  animation: onboarding-step-in 280ms var(--motion-ease-standard) both;
+}
+
+.onboarding-step-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Plain tint plate — not glass (glass-inside-glass ban) */
+.onboarding-step-glyph {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  color: var(--color-brass-bright);
+  font-size: 1.05rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.onboarding-step-index {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-brass-core) 70%, rgba(255, 255, 255, 0.55));
+}
+
+.onboarding-wizard h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.22;
+  color: var(--color-text-bright);
+  padding-right: 0.25rem;
+}
+
+.onboarding-step-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.58;
+  color: rgba(255, 255, 255, 0.58);
+  max-width: none;
+  padding-right: 0.15rem;
+}
+
+.onboarding-wizard .banner,
+.onboarding-wizard .glass-alert {
+  margin: 0.15rem 0 0;
+}
+
+.retry-feedback {
+  margin: 0;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────── */
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+  padding-top: 1.15rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.onboarding-actions-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Primary CTA — solid meaning tint on the plate, not a glass layer */
+button.onboarding-btn-primary {
+  appearance: none;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: none;
+  border-radius: 999px;
+  padding: 0.58rem 1.2rem;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--color-ink-base);
+  cursor: pointer;
+  background: var(--ds-accent-gradient);
+  box-shadow:
+    0 4px 16px color-mix(in srgb, var(--color-brass-glow) 35%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  transition:
+    filter 160ms var(--motion-ease-standard),
+    transform 160ms var(--motion-ease-standard),
+    box-shadow 160ms var(--motion-ease-standard);
+}
+
+button.onboarding-btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), transparent 50%);
+  z-index: 0;
+}
+
+button.onboarding-btn-primary > * {
+  position: relative;
+  z-index: 1;
+}
+
+button.onboarding-btn-primary:hover {
+  filter: brightness(1.07);
+  box-shadow:
+    0 6px 22px color-mix(in srgb, var(--color-brass-glow) 48%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+button.onboarding-btn-primary:active {
+  transform: translateY(1px);
+  filter: brightness(0.98);
+}
+
+button.onboarding-btn-primary:disabled {
+  filter: grayscale(0.55) brightness(0.85);
+  cursor: default;
+  box-shadow: none;
+}
+
+/* Secondary — plain frosted tint, no backdrop-filter (avoids nested glass) */
+button.onboarding-btn-ghost {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 550;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    background 160ms var(--motion-ease-standard),
+    border-color 160ms var(--motion-ease-standard),
+    color 160ms var(--motion-ease-standard),
+    transform 160ms var(--motion-ease-standard);
+}
+
+button.onboarding-btn-ghost:hover,
+button.onboarding-btn-ghost:focus-visible {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-bright);
+  outline: none;
+}
+
+button.onboarding-btn-ghost:active {
+  transform: translateY(1px);
+}
+
+/* ── Complete state ──────────────────────────────────────────────────────── */
+
+.setup-complete {
+  text-align: center;
+  justify-items: center;
+  gap: 1.15rem;
+  padding-top: 2.25rem;
+  padding-bottom: 2.25rem;
+}
+
+.setup-complete-mark {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--color-tier-end-to-end) 40%, rgba(255, 255, 255, 0.12));
+  background:
+    radial-gradient(
+      circle at 40% 30%,
+      color-mix(in srgb, var(--color-tier-end-to-end) 28%, transparent),
+      transparent 68%
+    ),
+    rgba(255, 255, 255, 0.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 24px color-mix(in srgb, var(--color-tier-end-to-end) 22%, transparent);
+  color: var(--color-tier-end-to-end);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.setup-complete h3 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.setup-complete p {
+  margin: 0;
+  max-width: 30ch;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.setup-complete .onboarding-actions {
+  border-top: none;
+  padding-top: 0.5rem;
+  justify-content: center;
+  width: 100%;
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────────── */
+
+@keyframes onboarding-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-step {
+    animation: none;
+  }
+
+  .step-dot,
+  .onboarding-progress-fill,
+  button.onboarding-btn-primary,
+  button.onboarding-btn-ghost {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .onboarding-wizard {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: color-mix(in srgb, var(--color-ink-elevated) 94%, transparent);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+}
+
+/* ── Compact ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 520px) {
+  .onboarding-stage {
+    padding: var(--space-4);
+  }
+
+  .onboarding-wizard {
+    --obb-wizard-pad-x: 1.25rem;
+    --obb-wizard-pad-y: 1.25rem;
+    width: 100%;
+    border-radius: 18px;
+  }
+
+  .onboarding-wizard h3 {
+    font-size: 1.28rem;
+  }
+
+  .onboarding-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .onboarding-actions-secondary {
+    flex-direction: column;
+  }
+
+  button.onboarding-btn-primary,
+  button.onboarding-btn-ghost {
+    width: 100%;
+    text-align: center;
+  }
+}

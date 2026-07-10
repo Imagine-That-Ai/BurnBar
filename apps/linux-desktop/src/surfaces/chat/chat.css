@@ -343,7 +343,7 @@
 }
 
 .chat-backend-pill[data-backend='codex'].is-active {
-  background: linear-gradient(135deg, #fa6b06, #ffb347);
+  background: linear-gradient(135deg, var(--color-brass-core), var(--color-brass-bright));
 }
 
 .chat-backend-pill[data-backend='claude'].is-active {
@@ -872,7 +872,7 @@ body.reduced-motion .chat-tool-card.is-running {
 }
 
 .chat-composer[data-backend='codex'] .chat-composer-send {
-  background: linear-gradient(145deg, #fa6b06, #ffb347);
+  background: linear-gradient(145deg, var(--color-brass-core), var(--color-brass-bright));
 }
 
 .chat-composer[data-backend='claude'] .chat-composer-send {
