@@ -36,9 +36,12 @@ background startup, live tray facts/actions, and user-owned XDG login start.
 The desktop matrix harness also requires current native-shell evidence before a
 support row can become ready, so P-26/P-27 source work cannot be promoted by
 package/accessibility evidence alone. The shell verifier now emits
-`native-shell-evidence.json` for that gate; current installed evidence remains
-blocked until VM runs capture the notification, compact-status, login-start,
-deep-link, and tray-host-loss artifacts named by the producer.
+`native-shell-evidence.json` for that gate, and the installed desktop-session
+harness now captures the tray action, compact-status, status-window
+accessibility, and secondary deep-link relaunch artifacts named by the
+producer. Current installed evidence remains blocked until VM runs capture
+notification server/actions/relaunch, complete login-start relogin/uninstall
+lifecycle, and tray-host-loss artifacts.
 The current auth packet also adds purpose-bound in-app device authorization,
 daemon-owned Firebase token exchange and refresh, writable-keyring preflight,
 local sign-out, and a strict renderer-redacted account contract. Native Linux

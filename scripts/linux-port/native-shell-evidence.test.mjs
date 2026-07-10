@@ -50,6 +50,18 @@ function writeCompleteNativeArtifacts(root) {
   ]) {
     writeText(root, fileName, 'method return');
   }
+  writeJson(root, 'tray-action-route-results.json', {
+    passed: true,
+    actions: {
+      openDashboard: { passed: true, route: 'overview', action: 'open-dashboard' },
+      openChat: { passed: true, route: 'chat', action: 'open-chat' },
+      openProviders: { passed: true, route: 'providers', action: 'open-providers' },
+      openUpdates: { passed: true, route: 'updates', action: 'open-updates' },
+      reconnectDaemon: { passed: true, route: 'support', action: 'reconnect-daemon' },
+      loginStart: { passed: true, enabled: true, disabled: true },
+      quit: { passed: true, exited: true }
+    }
+  });
   writeJson(root, 'native-status-window-report.json', { passed: true });
   fs.writeFileSync(path.join(root, 'screenshot-native-status-window.png'), Buffer.alloc(512, 1));
   writeJson(root, 'native-status-window-a11y.json', {
@@ -135,6 +147,36 @@ test('complete native shell evidence satisfies every matrix requirement alias', 
       assert.equal(evidence.nativeShell[requirement.key], true, requirement.id);
       assert.equal(nativeRequirementPasses(evidence, requirement), true, requirement.id);
     }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('partial login-start lifecycle artifact remains blocked', () => {
+  const root = tempDir();
+  try {
+    writeCompleteNativeArtifacts(root);
+    writeJson(root, 'native-login-start-roundtrip.json', {
+      passed: false,
+      enabled: true,
+      disabled: true,
+      relogin: false,
+      staleFileReplaced: true,
+      uninstallRemoved: false
+    });
+
+    const evidence = buildNativeShellEvidence({
+      evidenceDir: root,
+      commit: 'def456',
+      environmentId: 'fedora-kde-wayland-x86_64',
+      generatedAt: '2026-07-10T00:00:00.000Z'
+    });
+
+    assert.equal(evidence.passed, false);
+    assert.equal(evidence.nativeShell.loginStart, false);
+    assert.ok(evidence.missing.includes('login-start'));
+    const loginCheck = evidence.checks.find((check) => check.id === 'login-start');
+    assert.match(loginCheck?.detail ?? '', /missing complete login-start lifecycle proof/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

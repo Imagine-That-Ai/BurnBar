@@ -226,7 +226,7 @@ The producer reads these installed-session artifacts:
 | Check id | Evidence files |
 |---|---|
 | `tray-host` | `tray-registered-items.txt`, `tray-status-notifier-introspection.txt` |
-| `tray-actions` | `tray-menu-actions.json`, `tray-open-menu-event.txt`, `tray-chat-menu-event.txt`, `tray-providers-menu-event.txt`, `tray-updates-menu-event.txt`, `tray-reconnect-menu-event.txt`, `tray-login-start-menu-event.txt`, `tray-quit-menu-event.txt` |
+| `tray-actions` | `tray-menu-actions.json`, `tray-action-route-results.json`, `tray-open-menu-event.txt`, `tray-chat-menu-event.txt`, `tray-providers-menu-event.txt`, `tray-updates-menu-event.txt`, `tray-reconnect-menu-event.txt`, `tray-login-start-menu-event.txt`, `tray-quit-menu-event.txt` |
 | `compact-status-window` | `native-status-window-report.json`, `screenshot-native-status-window.png` |
 | `status-window-a11y` | `native-status-window-a11y.json` |
 | `notification-server` | `native-notification-capabilities.json` |
@@ -235,6 +235,18 @@ The producer reads these installed-session artifacts:
 | `deep-link-relaunch` | `native-deep-link-relaunch.json` |
 | `login-start` | `native-login-start-roundtrip.json` |
 | `tray-host-loss-recovery` | `tray-host-loss-recovery.json` |
+
+`scripts/linux-port/linux-desktop-session.sh` now emits the tray-host,
+tray-actions, compact-status-window, status-window-a11y, deep-link-relaunch,
+and partial login-start artifact inputs from a real installed `.deb` session:
+D-Bus menu activation must return successfully, route actions must create fresh
+`route.navigation` samples summarized in `tray-action-route-results.json`,
+quick status must open/close with screenshot and AT-SPI focus evidence, and
+secondary `openburnbar://chat` launch must exit via single-instance handoff
+while the original process stays alive. The
+`native-login-start-roundtrip.json` produced by this session intentionally
+remains `passed: false` until a dedicated lifecycle harness proves relogin and
+package-uninstall removal.
 
 Missing, stale, wrong-environment, or partially passed native-shell evidence
 blocks the row even when package and accessibility evidence are present.

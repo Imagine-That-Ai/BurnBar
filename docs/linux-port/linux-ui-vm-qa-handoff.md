@@ -122,6 +122,14 @@ OPENBURNBAR_LINUX_NATIVE_SHELL_EVIDENCE=/tmp/openburnbar-linux-ui-qa/native-shel
 git diff --check
 ```
 
+The desktop-session run should produce `tray-chat-menu-event.txt`,
+`tray-providers-menu-event.txt`, `tray-updates-menu-event.txt`,
+`tray-login-start-menu-event.txt`, `tray-action-route-results.json`,
+`native-status-window-report.json`, `native-status-window-a11y.json`,
+`screenshot-native-status-window.png`, and `native-deep-link-relaunch.json`.
+Treat a missing artifact as a failed native shell capture, not as a manual QA
+item.
+
 Manual visual pass:
 
 1. Open `vnc://127.0.0.1:5901`.

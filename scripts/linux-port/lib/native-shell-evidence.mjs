@@ -157,6 +157,7 @@ function evaluateTrayHost(evidenceDir) {
 
 function evaluateTrayActions(evidenceDir) {
   const actions = fileJson(evidenceDir, 'tray-menu-actions.json');
+  const routeResults = fileJson(evidenceDir, 'tray-action-route-results.json');
   const labels = new Set((actions?.actions ?? []).map((action) => action.label));
   const requiredLabels = [
     'Open dashboard',
@@ -178,14 +179,27 @@ function evaluateTrayActions(evidenceDir) {
     'tray-quit-menu-event.txt'
   ];
   const missingEvents = eventFiles.filter((fileName) => !(fileText(evidenceDir, fileName) ?? '').includes('method return'));
-  const passed = missingLabels.length === 0 && missingEvents.length === 0;
+  const requiredResults = [
+    'openDashboard',
+    'openChat',
+    'openProviders',
+    'openUpdates',
+    'reconnectDaemon',
+    'loginStart',
+    'quit'
+  ];
+  const missingResults = requiredResults.filter((key) => routeResults?.actions?.[key]?.passed !== true);
+  const passed = missingLabels.length === 0 &&
+    missingEvents.length === 0 &&
+    jsonPass(routeResults) &&
+    missingResults.length === 0;
   return result(
     'tray-actions',
     passed,
     passed
-      ? 'all native tray actions returned through D-Bus'
-      : `missing labels=${missingLabels.join(',') || 'none'} missing events=${missingEvents.join(',') || 'none'}`,
-    ['tray-menu-actions.json', ...eventFiles]
+      ? 'all native tray actions returned through D-Bus and produced installed-session outcomes'
+      : `missing labels=${missingLabels.join(',') || 'none'} missing events=${missingEvents.join(',') || 'none'} missing results=${missingResults.join(',') || 'none'}`,
+    ['tray-menu-actions.json', 'tray-action-route-results.json', ...eventFiles]
   );
 }
 
