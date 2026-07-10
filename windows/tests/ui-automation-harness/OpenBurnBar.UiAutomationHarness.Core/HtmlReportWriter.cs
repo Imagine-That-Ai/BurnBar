@@ -21,11 +21,12 @@ public static class HtmlReportWriter
         html.AppendLine("<h2>Certification Scenarios</h2><table><thead><tr><th>Key</th><th>Category</th><th>Routes</th><th>Mode</th><th>Acceptance</th></tr></thead><tbody>");
         foreach (UiCertificationScenario scenario in summary.Scenarios)
         {
-            html.AppendLine($"<tr><td><code>{Esc(scenario.Key)}</code></td><td>{Esc(scenario.Category)}</td><td>{Esc(string.Join(", ", scenario.RouteKeys))}</td><td>appearance={Esc(scenario.AppearanceMode)}, reduceTransparency={scenario.ReduceTransparency?.ToString() ?? "follow-os"}, dpi={scenario.DpiScalePercent?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "current"}</td><td>{Esc(scenario.Acceptance)}</td></tr>");
+            string routes = scenario.RunsRouteSmoke ? string.Join(", ", scenario.RouteKeys) : "manifest/input only";
+            html.AppendLine($"<tr><td><code>{Esc(scenario.Key)}</code></td><td>{Esc(scenario.Category)}</td><td>{Esc(routes)}</td><td>appearance={Esc(scenario.AppearanceMode)}, reduceTransparency={scenario.ReduceTransparency?.ToString() ?? "follow-os"}, dpi={scenario.DpiScalePercent?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "current"}</td><td>{Esc(scenario.Acceptance)}</td></tr>");
         }
 
         html.AppendLine("</tbody></table>");
-        html.AppendLine("<h2>Routes</h2><table><thead><tr><th>Scenario</th><th>Route</th><th>Verdict</th><th>Anchor</th><th>Size</th><th>Luma StdDev</th><th>Evidence</th><th>Message</th></tr></thead><tbody>");
+        html.AppendLine("<h2>Routes</h2><table><thead><tr><th>Scenario</th><th>Route</th><th>Verdict</th><th>Anchor</th><th>DPI</th><th>Size</th><th>Luma StdDev</th><th>Evidence</th><th>Message</th></tr></thead><tbody>");
         foreach (RouteSmokeEvidence route in summary.Routes)
         {
             html.Append("<tr>");
@@ -33,6 +34,7 @@ public static class HtmlReportWriter
             html.Append($"<td><code>{Esc(route.RouteKey)}</code></td>");
             html.Append($"<td class=\"{Css(route.Verdict)}\">{route.Verdict}</td>");
             html.Append($"<td><code>{Esc(route.ExpectedAutomationId)}</code> {route.ExpectedAutomationIdFound}</td>");
+            html.Append($"<td>expected={route.DpiScalePercent?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "current"}, actual={route.ActualDpiScalePercent?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"}, match={route.DpiScaleMatches}</td>");
             html.Append($"<td>{route.Width:0} x {route.Height:0}</td>");
             html.Append($"<td>{route.LumaStdDev:0.##}</td>");
             html.Append("<td>");

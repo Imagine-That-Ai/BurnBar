@@ -74,6 +74,12 @@ internal static class Program
         bool cancellationRequested = false;
         foreach (UiCertificationScenario scenario in scenarios)
         {
+            if (!scenario.RunsRouteSmoke)
+            {
+                notes.Add($"Scenario {scenario.Key} contributed manifest and input-contract evidence without launching route smoke.");
+                continue;
+            }
+
             IReadOnlyList<UiHarnessRoute> scenarioRoutes = SelectScenarioRoutes(manifest, scenario);
             if (scenarioRoutes.Count == 0)
             {

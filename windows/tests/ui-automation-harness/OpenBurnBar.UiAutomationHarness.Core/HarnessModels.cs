@@ -33,7 +33,10 @@ public sealed record UiCertificationScenario(
     bool RequiresUiAutomation,
     bool RequiresKeyboardOnly,
     bool RequiresNarratorProtocol,
-    string Acceptance);
+    string Acceptance)
+{
+    public bool RunsRouteSmoke { get; init; } = true;
+}
 
 public sealed record RouteSmokeEvidence(
     string ScenarioKey,
@@ -54,7 +57,12 @@ public sealed record RouteSmokeEvidence(
     bool? ReduceTransparency,
     int? DpiScalePercent,
     string ExpectedAutomationId,
-    bool ExpectedAutomationIdFound);
+    bool ExpectedAutomationIdFound)
+{
+    public int? ActualDpiScalePercent { get; init; }
+
+    public bool DpiScaleMatches { get; init; } = true;
+}
 
 public sealed record SemanticProbeEvidence(
     HarnessVerdict Verdict,

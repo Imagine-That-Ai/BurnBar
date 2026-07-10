@@ -50,6 +50,7 @@ internal static class RouteSmokeHost
                 root.ActualWidth,
                 root.ActualHeight,
                 root.ActualTheme.ToString(),
+                (int)Math.Round((root.XamlRoot?.RasterizationScale ?? 0) * 100),
                 expectedAutomationId,
                 expectedAutomationIdFound);
         }
@@ -62,9 +63,10 @@ internal static class RouteSmokeHost
                 ex);
         }
 
-        await WriteResultAsync(options.OutputDirectory, result).ConfigureAwait(false);
+        await WriteResultAsync(options.OutputDirectory, result).ConfigureAwait(true);
         AppDiagnostics.LogEvent("route-smoke.capture.exit", $"{options.RouteKey} code={result.ExitCode}");
-        Environment.Exit(result.ExitCode);
+        window.Close();
+        App.Current.Exit();
     }
 
     private static async Task WaitForRenderAsync(int timeoutMilliseconds)
@@ -180,6 +182,7 @@ internal static class RouteSmokeHost
         double ActualWidth,
         double ActualHeight,
         string? Theme,
+        int ActualDpiScalePercent,
         string ExpectedAutomationId,
         bool ExpectedAutomationIdFound,
         string? ExceptionType,
@@ -193,6 +196,7 @@ internal static class RouteSmokeHost
             double actualWidth,
             double actualHeight,
             string theme,
+            int actualDpiScalePercent,
             string expectedAutomationId,
             bool expectedAutomationIdFound) =>
             new(
@@ -208,6 +212,7 @@ internal static class RouteSmokeHost
                 actualWidth,
                 actualHeight,
                 theme,
+                actualDpiScalePercent,
                 expectedAutomationId,
                 expectedAutomationIdFound,
                 null,
@@ -231,6 +236,7 @@ internal static class RouteSmokeHost
                 0,
                 0,
                 null,
+                0,
                 RouteSmokeHost.ExpectedAutomationId(routeKey),
                 ExpectedAutomationIdFound: false,
                 exception.GetType().FullName,

@@ -25,6 +25,11 @@ High-contrast and reduced-transparency route runs seed the app's real persisted
 shell state through `--automation-appearance` and
 `--automation-reduce-transparency` before `ThemeService` starts.
 
+The 100% DPI scenario records `XamlRoot.RasterizationScale` from the rendered
+window and fails if it does not match the declared scenario. The keyboard
+scenario is manifest/input-contract evidence and does not relabel duplicate
+route screenshots as keyboard-only interaction proof.
+
 ## Local Verification
 
 - `dotnet test windows/tests/ui-automation/OpenBurnBar.UiAutomationHarness.Tests.csproj --configuration Debug`

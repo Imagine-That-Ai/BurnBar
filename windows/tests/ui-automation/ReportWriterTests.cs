@@ -62,6 +62,25 @@ public sealed class ReportWriterTests : IDisposable
     }
 
     [Fact]
+    public void HtmlReportWriter_ReportsMeasuredDpi()
+    {
+        UiHarnessRunSummary original = CreateSummary(HarnessVerdict.Pass, null);
+        RouteSmokeEvidence route = original.Routes[0] with
+        {
+            ActualDpiScalePercent = 100,
+            DpiScaleMatches = true,
+        };
+        UiHarnessRunSummary summary = original with { Routes = new[] { route } };
+        string path = Path.Combine(_dir, "index.html");
+
+        HtmlReportWriter.Write(path, summary, new ArtifactRedactor());
+
+        string html = File.ReadAllText(path);
+        Assert.Contains("actual=100", html);
+        Assert.Contains("match=True", html);
+    }
+
+    [Fact]
     public void CertificationScenarioCatalog_AccessibilityProfileIncludesRequiredModes()
     {
         IReadOnlyList<UiCertificationScenario> scenarios = CertificationScenarioCatalog.Select("accessibility");
@@ -69,8 +88,8 @@ public sealed class ReportWriterTests : IDisposable
         Assert.Contains(scenarios, scenario => scenario.Key == "baseline" && scenario.RequiresScreenshots);
         Assert.Contains(scenarios, scenario => scenario.Key == "high-contrast" && scenario.AppearanceMode == "highcontrast" && scenario.ReduceTransparency == true);
         Assert.Contains(scenarios, scenario => scenario.Key == "reduced-transparency" && scenario.ReduceTransparency == true);
-        Assert.Contains(scenarios, scenario => scenario.Key == "dpi-100" && scenario.DpiScalePercent == 100);
-        Assert.Contains(scenarios, scenario => scenario.Key == "keyboard-contract" && scenario.RequiresKeyboardOnly && scenario.RequiresNarratorProtocol);
+        Assert.Contains(scenarios, scenario => scenario.Key == "dpi-100" && scenario.DpiScalePercent == 100 && scenario.RunsRouteSmoke);
+        Assert.Contains(scenarios, scenario => scenario.Key == "keyboard-contract" && scenario.RequiresKeyboardOnly && scenario.RequiresNarratorProtocol && !scenario.RunsRouteSmoke);
     }
 
     [Fact]

@@ -77,7 +77,10 @@ public static class CertificationScenarioCatalog
         RequiresUiAutomation: false,
         RequiresKeyboardOnly: true,
         RequiresNarratorProtocol: true,
-        Acceptance: "The harness records the keyboard/input route contract and keeps non-bypassable actions token-gated.");
+        Acceptance: "The harness records the keyboard/input route contract and keeps non-bypassable actions token-gated.")
+    {
+        RunsRouteSmoke = false,
+    };
 
     public static IReadOnlyList<UiCertificationScenario> Select(string? profile)
     {

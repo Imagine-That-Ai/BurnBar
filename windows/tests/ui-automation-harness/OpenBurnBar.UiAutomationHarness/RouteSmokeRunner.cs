@@ -167,6 +167,7 @@ internal sealed class RouteSmokeRunner
         using JsonDocument json = JsonDocument.Parse(File.ReadAllText(resultPath));
         JsonElement root = json.RootElement;
         bool nearUniform = ReadBool(root, "NearUniform", defaultValue: true);
+        int reportedExitCode = ReadInt(root, "ExitCode", defaultValue: 1);
         string? screenshotPath = ReadString(root, "ScreenshotPath");
         string? message = ReadString(root, "Message");
         string expectedAutomationId = ReadString(root, "ExpectedAutomationId") ?? UiHarnessRouteDefaults.ExpectedAutomationId(routeKey);
@@ -175,10 +176,24 @@ internal sealed class RouteSmokeRunner
         double height = ReadDouble(root, "Height");
         double lumaStdDev = ReadDouble(root, "LumaStdDev");
         double elapsedMs = ReadDouble(root, "ElapsedMs");
-        var verdict = processExitCode == 0 && !nearUniform && expectedAutomationIdFound ? HarnessVerdict.Pass : HarnessVerdict.Fail;
+        int actualDpiScalePercent = ReadInt(root, "ActualDpiScalePercent", defaultValue: 0);
+        bool dpiScaleMatches = scenario.DpiScalePercent is null ||
+            (actualDpiScalePercent > 0 && Math.Abs(actualDpiScalePercent - scenario.DpiScalePercent.Value) <= 1);
+        int effectiveExitCode = processExitCode == 0 ? reportedExitCode : processExitCode;
+        var verdict = effectiveExitCode == 0 && !nearUniform && expectedAutomationIdFound && dpiScaleMatches
+            ? HarnessVerdict.Pass
+            : HarnessVerdict.Fail;
+        if (processExitCode != 0)
+        {
+            message = AppendMessage(message, $"OpenBurnBar process exited abnormally with code {processExitCode}.");
+        }
         if (!expectedAutomationIdFound)
         {
             message = AppendMessage(message, $"Expected automation id was not found: {expectedAutomationId}");
+        }
+        if (!dpiScaleMatches)
+        {
+            message = AppendMessage(message, $"Expected {scenario.DpiScalePercent}% DPI but measured {actualDpiScalePercent}%.");
         }
 
         return new RouteSmokeEvidence(
@@ -186,7 +201,7 @@ internal sealed class RouteSmokeRunner
             scenario.Title,
             routeKey,
             verdict,
-            processExitCode,
+            effectiveExitCode,
             TimedOut: false,
             nearUniform,
             screenshotPath,
@@ -200,7 +215,11 @@ internal sealed class RouteSmokeRunner
             scenario.ReduceTransparency,
             scenario.DpiScalePercent,
             expectedAutomationId,
-            expectedAutomationIdFound);
+            expectedAutomationIdFound)
+        {
+            ActualDpiScalePercent = actualDpiScalePercent > 0 ? actualDpiScalePercent : null,
+            DpiScaleMatches = dpiScaleMatches,
+        };
     }
 
     private static RouteSmokeEvidence Failed(
@@ -239,6 +258,9 @@ internal sealed class RouteSmokeRunner
 
     private static double ReadDouble(JsonElement root, string property) =>
         root.TryGetProperty(property, out JsonElement value) && value.TryGetDouble(out double parsed) ? parsed : 0;
+
+    private static int ReadInt(JsonElement root, string property, int defaultValue) =>
+        root.TryGetProperty(property, out JsonElement value) && value.TryGetInt32(out int parsed) ? parsed : defaultValue;
 
     private static string AppendMessage(string? current, string addition) =>
         string.IsNullOrWhiteSpace(current) ? addition : $"{current} {addition}";
