@@ -44,6 +44,7 @@ public actor BurnBarDaemonServer {
     /// the daemon can verify local-auth proofs independently of the app.
     let phoneControlPinStore: DaemonPhoneKeyPinStore?
     let linuxOnboardingService: BurnBarLinuxOnboardingService
+    let subscriptionService: BurnBarSubscriptionService
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -86,7 +87,8 @@ public actor BurnBarDaemonServer {
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
         localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil,
         phoneControlPinStore: DaemonPhoneKeyPinStore? = nil,
-        linuxOnboardingService: BurnBarLinuxOnboardingService? = nil
+        linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
+        subscriptionService: BurnBarSubscriptionService? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -96,6 +98,9 @@ public actor BurnBarDaemonServer {
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
         self.linuxOnboardingService = linuxOnboardingService ?? BurnBarLinuxOnboardingService()
+        self.subscriptionService = subscriptionService ?? BurnBarSubscriptionService(
+            daemonVersion: configuration.daemonVersion
+        )
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -726,7 +731,7 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .runCreate, .runList, .runGet, .runPoll, .runCancel, .runRetry, .runResume,
-                 .subscriptionStart, .subscriptionResume,
+             .subscriptionStart, .subscriptionResume, .subscriptionStop,
                  .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
                 return try await handleRunWorkspaceApprovalRPC(
                     method: method,

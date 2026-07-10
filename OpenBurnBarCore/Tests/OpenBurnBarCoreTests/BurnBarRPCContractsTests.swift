@@ -130,6 +130,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .membershipRestore: "daemon.membership.restore",
         .subscriptionStart: "subscription.start",
         .subscriptionResume: "subscription.resume",
+        .subscriptionStop: "subscription.stop",
         .perfMeasure: "perf.measure"
     ]
 

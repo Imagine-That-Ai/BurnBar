@@ -1132,6 +1132,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "subscription.stop",
+    "caseName": "subscriptionStop",
+    "domain": "run_workspace_approval",
+    "capability": "run",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarSubscriptionStopRequest",
+    "result": "BurnBarSubscriptionStopResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "workspace.executeTool",
     "caseName": "workspaceExecuteTool",
     "domain": "run_workspace_approval",

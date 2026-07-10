@@ -129,6 +129,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .runResume,
         .subscriptionStart,
         .subscriptionResume,
+        .subscriptionStop,
         .workspaceExecuteTool,
         .workspaceToolResult,
         .approvalRespond

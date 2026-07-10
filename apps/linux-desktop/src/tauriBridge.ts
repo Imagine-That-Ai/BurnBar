@@ -503,6 +503,50 @@ export type GatewayProxyRequest = {
   messages: GatewayProxyMessage[];
 };
 
+export type DaemonSubscriptionTopic = 'data' | 'health' | 'run';
+export type DaemonSubscriptionStartRequest = {
+  topic: DaemonSubscriptionTopic;
+  run_id?: string;
+  requested_subscription_id?: string;
+  client_id?: string;
+};
+export type DaemonSubscriptionResumeRequest = {
+  subscription_id: string;
+  topic: DaemonSubscriptionTopic;
+  after_seq: number;
+  run_id?: string;
+  client_id?: string;
+};
+export type DaemonSubscriptionStopRequest = {
+  subscription_id: string;
+  client_id?: string;
+};
+export type DaemonSubscriptionEvent = {
+  seq: number;
+  kind: string;
+  snapshot: Record<string, string>;
+  terminal: boolean;
+};
+export type DaemonSubscriptionResponse = {
+  subscriptionId: string;
+  topic: DaemonSubscriptionTopic;
+  seq: number;
+  cursor: string;
+  firstSnapshot: boolean;
+  events: DaemonSubscriptionEvent[];
+  degradedFallback: boolean;
+  degradationReason?: string;
+  backpressure: string;
+  disconnectDetected: boolean;
+  recoveredAfterRestart: boolean;
+  terminalStateDelivered: boolean;
+};
+export type DaemonSubscriptionStopResponse = {
+  subscriptionId: string;
+  stopped: boolean;
+  lastSeq: number;
+};
+
 // ─────────────────────────── Bridge contract ──────────────────────────────
 
 export interface LinuxShellBridge {
@@ -520,6 +564,9 @@ export interface LinuxShellBridge {
   onboardingSnapshot(): Promise<LinuxOnboardingSnapshot>;
   onboardingAction(request: LinuxOnboardingActionRequest): Promise<LinuxOnboardingSnapshot>;
   onboardingReset(): Promise<LinuxOnboardingSnapshot>;
+  subscriptionStart(request: DaemonSubscriptionStartRequest): Promise<DaemonSubscriptionResponse>;
+  subscriptionResume(request: DaemonSubscriptionResumeRequest): Promise<DaemonSubscriptionResponse>;
+  subscriptionStop(request: DaemonSubscriptionStopRequest): Promise<DaemonSubscriptionStopResponse>;
 
   // P01–P11 lane extensions — each maps the raw daemon `result` JSON to a typed shape.
   usageSummary(): Promise<UsageSummary>;
@@ -644,6 +691,90 @@ function pick(v: RawJsonValue, ...keys: string[]): RawJsonValue {
     }
   }
   return undefined;
+}
+
+function requireObject(v: RawJsonValue, label: string): Record<string, RawJsonValue> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  return v as Record<string, RawJsonValue>;
+}
+
+function requireString(v: RawJsonValue, label: string): string {
+  if (typeof v !== 'string' || v.length === 0) {
+    throw new Error(`${label} must be a non-empty string.`);
+  }
+  return v;
+}
+
+function requireBoolean(v: RawJsonValue, label: string): boolean {
+  if (typeof v !== 'boolean') throw new Error(`${label} must be a boolean.`);
+  return v;
+}
+
+function requireSequence(v: RawJsonValue, label: string): number {
+  if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) {
+    throw new Error(`${label} must be a non-negative safe integer.`);
+  }
+  return v;
+}
+
+function decodeSubscriptionTopic(v: RawJsonValue): DaemonSubscriptionTopic {
+  if (v === 'data' || v === 'health' || v === 'run') return v;
+  throw new Error('subscription.topic is unsupported.');
+}
+
+export function decodeDaemonSubscriptionResponse(raw: RawJsonValue): DaemonSubscriptionResponse {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'subscription response');
+  const eventsRaw = source.events;
+  if (!Array.isArray(eventsRaw)) throw new Error('subscription.events must be an array.');
+  const events = eventsRaw.map((rawEvent, index): DaemonSubscriptionEvent => {
+    const event = requireObject(rawEvent, `subscription.events[${index}]`);
+    const rawSnapshot = requireObject(event.snapshot, `subscription.events[${index}].snapshot`);
+    const snapshot: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawSnapshot)) {
+      snapshot[key] = requireString(value, `subscription.events[${index}].snapshot.${key}`);
+    }
+    return {
+      seq: requireSequence(event.seq, `subscription.events[${index}].seq`),
+      kind: requireString(event.kind, `subscription.events[${index}].kind`),
+      snapshot,
+      terminal: requireBoolean(event.terminal, `subscription.events[${index}].terminal`)
+    };
+  });
+  const degradationReason = source.degradation_reason;
+  if (degradationReason !== undefined && degradationReason !== null && typeof degradationReason !== 'string') {
+    throw new Error('subscription.degradation_reason must be a string when present.');
+  }
+  return {
+    subscriptionId: requireString(source.subscription_id, 'subscription.subscription_id'),
+    topic: decodeSubscriptionTopic(source.topic),
+    seq: requireSequence(source.seq, 'subscription.seq'),
+    cursor: requireString(source.cursor, 'subscription.cursor'),
+    firstSnapshot: requireBoolean(source.first_snapshot, 'subscription.first_snapshot'),
+    events,
+    degradedFallback: requireBoolean(source.degraded_fallback, 'subscription.degraded_fallback'),
+    degradationReason: typeof degradationReason === 'string' ? degradationReason : undefined,
+    backpressure: requireString(source.backpressure, 'subscription.backpressure'),
+    disconnectDetected: requireBoolean(source.disconnect_detected, 'subscription.disconnect_detected'),
+    recoveredAfterRestart: requireBoolean(
+      source.recovered_after_restart,
+      'subscription.recovered_after_restart'
+    ),
+    terminalStateDelivered: requireBoolean(
+      source.terminal_state_delivered,
+      'subscription.terminal_state_delivered'
+    )
+  };
+}
+
+export function decodeDaemonSubscriptionStopResponse(raw: RawJsonValue): DaemonSubscriptionStopResponse {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'subscription stop response');
+  return {
+    subscriptionId: requireString(source.subscription_id, 'subscription stop.subscription_id'),
+    stopped: requireBoolean(source.stopped, 'subscription stop.stopped'),
+    lastSeq: requireSequence(source.last_seq, 'subscription stop.last_seq')
+  };
 }
 
 type UsageEvent = {
@@ -1740,6 +1871,18 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       ),
     onboardingReset: async () =>
       decodeLinuxOnboardingSnapshot(await invoke<RawJsonValue>('onboarding_reset')),
+    subscriptionStart: async (request) =>
+      decodeDaemonSubscriptionResponse(
+        await invoke<RawJsonValue>('subscription_start', { request })
+      ),
+    subscriptionResume: async (request) =>
+      decodeDaemonSubscriptionResponse(
+        await invoke<RawJsonValue>('subscription_resume', { request })
+      ),
+    subscriptionStop: async (request) =>
+      decodeDaemonSubscriptionStopResponse(
+        await invoke<RawJsonValue>('subscription_stop', { request })
+      ),
 
     // P01 — daemon.usage.recent → aggregated summary
     usageSummary: async () => {
