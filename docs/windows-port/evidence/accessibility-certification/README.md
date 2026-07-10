@@ -30,6 +30,21 @@ window and fails if it does not match the declared scenario. The keyboard
 scenario is manifest/input-contract evidence and does not relabel duplicate
 route screenshots as keyboard-only interaction proof.
 
+## Exact-Candidate Host Evidence
+
+The Windows 11 ARM64 UTM run for candidate `d8fc5675568f` passed exact import
+verification (`10,255 / 10,255` files, zero mismatches), the ARM64 WinUI build,
+all `25 / 25` route/scenario captures, semantic UI Automation, and all nine
+input-route contract rows. The three DPI scenarios measured 100% through
+`XamlRoot.RasterizationScale` rather than trusting the scenario label.
+
+The compact receipt is
+[`host-run-d8fc567556.json`](host-run-d8fc567556.json). The full 200-file bundle
+is retained outside git as
+`openburnbar-accessibility-evidence-d8fc5675568f.zip`; its SHA-256 is
+`ea53024c64534edc3fe6a731c2a9b501b0a5c04d80d74f755b15654fbe728275`.
+An independent Gitleaks scan reported no leaks.
+
 ## Local Verification
 
 - `dotnet test windows/tests/ui-automation/OpenBurnBar.UiAutomationHarness.Tests.csproj --configuration Debug`
@@ -41,7 +56,8 @@ is owned by the Windows host run.
 
 ## Remaining Release Boundary
 
-This harness is infrastructure for the audit checklist item covering UIA,
-keyboard, high contrast, reduced motion, DPI, and screenshots. The release claim
-still requires real Windows host artifacts plus physical-device Narrator,
-150%/200% DPI, high-contrast OS theme, and keyboard-only protocol evidence.
+This host run closes the ARM64 VM baseline, app-seeded high-contrast and
+reduced-transparency scenarios, measured 100% DPI, semantic UIA, screenshots,
+and input-route contract evidence. The release claim still requires physical
+x64/ARM64 devices, Narrator, 150%/200% DPI, Windows OS high-contrast theme, and
+manual keyboard-only protocol evidence.

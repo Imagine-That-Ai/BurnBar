@@ -38,11 +38,20 @@ their independent release gates.
 The UI automation harness now has an explicit `--certification-profile
 accessibility` mode. It keeps the default smoke path fast, while adding a
 machine-readable certification scenario manifest for baseline screenshots,
-high-contrast rendering, reduced-transparency rendering, hosted 100% DPI
+high-contrast rendering, reduced-transparency rendering, measured 100% DPI
 captures, and the keyboard/input safety contract. High-contrast and
 reduced-transparency scenarios seed the real persisted Windows appearance state
 before `ThemeService` initializes, so route captures exercise production theme
 composition rather than a test-only style shim.
+
+Candidate `d8fc5675568f` has now passed exact import verification on the Windows
+11 ARM64 UTM host (`10,255 / 10,255` files, zero mismatches), an ARM64 WinUI
+build, `25 / 25` route/scenario captures, semantic UI Automation, and all nine
+input-route contract rows. Its three DPI captures independently measured 100%
+through `XamlRoot.RasterizationScale`. The compact receipt is
+`docs/windows-port/evidence/accessibility-certification/host-run-d8fc567556.json`;
+the external 200-file bundle is content-addressed by SHA-256
+`ea53024c64534edc3fe6a731c2a9b501b0a5c04d80d74f755b15654fbe728275`.
 
 This closes part of the certification infrastructure gap: CI and host evidence
 can no longer treat generic route smoke as equivalent to accessibility/DPI
@@ -63,10 +72,12 @@ capabilities are uncomposed or explicitly deferred.
 
 This audit reviewed current source, current release assets, the 46-row Windows
 ledger, selected Windows unit suites, and the Windows full-suite CI result.
-The local Windows VM was running, but was locked and its guest-exec channel
-was unavailable. Installed-app behavior, visual polish, performance,
-notifications, activation, and accessibility are therefore source-audited,
-not runtime-certified.
+The initial audit snapshot found the local Windows VM locked and its guest-exec
+channel unavailable. The later exact-candidate receipt above supersedes that
+statement for the bounded ARM64 UIA/accessibility scenarios only. Installed
+release behavior, visual performance, notifications, activation, Narrator,
+150%/200% DPI, OS-level high contrast, and physical x64/ARM64 hardware remain
+uncertified.
 
 The public v1.0.29 release has macOS artifacts but no Windows installer or
 MSIX package. A passing scoped ledger and portable C# tests must not be
