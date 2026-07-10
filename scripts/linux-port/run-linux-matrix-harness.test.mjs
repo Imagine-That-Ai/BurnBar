@@ -39,6 +39,7 @@ function completeNativeEvidence(commit, environmentId = supportedEnvironment) {
       notificationActions: true,
       notificationRelaunchRoute: true,
       deepLinkRelaunch: true,
+      globalPanicShortcut: true,
       loginStart: true,
       trayHostLossRecovery: true
     }
@@ -158,6 +159,7 @@ test('accepts commit and environment matched native-shell matrix evidence', () =
     assert.equal(nativeCheck?.passed, true);
     assert.deepEqual(report.evidenceInputs.nativeShellEvidence.missing, []);
     assert.ok(report.nativeShellEvidenceRequirements.some((requirement) => requirement.id === 'login-start'));
+    assert.ok(report.nativeShellEvidenceRequirements.some((requirement) => requirement.id === 'global-panic-shortcut'));
     assert.equal(report.blocked.some((item) => item.capability === 'native-shell-evidence'), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

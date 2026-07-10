@@ -255,7 +255,7 @@
 </tr>
 <tr>
 <td>Remediation evidence</td>
-<td>Stacked source implementation at <code>0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba</code> on <code>codex/linux-parity-auth</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>. The auth stack is source-validated but not deployed or environment-certified.</td>
+<td>Account/auth foundation at <code>0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba</code>; stacked native-shell source through <code>132fdb9d5c2d2b4b225e32d9244bc5ec17094170</code> plus the current global-panic capture packet; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>. Source packets are validated but are not promoted by this text without exact-candidate environment evidence.</td>
 </tr>
 </tbody></table>
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
@@ -286,7 +286,9 @@ package/accessibility evidence alone. The shell verifier now emits
 <code>native-shell-evidence.json</code> for that gate, and the installed desktop-session
 harness now captures the tray action, compact-status, status-window
 accessibility, deterministic freedesktop notification action/relaunch, and
-secondary deep-link relaunch artifacts named by the producer. It also captures a
+secondary deep-link relaunch artifacts named by the producer. The same installed
+session now focuses a separate X11 probe window, dispatches the native global
+panic fallback chord, and requires daemon-wide kill-path acceptance. It also captures a
 deterministic XFCE/AppIndicator StatusNotifier host loss/restart pass that
 refreshes recovered menu handles and rejects duplicate registered items or
 extra app processes. Current installed evidence remains blocked until VM runs
@@ -408,8 +410,8 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Native shell</td>
-<td>Single-instance/background launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, user XDG login start, fail-closed native-shell matrix evidence requirements, and verifier-produced <code>native-shell-evidence.json</code> are implemented</td>
-<td>Certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, notification, cloud inline-reply, provider OAuth return, and lifecycle rows</td>
+<td>Single-instance/background launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, user XDG login start, fail-closed native-shell matrix evidence requirements, and verifier-produced <code>native-shell-evidence.json</code> are implemented</td>
+<td>Certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, notification, cloud quick reply, provider external login, and lifecycle rows</td>
 </tr>
 <tr>
 <td>Account auth</td>
@@ -885,8 +887,8 @@ required gates and were not made green by the Ed25519 result.</p>
 <tr>
 <td>P-27</td>
 <td>Notifications/deep links</td>
-<td>Actionable notifications, OAuth return, global commands, login start</td>
-<td>Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, deterministic installed notification server/action/response/relaunch capture, and daemon-backed panic shortcut exist; cloud agent-reply listener/inline reply, provider OAuth callback contract, rich desktop notification breadth, and installed shortcut/desktop matrix proof remain</td>
+<td>Actionable notifications, provider external login, global commands, login start</td>
+<td>Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, deterministic installed notification server/action/response/relaunch capture, and an installed X11 global panic chord reaching the daemon-wide kill path exist; cloud agent-reply listener/quick reply, provider CLI external-login workflow, rich desktop notification breadth, and cross-desktop shortcut proof remain</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -1285,9 +1287,11 @@ bridge; then build portal/PipeWire capture, AT-SPI inspection, libei input,
 constrained X11/XTest, and explicitly consented uinput fallback.</li>
 <li><strong>Priority:</strong> <strong>Critical</strong>.</li>
 <li><strong>Implementation notes:</strong> preserve approval as ground truth; trust elevation
-remains Mac/desktop local; implement a Linux-native global panic path plus
-lock/sleep/permission-revocation kill paths; audit every action and terminal
-entry; capability-gate per compositor and session type.</li>
+remains Mac/desktop local; the Linux-native daemon-wide global panic path and
+deterministic installed X11 chord proof now exist, while lock/sleep/
+permission-revocation kill paths and real-desktop latency certification remain;
+audit every action and terminal entry; capability-gate per compositor and
+session type.</li>
 <li><strong>QA verification:</strong> navigate/click/type/screenshot against real browser
 targets; exercise manual/step/trusted policy, approval races, denial, audit
 tampering, lock/sleep, portal revocation, daemon crash, and panic latency on
@@ -1583,8 +1587,9 @@ unavailable capability copy, and migration from existing localStorage keys.</li>
 compact status window, source-level freedesktop notification action primitive,
 deterministic installed notification action capture, fail-closed native-shell
 matrix evidence requirements, and verifier-produced <code>native-shell-evidence.json</code>
-implemented; installed matrix certification, cloud inline reply, and provider
-OAuth return remain open.</strong> Rust now owns single-instance arbitration,
+implemented; installed X11 global panic capture is now producer-backed; installed
+matrix certification, cloud quick reply, and provider external login remain
+open.</strong> Rust now owns single-instance arbitration,
 background launch, an allowlisted <code>openburnbar://</code> parser,
 listener-race-safe delivery, window focus, live tray actions/facts, lazy compact
 status-window lifecycle, freedesktop notification capability/delivery commands,
@@ -1593,12 +1598,13 @@ typed route/action pairs. deb, rpm, AppImage, and AUR packaging share the
 canonical autostart entry. The environment matrix harness now requires a current
 <code>OPENBURNBAR_LINUX_NATIVE_SHELL_EVIDENCE</code> file proving tray host/actions,
 compact-status accessibility, notification server/actions/relaunch, deep-link
-relaunch, login-start, and tray-host-loss recovery before a requested support
+relaunch, global panic shortcut, login-start, and tray-host-loss recovery before a requested support
 row can become ready; <code>verify-shell-evidence.mjs</code> emits that JSON from
 installed-session artifacts and records missing rows instead of claiming false
 success. The packaged desktop-session harness now records tray route actions,
 compact status accessibility, deterministic freedesktop notification
 server/action/response/relaunch routing, secondary deep-link relaunch,
+an X11 foreground-probe global panic chord with daemon-wide acceptance,
 fresh-session login-start lifecycle, and XFCE/AppIndicator host-loss/restart
 recovery artifacts. Direct ARM64 GNOME X11 evidence still proves hidden background
 launch, one-process Chat routing, the bundled icon/native menu, and an exact
@@ -1613,24 +1619,25 @@ exposes live cost/tokens, quota floor, provider count, freshness, a compact
 status window, primary navigation/reconnect/login-start actions, validated
 membership/navigation links, source-level freedesktop notification actions,
 background launch, and a producer-backed certification gate for native-shell
-evidence. It still lacks account quick switch, cloud agent-reply inline reply,
+evidence. It still lacks account quick switch, cloud agent-reply quick reply,
 installed notification breadth, cross-desktop tray-host breadth, and a
-provider OAuth callback matrix.</li>
+provider CLI external-login workflow.</li>
 <li><strong>Why it matters:</strong> repeated daily workflows, alerts, recovery, auth, and panic
 controls feel incomplete or cannot work outside the main window.</li>
 <li><strong>Recommended solution:</strong> certify the implemented tray, compact status
 window, typed deep links, source-level freedesktop notifications,
 daemon-backed panic, and XDG startup across installed environments; then add
-cloud agent-reply listener/inline reply, dedicated OAuth callback validation,
-and portal/global shortcut coverage with X11 fallback.</li>
+cloud agent-reply listener/quick reply, typed provider CLI external-login
+start/status/cancel, and portal/global-shortcut coverage beyond the X11
+fallback proof.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> support GNOME&#39;s icon-only limitations; use shared
 live view models and freshness semantics; never depend on the tray as the sole
 panic path; extend host-loss proof beyond the deterministic XFCE/AppIndicator
 row into the full supported desktop matrix.</li>
 <li><strong>QA verification:</strong> icon-only and rich hosts, stale/offline/reconnect state,
-keyboard/screen-reader navigation, notification actions/relaunch, OAuth return,
-global panic latency, login start, multi-monitor, and cross-desktop tray
+keyboard/screen-reader navigation, notification actions/relaunch, provider
+external login, global panic latency, login start, multi-monitor, and cross-desktop tray
 crash/recovery.</li>
 </ul>
 <h3>GAP-015 - Implement honest update UX</h3>
@@ -2037,8 +2044,8 @@ queueing, locked keyring, and redaction.</li>
 <tr>
 <td>LNX-NATIVE-001</td>
 <td>Partially implemented</td>
-<td>Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON</td>
-<td>Cloud inline reply, provider OAuth return, rich notification-host breadth, display-manager/package-manager breadth, and full installed desktop matrix evidence</td>
+<td>Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, installed X11 global-panic capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON</td>
+<td>Cloud quick reply, provider external login, rich notification-host breadth, display-manager/package-manager breadth, and full installed desktop matrix evidence</td>
 </tr>
 <tr>
 <td>LNX-CAT-001, LNX-DIFF-001</td>
@@ -2218,7 +2225,7 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-NATIVE-001</td>
 <td>LNX-CAP-001</td>
-<td>Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, XDG startup, fail-closed native-shell matrix evidence requirements, and verifier-produced native-shell evidence JSON are implemented; add cloud inline reply, provider OAuth return, and exact-candidate matrix certification</td>
+<td>Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, XDG startup, fail-closed native-shell matrix evidence requirements, and verifier-produced native-shell evidence JSON are implemented; add cloud quick reply, provider external login, and exact-candidate matrix certification</td>
 <td>Repeated native workflows pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows</td>
 </tr>
 <tr>
@@ -2504,7 +2511,7 @@ accepted together.</p>
 <tr>
 <td>4</td>
 <td><strong>Daily-use native foundation</strong></td>
-<td>In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, XDG login-start, and account-auth foundations implemented; native Linux App Check attestation, membership/cloud/device depth, cloud inline reply, provider OAuth return, and installed matrix remain</td>
+<td>In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, and account-auth foundations implemented; native Linux App Check attestation, membership/cloud/device depth, cloud quick reply, provider external login, and installed matrix remain</td>
 <td>LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001</td>
 <td>Setup, deployed auth, data freshness, alerts/tray, update lifecycle, and current provider diff green</td>
 </tr>
@@ -2659,7 +2666,7 @@ deletion, offline, and clock-skew cases pass.</li>
 entitlement refresh work across restart.</li>
 <li><input disabled="" type="checkbox"> Tray/status UI works in rich and icon-only hosts, with stale/offline states.</li>
 <li><input disabled="" type="checkbox"> Notifications deliver actionable deep links and recover after relaunch.</li>
-<li><input disabled="" type="checkbox"> OAuth deep links, login startup, and global panic work on GNOME/KDE/wlroots.</li>
+<li><input disabled="" type="checkbox"> Provider external login, login startup, and global panic work on GNOME/KDE/wlroots.</li>
 </ul>
 <h3>Computer Use, media, and extended features</h3>
 <ul>

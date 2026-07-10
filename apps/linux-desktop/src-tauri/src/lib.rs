@@ -1199,9 +1199,80 @@ fn request_computer_use_panic_halt(
     )
 }
 
-fn trigger_computer_use_panic_hotkey() {
-    thread::spawn(|| {
-        if let Err(error) = request_computer_use_panic_halt("*".to_string(), "hotkey".to_string()) {
+fn computer_use_panic_hotkey_evidence(
+    chord: &str,
+    response: &Result<serde_json::Value, String>,
+) -> serde_json::Value {
+    match response {
+        Ok(result) => {
+            let session_id = result
+                .get("sessionId")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let ended_at_present = result.get("endedAt").is_some_and(|value| !value.is_null());
+            let audit_head_present = result
+                .get("auditHeadHashHex")
+                .and_then(serde_json::Value::as_str)
+                .is_some();
+            let passed = session_id == "*" && ended_at_present && audit_head_present;
+            serde_json::json!({
+                "schemaVersion": 1,
+                "passed": passed,
+                "daemonAccepted": passed,
+                "source": "hotkey",
+                "chord": chord,
+                "sessionId": session_id,
+                "endedAtPresent": ended_at_present,
+                "auditHeadPresent": audit_head_present,
+                "result": result,
+            })
+        }
+        Err(error) => serde_json::json!({
+            "schemaVersion": 1,
+            "passed": false,
+            "daemonAccepted": false,
+            "source": "hotkey",
+            "chord": chord,
+            "error": error,
+        }),
+    }
+}
+
+fn write_computer_use_panic_hotkey_evidence(
+    chord: &str,
+    response: &Result<serde_json::Value, String>,
+) {
+    let out_dir = match std::env::var("OPENBURNBAR_EVIDENCE_OUT") {
+        Ok(value) if !value.trim().is_empty() => PathBuf::from(value),
+        _ => return,
+    };
+    if let Err(error) = fs::create_dir_all(&out_dir) {
+        eprintln!("computer_use_global_panic_hotkey_evidence_failed: {error}");
+        return;
+    }
+    let payload = computer_use_panic_hotkey_evidence(chord, response);
+    let target = out_dir.join("native-global-panic-shortcut-response.json");
+    let temporary = out_dir.join(".native-global-panic-shortcut-response.json.tmp");
+    let serialized = match serde_json::to_vec_pretty(&payload) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("computer_use_global_panic_hotkey_evidence_failed: {error}");
+            return;
+        }
+    };
+    if let Err(error) =
+        fs::write(&temporary, serialized).and_then(|()| fs::rename(&temporary, &target))
+    {
+        let _ = fs::remove_file(&temporary);
+        eprintln!("computer_use_global_panic_hotkey_evidence_failed: {error}");
+    }
+}
+
+fn trigger_computer_use_panic_hotkey(chord: &'static str) {
+    thread::spawn(move || {
+        let response = request_computer_use_panic_halt("*".to_string(), "hotkey".to_string());
+        write_computer_use_panic_hotkey_evidence(chord, &response);
+        if let Err(error) = response {
             eprintln!("computer_use_global_panic_hotkey_failed: {error}");
         }
     });
@@ -1225,10 +1296,10 @@ fn register_computer_use_panic_shortcuts(app: &AppHandle) {
             let base = Modifiers::CONTROL | Modifiers::ALT;
             let meta_chord = base | Modifiers::SUPER;
             let shift_chord = base | Modifiers::SHIFT;
-            if shortcut.matches(meta_chord, Code::Period)
-                || shortcut.matches(shift_chord, Code::Period)
-            {
-                trigger_computer_use_panic_hotkey();
+            if shortcut.matches(meta_chord, Code::Period) {
+                trigger_computer_use_panic_hotkey("Ctrl+Alt+Super+Period");
+            } else if shortcut.matches(shift_chord, Code::Period) {
+                trigger_computer_use_panic_hotkey("Ctrl+Alt+Shift+Period");
             }
         })
         .build();
@@ -2827,6 +2898,39 @@ mod tests {
         assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
             .with_shortcuts(COMPUTER_USE_PANIC_SHORTCUTS)
             .is_ok());
+    }
+
+    #[test]
+    fn computer_use_panic_hotkey_evidence_requires_daemon_wide_acceptance() {
+        let accepted = computer_use_panic_hotkey_evidence(
+            "Ctrl+Alt+Shift+Period",
+            &Ok(serde_json::json!({
+                "sessionId": "*",
+                "endedAt": 1234,
+                "auditHeadHashHex": ""
+            })),
+        );
+        assert_eq!(accepted["passed"], true);
+        assert_eq!(accepted["daemonAccepted"], true);
+        assert_eq!(accepted["source"], "hotkey");
+
+        for refused in [
+            Ok(serde_json::json!({
+                "sessionId": "one-session",
+                "endedAt": 1234,
+                "auditHeadHashHex": "abc"
+            })),
+            Ok(serde_json::json!({
+                "sessionId": "*",
+                "auditHeadHashHex": ""
+            })),
+            Err("daemon unavailable".to_string()),
+        ] {
+            assert_eq!(
+                computer_use_panic_hotkey_evidence("Ctrl+Alt+Shift+Period", &refused)["passed"],
+                false
+            );
+        }
     }
 
     #[test]

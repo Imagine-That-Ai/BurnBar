@@ -90,6 +90,26 @@ function writeCompleteNativeArtifacts(root) {
     sameProcess: true,
     route: 'chat'
   });
+  writeJson(root, 'native-global-panic-shortcut-response.json', {
+    passed: true,
+    daemonAccepted: true,
+    source: 'hotkey',
+    chord: 'Ctrl+Alt+Shift+Period',
+    sessionId: '*',
+    endedAtPresent: true,
+    auditHeadPresent: true,
+    result: {
+      sessionId: '*',
+      endedAt: 1234,
+      auditHeadHashHex: ''
+    }
+  });
+  writeJson(root, 'native-global-panic-shortcut.json', {
+    passed: true,
+    appWindowFocused: false,
+    foregroundProbeFocused: true,
+    chord: 'Ctrl+Alt+Shift+Period'
+  });
   writeJson(root, 'native-login-start-roundtrip.json', {
     passed: true,
     enabled: true,
@@ -220,6 +240,58 @@ test('tray host recovery artifact rejects stale or duplicate actions', () => {
     assert.ok(evidence.missing.includes('tray-host-loss-recovery'));
     const recoveryCheck = evidence.checks.find((check) => check.id === 'tray-host-loss-recovery');
     assert.match(recoveryCheck?.detail ?? '', /missing tray host loss recovery proof/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('global panic shortcut rejects direct RPC or app-focused evidence', () => {
+  const root = tempDir();
+  try {
+    writeCompleteNativeArtifacts(root);
+    writeJson(root, 'native-global-panic-shortcut.json', {
+      passed: true,
+      appWindowFocused: true,
+      foregroundProbeFocused: false,
+      chord: 'Ctrl+Alt+Shift+Period'
+    });
+
+    const evidence = buildNativeShellEvidence({
+      evidenceDir: root,
+      commit: 'def456',
+      environmentId: 'ubuntu-24.04-gnome-x11-x86_64',
+      generatedAt: '2026-07-10T00:00:00.000Z'
+    });
+
+    assert.equal(evidence.passed, false);
+    assert.equal(evidence.nativeShell.globalPanicShortcut, false);
+    assert.ok(evidence.missing.includes('global-panic-shortcut'));
+    const panicCheck = evidence.checks.find((check) => check.id === 'global-panic-shortcut');
+    assert.match(panicCheck?.detail ?? '', /missing installed global panic shortcut/);
+
+    writeJson(root, 'native-global-panic-shortcut-response.json', {
+      passed: true,
+      daemonAccepted: true,
+      source: 'hotkey',
+      chord: 'Ctrl+Alt+F13',
+      sessionId: '*',
+      endedAtPresent: true,
+      auditHeadPresent: true,
+      result: { sessionId: '*', endedAt: 1234, auditHeadHashHex: '' }
+    });
+    writeJson(root, 'native-global-panic-shortcut.json', {
+      passed: true,
+      appWindowFocused: false,
+      foregroundProbeFocused: true,
+      chord: 'Ctrl+Alt+F13'
+    });
+    const wrongChordEvidence = buildNativeShellEvidence({
+      evidenceDir: root,
+      commit: 'def456',
+      environmentId: 'ubuntu-24.04-gnome-x11-x86_64',
+      generatedAt: '2026-07-10T00:00:00.000Z'
+    });
+    assert.equal(wrongChordEvidence.nativeShell.globalPanicShortcut, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

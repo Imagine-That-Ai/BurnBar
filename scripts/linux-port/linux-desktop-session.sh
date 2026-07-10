@@ -187,6 +187,92 @@ NOTIFYCAPS
   xprop -id "$window_id" >"$out_dir/window-initial-xprop.txt"
   scrot "$out_dir/screenshot-linux-desktop-first-run.png"
 
+  xmessage \
+    -title "OpenBurnBar Panic Shortcut Probe" \
+    -buttons "Dismiss:0" \
+    "This window must retain focus while the OpenBurnBar global panic shortcut fires." \
+    >"$out_dir/native-global-panic-probe.stdout.log" \
+    2>"$out_dir/native-global-panic-probe.stderr.log" &
+  panic_probe_pid="$!"
+  panic_probe_window_id=""
+  for _ in $(seq 1 80); do
+    panic_probe_window_id="$(xdotool search --onlyvisible --name "OpenBurnBar Panic Shortcut Probe" 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$panic_probe_window_id" ]]; then
+      break
+    fi
+    if ! kill -0 "$panic_probe_pid" 2>/dev/null; then
+      echo "Global panic shortcut focus probe exited before showing a window" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  if [[ -z "$panic_probe_window_id" ]]; then
+    echo "Timed out waiting for global panic shortcut focus probe" >&2
+    exit 1
+  fi
+  xdotool windowactivate --sync "$panic_probe_window_id" 2>/dev/null || xdotool windowactivate "$panic_probe_window_id"
+  xdotool windowfocus --sync "$panic_probe_window_id" 2>/dev/null || true
+  panic_active_window_before="$(xdotool getactivewindow)"
+  if [[ "$panic_active_window_before" != "$panic_probe_window_id" ]]; then
+    echo "Global panic shortcut probe did not hold focus before dispatch" >&2
+    exit 1
+  fi
+  xdotool key --clearmodifiers ctrl+alt+shift+period
+  for _ in $(seq 1 80); do
+    if [[ -s "$out_dir/native-global-panic-shortcut-response.json" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ ! -s "$out_dir/native-global-panic-shortcut-response.json" ]]; then
+    echo "Installed global panic shortcut did not produce daemon response evidence" >&2
+    exit 1
+  fi
+  panic_active_window_after="$(xdotool getactivewindow)"
+  node - \
+    "$out_dir/native-global-panic-shortcut-response.json" \
+    "$out_dir/native-global-panic-shortcut.json" \
+    "$window_id" \
+    "$panic_probe_window_id" \
+    "$panic_active_window_before" \
+    "$panic_active_window_after" <<'PANICSHORTCUT'
+const fs = require('fs');
+const [responsePath, outputPath, appWindowId, probeWindowId, activeBefore, activeAfter] = process.argv.slice(2);
+const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
+const foregroundProbeFocused = activeBefore === probeWindowId;
+const appWindowFocused = activeBefore === appWindowId;
+const passed = response.passed === true &&
+  response.daemonAccepted === true &&
+  response.source === 'hotkey' &&
+  response.sessionId === '*' &&
+  response.endedAtPresent === true &&
+  response.auditHeadPresent === true &&
+  response.chord === 'Ctrl+Alt+Shift+Period' &&
+  foregroundProbeFocused &&
+  !appWindowFocused;
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed,
+  source: response.source,
+  chord: response.chord,
+  daemonAccepted: response.daemonAccepted === true,
+  sessionId: response.sessionId,
+  foregroundProbeFocused,
+  appWindowFocused,
+  appWindowId,
+  probeWindowId,
+  activeWindowBefore: activeBefore,
+  activeWindowAfter: activeAfter,
+  focusMethod: 'xmessage-foreground-window-plus-xdotool-global-chord'
+};
+fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+if (!passed) process.exit(1);
+PANICSHORTCUT
+  kill "$panic_probe_pid" 2>/dev/null || true
+  wait "$panic_probe_pid" 2>/dev/null || true
+
   gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
     --method org.a11y.Bus.GetAddress >"$out_dir/atspi-bus-address.txt"
   orca --list-apps >"$out_dir/orca-applications.txt" 2>"$out_dir/orca-list-apps.err"
@@ -1628,6 +1714,10 @@ rm -f \
   "$out_dir"/login-start-xvfb.log \
   "$out_dir"/linux-desktop-session-report.json \
   "$out_dir"/native-deep-link-relaunch.json \
+  "$out_dir"/native-global-panic-probe.stderr.log \
+  "$out_dir"/native-global-panic-probe.stdout.log \
+  "$out_dir"/native-global-panic-shortcut-response.json \
+  "$out_dir"/native-global-panic-shortcut.json \
   "$out_dir"/native-login-start-autostart-exec.txt \
   "$out_dir"/native-login-start-enabled.desktop \
   "$out_dir"/native-login-start-relogin.json \

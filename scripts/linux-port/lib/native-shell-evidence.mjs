@@ -51,6 +51,12 @@ export const nativeShellEvidenceRequirements = [
     description: 'Secondary openburnbar:// launches reuse the existing instance and route correctly'
   },
   {
+    id: 'global-panic-shortcut',
+    key: 'globalPanicShortcut',
+    keys: ['globalPanicShortcut', 'global-panic-shortcut'],
+    description: 'The installed global panic chord reaches the daemon-wide kill path while another app has focus'
+  },
+  {
     id: 'login-start',
     key: 'loginStart',
     keys: ['loginStart', 'login-start'],
@@ -274,6 +280,34 @@ function evaluateDeepLinkRelaunch(evidenceDir) {
   );
 }
 
+function evaluateGlobalPanicShortcut(evidenceDir) {
+  const response = fileJson(evidenceDir, 'native-global-panic-shortcut-response.json');
+  const report = fileJson(evidenceDir, 'native-global-panic-shortcut.json');
+  const allowedChords = new Set(['Ctrl+Alt+Super+Period', 'Ctrl+Alt+Shift+Period']);
+  const passed = jsonPass(response) &&
+    jsonPass(report) &&
+    response?.daemonAccepted === true &&
+    response?.source === 'hotkey' &&
+    response?.sessionId === '*' &&
+    response?.endedAtPresent === true &&
+    response?.auditHeadPresent === true &&
+    response?.result?.sessionId === '*' &&
+    response?.result?.endedAt !== undefined &&
+    typeof response?.result?.auditHeadHashHex === 'string' &&
+    allowedChords.has(response?.chord) &&
+    report?.appWindowFocused === false &&
+    report?.foregroundProbeFocused === true &&
+    report?.chord === response?.chord;
+  return result(
+    'global-panic-shortcut',
+    passed,
+    passed
+      ? 'global panic chord reached the daemon-wide kill path while the probe window held focus'
+      : 'missing installed global panic shortcut focus and daemon-acceptance proof',
+    ['native-global-panic-shortcut-response.json', 'native-global-panic-shortcut.json']
+  );
+}
+
 function evaluateLoginStart(evidenceDir) {
   const loginStart = fileJson(evidenceDir, 'native-login-start-roundtrip.json');
   const passed = jsonPass(loginStart) &&
@@ -315,6 +349,7 @@ const artifactEvaluators = new Map([
   ['notification-actions', evaluateNotificationActions],
   ['notification-relaunch-route', evaluateNotificationRelaunch],
   ['deep-link-relaunch', evaluateDeepLinkRelaunch],
+  ['global-panic-shortcut', evaluateGlobalPanicShortcut],
   ['login-start', evaluateLoginStart],
   ['tray-host-loss-recovery', evaluateTrayHostLossRecovery]
 ]);
