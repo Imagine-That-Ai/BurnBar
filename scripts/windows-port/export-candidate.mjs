@@ -1,26 +1,31 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
+import { createGzip } from 'node:zlib';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '..', '..');
 
 function usage() {
-  console.error(`Usage: node scripts/windows-port/export-candidate.mjs --output-dir <dir> [--ref <git-ref>]`);
+  console.error(`Usage: node scripts/windows-port/export-candidate.mjs --output-dir <dir> [--ref <git-ref>] [--format tar|tar.gz]`);
   process.exit(2);
 }
 
 function parseArgs(argv) {
-  const args = { ref: 'HEAD', outputDir: '' };
+  const args = { ref: 'HEAD', outputDir: '', format: 'tar.gz' };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--output-dir') {
       args.outputDir = argv[++i] ?? '';
     } else if (arg === '--ref') {
       args.ref = argv[++i] ?? '';
+    } else if (arg === '--format') {
+      args.format = argv[++i] ?? '';
     } else if (arg === '--help' || arg === '-h') {
       usage();
     } else {
@@ -29,6 +34,7 @@ function parseArgs(argv) {
     }
   }
   if (!args.outputDir || !args.ref) usage();
+  if (!['tar', 'tar.gz'].includes(args.format)) usage();
   return args;
 }
 
@@ -49,6 +55,21 @@ function git(args, options = {}) {
 
 function sha256Hex(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
+}
+
+async function hashFile(path) {
+  const hash = createHash('sha256');
+  let size = 0;
+  await new Promise((resolvePromise, reject) => {
+    const stream = createReadStream(path);
+    stream.on('data', (chunk) => {
+      size += chunk.length;
+      hash.update(chunk);
+    });
+    stream.on('error', reject);
+    stream.on('end', resolvePromise);
+  });
+  return { sha256: hash.digest('hex'), size };
 }
 
 function canonicalJson(value) {
@@ -135,6 +156,14 @@ async function runArchive(ref, archivePath) {
   });
 }
 
+async function gzipDeterministic(inputPath, outputPath) {
+  await pipeline(
+    createReadStream(inputPath),
+    createGzip({ level: 9, mtime: 0 }),
+    createWriteStream(outputPath),
+  );
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outputDir = resolve(args.outputDir);
@@ -148,10 +177,17 @@ async function main() {
   const treeBuffer = git(['ls-tree', '-r', '-z', '--full-tree', commit], { encoding: 'buffer' });
   const files = hashBlobObjects(parseTreeRecords(treeBuffer));
 
-  const archiveName = `openburnbar-candidate-${commit.slice(0, 12)}.tar`;
+  const archiveName = `openburnbar-candidate-${commit.slice(0, 12)}.${args.format === 'tar.gz' ? 'tar.gz' : 'tar'}`;
   const archivePath = join(outputDir, archiveName);
-  await runArchive(commit, archivePath);
-  const archiveBytes = await readFile(archivePath);
+  if (args.format === 'tar.gz') {
+    const tarPath = join(outputDir, `openburnbar-candidate-${commit.slice(0, 12)}.tar`);
+    await runArchive(commit, tarPath);
+    await gzipDeterministic(tarPath, archivePath);
+    await rm(tarPath, { force: true });
+  } else {
+    await runArchive(commit, archivePath);
+  }
+  const archiveDigest = await hashFile(archivePath);
 
   const manifestPayload = {
     schema: 'openburnbar.windows.candidate-export.v1',
@@ -165,10 +201,10 @@ async function main() {
     },
     archive: {
       fileName: archiveName,
-      format: 'git-archive-tar',
+      format: args.format === 'tar.gz' ? 'git-archive-tar-gzip' : 'git-archive-tar',
       prefix: 'BurnBar/',
-      sha256: sha256Hex(archiveBytes),
-      size: archiveBytes.length,
+      sha256: archiveDigest.sha256,
+      size: archiveDigest.size,
     },
     files,
   };
