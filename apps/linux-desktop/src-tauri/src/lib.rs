@@ -1908,6 +1908,9 @@ fn session_env() -> serde_json::Value {
     serde_json::json!({
         "xdg_session_type": std::env::var("XDG_SESSION_TYPE").ok(),
         "xdg_current_desktop": std::env::var("XDG_CURRENT_DESKTOP").ok(),
+        "native_notification_evidence": std::env::var("OPENBURNBAR_NATIVE_NOTIFICATION_EVIDENCE")
+            .map(|value| value == "1")
+            .unwrap_or(false),
     })
 }
 

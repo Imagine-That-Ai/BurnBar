@@ -1,10 +1,11 @@
 # Linux native shell authority
 
 Status: source-level native shell, compact status window, and freedesktop
-notification action primitives implemented; the desktop-matrix harness now
-requires native-shell evidence before a row can become ready. Installed desktop
-matrix proof, provider OAuth return, and cloud agent-reply inline-reply parity
-remain open.
+notification action primitives implemented; the desktop-session harness now
+captures tray, compact-status, deep-link, and deterministic notification action
+artifacts, and the desktop-matrix harness requires native-shell evidence before
+a row can become ready. Installed desktop matrix breadth, provider OAuth return,
+and cloud agent-reply inline-reply parity remain open.
 
 This document records the native shell contract introduced for
 `LNX-NATIVE-001`. It covers process ownership, background launch, typed deep
@@ -134,6 +135,14 @@ the macOS path depends on Firebase `agent_notification_events`,
 needs a cloud event listener and reply sealer before agent-reply inline reply
 can be claimed.
 
+The installed desktop-session harness starts a deterministic
+`org.freedesktop.Notifications` D-Bus test server, enables
+`OPENBURNBAR_NATIVE_NOTIFICATION_EVIDENCE`, and records capability, action,
+response, and route artifacts from the installed app's `notify-rust` path. That
+proves protocol-level delivery and route activation without treating one test
+server as certification for every rich, icon-only, or action-limited desktop
+notification host.
+
 ## Login start
 
 Settings and the tray mutate the same user-scoped entry:
@@ -236,14 +245,21 @@ The producer reads these installed-session artifacts:
 | `login-start` | `native-login-start-roundtrip.json` |
 | `tray-host-loss-recovery` | `tray-host-loss-recovery.json` |
 
+The notification harness also records `native-notification-response-result.json`
+and `native-notification-server-events.jsonl`; `native-notification-relaunch-route.json`
+is derived only after the action result, response result, app liveness, focused
+window, and fresh `chat / open-chat` route sample all pass.
+
 `scripts/linux-port/linux-desktop-session.sh` now emits the tray-host,
-tray-actions, compact-status-window, status-window-a11y, deep-link-relaunch,
-and partial login-start artifact inputs from a real installed `.deb` session:
+tray-actions, compact-status-window, status-window-a11y, notification-server,
+notification-actions, notification-relaunch-route, deep-link-relaunch, and
+partial login-start artifact inputs from a real installed `.deb` session:
 D-Bus menu activation must return successfully, route actions must create fresh
 `route.navigation` samples summarized in `tray-action-route-results.json`,
-quick status must open/close with screenshot and AT-SPI focus evidence, and
-secondary `openburnbar://chat` launch must exit via single-instance handoff
-while the original process stays alive. The
+quick status must open/close with screenshot and AT-SPI focus evidence,
+notification activation must route through the installed freedesktop action
+path, and secondary `openburnbar://chat` launch must exit via single-instance
+handoff while the original process stays alive. The
 `native-login-start-roundtrip.json` produced by this session intentionally
 remains `passed: false` until a dedicated lifecycle harness proves relogin and
 package-uninstall removal.
@@ -264,7 +280,7 @@ installed candidate passes:
    return, focus, workspace, and multi-monitor cases;
 4. keyboard, screen-reader, reduced-motion, high-contrast, and 200% text rows;
 5. freedesktop actionable notification delivery in rich and action-limited
-   hosts, relaunch routing, denial, daemon-offline behavior, and
+   hosts, visual presentation, denial, daemon-offline behavior, and
    notification-server absence;
 6. portal/global shortcut and existing daemon-backed panic latency without the
    tray becoming a sole safety path.
@@ -272,6 +288,6 @@ installed candidate passes:
    and inline reply send/open parity with macOS.
 
 The source foundation is complete only for the capabilities described above.
-Installed notification behavior, provider OAuth return, cloud inline reply, and
+Installed notification breadth, provider OAuth return, cloud inline reply, and
 the final desktop matrix must remain visibly blocked until their product
 evidence exists.

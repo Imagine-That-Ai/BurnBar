@@ -94,6 +94,27 @@ async function boot(): Promise<void> {
       )
     : null;
   if (nativeShellSupervisor) await nativeShellSupervisor.start();
+  if (bridge) {
+    try {
+      const sessionEnv = await bridge.sessionEnv();
+      if (sessionEnv.nativeNotificationEvidence) {
+        window.setTimeout(() => {
+          bridge.nativeNotificationShow({
+            id: 'native-notification-evidence-chat',
+            title: 'OpenBurnBar notification evidence',
+            body: 'Installed Linux session notification action route probe.',
+            route: 'chat',
+            action: 'open-chat',
+            urgency: 'normal'
+          }).catch((error) => {
+            console.error('native_notification_evidence_failed', error);
+          });
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('native_notification_evidence_failed', error);
+    }
+  }
 
   const healthSupervisor = new DaemonHealthSupervisor(async () => {
     await useShellStore.getState().refreshHealth();

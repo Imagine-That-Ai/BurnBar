@@ -38,10 +38,11 @@ support row can become ready, so P-26/P-27 source work cannot be promoted by
 package/accessibility evidence alone. The shell verifier now emits
 `native-shell-evidence.json` for that gate, and the installed desktop-session
 harness now captures the tray action, compact-status, status-window
-accessibility, and secondary deep-link relaunch artifacts named by the
-producer. Current installed evidence remains blocked until VM runs capture
-notification server/actions/relaunch, complete login-start relogin/uninstall
-lifecycle, and tray-host-loss artifacts.
+accessibility, deterministic freedesktop notification action/relaunch, and
+secondary deep-link relaunch artifacts named by the producer. Current installed
+evidence remains blocked until VM runs capture complete login-start
+relogin/uninstall lifecycle, tray-host-loss artifacts, and real desktop
+notification breadth beyond the deterministic test server.
 The current auth packet also adds purpose-bound in-app device authorization,
 daemon-owned Firebase token exchange and refresh, writable-keyring preflight,
 local sign-out, and a strict renderer-redacted account contract. Native Linux
@@ -289,8 +290,8 @@ required gates and were not made green by the Ed25519 result.
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Quota-centric provider route; no equivalent model workspace/failover flow | Partial | Medium |
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 13 tabs; Model Proxy, Computer Use, Pets omitted; several controls read-only | Partial | Medium |
 | P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed availability check fails closed; valid public feed and package-manager install/restart/rollback proof remain open | Partial | High |
-| P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; matrix rows now require and can emit native-shell evidence; account quick switch, host-loss behavior, and installed matrix proof remain | Near parity | High |
-| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, and daemon-backed panic shortcut exist; matrix rows now require and can emit notification/action/relaunch evidence; cloud agent-reply listener/inline reply, provider OAuth callback contract, and installed shortcut/desktop matrix proof remain | Partial | High |
+| P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; matrix rows now require and can emit native-shell evidence; deterministic installed tray/status/deep-link/notification captures exist; account quick switch, host-loss behavior, and installed matrix proof remain | Near parity | High |
+| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, deterministic installed notification server/action/response/relaunch capture, and daemon-backed panic shortcut exist; cloud agent-reply listener/inline reply, provider OAuth callback contract, rich desktop notification breadth, and installed shortcut/desktop matrix proof remain | Partial | High |
 | P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed; real device outcomes remain unproven | Partial | High |
 | P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Preview-only in-app engine, plaintext localStorage, no normal composer hook | Substitute | High |
 | P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Route-contained point-cloud preview with optimistic capability detection | Partial | High |
@@ -805,9 +806,10 @@ parity.
 
 **Implementation update (2026-07-10): native launch/tray/startup foundation,
 compact status window, source-level freedesktop notification action primitive,
-fail-closed native-shell matrix evidence requirements, and verifier-produced
-`native-shell-evidence.json` implemented; installed certification, cloud inline
-reply, and provider OAuth return remain open.** Rust now owns single-instance arbitration,
+deterministic installed notification action capture, fail-closed native-shell
+matrix evidence requirements, and verifier-produced `native-shell-evidence.json`
+implemented; installed matrix certification, cloud inline reply, and provider
+OAuth return remain open.** Rust now owns single-instance arbitration,
 background launch, an allowlisted `openburnbar://` parser,
 listener-race-safe delivery, window focus, live tray actions/facts, lazy compact
 status-window lifecycle, freedesktop notification capability/delivery commands,
@@ -819,11 +821,13 @@ compact-status accessibility, notification server/actions/relaunch, deep-link
 relaunch, login-start, and tray-host-loss recovery before a requested support
 row can become ready; `verify-shell-evidence.mjs` emits that JSON from
 installed-session artifacts and records missing rows instead of claiming false
-success. Direct ARM64 GNOME X11 evidence now proves hidden
-background launch, one-process Chat routing, the bundled icon/native menu, and
-an exact login-start off/on/off round trip. This is not installed package,
-freedesktop notification server, tray-host-loss, or desktop-matrix
-certification. See
+success. The packaged desktop-session harness now records tray route actions,
+compact status accessibility, deterministic freedesktop notification
+server/action/response/relaunch routing, and secondary deep-link relaunch
+artifacts. Direct ARM64 GNOME X11 evidence still proves hidden background
+launch, one-process Chat routing, the bundled icon/native menu, and an exact
+login-start off/on/off round trip. This is not full installed desktop-matrix,
+rich notification-host, tray-host-loss, or lifecycle certification. See
 `LINUX_NATIVE_SHELL_AUTHORITY.md` and
 `evidence/mission-003-native-shell/runtime-transcript.txt`.
 
@@ -1197,7 +1201,7 @@ coverage.
 | LNX-EVT-001 | Implemented in source; installed certification pending | Bounded pull authority, restart/offline recovery, cancellation, and coalesced refresh | Native push and exact-candidate suspend/offline matrix |
 | LNX-ONB-001 | Partially implemented | Daemon-owned transactional state and required prerequisite probes | Provider scan, deployed auth, portal, tray, update, chat, and first-data readback |
 | LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, and local sign-out | Five child packets for deployment, App Check, membership, sync, and trusted devices |
-| LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, XDG login start, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud inline reply, provider OAuth return, and installed desktop/notification matrix evidence |
+| LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, XDG login start, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud inline reply, provider OAuth return, rich notification-host breadth, tray-host-loss, and full installed desktop matrix evidence |
 | LNX-CAT-001, LNX-DIFF-001 | Open | Existing provider/path contracts retained | Shared catalog plus same-commit macOS/Linux differential proof |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
