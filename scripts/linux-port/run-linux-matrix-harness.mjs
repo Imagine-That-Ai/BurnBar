@@ -2,7 +2,8 @@
 /**
  * Record one fail-closed Linux desktop matrix result (VAL-MATRIX-001).
  * A requested support row can become ready only when this exact checkout,
- * installed-package proof, and accessibility proof all agree with the live host.
+ * installed-package proof, accessibility proof, and native-shell proof all
+ * agree with the live host.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -136,8 +137,160 @@ function addEvidenceCheck(id, environmentName) {
   }
 }
 
+const nativeShellEvidenceRequirements = [
+  {
+    id: 'tray-host',
+    keys: ['trayHost', 'tray-host'],
+    description: 'StatusNotifier/AppIndicator host renders the installed tray affordance'
+  },
+  {
+    id: 'tray-actions',
+    keys: ['trayActions', 'tray-actions'],
+    description: 'Tray dashboard/chat/provider/update/reconnect/login-start/quit actions route correctly'
+  },
+  {
+    id: 'compact-status-window',
+    keys: ['compactStatusWindow', 'compact-status-window'],
+    description: 'Compact native status window opens, refreshes, and closes without mounting the full shell'
+  },
+  {
+    id: 'status-window-a11y',
+    keys: ['statusWindowAccessibility', 'statusWindowA11y', 'status-window-a11y'],
+    description: 'Compact status window is keyboard and assistive-technology reachable'
+  },
+  {
+    id: 'notification-server',
+    keys: ['notificationServer', 'notification-server'],
+    description: 'Freedesktop notification server capability is detected honestly'
+  },
+  {
+    id: 'notification-actions',
+    keys: ['notificationActions', 'notification-actions'],
+    description: 'Notification actions deliver only allowlisted native route/action pairs'
+  },
+  {
+    id: 'notification-relaunch-route',
+    keys: ['notificationRelaunchRoute', 'notification-relaunch-route'],
+    description: 'Notification activation relaunches or focuses the installed app and routes correctly'
+  },
+  {
+    id: 'deep-link-relaunch',
+    keys: ['deepLinkRelaunch', 'deep-link-relaunch'],
+    description: 'Secondary openburnbar:// launches reuse the existing instance and route correctly'
+  },
+  {
+    id: 'login-start',
+    keys: ['loginStart', 'login-start'],
+    description: 'XDG login-start enable, relogin, disable, stale-file, and uninstall paths are proven'
+  },
+  {
+    id: 'tray-host-loss-recovery',
+    keys: ['trayHostLossRecovery', 'hostLossRecovery', 'tray-host-loss-recovery'],
+    description: 'Tray host loss/crash/restart recovers without stale status or orphaned actions'
+  }
+];
+
+function passedValue(value) {
+  if (value === true) return true;
+  if (!value || typeof value !== 'object') return false;
+  return (
+    value.passed === true ||
+    value.ok === true ||
+    value.status === 'passed' ||
+    value.result === 'passed'
+  );
+}
+
+function nativeEvidenceSources(evidence) {
+  return [
+    evidence.nativeShell,
+    evidence.native_shell,
+    evidence.capabilities?.nativeShell,
+    evidence.capabilities?.native_shell,
+    evidence.capabilities,
+    evidence
+  ].filter((source) => source && typeof source === 'object' && !Array.isArray(source));
+}
+
+function nativeEvidenceChecks(evidence) {
+  return nativeEvidenceSources(evidence)
+    .flatMap((source) => (Array.isArray(source.checks) ? source.checks : []))
+    .filter((check) => check && typeof check === 'object');
+}
+
+function checkListPasses(evidence, identifiers) {
+  return nativeEvidenceChecks(evidence).some((check) => {
+    const id = String(check.id ?? check.name ?? check.capability ?? '').trim();
+    return identifiers.includes(id) && passedValue(check);
+  });
+}
+
+function nativeRequirementPasses(evidence, requirement) {
+  const identifiers = [requirement.id, ...requirement.keys];
+  const directPass = nativeEvidenceSources(evidence).some((source) =>
+    identifiers.some((identifier) => passedValue(source[identifier]))
+  );
+  return directPass || checkListPasses(evidence, identifiers);
+}
+
+function evidenceCommit(evidence) {
+  return evidence.git?.commit ?? evidence.commit ?? null;
+}
+
+function evidenceEnvironmentId(evidence) {
+  return evidence.environmentId ?? evidence.environment?.id ?? evidence.environment?.environmentId ?? null;
+}
+
+function addNativeShellEvidenceCheck() {
+  const id = 'native-shell-evidence';
+  const environmentName = 'OPENBURNBAR_LINUX_NATIVE_SHELL_EVIDENCE';
+  const suppliedPath = process.env[environmentName]?.trim();
+  if (!suppliedPath) {
+    addCheck(id, false, `${environmentName} is required`);
+    return null;
+  }
+
+  const absolute = path.resolve(suppliedPath);
+  if (!fs.existsSync(absolute)) {
+    addCheck(id, false, `evidence file does not exist: ${absolute}`);
+    return null;
+  }
+
+  try {
+    const evidence = readJson(absolute);
+    const commit = evidenceCommit(evidence);
+    const environmentId = evidenceEnvironmentId(evidence);
+    const missing = nativeShellEvidenceRequirements
+      .filter((requirement) => !nativeRequirementPasses(evidence, requirement))
+      .map((requirement) => requirement.id);
+    const environmentMatches = !requestedEnvironment || environmentId === requestedEnvironment;
+    const passed = evidence.passed === true && commit === git.commit && environmentMatches && missing.length === 0;
+    const detail = passed
+      ? path.relative(repoRoot, absolute)
+      : [
+          `passed=${evidence.passed}`,
+          `commit=${commit ?? 'missing'}`,
+          `environment=${environmentId ?? 'missing'}`,
+          `missing=${missing.length > 0 ? missing.join(',') : 'none'}`
+        ].join(' ');
+
+    addCheck(id, passed, detail);
+    return {
+      path: path.relative(repoRoot, absolute),
+      passed: evidence.passed === true,
+      commit,
+      environmentId,
+      missing
+    };
+  } catch (error) {
+    addCheck(id, false, `invalid JSON: ${error.message}`);
+    return null;
+  }
+}
+
 const installedEvidence = addEvidenceCheck('installed-package-evidence', 'OPENBURNBAR_LINUX_INSTALLED_EVIDENCE');
 const accessibilityEvidence = addEvidenceCheck('installed-accessibility-evidence', 'OPENBURNBAR_LINUX_ACCESSIBILITY_EVIDENCE');
+const nativeShellEvidence = addNativeShellEvidenceCheck();
 const blocked = checks
   .filter((check) => !check.passed)
   .map((check) => ({
@@ -156,10 +309,12 @@ const report = {
   git,
   declared: expected,
   detected,
-  evidenceInputs: { installedEvidence, accessibilityEvidence },
+  evidenceInputs: { installedEvidence, accessibilityEvidence, nativeShellEvidence },
+  nativeShellEvidenceRequirements: nativeShellEvidenceRequirements.map(({ id, description }) => ({ id, description })),
   checks,
   blocked,
-  note: 'Ready means this exact clean checkout passed installed-package and accessibility evidence on the declared live desktop.'
+  note:
+    'Ready means this exact clean checkout passed installed-package, accessibility, and native-shell P-26/P-27 evidence on the declared live desktop.'
 };
 
 const defaultOut = requestedEnvironment
