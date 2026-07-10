@@ -32,23 +32,36 @@ const SHARED_FAILURE_CASES = [
  */
 export function SystemStatusSection({ showRawDiagnostic = false }: { showRawDiagnostic?: boolean }) {
   const health = useShellStore((s) => s.health);
+  const subscriptionState = useShellStore((s) => s.subscriptionState);
+  const subscriptionError = useShellStore((s) => s.subscriptionError);
+  const lastDaemonEventAt = useShellStore((s) => s.lastDaemonEventAt);
   const status = useDaemonStatusCopy();
 
   const connected = Boolean(health?.ok);
+  const refreshDegraded = subscriptionState === 'error' || subscriptionState === 'offline';
+  const refreshDescription = subscriptionState === 'pull'
+    ? `Data refresh uses bounded AF_UNIX pull cadence${lastDaemonEventAt ? `; last event ${new Date(lastDaemonEventAt).toLocaleString()}` : ''}.`
+    : subscriptionState === 'live'
+      ? `Daemon event delivery is live${lastDaemonEventAt ? `; last event ${new Date(lastDaemonEventAt).toLocaleString()}` : ''}.`
+      : subscriptionState === 'offline'
+        ? 'Data refresh is paused while the network is offline and will resume automatically.'
+        : subscriptionState === 'error'
+          ? `Daemon health succeeded, but data refresh is retrying: ${subscriptionError ?? 'unknown subscription error'}`
+          : 'Daemon health probe succeeded; the data refresh supervisor is starting.';
 
   return (
     <>
       <GlassAlert
-        severity={connected ? 'info' : daemonToneToSeverity(status.tone)}
-        title={connected ? 'Connected to local peer' : status.label}
+        severity={connected && !refreshDegraded ? 'info' : connected ? 'warning' : daemonToneToSeverity(status.tone)}
+        title={connected ? refreshDegraded ? 'Connected; data refresh degraded' : 'Connected to local peer' : status.label}
         description={
           connected
-            ? 'Daemon health probe succeeded; local routes can use the peer.'
+            ? refreshDescription
             : status.detail
         }
         iconGlyph={connected ? '⎔' : undefined}
         role="alert"
-        className={connected ? 'banner ok' : 'banner degraded'}
+        className={connected && !refreshDegraded ? 'banner ok' : 'banner degraded'}
       >
         {showRawDiagnostic && status.rawDetail ? (
           <p className="glass-alert-description mono diagnostic-detail">{`Raw diagnostic: ${status.rawDetail}`}</p>

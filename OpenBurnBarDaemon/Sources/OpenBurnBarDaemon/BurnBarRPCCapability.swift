@@ -106,7 +106,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .clientAttach, .clientClaimControl, .clientDetach:
             return .client
         case .runCreate, .runList, .runGet, .runPoll, .runCancel, .runRetry, .runResume,
-             .subscriptionStart, .subscriptionResume,
+             .subscriptionStart, .subscriptionResume, .subscriptionStop,
              .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
             return .run
         case .searchQuery:

@@ -136,13 +136,13 @@ live product state were independently reproducible.
 
 ### Verification performed
 
-- `npm test --prefix apps/linux-desktop -- --maxWorkers=2`: **59 files, 394 tests passed**.
+- `npm test --prefix apps/linux-desktop -- --maxWorkers=2`: **61 files, 411 tests passed**.
 - `npm run build --prefix apps/linux-desktop`: **passed**; the main JavaScript
-  chunk is **641.12 kB** minified and Vite reports a chunk-size warning.
+  chunk is **655.47 kB** minified and Vite reports a chunk-size warning.
 - `cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml`:
-  **17/17 passed**, including capability-catalog, Mercury-probe, update-feed,
+  **19/19 passed**, including capability-catalog, Mercury-probe, update-feed,
   URL, gateway, panic-shortcut, and wire-contract coverage.
-- Focused OpenBurnBar Core/daemon Linux suites: **95/95 passed**.
+- Fail-closed OpenBurnBar Core/security/daemon Linux manifest: **100/100 passed**.
 - Linux media crate capability/capture/decode suite: **3/3 passed**.
 - Extension daemon-client suite: **40/40 passed**.
 - Linux release/config/packaging/matrix contract suites: **78/78 passed**.
@@ -262,7 +262,7 @@ required gates and were not made green by the Ed25519 result.
 | P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Route-contained point-cloud preview with optimistic capability detection | Partial | High |
 | P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | All routes pass axe; installed aarch64 AT-SPI/Orca/keyboard/200% evidence passed; desktop/architecture breadth remains | Near parity | High |
 | P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Matched macOS/Linux harness and ARM installed percentiles exist; final candidate and environment matrix remain | Partial | High |
-| P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Single-flight backoff supervisor and soak contracts exist; suspend/portal/keyring/matrix recovery certification remains | Partial | High |
+| P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Daemon-owned bounded start/resume/stop subscriptions, monotonic restart recovery, offline-aware single-flight cadence, cancellation, coalesced route refresh, and soak contracts exist; native push and installed suspend/portal/keyring/matrix certification remain | Partial | High |
 | P-34 | Security hardening | Native URL/secret/process boundaries | Generic renderer shell permission and token exposure removed; production fixtures disabled; full installed adversarial matrix remains | Near parity | Critical |
 | P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Useful redaction base; copy and save behavior differ; fixture toggle exposed | Partial | Medium |
 | P-36 | Visual/interaction polish | Consistent components, responsive density, animations, native affordances | Nonblack installed route captures now exist; raw diagnostics, interaction polish, and multi-environment regressions remain | Partial | Medium |
@@ -870,28 +870,34 @@ remains tracked under GAP-004 rather than keeping this implementation gap open.
 
 ### GAP-020 - Add real reliability, performance, and installed-shell gates
 
-**Implementation update (2026-07-09): closed in the implementation branch.**
+**Implementation update (2026-07-10): foundation implemented; certification remains open.**
 Linux now records repeated packaged process-start, tray-open, daemon-reconnect,
 and post-paint route percentiles. A production-linked Swift harness runs the
 same deterministic SQLite, FTS, JSONL, and Hermes stream-parser workloads on
 macOS and Linux and compares correctness, p95/p99, RSS, CPU, and soak duration.
 PR and nightly workflows fail closed on missing or malformed evidence; nightly
-uses 100,000 rows and a 30-minute soak. The renderer now has a single-flight,
-lifecycle-aware daemon supervisor with bounded exponential backoff. See
-`performance-reliability-validation.md`.
+uses 100,000 rows and a 30-minute soak. The daemon now owns bounded
+start/resume/stop subscription state with monotonic cursors, restart recovery,
+cancellation tombstones, and explicit degraded-pull metadata. The renderer has
+one offline-aware, lifecycle-aware data supervisor with bounded exponential
+backoff and coalesced mounted-route reloads. See
+`performance-reliability-validation.md` and
+`LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md`.
 
-- **Difference:** Linux now has a bounded supervisor, packaged startup/reopen/
-  reconnect percentiles, a matched Swift workload harness, 17 Rust tests, and a
-  30-minute soak contract. The built main chunk is 641.12 kB minified and still
-  triggers the Vite size warning. Exact-candidate suspend/portal/keyring recovery,
-  comparable-hardware macOS/Linux p95/p99, and the full desktop matrix remain
-  unproven.
+- **Difference:** Linux now has daemon-owned bounded pull subscriptions, a
+  single-flight data supervisor, packaged startup/reopen/reconnect percentiles,
+  a matched Swift workload harness, Rust boundary tests, and a 30-minute soak
+  contract. It still lacks a native push stream. The built main chunk is 655.47
+  kB minified and still triggers the Vite size warning. Exact-candidate
+  suspend/portal/keyring recovery, comparable-hardware macOS/Linux p95/p99, and
+  the full desktop matrix remain unproven.
 - **Why it matters:** UI stalls, stale data, daemon death, suspend/resume, leaks,
   and renderer failures will escape the current unit suite.
-- **Recommended solution:** add daemon event subscriptions, lifecycle-aware
-  cadence, cancellable async IPC, bounded backoff, startup recovery, route code
-  splitting, and comparable real-workload budgets. Gate on packaged-shell E2E
-  and Linux Swift behavior tests.
+- **Recommended solution:** certify the implemented cursor/cancellation contract
+  in installed packages, add native push delivery without weakening bounded
+  backpressure or degraded-state truth, split route code, and enforce comparable
+  real-workload budgets. Gate on packaged-shell E2E and Linux Swift behavior
+  tests.
 - **Priority:** **High**.
 - **Implementation notes:** remove diagnostic probes from the critical boot path
   or run them asynchronously with cache/timeouts; measure cold/warm startup,
@@ -1155,7 +1161,7 @@ truth-sync, not the first time behavior is documented.
 |---|---|---|---|
 | LNX-PKG-001 | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001 | Dual-architecture AppImage/deb/rpm construction and architecture-aware manifest | Unsigned/local x86_64 and aarch64 lifecycle green on Ubuntu/Fedora before candidate signing |
 | LNX-CHANNEL-001 | LNX-PKG-001, LNX-REL-VERIFY-001 | apt and rpm repository metadata/signing, correct AUR recipe, and a portal-safe Flatpak channel | Each declared channel installs the correct architecture and verifies repository/package metadata; unpromoted channels are explicitly labeled |
-| LNX-EVT-001 | LNX-CAP-001 | Daemon subscriptions, cadence, cancellable IPC, supervisor, recovery, migrations | Kill/stall/suspend/offline tests recover without stale or frozen UI |
+| LNX-EVT-001 | LNX-CAP-001 | Bounded pull subscription authority, cadence, cancellation, restart/offline recovery, and coalesced route refresh are implemented; add native push and exact-candidate installed certification | Kill/stall/suspend/offline tests recover without stale or frozen UI |
 | LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes | A clean user cannot finish required setup while any declared required prerequisite is missing |
 | LNX-AUTH-001 | LNX-SEC-001, LNX-IPC-001 | PKCE/device auth, membership, App Check, sync, trusted devices, safe billing callbacks | Full sign-in/out/device/backup/restore/checkout matrix passes |
 | LNX-NATIVE-001 | LNX-CAP-001 | Tray/status window, notifications, deep links, shortcuts, startup | Repeated native workflows pass on GNOME/KDE and icon-only fallback |
@@ -1208,7 +1214,7 @@ truth-sync, not the first time behavior is documented.
 | 1 | **Trustworthy engineering baseline** | Complete in code; dual-architecture construction and aarch64 installed proof live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add installed x86_64 and prior-version package sessions without regressing strict gates |
 | 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
 | 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
-| 4 | **Daily-use native foundation** | Next | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
+| 4 | **Daily-use native foundation** | In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Pending | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
 | 6 | **Browser automation parity** | Pending | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |

@@ -9,6 +9,10 @@ import {
 } from './onboardingStore.js';
 import { markStart } from './perfMarks.js';
 import { DaemonHealthSupervisor, installDaemonHealthLifecycle } from './state/daemonHealthSupervisor.js';
+import {
+  DaemonSubscriptionSupervisor,
+  installDaemonSubscriptionLifecycle
+} from './state/daemonSubscriptionSupervisor.js';
 import { useShellStore } from './state/shellStore.js';
 
 async function boot(): Promise<void> {
@@ -56,7 +60,28 @@ async function boot(): Promise<void> {
     return useShellStore.getState().health?.ok === true;
   });
   const uninstallHealthLifecycle = installDaemonHealthLifecycle(healthSupervisor);
-  window.addEventListener('beforeunload', uninstallHealthLifecycle, { once: true });
+  const subscriptionSupervisor = bridge
+    ? new DaemonSubscriptionSupervisor(
+        bridge,
+        async (response) => {
+          useShellStore.getState().recordDaemonSubscription(response);
+          if (response.firstSnapshot || response.recoveredAfterRestart) {
+            await useShellStore.getState().refreshHealth();
+          }
+        },
+        {
+          onStatus: (subscriptionStatus) =>
+            useShellStore.getState().recordDaemonSubscriptionStatus(subscriptionStatus)
+        }
+      )
+    : null;
+  const uninstallSubscriptionLifecycle = subscriptionSupervisor
+    ? installDaemonSubscriptionLifecycle(subscriptionSupervisor)
+    : () => {};
+  window.addEventListener('beforeunload', () => {
+    uninstallSubscriptionLifecycle();
+    uninstallHealthLifecycle();
+  }, { once: true });
 }
 
 void boot();

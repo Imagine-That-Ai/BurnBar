@@ -109,7 +109,7 @@ extension BurnBarDaemonServer {
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
-                result: subscriptionStartResponse(for: typedRequest.params)
+                result: try await subscriptionService.start(typedRequest.params)
             )
             return encode(response)
         case .subscriptionResume:
@@ -120,7 +120,18 @@ extension BurnBarDaemonServer {
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
-                result: subscriptionResumeResponse(for: typedRequest.params)
+                result: try await subscriptionService.resume(typedRequest.params)
+            )
+            return encode(response)
+        case .subscriptionStop:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarSubscriptionStopRequest>.self,
+                from: requestData
+            )
+            let response = BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await subscriptionService.stop(typedRequest.params)
             )
             return encode(response)
         case .workspaceExecuteTool:
@@ -161,99 +172,4 @@ extension BurnBarDaemonServer {
         }
     }
 
-    private func subscriptionStartResponse(
-        for request: BurnBarSubscriptionStartRequest
-    ) -> BurnBarSubscriptionResponse {
-        let topic = normalizedSubscriptionTopic(request.topic)
-        let subscriptionID = request.requestedSubscriptionID?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-            ?? "sub-\(topic)-\(UUID().uuidString)"
-        let event = subscriptionEvent(
-            seq: 1,
-            kind: "\(topic).snapshot",
-            topic: topic,
-            runID: request.runID,
-            extra: [
-                "client_id": request.clientID ?? "unknown",
-                "phase": "first_snapshot"
-            ]
-        )
-        return BurnBarSubscriptionResponse(
-            subscriptionID: subscriptionID,
-            topic: topic,
-            seq: event.seq,
-            cursor: String(event.seq),
-            firstSnapshot: true,
-            events: [event],
-            degradedFallback: true,
-            degradationReason: "long_poll_fallback_over_burnbarrpc_envelope",
-            backpressure: "coalesce_latest_per_topic",
-            disconnectDetected: false,
-            recoveredAfterRestart: false,
-            terminalStateDelivered: true
-        )
-    }
-
-    private func subscriptionResumeResponse(
-        for request: BurnBarSubscriptionResumeRequest
-    ) -> BurnBarSubscriptionResponse {
-        let topic = normalizedSubscriptionTopic(request.topic)
-        let seq = max(request.afterSeq + 1, 1)
-        let event = subscriptionEvent(
-            seq: seq,
-            kind: "\(topic).resume_snapshot",
-            topic: topic,
-            runID: request.runID,
-            extra: [
-                "client_id": request.clientID ?? "unknown",
-                "resumed_after_seq": String(request.afterSeq),
-                "terminal_state_delivery": "verified"
-            ]
-        )
-        return BurnBarSubscriptionResponse(
-            subscriptionID: request.subscriptionID,
-            topic: topic,
-            seq: event.seq,
-            cursor: String(event.seq),
-            firstSnapshot: request.afterSeq <= 0,
-            events: [event],
-            degradedFallback: true,
-            degradationReason: "long_poll_fallback_over_burnbarrpc_envelope",
-            backpressure: "coalesce_latest_per_topic",
-            disconnectDetected: request.afterSeq > 0,
-            recoveredAfterRestart: request.afterSeq > 0,
-            terminalStateDelivered: true
-        )
-    }
-
-    private func normalizedSubscriptionTopic(_ topic: String) -> String {
-        let trimmed = topic.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        switch trimmed {
-        case "run":
-            return "run"
-        default:
-            return "health"
-        }
-    }
-
-    private func subscriptionEvent(
-        seq: Int,
-        kind: String,
-        topic: String,
-        runID: String?,
-        extra: [String: String]
-    ) -> BurnBarSubscriptionEvent {
-        var snapshot = extra
-        snapshot["topic"] = topic
-        snapshot["run_id"] = runID ?? ""
-        snapshot["daemon_version"] = configuration.daemonVersion
-        snapshot["transport"] = "af_unix_burnbarrpc"
-        snapshot["cursor_semantics"] = "monotonic_seq"
-        snapshot["backpressure"] = "coalesce_latest_per_topic"
-        return BurnBarSubscriptionEvent(
-            seq: seq,
-            kind: kind,
-            snapshot: snapshot,
-            terminal: true
-        )
-    }
 }

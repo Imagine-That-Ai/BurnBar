@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux daemon event subscription authority** - replaces one-shot terminal
+  subscription fixtures with bounded daemon-owned start/resume/stop state,
+  monotonic cursors, restart recovery, cancellation tombstones, strict scope
+  validation, and explicit degraded-pull metadata. The packaged shell now owns
+  one lifecycle-aware data supervisor with offline pause, bounded backoff,
+  foreground/background cadence, shutdown cancellation, and coalesced refresh
+  of the mounted route.
 - **Daemon-owned Linux onboarding authority** - replaces browser-local completion
   with atomic daemon state and typed snapshot/action/reset RPCs. Required steps
   cannot be skipped or executed out of order; Linux verifies the daemon,
