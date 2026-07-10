@@ -119,4 +119,24 @@ public sealed class CommunityViewModelTests
         Assert.True(vm.ShowInviteEmptyState);
         Assert.Equal(string.Empty, vm.StatusMessage);
     }
+
+    [Fact]
+    public void ManualCityInput_PreservesSpacesWhileTyping()
+    {
+        var store = new CommunityConsentStore(Path.Combine(Path.GetTempPath(), $"obb-community-{Guid.NewGuid():N}.json"));
+        store.Replace(store.State with
+        {
+            L2Rankings = ConsentTriState.Granted,
+            L2Tiers = new CommunityTierConsent(City: ConsentTriState.Granted),
+            LocationConsent = ConsentTriState.Granted,
+        });
+        var vm = new CommunityViewModel(store);
+
+        vm.SetManualCityInput("San ");
+        Assert.Equal("San ", vm.Consent.ManualCityInput);
+
+        vm.SetManualCityInput("San Francisco");
+        Assert.Equal("San Francisco", vm.Consent.ManualCityInput);
+        Assert.Contains("manual city label", vm.CityConfidenceCopy, StringComparison.OrdinalIgnoreCase);
+    }
 }

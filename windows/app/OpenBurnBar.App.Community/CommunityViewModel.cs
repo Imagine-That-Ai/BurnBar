@@ -105,7 +105,7 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
     public void CycleLocation() => SetConsent(c => c with { LocationConsent = c.LocationConsent.Cycle() });
 
     public void SetManualCityInput(string? value) =>
-        SetConsent(c => c with { ManualCityInput = string.IsNullOrWhiteSpace(value) ? null : value.Trim() });
+        SetConsent(c => c with { ManualCityInput = string.IsNullOrEmpty(value) ? null : value });
 
     public void CycleTier(GeographyTier tier)
     {
