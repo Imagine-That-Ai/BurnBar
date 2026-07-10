@@ -146,11 +146,17 @@ jobs:
       - name: Sign installed manifests and build native packages
         env:
           OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
+          OPENBURNBAR_LINUX_FIREBASE_APP_ID: ${{ vars.OPENBURNBAR_LINUX_FIREBASE_APP_ID }}
+          APP_CHECK_STANDARD_WEB_APP_IDS: ${{ vars.APP_CHECK_STANDARD_WEB_APP_IDS }}
         run: |
           set -euo pipefail
+          : "${OPENBURNBAR_LINUX_FIREBASE_APP_ID:?configure the dedicated Linux Firebase app id repository variable}"
+          : "${APP_CHECK_STANDARD_WEB_APP_IDS:?configure the standard Web Firebase app id registry repository variable}"
           signing_key="$OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM"
           unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
           printf '%s' "$signing_key" | docker run --rm -i \
+            -e OPENBURNBAR_LINUX_FIREBASE_APP_ID \
+            -e APP_CHECK_STANDARD_WEB_APP_IDS \
             -v "$PWD:/workspace" \
             -w /workspace \
             openburnbar-linux-toolchain:mission-001 \

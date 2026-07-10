@@ -121,7 +121,7 @@ final class BurnBarLinuxAppCheckNetworkClientTests: XCTestCase {
         XCTAssertNil(EnvironmentBurnBarLinuxAppCheckCloudClient.validEndpoint("https://example.com/mint#fragment"))
 
         let source = URLSessionConfiguration.default
-        source.urlCache = URLCache(memoryCapacity: 1_024, diskCapacity: 1_024)
+        source.urlCache = URLCache(memoryCapacity: 1_024, diskCapacity: 1_024, diskPath: nil)
         source.httpShouldSetCookies = true
         let hardened = EnvironmentBurnBarLinuxAppCheckCloudClient.hardenedConfiguration(from: source)
         XCTAssertNil(hardened.urlCache)

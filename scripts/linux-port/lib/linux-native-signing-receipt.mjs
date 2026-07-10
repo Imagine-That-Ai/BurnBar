@@ -42,6 +42,7 @@ export const NATIVE_PACKAGE_LIFECYCLE_PATHS = Object.freeze({
 });
 
 export const NATIVE_SIGNER_INPUT_PATHS = Object.freeze([
+  'functions/.env.burnbar.production',
   ...Object.values(NATIVE_GENERATED_PACKAGE_INPUT_PATHS),
   ...Object.values(NATIVE_PACKAGE_ASSET_PATHS),
   ...Object.values(NATIVE_PACKAGE_LIFECYCLE_PATHS.deb),
@@ -93,6 +94,7 @@ export function createNativePackageSigningReceipt({
   version,
   architecture,
   gitCommit,
+  firebaseAppId,
   preparationDigestSha256,
   signerInputsRootSha256,
   packages
@@ -109,6 +111,7 @@ export function createNativePackageSigningReceipt({
     version,
     architecture,
     gitCommit,
+    firebaseAppId,
     preparationDigestSha256,
     signerInputsRootSha256,
     packages: normalizedPackages
@@ -236,6 +239,7 @@ function validateNativePackageSigningReceipt(receipt) {
       || !/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(receipt.version ?? '')
       || !['aarch64', 'x86_64'].includes(receipt.architecture)
       || !isHex(receipt.gitCommit, 40)
+      || !isFirebaseWebAppId(receipt.firebaseAppId)
       || !isHex(receipt.preparationDigestSha256, 64)
       || !isHex(receipt.signerInputsRootSha256, 64)
       || !Array.isArray(receipt.packages)
@@ -271,4 +275,14 @@ function isHex(value, length) {
   return typeof value === 'string'
     && value.length === length
     && /^[a-f0-9]+$/.test(value);
+}
+
+function isFirebaseWebAppId(value) {
+  if (typeof value !== 'string'
+      || value.length > 160
+      || !/^1:[0-9]+:web:[A-Za-z0-9]+$/.test(value)) return false;
+  const [, projectNumber, , appInstance] = value.split(':');
+  return !/^0+$/u.test(projectNumber)
+    && !/^0+$/u.test(appInstance)
+    && !appInstance.toLowerCase().includes('placeholder');
 }

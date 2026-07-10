@@ -409,6 +409,7 @@ for (const required of manifest.requiredArtifacts) {
     version,
     git,
     architecture,
+    firebaseAppId: signingReceipt?.firebaseAppId ?? null,
     artifacts: copied,
     blockers
   };

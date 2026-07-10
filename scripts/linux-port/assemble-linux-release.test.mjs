@@ -19,12 +19,14 @@ const manifest = {
 };
 const version = '1.2.3';
 const commit = '0123456789abcdef0123456789abcdef01234567';
+const firebaseAppId = '1:123456789:web:linuxabcdef012345';
 
 function shard(architecture) {
   return {
     schemaVersion: 1,
     version,
     architecture,
+    firebaseAppId,
     git: { commit, dirty: false },
     blockers: [],
     artifacts: manifest.requiredArtifacts.map((type) => ({ type, architecture }))
@@ -46,6 +48,26 @@ test('missing architecture and artifact fail closed', () => {
   const failures = validateArchitectureShardSet({ manifest, shards: [aarch64], version, commit });
   assert.ok(failures.some((failure) => /missing architecture shard: x86_64/.test(failure)));
   assert.ok(failures.some((failure) => /missing required shard artifact: daemon:aarch64/.test(failure)));
+});
+
+test('missing, invalid, and cross-architecture Firebase app identities fail closed', () => {
+  const missing = shard('aarch64');
+  delete missing.firebaseAppId;
+  const invalid = shard('x86_64');
+  invalid.firebaseAppId = '1:123:linux:not-web';
+  let failures = validateArchitectureShardSet({ manifest, shards: [missing, invalid], version, commit });
+  assert.ok(failures.some((failure) => /aarch64 firebaseAppId is missing or invalid/.test(failure)));
+  assert.ok(failures.some((failure) => /x86_64 firebaseAppId is missing or invalid/.test(failure)));
+
+  const mismatched = shard('x86_64');
+  mismatched.firebaseAppId = '1:987654321:web:linuxfedcba543210';
+  failures = validateArchitectureShardSet({
+    manifest,
+    shards: [shard('aarch64'), mismatched],
+    version,
+    commit
+  });
+  assert.ok(failures.some((failure) => /x86_64 firebaseAppId does not match/.test(failure)));
 });
 
 test('duplicate, cross-commit, dirty, and unexpected shards fail closed', () => {

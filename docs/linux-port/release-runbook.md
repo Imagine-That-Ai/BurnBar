@@ -40,6 +40,8 @@ Build locally:
 ```bash
 set -euo pipefail
 : "${OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE:?set this to an operator-readable Ed25519 PEM file}"
+: "${OPENBURNBAR_LINUX_FIREBASE_APP_ID:?set this to the dedicated Linux Firebase Web app id}"
+: "${APP_CHECK_STANDARD_WEB_APP_IDS:?set this to the comma-separated website and console Firebase Web app ids}"
 case "$(stat -c '%a' "$OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE")" in
   400|600) ;;
   *) echo "installed-manifest signing key must have mode 0400 or 0600" >&2; exit 1 ;;
@@ -53,7 +55,9 @@ node scripts/linux-port/build-linux-release.mjs \
   --architecture-shard --prepare-only --version "$version"
 
 node scripts/linux-port/build-native-linux-packages.mjs \
-  --private-key-stdin --version "$version" \
+  --private-key-stdin \
+  --firebase-app-id "$OPENBURNBAR_LINUX_FIREBASE_APP_ID" \
+  --version "$version" \
   < "$OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE"
 
 node scripts/linux-port/build-linux-release.mjs \

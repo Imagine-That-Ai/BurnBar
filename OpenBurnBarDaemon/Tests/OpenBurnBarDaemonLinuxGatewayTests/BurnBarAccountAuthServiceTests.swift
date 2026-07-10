@@ -1,3 +1,7 @@
+import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
 import XCTest
 @testable import OpenBurnBarDaemon
 import OpenBurnBarCore

@@ -7,6 +7,9 @@ function valid() {
     pr: [
       'bash scripts/linux-port/run-linux-native-tests.sh',
       'crates/openburnbar-attestd/**',
+      'schemas/linux-attestation-*',
+      'tests/fixtures/linux-attestation/**',
+      'linux-attestation-contract.test.mjs',
       'verify-linux-release.test.mjs',
       'assemble-linux-release.test.mjs',
       'build-linux-release-boundary.test.mjs',
@@ -58,6 +61,12 @@ function valid() {
       'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
       'upload-linux-downloads-r2.sh',
       'https://downloads.burnbar.ai/latest-linux.json',
+      'vars.OPENBURNBAR_LINUX_FIREBASE_APP_ID',
+      'vars.APP_CHECK_STANDARD_WEB_APP_IDS',
+      '${OPENBURNBAR_LINUX_FIREBASE_APP_ID:?',
+      '${APP_CHECK_STANDARD_WEB_APP_IDS:?',
+      '-e OPENBURNBAR_LINUX_FIREBASE_APP_ID',
+      '-e APP_CHECK_STANDARD_WEB_APP_IDS',
       'Resolve and validate Linux release version',
       'Assert native runner architecture',
       'Build unsigned native architecture inputs',
@@ -206,6 +215,23 @@ test('aggregate signer must scrub the key environment and use stdin custody', ()
   assert.ok(result.failures.some((failure) => /aggregate release signers/u.test(failure)));
 });
 
+test('native signer requires a dedicated Linux Firebase id and the standard Web collision registry', () => {
+  for (const marker of [
+    'vars.OPENBURNBAR_LINUX_FIREBASE_APP_ID',
+    'vars.APP_CHECK_STANDARD_WEB_APP_IDS',
+    '${OPENBURNBAR_LINUX_FIREBASE_APP_ID:?',
+    '${APP_CHECK_STANDARD_WEB_APP_IDS:?',
+    '-e OPENBURNBAR_LINUX_FIREBASE_APP_ID',
+    '-e APP_CHECK_STANDARD_WEB_APP_IDS'
+  ]) {
+    const input = valid();
+    input.release = input.release.replace(marker, '');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => /dedicated Linux Firebase release identity/.test(failure)), marker);
+  }
+});
+
 test('architecture matrix, aggregate closure, and feed publication cannot be removed', () => {
   for (const marker of [
     'architecture: aarch64',
@@ -245,12 +271,26 @@ test('native signing phase-boundary and receipt suites cannot be removed', () =>
   }
 });
 
-test('attestation broker changes must trigger the Linux PR gate', () => {
+test('attestation broker, schema, and fixture changes must trigger the Linux PR gate', () => {
+  for (const [marker, failurePattern] of [
+    ['crates/openburnbar-attestd/**', /attestation broker path trigger/],
+    ['schemas/linux-attestation-*', /attestation schema path trigger/],
+    ['tests/fixtures/linux-attestation/**', /attestation fixture path trigger/]
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, '');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => failurePattern.test(failure)), marker);
+  }
+});
+
+test('attestation schema contract suite cannot be removed from the PR gate', () => {
   const input = valid();
-  input.pr = input.pr.replace('crates/openburnbar-attestd/**', '');
+  input.pr = input.pr.replace('linux-attestation-contract.test.mjs', '');
   const result = verifyLinuxWorkflowWiring(input);
   assert.equal(result.passed, false);
-  assert.ok(result.failures.some((failure) => /attestation broker path trigger/.test(failure)));
+  assert.ok(result.failures.some((failure) => /attestation schema contract suite/.test(failure)));
 });
 
 test('clean-checkout docs dependency install cannot be removed', () => {

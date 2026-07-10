@@ -163,7 +163,9 @@ export function createInstalledReleaseManifest({
   architecture,
   packageType,
   packageName = 'open-burn-bar',
-  policyId = LINUX_ATTESTATION_POLICY_ID
+  policyId = LINUX_ATTESTATION_POLICY_ID,
+  firebaseAppId,
+  standardWebFirebaseAppIds = []
 }) {
   if (!/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(version)) {
     throw new Error(`invalid package version: ${version}`);
@@ -171,6 +173,7 @@ export function createInstalledReleaseManifest({
   if (!/^[a-f0-9]{40}$/.test(gitCommit)) throw new Error('gitCommit must be lowercase 40-character hex');
   if (!['aarch64', 'x86_64'].includes(architecture)) throw new Error(`unsupported architecture: ${architecture}`);
   if (!['deb', 'rpm'].includes(packageType)) throw new Error(`unsupported package type: ${packageType}`);
+  validateDedicatedLinuxFirebaseAppId(firebaseAppId, standardWebFirebaseAppIds);
 
   const installedPath = `/usr/share/openburnbar/attestation/${INSTALLED_RELEASE_MANIFEST_NAME}`;
   const signaturePath = `/usr/share/openburnbar/attestation/${INSTALLED_RELEASE_MANIFEST_SIGNATURE_NAME}`;
@@ -181,13 +184,14 @@ export function createInstalledReleaseManifest({
     schemaVersion: 1,
     product: 'OpenBurnBar',
     appId: 'dev.openburnbar.OpenBurnBar',
+    firebaseAppId,
     packageVersion: version,
     gitCommit,
     packageArchitecture: architecture,
     packageFormat: packageType,
     packageName,
     policyId,
-    brokerProtocolVersion: 1,
+    brokerProtocolVersion: 2,
     installedFilesRootSha256: filesRoot(files),
     authorizedClients: [{
       role: 'daemon',
@@ -249,7 +253,9 @@ export function stageNativeLinuxPackageRoot({
   gitCommit,
   architecture,
   packageType,
-  privateKeyPem
+  privateKeyPem,
+  firebaseAppId,
+  standardWebFirebaseAppIds = []
 }) {
   const destinationRoot = path.resolve(root);
   fs.rmSync(destinationRoot, { recursive: true, force: true });
@@ -287,7 +293,9 @@ export function stageNativeLinuxPackageRoot({
     version,
     gitCommit,
     architecture,
-    packageType
+    packageType,
+    firebaseAppId,
+    standardWebFirebaseAppIds
   });
   const signaturePath = path.join(
     destinationRoot,
@@ -300,6 +308,28 @@ export function stageNativeLinuxPackageRoot({
     publicKeyPath: path.join(destinationRoot, 'usr/share/openburnbar/attestation/release-ed25519.pub.pem')
   });
   return { root: destinationRoot, ...release, signaturePath };
+}
+
+export function validateDedicatedLinuxFirebaseAppId(firebaseAppId, standardWebFirebaseAppIds = []) {
+  if (typeof firebaseAppId !== 'string' || firebaseAppId.length === 0) {
+    throw new Error('dedicated Linux firebaseAppId is required');
+  }
+  if (!/^1:[0-9]+:web:[A-Za-z0-9]+$/.test(firebaseAppId) || firebaseAppId.length > 160) {
+    throw new Error('firebaseAppId must be a Firebase web app ID');
+  }
+  const [, projectNumber, , appInstance] = firebaseAppId.split(':');
+  if (/^0+$/u.test(projectNumber)
+      || /^0+$/u.test(appInstance)
+      || firebaseAppId.toLowerCase().includes('placeholder')) {
+    throw new Error('dedicated Linux firebaseAppId must not be a placeholder');
+  }
+  const standardIds = new Set(standardWebFirebaseAppIds
+    .map((value) => value.trim())
+    .filter(Boolean));
+  if (standardIds.has(firebaseAppId)) {
+    throw new Error('dedicated Linux firebaseAppId must not match a standard web Firebase app ID');
+  }
+  return firebaseAppId;
 }
 
 export function rpmOwnedPaths(root) {

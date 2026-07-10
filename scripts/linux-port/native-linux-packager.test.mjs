@@ -15,7 +15,8 @@ import {
   canonicalJSON,
   createInstalledReleaseManifest,
   rpmOwnedPaths,
-  stageNativeLinuxPackageRoot
+  stageNativeLinuxPackageRoot,
+  validateDedicatedLinuxFirebaseAppId
 } from './lib/native-linux-packager.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -56,6 +57,7 @@ function stageOptions(f, packageType = 'deb') {
     gitCommit: 'a'.repeat(40),
     architecture: 'x86_64',
     packageType,
+    firebaseAppId: '1:123456789:web:linuxabcdef012345',
     privateKeyPem: f.privateKeyPem,
     assets: {
       daemonLaunch: f.files['daemon-launch'],
@@ -186,6 +188,8 @@ test('native package root contains broker assets and a self-excluding measuremen
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
   assert.equal(manifest.packageFormat, 'deb');
+  assert.equal(manifest.brokerProtocolVersion, 2);
+  assert.match(manifest.firebaseAppId, /^1:[0-9]+:web:[A-Za-z0-9]+$/u);
   assert.equal(manifest.installedFilesRootSha256.length, 64);
   assert.equal(staged.releaseDigestSha256.length, 64);
   assert.ok(manifest.files.some((file) => file.path === '/usr/libexec/openburnbar-attestd'));
@@ -212,7 +216,8 @@ test('manifest digest and file root change when a measured binary changes', () =
     version: '1.0.0',
     gitCommit: 'b'.repeat(40),
     architecture: 'aarch64',
-    packageType: 'rpm'
+    packageType: 'rpm',
+    firebaseAppId: '1:123456789:web:linuxabcdef012345'
   });
   fs.writeFileSync(binary, 'two');
   const second = createInstalledReleaseManifest({
@@ -220,10 +225,79 @@ test('manifest digest and file root change when a measured binary changes', () =
     version: '1.0.0',
     gitCommit: 'b'.repeat(40),
     architecture: 'aarch64',
-    packageType: 'rpm'
+    packageType: 'rpm',
+    firebaseAppId: '1:123456789:web:linuxabcdef012345'
   });
   assert.notEqual(first.releaseDigestSha256, second.releaseDigestSha256);
   assert.notEqual(first.manifest.installedFilesRootSha256, second.manifest.installedFilesRootSha256);
+  fs.rmSync(f.root, { recursive: true, force: true });
+});
+
+test('manifest digest is SHA-256 of the exact canonical signed bytes', () => {
+  const f = fixture();
+  const root = path.join(f.root, 'canonical-digest-root');
+  fs.mkdirSync(path.join(root, 'usr/bin'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'usr/bin/openburnbar-daemon'), 'daemon', { mode: 0o755 });
+  const release = createInstalledReleaseManifest({
+    root,
+    version: '1.0.0',
+    gitCommit: 'd'.repeat(40),
+    architecture: 'x86_64',
+    packageType: 'deb',
+    firebaseAppId: '1:123456789:web:abcdef0123456789'
+  });
+  assert.equal(release.manifest.firebaseAppId, '1:123456789:web:abcdef0123456789');
+  assert.equal(
+    release.releaseDigestSha256,
+    crypto.createHash('sha256').update(fs.readFileSync(release.path)).digest('hex')
+  );
+  assert.equal(fs.readFileSync(release.path, 'utf8'), canonicalJSON(release.manifest));
+  fs.rmSync(f.root, { recursive: true, force: true });
+});
+
+test('manifest rejects a non-web Firebase app ID', () => {
+  const f = fixture();
+  const root = path.join(f.root, 'invalid-firebase-root');
+  fs.mkdirSync(path.join(root, 'usr/bin'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'usr/bin/openburnbar-daemon'), 'daemon', { mode: 0o755 });
+  assert.throws(() => createInstalledReleaseManifest({
+    root,
+    version: '1.0.0',
+    gitCommit: 'd'.repeat(40),
+    architecture: 'x86_64',
+    packageType: 'deb',
+    firebaseAppId: '1:123:linux:not-web'
+  }), /Firebase web app ID/);
+  fs.rmSync(f.root, { recursive: true, force: true });
+});
+
+test('dedicated Linux Firebase app ID rejects omission, placeholders, and web collisions', () => {
+  assert.throws(() => validateDedicatedLinuxFirebaseAppId(), /is required/);
+  assert.throws(
+    () => validateDedicatedLinuxFirebaseAppId('1:000000000000:web:0000000000000000placeholder'),
+    /placeholder/
+  );
+  assert.throws(
+    () => validateDedicatedLinuxFirebaseAppId(
+      '1:123456789:web:linuxabcdef012345',
+      ['1:987654321:web:standardabcdef', '1:123456789:web:linuxabcdef012345']
+    ),
+    /must not match a standard web Firebase app ID/
+  );
+});
+
+test('manifest creation fails closed when dedicated Linux Firebase app ID is omitted', () => {
+  const f = fixture();
+  const root = path.join(f.root, 'missing-firebase-root');
+  fs.mkdirSync(path.join(root, 'usr/bin'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'usr/bin/openburnbar-daemon'), 'daemon', { mode: 0o755 });
+  assert.throws(() => createInstalledReleaseManifest({
+    root,
+    version: '1.0.0',
+    gitCommit: 'd'.repeat(40),
+    architecture: 'x86_64',
+    packageType: 'deb'
+  }), /dedicated Linux firebaseAppId is required/);
   fs.rmSync(f.root, { recursive: true, force: true });
 });
 
@@ -248,7 +322,8 @@ test('payload rejects symlinks that escape the package root', () => {
     version: '1.0.0',
     gitCommit: 'c'.repeat(40),
     architecture: 'x86_64',
-    packageType: 'deb'
+    packageType: 'deb',
+    firebaseAppId: '1:123456789:web:linuxabcdef012345'
   }), /symlink escapes root/);
   fs.rmSync(f.root, { recursive: true, force: true });
 });

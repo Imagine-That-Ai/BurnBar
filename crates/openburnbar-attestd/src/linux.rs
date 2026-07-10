@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::fs::{FileExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -12,8 +12,9 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::auth::{AuthorizedPeer, PeerAuthorizer, PeerCredentials};
+use crate::auth::{AuthorizedPeer, InstalledReleaseIdentity, PeerAuthorizer, PeerCredentials};
 use crate::error::{BrokerError, ErrorCode};
+use crate::protocol::{EvidenceBundle, ATTESTATION_KIND, MAX_EVIDENCE_BUNDLE_BYTES};
 use crate::server::MAX_PACKET_BYTES;
 
 const SYSTEMD_LISTEN_FD: i32 = 3;
@@ -38,12 +39,25 @@ struct InstalledFilesManifest {
     package_format: String,
     authorized_clients: Vec<InstalledFile>,
     app_id: String,
+    firebase_app_id: String,
     git_commit: String,
     package_name: String,
     policy_id: String,
     broker_protocol_version: u32,
     installed_files_root_sha256: String,
     files: Vec<ReleaseFile>,
+}
+
+#[derive(Debug)]
+struct LoadedInstalledManifest {
+    manifest: InstalledFilesManifest,
+    release_digest_sha256: String,
+}
+
+#[derive(Debug)]
+struct AuthorizedInstallation {
+    executable_sha256: String,
+    installed_release: InstalledReleaseIdentity,
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,18 +133,22 @@ impl ProcPeerAuthorizer {
         })
     }
 
-    fn authorize_inner(&self, peer: PeerCredentials) -> Result<String, BrokerError> {
+    fn authorize_inner(
+        &self,
+        peer: PeerCredentials,
+    ) -> Result<AuthorizedInstallation, BrokerError> {
         if peer.pid == 0 {
             return Err(unauthorized("peer PID is invalid"));
         }
         // Signature verification precedes every use of manifest-controlled data.
         // Reloading on each request also makes package upgrades atomic to the broker.
-        let manifest = load_signed_manifest(
+        let loaded = load_signed_manifest(
             &self.manifest_path,
             &self.manifest_signature_path,
             &self.public_key_path,
         )?;
-        validate_manifest(&manifest)?;
+        let manifest = &loaded.manifest;
+        validate_manifest(manifest)?;
         let mut entries = manifest
             .authorized_clients
             .iter()
@@ -180,16 +198,27 @@ impl ProcPeerAuthorizer {
         if digest != entry.sha256 {
             return Err(unauthorized("peer executable hash is not authorized"));
         }
-        Ok(digest)
+        Ok(AuthorizedInstallation {
+            executable_sha256: digest,
+            installed_release: InstalledReleaseIdentity {
+                firebase_app_id: manifest.firebase_app_id.clone(),
+                app_version: manifest.package_version.clone(),
+                architecture: manifest.package_architecture.clone(),
+                release_digest_sha256: loaded.release_digest_sha256,
+                policy_id: manifest.policy_id.clone(),
+                attestation_kind: ATTESTATION_KIND.to_owned(),
+            },
+        })
     }
 }
 
 impl PeerAuthorizer for ProcPeerAuthorizer {
     fn authorize(&self, peer: PeerCredentials) -> Result<AuthorizedPeer, BrokerError> {
         self.authorize_inner(peer)
-            .map(|executable_sha256| AuthorizedPeer {
+            .map(|installation| AuthorizedPeer {
                 credentials: peer,
-                executable_sha256,
+                executable_sha256: installation.executable_sha256,
+                installed_release: installation.installed_release,
             })
     }
 }
@@ -208,6 +237,13 @@ pub struct SeqpacketConnection {
 pub struct ReceivedPacket {
     pub bytes: Vec<u8>,
     pub credentials: PeerCredentials,
+}
+
+#[derive(Debug, Default)]
+struct RequestAncillary {
+    credentials: Vec<PeerCredentials>,
+    rights: Vec<OwnedFd>,
+    invalid: bool,
 }
 
 pub fn systemd_listener(socket_fd: i32) -> Result<SeqpacketListener, BrokerError> {
@@ -326,6 +362,7 @@ impl SeqpacketConnection {
                 std::io::Error::last_os_error(),
             ));
         }
+        let ancillary = collect_request_ancillary(&message);
         if message.msg_flags & libc::MSG_TRUNC != 0 {
             return Err(BrokerError::new(
                 ErrorCode::RequestTooLarge,
@@ -334,15 +371,25 @@ impl SeqpacketConnection {
             ));
         }
         if message.msg_flags & libc::MSG_CTRUNC != 0 {
-            return Err(unauthorized("request packet credentials were truncated"));
+            return Err(unauthorized("request packet ancillary data was truncated"));
         }
-        let credentials = packet_credentials(&message)?;
+        let credentials = ancillary.into_credentials()?;
         let length = usize::try_from(received).map_err(|_| invalid_packet())?;
         bytes.truncate(length);
         Ok(ReceivedPacket { bytes, credentials })
     }
 
-    pub fn send_response(&self, packet: &[u8]) -> Result<(), BrokerError> {
+    pub fn send_response(
+        &self,
+        packet: &[u8],
+        evidence_bundle: Option<&OwnedFd>,
+    ) -> Result<(), BrokerError> {
+        let descriptors = evidence_bundle.map_or(&[][..], |fd| std::slice::from_ref(fd));
+        let raw_descriptors: Vec<RawFd> = descriptors.iter().map(AsRawFd::as_raw_fd).collect();
+        self.send_response_fds(packet, &raw_descriptors)
+    }
+
+    fn send_response_fds(&self, packet: &[u8], descriptors: &[RawFd]) -> Result<(), BrokerError> {
         if packet.len() > MAX_PACKET_BYTES {
             return Err(BrokerError::new(
                 ErrorCode::ResponseTooLarge,
@@ -350,21 +397,56 @@ impl SeqpacketConnection {
                 false,
             ));
         }
-        // SAFETY: packet is a live readable buffer and self owns a connected
-        // SOCK_SEQPACKET descriptor. MSG_NOSIGNAL prevents a peer-close signal.
-        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
+        if descriptors.len() > 1 {
+            return Err(BrokerError::new(
+                ErrorCode::AttestationFailed,
+                "broker response carries an invalid evidence descriptor count",
+                false,
+            ));
+        }
+        let mut iov = libc::iovec {
+            iov_base: packet.as_ptr().cast_mut().cast(),
+            iov_len: packet.len(),
+        };
+        let mut control = [0_usize; 8];
+        // SAFETY: zero is a valid initial state for msghdr; live buffers are
+        // assigned before sendmsg observes any pointer-bearing fields.
         #[allow(
             unsafe_code,
-            reason = "sending one atomic SOCK_SEQPACKET record requires send"
+            reason = "sendmsg requires a zero-initialized platform msghdr"
         )]
-        let sent = unsafe {
-            libc::send(
-                self.fd.as_raw_fd(),
-                packet.as_ptr().cast(),
-                packet.len(),
-                libc::MSG_NOSIGNAL,
-            )
-        };
+        let mut message: libc::msghdr = unsafe { std::mem::zeroed() };
+        message.msg_iov = std::ptr::addr_of_mut!(iov);
+        message.msg_iovlen = 1;
+        if let Some(descriptor) = descriptors.first() {
+            message.msg_control = control.as_mut_ptr().cast();
+            message.msg_controllen = std::mem::size_of_val(&control);
+            // SAFETY: control is aligned usize storage and large enough for one
+            // SCM_RIGHTS int. CMSG_FIRSTHDR/CMSG_DATA remain within that buffer.
+            #[allow(
+                unsafe_code,
+                reason = "SCM_RIGHTS headers are constructed through libc CMSG accessors"
+            )]
+            unsafe {
+                let header = libc::CMSG_FIRSTHDR(std::ptr::addr_of!(message));
+                if header.is_null() {
+                    return Err(internal("cannot construct evidence descriptor message"));
+                }
+                (*header).cmsg_level = libc::SOL_SOCKET;
+                (*header).cmsg_type = libc::SCM_RIGHTS;
+                (*header).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<RawFd>() as u32) as usize;
+                std::ptr::write(libc::CMSG_DATA(header).cast::<RawFd>(), *descriptor);
+                message.msg_controllen =
+                    libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as u32) as usize;
+            }
+        }
+        // SAFETY: message points to live packet and optional control storage;
+        // self owns the connected SOCK_SEQPACKET fd. One sendmsg is one record.
+        #[allow(
+            unsafe_code,
+            reason = "response bytes and SCM_RIGHTS must be sent as one atomic record"
+        )]
+        let sent = unsafe { libc::sendmsg(self.fd.as_raw_fd(), &message, libc::MSG_NOSIGNAL) };
         if sent < 0 || usize::try_from(sent).ok() != Some(packet.len()) {
             return Err(BrokerError::io(
                 ErrorCode::InvalidFrame,
@@ -376,41 +458,225 @@ impl SeqpacketConnection {
     }
 }
 
-fn packet_credentials(message: &libc::msghdr) -> Result<PeerCredentials, BrokerError> {
-    let mut found = None;
-    // SAFETY: message was populated by a successful recvmsg call and its control
-    // buffer remains live. CMSG_* traverses only headers within msg_controllen.
-    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
+pub fn validate_evidence_bundle_fd(
+    fd: &OwnedFd,
+    bundle: &EvidenceBundle,
+) -> Result<(), BrokerError> {
+    if bundle.byte_length == 0 || bundle.byte_length > MAX_EVIDENCE_BUNDLE_BYTES {
+        return Err(invalid_evidence_fd());
+    }
+    // SAFETY: F_GETFD and F_GET_SEALS inspect the live descriptor without
+    // changing ownership or dereferencing application memory.
     #[allow(
         unsafe_code,
-        reason = "parsing SCM_CREDENTIALS requires libc CMSG traversal"
+        reason = "descriptor flags and memfd seals are available only through fcntl"
+    )]
+    let (descriptor_flags, seals, offset) = unsafe {
+        (
+            libc::fcntl(fd.as_raw_fd(), libc::F_GETFD),
+            libc::fcntl(fd.as_raw_fd(), libc::F_GET_SEALS),
+            libc::lseek(fd.as_raw_fd(), 0, libc::SEEK_CUR),
+        )
+    };
+    let required_seals =
+        libc::F_SEAL_SEAL | libc::F_SEAL_SHRINK | libc::F_SEAL_GROW | libc::F_SEAL_WRITE;
+    if descriptor_flags < 0
+        || descriptor_flags & libc::FD_CLOEXEC == 0
+        || seals < 0
+        || seals & required_seals != required_seals
+        || offset != 0
+    {
+        return Err(invalid_evidence_fd());
+    }
+    // SAFETY: stat points to initialized writable storage for fstat and fd is live.
+    #[allow(
+        unsafe_code,
+        reason = "fstat is required to validate the anonymous evidence file type and size"
+    )]
+    let metadata = unsafe {
+        let mut stat: libc::stat = std::mem::zeroed();
+        if libc::fstat(fd.as_raw_fd(), std::ptr::addr_of_mut!(stat)) != 0 {
+            return Err(invalid_evidence_fd());
+        }
+        stat
+    };
+    if metadata.st_mode & libc::S_IFMT != libc::S_IFREG
+        || u64::try_from(metadata.st_size).ok() != Some(bundle.byte_length)
+    {
+        return Err(invalid_evidence_fd());
+    }
+    if metadata.st_nlink != 0 {
+        return Err(invalid_evidence_fd());
+    }
+    let file = File::from(fd.try_clone().map_err(|_| invalid_evidence_fd())?);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut total = 0_u64;
+    loop {
+        let read = file
+            .read_at(&mut buffer, total)
+            .map_err(|_| invalid_evidence_fd())?;
+        if read == 0 {
+            break;
+        }
+        total = total.saturating_add(read as u64);
+        if total > bundle.byte_length {
+            return Err(invalid_evidence_fd());
+        }
+        hasher.update(&buffer[..read]);
+    }
+    if total != bundle.byte_length || format!("{:x}", hasher.finalize()) != bundle.sha256 {
+        return Err(invalid_evidence_fd());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn create_sealed_memfd(bytes: &[u8]) -> Result<OwnedFd, BrokerError> {
+    // SAFETY: the name is a static NUL-terminated string and successful
+    // memfd_create returns one new descriptor owned by the caller.
+    #[allow(
+        unsafe_code,
+        reason = "sealed anonymous evidence fixtures require Linux memfd_create"
+    )]
+    let raw_fd = unsafe {
+        libc::memfd_create(
+            c"openburnbar-attestation-evidence".as_ptr(),
+            libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING,
+        )
+    };
+    if raw_fd < 0 {
+        return Err(BrokerError::io(
+            ErrorCode::Internal,
+            "cannot create sealed evidence bundle",
+            std::io::Error::last_os_error(),
+        ));
+    }
+    // SAFETY: raw_fd was returned as a new descriptor and is converted once.
+    #[allow(unsafe_code, reason = "memfd_create transfers one owned descriptor")]
+    let owned = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+    let mut file = File::from(owned);
+    std::io::Write::write_all(&mut file, bytes).map_err(|source| {
+        BrokerError::io(
+            ErrorCode::Internal,
+            "cannot write sealed evidence bundle",
+            source,
+        )
+    })?;
+    file.seek(SeekFrom::Start(0)).map_err(|source| {
+        BrokerError::io(
+            ErrorCode::Internal,
+            "cannot rewind sealed evidence bundle",
+            source,
+        )
+    })?;
+    let seals = libc::F_SEAL_SEAL | libc::F_SEAL_SHRINK | libc::F_SEAL_GROW | libc::F_SEAL_WRITE;
+    // SAFETY: F_ADD_SEALS changes kernel metadata on the live memfd only.
+    #[allow(
+        unsafe_code,
+        reason = "memfd immutability is established through fcntl F_ADD_SEALS"
+    )]
+    let result = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_ADD_SEALS, seals) };
+    if result != 0 {
+        return Err(BrokerError::io(
+            ErrorCode::Internal,
+            "cannot seal evidence bundle",
+            std::io::Error::last_os_error(),
+        ));
+    }
+    Ok(file.into())
+}
+
+impl RequestAncillary {
+    fn into_credentials(self) -> Result<PeerCredentials, BrokerError> {
+        let has_rights = !self.rights.is_empty();
+        if self.invalid || has_rights || self.credentials.len() != 1 {
+            return Err(unauthorized(
+                "request packet must contain exactly one credentials message and no other ancillary data",
+            ));
+        }
+        self.credentials
+            .into_iter()
+            .next()
+            .ok_or_else(|| unauthorized("request packet credentials are missing"))
+    }
+}
+
+fn collect_request_ancillary(message: &libc::msghdr) -> RequestAncillary {
+    let mut ancillary = RequestAncillary::default();
+    // SAFETY: message was populated by a successful recvmsg call and its control
+    // buffer remains live. Every received SCM_RIGHTS fd is immediately converted
+    // to OwnedFd so all later success and error paths close it by RAII.
+    #[allow(
+        unsafe_code,
+        reason = "parsing and owning Unix ancillary data requires libc CMSG traversal"
     )]
     unsafe {
+        let control_start = message.msg_control as usize;
+        let control_end = control_start.saturating_add(message.msg_controllen);
         let mut header = libc::CMSG_FIRSTHDR(message);
         while !header.is_null() {
-            if (*header).cmsg_level == libc::SOL_SOCKET
-                && (*header).cmsg_type == libc::SCM_CREDENTIALS
-                && (*header).cmsg_len
-                    >= libc::CMSG_LEN(std::mem::size_of::<libc::ucred>() as u32) as usize
+            let base_length = libc::CMSG_LEN(0) as usize;
+            let header_start = header as usize;
+            if header_start < control_start
+                || header_start.saturating_add(base_length) > control_end
             {
-                if found.is_some() {
-                    return Err(unauthorized("request packet has duplicate credentials"));
+                ancillary.invalid = true;
+                break;
+            }
+            let message_length = (*header).cmsg_len;
+            let data_start = libc::CMSG_DATA(header) as usize;
+            let available_data_length = control_end.saturating_sub(data_start);
+            if message_length < base_length {
+                ancillary.invalid = true;
+            } else if (*header).cmsg_level == libc::SOL_SOCKET
+                && (*header).cmsg_type == libc::SCM_RIGHTS
+            {
+                let declared_data_length = message_length - base_length;
+                let data_length = declared_data_length.min(available_data_length);
+                if declared_data_length > available_data_length {
+                    ancillary.invalid = true;
                 }
-                let raw = std::ptr::read_unaligned(libc::CMSG_DATA(header).cast::<libc::ucred>());
-                if raw.pid <= 0 {
-                    return Err(unauthorized("request packet credentials are invalid"));
+                if data_length == 0 || !data_length.is_multiple_of(std::mem::size_of::<RawFd>()) {
+                    ancillary.invalid = true;
                 }
-                found = Some(PeerCredentials {
-                    pid: u32::try_from(raw.pid)
-                        .map_err(|_| unauthorized("request packet PID is invalid"))?,
-                    uid: raw.uid,
-                    gid: raw.gid,
-                });
+                for index in 0..(data_length / std::mem::size_of::<RawFd>()) {
+                    let raw = std::ptr::read_unaligned(
+                        libc::CMSG_DATA(header).cast::<RawFd>().add(index),
+                    );
+                    if raw < 0 {
+                        ancillary.invalid = true;
+                    } else {
+                        ancillary.rights.push(OwnedFd::from_raw_fd(raw));
+                    }
+                }
+            } else if (*header).cmsg_level == libc::SOL_SOCKET
+                && (*header).cmsg_type == libc::SCM_CREDENTIALS
+            {
+                let expected = libc::CMSG_LEN(std::mem::size_of::<libc::ucred>() as u32) as usize;
+                if message_length != expected
+                    || available_data_length < std::mem::size_of::<libc::ucred>()
+                {
+                    ancillary.invalid = true;
+                } else {
+                    let raw =
+                        std::ptr::read_unaligned(libc::CMSG_DATA(header).cast::<libc::ucred>());
+                    match u32::try_from(raw.pid) {
+                        Ok(pid) if pid > 0 => ancillary.credentials.push(PeerCredentials {
+                            pid,
+                            uid: raw.uid,
+                            gid: raw.gid,
+                        }),
+                        _ => ancillary.invalid = true,
+                    }
+                }
+            } else {
+                ancillary.invalid = true;
             }
             header = libc::CMSG_NXTHDR(message, header);
         }
     }
-    found.ok_or_else(|| unauthorized("request packet credentials are missing"))
+    ancillary
 }
 
 fn validate_socket_type(fd: i32) -> Result<(), BrokerError> {
@@ -556,17 +822,30 @@ const fn invalid_packet() -> BrokerError {
     BrokerError::new(ErrorCode::InvalidFrame, "broker packet is invalid", false)
 }
 
+const fn invalid_evidence_fd() -> BrokerError {
+    BrokerError::new(
+        ErrorCode::AttestationFailed,
+        "attestation evidence descriptor is invalid",
+        false,
+    )
+}
+
 fn load_signed_manifest(
     manifest_path: &Path,
     signature_path: &Path,
     public_key_path: &Path,
-) -> Result<InstalledFilesManifest, BrokerError> {
+) -> Result<LoadedInstalledManifest, BrokerError> {
     let manifest_bytes = read_root_owned_bounded_file(manifest_path, 0o644, MAX_MANIFEST_BYTES)?;
     let signature_bytes = read_root_owned_bounded_file(signature_path, 0o644, 64)?;
     let public_key_bytes = read_root_owned_bounded_file(public_key_path, 0o644, 4 * 1024)?;
     verify_manifest_signature(&manifest_bytes, &signature_bytes, &public_key_bytes)?;
-    serde_json::from_slice(&manifest_bytes)
-        .map_err(|_| manifest_signature_invalid("signed installed manifest is malformed"))
+    let release_digest_sha256 = format!("{:x}", Sha256::digest(&manifest_bytes));
+    let manifest = serde_json::from_slice(&manifest_bytes)
+        .map_err(|_| manifest_signature_invalid("signed installed manifest is malformed"))?;
+    Ok(LoadedInstalledManifest {
+        manifest,
+        release_digest_sha256,
+    })
 }
 
 fn verify_manifest_signature(
@@ -639,10 +918,11 @@ fn validate_manifest(manifest: &InstalledFilesManifest) -> Result<(), BrokerErro
         || manifest.authorized_clients.is_empty()
         || manifest.authorized_clients.len() > 8
         || manifest.app_id != "dev.openburnbar.OpenBurnBar"
+        || !valid_firebase_app_id(&manifest.firebase_app_id)
         || !valid_lower_hex(&manifest.git_commit, 40)
         || manifest.package_name != "open-burn-bar"
         || manifest.policy_id != "openburnbar-linux-tpm2-ima-v1"
-        || manifest.broker_protocol_version != 1
+        || manifest.broker_protocol_version != 2
         || !valid_lower_hex(&manifest.installed_files_root_sha256, 64)
         || manifest.files.is_empty()
         || manifest.files.len() > 4_096
@@ -854,6 +1134,22 @@ fn valid_package_version(value: &str) -> bool {
         && parts.next().is_none()
 }
 
+fn valid_firebase_app_id(value: &str) -> bool {
+    if value.len() > 160 {
+        return false;
+    }
+    let mut parts = value.split(':');
+    matches!(parts.next(), Some("1"))
+        && parts.next().is_some_and(|project| {
+            !project.is_empty() && project.bytes().all(|byte| byte.is_ascii_digit())
+        })
+        && matches!(parts.next(), Some("web"))
+        && parts.next().is_some_and(|app| {
+            !app.is_empty() && app.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
+        && parts.next().is_none()
+}
+
 const fn unauthorized(message: &'static str) -> BrokerError {
     BrokerError::new(ErrorCode::UnauthorizedPeer, message, false)
 }
@@ -922,10 +1218,11 @@ mod tests {
             package_format: "deb".to_owned(),
             authorized_clients: vec![valid_entry()],
             app_id: "dev.openburnbar.OpenBurnBar".to_owned(),
+            firebase_app_id: "1:123456789:web:abcdef0123456789".to_owned(),
             git_commit: "b".repeat(40),
             package_name: "open-burn-bar".to_owned(),
             policy_id: "openburnbar-linux-tpm2-ima-v1".to_owned(),
-            broker_protocol_version: 1,
+            broker_protocol_version: 2,
             installed_files_root_sha256: installed_files_root(&files).unwrap_or_default(),
             files,
         }
@@ -1220,5 +1517,269 @@ mod tests {
             assert!(hash_open_file(&mut file, 4).is_err());
         }
         assert!(std::fs::remove_dir_all(root).is_ok());
+    }
+
+    fn evidence_descriptor(bytes: &[u8]) -> EvidenceBundle {
+        EvidenceBundle {
+            descriptor_index: 0,
+            format: crate::protocol::EVIDENCE_BUNDLE_FORMAT.to_owned(),
+            byte_length: bytes.len() as u64,
+            sha256: format!("{:x}", Sha256::digest(bytes)),
+        }
+    }
+
+    fn seqpacket_pair() -> Result<(SeqpacketConnection, OwnedFd), std::io::Error> {
+        let mut descriptors = [-1_i32; 2];
+        // SAFETY: storage has room for exactly two descriptors and successful
+        // socketpair initializes both as new owned descriptors.
+        #[allow(
+            unsafe_code,
+            reason = "SCM_RIGHTS transport tests require a real SOCK_SEQPACKET pair"
+        )]
+        let result = unsafe {
+            libc::socketpair(
+                libc::AF_UNIX,
+                libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC,
+                0,
+                descriptors.as_mut_ptr(),
+            )
+        };
+        if result != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: socketpair returned each descriptor as newly owned.
+        #[allow(unsafe_code, reason = "socketpair transfers two owned descriptors")]
+        let sender = unsafe { OwnedFd::from_raw_fd(descriptors[0]) };
+        // SAFETY: the second descriptor is distinct and converted once.
+        #[allow(unsafe_code, reason = "socketpair transfers two owned descriptors")]
+        let receiver = unsafe { OwnedFd::from_raw_fd(descriptors[1]) };
+        Ok((SeqpacketConnection { fd: sender }, receiver))
+    }
+
+    fn open_fd_count() -> Result<usize, std::io::Error> {
+        Ok(std::fs::read_dir("/proc/self/fd")?.count())
+    }
+
+    fn send_request_rights(
+        socket: &OwnedFd,
+        packet: &[u8],
+        descriptors: &[RawFd],
+    ) -> Result<(), std::io::Error> {
+        let mut iov = libc::iovec {
+            iov_base: packet.as_ptr().cast_mut().cast(),
+            iov_len: packet.len(),
+        };
+        let control_bytes = if descriptors.is_empty() {
+            0
+        } else {
+            // SAFETY: CMSG_SPACE is a pure size calculation for the payload length.
+            #[allow(
+                unsafe_code,
+                reason = "SCM_RIGHTS test control storage uses libc CMSG sizing"
+            )]
+            unsafe {
+                libc::CMSG_SPACE(
+                    u32::try_from(std::mem::size_of_val(descriptors)).unwrap_or(u32::MAX),
+                ) as usize
+            }
+        };
+        let control_words = control_bytes.div_ceil(std::mem::size_of::<usize>());
+        let mut control = vec![0_usize; control_words];
+        // SAFETY: zero is a valid initial state for msghdr and live buffers follow.
+        #[allow(unsafe_code, reason = "sendmsg requires a zeroed platform msghdr")]
+        let mut message: libc::msghdr = unsafe { std::mem::zeroed() };
+        message.msg_iov = std::ptr::addr_of_mut!(iov);
+        message.msg_iovlen = 1;
+        if !descriptors.is_empty() {
+            message.msg_control = control.as_mut_ptr().cast();
+            message.msg_controllen = control_bytes;
+            // SAFETY: aligned control storage was sized for the complete fd slice.
+            #[allow(
+                unsafe_code,
+                reason = "SCM_RIGHTS test messages require constructing one CMSG header"
+            )]
+            unsafe {
+                let header = libc::CMSG_FIRSTHDR(std::ptr::addr_of!(message));
+                if header.is_null() {
+                    return Err(std::io::Error::other("cannot construct SCM_RIGHTS header"));
+                }
+                (*header).cmsg_level = libc::SOL_SOCKET;
+                (*header).cmsg_type = libc::SCM_RIGHTS;
+                (*header).cmsg_len = libc::CMSG_LEN(
+                    u32::try_from(std::mem::size_of_val(descriptors)).unwrap_or(u32::MAX),
+                ) as usize;
+                std::ptr::copy_nonoverlapping(
+                    descriptors.as_ptr(),
+                    libc::CMSG_DATA(header).cast::<RawFd>(),
+                    descriptors.len(),
+                );
+            }
+        }
+        // SAFETY: message points to live packet/control buffers and the connected
+        // socket remains owned for the duration of the call.
+        #[allow(
+            unsafe_code,
+            reason = "request ancillary regression tests require sendmsg"
+        )]
+        let sent = unsafe { libc::sendmsg(socket.as_raw_fd(), &message, libc::MSG_NOSIGNAL) };
+        if sent < 0 || usize::try_from(sent).ok() != Some(packet.len()) {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    fn receive_response_fd(
+        socket: &OwnedFd,
+    ) -> Result<(Vec<u8>, OwnedFd), Box<dyn std::error::Error>> {
+        let mut bytes = [0_u8; 128];
+        let mut control = [0_usize; 8];
+        let mut iov = libc::iovec {
+            iov_base: bytes.as_mut_ptr().cast(),
+            iov_len: bytes.len(),
+        };
+        // SAFETY: zero initializes all unused msghdr fields; live buffers follow.
+        #[allow(unsafe_code, reason = "recvmsg requires a zeroed platform msghdr")]
+        let mut message: libc::msghdr = unsafe { std::mem::zeroed() };
+        message.msg_iov = std::ptr::addr_of_mut!(iov);
+        message.msg_iovlen = 1;
+        message.msg_control = control.as_mut_ptr().cast();
+        message.msg_controllen = std::mem::size_of_val(&control);
+        // SAFETY: message owns valid writable buffers and socket is connected.
+        #[allow(
+            unsafe_code,
+            reason = "receiving SCM_RIGHTS requires recvmsg ancillary data"
+        )]
+        let received = unsafe {
+            libc::recvmsg(
+                socket.as_raw_fd(),
+                std::ptr::addr_of_mut!(message),
+                libc::MSG_CMSG_CLOEXEC,
+            )
+        };
+        if received < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        // SAFETY: recvmsg populated a live control buffer. This test expects one
+        // SCM_RIGHTS int and converts that received descriptor exactly once.
+        #[allow(
+            unsafe_code,
+            reason = "the received SCM_RIGHTS descriptor must be read from CMSG_DATA"
+        )]
+        let descriptor = unsafe {
+            let header = libc::CMSG_FIRSTHDR(std::ptr::addr_of!(message));
+            if header.is_null()
+                || (*header).cmsg_level != libc::SOL_SOCKET
+                || (*header).cmsg_type != libc::SCM_RIGHTS
+            {
+                return Err("response did not carry one SCM_RIGHTS descriptor".into());
+            }
+            OwnedFd::from_raw_fd(std::ptr::read(libc::CMSG_DATA(header).cast::<RawFd>()))
+        };
+        let length = usize::try_from(received)?;
+        Ok((bytes[..length].to_vec(), descriptor))
+    }
+
+    #[test]
+    fn sealed_memfd_validation_rejects_unsealed_oversized_and_digest_mismatch(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = b"sealed-evidence";
+        let sealed = create_sealed_memfd(bytes)?;
+        let descriptor = evidence_descriptor(bytes);
+        assert!(validate_evidence_bundle_fd(&sealed, &descriptor).is_ok());
+
+        let mut direct = File::from(sealed.try_clone()?);
+        let mut direct_bytes = vec![0_u8; bytes.len()];
+        direct.read_exact(&mut direct_bytes)?;
+        assert_eq!(direct_bytes, bytes);
+
+        let mut digest_mismatch = descriptor.clone();
+        digest_mismatch.sha256 = "0".repeat(64);
+        assert!(validate_evidence_bundle_fd(&sealed, &digest_mismatch).is_err());
+        let mut oversized = descriptor.clone();
+        oversized.byte_length = MAX_EVIDENCE_BUNDLE_BYTES + 1;
+        assert!(validate_evidence_bundle_fd(&sealed, &oversized).is_err());
+
+        let root = temp_dir("unsealed-evidence");
+        let path = root.join("bundle");
+        std::fs::write(&path, bytes)?;
+        let unsealed = File::open(&path)?;
+        let unsealed_fd: OwnedFd = unsealed.into();
+        assert!(validate_evidence_bundle_fd(&unsealed_fd, &descriptor).is_err());
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn request_rights_and_truncation_are_rejected_without_fd_leaks(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        const ISOLATED_ENV: &str = "OPENBURNBAR_ATTESTD_FD_LEAK_TEST_CHILD";
+        if env::var_os(ISOLATED_ENV).is_none() {
+            let status = std::process::Command::new(std::env::current_exe()?)
+                .args([
+                    "--exact",
+                    "linux::tests::request_rights_and_truncation_are_rejected_without_fd_leaks",
+                    "--test-threads=1",
+                ])
+                .env(ISOLATED_ENV, "1")
+                .status()?;
+            assert!(status.success());
+            return Ok(());
+        }
+        for descriptor_count in [1_usize, 2, 64] {
+            let (receiver, sender) = seqpacket_pair()?;
+            set_pass_credentials(receiver.fd.as_raw_fd())?;
+            let descriptors = (0..descriptor_count)
+                .map(|index| create_sealed_memfd(format!("evidence-{index}").as_bytes()))
+                .collect::<Result<Vec<_>, _>>()?;
+            let raw_descriptors = descriptors
+                .iter()
+                .map(AsRawFd::as_raw_fd)
+                .collect::<Vec<_>>();
+            let before_receive = open_fd_count()?;
+            send_request_rights(&sender, b"request", &raw_descriptors)?;
+            let error = receiver.receive_request().err().map(|value| value.code());
+            assert_eq!(error, Some(ErrorCode::UnauthorizedPeer));
+            assert_eq!(open_fd_count()?, before_receive);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn response_and_one_descriptor_are_one_record_without_fd_leak(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (sender, receiver) = seqpacket_pair()?;
+        let packet = b"framed-json-response";
+        let bytes = b"sealed-evidence";
+        let evidence = create_sealed_memfd(bytes)?;
+        let original_raw_fd = evidence.as_raw_fd();
+        sender.send_response(packet, Some(&evidence))?;
+        drop(evidence);
+        // SAFETY: F_GETFD only queries whether the old descriptor number remains open.
+        #[allow(
+            unsafe_code,
+            reason = "fd leak regression checks the dropped descriptor"
+        )]
+        let dropped_result = unsafe { libc::fcntl(original_raw_fd, libc::F_GETFD) };
+        assert_eq!(dropped_result, -1);
+
+        let (received_packet, received_fd) = receive_response_fd(&receiver)?;
+        assert_eq!(received_packet, packet);
+        assert!(validate_evidence_bundle_fd(&received_fd, &evidence_descriptor(bytes)).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn response_transport_rejects_two_descriptors() -> Result<(), Box<dyn std::error::Error>> {
+        let (sender, _receiver) = seqpacket_pair()?;
+        let first = create_sealed_memfd(b"first")?;
+        let second = create_sealed_memfd(b"second")?;
+        assert_eq!(
+            sender
+                .send_response_fds(b"response", &[first.as_raw_fd(), second.as_raw_fd()])
+                .err()
+                .map(|error| error.code()),
+            Some(ErrorCode::AttestationFailed)
+        );
+        Ok(())
     }
 }

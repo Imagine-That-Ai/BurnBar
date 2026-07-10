@@ -3,6 +3,7 @@ export function validateArchitectureShardSet({ manifest, shards, version, commit
   const architectures = new Set();
   const artifactKeys = new Set();
   const expectedKeys = new Set();
+  let firebaseAppId = null;
 
   for (const architecture of manifest.supportedArchitectures ?? []) {
     for (const type of manifest.requiredArtifacts ?? []) {
@@ -23,6 +24,13 @@ export function validateArchitectureShardSet({ manifest, shards, version, commit
     if (shard.git?.commit !== commit) failures.push(`shard ${architecture} commit does not match ${commit}`);
     if (shard.git?.dirty === true) failures.push(`shard ${architecture} was built from a dirty checkout`);
     if ((shard.blockers ?? []).length > 0) failures.push(`shard ${architecture} contains build blockers`);
+    if (!isFirebaseWebAppId(shard.firebaseAppId)) {
+      failures.push(`shard ${architecture} firebaseAppId is missing or invalid`);
+    } else if (firebaseAppId === null) {
+      firebaseAppId = shard.firebaseAppId;
+    } else if (shard.firebaseAppId !== firebaseAppId) {
+      failures.push(`shard ${architecture} firebaseAppId does not match the other architecture shards`);
+    }
 
     for (const artifact of shard.artifacts ?? []) {
       const key = `${artifact?.type}:${artifact?.architecture}`;
@@ -42,4 +50,14 @@ export function validateArchitectureShardSet({ manifest, shards, version, commit
   if (artifactKeys.size !== expectedKeys.size) failures.push('shard artifact set does not exactly cover the manifest matrix');
 
   return failures;
+}
+
+function isFirebaseWebAppId(value) {
+  if (typeof value !== 'string'
+      || value.length > 160
+      || !/^1:[0-9]+:web:[A-Za-z0-9]+$/.test(value)) return false;
+  const [, projectNumber, , appInstance] = value.split(':');
+  return !/^0+$/u.test(projectNumber)
+    && !/^0+$/u.test(appInstance)
+    && !appInstance.toLowerCase().includes('placeholder');
 }

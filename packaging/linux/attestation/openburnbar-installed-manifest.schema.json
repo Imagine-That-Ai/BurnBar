@@ -8,6 +8,7 @@
     "schemaVersion",
     "product",
     "appId",
+    "firebaseAppId",
     "packageVersion",
     "gitCommit",
     "packageArchitecture",
@@ -23,6 +24,11 @@
     "schemaVersion": { "const": 1 },
     "product": { "const": "OpenBurnBar" },
     "appId": { "const": "dev.openburnbar.OpenBurnBar" },
+    "firebaseAppId": {
+      "type": "string",
+      "maxLength": 160,
+      "pattern": "^1:[0-9]+:web:[A-Za-z0-9]+$"
+    },
     "packageVersion": {
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
@@ -32,7 +38,7 @@
     "packageFormat": { "type": "string", "enum": ["deb", "rpm"] },
     "packageName": { "const": "open-burn-bar" },
     "policyId": { "const": "openburnbar-linux-tpm2-ima-v1" },
-    "brokerProtocolVersion": { "const": 1 },
+    "brokerProtocolVersion": { "const": 2 },
     "installedFilesRootSha256": { "$ref": "#/$defs/sha256" },
     "authorizedClients": {
       "type": "array",
