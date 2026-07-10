@@ -16,6 +16,7 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 | [010-project-code-static-parser.md](010-project-code-static-parser.md) | Stateless local Tree-sitter helper for Project Code Memory |
 | [011-stripe-redirect-url-validation.md](011-stripe-redirect-url-validation.md) | Exact-loopback + optional origin allowlist for Stripe redirects |
 | [014-linux-provider-external-auth.md](014-linux-provider-external-auth.md) | Daemon-owned Codex/Claude external login on Linux |
+| [015-linux-app-check-attestation.md](015-linux-app-check-attestation.md) | Lower-trust Linux App Check challenge, verifier, and daemon token boundary |
 
 Related operational docs:
 

@@ -41,6 +41,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .quotaSignalsRecent: "daemon.quota.signals.recent",
         .quotaSignalsClear: "daemon.quota.signals.clear",
         .accountStatus: "daemon.account.status",
+        .linuxAppCheckStatus: "daemon.cloud.app_check.status",
         .accountDeviceAuthStart: "daemon.account.device_auth.start",
         .accountDeviceAuthPoll: "daemon.account.device_auth.poll",
         .accountDeviceAuthCancel: "daemon.account.device_auth.cancel",
@@ -429,5 +430,28 @@ final class BurnBarRPCContractsTests: XCTestCase {
         )
         XCTAssertNil(bareDecoded.result)
         XCTAssertNil(bareDecoded.error)
+    }
+
+    func testLinuxAppCheckStatusContractAndCanonAreRedactedAndTyped() throws {
+        XCTAssertEqual(BurnBarRPCMethod.linuxAppCheckStatus.rawValue, "daemon.cloud.app_check.status")
+        let status = BurnBarLinuxAppCheckStatusResponse(
+            state: .ready,
+            expiresAt: "2030-03-17T18:16:40Z"
+        )
+        let data = try JSONEncoder().encode(status)
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(json.contains("linux_lower_trust"))
+        XCTAssertFalse(json.lowercased().contains("token"))
+
+        let decoded = try JSONDecoder().decode(BurnBarLinuxAppCheckStatusResponse.self, from: data)
+        XCTAssertEqual(decoded, status)
+
+        let entry = try XCTUnwrap(
+            BurnBarRPCIPCCanon.methods.first(where: { $0.id == "daemon.cloud.app_check.status" })
+        )
+        XCTAssertEqual(entry.domain, "account")
+        XCTAssertEqual(entry.capability, "account")
+        XCTAssertEqual(entry.params, "BurnBarRPCRequestEnvelope")
+        XCTAssertEqual(entry.result, "BurnBarLinuxAppCheckStatusResponse")
     }
 }

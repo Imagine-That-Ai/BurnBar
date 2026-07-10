@@ -1,29 +1,134 @@
 # Linux Cloud Security Runbook
 
-This runbook defines the Linux lower-trust cloud posture until a production Linux
-attestation verifier and release-signing channel are provisioned.
+This runbook defines the Linux lower-trust cloud posture and the source-level
+App Check boundary. It does not certify production Linux attestation. Production
+minting is disabled by default, and protected Linux cloud operations remain
+blocked until the verifier, privileged broker, release policy, deployment, and
+installed matrix described below are complete.
 
 ## Principal And Trust Class
 
-- Linux desktop uses a distinct App Check app id (`LINUX_APP_CHECK_APP_ID`,
-  default placeholder `1:000000000000:linux:0000000000000000placeholder`).
-- The backend classifies that id as `linux_lower_trust`; it is not treated as an
+- Linux desktop uses a dedicated, real Firebase Web app ID configured through
+  `LINUX_APP_CHECK_APP_ID`. The checked-in placeholder is for tests and disabled
+  environments; production minting rejects it.
+- The backend classifies the Linux app ID as `linux_lower_trust`; it is not an
   Apple App Attest, Android Play Integrity, or web reCAPTCHA principal.
 - Low-risk read/sync callables must use an explicit trust-class allow-list.
 - High-risk actions must not pass from Linux App Check presence alone. They must
   consume a fresh `issueHighRiskActionNonce` nonce and route through a
   trusted-device step-up proof such as `enforceHighRiskOwnerAction`.
 
+## App Check Protocol
+
+The source foundation uses two authenticated callables:
+
+1. `issueLinuxAppCheckChallenge` binds Firebase UID, app ID, device ID, app
+   version, architecture, release SHA-256 digest, policy ID, and attestation
+   kind to a random two-minute challenge.
+2. `mintLinuxAppCheckToken` atomically consumes that challenge, obtains a signed
+   verdict from the configured verifier, validates the full binding, and mints
+   one server-selected 30-minute Firebase App Check token.
+
+The raw challenge is returned once. Firestore stores only its SHA-256 hash under
+`users/{uid}/linux_app_check_challenges/{challengeId}` and retains the consumed
+replay marker for 24 hours through TTL cleanup. The server stores only the
+minted token's SHA-256 hash and verifier receipt under a challenge-derived
+`users/{uid}/linux_app_check_sessions/{sessionHash}` document. Firestore Rules deny client
+access to both collections.
+
+The remote verifier call is exact HTTPS with redirects refused, a ten-second
+timeout, bounded evidence and response bodies, and a pinned Ed25519 public key.
+The signed verdict must match the configured key ID, issuer, audience, policy,
+challenge hash, UID, app, device, version, architecture, release digest,
+attestation kind, timestamps, and `linux_lower_trust` class.
+
+The Linux daemon owns the network and cache boundary. It bounds encoded requests
+and streamed responses, coalesces concurrent acquisition, validates the server
+app ID, trust class, and fixed lifetime from server issue time, refreshes before
+expiry, binds cached state to the Firebase UID plus session generation, and
+keeps the raw App Check token in memory only. The renderer receives at most a
+redacted unavailable/acquiring/ready status and expiry.
+
+This source packet does not produce trustworthy platform evidence. Production
+still requires a root-owned `openburnbar-attestd`, TPM 2.0 key enrollment and
+nonce-qualified quote, signed package/release verification, UEFI measured-boot
+policy, IMA PCR 10 and measurement-log verification where required, and the
+deployed remote verifier. See
+[`ADR 015`](../architecture/015-linux-app-check-attestation.md).
+
+## Configuration
+
+Functions production configuration:
+
+| Variable | Required production value |
+|---|---|
+| `LINUX_APP_CHECK_MINT_ENABLED` | `true` only after the production readiness gate passes; defaults to false |
+| `LINUX_APP_CHECK_APP_ID` | Dedicated real Firebase Web app ID (`1:<project>:web:<id>`) |
+| `APP_CHECK_ALLOWED_APP_IDS` | Includes that exact Linux app ID and no placeholder |
+| `LINUX_APP_CHECK_POLICY_ID` | Versioned attestation policy; default source value is `openburnbar-linux-tpm2-ima-v1` |
+| `LINUX_APP_CHECK_VERIFIER_URL` | Exact HTTPS remote verifier endpoint |
+| `LINUX_APP_CHECK_VERIFIER_PUBLIC_KEY_BASE64` | DER/SPKI Ed25519 public key, base64 encoded |
+| `LINUX_APP_CHECK_VERIFIER_KEY_ID` | Exact active verifier signing-key ID |
+| `LINUX_APP_CHECK_VERIFIER_ISSUER` | Exact signed-verdict issuer |
+| `LINUX_APP_CHECK_VERIFIER_AUDIENCE` | Exact signed-verdict audience |
+| `ENFORCE_APP_CHECK` | `true` in production |
+| `REQUIRE_HIGH_RISK_NONCE` | `true` in production |
+| `ALLOW_MOCK_APP_CHECK_ATTESTATION` | Must remain false; production config forces it off |
+
+Daemon endpoint overrides are deployment/test controls only:
+
+- `OPENBURNBAR_LINUX_APP_CHECK_CHALLENGE_ENDPOINT`
+- `OPENBURNBAR_LINUX_APP_CHECK_MINT_ENDPOINT`
+
+Both overrides must be exact HTTPS URLs. The network client refuses redirects,
+non-HTTPS endpoints, oversized responses, an unexpected final URL, malformed
+callable envelopes, and token-bearing requests without a valid account context.
+
+Do not place verifier private keys, raw tokens, attestation evidence, TPM
+credentials, or keyring secrets in environment variables, renderer state, logs,
+support bundles, or documentation artifacts.
+
+## Supported And Unsupported Environments
+
+No environment is production-supported until exact-candidate installed evidence
+is accepted.
+
+| Environment | Production App Check policy | Current state |
+|---|---|---|
+| Physical TPM 2.0, Secure Boot/measured boot enabled, supported repository-installed deb/rpm | Intended first supported tier after broker, verifier, enrollment, package, revocation, and installed tests pass | Blocked |
+| Physical TPM 2.0, supported AppImage | Requires a separately verified immutable release/update identity | Blocked |
+| Generic VM or vTPM | Local workflows only unless a separate VM trust policy is approved | Unsupported |
+| No TPM or Secure Boot off | Local workflows only; protected cloud mutations unavailable | Unsupported |
+| Source build, container, WSL, Flatpak, or Snap | No production App Check minting under the current policy | Unsupported |
+| Explicit emulator/test mock | Automated tests only; never production evidence | Test only |
+
+An unsupported host must surface App Check as unavailable before action. It must
+not silently use mock evidence or downgrade a protected mutation to auth-only.
+
 ## Rollout And Kill Switches
 
 - `ENFORCE_APP_CHECK=true` keeps callable App Check enforcement on.
 - `REQUIRE_HIGH_RISK_NONCE=true` forces high-risk nonce consumption in production.
 - `ALLOW_MOCK_APP_CHECK_ATTESTATION` is forced off in production by `config.ts`.
-- Remove the real Linux id from `APP_CHECK_ALLOWED_APP_IDS` or unset
-  `LINUX_APP_CHECK_APP_ID` to stop Linux minting while keeping Apple/Android/Web
-  traffic unchanged.
-- The Linux mint callable remains deployed but has no production mock verifier;
-  without a real verifier, fixture claims cannot mint a token.
+- `LINUX_APP_CHECK_MINT_ENABLED=false` is the primary Linux mint kill switch and
+  the default. It makes production challenge acquisition fail closed.
+- Removing the Linux ID from `APP_CHECK_ALLOWED_APP_IDS` is the second containment
+  boundary. Keep Apple/Android/Web app IDs unchanged.
+- An incomplete verifier configuration, placeholder app ID, unknown evidence
+  kind, verifier outage, invalid verdict, replay, or binding mismatch fails
+  closed. There is no production mock fallback.
+
+Roll out in this order: provision the dedicated Firebase Web app; deploy the
+verifier and pin its identity; deploy Functions with minting disabled; enroll a
+small TPM-backed broker ring; run all negative vectors and installed matrix
+checks; enable minting for the ring; then advance only with release-head-bound
+evidence. Keep high-risk step-up enforcement enabled throughout.
+
+To roll back, set `LINUX_APP_CHECK_MINT_ENABLED=false` or remove the Linux app ID
+from the allow-list. Protected cloud mutations become unavailable, but local
+SQLite data and local account workflows remain intact. Rotate the verifier key
+or policy ID to revoke an affected cohort. Never lengthen the 30-minute TTL or
+enable mock attestation to work around an outage.
 
 ## SecretStore Setup
 
@@ -95,7 +200,47 @@ after durable local commit.
 ## Blocked Production Evidence
 
 Do not claim high-risk production Linux cloud availability until all are present:
-real Firebase Linux App Check app id, real Linux platform attestation verifier,
-release signing/provenance, and staging or production credentials for live
-Firebase/Stripe traces. Until then, use emulator/fixture evidence and mark live
-production rows blocked.
+
+- a dedicated real Firebase Web app ID and production allow-list entry;
+- deployed root-owned broker, TPM 2.0 enrollment/revocation, nonce-qualified
+  quotes, release/package measurement, UEFI measured-boot policy, and IMA
+  measurement verification where required;
+- deployed signed-verdict verifier with pinned identity and operational key
+  rotation, outage, denial, and audit behavior;
+- signed release/provenance binding and revocation for replaced candidates;
+- negative vectors for forgery, replay, expiry, wrong user/app/device/version/
+  architecture/release/policy, bad signature, revoked device, clock skew, and
+  verifier outage;
+- live Firebase staging/production traces and installed GNOME, KDE, headless,
+  x86_64, aarch64, deb, rpm, and any claimed AppImage environment evidence;
+- confirmation that no token, evidence, challenge, private key, or credential
+  appears in renderer state, logs, crash reports, process metadata, or support
+  bundles.
+
+Until then, emulator/fixture evidence may validate the source boundary only.
+`LNX-APPCHECK-001`, dependent protected cloud rows, and stable Linux promotion
+remain blocked.
+
+### App Check QA acceptance
+
+1. Issue one challenge and verify its raw nonce is absent from Firestore while
+   the SHA-256 hash, complete binding, two-minute expiry, and 24-hour TTL marker
+   are present.
+2. Race two mint requests from independent instances. Exactly one may consume
+   the challenge; the other must fail as replayed.
+3. Mutate every binding field and signed-verdict field individually. Each must
+   fail before token minting or session recording.
+4. Verify malformed, expired, denied, oversized, redirected, timed-out, unsigned,
+   wrong-key, wrong-issuer, and wrong-audience verifier responses fail closed.
+5. Verify a valid signed verdict mints one token with a fixed 30-minute expiry,
+   records only the token hash and receipt, and leaves both Firestore collections
+   unreadable and unwritable to clients.
+6. Exercise daemon coalescing, refresh lead time, expiry, cancellation, account
+   switch, session-generation switch, sign-out, locked keyring, offline/retry,
+   process restart, and clock skew. Raw token state must disappear on daemon
+   restart and must never cross the renderer or RPC status contract.
+7. With `LINUX_APP_CHECK_MINT_ENABLED=false`, verify challenge and mint paths fail
+   closed while local SQLite, local provider, and local sign-out workflows work.
+8. Repeat the production vectors against the exact signed candidate on every
+   environment claimed as supported, retaining verifier decision logs and
+   package/release measurements bound to the same commit.

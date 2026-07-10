@@ -23,6 +23,7 @@ const KNOWN_EVALUATORS = new Set([
   'kwallet',
   'portal',
   'media',
+  'app-check',
   'tray',
   'x11-overlay',
   'unavailable'

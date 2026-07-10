@@ -407,6 +407,42 @@ test("account erasure retention records are server-only", async () => {
   }
 });
 
+test("Linux App Check challenge and session records are server-only", async () => {
+  const ownerDb = authedDb("linux-app-check-owner");
+  const otherDb = authedDb("linux-app-check-attacker");
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const challengePath = "users/linux-app-check-owner/linux_app_check_challenges/challenge-1";
+  const sessionPath = `users/linux-app-check-owner/linux_app_check_sessions/${"a".repeat(64)}`;
+  const challenge = {
+    protocolVersion: 1,
+    challengeHashSha256: "b".repeat(64),
+    consumedAtMillis: null,
+    expireAt: Timestamp.fromMillis(Date.now() + 86_400_000),
+  };
+  const session = {
+    protocolVersion: 1,
+    trustClass: "linux_lower_trust",
+    tokenHashSha256: "c".repeat(64),
+    expireAt: Timestamp.fromMillis(Date.now() + 1_800_000),
+  };
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), challengePath), challenge);
+    await setDoc(doc(context.firestore(), sessionPath), session);
+  });
+
+  for (const db of [ownerDb, otherDb, unauthDb]) {
+    await assertFails(getDoc(doc(db, challengePath)));
+    await assertFails(setDoc(doc(db, challengePath), challenge));
+    await assertFails(updateDoc(doc(db, challengePath), { consumedAtMillis: Date.now() }));
+    await assertFails(deleteDoc(doc(db, challengePath)));
+    await assertFails(getDoc(doc(db, sessionPath)));
+    await assertFails(setDoc(doc(db, sessionPath), session));
+    await assertFails(updateDoc(doc(db, sessionPath), { trustClass: "trusted" }));
+    await assertFails(deleteDoc(doc(db, sessionPath)));
+  }
+});
+
 test("provider accounts reject plaintext, unknown credential containers, and client-authored refresh sweep entries", async () => {
   const ownerDb = authedDb("provider-owner");
   const basePath = "users/provider-owner/provider_accounts/account-1";

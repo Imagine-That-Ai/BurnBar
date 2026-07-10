@@ -152,6 +152,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.cloud.app_check.status",
+    "caseName": "linuxAppCheckStatus",
+    "domain": "account",
+    "capability": "account",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAppCheckStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.code.call_graph",
     "caseName": "codeCallGraph",
     "domain": "code",

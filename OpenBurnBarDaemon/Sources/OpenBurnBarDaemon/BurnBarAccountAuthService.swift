@@ -17,6 +17,11 @@ protocol BurnBarAccountTokenProviding: Sendable {
     func validIDToken() async throws -> String
 }
 
+protocol BurnBarAccountAppCheckContextProviding: Sendable {
+    func validAppCheckContext() async throws -> BurnBarLinuxAppCheckAccountContext
+    func appCheckIdentitySnapshot() async -> BurnBarLinuxAppCheckAccountIdentity?
+}
+
 protocol BurnBarDeviceAuthCloudClient: Sendable {
     func start(_ request: BurnBarDeviceAuthStartRequest) async throws -> BurnBarDeviceAuthStartResponse
     func poll(deviceCode: String, deviceSecret: String) async throws -> BurnBarDeviceAuthPollResponse
@@ -97,7 +102,8 @@ enum BurnBarAccountAuthError: Error, LocalizedError, Equatable, Sendable {
     }
 }
 
-actor BurnBarAccountAuthService: BurnBarAccountServing, BurnBarAccountTokenProviding {
+actor BurnBarAccountAuthService: BurnBarAccountServing, BurnBarAccountTokenProviding,
+    BurnBarAccountAppCheckContextProviding {
     private static let refreshLeadTime: TimeInterval = 5 * 60
     static let productionFirebaseAPIKey = "AIzaSyBiAIHwf1MKZ6LN5HrsaPYsAR3UTe8hyw4"
 
@@ -418,6 +424,26 @@ actor BurnBarAccountAuthService: BurnBarAccountServing, BurnBarAccountTokenProvi
             return tokens.idToken
         }
         return try await refreshIDToken().idToken
+    }
+
+    func validAppCheckContext() async throws -> BurnBarLinuxAppCheckAccountContext {
+        let idToken = try await validIDToken()
+        guard let uid = (cachedProfile?.uid ?? cachedTokens?.localID)?.trimmedNonEmpty else {
+            throw BurnBarAccountAuthError.reauthenticationRequired
+        }
+        return BurnBarLinuxAppCheckAccountContext(
+            uid: uid,
+            sessionGeneration: sessionGeneration,
+            idToken: idToken
+        )
+    }
+
+    func appCheckIdentitySnapshot() -> BurnBarLinuxAppCheckAccountIdentity? {
+        guard cachedTokens != nil,
+              let uid = (cachedProfile?.uid ?? cachedTokens?.localID)?.trimmedNonEmpty else {
+            return nil
+        }
+        return BurnBarLinuxAppCheckAccountIdentity(uid: uid, sessionGeneration: sessionGeneration)
     }
 
     private func completeAuthorization(

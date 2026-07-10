@@ -59,6 +59,7 @@ public actor BurnBarDaemonServer {
     #endif
     let missionControlService: any BurnBarMissionControlServing
     let accountService: any BurnBarAccountServing
+    let linuxAppCheckService: BurnBarLinuxAppCheckService
     let membershipService: any BurnBarMembershipServing
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
@@ -84,6 +85,7 @@ public actor BurnBarDaemonServer {
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         accountService: (any BurnBarAccountServing)? = nil,
+        linuxAppCheckService: BurnBarLinuxAppCheckService? = nil,
         membershipService: (any BurnBarMembershipServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
@@ -221,7 +223,20 @@ public actor BurnBarDaemonServer {
         )
         let resolvedAccountService = accountService ?? BurnBarAccountAuthService.production()
         let accountTokenProvider = resolvedAccountService as? any BurnBarAccountTokenProviding
+        let appCheckAccountProvider = resolvedAccountService as? any BurnBarAccountAppCheckContextProviding
         self.accountService = resolvedAccountService
+        self.linuxAppCheckService = linuxAppCheckService ?? BurnBarLinuxAppCheckService.production(
+            accountContext: {
+                guard let appCheckAccountProvider else {
+                    throw BurnBarLinuxAppCheckError.accountUnavailable
+                }
+                return try await appCheckAccountProvider.validAppCheckContext()
+            },
+            accountIdentity: {
+                guard let appCheckAccountProvider else { return nil }
+                return await appCheckAccountProvider.appCheckIdentitySnapshot()
+            }
+        )
         self.membershipService = membershipService ?? BurnBarMembershipService(
             cloudClient: EnvironmentBurnBarMembershipCloudClient(
                 idTokenProvider: {
@@ -701,7 +716,7 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .accountStatus, .accountDeviceAuthStart, .accountDeviceAuthPoll,
-                 .accountDeviceAuthCancel, .accountSignOut:
+                 .accountDeviceAuthCancel, .accountSignOut, .linuxAppCheckStatus:
                 return try await handleAccountRPC(
                     method: method,
                     decoder: decoder,

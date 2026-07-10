@@ -83,7 +83,7 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
     expect(cfg.allowedAppCheckAppIDs.filter((id) => id === "1:123:windows:realwin")).toHaveLength(1);
   });
 
-  it("honours operator-overridden desktop app ids and keeps them allowlisted", async () => {
+  it("requires a real Linux app id to be independently operator-allowlisted", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.WINDOWS_APP_CHECK_APP_ID = "1:123:windows:overridden";
     process.env.LINUX_APP_CHECK_APP_ID = "1:123:linux:overridden";
@@ -92,7 +92,13 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
     expect(cfg.windowsAppCheckAppID).toBe("1:123:windows:overridden");
     expect(cfg.linuxAppCheckAppID).toBe("1:123:linux:overridden");
     expect(isAppCheckAppIdAllowed("1:123:windows:overridden", cfg)).toBe(true);
-    expect(isAppCheckAppIdAllowed("1:123:linux:overridden", cfg)).toBe(true);
+    expect(isAppCheckAppIdAllowed("1:123:linux:overridden", cfg)).toBe(false);
+
+    process.env.APP_CHECK_ALLOWED_APP_IDS = "1:123:linux:overridden";
+    vi.resetModules();
+    const reloaded = await import("../config.js");
+    const allowlistedConfig = reloaded.getConfig();
+    expect(reloaded.isAppCheckAppIdAllowed("1:123:linux:overridden", allowlistedConfig)).toBe(true);
   });
 });
 
