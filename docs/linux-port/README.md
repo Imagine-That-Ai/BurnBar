@@ -61,6 +61,9 @@ Primary files:
 - [`LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md`](LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md) -
   daemon start/resume/stop cursors, desktop cadence and cancellation, recovery
   behavior, honest degraded-pull status, and remaining installed certification.
+- [`LINUX_CHAT_THREAD_AUTHORITY.md`](LINUX_CHAT_THREAD_AUTHORITY.md) - canonical
+  encrypted thread history, exact-thread typed RPCs, idempotent send ordering,
+  strict renderer decoding, failure behavior, and remaining chat parity work.
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.

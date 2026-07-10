@@ -373,7 +373,7 @@ required gates and were not made green by the Ed25519 result.
 | P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | One 15-row Linux path registry now drives shell discovery copy and is contract-tested against Swift; the full macOS/Linux normalized parser corpus remains unproven | Partial | High |
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
 | P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete | Partial | High |
-| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
+| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Canonical encrypted thread list/get/search and exact-thread idempotent user/assistant persistence now replace production synthetic history; shared catalog breadth, attachments, citations, approvals, options, export, and pop-out remain open | Partial | High |
 | P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Daemon-owned Desktop PKCE, redacted account RPC/Tauri state, sign-out, and phase-safe account switching are implemented in source; production OAuth/callable configuration and installed account proof remain absent, while subscription/recovery depth still lags | Partial | High |
 | P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Physical-iPad source can list, verify, approve, and revoke Linux App Check devices through nonce-bound mutations; production deployment, current physical-iPad execution, backup/sync/conflict, and broader remote-device outcomes remain unproven or absent | Partial | High |
 | P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Recent usage is wrapped as session metadata; no real body/resume/export | Substitute | High |
@@ -847,11 +847,24 @@ remains required.
 
 ### GAP-009 - Finish the chat workspace
 
+**Implementation update (2026-07-10): exact-thread persistence foundation
+implemented; full chat parity remains open.** Linux now reads the canonical
+SQLCipher-backed `chat_threads` and `chat_messages` tables through bounded typed
+daemon RPCs, searches real stored content, and renders exact persisted messages.
+The renderer creates secure thread/message UUIDs, commits the user turn before
+gateway streaming, and commits only a non-empty successfully completed assistant
+turn. Duplicate retries are idempotent, conflicting message-ID reuse fails, and
+abort/error paths do not persist a fabricated assistant completion. Production
+no longer derives chat history from usage rows; synthetic history is fixture-only.
+The contract and nonclaims are documented in
+[`LINUX_CHAT_THREAD_AUTHORITY.md`](LINUX_CHAT_THREAD_AUTHORITY.md).
+
 - **Difference:** macOS supports persisted/searchable threads, twelve backends,
   model selection, streaming, attachments, citations, tool approvals, panes,
-  desktop grants, resume/export, and pop-out. Linux uses five backend choices,
-  synthesizes two history rows, and disables model, agent, attachment, option,
-  citation, tool-decision, restore, close, and pop-out controls.
+  desktop grants, resume/export, and pop-out. Linux now has real persisted
+  history, exact-thread streaming commits, and content search, but still uses
+  five backend choices and disables model, agent, attachment, option, citation,
+  tool-decision, restore, close, and pop-out controls.
 - **Why it matters:** chat is a primary workflow; synthetic history and inert
   controls create false confidence and data-loss risk.
 - **Recommended solution:** introduce real session-body and chat-thread RPCs,
@@ -1370,9 +1383,10 @@ coverage.
 | LNX-PKG-001 | Implemented in workflow; construction proven | Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed. Official AppImages now admit the GUI only through a signed canonical manifest bound to the exact final bytes; focused peer-admission verification passed 8 Swift and 28 Node tests | Provision the release signing secret, produce the exact signed aggregate, then complete native hosted x86_64, installed x86_64, rpm/AppImage lifecycle, and channel proof |
 | LNX-UPD-001 | Partially implemented | Native signed-feed availability verifier rejects invalid public metadata | Valid feed plus deb/rpm/AppImage update, rollback, and data preservation |
 | LNX-CHANNEL-001 through LNX-DIFF-001 | Open/partial | Existing package/channel/product foundations retained | Daily-use platform foundation and current macOS/Linux differential proof |
+| LNX-CHAT-001 | Partially implemented | Canonical encrypted thread list/get/search, exact-thread idempotent append, production synthetic-history removal, strict Tauri decoders, and durable send ordering | Shared catalog/backends, attachments, citations, approvals, options, export, secondary window, installed E2E |
 | LNX-CU-CREDENTIALS-001 | Implemented in source; production provisioning blocked | Daemon-owned PKCE loopback sign-in, secure refresh-token custody, Firebase ID refresh, per-install Ed25519 App Check enrollment/challenge/mint, 30-minute production token ceiling, account-generation invalidation, phase-safe sign-out/account-switch RPC teardown, scoped old-account route revoke, cancellable HTTP, and redacted RPC state. Explicit pending approval retries on a capped 15/30/60/120/300-second schedule below the public quota; permanent rejection stops polling. The earlier focused daemon credential/runtime packet passed 35/35 and App Check backend packet passed 34/34; the lifecycle/polling regression cases are now covered by the 2026-07-12 full Linux-native aggregate. A dedicated Linux Firebase web app exists | Create the separate Google Desktop OAuth client, set the public release variables, deploy the new Functions callables/policy, and prove the flow from an installed signed candidate |
 | LNX-CU-BROWSER-001 | Source authority/runtime complete; mobile approval source present; installed proof blocked | Exact run/call/generation authority, controller-route v2, mobile renewal, macOS lifecycle policy, Linux native iroh composition, durable replay, polkit owner gate, root-owned Playwright runtime, daemon credential authority, signed AppImage peer admission, and redacted Tauri/account UI are implemented. The active worktree also contains iPad list/approve/revoke UI, canonical device-ID/fingerprint validation, nonce-bound mutation descriptors, stale-load protection, serialized mutations, and focused store/parser tests. The canonical relay challenge is generated consistently for Swift/Kotlin, Android compile/static-analysis and focused tests pass, and earlier generic iOS build-for-testing coverage passes; current physical-iPad execution is blocked because CoreDevice lists the assigned physical iPad as unavailable, and installed certification remains a separate gate | Run focused tests on the physical iPad without substituting an iPhone or simulator; then use that iPad to approve the exact Linux install and prove real browser actions, grant/approval/deny/panic, audit/tamper, credential expiry, account switch, and restart behavior |
-| Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
+| Phase 2 core workflows | Open/partial | Existing routes, bounded mutations, and exact-thread chat foundation retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
 | Phase 4 certification/promotion | Blocked by design | No false stable promotion is possible | All product work plus exact-candidate environment matrix |
 
@@ -1406,6 +1420,7 @@ truth gates + installed baseline
   -> secret custody + narrow IPC + capability manifest
     -> auth/cloud + provider catalog + native shell + updates
       -> sessions/chat/memory + operational workspaces
+        -> cloud agent notifications and exact-thread quick reply
         -> Computer Use + Mercury + SmartHub + text expansion + pet
           -> accessibility/performance/matrix certification
             -> stable promotion
@@ -1448,7 +1463,7 @@ truth-sync, not the first time behavior is documented.
 | Task | Depends on | Engineering work | Acceptance criteria |
 |---|---|---|---|
 | LNX-SESS-001 | LNX-EVT-001 | Session repository: list/body/search/source/resume/export | Real transcript replay and recovery, no synthetic rows |
-| LNX-CHAT-001 | LNX-SESS-001, LNX-CAT-001 | Backends/models, streaming, attachments, citations, approvals, options, secondary window | Mac-equivalent chat contract suite and installed E2E green |
+| LNX-CHAT-001 | LNX-SESS-001, LNX-CAT-001 | Canonical encrypted thread list/get/search, exact-thread idempotent append, strict bridge decoding, and durable user/assistant send ordering are implemented; add full backends/models, attachments, citations, approvals, options, resume/export, reconnect reconciliation, and secondary window | Mac-equivalent chat contract suite and installed E2E green; no production synthetic transcript state |
 | LNX-MEM-001 | LNX-EVT-001 | Real quarantine/review/forget/audit RPCs | Daemon-authoritative decisions persist across restart/devices |
 | LNX-PROJ-001 | LNX-SESS-001 | Project CRUD, exact associations, detail/history, inferred-row migration | Stable-ID project lifecycle and 10k-session migration suite green |
 | LNX-MISSION-001 | LNX-EVT-001 | Mission questions, evidence, history, health, freshness, cancel/recovery | Full mission operating lifecycle survives restart/reconnect |
@@ -1457,6 +1472,7 @@ truth-sync, not the first time behavior is documented.
 | LNX-PROVIDER-001 | LNX-CAT-001, LNX-SEC-001 | Provider/model deep dives, accounts, health, routing, drain and failover | Catalog, switch, quota-exhaustion and failover lifecycle green |
 | LNX-PRIV-001 | LNX-SEC-001, LNX-AUTH-001, LNX-SESS-001, LNX-MEM-001 | Export, retention, local/account deletion, recovery, consent, telemetry, panic | Scoped destructive/recovery workflows and multi-device propagation green |
 | LNX-SET-001 | LNX-CAP-001, LNX-AUTH-001, LNX-PRIV-001 | Shared settings schema, missing tabs, deep links, writable configuration | Search, persistence, readback, and policy tests green |
+| LNX-NOTIFY-CLOUD-001 | LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-EVT-001, LNX-SEC-001, LNX-CHAT-001; cross-device closure also requires LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001 | Daemon-owned cloud agent-event polling, cursor/deduplication, CloudVault-sealed replies, exact runtime/thread routing, durable retry/status, native reply action, and accessible fallback composer | One notification per event; open/reply target the exact thread; duplicate/offline/restart/expiry converge safely; no token, key, URL, or plaintext reply reaches renderer persistence or logs |
 
 ### Phase 3 - Native high-complexity features
 
@@ -1490,7 +1506,7 @@ truth-sync, not the first time behavior is documented.
 | 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
 | 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
 | 4 | **Daily-use native foundation** | In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
-| 5 | **Core product workflows** | Pending | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
+| 5 | **Core product workflows** | Open/partial; exact-thread chat persistence foundation implemented | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
 | 6 | **Browser automation parity** | In progress; controller routing, native iroh runtime, authority/replay/restart safety, polkit owner gate, daemon-owned PKCE/Firebase/App Check credentials, phase-safe account lifecycle, bounded approval polling, redacted account UI, signed AppImage peer admission, and physical-iPad approval source are implemented. Earlier generic iOS build-for-testing coverage passes, and the 2026-07-12 Linux-native aggregate passes. Production OAuth/callable configuration, current physical-iPad execution, signed-candidate installation, and real-device evidence remain open | LNX-CU-CREDENTIALS-001, LNX-CU-BROWSER-001 | Provision Desktop OAuth and release variables, deploy Functions, complete physical-iPad tests, build the signed candidate, then prove iPad-backed sign-in, approval, real actions, panic, audit, and restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
 | 8 | **Extended features** | Pending | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
@@ -1606,6 +1622,9 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   update without manual navigation refresh.
 - [ ] Real session transcripts replay exactly, search, paginate, export, resume,
   and recover from missing/corrupt/cloud-conflicted bodies.
+- [x] Production chat history reads canonical encrypted threads/messages, exact
+  thread sends persist user before stream and terminal assistant after success,
+  and retry/error/abort paths preserve idempotency without synthetic rows.
 - [ ] Chat supports each declared backend/model, streaming, cancellation,
   attachments, citations, approvals, restart/reconnect, export, and pop-out.
 - [ ] Memory candidates quarantine, approve, reject, forget, audit, and retrieve

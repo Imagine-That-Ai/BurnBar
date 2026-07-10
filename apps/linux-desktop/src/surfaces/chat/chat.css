@@ -231,6 +231,19 @@
   background: color-mix(in srgb, var(--chat-bg) 55%, transparent);
 }
 
+.chat-system-message {
+  align-self: center;
+  max-width: min(42rem, 92%);
+  padding: 0.35rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--chat-text-muted) 24%, transparent);
+  border-radius: 6px;
+  color: var(--chat-text-secondary);
+  background: color-mix(in srgb, var(--chat-surface-elevated) 58%, transparent);
+  font-size: var(--chat-tiny);
+  line-height: 1.45;
+  text-align: center;
+}
+
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 
 .chat-toolbar {

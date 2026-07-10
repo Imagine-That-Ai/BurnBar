@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux exact-thread chat authority** - replaces production usage-derived
+  transcript rows with daemon-owned reads from the canonical encrypted chat
+  database. New typed list/get/append RPCs preserve exact thread identity,
+  bounded history/search, and idempotent message commits. Linux now persists the
+  user turn before streaming and the non-empty assistant turn only after a
+  successful completion; abort/error paths never fabricate a durable reply.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.
