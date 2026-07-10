@@ -48,10 +48,3 @@ export function buildJoinCommunityRequest(
   if (cityKey) payload.cityKey = cityKey;
   return payload;
 }
-
-export function buildUpdateCommunityProfileGeoPayload(): Pick<
-  JoinCommunityRequest,
-  "timezone" | "locale"
-> {
-  return deviceGeoKeys();
-}

@@ -292,18 +292,6 @@ export interface JoinCommunityResponse {
 export const joinCommunity = (payload: JoinCommunityRequest) =>
   call<JoinCommunityRequest, JoinCommunityResponse>("joinCommunity", payload);
 
-export interface UpdateCommunityProfileRequest {
-  handle?: string;
-  timezone?: string;
-  locale?: string;
-  countryCode?: string;
-  regionKey?: string;
-  cityKey?: string;
-}
-
-export const updateCommunityProfile = (payload: UpdateCommunityProfileRequest) =>
-  call<UpdateCommunityProfileRequest, { ok: boolean }>("updateCommunityProfile", payload);
-
 export const revokeCommunityParticipation = () =>
   call<Record<string, never>, { ok: boolean }>("revokeCommunityParticipation", {});
 

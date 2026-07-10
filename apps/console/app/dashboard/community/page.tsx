@@ -315,7 +315,6 @@ export default function CommunityDashboardPage() {
         >
           Pause / revoke participation
         </button>
-        {status ? <p className="mt-token-2 text-sm text-content-mute">{status}</p> : null}
       </section>
     </div>
   );

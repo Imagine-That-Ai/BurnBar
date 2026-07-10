@@ -82,6 +82,12 @@ class CommunityViewModel(
     private val functions: CommunityFunctions = CommunityFunctions(),
     private val consentStore: CommunityConsentStore = CommunityConsentStore(application),
 ) : AndroidViewModel(application) {
+    constructor(application: Application) : this(
+        application,
+        CommunityRepository(),
+        CommunityFunctions(),
+        CommunityConsentStore(application),
+    )
 
     private val _uiState = MutableStateFlow(CommunityUiState())
     val uiState: StateFlow<CommunityUiState> = _uiState.asStateFlow()
