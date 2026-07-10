@@ -1,0 +1,136 @@
+{
+  "schema": "openburnbar.windows.distribution-ci-evidence-receipt.v1",
+  "generatedAtUtc": "2026-07-10T21:55:33Z",
+  "candidate": {
+    "branch": "codex/windows-certification-distribution",
+    "commit": "84585a2b1ad9d409fc3e428a777958dfa679b61a",
+    "tree": "40fa68c3b72058b7553de9524cdb70daa66d3d8a",
+    "version": "1.0.29"
+  },
+  "workflow": {
+    "runId": 29125738592,
+    "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29125738592",
+    "event": "workflow_dispatch",
+    "mode": "explicit-unsigned-rehearsal",
+    "conclusion": "success",
+    "jobs": {
+      "resolveRelease": 86470817427,
+      "verifyDistributionCore": 86470833346,
+      "buildAndPackage": 86471020141,
+      "supplyChain": 86471802771
+    },
+    "expectedUnsignedSkips": [
+      "Authenticode sign portable artifacts",
+      "Authenticode sign MSIX artifacts",
+      "Sign Ed25519 update feed"
+    ]
+  },
+  "githubArtifacts": [
+    {
+      "id": 8240316351,
+      "name": "windows-release-v1.0.29",
+      "sizeBytes": 368661802,
+      "sha256": "8c65f24ff0ef9dff4c5453919c7f2b2221a17286cd57c64906163e72c3bf2d54",
+      "expiresAtUtc": "2026-07-17T21:52:27Z"
+    },
+    {
+      "id": 8240339287,
+      "name": "windows-provenance-v1.0.29",
+      "sizeBytes": 245647,
+      "sha256": "f660edcdccd3e2d4419ad63aeb8f9583a3514a62a02033c8d6e79926ecddf726",
+      "expiresAtUtc": "2026-07-17T21:53:58Z"
+    }
+  ],
+  "releaseFiles": [
+    {
+      "name": "OpenBurnBar-1.0.29-win-x64.zip",
+      "sizeBytes": 92458372,
+      "sha256": "6b8e43b1c95f85a63cceafb15aeb2b8408de5c2311da1dd0cf4a7a52b00912e8",
+      "peMachine": "0x8664",
+      "archiveEntries": 682
+    },
+    {
+      "name": "OpenBurnBar-1.0.29-win-arm64.zip",
+      "sizeBytes": 88996049,
+      "sha256": "11e9191fb4bced064d583b9ee30a1c57655f828324e608ce127a34fe02ae312f",
+      "peMachine": "0xaa64",
+      "archiveEntries": 678
+    },
+    {
+      "name": "OpenBurnBar-1.0.29-x64.msix",
+      "sizeBytes": 96568235,
+      "sha256": "3ea3a5cc81fd5bd6eaabc24f0f0b69ec6b3a61cbcd0017f1f1a0db979767d439",
+      "manifestVersion": "1.0.29.0",
+      "processorArchitecture": "x64",
+      "executable": "OpenBurnBar.App.exe",
+      "packageEntries": 598
+    },
+    {
+      "name": "OpenBurnBar-1.0.29-arm64.msix",
+      "sizeBytes": 93344381,
+      "sha256": "223fec029b67f902843c3dc999a2b00fc0d1403fdc3fe32c65eefd2c152cd561",
+      "manifestVersion": "1.0.29.0",
+      "processorArchitecture": "arm64",
+      "executable": "OpenBurnBar.App.exe",
+      "packageEntries": 594
+    },
+    {
+      "name": "checksums-windows-v1.0.29.txt",
+      "sizeBytes": 386,
+      "sha256": "491872222441e88c87d8a4848a183bd1c8916eb4ad4b32f2f50c9e793566fef8",
+      "verifiedFileCount": 4
+    }
+  ],
+  "supplyChain": {
+    "sbom": {
+      "name": "sbom-windows-v1.0.29.spdx.json",
+      "spdxVersion": "SPDX-2.3",
+      "sizeBytes": 1854821,
+      "sha256": "cc6643623a3a7e05ca505863a1517652b72fb0146e36738fbd504597856cb656",
+      "packageCount": 371,
+      "dependencyPackageCount": 370
+    },
+    "openVex": {
+      "name": "openburnbar-windows-v1.0.29.vex.json",
+      "sizeBytes": 721,
+      "sha256": "bc4cfbabaee798420fe8e4ea311d84b4aa8ac1b2de33607d1cb1960df33c3378",
+      "statementCount": 1
+    },
+    "predicateCount": 7,
+    "sigstoreBundleCount": 7,
+    "verifiedSigstoreBundleCount": 7,
+    "predicateType": "https://openburnbar.dev/attestations/windows-release-artifact/v1",
+    "certificateIdentity": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/openburnbar-release-windows.yml@refs/heads/codex/windows-certification-distribution",
+    "oidcIssuer": "https://token.actions.githubusercontent.com",
+    "cosignVersion": "3.0.6",
+    "cosignDarwinArm64Sha256": "5fadd012ae6381a6a29ff86a7d39aa873878852f1073fc90b15995961ecfb084"
+  },
+  "independentVerification": {
+    "checksumManifest": "passed; 4 of 4 release files",
+    "portableExecutableArchitectures": "passed; x64 0x8664 and ARM64 0xaa64",
+    "msixManifestVersionAndArchitecture": "passed; x64 and ARM64 at 1.0.29.0",
+    "msixExecutablePresence": "passed; OpenBurnBar.App.exe present in both packages",
+    "predicateArtifactBindings": "passed; 7 of 7 match name, size, SHA-256, commit, run, ref, and repository",
+    "sigstoreCryptographicVerification": "passed; 7 of 7 with claims and transparency-log verification",
+    "distributionCoreTests": "97 passed",
+    "opsHardeningRegression": "passed",
+    "actionlint": "passed",
+    "noNewSuppressions": "passed",
+    "diffCheck": "passed"
+  },
+  "windowsHostPreflight": {
+    "host": "Windows 11 ARM64 UTM",
+    "makeAppxVersionPath": "Windows Kits 10.0.26100.0 x64",
+    "powerShellParseErrors": 0,
+    "syntheticArm64PackageSmoke": "passed",
+    "syntheticPackageSha256": "4daf78ff0998bbd3855c39e8fbccefa38bc3648d4954ed4962d212924a30d5b3",
+    "scope": "packaging-script and real-MakeAppx preflight only; not installation certification"
+  },
+  "remainingBoundary": [
+    "Authenticode and RFC 3161 timestamping require the Azure Trusted Signing identity and certificate profile",
+    "the production Ed25519 update feed was intentionally not emitted by the unsigned rehearsal",
+    "clean install, update, rollback, uninstall, and reinstall remain unproven on physical x64 and ARM64 devices",
+    "Microsoft Store, winget, and Chocolatey publishing remain external release operations",
+    "no unsigned artifact from this rehearsal is a public release candidate"
+  ]
+}
