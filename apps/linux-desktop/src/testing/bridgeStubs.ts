@@ -1,6 +1,10 @@
 import type {
   DatabaseIndexActionResult,
   DatabaseWorkspaceStatus,
+  ChatMessageAppendRequest,
+  ChatMessageAppendResult,
+  ChatThreadGetResult,
+  ChatThreadListResult,
   ComputerUsePanicHaltResult,
   IntegrationsStatus,
   MercuryMediaCapability,
@@ -121,6 +125,26 @@ export const emptyDatabaseIndexAction = (): Promise<DatabaseIndexActionResult> =
 export const emptyGatewayProbe = (): Promise<boolean> => Promise.resolve(false);
 export const emptyGatewayChatStream = (): Promise<void> => Promise.resolve();
 export const emptyGatewayChatCancel = (): Promise<void> => Promise.resolve();
+
+export const emptyChatThreadList = (): Promise<ChatThreadListResult> =>
+  Promise.resolve({ threads: [] });
+
+export const emptyChatThreadGet = (): Promise<ChatThreadGetResult> =>
+  Promise.resolve({ messages: [], hasMoreBefore: false });
+
+export const emptyChatMessageAppend = (
+  request: ChatMessageAppendRequest
+): Promise<ChatMessageAppendResult> => Promise.resolve({
+  message: {
+    id: request.messageID,
+    threadID: request.threadID,
+    role: request.role,
+    content: request.content,
+    timestamp: request.timestamp,
+    backendID: request.backendID
+  },
+  inserted: true
+});
 
 export const emptyComputerUsePanicHalt = (): Promise<ComputerUsePanicHaltResult> =>
   Promise.resolve({
@@ -291,6 +315,9 @@ export const bridgeStubDefaults = {
   gatewayProbe: emptyGatewayProbe,
   gatewayChatStream: emptyGatewayChatStream,
   gatewayChatCancel: emptyGatewayChatCancel,
+  chatThreadList: emptyChatThreadList,
+  chatThreadGet: emptyChatThreadGet,
+  chatMessageAppend: emptyChatMessageAppend,
   mediaStatus: emptyMediaStatus,
   mediaSessionState: emptyMediaSessionState,
   mediaAcceptCall: emptyMediaAction,

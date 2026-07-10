@@ -24,6 +24,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case config
     /// Usage + proxy-route observability reads/writes.
     case observability
+    /// Canonical local chat history reads and exact-thread message appends.
+    case chat
     /// Linux account sign-in, refresh-token authority, and sign-out.
     case account
     /// Local membership cache reads plus Stripe checkout/restore handoff.
@@ -77,6 +79,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .proxyRouteLogRecent, .proxyRouteLogClear,
              .quotaSignalsRecent, .perfMeasure:
             return .observability
+        case .chatThreadList, .chatThreadGet, .chatMessageAppend:
+            return .chat
         case .accountStatus, .accountDeviceAuthStart, .accountDeviceAuthPoll,
              .accountDeviceAuthCancel, .accountSignOut:
             return .account
@@ -179,7 +183,7 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     /// A controller that drives runs but is denied the computer-use/HID surface
     /// and config-credential writes — the minimum a chat/run client needs.
     public static let runClient = BurnBarPeerCapabilityProfile(
-        capabilities: [.lifecycle, .client, .run, .tooling, .observability, .membership, .search, .missionControl, .memoryRead, .codeRead]
+        capabilities: [.lifecycle, .client, .run, .tooling, .observability, .chat, .membership, .search, .missionControl, .memoryRead, .codeRead]
     )
 
     /// Signed CLI support posture. Keep this as an exact method allowlist, not

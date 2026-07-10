@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 123,
+  "methodCount": 126,
   "methods": [
     {
       "id": "approval.respond",
@@ -140,6 +140,36 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarRPCRequestEnvelope",
       "result": "BurnBarCatalogResponse",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.chat.message.append",
+      "caseName": "chatMessageAppend",
+      "domain": "chat",
+      "capability": "chat",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarChatMessageAppendRequest",
+      "result": "BurnBarChatMessageAppendResponse",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.chat.thread.get",
+      "caseName": "chatThreadGet",
+      "domain": "chat",
+      "capability": "chat",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarChatThreadGetRequest",
+      "result": "BurnBarChatThreadGetResponse",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.chat.thread.list",
+      "caseName": "chatThreadList",
+      "domain": "chat",
+      "capability": "chat",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarChatThreadListRequest",
+      "result": "BurnBarChatThreadListResponse",
       "error": "BurnBarRPCError"
     },
     {

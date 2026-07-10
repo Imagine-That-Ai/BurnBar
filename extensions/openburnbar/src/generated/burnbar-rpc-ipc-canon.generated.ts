@@ -152,6 +152,36 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.chat.message.append",
+    "caseName": "chatMessageAppend",
+    "domain": "chat",
+    "capability": "chat",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarChatMessageAppendRequest",
+    "result": "BurnBarChatMessageAppendResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.chat.thread.get",
+    "caseName": "chatThreadGet",
+    "domain": "chat",
+    "capability": "chat",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarChatThreadGetRequest",
+    "result": "BurnBarChatThreadGetResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.chat.thread.list",
+    "caseName": "chatThreadList",
+    "domain": "chat",
+    "capability": "chat",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarChatThreadListRequest",
+    "result": "BurnBarChatThreadListResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.code.call_graph",
     "caseName": "codeCallGraph",
     "domain": "code",

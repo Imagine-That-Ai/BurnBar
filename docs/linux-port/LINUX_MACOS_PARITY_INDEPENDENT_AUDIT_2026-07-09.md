@@ -290,7 +290,7 @@ required gates and were not made green by the Ed25519 result.
 | P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | One 15-row Linux path registry now drives shell discovery copy and is contract-tested against Swift; the full macOS/Linux normalized parser corpus remains unproven | Partial | High |
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
 | P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, onboarding integration with deployed account/provider auth, portal, tray, update, and first-data readback remain incomplete | Partial | High |
-| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
+| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Canonical encrypted thread list/get/search and exact-thread idempotent user/assistant persistence now replace production synthetic history; shared catalog breadth, attachments, citations, approvals, options, export, and pop-out remain open | Partial | High |
 | P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Purpose-bound in-app device auth, daemon token refresh/keyring custody, renderer-redacted status, and local sign-out are source-implemented; production deployment proof, native Linux App Check attestation for protected cloud operations, membership restore/checkout, and entitlement recovery remain | Partial | High |
 | P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Cloud/trusted-device mutation RPCs explicitly absent | Partial | High |
 | P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Recent usage is wrapped as session metadata; no real body/resume/export | Substitute | High |
@@ -625,11 +625,24 @@ screen-reader, restart, denial, and repair evidence also remains required.
 
 ### GAP-009 - Finish the chat workspace
 
+**Implementation update (2026-07-10): exact-thread persistence foundation
+implemented; full chat parity remains open.** Linux now reads the canonical
+SQLCipher-backed `chat_threads` and `chat_messages` tables through bounded typed
+daemon RPCs, searches real stored content, and renders exact persisted messages.
+The renderer creates secure thread/message UUIDs, commits the user turn before
+gateway streaming, and commits only a non-empty successfully completed assistant
+turn. Duplicate retries are idempotent, conflicting message-ID reuse fails, and
+abort/error paths do not persist a fabricated assistant completion. Production
+no longer derives chat history from usage rows; synthetic history is fixture-only.
+The contract and nonclaims are documented in
+[`LINUX_CHAT_THREAD_AUTHORITY.md`](LINUX_CHAT_THREAD_AUTHORITY.md).
+
 - **Difference:** macOS supports persisted/searchable threads, twelve backends,
   model selection, streaming, attachments, citations, tool approvals, panes,
-  desktop grants, resume/export, and pop-out. Linux uses five backend choices,
-  synthesizes two history rows, and disables model, agent, attachment, option,
-  citation, tool-decision, restore, close, and pop-out controls.
+  desktop grants, resume/export, and pop-out. Linux now has real persisted
+  history, exact-thread streaming commits, and content search, but still uses
+  five backend choices and disables model, agent, attachment, option, citation,
+  tool-decision, restore, close, and pop-out controls.
 - **Why it matters:** chat is a primary workflow; synthetic history and inert
   controls create false confidence and data-loss risk.
 - **Recommended solution:** introduce real session-body and chat-thread RPCs,
@@ -1235,7 +1248,8 @@ coverage.
 | LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, and local sign-out | Five child packets for deployment, App Check, membership, sync, and trusted devices |
 | LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, installed X11 global-panic capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, daemon-owned typed provider external login, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud quick reply, installed provider-login and rich notification-host breadth, durable provider multi-account profiles, display-manager/package-manager breadth, and full installed desktop matrix evidence |
 | LNX-CAT-001, LNX-DIFF-001 | Open | Existing provider/path contracts retained | Shared catalog plus same-commit macOS/Linux differential proof |
-| Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
+| LNX-CHAT-001 | Partially implemented | Canonical encrypted thread list/get/search, exact-thread idempotent append, production synthetic-history removal, strict Tauri decoders, and durable send ordering | Shared catalog/backends, attachments, citations, approvals, options, export, secondary window, installed E2E |
+| Phase 2 core workflows | Open/partial | Existing routes, bounded mutations, and exact-thread chat foundation retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
 | Phase 4 certification/promotion | Blocked by design | No false stable promotion is possible | All product work plus exact-candidate environment matrix |
 
@@ -1270,6 +1284,7 @@ truth gates + installed baseline
     -> auth deploy -> Linux App Check -> membership -> sync -> trusted devices
     -> provider catalog + native shell + updates
       -> sessions/chat/memory + operational workspaces
+        -> cloud agent notifications and exact-thread quick reply
         -> Computer Use + Mercury + SmartHub + text expansion + pet
           -> accessibility/performance/matrix certification
             -> stable promotion
@@ -1302,7 +1317,7 @@ truth-sync, not the first time behavior is documented.
 | LNX-EVT-001 | LNX-CAP-001 | Bounded pull subscription authority, cadence, cancellation, restart/offline recovery, and coalesced route refresh are implemented; add native push and exact-candidate installed certification | Kill/stall/suspend/offline tests recover without stale or frozen UI |
 | LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes | A clean user cannot finish required setup while any declared required prerequisite is missing |
 | LNX-AUTH-001 | LNX-SEC-001, LNX-IPC-001 | Umbrella account outcome, delivered through the five child packets below; the source-level sign-in/sign-out foundation is implemented | Every auth child packet is accepted at one release head; full sign-in/out/keyring/device/backup/restore/checkout matrix passes without credential exposure |
-| LNX-NATIVE-001 | LNX-CAP-001 | Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, XDG startup, daemon-owned provider external login, fail-closed native-shell matrix evidence requirements, and verifier-produced native-shell evidence JSON are implemented; add cloud quick reply, durable provider multi-account profiles, and exact-candidate matrix certification | Repeated native workflows, including provider login success/cancel/timeout/missing-CLI/terminal-close/restart, pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows |
+| LNX-NATIVE-001 | LNX-CAP-001 | Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, XDG startup, daemon-owned provider external login, fail-closed native-shell matrix evidence requirements, and verifier-produced native-shell evidence JSON are implemented; add durable provider multi-account profiles and exact-candidate matrix certification | Repeated native workflows, including provider login success/cancel/timeout/missing-CLI/terminal-close/restart, pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows |
 | LNX-UPD-001 | LNX-PKG-001, LNX-CHANNEL-001, LNX-NATIVE-001 | Signed check, compatibility, package/channel-native install/restart/rollback UX | Tamper/replay/arch/version tests fail; prior-version update and rollback succeed for every declared channel |
 | LNX-CAT-001 | LNX-CAP-001 | Shared provider/model/parser/path manifest and golden fixtures | Equivalent normalized provider results on macOS/Linux |
 | LNX-DIFF-001 | LNX-CAT-001, LNX-CI-001 | Same-commit macOS/Linux binaries run one attested corpus and workflow suite | Mutations on either platform fail the normalized differential oracle |
@@ -1327,7 +1342,7 @@ accepted together.
 | Task | Depends on | Engineering work | Acceptance criteria |
 |---|---|---|---|
 | LNX-SESS-001 | LNX-EVT-001 | Session repository: list/body/search/source/resume/export | Real transcript replay and recovery, no synthetic rows |
-| LNX-CHAT-001 | LNX-SESS-001, LNX-CAT-001 | Backends/models, streaming, attachments, citations, approvals, options, secondary window | Mac-equivalent chat contract suite and installed E2E green |
+| LNX-CHAT-001 | LNX-SESS-001, LNX-CAT-001 | Canonical encrypted thread list/get/search, exact-thread idempotent append, strict bridge decoding, and durable user/assistant send ordering are implemented; add full backends/models, attachments, citations, approvals, options, resume/export, reconnect reconciliation, and secondary window | Mac-equivalent chat contract suite and installed E2E green; no production synthetic transcript state |
 | LNX-MEM-001 | LNX-EVT-001 | Real quarantine/review/forget/audit RPCs | Daemon-authoritative decisions persist across restart/devices |
 | LNX-PROJ-001 | LNX-SESS-001 | Project CRUD, exact associations, detail/history, inferred-row migration | Stable-ID project lifecycle and 10k-session migration suite green |
 | LNX-MISSION-001 | LNX-EVT-001 | Mission questions, evidence, history, health, freshness, cancel/recovery | Full mission operating lifecycle survives restart/reconnect |
@@ -1336,6 +1351,7 @@ accepted together.
 | LNX-PROVIDER-001 | LNX-CAT-001, LNX-SEC-001 | Provider/model deep dives, accounts, health, routing, drain and failover | Catalog, switch, quota-exhaustion and failover lifecycle green |
 | LNX-PRIV-001 | LNX-SEC-001, LNX-AUTH-001, LNX-SESS-001, LNX-MEM-001 | Export, retention, local/account deletion, recovery, consent, telemetry, panic | Scoped destructive/recovery workflows and multi-device propagation green |
 | LNX-SET-001 | LNX-CAP-001, LNX-AUTH-001, LNX-PRIV-001 | Shared settings schema, missing tabs, deep links, writable configuration | Search, persistence, readback, and policy tests green |
+| LNX-NOTIFY-CLOUD-001 | LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-EVT-001, LNX-SEC-001, LNX-CHAT-001; cross-device closure also requires LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001 | Daemon-owned cloud agent-event polling, cursor/deduplication, CloudVault-sealed replies, exact runtime/thread routing, durable retry/status, native reply action, and accessible fallback composer | One notification per event; open/reply target the exact thread; duplicate/offline/restart/expiry converge safely; no token, key, URL, or plaintext reply reaches renderer persistence or logs |
 
 ### Phase 3 - Native high-complexity features
 
@@ -1367,8 +1383,8 @@ accepted together.
 | 1 | **Trustworthy engineering baseline** | Complete in code; dual-architecture construction and aarch64 installed proof live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add installed x86_64 and prior-version package sessions without regressing strict gates |
 | 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
 | 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
-| 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, account-auth foundations, and typed provider external login implemented; native Linux App Check attestation, membership/cloud/device depth, cloud quick reply, provider-login installed certification/multi-account profiles, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
-| 5 | **Core product workflows** | Open/partial | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
+| 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, account-auth foundations, and typed provider external login implemented; native Linux App Check attestation, membership/cloud/device depth, provider-login installed certification/multi-account profiles, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
+| 5 | **Core product workflows** | Open/partial; exact-thread chat persistence foundation implemented | LNX-SESS-001, LNX-CHAT-001, LNX-NOTIFY-CLOUD-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace, cloud quick-reply, and privacy workflow completes |
 | 6 | **Browser automation parity** | Open/partial | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
 | 8 | **Extended features** | Pending | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
@@ -1455,6 +1471,9 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   update without manual navigation refresh.
 - [ ] Real session transcripts replay exactly, search, paginate, export, resume,
   and recover from missing/corrupt/cloud-conflicted bodies.
+- [x] Production chat history reads canonical encrypted threads/messages, exact
+  thread sends persist user before stream and terminal assistant after success,
+  and retry/error/abort paths preserve idempotency without synthetic rows.
 - [ ] Chat supports each declared backend/model, streaming, cancellation,
   attachments, citations, approvals, restart/reconnect, export, and pop-out.
 - [ ] Memory candidates quarantine, approve, reject, forget, audit, and retrieve

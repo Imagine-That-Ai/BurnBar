@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { SessionEntry } from '../../tauriBridge.js';
+import type { ChatThreadSummary } from '../../tauriBridge.js';
 import type { ChatBackendId } from './chatTypes.js';
 import { ChatToolbar } from './ChatToolbar.js';
 import { Composer } from './Composer.js';
@@ -9,7 +9,7 @@ import type { ChatWarningBanner } from './chatTypes.js';
 import type { ChatMessage } from '../../state/chatStore.js';
 
 export type ChatWorkspacePanelProps = {
-  threads: SessionEntry[];
+  threads: ChatThreadSummary[];
   selectedId: string | null;
   railLoading: boolean;
   query: string;
@@ -18,7 +18,7 @@ export type ChatWorkspacePanelProps = {
   onSearch: (query: string) => void;
   onLoadMore: () => void;
   onNewChat: () => void;
-  selectedThread: SessionEntry | null;
+  selectedThread: ChatThreadSummary | null;
   gatewayHint: string | null;
   backend: ChatBackendId;
   modelLabel: string;

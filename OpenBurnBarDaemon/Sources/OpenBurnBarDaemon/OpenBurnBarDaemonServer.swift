@@ -60,6 +60,7 @@ public actor BurnBarDaemonServer {
     let missionControlService: any BurnBarMissionControlServing
     let accountService: any BurnBarAccountServing
     let membershipService: any BurnBarMembershipServing
+    var chatThreadService: (any BurnBarChatThreadServing)?
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
     let resumeService: BurnBarResumeService?
@@ -92,7 +93,8 @@ public actor BurnBarDaemonServer {
         phoneControlPinStore: DaemonPhoneKeyPinStore? = nil,
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil,
-        providerExternalAuthService: (any BurnBarProviderExternalAuthServing)? = nil
+        providerExternalAuthService: (any BurnBarProviderExternalAuthServing)? = nil,
+        chatThreadService: (any BurnBarChatThreadServing)? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -106,6 +108,7 @@ public actor BurnBarDaemonServer {
             daemonVersion: configuration.daemonVersion
         )
         self.providerExternalAuthService = providerExternalAuthService ?? BurnBarProviderExternalAuthService()
+        self.chatThreadService = chatThreadService
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -280,6 +283,19 @@ public actor BurnBarDaemonServer {
                     metadata: ["path": path, "error": "\(error)"]
                 )
                 self.resumeService = nil
+            }
+            if self.chatThreadService == nil {
+                do {
+                    self.chatThreadService = try BurnBarChatThreadService(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "chat-thread-store")
+                    )
+                } catch {
+                    logger.warning(
+                        "chat_thread_service_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                }
             }
             do {
                 self.projectCodeMemory = try BurnBarProjectCodeMemoryStore(
@@ -688,6 +704,12 @@ public actor BurnBarDaemonServer {
                 )
             case .usageRecord, .usageRecent:
                 return try await handleUsageRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .chatThreadList, .chatThreadGet, .chatMessageAppend:
+                return try await handleChatRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

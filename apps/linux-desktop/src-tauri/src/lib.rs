@@ -1421,6 +1421,40 @@ fn session_search(query: String) -> Result<serde_json::Value, String> {
     )
 }
 
+// ───────────── Exact persisted chat threads ─────────────
+
+fn chat_thread_list_wire(query: Option<String>, limit: u32) -> (&'static str, serde_json::Value) {
+    let mut params = serde_json::Map::from_iter([("limit".into(), serde_json::json!(limit))]);
+    if let Some(query) = query {
+        params.insert("query".into(), serde_json::json!(query));
+    }
+    ("daemon.chat.thread.list", serde_json::Value::Object(params))
+}
+
+#[tauri::command]
+fn chat_thread_list(query: Option<String>, limit: u32) -> Result<serde_json::Value, String> {
+    let (method, params) = chat_thread_list_wire(query, limit);
+    call_daemon_method(method, Some(params))
+}
+
+fn chat_thread_get_wire(thread_id: String, max_messages: u32) -> (&'static str, serde_json::Value) {
+    (
+        "daemon.chat.thread.get",
+        serde_json::json!({ "threadID": thread_id, "maxMessages": max_messages }),
+    )
+}
+
+#[tauri::command]
+fn chat_thread_get(thread_id: String, max_messages: u32) -> Result<serde_json::Value, String> {
+    let (method, params) = chat_thread_get_wire(thread_id, max_messages);
+    call_daemon_method(method, Some(params))
+}
+
+#[tauri::command]
+fn chat_message_append(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.chat.message.append", Some(request))
+}
+
 // ───────────────── P05: usage insights ─────────────────
 // Wire: daemon.usage.recent (aggregated client-side in the TS bridge)
 #[tauri::command]
@@ -2714,6 +2748,9 @@ pub fn run() {
             provider_catalog,
             session_list,
             session_search,
+            chat_thread_list,
+            chat_thread_get,
+            chat_message_append,
             usage_insights,
             mission_list,
             mission_create,
@@ -2838,6 +2875,28 @@ mod tests {
         assert_eq!(method, "daemon.mission.cancel");
         assert_eq!(params["missionID"], "m-43");
         assert_eq!(params["actor"], "linux-shell");
+    }
+
+    #[test]
+    fn exact_thread_chat_wire_contract_is_pinned() {
+        let (method, params) = chat_thread_list_wire(Some("release".into()), 40);
+        assert_eq!(method, "daemon.chat.thread.list");
+        assert_eq!(params["query"], "release");
+        assert_eq!(params["limit"], 40);
+
+        let (_, params) = chat_thread_list_wire(None, 100);
+        assert!(params.get("query").is_none());
+        assert_eq!(params["limit"], 100);
+
+        let (method, params) = chat_thread_get_wire("thread-42".into(), 500);
+        assert_eq!(method, "daemon.chat.thread.get");
+        assert_eq!(params["threadID"], "thread-42");
+        assert_eq!(params["maxMessages"], 500);
+        assert!(params.get("threadId").is_none());
+
+        let source = include_str!("lib.rs");
+        assert!(source.contains("daemon.chat.message.append"));
+        assert!(source.contains("fn chat_message_append"));
     }
 
     #[test]

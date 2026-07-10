@@ -75,6 +75,73 @@ describe('VAL-RPC-002 bridge behavior', () => {
     }
   };
 
+  it('maps exact-thread chat commands without changing daemon field names', async () => {
+    const thread = {
+      id: 'thread-1',
+      title: 'Release',
+      preview: 'Check Linux',
+      messageCount: 1,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:00:00Z'
+    };
+    const message = {
+      id: 'message-1',
+      threadID: 'thread-1',
+      role: 'user',
+      content: 'Check Linux',
+      timestamp: '2026-07-10T12:00:00Z'
+    };
+    invoke
+      .mockResolvedValueOnce({ threads: [thread] })
+      .mockResolvedValueOnce({ thread, messages: [message], hasMoreBefore: false })
+      .mockResolvedValueOnce({ message, inserted: false });
+    const b = await bridge();
+    await b.chatThreadList('release', 40);
+    await b.chatThreadGet('thread-1', 200);
+    await expect(b.chatMessageAppend({
+      threadID: 'thread-1',
+      messageID: 'message-1',
+      role: 'user',
+      content: 'Check Linux',
+      timestamp: '2026-07-10T12:00:00Z'
+    })).resolves.toMatchObject({ inserted: false });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'chat_thread_list', { query: 'release', limit: 40 });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'chat_thread_get', {
+      threadId: 'thread-1',
+      maxMessages: 200
+    });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'chat_message_append', {
+      request: {
+        threadID: 'thread-1',
+        messageID: 'message-1',
+        role: 'user',
+        content: 'Check Linux',
+        timestamp: '2026-07-10T12:00:00Z'
+      }
+    });
+  });
+
+  it('rejects an append response that changes the idempotency identity', async () => {
+    invoke.mockResolvedValueOnce({
+      message: {
+        id: 'different-message',
+        threadID: 'thread-1',
+        role: 'user',
+        content: 'Check Linux',
+        timestamp: '2026-07-10T12:00:00Z'
+      },
+      inserted: false
+    });
+    const b = await bridge();
+    await expect(b.chatMessageAppend({
+      threadID: 'thread-1',
+      messageID: 'message-1',
+      role: 'user',
+      content: 'Check Linux',
+      timestamp: '2026-07-10T12:00:00Z'
+    })).rejects.toThrow('idempotency identity');
+  });
+
   it('provider external auth maps the frozen native commands without exposing raw daemon data', async () => {
     invoke.mockResolvedValue(providerExternalAuthResponse);
     const b = await bridge();

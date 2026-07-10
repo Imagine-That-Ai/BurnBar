@@ -74,6 +74,9 @@ Primary files:
   purpose-bound device authorization, sealed credential delivery, daemon-owned
   Firebase refresh, keyring custody, redacted desktop state, local sign-out,
   browser approval order, and remaining account/cloud parity blockers.
+- [`LINUX_CHAT_THREAD_AUTHORITY.md`](LINUX_CHAT_THREAD_AUTHORITY.md) - canonical
+  encrypted thread history, exact-thread typed RPCs, idempotent send ordering,
+  strict renderer decoding, failure behavior, and remaining chat parity work.
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.

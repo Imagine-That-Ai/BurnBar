@@ -1,4 +1,4 @@
-import type { SessionEntry } from '../../tauriBridge.js';
+import type { ChatThreadSummary } from '../../tauriBridge.js';
 import { CHAT_BACKENDS, type ChatBackendId } from './chatTypes.js';
 
 const BACKEND_LOGOS: Record<ChatBackendId, string | null> = {
@@ -12,7 +12,7 @@ const BACKEND_LOGOS: Record<ChatBackendId, string | null> = {
 type BackendStripProps = {
   backend: ChatBackendId;
   modelLabel: string;
-  thread: SessionEntry | null;
+  thread: ChatThreadSummary | null;
   gatewayHint: string | null;
   onBackendChange: (id: ChatBackendId) => void;
 };

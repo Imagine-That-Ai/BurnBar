@@ -30,6 +30,7 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             BurnBarDaemonSocketRPCCoverage.lifecycle,
             BurnBarDaemonSocketRPCCoverage.config,
             BurnBarDaemonSocketRPCCoverage.usage,
+            BurnBarDaemonSocketRPCCoverage.chat,
             BurnBarDaemonSocketRPCCoverage.observability,
             BurnBarDaemonSocketRPCCoverage.account,
             BurnBarDaemonSocketRPCCoverage.membership,
@@ -62,6 +63,17 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
         ] {
             XCTAssertTrue(BurnBarDaemonSocketRPCCoverage.config.contains(method))
             XCTAssertEqual(BurnBarDaemonSocketRPCCoverage.domain(for: method), "config")
+        }
+    }
+
+    func testChatMethodsUseChatDomain() {
+        for method in [
+            BurnBarRPCMethod.chatThreadList,
+            .chatThreadGet,
+            .chatMessageAppend
+        ] {
+            XCTAssertTrue(BurnBarDaemonSocketRPCCoverage.chat.contains(method))
+            XCTAssertEqual(BurnBarDaemonSocketRPCCoverage.domain(for: method), "chat")
         }
     }
 }
