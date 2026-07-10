@@ -9,6 +9,17 @@ extension BurnBarDaemonServer {
         requestData: Data
     ) async throws -> Data {
         switch method {
+        case .computerUseCapabilityStateUpdate:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<ComputerUseCapabilityStateUpdateRequest>.self,
+                from: requestData
+            )
+            let result = try await computerUseService.updateCapabilityState(typedRequest.params)
+            return encode(BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: result
+            ))
         case .computerUseSessionStart:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<ComputerUseSessionStartRequest>.self,

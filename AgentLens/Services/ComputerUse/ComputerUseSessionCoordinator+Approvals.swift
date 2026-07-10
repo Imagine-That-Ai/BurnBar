@@ -18,7 +18,9 @@ extension ComputerUseSessionCoordinator {
     }
 
     func endSessionNow(reason: ComputerUseEndReason = .completed) {
-        guard activeSessionId != nil else { return }
+        guard let sessionId = activeSessionId else { return }
+        let startedAt = state?.manifest.startedAt
+        let endedAt = Date()
         cancelPendingApprovals(decision: .reject, note: "session ended")
         finalizeAuditSignedHeadIfPossible()
         activeSessionId = nil
@@ -38,7 +40,9 @@ extension ComputerUseSessionCoordinator {
         pendingApproval = nil
         pendingApprovalScreenshotPNG = nil
         state?.endReason = reason
-        state?.endedAt = Date()
+        state?.endedAt = endedAt
+        completeLocalQuotaSession(sessionId: sessionId, startedAt: startedAt, endedAt: endedAt)
+        enqueueCloudSessionEnd(sessionId: sessionId, endedAt: endedAt, reason: reason)
         appendTimeline(
             kind: "session.end",
             summary: "Computer Use session ended: \(reason.rawValue)",
@@ -81,14 +85,70 @@ extension ComputerUseSessionCoordinator {
         phoneFirstActionConfirmedSessionKeys.removeAll()
         pendingApproval = nil
         pendingApprovalScreenshotPNG = nil
+        let endedAt = Date()
         state?.endReason = endReason(for: source)
-        state?.endedAt = Date()
+        state?.endedAt = endedAt
+        completeLocalQuotaSession(
+            sessionId: sessionId,
+            startedAt: state?.manifest.startedAt,
+            endedAt: endedAt
+        )
+        enqueueCloudSessionEnd(
+            sessionId: sessionId,
+            endedAt: endedAt,
+            reason: endReason(for: source)
+        )
         appendTimeline(
             kind: "panic.\(source.rawValue)",
             summary: "Panic halt: \(source.rawValue)",
             status: .panicHalted
         )
         _ = sessionId
+    }
+
+    private func completeLocalQuotaSession(
+        sessionId: ComputerUseSessionID,
+        startedAt: Date?,
+        endedAt: Date
+    ) {
+        do {
+            let reservation = try quotaLedger.completeSession(
+                idempotencyKey: sessionId.rawValue,
+                startedAt: startedAt,
+                endedAt: endedAt
+            )
+            configuration.quotaUsage = reservation.usage
+        } catch {
+            Self.log.error(
+                "computer_use_session_completion_metering_failed reason=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
+    private func enqueueCloudSessionEnd(
+        sessionId: ComputerUseSessionID,
+        endedAt: Date,
+        reason: ComputerUseEndReason
+    ) {
+        guard let cloudMeteringRecorder else { return }
+        let userID = configuration.userId
+        let currentState = state
+        Task { @MainActor in
+            do {
+                try await cloudMeteringRecorder.recordSessionEnd(
+                    userID: userID,
+                    sessionID: sessionId.rawValue,
+                    endedAt: endedAt,
+                    reason: reason,
+                    state: currentState,
+                    auditHeadHashHex: currentState?.auditChainHeadHashHex
+                )
+            } catch {
+                Self.log.error(
+                    "computer_use_session_end_cloud_metering_failed reason=\(String(describing: error), privacy: .public)"
+                )
+            }
+        }
     }
 
     func finalizeAuditSignedHeadIfPossible() {
@@ -262,6 +322,21 @@ extension ComputerUseSessionCoordinator {
             )
         }
 
+        let effectiveUsage: ComputerUseQuotaUsage
+        do {
+            effectiveUsage = try quotaLedger.reconcile(configuration.quotaUsage)
+            configuration.quotaUsage = effectiveUsage
+        } catch {
+            lastDeniedReason = .auditFailure
+            return ComputerUseInvokeResponse(
+                sessionId: sessionId.rawValue,
+                callID: invocation.callID,
+                status: .denied,
+                denyReason: ComputerUseDenyReason.auditFailure.rawValue,
+                auditHeadHashHex: logger.headHashHex
+            )
+        }
+
         let beforeCapture = captureEvidence(
             label: "before-\(action.auditKind)",
             sessionId: sessionId,
@@ -280,7 +355,7 @@ extension ComputerUseSessionCoordinator {
         let capability = ComputerUseCapabilityContext(
             entitlement: configuration.entitlement,
             envelope: configuration.budgetEnvelope,
-            usage: configuration.quotaUsage,
+            usage: effectiveUsage,
             session: currentState,
             concurrentSessionActive: false,
             killSwitch: configuration.killSwitch,
@@ -316,7 +391,8 @@ extension ComputerUseSessionCoordinator {
                 status: .denied,
                 denyReason: reason.rawValue,
                 auditEntryIndex: entry?.entryIndex,
-                auditHeadHashHex: logger.headHashHex
+                auditHeadHashHex: logger.headHashHex,
+                meteringHeader: entry.map { ComputerUseActionMeteringHeader(auditEntry: $0) }
             )
             appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
             return response
@@ -359,7 +435,8 @@ extension ComputerUseSessionCoordinator {
                         status: .denied,
                         denyReason: ComputerUseDenyReason.userRejected.rawValue,
                         auditEntryIndex: entry?.entryIndex,
-                        auditHeadHashHex: logger.headHashHex
+                        auditHeadHashHex: logger.headHashHex,
+                        meteringHeader: entry.map { ComputerUseActionMeteringHeader(auditEntry: $0) }
                     )
                     appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
                     if approval.decision == .rejectAndHalt {
@@ -401,7 +478,8 @@ extension ComputerUseSessionCoordinator {
                         approvalId: approval.approvalId,
                         denyReason: ComputerUseDenyReason.userRejected.rawValue,
                         auditEntryIndex: entry?.entryIndex,
-                        auditHeadHashHex: logger.headHashHex
+                        auditHeadHashHex: logger.headHashHex,
+                        meteringHeader: entry.map { ComputerUseActionMeteringHeader(auditEntry: $0) }
                     )
                     appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
                     return response
@@ -441,6 +519,81 @@ extension ComputerUseSessionCoordinator {
                 return response
             }
 
+            let actionClass: ComputerUseLocalQuotaLedger.ActionClass
+            switch action {
+            case .browser:
+                actionClass = .browser
+            case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
+                actionClass = .system
+            }
+            do {
+                let quotaReservation = try quotaLedger.reserveAction(
+                    idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
+                    actionClass: actionClass,
+                    originatedFromPhone: originatedFromPhone,
+                    authoritativeUsage: effectiveUsage,
+                    maximumMeteredActions: configuration.budgetEnvelope.activeActionsPerDay
+                )
+                guard quotaReservation.inserted else {
+                    let entry = appendAuditEntry(
+                        logger: logger,
+                        action: action,
+                        approvalId: approval.approvalId,
+                        approvedBy: .denied,
+                        scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
+                        denyReason: ComputerUseDenyReason.counterReplay.rawValue,
+                        scopeContext: scopeContext,
+                        beforeScreenshotHashHex: beforeCapture?.sha256Hex
+                    )
+                    currentState.actionsRejected += 1
+                    currentState.auditChainHeadHashHex = logger.headHashHex
+                    state = currentState
+                    let response = ComputerUseInvokeResponse(
+                        sessionId: sessionId.rawValue,
+                        callID: invocation.callID,
+                        status: .denied,
+                        approvalId: approval.approvalId,
+                        denyReason: ComputerUseDenyReason.counterReplay.rawValue,
+                        auditEntryIndex: entry?.entryIndex,
+                        auditHeadHashHex: logger.headHashHex,
+                        meteringHeader: entry.map { ComputerUseActionMeteringHeader(auditEntry: $0) }
+                    )
+                    appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
+                    return response
+                }
+                configuration.quotaUsage = quotaReservation.usage
+            } catch {
+                let reason: ComputerUseDenyReason = error as? ComputerUseLocalQuotaLedger.LedgerError == .quotaExceeded
+                    ? .dailyLimit
+                    : .auditFailure
+                lastDeniedReason = reason
+                let entry = appendAuditEntry(
+                    logger: logger,
+                    action: action,
+                    approvalId: approval.approvalId,
+                    approvedBy: .denied,
+                    scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
+                    denyReason: reason.rawValue,
+                    scopeContext: scopeContext,
+                    beforeScreenshotHashHex: beforeCapture?.sha256Hex
+                )
+                currentState.actionsRejected += 1
+                currentState.auditChainHeadHashHex = logger.headHashHex
+                state = currentState
+                let response = ComputerUseInvokeResponse(
+                    sessionId: sessionId.rawValue,
+                    callID: invocation.callID,
+                    status: .denied,
+                    approvalId: approval.approvalId,
+                    denyReason: reason.rawValue,
+                    auditEntryIndex: entry?.entryIndex,
+                    auditHeadHashHex: logger.headHashHex,
+                    meteringHeader: entry.map { ComputerUseActionMeteringHeader(auditEntry: $0) }
+                )
+                appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
+                return response
+            }
+
             do {
                 let result = try await dispatch(action: action, invocation: invocation)
                 let afterCapture = captureEvidence(
@@ -469,6 +622,7 @@ extension ComputerUseSessionCoordinator {
                     approvalId: approval.approvalId,
                     auditEntryIndex: entry.entryIndex,
                     auditHeadHashHex: logger.headHashHex,
+                    meteringHeader: ComputerUseActionMeteringHeader(auditEntry: entry),
                     result: result
                 )
                 appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
@@ -499,7 +653,8 @@ extension ComputerUseSessionCoordinator {
                     approvalId: approval.approvalId,
                     denyReason: String(describing: error),
                     auditEntryIndex: entry.entryIndex,
-                    auditHeadHashHex: logger.headHashHex
+                    auditHeadHashHex: logger.headHashHex,
+                    meteringHeader: ComputerUseActionMeteringHeader(auditEntry: entry)
                 )
                 appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
                 return response

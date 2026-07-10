@@ -40,6 +40,9 @@ jobs:
           fi
           echo "jscpd: duplication within threshold."
 
+      - name: Reject vacuous duplicate-code reports
+        run: node scripts/ci/verify-jscpd-report.mjs ./jscpd-report/jscpd-report.json
+
       - name: Upload jscpd report
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)

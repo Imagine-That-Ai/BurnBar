@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { doc, setDoc } from "firebase/firestore";
 
 const PROJECT_ID = process.env.STORAGE_TEST_PROJECT_ID || "burnbar-test";
 const STORAGE_RULES_PATH = resolve(
@@ -27,8 +28,15 @@ const STORAGE_RULES_PATH = resolve(
   "..",
   "storage.rules"
 );
+const FIRESTORE_RULES_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "firestore.rules"
+);
 const STORAGE_HOST = process.env.STORAGE_TEST_HOST || "127.0.0.1";
 const STORAGE_PORT = Number.parseInt(process.env.STORAGE_TEST_PORT || "9199", 10);
+const FIRESTORE_HOST = process.env.FIRESTORE_TEST_HOST || "127.0.0.1";
+const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080", 10);
 
 const aliceUid = "alice-storage-uid";
 const bobUid = "bob-storage-uid";
@@ -57,6 +65,11 @@ function makeBuf(size) {
 async function main() {
   const testEnv = await initializeTestEnvironment({
     projectId: PROJECT_ID,
+    firestore: {
+      rules: readFileSync(FIRESTORE_RULES_PATH, "utf8"),
+      host: FIRESTORE_HOST,
+      port: FIRESTORE_PORT,
+    },
     storage: {
       rules: readFileSync(STORAGE_RULES_PATH, "utf8"),
       host: STORAGE_HOST,
@@ -178,6 +191,28 @@ async function main() {
   await step("catch-all denies read of an arbitrary path", async () => {
     const r = ref(aliceStorage, `arbitrary/path/file.bin`);
     await assertFails(getDownloadURL(r));
+  });
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), `account_erasure_tombstones/${aliceUid}`), {
+      schemaVersion: 2,
+      pending: true,
+    });
+  });
+
+  await step("account erasure tombstone blocks owner Storage writes", async () => {
+    const r = ref(aliceStorage, `users/${aliceUid}/session_logs/after-erasure`);
+    await assertFails(uploadBytes(r, makeBuf(64), { contentType: "application/octet-stream" }));
+  });
+
+  await step("account erasure tombstone blocks owner Storage reads", async () => {
+    const r = ref(aliceStorage, `users/${aliceUid}/session_logs/chunk-read-seed`);
+    await assertFails(getDownloadURL(r));
+  });
+
+  await step("another account remains able to use its Storage namespace", async () => {
+    const r = ref(bobStorage, `users/${bobUid}/session_logs/unaffected`);
+    await assertSucceeds(uploadBytes(r, makeBuf(64), { contentType: "application/octet-stream" }));
   });
 
   await testEnv.cleanup();

@@ -694,6 +694,71 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(payload["reason"] as? String, "desktop grant was revoked")
     }
 
+    func test_agentToolBroker_targetedPanicHaltDoesNotPublishGlobalRevocation() async {
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: { publishCalls.withLock { $0 += 1 } },
+            panicHalt: { _ in }
+        )
+
+        XCTAssertEqual(outcome, .panicHalted)
+        XCTAssertEqual(publishCalls.read(), 0)
+    }
+
+    func test_agentToolBroker_targetedPanicFailureFallsBackToGlobalRevocation() async {
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: { publishCalls.withLock { $0 += 1 } },
+            panicHalt: { sessionID in
+                XCTAssertEqual(sessionID, "session-1")
+                throw NSError(domain: "AgentToolBrokerTests", code: 1)
+            }
+        )
+
+        XCTAssertEqual(outcome, .statePublished)
+        XCTAssertEqual(publishCalls.read(), 1)
+    }
+
+    func test_agentToolBroker_directRegistryRevocationImmediatelyDeniesBroker() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-revoke-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        try Data("must-not-be-read".utf8).write(to: workspace.appendingPathComponent("secret.txt"))
+
+        let threadID = "direct-revoke-\(UUID().uuidString)"
+        let broker = AgentToolBroker(
+            grant: AgentCapabilityGrant.sessionGrant(
+                runtimeID: .hermes,
+                threadID: threadID,
+                capabilities: [.workspaceRead],
+                now: Date(),
+                duration: 60
+            ),
+            workspaceURL: workspace
+        )
+
+        let revokedCount = await AgentToolBroker.revokeDaemonBrowserSessions(
+            runtimeID: .hermes,
+            threadID: threadID
+        )
+        let result = await broker.invokeOpenAITool(
+            name: "workspace_read_file",
+            arguments: #"{"path":"secret.txt"}"#,
+            callID: "call-after-revoke",
+            runID: "run-after-revoke"
+        )
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(revokedCount, 1)
+        XCTAssertEqual(payload["status"] as? String, "denied")
+        XCTAssertEqual(payload["reason"] as? String, "desktop grant was revoked")
+    }
+
     func test_agentToolBroker_shellRunDrainsLargeOutput() async throws {
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)

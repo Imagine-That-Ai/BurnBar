@@ -17,6 +17,8 @@ public actor ComputerUseService {
         case bridgeScriptMissing
         case unsupportedDaemonMode(String)
         case unsupportedDaemonApprovalPath
+        case capabilityStateUnavailable(String)
+        case capabilityDenied(String)
     }
 
     private static let computerUseProductId = "com.openburnbar.hostedComputerUseSync.monthly"
@@ -29,7 +31,12 @@ public actor ComputerUseService {
     private let logger: BurnBarDaemonLogger
     private let bridgeScriptURL: URL
     private let auditExportSignerProvider: any ComputerUseAuditExportSignerProviding
+    private let capabilityStateStore: ComputerUseCapabilityStateStore
+    private let quotaLedger: ComputerUseLocalQuotaLedger
+    private let leafKillSwitch: @Sendable () -> Bool
+    private let playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)?
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
+    private var sessionStartReserved = false
 
     public init(
         auditBaseDirectory: URL = BurnBarDaemonPaths.supportDirectoryURL
@@ -38,6 +45,42 @@ public actor ComputerUseService {
         bridgeScriptURL: URL? = nil,
         locateExecutable: BurnBarExecutableLocator? = nil,
         auditExportSignerProvider: (any ComputerUseAuditExportSignerProviding)? = nil,
+        quotaLedger: ComputerUseLocalQuotaLedger = ComputerUseLocalQuotaLedger(
+            directory: ComputerUseLocalQuotaLedger.defaultDirectory()
+        ),
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
+    ) {
+        self.init(
+            auditBaseDirectory: auditBaseDirectory,
+            macAppVersion: macAppVersion,
+            bridgeScriptURL: bridgeScriptURL,
+            locateExecutable: locateExecutable,
+            auditExportSignerProvider: auditExportSignerProvider,
+            quotaLedger: quotaLedger,
+            capabilityStateStore: ComputerUseCapabilityStateStore(),
+            leafKillSwitch: {
+                #if os(macOS)
+                PrivilegedInputKillSwitch.isActive
+                #else
+                false
+                #endif
+            },
+            playwrightDriverFactory: nil,
+            logger: logger
+        )
+    }
+
+    init(
+        auditBaseDirectory: URL = BurnBarDaemonPaths.supportDirectoryURL
+            .appendingPathComponent("computer-use-audit", isDirectory: true),
+        macAppVersion: String = BurnBarDaemonVersion.current,
+        bridgeScriptURL: URL? = nil,
+        locateExecutable: BurnBarExecutableLocator? = nil,
+        auditExportSignerProvider: (any ComputerUseAuditExportSignerProviding)? = nil,
+        quotaLedger: ComputerUseLocalQuotaLedger? = nil,
+        capabilityStateStore: ComputerUseCapabilityStateStore,
+        leafKillSwitch: @escaping @Sendable () -> Bool,
+        playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)?,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
@@ -50,12 +93,20 @@ public actor ComputerUseService {
         self.auditExportSignerProvider = auditExportSignerProvider ?? ComputerUseKeychainAuditExportSignerProvider(
             legacyRawKeyURL: Self.legacyRawAuditExportKeyURL(auditBaseDirectory: auditBaseDirectory)
         )
+        let resolvedQuotaLedger = quotaLedger ?? ComputerUseLocalQuotaLedger(
+            directory: auditBaseDirectory.appendingPathComponent(".quota-ledger", isDirectory: true)
+        )
+        self.quotaLedger = resolvedQuotaLedger
+        self.capabilityStateStore = capabilityStateStore
+        self.leafKillSwitch = leafKillSwitch
+        self.playwrightDriverFactory = playwrightDriverFactory
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
                 try await approvalBridge.issue(request)
             },
             macAppVersion: macAppVersion,
             auditBaseDirectory: auditBaseDirectory,
+            quotaLedger: resolvedQuotaLedger,
             logger: logger
         )
     }
@@ -77,7 +128,16 @@ public actor ComputerUseService {
             throw ServiceError.unsupportedDaemonMode(mode.rawValue)
         }
 
+        let capabilityState = try await currentCapabilityState()
+        try await enforceSessionAdmission(capabilityState, mode: mode)
+        guard !sessionStartReserved else {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.concurrentSession.rawValue)
+        }
+        sessionStartReserved = true
+        defer { sessionStartReserved = false }
+
         let sessionId = ComputerUseSessionID.newRandom()
+        let effectiveActionCap = min(request.actionCap, capabilityState.budgetEnvelope.activeActionsPerRun)
         let manifest = ComputerUseSessionManifest(
             sessionId: sessionId,
             mode: mode,
@@ -88,20 +148,48 @@ public actor ComputerUseService {
             phoneViewerNodeId: request.phoneViewerNodeId,
             scopeRuleIds: request.scopeRuleIds,
             entitlementProductId: Self.computerUseProductId,
-            actionCap: request.actionCap,
+            actionCap: effectiveActionCap,
             sessionTimeoutSeconds: request.sessionTimeoutSeconds
         )
 
         let driver = try await makePlaywrightDriverIfNeeded(for: manifest)
-        let head = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
+        let head: String
+        do {
+            // Driver construction is an actor reentrancy point. Re-read the
+            // authoritative state before starting it so a kill/revoke that
+            // landed while construction was suspended wins the race.
+            let refreshedCapabilityState = try await currentCapabilityState()
+            try await enforceSessionAdmission(refreshedCapabilityState, mode: mode)
+            let quotaReservation = try quotaLedger.reserveSession(
+                idempotencyKey: sessionId.rawValue,
+                authoritativeUsage: refreshedCapabilityState.quotaUsage,
+                maximumSessions: refreshedCapabilityState.budgetEnvelope.activeSessionsPerDay,
+                startedAt: manifest.startedAt
+            )
+            guard quotaReservation.inserted else {
+                throw ServiceError.capabilityDenied(ComputerUseDenyReason.counterReplay.rawValue)
+            }
+            head = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
+        } catch {
+            await driver?.stop()
+            throw error
+        }
         manifests[sessionId] = manifest
         return ComputerUseSessionStartResponse(
             sessionId: sessionId.rawValue,
             manifestHashHex: head,
             startedAt: manifest.startedAt,
             entitlementProductId: Self.computerUseProductId,
-            actionCap: request.actionCap
+            actionCap: effectiveActionCap
         )
+    }
+
+    public func updateCapabilityState(
+        _ request: ComputerUseCapabilityStateUpdateRequest
+    ) async throws -> ComputerUseCapabilityStateUpdateResponse {
+        let response = try await capabilityStateStore.update(request.state)
+        await terminateSessionsIfAuthorityRevoked(request.state)
+        return response
     }
 
     public func invoke(_ request: ComputerUseInvokeRequest) async throws -> ComputerUseInvokeResponse {
@@ -110,17 +198,33 @@ public actor ComputerUseService {
               let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
-        // TODO: Wire `phoneControlRespectsDenyRegions` from Remote Config when
-        // the config infrastructure is extended to the daemon. Currently the
-        // daemon only supports browser (Path B) sessions which do not involve
-        // phone control, so the default `false` is safe.
+        let capabilityState: ComputerUseCapabilityStateSnapshot
+        do {
+            capabilityState = try await currentCapabilityState()
+        } catch {
+            await terminateAllSessions(reason: .error)
+            return deniedResponse(request, reason: "capability_state_unavailable")
+        }
+        if capabilityState.killSwitch || leafKillSwitch() {
+            await terminateAllSessions(source: .remoteConfig)
+            return deniedResponse(request, reason: ComputerUseDenyReason.killSwitch.rawValue)
+        }
+        if capabilityState.authorizationRevoked ||
+            !Self.entitlementIsActive(capabilityState.entitlement) ||
+            capabilityState.entitlement.productId != Self.computerUseProductId ||
+            !capabilityState.entitlement.allowsBrowser {
+            await terminateAllSessions(source: .revoked)
+            return deniedResponse(request, reason: ComputerUseDenyReason.entitlement.rawValue)
+        }
+
+        let anotherDaemonSession = await coordinator.hasActiveSession(excluding: sessionId)
         let capability = ComputerUseCapabilityContext(
-            entitlement: entitlement(for: manifest.mode),
-            envelope: .initialNormal,
-            usage: ComputerUseQuotaUsage(dayKey: Self.todayKey()),
+            entitlement: capabilityState.entitlement,
+            envelope: capabilityState.budgetEnvelope,
+            usage: capabilityState.quotaUsage,
             session: state,
-            concurrentSessionActive: false,
-            killSwitch: false,
+            concurrentSessionActive: capabilityState.concurrentSessionActive || anotherDaemonSession,
+            killSwitch: capabilityState.killSwitch || leafKillSwitch(),
             accessibilityTrusted: false
         )
 
@@ -146,6 +250,10 @@ public actor ComputerUseService {
             accessibilityDeny: nil,
             capability: capability
         )
+    }
+
+    func hasActiveSession() async -> Bool {
+        await coordinator.hasActiveSession()
     }
 
     public func pendingApprovals(
@@ -265,6 +373,9 @@ public actor ComputerUseService {
     private func makePlaywrightDriverIfNeeded(
         for manifest: ComputerUseSessionManifest
     ) async throws -> OpenBurnBarPlaywrightDriver? {
+        if let playwrightDriverFactory {
+            return try await playwrightDriverFactory(manifest)
+        }
         guard manifest.mode == .browser else { return nil }
         guard FileManager.default.fileExists(atPath: bridgeScriptURL.path) else {
             throw ServiceError.bridgeScriptMissing
@@ -290,32 +401,101 @@ public actor ComputerUseService {
         )
     }
 
-    /// Builds an entitlement snapshot for the given mode.
-    ///
-    /// - Note: Phone control bypasses AX deny-region and scope-rule checks
-    ///   by design. The phone user is the authenticated human operator
-    ///   (Ed25519-signed authority via `PhoneControlAuthorityValidator`).
-    ///   The capability gate in `DefaultComputerUseCapabilityGate` short-circuits
-    ///   deny-region evaluation for direct phone-control intents. If the threat
-    ///   model changes, enable `computerUse_phoneControlRespectsDenyRegions` in
-    ///   Remote Config (requires wiring Remote Config into the daemon path;
-    ///   see TODO below).
-    ///
-    /// - Important: The `allows*` booleans are feature bits for the bundled
-    ///   single-SKU model. The real enforcement gate is `isActive`. When active,
-    ///   all features are enabled. See `ComputerUseRuntimeController.refreshEntitlement()`
-    ///   for the app-side counterpart and the full rationale.
-    private func entitlement(for mode: ComputerUseMode) -> ComputerUseEntitlementSnapshot {
-        ComputerUseEntitlementSnapshot(
-            isActive: true,
-            productId: Self.computerUseProductId,
-            allowsBrowser: mode == .browser,
-            allowsSystem: mode == .system,
-            // Single-SKU model: all features enabled when entitlement is active.
-            allowsPhoneControl: true,     // SKU default: on
-            allowsTrustedScopes: true,    // SKU default: on
-            allowsAuditExport: true       // SKU default: on
+    private func currentCapabilityState() async throws -> ComputerUseCapabilityStateSnapshot {
+        do {
+            return try await capabilityStateStore.currentState()
+        } catch {
+            throw ServiceError.capabilityStateUnavailable(String(describing: error))
+        }
+    }
+
+    private func enforceSessionAdmission(
+        _ state: ComputerUseCapabilityStateSnapshot,
+        mode: ComputerUseMode
+    ) async throws {
+        if state.killSwitch || leafKillSwitch() {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.killSwitch.rawValue)
+        }
+        guard !state.authorizationRevoked,
+              Self.entitlementIsActive(state.entitlement),
+              state.entitlement.productId == Self.computerUseProductId,
+              mode != .browser || state.entitlement.allowsBrowser else {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.entitlement.rawValue)
+        }
+        let daemonSessionActive = await coordinator.hasActiveSession()
+        guard !state.concurrentSessionActive, !daemonSessionActive else {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.concurrentSession.rawValue)
+        }
+        guard state.budgetEnvelope.level != .hardCap else {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.hardCap.rawValue)
+        }
+        guard state.quotaUsage.totalActionsExecuted < state.budgetEnvelope.activeActionsPerDay else {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.dailyLimit.rawValue)
+        }
+        guard state.quotaUsage.sessionsStarted < state.budgetEnvelope.activeSessionsPerDay else {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.dailyLimit.rawValue)
+        }
+        guard state.quotaUsage.visionModelSpendUSD < state.budgetEnvelope.perUserDailySpendCeilingUSD else {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.dailySpendCeiling.rawValue)
+        }
+        guard state.budgetEnvelope.activeActionsPerRun > 0 else {
+            throw ServiceError.capabilityDenied(ComputerUseDenyReason.hardCap.rawValue)
+        }
+    }
+
+    private func terminateSessionsIfAuthorityRevoked(
+        _ state: ComputerUseCapabilityStateSnapshot
+    ) async {
+        if !state.isComplete {
+            await terminateAllSessions(reason: .error)
+        } else if state.killSwitch || leafKillSwitch() {
+            await terminateAllSessions(source: .remoteConfig)
+        } else if state.authorizationRevoked ||
+                    !Self.entitlementIsActive(state.entitlement) ||
+                    state.entitlement.productId != Self.computerUseProductId ||
+                    !state.entitlement.allowsBrowser {
+            await terminateAllSessions(source: .revoked)
+        } else if state.budgetEnvelope.level == .hardCap ||
+                    state.quotaUsage.totalActionsExecuted >= state.budgetEnvelope.activeActionsPerDay ||
+                    state.quotaUsage.sessionsStarted >= state.budgetEnvelope.activeSessionsPerDay ||
+                    state.quotaUsage.visionModelSpendUSD >= state.budgetEnvelope.perUserDailySpendCeilingUSD {
+            await terminateAllSessions(reason: .budgetHardCap)
+        } else if state.concurrentSessionActive {
+            await terminateAllSessions(reason: .error)
+        }
+    }
+
+    private func terminateAllSessions(source: ComputerUsePanicSource) async {
+        let terminated = await coordinator.panicHaltAll(source: source)
+        for sessionId in terminated {
+            manifests.removeValue(forKey: sessionId)
+        }
+    }
+
+    private func terminateAllSessions(reason: ComputerUseEndReason) async {
+        let terminated = await coordinator.endAll(reason: reason)
+        for sessionId in terminated {
+            manifests.removeValue(forKey: sessionId)
+        }
+    }
+
+    private func deniedResponse(
+        _ request: ComputerUseInvokeRequest,
+        reason: String
+    ) -> ComputerUseInvokeResponse {
+        ComputerUseInvokeResponse(
+            sessionId: request.sessionId,
+            callID: request.invocation.callID,
+            status: .denied,
+            denyReason: reason
         )
+    }
+
+    private static func entitlementIsActive(
+        _ entitlement: ComputerUseEntitlementSnapshot,
+        now: Date = Date()
+    ) -> Bool {
+        entitlement.isActive && (entitlement.expireAt.map { $0 > now } ?? true)
     }
 
     /// Extracts a scope context from a tool invocation for browser-mode scope

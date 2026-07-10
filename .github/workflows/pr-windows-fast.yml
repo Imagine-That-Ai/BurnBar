@@ -1,25 +1,8 @@
 name: PR Windows Fast Gate
 
-# Skeleton PR gate for the greenfield Windows port tree (windows/).
-#
-# The full harness (openburnbar-pr-harness.yml) is post-merge/nightly, not a PR
-# gate, so this workflow gives the Windows lane a REAL pull_request gate today.
-# It is intentionally a skeleton:
-#   - a cheap ubuntu path-filter detects whether a PR touched windows/ (or the
-#     Windows CI/budget wiring), so non-Windows PRs skip the windows-latest job;
-#   - a windows-latest job mirrors the future build/lint/test phases but runs
-#     skeleton placeholders on the greenfield tree. Real windows-latest execution
-#     (msbuild/dotnet over the WinUI projects added by WINUI-016) is proven by
-#     CI-003;
-#   - an aggregate gate reports one required status (passes on success OR a
-#     correct skip), mirroring pr-native-fast.yml's semantics.
-#
-# The Rust crate-build workflows (build-iroh-windows.yml /
-# build-burnbar-remote-windows.yml) that produce the *-pc-windows-msvc artifacts
-# are owned by W-RUST / RUST-005 and are only referenced here, never invoked.
-#
-# The blocking Windows per-tree budget ratchet runs in fast-feedback.yml's
-# debt-budgets job; this workflow is the dedicated skeleton build/lint/test lane.
+# Path-filtered Windows x64 PR gate. The ARM64 leg remains in
+# pr-windows-full.yml; this lane provides the minimum real compile, test, and
+# transitive dependency-security floor for every Windows-surface change.
 
 on:
   pull_request:
@@ -38,7 +21,7 @@ concurrency:
 
 jobs:
   # ── Cheap detector: did this PR touch the Windows tree or its CI/budget wiring? ──
-  # Runs on ubuntu so the windows-latest skeleton lane only spins up when a PR
+  # Runs on ubuntu so the windows-latest lane only spins up when a PR
   # actually changes windows/ (or its wiring). For merge_group (and any non-PR
   # trigger) the gate always runs.
   detect-windows-changes:
@@ -90,70 +73,92 @@ jobs:
           if echo "${changed}" | grep -Eq \
             '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
-            echo "Windows surface changed: running the skeleton build/lint/test lane."
+            echo "Windows surface changed: running the x64 restore/build/test lane."
           else
             echo "windows=false" >> "$GITHUB_OUTPUT"
             echo "No Windows surface changed: skipping the windows-latest lane (aggregate still passes)."
           fi
 
-  # ── PR-GATED (skeleton): windows-latest build + lint + unit ─────────────────
-  # Mirrors the future Windows phase structure. Real toolchain execution is
-  # CI-003; today these steps assert the tree/solution exist and echo the phases.
-  windows-skeleton:
-    name: Windows skeleton (build + lint + test)
+  # ── PR-GATED: windows-latest restore + security + build + unit ──────────────
+  windows-x64:
+    name: Windows x64 (security + build + test)
     needs: detect-windows-changes
     if: needs.detect-windows-changes.outputs.windows == 'true'
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
 
-      - name: Verify Windows source tree + aggregating solution
-        run: |
-          set -euo pipefail
-          test -f windows/OpenBurnBar.sln
-          test -f windows/README.md
-          for area in app pal native tests; do
-            test -d "windows/${area}"
-          done
-          echo "Windows tree + OpenBurnBar.sln present (app / pal / native / tests)."
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
-      - name: Build (skeleton — real msbuild/dotnet lands in CI-003)
+      - name: Verify Windows solution
         run: |
-          echo "SKELETON build: WinUI app + PAL + native shim compile once WINUI-016 adds projects to windows/OpenBurnBar.sln."
+          if (-not (Test-Path "windows/OpenBurnBar.sln")) {
+            throw "windows/OpenBurnBar.sln not found."
+          }
+          Write-Host "Windows solution present."
 
-      - name: Lint (skeleton — real analyzers land in CI-003)
-        run: |
-          echo "SKELETON lint: dotnet format / Roslyn analyzers over windows/ once projects exist."
+      - name: Restore Windows solution
+        run: dotnet restore windows/OpenBurnBar.sln
 
-      - name: Unit tests (skeleton — real test run lands in CI-003)
+      - name: Audit transitive NuGet dependencies
         run: |
-          echo "SKELETON unit tests: run the windows/tests projects once they exist."
+          $output = dotnet list windows/OpenBurnBar.sln package --vulnerable --include-transitive 2>&1
+          $output | Write-Host
+          if ($LASTEXITCODE -ne 0) {
+            throw "NuGet vulnerability audit command failed."
+          }
+          if ($output -match "has the following vulnerable packages") {
+            throw "NuGet vulnerability audit found vulnerable packages."
+          }
+
+      - name: Build Windows solution
+        run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
+
+      - name: Run Windows test suite
+        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-pr-x64.trx" --results-directory TestResults-x64
+
+      - name: Upload Windows test results
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: windows-pr-x64-test-results
+          path: TestResults-x64/
+          if-no-files-found: error
 
   # ── Aggregate gate ─────────────────────────────────────────────────────────
-  # Single required status. Passes when the skeleton lane succeeds OR when it was
+  # Single required status. Passes when the x64 lane succeeds OR when it was
   # skipped because the PR touched no Windows surface. Fails if it failed or was
   # cancelled. Mirrors pr-native-gate semantics.
   pr-windows-gate:
     name: PR Windows Gate
     needs:
       - detect-windows-changes
-      - windows-skeleton
+      - windows-x64
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check Windows jobs passed (or were correctly skipped)
         env:
+          WINDOWS_CHANGED: ${{ needs.detect-windows-changes.outputs.windows }}
           DETECT_RESULT: ${{ needs.detect-windows-changes.result }}
-          SKELETON_RESULT: ${{ needs.windows-skeleton.result }}
+          WINDOWS_RESULT: ${{ needs.windows-x64.result }}
         run: |
           set -euo pipefail
           echo "detect-windows-changes: ${DETECT_RESULT}"
-          echo "windows-skeleton: ${SKELETON_RESULT}"
+          echo "windows-changed: ${WINDOWS_CHANGED}"
+          echo "windows-x64: ${WINDOWS_RESULT}"
 
           # The detector itself must have succeeded; a 'skipped' here would mean
           # the path filter never ran, so the downstream skip cannot be trusted.
@@ -162,11 +167,16 @@ jobs:
             exit 1
           fi
 
-          # success and skipped are both acceptable for the windows-latest job
-          # (skipped == no Windows surface changed). Anything else is a hard fail.
-          if [[ "${SKELETON_RESULT}" != "success" && "${SKELETON_RESULT}" != "skipped" ]]; then
-            echo "::error::The Windows skeleton lane failed (result=${SKELETON_RESULT})."
-            exit 1
+          if [[ "${WINDOWS_CHANGED}" == "true" ]]; then
+            if [[ "${WINDOWS_RESULT}" != "success" ]]; then
+              echo "::error::The Windows x64 lane did not succeed (result=${WINDOWS_RESULT})."
+              exit 1
+            fi
+          else
+            if [[ "${WINDOWS_CHANGED}" != "false" || "${WINDOWS_RESULT}" != "skipped" ]]; then
+              echo "::error::The Windows x64 lane skipped without a trusted no-change decision."
+              exit 1
+            fi
           fi
 
-          echo "### PR Windows Gate: skeleton build/lint/test checks passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "### PR Windows Gate: security/build/test checks passed" >> "$GITHUB_STEP_SUMMARY"

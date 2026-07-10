@@ -359,12 +359,46 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             dataStore: harness.dataStore,
             cliBridge: bridge
         )
+        controller.grantDesktopControl(
+            capabilities: [.workspaceRead],
+            trustMode: .manual
+        )
+        let runtimeID = controller.assistantRuntimeID(for: controller.chatBackend)
+        let threadID = controller.activeThreadID
+        let targetedRevocations = OpenBurnBarCore.Locked(0)
+        let registrationID = UUID()
+        AgentToolBrokerRevocationRegistry.shared.register(
+            id: registrationID,
+            runtimeID: runtimeID,
+            threadID: threadID,
+            handler: { targetedRevocations.withLock { $0 += 1 } }
+        )
+        defer {
+            AgentToolBrokerRevocationRegistry.shared.unregister(id: registrationID)
+        }
+        let broker = try XCTUnwrap(controller.activeAgentToolBroker())
+
         controller.revokeDesktopControl()
 
-        let terminated = await waitForSearchState(timeoutSeconds: 2.0, pollIntervalNanoseconds: 50_000_000) {
-            process.isRunning == false
+        let revokeCompleted = await waitForSearchState(
+            timeoutSeconds: 2.0,
+            pollIntervalNanoseconds: 50_000_000
+        ) {
+            process.isRunning == false && targetedRevocations.read() == 1
         }
-        XCTAssertTrue(terminated)
+        XCTAssertTrue(revokeCompleted)
+
+        let result = await broker.invokeOpenAITool(
+            name: "workspace_read_file",
+            arguments: #"{"path":"must-not-be-read"}"#,
+            callID: "call-after-direct-ui-revoke",
+            runID: "run-after-direct-ui-revoke"
+        )
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(result.content.utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(payload["status"] as? String, "denied")
+        XCTAssertEqual(payload["reason"] as? String, "desktop grant was revoked")
     }
 }
 

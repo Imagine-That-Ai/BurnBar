@@ -53,8 +53,20 @@ final class ComputerUseRuntimeController: ObservableObject {
     private func bindBudgetStatusListener() {
         ComputerUseBudgetStatusStore.shared.onEnvelopeChanged = { [weak self] envelope in
             self?.coordinator.updateBudgetEnvelope(envelope)
+            self?.publishDaemonCapabilityState()
+        }
+        ComputerUseBudgetStatusStore.shared.onAvailabilityChanged = { [weak self] in
+            self?.publishDaemonCapabilityState()
         }
         ComputerUseBudgetStatusStore.shared.startListening()
+        ComputerUseQuotaUsageStore.shared.onStateChanged = { [weak self] in
+            guard let self else { return }
+            if let usage = ComputerUseQuotaUsageStore.shared.currentUsage {
+                self.coordinator.updateQuotaUsage(usage)
+            }
+            self.publishDaemonCapabilityState()
+        }
+        ComputerUseQuotaUsageStore.shared.startListening()
     }
 
     func attach(relayHostService: HermesRelayHostService) {
@@ -324,7 +336,17 @@ final class ComputerUseRuntimeController: ObservableObject {
             .combineLatest(MacCloudEntitlementStore.shared.$hostedComputerUseExpirationDate)
             .sink { [weak self] _, _ in
                 self?.refreshEntitlement()
+                self?.publishDaemonCapabilityState()
             }
+            .store(in: &cancellables)
+
+        MacCloudEntitlementStore.shared.$error
+            .dropFirst()
+            .sink { [weak self] _ in self?.publishDaemonCapabilityState() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .computerUseRemoteConfigKillSwitchDidFire)
+            .sink { [weak self] _ in self?.publishDaemonCapabilityState() }
             .store(in: &cancellables)
 
         coordinator.$state
@@ -341,6 +363,7 @@ final class ComputerUseRuntimeController: ObservableObject {
                 if state == nil {
                     self.stopPanicMonitoring()
                 }
+                self.publishDaemonCapabilityState()
             }
             .store(in: &cancellables)
 
@@ -349,6 +372,28 @@ final class ComputerUseRuntimeController: ObservableObject {
                 self?.panelModel.recentAuditEntries = timeline.reversed()
             }
             .store(in: &cancellables)
+    }
+
+    func hasActiveSessionForDaemonBridge() -> Bool {
+        guard let state = coordinator.state else { return false }
+        return state.endedAt == nil && state.endReason == nil
+    }
+
+    private func publishDaemonCapabilityState(authorizationRevoked: Bool = false) {
+        let concurrentSessionActive = hasActiveSessionForDaemonBridge()
+        Task { @MainActor in
+            do {
+                _ = try await OpenBurnBarDaemonManager.shared.publishComputerUseCapabilityState(
+                    concurrentSessionActive: concurrentSessionActive,
+                    authorizationRevoked: authorizationRevoked
+                )
+            } catch {
+                AppLogger.daemon.debug(
+                    "computer_use_capability_state_publish_deferred",
+                    metadata: ["error": error.localizedDescription]
+                )
+            }
+        }
     }
 
     private static func makeCoordinator(
@@ -379,6 +424,10 @@ final class ComputerUseRuntimeController: ObservableObject {
                 phoneControlAttestationRequired: settingsManager.computerUsePhoneControlAttestationRequired,
                 phoneControlRespectsDenyRegions: settingsManager.computerUsePhoneControlRespectsDenyRegions
             ),
+            quotaLedger: ComputerUseLocalQuotaLedger(
+                directory: ComputerUseLocalQuotaLedger.defaultDirectory()
+            ),
+            cloudMeteringRecorder: ComputerUseCloudMeteringService.shared,
             scopeRulesProvider: { ComputerUseDenyRegistry.builtInRules },
             approvalPresenter: { request, screenshot in
                 await ComputerUseRuntimeController.presentApproval(request, screenshot: screenshot)

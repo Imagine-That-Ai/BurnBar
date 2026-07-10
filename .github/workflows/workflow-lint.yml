@@ -9,6 +9,8 @@ on:
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+      - ".github/actions/ops-failure-issue/**"
+      - ".jscpd.json"
       - "scripts/ci/verify-github-action-pins.mjs"
       - "scripts/ci/verify-agent-repair-loop-prompts.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.mjs"
@@ -49,6 +51,8 @@ on:
       - "scripts/ci/redact-qa-artifacts.test.mjs"
       - "scripts/ci/app-check-smoke.sh"
       - "scripts/ci/app-check-smoke.test.sh"
+      - "scripts/ci/verify-jscpd-report.mjs"
+      - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
       - "scripts/ops/run-firestore-restore-drill.sh"
@@ -66,6 +70,8 @@ on:
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+      - ".github/actions/ops-failure-issue/**"
+      - ".jscpd.json"
       - "scripts/ci/verify-github-action-pins.mjs"
       - "scripts/ci/verify-agent-repair-loop-prompts.mjs"
       - "scripts/ci/verify-agent-repair-loop-provenance.mjs"
@@ -106,6 +112,8 @@ on:
       - "scripts/ci/redact-qa-artifacts.test.mjs"
       - "scripts/ci/app-check-smoke.sh"
       - "scripts/ci/app-check-smoke.test.sh"
+      - "scripts/ci/verify-jscpd-report.mjs"
+      - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
       - "scripts/ops/run-firestore-restore-drill.sh"
@@ -150,6 +158,12 @@ jobs:
 
       - name: Self-test App Check smoke fail-closed gate
         run: bash scripts/ci/app-check-smoke.test.sh
+
+      - name: Self-test duplicate-code report verifier
+        run: node scripts/ci/verify-jscpd-report.test.mjs
+
+      - name: Self-test overdue P0 escalation policy
+        run: node --test .github/actions/ops-failure-issue/escalation.test.cjs
 
       - name: Self-test release attestation verifier
         run: bash scripts/ci/verify-release-attestations.test.sh

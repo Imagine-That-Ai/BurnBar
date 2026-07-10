@@ -78,6 +78,25 @@ public struct ComputerUseAuditEntry: Codable, Hashable, Sendable {
     }
 }
 
+public extension ComputerUseActionMeteringHeader {
+    init(auditEntry: ComputerUseAuditEntry) {
+        self.init(
+            entryIndex: auditEntry.entryIndex,
+            actionKind: auditEntry.actionKind,
+            approvedBy: auditEntry.approvedBy.rawValue,
+            scopeRuleId: auditEntry.scopeRuleId,
+            denyReason: Self.privacySafeDenyReason(auditEntry.denyReason),
+            parentEntryHashHex: auditEntry.parentEntryHashHex,
+            recordedAt: auditEntry.timestamp
+        )
+    }
+
+    private static func privacySafeDenyReason(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        return ComputerUseDenyReason(rawValue: rawValue)?.rawValue ?? "dispatch_error"
+    }
+}
+
 /// Canonical-JSON encoder + hash function. Two requirements: keys are
 /// sorted alphabetically and `Date` is encoded as a millisecond integer
 /// so the chain re-hashes byte-identically across Swift compiler versions

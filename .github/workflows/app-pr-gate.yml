@@ -88,7 +88,36 @@ jobs:
         # This is the build that was missing as a PR gate: it compiles every
         # app-target file (AgentLens/**, app-linked OpenBurnBarCore/**, CloudSync,
         # the memory subsystem) and runs the app XCTest suite.
-        run: OPENBURNBAR_ENABLE_COVERAGE=NO ./scripts/test-openburnbar-app.sh
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+
+      - name: Guard against zero-test false greens
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
+
+      - name: Enforce app diff coverage
+        if: github.event_name == 'pull_request'
+        env:
+          DIFF_COVERAGE_SCOPE: app
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-app-diff-coverage.json
+        run: |
+          set -euo pipefail
+          ./scripts/diff-coverage-self-test.sh
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-app-coverage.json"
+          ./scripts/extract-coverage-lines.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-app-coverage-lines.json"
+          ./scripts/diff-coverage.sh origin/main \
+            "$GITHUB_WORKSPACE/openburnbar-app-coverage.json" \
+            "$GITHUB_WORKSPACE/openburnbar-app-coverage-lines.json"
+
+      - name: Upload app coverage evidence
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: pr-app-coverage
+          path: |
+            openburnbar-app-coverage.json
+            openburnbar-app-coverage-lines.json
+            openburnbar-app-diff-coverage.json
+          if-no-files-found: error
 
   mobile-build-gate:
     name: Mobile build (compile gate)

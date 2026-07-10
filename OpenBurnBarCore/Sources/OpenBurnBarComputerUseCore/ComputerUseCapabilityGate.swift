@@ -293,7 +293,7 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             }
 
             // 4. Daily caps.
-            if context.usage.totalActionsExecuted >= context.envelope.activeActionsPerDay {
+            if context.usage.totalMeteredActionsExecuted >= context.envelope.activeActionsPerDay {
                 return .denied(.dailyLimit)
             }
             if context.usage.visionModelSpendUSD >= context.envelope.perUserDailySpendCeilingUSD {
@@ -404,6 +404,6 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         // of its tightened budget, treat as denied. Bias the threshold
         // by 1 to leave at least one action of headroom after a soft
         // cap engages so the user can finish a coherent step.
-        return context.usage.totalActionsExecuted + 1 >= context.envelope.activeActionsPerDay
+        return context.usage.totalMeteredActionsExecuted + 1 >= context.envelope.activeActionsPerDay
     }
 }

@@ -389,7 +389,22 @@ extension ComputerUseSessionCoordinator {
                 actionLogEntry: actionTimeline.last
             )
         )
-        _ = invocation
+        if let cloudMeteringRecorder {
+            let userID = configuration.userId
+            Task { @MainActor in
+                do {
+                    try await cloudMeteringRecorder.recordAction(
+                        userID: userID,
+                        invocation: invocation,
+                        response: response
+                    )
+                } catch {
+                    Self.log.error(
+                        "computer_use_action_cloud_metering_failed reason=\(String(describing: error), privacy: .public)"
+                    )
+                }
+            }
+        }
     }
 
     func appendTimeline(

@@ -219,10 +219,8 @@ test: ## Run all test suites (Swift packages + macOS + mobile + Android when con
 	@./scripts/test-openburnbar-app.sh
 	@echo "==> Running iOS mobile tests (Simulator when CI=true; physical iPhone otherwise)…"
 	@CI=true ./scripts/test-openburnbar-mobile.sh
-	@if [ -x android/gradlew ] && [ -n "$${JAVA_HOME:-}" -o -d "$$HOME/.homebrew/opt/openjdk@21" -o -d /opt/homebrew/opt/openjdk@21 ]; then \
-		echo "==> Running Android unit tests…"; \
-		./scripts/test-openburnbar-android.sh || echo "WARNING: Android tests failed or SDK missing."; \
-	fi
+	@echo "==> Running Android unit tests…"
+	@./scripts/test-openburnbar-android.sh
 
 test-full: lint ## Full CI parity (core + Functions + extension evals + supply chain)
 	@echo "==> Running Functions tests…"
@@ -241,7 +239,8 @@ lint: ## Run SwiftLint
 	@if command -v swiftlint >/dev/null 2>&1; then \
 		swiftlint lint --quiet; \
 	else \
-		echo "WARNING: swiftlint not found; skipping lint."; \
+		echo "ERROR: swiftlint is required for make lint." >&2; \
+		exit 1; \
 	fi
 
 debt-check: ## Enforce debt budgets + refresh tech-debt metrics

@@ -273,6 +273,8 @@ export function wrapCallableHandler<Data, R>(
     if (uid) {
       const { setSentryUser } = await import("./sentry.js");
       setSentryUser(uid);
+      const { assertAccountErasureAllowsCallable } = await import("./accountErasureBarrier.js");
+      await assertAccountErasureAllowsCallable(uid, name);
     }
     return withCallableLogging(name, request, uid, () => handler(request));
   };

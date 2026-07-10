@@ -311,6 +311,8 @@ final class OpenBurnBarDaemonManager {
     let daemonSocketAuthTokenStore: KeychainStore
     weak var dataStore: DataStore?
     private var uploadPendingUsageAfterImport: (() async -> Void)?
+    let computerUseCapabilityPublisherInstanceID = UUID().uuidString
+    var computerUseCapabilityRevision: UInt64 = 0
 
     var status: OpenBurnBarDaemonStatus = .checking
     var lastError: String?

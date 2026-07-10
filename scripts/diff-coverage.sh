@@ -85,7 +85,11 @@ fi
 
 if [[ -z "$lines_json" && "$scope" != "packages" && -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]]; then
   lines_json="$tmp_root/openburnbar-diff-coverage-lines.json"
-  "$scripts_dir/extract-coverage-lines.sh" "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json" 2>/dev/null || lines_json=""
+  if ! "$scripts_dir/extract-coverage-lines.sh" \
+      "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json"; then
+    echo '::error::Failed to extract per-line app coverage from the xcresult.' >&2
+    exit 1
+  fi
 fi
 
 if [[ -z "$package_lines_json" && "$scope" != "app" ]]; then
@@ -124,8 +128,8 @@ fi
 
 # Evidence requirements per scope. A lane that cannot see is not allowed to
 # judge — and is never allowed to silently pass.
-if [[ "$scope" == "app" && ! -f "${coverage_json:-}" ]]; then
-  echo '::error::No app coverage data found. Run app tests with OPENBURNBAR_ENABLE_COVERAGE=YES first.' >&2
+if [[ "$scope" == "app" && ! -f "${lines_json:-}" ]]; then
+  echo '::error::No per-line app coverage data found. Run app tests with OPENBURNBAR_ENABLE_COVERAGE=YES and extract-coverage-lines.sh first.' >&2
   exit 1
 fi
 if [[ "$scope" == "packages" && ! -f "${package_lines_json:-}" ]]; then
@@ -760,15 +764,27 @@ for rel_path in gated_files:
         method = f"line_level({line_source})"
         exc = 0
         hit = 0
+        unmeasured = []
         for ln in changed_lines:
             key = str(ln)
             if key not in line_cov:
+                unmeasured.append(ln)
                 continue
             exc += 1
             if line_cov[key]:
                 hit += 1
+        if scope == "app" and unmeasured:
+            # The app lane is line-truth only. Missing counters for genuinely
+            # executable changed lines are uncovered; structural declarations
+            # remain outside the denominator because LLVM emits no counters.
+            unmeasured = filter_structural_swift_lines(rel_path, unmeasured)
+            exc += len(unmeasured)
+            if unmeasured:
+                method = f"line_level({line_source})+missing_line_evidence"
     else:
-        cov_item = file_map_by_path.get(rel_path) or file_map_by_base.get(os.path.basename(rel_path))
+        cov_item = None if scope == "app" else (
+            file_map_by_path.get(rel_path) or file_map_by_base.get(os.path.basename(rel_path))
+        )
         if not cov_item:
             changed_lines = filter_structural_swift_lines(rel_path, changed_lines)
             if not changed_lines:

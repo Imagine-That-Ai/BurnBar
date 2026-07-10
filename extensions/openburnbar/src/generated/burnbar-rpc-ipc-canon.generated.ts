@@ -242,6 +242,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.computer_use.capability_state.update",
+    "caseName": "computerUseCapabilityStateUpdate",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable mutation response for daemon.computer_use.capability_state",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.computer_use.invoke",
     "caseName": "computerUseInvoke",
     "domain": "computer_use",

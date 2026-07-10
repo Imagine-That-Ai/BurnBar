@@ -177,6 +177,18 @@ run_gate() {
   echo "$rc"
 }
 
+run_app_gate() {
+  # $1 = repo, $2 = base sha, $3 = threshold, $4 = summary json,
+  # $5 = app lines json, $6 = verdict path, $7 = stderr path.
+  local rc=0
+  OPENBURNBAR_COVERAGE_REPO_ROOT="$1" \
+  DIFF_COVERAGE_SCOPE=app \
+  COVERAGE_THRESHOLD="$3" \
+  DIFF_COVERAGE_OUTPUT="$6" \
+    "$scripts_dir/diff-coverage.sh" "$2" "$4" "$5" > /dev/null 2> "$7" || rc=$?
+  echo "$rc"
+}
+
 # --- fixture 1: plain change, lines 11-12 uncovered --------------------------
 
 repo="$tmp_root/repo"
@@ -710,6 +722,60 @@ rc="$(run_gate "$repo_reindent" "$base_reindent" packages 80 "$pkg_reindent" "$v
 check "re-indented block move still credits the 4-space->8-space body lines" \
   "3" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
 check "re-indented move passes (only the genuinely-new signature is gated)" "0" "$rc"
+
+# --- fixture 12: app scope requires line truth ------------------------------
+# A 100% file-wide summary is deliberately provided to prove it cannot rescue
+# missing or uncovered per-line evidence.
+repo_app="$tmp_root/repo-app"
+mkdir -p "$repo_app/AgentLens/Services/Demo"
+git -C "$repo_app" init -q -b main
+git -C "$repo_app" config user.email selftest@openburnbar.invalid
+git -C "$repo_app" config user.name "Diff Coverage Self-Test"
+cat > "$repo_app/AgentLens/Services/Demo/AppLogic.swift" <<'EOF'
+enum AppLogic {
+}
+EOF
+git -C "$repo_app" add -A
+git -C "$repo_app" commit -qm base
+base_app="$(git -C "$repo_app" rev-parse HEAD)"
+cat > "$repo_app/AgentLens/Services/Demo/AppLogic.swift" <<'EOF'
+enum AppLogic {
+    static func value() -> Int {
+        return 42
+    }
+}
+EOF
+git -C "$repo_app" add -A
+git -C "$repo_app" commit -qm app-change
+
+app_summary="$tmp_root/app-summary.json"
+cat > "$app_summary" <<EOF
+{"targets":[{"name":"$repo_app/AgentLens/Services/Demo/AppLogic.swift","executable":100,"hit":100}]}
+EOF
+
+verdict="$tmp_root/verdict-app-missing-lines.json"
+rc="$(run_app_gate "$repo_app" "$base_app" 80 "$app_summary" '' "$verdict" "$tmp_root/err-app-missing-lines.log")"
+check "app scope fails when per-line evidence file is absent" "1" "$rc"
+check "missing app line evidence reports the required artifact" \
+  "True" "$(grep -q 'No per-line app coverage data found' "$tmp_root/err-app-missing-lines.log" && echo True || echo False)"
+
+app_empty_lines="$tmp_root/app-empty-lines.json"
+printf '{"files":{}}\n' > "$app_empty_lines"
+verdict="$tmp_root/verdict-app-noevidence.json"
+rc="$(run_app_gate "$repo_app" "$base_app" 80 "$app_summary" "$app_empty_lines" "$verdict" "$tmp_root/err-app-noevidence.log")"
+check "app aggregate summary cannot replace missing line evidence" "1" "$rc"
+check "app file without a line map is reported as no_evidence" \
+  "no_evidence" "$(json_get "$verdict" 'v["details"][0]["method"]')"
+
+app_lines="$tmp_root/app-lines.json"
+cat > "$app_lines" <<'EOF'
+{"files":{"AgentLens/Services/Demo/AppLogic.swift":{"lines":{"2":true,"3":true,"4":true}}}}
+EOF
+verdict="$tmp_root/verdict-app-lines.json"
+rc="$(run_app_gate "$repo_app" "$base_app" 80 "$app_summary" "$app_lines" "$verdict" "$tmp_root/err-app-lines.log")"
+check "app scope passes with covered per-line evidence" "0" "$rc"
+check "app verdict uses line-level evidence" \
+  "line_level(app)" "$(json_get "$verdict" 'v["details"][0]["method"]')"
 
 # -----------------------------------------------------------------------------
 

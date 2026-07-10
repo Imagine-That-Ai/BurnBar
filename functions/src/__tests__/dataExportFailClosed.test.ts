@@ -23,7 +23,10 @@ const emptyCollection = {
   limit: () => ({ get: async () => ({ docs: [] }) }),
 };
 vi.mock("../adminRuntime.js", () => ({
-  db: { collection: () => emptyCollection },
+  db: {
+    collection: () => emptyCollection,
+    doc: () => ({ get: async () => ({ exists: false }) }),
+  },
   auth: {},
 }));
 

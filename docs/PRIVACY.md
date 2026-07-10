@@ -1,6 +1,6 @@
 # OpenBurnBar Privacy Policy
 
-**Last updated: July 1, 2026**
+**Last updated: July 10, 2026**
 
 ## Summary
 
@@ -136,6 +136,20 @@ You can:
 - **Disable all optional features** at any time in Settings
 - **Remove hosted quota credentials** by deleting the provider account from OpenBurnBar
 - **Delete legacy iCloud mirrored files** from your iCloud Drive app container
+
+Account deletion is fail-closed across Firestore, Cloud Storage, Secret Manager,
+and Firebase Authentication. OpenBurnBar does not report deletion complete or
+remove the Firebase Auth identity while a Cloud Storage prefix or hosted secret
+still needs cleanup. A failed attempt keeps any not-yet-erased data and minimum
+server-side retry evidence while a durable write barrier prevents cached
+sessions from recreating data; refresh tokens are revoked before cleanup and a
+scheduled job resumes interrupted work. The server-only receipt stores a
+SHA-256 UID hash, canonical intent/completion evidence, and cleanup
+counts/categories, not object paths or external secret names. A minimal
+tombstone uses the Firebase UID as its document identifier solely so Firestore
+and Storage rules can deny that identity. See the
+[account erasure runbook](runbooks/account-erasure.md) for statuses and operator
+recovery.
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 101,
+  "methodCount": 102,
   "methods": [
     {
       "id": "approval.respond",
@@ -230,6 +230,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
       "result": "Codable response for daemon.computer_use.audit_export",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.computer_use.capability_state.update",
+      "caseName": "computerUseCapabilityStateUpdate",
+      "domain": "computer_use",
+      "capability": "computer_use",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable mutation response for daemon.computer_use.capability_state",
       "error": "BurnBarRPCError"
     },
     {

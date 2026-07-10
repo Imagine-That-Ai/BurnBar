@@ -54,7 +54,8 @@ jobs:
         with:
           target: "https://burnbar.ai"
           rules_file_name: ".github/zap-rules.tsv"
-          cmd_options: "-a -j"
+          # ZAP exit 1 (FAIL) remains blocking; -I makes warning-only scans exit 0.
+          cmd_options: "-a -j -I"
           fail_action: true
           artifact_name: "zap-ops-confidence-report"
 

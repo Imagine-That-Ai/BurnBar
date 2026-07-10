@@ -17,7 +17,7 @@ jobs:
   linux-surface:
     name: ${{ matrix.label }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -64,6 +64,13 @@ jobs:
       - name: Build mission Linux toolchain image
         if: matrix.mode == 'runnable'
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
+
+      - name: Run Linux Swift package tests
+        if: matrix.mode == 'runnable'
+        run: >
+          docker run --rm -v "$PWD:/workspace" -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          bash scripts/linux-port/run-linux-swift-tests.sh
 
       - name: Run shell smoke
         if: matrix.mode == 'runnable' && matrix.smoke == 'shell'

@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   copyArtifact,
   discoverBundleArtifacts,
+  expectedLinuxReleaseIdentity,
   fileSize,
   gitInfo,
   manifestPath,
@@ -15,6 +16,7 @@ import {
   repoRoot,
   runStep,
   sha256,
+  verifyEd25519Signature,
   writeJson
 } from './lib/linux-release-common.mjs';
 
@@ -27,6 +29,10 @@ const appDir = path.join(repoRoot, 'apps/linux-desktop');
 const manifest = readJson(manifestPath);
 const requestedVersion = versionArgIndex >= 0 ? process.argv[versionArgIndex + 1] : null;
 const version = requestedVersion?.trim() || packageVersion();
+if (version !== packageVersion()) {
+  console.error(`Linux release version ${version} does not match apps/linux-desktop/package.json ${packageVersion()}.`);
+  process.exit(1);
+}
 const rawGit = gitInfo();
 const generatedEvidencePrefix = `${relative(outDir)}/`;
 const dirtyInputEntries = rawGit.dirtyEntries.filter((entry) => !entry.slice(3).startsWith(generatedEvidencePrefix));
@@ -45,9 +51,53 @@ if (git.dirty) {
 const logsDir = path.join(outDir, 'logs');
 const artifactsDir = path.join(outDir, 'artifacts');
 const sidecarDir = path.join(outDir, 'sidecars');
+for (const generatedDir of [logsDir, artifactsDir, sidecarDir, path.join(outDir, 'smoke')]) {
+  fs.rmSync(generatedDir, { recursive: true, force: true });
+}
 fs.mkdirSync(logsDir, { recursive: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
 fs.mkdirSync(sidecarDir, { recursive: true });
+
+const releaseEnvironment = {
+  tag: process.env.OPENBURNBAR_RELEASE_TAG?.trim() || '',
+  ref: process.env.OPENBURNBAR_RELEASE_REF?.trim() || '',
+  commit: process.env.OPENBURNBAR_RELEASE_COMMIT?.trim() || '',
+  expectedCosignIdentity: process.env.OPENBURNBAR_EXPECTED_COSIGN_IDENTITY?.trim() || ''
+};
+const hasReleaseEnvironment = Object.values(releaseEnvironment).some(Boolean);
+if (hasReleaseEnvironment && Object.values(releaseEnvironment).some((value) => !value)) {
+  console.error('Linux release binding is incomplete; tag, ref, commit, and expected Cosign identity are all required.');
+  process.exit(1);
+}
+if (hasReleaseEnvironment) {
+  const expectedTag = `linux-v${version}`;
+  const expectedRef = `refs/tags/${expectedTag}`;
+  const resolvedTag = runStep('git', ['rev-list', '-n', '1', `${releaseEnvironment.ref}^{commit}`]);
+  const expectedIdentity = expectedLinuxReleaseIdentity(releaseEnvironment.ref);
+  const bindingFailures = [
+    releaseEnvironment.tag === expectedTag ? null : `tag=${releaseEnvironment.tag}, expected=${expectedTag}`,
+    releaseEnvironment.ref === expectedRef ? null : `ref=${releaseEnvironment.ref}, expected=${expectedRef}`,
+    releaseEnvironment.commit === git.commit ? null : `commit=${releaseEnvironment.commit}, HEAD=${git.commit}`,
+    resolvedTag.exitCode === 0 && resolvedTag.stdout.trim() === releaseEnvironment.commit
+      ? null
+      : `${releaseEnvironment.ref} does not resolve to ${releaseEnvironment.commit}`,
+    releaseEnvironment.expectedCosignIdentity === expectedIdentity
+      ? null
+      : `Cosign identity=${releaseEnvironment.expectedCosignIdentity}, expected=${expectedIdentity}`
+  ].filter(Boolean);
+  if (bindingFailures.length > 0) {
+    console.error(`Linux release binding failed:\n- ${bindingFailures.join('\n- ')}`);
+    process.exit(1);
+  }
+}
+
+const release = {
+  tag: releaseEnvironment.tag || `linux-v${version}`,
+  ref: releaseEnvironment.ref || `refs/tags/linux-v${version}`,
+  commit: releaseEnvironment.commit || git.commit,
+  expectedCosignIdentity: releaseEnvironment.expectedCosignIdentity
+    || expectedLinuxReleaseIdentity(`refs/tags/linux-v${version}`)
+};
 
 const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() || '4';
 const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
@@ -87,6 +137,12 @@ if (!args.has('--skip-tauri')) {
 writeLog('package-build.log', buildSteps);
 
 const blockers = [];
+if (!hasReleaseEnvironment) {
+  blockers.push({
+    kind: 'release-binding',
+    message: 'Tag-bound release environment is absent; local output is evidence-only and cannot be promoted.'
+  });
+}
 for (const step of buildSteps) {
   if (step.exitCode !== 0) {
     blockers.push({
@@ -188,53 +244,23 @@ const checksums = copied
 const checksumFile = path.join(sidecarDir, `OpenBurnBar-${version}-linux-checksums.txt`);
 fs.writeFileSync(checksumFile, `${checksums}\n`, 'utf8');
 
-const sourceSuffix = git.commit === 'unknown' ? 'unknown' : git.commit.slice(0, 12);
-const sourceTar = path.join(sidecarDir, `OpenBurnBar-${version}-source-${sourceSuffix}.tar`);
-const sourceArchive = runStep('git', [
-  'archive',
-  '--format=tar',
-  `--prefix=OpenBurnBar-${version}/`,
-  `--output=${sourceTar}`,
-  'HEAD'
+const sourceSuffix = release.commit === 'unknown' ? 'unknown' : release.commit.slice(0, 12);
+const sourceTar = path.join(sidecarDir, `OpenBurnBar-${version}-source-${sourceSuffix}.tar.gz`);
+const sourceChecksumFile = `${sourceTar}.sha256`;
+const sourceArchive = runStep('bash', [
+  'scripts/ci/build-corresponding-source-archive.sh',
+  '--version',
+  version,
+  '--output',
+  sourceTar
 ]);
 const sourceSteps = [sourceArchive];
-if (sourceArchive.exitCode !== 0) {
-  const fallback = runStep('tar', [
-    '-cf',
-    sourceTar,
-    'AGENTS.md',
-    'CLAUDE.md',
-    'CHANGELOG.md',
-    'LICENSE',
-    'NOTICE',
-    'README.md',
-    'SECURITY.md',
-    'THIRD_PARTY.md',
-    'THIRD_PARTY_NOTICES.md',
-    'apps/linux-desktop/index.html',
-    'apps/linux-desktop/package-lock.json',
-    'apps/linux-desktop/package.json',
-    'apps/linux-desktop/src',
-    'apps/linux-desktop/src-tauri/Cargo.toml',
-    'apps/linux-desktop/src-tauri/build.rs',
-    'apps/linux-desktop/src-tauri/src',
-    'apps/linux-desktop/src-tauri/tauri.conf.json',
-    'docs/linux-port',
-    'docs/RELEASE_MACOS.md',
-    'docs/SCHEMA_SQLITE.sql',
-    'docs/security/SUPPLY_CHAIN_PROVENANCE.md',
-    'packaging/linux',
-    'scripts/linux-port'
-  ]);
-  sourceSteps.push(fallback);
-  if (fallback.exitCode !== 0) {
-    blockers.push({ kind: 'source-archive', message: 'git archive and fallback tar failed.', log: 'logs/source-archive.log' });
-  } else {
-    blockers.push({
-      kind: 'source-archive-fallback',
-      message: 'Source archive was generated from the working tree because git archive was unavailable; promote only from CI or a checkout with commit-bound git archive.'
-    });
-  }
+if (sourceArchive.exitCode !== 0 || !fs.existsSync(sourceTar) || !fs.existsSync(sourceChecksumFile)) {
+  blockers.push({
+    kind: 'source-archive',
+    message: 'Canonical corresponding-source archive or checksum generation failed.',
+    log: 'logs/source-archive.log'
+  });
 }
 writeLog('source-archive.log', sourceSteps);
 if (!git.gitAvailable) {
@@ -282,12 +308,21 @@ const privateKeyPem = process.env.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM;
 const signatureRows = [];
 if (privateKeyPem) {
   const privateKey = crypto.createPrivateKey(privateKeyPem);
+  const publicKeyPem = fs.readFileSync(
+    path.join(repoRoot, manifest.externalCredentials.ed25519PublicKey)
+  );
   for (const artifact of copied) {
     const artifactPath = path.join(repoRoot, artifact.file);
     const signature = crypto.sign(null, fs.readFileSync(artifactPath), privateKey);
     const sigPath = path.join(sidecarDir, `${path.basename(artifact.file)}.ed25519.sig`);
     fs.writeFileSync(sigPath, signature);
     signatureRows.push({ artifact: artifact.file, signature: relative(sigPath), algorithm: 'Ed25519' });
+    if (!verifyEd25519Signature(fs.readFileSync(artifactPath), signature, publicKeyPem)) {
+      blockers.push({
+        kind: 'signing-key-mismatch',
+        message: `Detached signature for ${artifact.file} does not verify with the checked-in release public key.`
+      });
+    }
   }
 } else {
   blockers.push({
@@ -303,11 +338,11 @@ if (!process.env.SIGSTORE_ID_TOKEN && !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKE
   });
 }
 
-const expectedCosignIdentity = `https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/v${version}`;
 const provenance = {
   predicateType: 'https://openburnbar.dev/attestations/linux-release-artifact/v1',
   generatedAt: new Date().toISOString(),
-  expectedCosignIdentity,
+  expectedCosignIdentity: release.expectedCosignIdentity,
+  release,
   git,
   version,
   artifacts: copied,
@@ -316,7 +351,12 @@ const provenance = {
   sbom: fs.existsSync(sbomFile) ? relative(sbomFile) : null,
   vex: fs.existsSync(vexFile) ? relative(vexFile) : null,
   sourceArchive: fs.existsSync(sourceTar)
-    ? { file: relative(sourceTar), sha256: sha256(sourceTar), represents: 'HEAD only' }
+    ? {
+        file: relative(sourceTar),
+        sha256: sha256(sourceTar),
+        checksumFile: fs.existsSync(sourceChecksumFile) ? relative(sourceChecksumFile) : null,
+        represents: release.commit
+      }
     : null,
   signatures: signatureRows,
   promotionBlocked: blockers.length > 0,
@@ -332,6 +372,7 @@ const latestDraft = {
   platform: 'linux',
   version,
   commit: git.commit,
+  release,
   generatedAt: new Date().toISOString(),
   promotionState: blockers.length === 0 ? 'candidate' : 'blocked',
   primaryArtifact: primary ?? null,
@@ -340,7 +381,15 @@ const latestDraft = {
     checksums: relative(checksumFile),
     sbom: fs.existsSync(sbomFile) ? relative(sbomFile) : null,
     vex: fs.existsSync(vexFile) ? relative(vexFile) : null,
-    provenancePredicate: relative(provenanceFile)
+    provenancePredicate: relative(provenanceFile),
+    sourceArchive: fs.existsSync(sourceTar)
+      ? {
+          file: relative(sourceTar),
+          sha256: sha256(sourceTar),
+          checksumFile: fs.existsSync(sourceChecksumFile) ? relative(sourceChecksumFile) : null,
+          represents: release.commit
+        }
+      : null
   },
   blockers
 };
@@ -350,6 +399,7 @@ writeJson(path.join(outDir, 'package-closure.json'), {
   generatedAt: new Date().toISOString(),
   manifest: relative(manifestPath),
   git,
+  release,
   version,
   artifacts: copied,
   metadata: metadataFiles,
@@ -357,7 +407,15 @@ writeJson(path.join(outDir, 'package-closure.json'), {
     checksums: relative(checksumFile),
     sbom: fs.existsSync(sbomFile) ? relative(sbomFile) : null,
     vex: fs.existsSync(vexFile) ? relative(vexFile) : null,
-    provenancePredicate: relative(provenanceFile)
+    provenancePredicate: relative(provenanceFile),
+    sourceArchive: fs.existsSync(sourceTar)
+      ? {
+          file: relative(sourceTar),
+          sha256: sha256(sourceTar),
+          checksumFile: fs.existsSync(sourceChecksumFile) ? relative(sourceChecksumFile) : null,
+          represents: release.commit
+        }
+      : null
   },
   blockers
 });

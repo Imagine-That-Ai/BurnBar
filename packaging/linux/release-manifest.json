@@ -29,6 +29,7 @@
   },
   "externalCredentials": {
     "ed25519PrivateKeyEnv": "OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM",
+    "ed25519PublicKey": "packaging/linux/openburnbar-linux-ed25519.pub.pem",
     "cosignOidc": "GitHub Actions id-token: write",
     "packageRegistryTokens": {
       "aur": "operator SSH/Git push credentials",

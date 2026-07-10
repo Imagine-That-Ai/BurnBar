@@ -46,4 +46,116 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
         XCTAssertEqual(store.effectiveEnvelope.level, .softCap)
         XCTAssertEqual(store.effectiveEnvelope.activeActionsPerRun, 25)
     }
+
+    func testCachedBudgetSnapshotNeverBecomesAuthoritative() {
+        let store = ComputerUseBudgetStatusStore(isSignedInProvider: { true })
+        store.handleSnapshotData(
+            [
+                "level": "normal",
+                "activeActionsPerRun": 50,
+                "activeActionsPerDay": 200,
+                "activeSessionsPerDay": 4,
+                "perUserDailySpendCeilingUSD": 5,
+                "updatedAt": Timestamp(date: Date())
+            ],
+            isFromCache: true,
+            observedAt: Date()
+        )
+
+        XCTAssertFalse(store.hasAuthoritativeSnapshot)
+        XCTAssertNil(store.authorityProvenance)
+        XCTAssertNil(store.latestEnvelope)
+    }
+
+    func testServerBudgetPreservesUpstreamUpdateAndObservationTimes() throws {
+        let store = ComputerUseBudgetStatusStore(isSignedInProvider: { true })
+        let observedAt = Date(timeIntervalSince1970: 1_800_000_100)
+        let updatedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        store.handleSnapshotData(
+            [
+                "level": "normal",
+                "activeActionsPerRun": 50,
+                "activeActionsPerDay": 200,
+                "activeSessionsPerDay": 4,
+                "perUserDailySpendCeilingUSD": 5,
+                "updatedAt": Timestamp(date: updatedAt)
+            ],
+            isFromCache: false,
+            observedAt: observedAt
+        )
+
+        let provenance = try XCTUnwrap(store.authorityProvenance)
+        XCTAssertEqual(provenance.source, .firestoreServer)
+        XCTAssertEqual(provenance.observedAt, observedAt)
+        XCTAssertEqual(provenance.updatedAt, updatedAt)
+        XCTAssertEqual(store.latestEnvelope?.updatedAt, updatedAt)
+    }
+
+    func testMissingQuotaDocumentIsAuthoritativeZeroForUTCDay() {
+        let store = ComputerUseQuotaUsageStore()
+        let dayKey = ComputerUseQuotaUsageStore.todayKey()
+
+        store.handleSnapshot(
+            documentExists: false,
+            data: nil,
+            error: nil,
+            dayKey: dayKey
+        )
+
+        XCTAssertTrue(store.hasAuthoritativeSnapshot)
+        XCTAssertEqual(store.currentUsage, ComputerUseQuotaUsage(dayKey: dayKey))
+    }
+
+    func testQuotaListenerErrorRemainsUnavailable() {
+        let store = ComputerUseQuotaUsageStore()
+        let dayKey = ComputerUseQuotaUsageStore.todayKey()
+        store.handleSnapshot(
+            documentExists: false,
+            data: nil,
+            error: nil,
+            dayKey: dayKey
+        )
+
+        store.handleSnapshot(
+            documentExists: nil,
+            data: nil,
+            error: NSError(domain: FirestoreErrorDomain, code: FirestoreErrorCode.unavailable.rawValue),
+            dayKey: dayKey
+        )
+
+        XCTAssertFalse(store.hasAuthoritativeSnapshot)
+        XCTAssertNil(store.currentUsage)
+    }
+
+    func testPreviousUTCDayQuotaSnapshotIsNotAuthoritative() {
+        let store = ComputerUseQuotaUsageStore()
+        let yesterday = ComputerUseQuotaUsageStore.todayKey(
+            now: Date().addingTimeInterval(-86_400)
+        )
+
+        store.handleSnapshot(
+            documentExists: false,
+            data: nil,
+            error: nil,
+            dayKey: yesterday
+        )
+
+        XCTAssertFalse(store.hasAuthoritativeSnapshot)
+    }
+
+    func testCachedQuotaSnapshotIsNotAuthoritative() {
+        let store = ComputerUseQuotaUsageStore()
+        let dayKey = ComputerUseQuotaUsageStore.todayKey()
+        store.handleSnapshot(
+            documentExists: false,
+            data: nil,
+            error: nil,
+            dayKey: dayKey,
+            isFromCache: true
+        )
+
+        XCTAssertFalse(store.hasAuthoritativeSnapshot)
+        XCTAssertNil(store.authorityProvenance)
+        XCTAssertNil(store.currentUsage)
+    }
 }

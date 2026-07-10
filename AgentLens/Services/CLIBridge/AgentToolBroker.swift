@@ -13,7 +13,59 @@ struct AgentToolExecutionPayload {
     let detail: String?
 }
 
+final class AgentToolBrokerRevocationRegistry: Sendable {
+    typealias Handler = @Sendable () async -> Void
+
+    static let shared = AgentToolBrokerRevocationRegistry()
+
+    private struct Registration: Sendable {
+        let runtimeID: AssistantRuntimeID
+        let threadID: String
+        let handler: Handler
+    }
+
+    private let registrations = Locked<[UUID: Registration]>([:])
+
+    func register(
+        id: UUID,
+        runtimeID: AssistantRuntimeID,
+        threadID: String,
+        handler: @escaping Handler
+    ) {
+        registrations.withLock {
+            $0[id] = Registration(runtimeID: runtimeID, threadID: threadID, handler: handler)
+        }
+    }
+
+    func unregister(id: UUID) {
+        registrations.withLock { $0.removeValue(forKey: id) }
+    }
+
+    @discardableResult
+    func revoke(runtimeID: AssistantRuntimeID, threadID: String) async -> Int {
+        let handlers = registrations.read().values.compactMap { registration in
+            registration.runtimeID == runtimeID && registration.threadID == threadID
+                ? registration.handler
+                : nil
+        }
+        await withTaskGroup(of: Void.self) { group in
+            for handler in handlers {
+                group.addTask {
+                    await handler()
+                }
+            }
+        }
+        return handlers.count
+    }
+}
+
 final class AgentToolBroker: Sendable {
+    enum DaemonBrowserRevocationOutcome: Equatable, Sendable {
+        case statePublished
+        case panicHalted
+        case failed
+    }
+
     let grant: AgentCapabilityGrant
     let workspaceURL: URL
     #if canImport(AppKit) && !DISTRIBUTION_MAS
@@ -80,6 +132,8 @@ final class AgentToolBroker: Sendable {
     }
 
     private let browserSessionIDBox = Locked<String?>(nil)
+    private let revocationRequestedBox = Locked(false)
+    private let revocationRegistrationID = UUID()
 
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     init(
@@ -94,6 +148,7 @@ final class AgentToolBroker: Sendable {
         self.privilegedActionApprover = nil
         self.unrestrictedShellReauthorizer = nil
         self.computerUseRuntimeController = computerUseRuntimeController
+        registerForRevocation()
     }
 
     init(
@@ -112,6 +167,7 @@ final class AgentToolBroker: Sendable {
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         self.computerUseRuntimeController = computerUseRuntimeController
         #endif
+        registerForRevocation()
     }
     #else
     init(
@@ -124,6 +180,7 @@ final class AgentToolBroker: Sendable {
         self.grantStillActive = grantStillActive
         self.privilegedActionApprover = nil
         self.unrestrictedShellReauthorizer = nil
+        registerForRevocation()
     }
 
     init(
@@ -138,8 +195,35 @@ final class AgentToolBroker: Sendable {
         self.grantStillActive = grantStillActive
         self.privilegedActionApprover = privilegedActionApprover
         self.unrestrictedShellReauthorizer = unrestrictedShellReauthorizer
+        registerForRevocation()
     }
     #endif
+
+    deinit {
+        AgentToolBrokerRevocationRegistry.shared.unregister(id: revocationRegistrationID)
+    }
+
+    private func registerForRevocation() {
+        AgentToolBrokerRevocationRegistry.shared.register(
+            id: revocationRegistrationID,
+            runtimeID: grant.runtimeID,
+            threadID: grant.threadID,
+            handler: { [weak self] in
+                await self?.revokeDaemonBrowserSessionIfNeeded()
+            }
+        )
+    }
+
+    @discardableResult
+    static func revokeDaemonBrowserSessions(
+        runtimeID: AssistantRuntimeID,
+        threadID: String
+    ) async -> Int {
+        await AgentToolBrokerRevocationRegistry.shared.revoke(
+            runtimeID: runtimeID,
+            threadID: threadID
+        )
+    }
 
     /// T-TOOL-02(b): whether the next unrestricted-shell action needs a fresh
     /// local-auth re-authorization right now (exposed for testing the cadence).
@@ -161,12 +245,17 @@ final class AgentToolBroker: Sendable {
         callID: String,
         runID: String
     ) async -> AgentToolExecutionPayload {
+        guard !revocationRequestedBox.read() else {
+            return denied(name: name, reason: "desktop grant was revoked")
+        }
         guard grant.isActive() else {
+            await revokeDaemonBrowserSessionIfNeeded()
             return denied(name: name, reason: "desktop grant is not active")
         }
         if let grantStillActive {
             let stillActive = await grantStillActive()
             guard stillActive else {
+                await revokeDaemonBrowserSessionIfNeeded()
                 return denied(name: name, reason: "desktop grant was revoked")
             }
         }
@@ -263,7 +352,15 @@ final class AgentToolBroker: Sendable {
     }
 
     private func invokeDaemonBrowserTool(_ invocation: BurnBarToolInvocation) async -> AgentToolExecutionPayload {
+        guard !revocationRequestedBox.read() else {
+            return denied(name: invocation.tool.rawValue, reason: "desktop grant was revoked")
+        }
         do {
+            #if canImport(AppKit) && !DISTRIBUTION_MAS
+            let concurrentSessionActive = await computerUseRuntimeController?.hasActiveSessionForDaemonBridge() ?? false
+            #else
+            let concurrentSessionActive = false
+            #endif
             let sessionID: String
             if let existing = browserSessionIDBox.read() {
                 sessionID = existing
@@ -282,7 +379,8 @@ final class AgentToolBroker: Sendable {
                         sourceDeviceId: grant.sourceDeviceID,
                         intentHashHex: grant.localAuthIntentHashHex,
                         localAuthGrantBinding: grant.localAuthGrantBinding
-                    )
+                    ),
+                    concurrentSessionActive: concurrentSessionActive
                 )
                 // Publish atomically: if a concurrent first-call already created a
                 // session while we awaited, prefer the stored id and let our
@@ -294,6 +392,10 @@ final class AgentToolBroker: Sendable {
                     return response.sessionId
                 }
             }
+            if revocationRequestedBox.read() {
+                await revokeDaemonBrowserSessionIfNeeded()
+                return denied(name: invocation.tool.rawValue, reason: "desktop grant was revoked")
+            }
             let response = try await OpenBurnBarDaemonManager.shared.invokeComputerUse(
                 ComputerUseInvokeRequest(
                     sessionId: sessionID,
@@ -302,11 +404,63 @@ final class AgentToolBroker: Sendable {
                     sourceDeviceId: grant.sourceDeviceID,
                     intentHashHex: grant.localAuthIntentHashHex,
                     localAuthGrantBinding: grant.localAuthGrantBinding
-                )
+                ),
+                concurrentSessionActive: concurrentSessionActive
             )
             return Self.payload(name: invocation.tool.rawValue, response: response)
         } catch {
             return errorPayload(name: invocation.tool.rawValue, error: String(describing: error))
+        }
+    }
+
+    private func revokeDaemonBrowserSessionIfNeeded() async {
+        revocationRequestedBox.withLock { $0 = true }
+        guard let sessionID = browserSessionIDBox.read() else { return }
+        let outcome = await Self.revokeDaemonBrowserSession(
+            sessionID: sessionID,
+            publishRevocation: {
+                let response = try await OpenBurnBarDaemonManager.shared.publishComputerUseCapabilityState(
+                    authorizationRevoked: true
+                )
+                guard response.accepted else {
+                    throw OpenBurnBarDaemonManagerError.rpcError(
+                        "OpenBurnBar daemon rejected Computer Use authorization revocation."
+                    )
+                }
+            },
+            panicHalt: { sessionID in
+                _ = try await OpenBurnBarDaemonManager.shared.panicHaltComputerUse(
+                    ComputerUsePanicHaltRequest(
+                        sessionId: sessionID,
+                        source: ComputerUsePanicSource.revoked.rawValue
+                    )
+                )
+            }
+        )
+        if outcome == .failed {
+            AgentToolBroker.unrestrictedShellAudit.error(
+                "computer_use_revocation_halt_failed session=\(sessionID, privacy: .private(mask: .hash))"
+            )
+            return
+        }
+        browserSessionIDBox.withLock { $0 = nil }
+    }
+
+    static func revokeDaemonBrowserSession(
+        sessionID: String,
+        publishRevocation: @escaping @Sendable () async throws -> Void,
+        panicHalt: @escaping @Sendable (String) async throws -> Void
+    ) async -> DaemonBrowserRevocationOutcome {
+        do {
+            try await panicHalt(sessionID)
+            return .panicHalted
+        } catch {
+            do {
+                try await publishRevocation()
+                return .statePublished
+            } catch {
+                return .failed
+            }
         }
     }
 
