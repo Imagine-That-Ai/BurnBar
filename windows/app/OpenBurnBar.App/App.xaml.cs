@@ -9,6 +9,7 @@ using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.ComputerUse;
 using OpenBurnBar.App.Diagnostics;
+using OpenBurnBar.App.Media;
 using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
@@ -78,6 +79,7 @@ public partial class App : Application
         }
         WindowsUpdateService.Configure(WindowsSettingsComposition.SharedPersistence);
         WindowsComputerUseRuntimeHost.Configure(WindowsSettingsComposition.SharedPersistence.DirectoryPath);
+        WindowsMercuryRuntimeHost.Configure(WindowsSettingsComposition.SharedPersistence.DirectoryPath);
         _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();

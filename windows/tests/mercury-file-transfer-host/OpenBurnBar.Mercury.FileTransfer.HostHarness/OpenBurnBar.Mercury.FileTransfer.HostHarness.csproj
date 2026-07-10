@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Mercury.FileTransfer.HostHarness</RootNamespace>
+    <AssemblyName>OpenBurnBar.Mercury.FileTransfer.HostHarness</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../integrations/mercury/OpenBurnBar.Integrations.Mercury/OpenBurnBar.Integrations.Mercury.csproj" />
+    <ProjectReference Include="../../../integrations/mercury/OpenBurnBar.Integrations.Mercury.Windows/OpenBurnBar.Integrations.Mercury.Windows.csproj" />
+  </ItemGroup>
+
+</Project>

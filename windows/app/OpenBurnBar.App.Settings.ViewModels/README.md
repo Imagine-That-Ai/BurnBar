@@ -19,12 +19,11 @@ view-models for the placeholder tabs whose feature cores exist on `main`.
 | Notifications | `NotificationsSettingsViewModel` | `AlertsAndNotificationsViews.swift` | ControllerSettings model | Live |
 | Text Expansion | `TextExpansionSettingsViewModel` | `TextExpansionSettingsView.swift` | `OpenBurnBar.App.TextExpansion` (#1302) | Live |
 | Computer Use | `ComputerUseSettingsViewModel` | `ComputerUseSettingsView.swift` | `OpenBurnBar.ComputerUse.Core` | Live |
+| Media | `MediaSettingsViewModel` | `MediaSettingsView.swift` + Mercury file-transfer safety | immutable snapshots + MOTW/Defender quarantine | File transfer live; capture/encode disclosed unavailable |
 | Pets | `PetsSettingsViewModel` | `SettingsView.swift` (`PetCompanionSettingsView`) | `OpenBurnBar.App.Pet` (via `IPetCompanionHost`) | Live |
 | Account | `AccountSettingsViewModel` | `AccountSettingsView.swift` | OAuth credential gate (#1304) | Data-gated |
 | Cloud | `CloudSettingsViewModel` | `CloudStoreSettingsView.swift` | CloudSyncSettings + OAuth gate | Data-gated |
 | Devices & Sync | `DevicesAndSyncSettingsViewModel` | `DevicesAndSyncSettingsView.swift` | Device-trust host + OAuth gate | Data-gated |
-
-`Media` stays a placeholder (its Mercury core is deferred).
 
 ## Conventions
 

@@ -213,10 +213,16 @@ public sealed class ChatConversationStoreTests : IDisposable
         Assert.Equal("textDocument", dropped.Kind);
         Assert.Equal("drop & quote ^ unicode Ω.txt", dropped.DisplayName);
         Assert.Equal("dropped file body", dropped.ExtractedTextPreview);
+        Assert.Equal(64, dropped.ContentSha256?.Length);
+        Assert.Equal(64, pasted.ContentSha256?.Length);
+        Assert.Contains(dropped.ContentSha256!, dropped.WorkspaceRelativePath, StringComparison.Ordinal);
         Assert.Contains("paste__payload_.txt", pasted.WorkspaceRelativePath, StringComparison.Ordinal);
         Assert.False(WindowsChatAttachmentStager.MarkMissingIfAbsent(dropped, workspace).IsMissing);
 
-        File.Delete(Path.Combine(workspace, dropped.WorkspaceRelativePath.Replace('/', Path.DirectorySeparatorChar)));
+        string staged = Path.Combine(workspace, dropped.WorkspaceRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        Assert.True(File.GetAttributes(staged).HasFlag(FileAttributes.ReadOnly));
+        File.SetAttributes(staged, FileAttributes.Normal);
+        File.Delete(staged);
         Assert.True(WindowsChatAttachmentStager.MarkMissingIfAbsent(dropped, workspace).IsMissing);
     }
 

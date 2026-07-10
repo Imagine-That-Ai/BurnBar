@@ -6,6 +6,7 @@ using System.Text.Json;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.ComputerUse;
+using OpenBurnBar.App.Media;
 using OpenBurnBar.App.Settings.ViewModels;
 using OpenBurnBar.App.TextExpansion;
 using OpenBurnBar.CloudSync.Crypto;
@@ -135,7 +136,7 @@ internal static class WindowsSettingsComposition
         SettingsTab.DevicesAndSync => new DevicesAndSyncSettingsViewModel(
             store: new DevicesSyncStore(Persistence),
             session: new OAuthAccountSessionGate(OAuth.Value)),
-        SettingsTab.Media => new MediaSettingsSurfaceModel(),
+        SettingsTab.Media => new MediaSettingsViewModel(WindowsMercuryRuntimeHost.Current),
         _ => null,
     };
 

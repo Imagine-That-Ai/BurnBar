@@ -28,6 +28,7 @@ public sealed partial class SettingsViewModelHostPage : Page
         "CopyEndpoint", "SubmitEmail", "ClearError", "UpgradeToPremium", "SignOut",
         "DeleteAccount", "TriggerBackup", "Summon", "StartSession", "EndSession",
         "RefreshReadiness", "SaveDraft", "CancelDraft", "NewDraft",
+        "RefreshStatus", "OpenDownloadFolder",
     };
 
     private object? _viewModel;
@@ -298,7 +299,7 @@ public sealed partial class SettingsViewModelHostPage : Page
         SettingsTab.Account when !CloudAuthProductionComposition.IsOAuthConfigured() =>
             "Sign-in unavailable - OAuth client configuration is missing",
         SettingsTab.Pets => "Preferences persist - companion host activation is not yet available",
-        SettingsTab.Media => "Mercury adapters installed - media device controls are not yet composed",
+        SettingsTab.Media => "Safe file transfer live - capture and encode remain unavailable",
         _ when descriptor.Gating == SettingsTabViewModelGating.Live => "Live controls - saved on this device",
         _ => "Controls live - account data requires sign-in and App Check",
     };
@@ -356,14 +357,4 @@ public static class SettingsViewModelFactory
 
         return lines;
     }
-}
-
-/// <summary>Media tab surface until full Mercury host page is bound (still a real page, not empty leaf).</summary>
-public sealed class MediaSettingsSurfaceModel : ObservableSettingsViewModel
-{
-    public string Title => "Media (Mercury)";
-
-    public string Summary =>
-        "Mercury media settings host. Live call/screen-share adapters live under windows/integrations/mercury; " +
-        "this page is the production settings destination (not legacy empty settings leaf).";
 }

@@ -4,8 +4,7 @@
 //
 // The macOS app has 16 settings tabs. On Windows, General / Updates / Data & Privacy
 // (+ Appearance) already resolved to real leaf pages. This wave adds portable view-models
-// for the placeholder tabs whose feature cores exist on main. Media stays a placeholder
-// (its Mercury core is deferred). The WinUI XAML leaf pages that x:Bind these view-models
+// for the placeholder tabs whose feature cores exist on main. The WinUI XAML leaf pages that x:Bind these view-models
 // are bucket-B / dev-host-deferred; this catalog + the view-models + the manifest search
 // coverage are the real, tested deliverable.
 
@@ -54,6 +53,8 @@ public static class SettingsTabViewModelCatalog
             nameof(TextExpansionSettingsViewModel), "TextExpansionSettingsView.swift"),
         new SettingsTabViewModelDescriptor(SettingsTab.ComputerUse, SettingsTabViewModelGating.Live,
             nameof(ComputerUseSettingsViewModel), "ComputerUseSettingsView.swift"),
+        new SettingsTabViewModelDescriptor(SettingsTab.Media, SettingsTabViewModelGating.Live,
+            nameof(MediaSettingsViewModel), "MediaSettingsView.swift + Mercury file-transfer safety"),
         new SettingsTabViewModelDescriptor(SettingsTab.Pets, SettingsTabViewModelGating.Live,
             nameof(PetsSettingsViewModel), "SettingsView.swift (PetCompanionSettingsView)"),
         new SettingsTabViewModelDescriptor(SettingsTab.Account, SettingsTabViewModelGating.DataGated,
@@ -100,6 +101,7 @@ public static class SettingsTabViewModelCatalog
         SettingsTab.Notifications => new NotificationsSettingsViewModel(),
         SettingsTab.TextExpansion => new TextExpansionSettingsViewModel(),
         SettingsTab.ComputerUse => new ComputerUseSettingsViewModel(),
+        SettingsTab.Media => new MediaSettingsViewModel(),
         SettingsTab.Pets => new PetsSettingsViewModel(),
         SettingsTab.Account => new AccountSettingsViewModel(),
         SettingsTab.Cloud => new CloudSettingsViewModel(),

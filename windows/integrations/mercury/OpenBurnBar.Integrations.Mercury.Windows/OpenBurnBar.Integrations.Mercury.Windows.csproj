@@ -16,13 +16,11 @@
                                      (parity: VoIPCallTrigger)
 
     VERIFICATION CEILING (honest):
-      • The WinRT PROJECTIONS resolve from the Windows SDK ref pack, so with
-        EnableWindowsTargeting=true this project RESTORES + the C# COMPILES on the
-        macOS authoring host (Roslyn-clean, 0 errors) — the adapter logic is fully
-        type-checked here.
-      • The projected APIs have NO runtime on macOS (no capture devices, no
-        MediaFoundation, no WNS channel), so nothing in this assembly EXECUTES off
-        Windows. Runtime behavior is Windows-CI / dev-host deferred.
+      • File-transfer quarantine, Mark-of-the-Web, Microsoft Defender scanning,
+        approval-gated promotion, and immutable outbound snapshots have an ARM64
+        Windows host harness and evidence runner.
+      • Capture, MediaFoundation, WASAPI, camera, and WNS adapters are type-checked
+        against the Windows SDK projection ref pack but remain runtime-deferred.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
