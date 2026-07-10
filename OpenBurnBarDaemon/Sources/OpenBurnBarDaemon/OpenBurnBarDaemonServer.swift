@@ -43,6 +43,7 @@ public actor BurnBarDaemonServer {
     /// first-party Mac app provisions this store via `phoneControlPinProvision` so
     /// the daemon can verify local-auth proofs independently of the app.
     let phoneControlPinStore: DaemonPhoneKeyPinStore?
+    let linuxOnboardingService: BurnBarLinuxOnboardingService
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -84,7 +85,8 @@ public actor BurnBarDaemonServer {
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
         localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil,
-        phoneControlPinStore: DaemonPhoneKeyPinStore? = nil
+        phoneControlPinStore: DaemonPhoneKeyPinStore? = nil,
+        linuxOnboardingService: BurnBarLinuxOnboardingService? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -93,6 +95,7 @@ public actor BurnBarDaemonServer {
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
+        self.linuxOnboardingService = linuxOnboardingService ?? BurnBarLinuxOnboardingService()
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -637,14 +640,14 @@ public actor BurnBarDaemonServer {
             let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
 
             switch method {
-            case .health, .catalog, .authBootstrap:
+            case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot:
                 return try await handleLifecycleRPC(
                     method: method,
                     decoder: decoder,
                     request: request,
                     requestData: requestData
                 )
-            case .configGet, .configUpdate,
+            case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
                  .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
                  .providerModelVariantUpsert, .providerModelVariantRemove,
                  .providerModelAliasUpsert, .providerModelAliasRemove,

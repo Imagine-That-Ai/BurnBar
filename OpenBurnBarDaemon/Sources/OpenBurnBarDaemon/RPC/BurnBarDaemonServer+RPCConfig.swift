@@ -29,6 +29,25 @@ extension BurnBarDaemonServer {
                 result: BurnBarConfigResponse(snapshot: snapshot)
             )
             return encode(response)
+        case .linuxOnboardingAction:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarLinuxOnboardingActionRequest>.self,
+                from: requestData
+            )
+            let response = BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await linuxOnboardingService.perform(typedRequest.params)
+            )
+            return encode(response)
+        case .linuxOnboardingReset:
+            let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+            let response = BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await linuxOnboardingService.reset()
+            )
+            return encode(response)
         case .providerCredentialSlotUpsert:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderCredentialSlotUpsertRequest>.self,

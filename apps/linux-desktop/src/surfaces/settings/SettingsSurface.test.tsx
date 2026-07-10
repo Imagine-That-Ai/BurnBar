@@ -103,7 +103,10 @@ function bridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
     }),
     notificationCommand: async (command) => ({ command, ok: true, message: `${command} ok` }),
     sessionEnv: async () => ({}),
-    ...overrides
+    ...overrides,
+    onboardingSnapshot: overrides.onboardingSnapshot ?? bridgeStubDefaults.onboardingSnapshot,
+    onboardingAction: overrides.onboardingAction ?? bridgeStubDefaults.onboardingAction,
+    onboardingReset: overrides.onboardingReset ?? bridgeStubDefaults.onboardingReset
   };
 }
 
@@ -188,14 +191,14 @@ describe('SettingsSurface', () => {
     expect(useShellStore.getState().route).toBe('overview');
   });
 
-  it('General pane exposes appearance controls and onboarding wizard', () => {
-    useShellStore.setState({ fixtureMode: true });
+  it('General pane exposes appearance controls and daemon-owned onboarding wizard', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: bridge(), bridgeReady: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole('button', { name: /^General/i }));
     expect(screen.getByRole('radiogroup', { name: 'Color scheme' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
-    expect(screen.getByText(/Step 1 of/i)).toBeTruthy();
+    expect(await screen.findByText(/Step 1 of/i)).toBeTruthy();
   });
 
   it('sidebar search filters sections', () => {

@@ -18,6 +18,11 @@ import {
   RUNTIME_CAPABILITY_IDS,
   type RuntimeCapabilityManifest
 } from '../runtimeCapabilities.js';
+import {
+  defaultLinuxOnboardingSnapshot,
+  type LinuxOnboardingActionRequest,
+  type LinuxOnboardingSnapshot
+} from '../onboardingStore.js';
 
 // Shared honest-empty defaults for full-shape LinuxShellBridge test mocks.
 // Each lane that extends the bridge contract adds its members here once,
@@ -110,6 +115,16 @@ export const emptyComputerUsePanicHalt = (): Promise<ComputerUsePanicHaltResult>
     source: 'hotkey'
   });
 
+export const emptyOnboardingSnapshot = (): Promise<LinuxOnboardingSnapshot> =>
+  Promise.resolve(defaultLinuxOnboardingSnapshot());
+
+export const emptyOnboardingAction = (
+  _request: LinuxOnboardingActionRequest
+): Promise<LinuxOnboardingSnapshot> => Promise.resolve(defaultLinuxOnboardingSnapshot());
+
+export const emptyOnboardingReset = (): Promise<LinuxOnboardingSnapshot> =>
+  Promise.resolve(defaultLinuxOnboardingSnapshot());
+
 export const makeAvailableRuntimeCapabilityManifest = (): RuntimeCapabilityManifest => ({
     schemaVersion: 1,
     catalogVersion: 'test',
@@ -146,6 +161,9 @@ export const availableRuntimeCapabilities = (): Promise<RuntimeCapabilityManifes
   Promise.resolve(makeAvailableRuntimeCapabilityManifest());
 
 export const bridgeStubDefaults = {
+  onboardingSnapshot: emptyOnboardingSnapshot,
+  onboardingAction: emptyOnboardingAction,
+  onboardingReset: emptyOnboardingReset,
   runtimeCapabilities: availableRuntimeCapabilities,
   gatewayProbe: emptyGatewayProbe,
   gatewayChatStream: emptyGatewayChatStream,

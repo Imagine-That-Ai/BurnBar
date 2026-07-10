@@ -5,6 +5,11 @@ import {
   type RuntimeCapabilityManifest
 } from './runtimeCapabilities.js';
 import { ENTITLEMENT_DOC_IDS, evaluateEntitlement } from '@openburnbar/entitlements';
+import {
+  decodeLinuxOnboardingSnapshot,
+  type LinuxOnboardingActionRequest,
+  type LinuxOnboardingSnapshot
+} from './onboardingStore.js';
 
 // ─────────────────────────── P01: usage summary ───────────────────────────
 
@@ -512,6 +517,9 @@ export interface LinuxShellBridge {
   measurePerfOperation(
     name: string
   ): Promise<{ name: string; ms: number; source: string; ok: boolean; detail?: string }>;
+  onboardingSnapshot(): Promise<LinuxOnboardingSnapshot>;
+  onboardingAction(request: LinuxOnboardingActionRequest): Promise<LinuxOnboardingSnapshot>;
+  onboardingReset(): Promise<LinuxOnboardingSnapshot>;
 
   // P01–P11 lane extensions — each maps the raw daemon `result` JSON to a typed shape.
   usageSummary(): Promise<UsageSummary>;
@@ -1724,6 +1732,14 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         ok: boolean;
         detail?: string;
       }>('measure_perf_operation', { name }),
+    onboardingSnapshot: async () =>
+      decodeLinuxOnboardingSnapshot(await invoke<RawJsonValue>('onboarding_snapshot')),
+    onboardingAction: async (request) =>
+      decodeLinuxOnboardingSnapshot(
+        await invoke<RawJsonValue>('onboarding_action', { request })
+      ),
+    onboardingReset: async () =>
+      decodeLinuxOnboardingSnapshot(await invoke<RawJsonValue>('onboarding_reset')),
 
     // P01 — daemon.usage.recent → aggregated summary
     usageSummary: async () => {

@@ -28,8 +28,8 @@ frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
 and a runtime probe that exposes the route only when the daemon can support it.
 It is still **unproven as a parity outcome** until a real Linux-to-macOS/mobile
 two-device matrix passes. The largest remaining functional gaps are complete
-system Computer Use capture/execution, transactional onboarding, account/cloud/
-device workflows, chat and session depth, global text expansion, and richer
+system Computer Use capture/execution, provider/auth/portal completion inside
+transactional onboarding, account/cloud/device workflows, chat and session depth, global text expansion, and richer
 Linux-native shell integrations. The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
 signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
@@ -242,7 +242,7 @@ required gates and were not made green by the Ed25519 result.
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
 | P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | One 15-row Linux path registry now drives shell discovery copy and is contract-tested against Swift; the full macOS/Linux normalized parser corpus remains unproven | Partial | High |
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
-| P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Capability-aware repair surface exists, but provider/auth/permission steps are still not a complete transactional setup | Partial | High |
+| P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete | Partial | High |
 | P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
 | P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Status/checkout projection; browser auth must happen elsewhere; preview actions inert | Partial | High |
 | P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Cloud/trusted-device mutation RPCs explicitly absent | Partial | High |
@@ -531,6 +531,29 @@ hard-disabling the route.
   migration tests.
 
 ### GAP-008 - Replace informational onboarding with transactional setup
+
+**Implementation update (2026-07-10): authority foundation complete; end-to-end
+setup remains partial.** Linux onboarding no longer trusts browser completion.
+The daemon owns a schema-versioned atomic state file with `0600` permissions in
+a daemon-enforced `0700` support directory,
+derives completion from fixed required/optional invariants, rejects future-step
+mutation and required-step skips, and exposes capability-scoped
+`snapshot`/`action`/`reset` RPCs through narrow Tauri commands. Required probes
+now prove authenticated daemon reachability, perform an ephemeral approved
+Secret Service/KWallet write-read-delete cycle on Linux, verify writable XDG
+support storage, and persist explicit telemetry/cloud-sync choices. Failed probes
+remain blocked with bounded diagnostics and can retry after restart; the WebView
+cache is non-authoritative and strict decoding rejects forged completion,
+reordered requirements, and prerequisite jumps. The full native Linux manifest
+passes 98 Swift XCTest selectors and 18 Rust tests; the desktop suite passes all
+400 TypeScript/React tests plus its production bundle verifier.
+
+This does **not** close GAP-008 or P-13. Provider account connection and real log
+scan, cloud authentication, portal permission readback, tray host verification,
+update-channel verification, chat-engine selection, and first-data confirmation
+are still explicit optional acknowledgements or separate workflows. Installed
+Ubuntu/Fedora keyboard, screen-reader, restart, denial, and repair evidence also
+remains required.
 
 - **Difference:** macOS onboarding connects providers, scans, requests system
   permissions, configures chat, and gates completion. Linux advances local state
@@ -1133,7 +1156,7 @@ truth-sync, not the first time behavior is documented.
 | LNX-PKG-001 | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001 | Dual-architecture AppImage/deb/rpm construction and architecture-aware manifest | Unsigned/local x86_64 and aarch64 lifecycle green on Ubuntu/Fedora before candidate signing |
 | LNX-CHANNEL-001 | LNX-PKG-001, LNX-REL-VERIFY-001 | apt and rpm repository metadata/signing, correct AUR recipe, and a portal-safe Flatpak channel | Each declared channel installs the correct architecture and verifies repository/package metadata; unpromoted channels are explicitly labeled |
 | LNX-EVT-001 | LNX-CAP-001 | Daemon subscriptions, cadence, cancellable IPC, supervisor, recovery, migrations | Kill/stall/suspend/offline tests recover without stale or frozen UI |
-| LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Transactional onboarding with readback and repair | A clean user cannot finish required setup while prerequisites are missing |
+| LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes | A clean user cannot finish required setup while any declared required prerequisite is missing |
 | LNX-AUTH-001 | LNX-SEC-001, LNX-IPC-001 | PKCE/device auth, membership, App Check, sync, trusted devices, safe billing callbacks | Full sign-in/out/device/backup/restore/checkout matrix passes |
 | LNX-NATIVE-001 | LNX-CAP-001 | Tray/status window, notifications, deep links, shortcuts, startup | Repeated native workflows pass on GNOME/KDE and icon-only fallback |
 | LNX-UPD-001 | LNX-PKG-001, LNX-CHANNEL-001, LNX-NATIVE-001 | Signed check, compatibility, package/channel-native install/restart/rollback UX | Tamper/replay/arch/version tests fail; prior-version update and rollback succeed for every declared channel |

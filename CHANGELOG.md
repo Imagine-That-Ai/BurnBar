@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Daemon-owned Linux onboarding authority** - replaces browser-local completion
+  with atomic daemon state and typed snapshot/action/reset RPCs. Required steps
+  cannot be skipped or executed out of order; Linux verifies the daemon,
+  performs an ephemeral Secret Service/KWallet round trip, checks writable XDG
+  storage, persists privacy choices, supports retry/resume/reset, and rejects
+  malformed or forged completion in both Swift and TypeScript decoders.
 - **Round-4 performance sweep** — state-of-the-art throughput, latency,
   memory, and energy improvements across macOS and iOS with no feature or
   visual changes:

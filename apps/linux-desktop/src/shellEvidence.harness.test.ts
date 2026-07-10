@@ -17,7 +17,11 @@ import {
   textExpansionSafetyProof,
   tokenVisualDiff
 } from './shellEvidenceModel.js';
-import { readOnboarding, writeOnboarding } from './onboardingStore.js';
+import {
+  cacheOnboarding,
+  decodeLinuxOnboardingSnapshot,
+  readOnboarding
+} from './onboardingStore.js';
 import { PARITY_LEDGER } from './parityLedger.js';
 import { buildPetBehaviorGraph } from './petBehaviorGraph.js';
 import { detectPetTierFromEnv } from './petCompanion.js';
@@ -433,8 +437,33 @@ describe('shell evidence harness', () => {
   it('emits onboarding Linux permission path privacy copy and skip retry resume evidence', () => {
     localStorage.clear();
     const initial = readOnboarding();
-    const retry = readOnboarding();
-    const skipped = writeOnboarding({ skippedSteps: [0], step: 1, completed: false });
+    const retry = decodeLinuxOnboardingSnapshot({
+      ...initial,
+      revision: 2,
+      currentStepID: 'secret_store',
+      updatedAt: new Date().toISOString(),
+      steps: initial.steps.map((step) =>
+        step.id === 'daemon'
+          ? { ...step, state: 'verified', attemptCount: 1, detail: 'daemon verified', verifiedAt: new Date().toISOString() }
+          : step.id === 'secret_store'
+            ? { ...step, state: 'blocked', attemptCount: 1, detail: 'wallet locked' }
+            : step
+      )
+    });
+    const skipped = decodeLinuxOnboardingSnapshot({
+      ...initial,
+      revision: 5,
+      currentStepID: 'portal_input',
+      updatedAt: new Date().toISOString(),
+      steps: initial.steps.map((step) =>
+        ['daemon', 'secret_store', 'provider_paths'].includes(step.id)
+          ? { ...step, state: 'verified', attemptCount: 1, detail: `${step.id} verified`, verifiedAt: new Date().toISOString() }
+          : step.id === 'cloud_identity'
+            ? { ...step, state: 'skipped', attemptCount: 1, detail: 'deferred', verifiedAt: new Date().toISOString() }
+            : step
+      )
+    });
+    cacheOnboarding(skipped);
     const resumed = readOnboarding();
     const deniedRetryCases = failureStateCases()
       .filter((failure) => ['permission-denied', 'secret-store-unavailable', 'onboarding-incomplete'].includes(failure.id))
@@ -444,11 +473,11 @@ describe('shell evidence harness', () => {
         retryOrRecovery: failure.remediation
       }));
     expect(initial.completed).toBe(false);
-    expect(retry.step).toBe(0);
-    expect(resumed.step).toBe(skipped.step);
+    expect(retry.currentStepID).toBe('secret_store');
+    expect(resumed.currentStepID).toBe(skipped.currentStepID);
     writeEvidence('onboarding-linux-flow-evidence.json', {
       generatedAt: new Date().toISOString(),
-      method: 'onboardingStore-state-machine-plus-copy-review',
+      method: 'daemon-contract-decoder-plus-non-authoritative-cache-resume-and-copy-review',
       linuxPermissionPathPrivacyCopy: {
         daemonServiceSetup: 'AF_UNIX daemon/socket path copy plus openburnbar-cli service foreground guidance.',
         secretStoreTrust: 'Secret Service/KWallet and headless passphrase copy.',
@@ -467,10 +496,12 @@ describe('shell evidence harness', () => {
         landmarks: routeAccessibilitySnapshots().find((route) => route.route === 'onboarding')?.expectedLandmarks ?? []
       },
       restartResumeProof: {
-        storageKey: 'openburnbar.linux.onboarding.v1',
+        authority: 'daemon.onboarding.snapshot',
+        storageKey: 'openburnbar.linux.onboarding.cache.v2',
+        cacheIsAuthoritative: false,
         beforeRestart: skipped,
         afterRestart: resumed,
-        resumedSameStep: resumed.step === skipped.step && resumed.completed === false
+        resumedSameStep: resumed.currentStepID === skipped.currentStepID && resumed.completed === false
       },
       packagedScreenshots: [
         'screenshot-route-onboarding.png',

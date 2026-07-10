@@ -275,8 +275,8 @@ frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
 and a runtime probe that exposes the route only when the daemon can support it.
 It is still <strong>unproven as a parity outcome</strong> until a real Linux-to-macOS/mobile
 two-device matrix passes. The largest remaining functional gaps are complete
-system Computer Use capture/execution, transactional onboarding, account/cloud/
-device workflows, chat and session depth, global text expansion, and richer
+system Computer Use capture/execution, provider/auth/portal completion inside
+transactional onboarding, account/cloud/device workflows, chat and session depth, global text expansion, and richer
 Linux-native shell integrations. The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
 signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
@@ -729,7 +729,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-13</td>
 <td>Onboarding</td>
 <td>Provider connection, scan, permissions, chat engine, recovery, completion gates</td>
-<td>Capability-aware repair surface exists, but provider/auth/permission steps are still not a complete transactional setup</td>
+<td>Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -1300,6 +1300,27 @@ macOS and Linux; every declared provider has path, parser, empty, error, and
 migration tests.</li>
 </ul>
 <h3>GAP-008 - Replace informational onboarding with transactional setup</h3>
+<p><strong>Implementation update (2026-07-10): authority foundation complete; end-to-end
+setup remains partial.</strong> Linux onboarding no longer trusts browser completion.
+The daemon owns a schema-versioned atomic state file with <code>0600</code> permissions in
+a daemon-enforced <code>0700</code> support directory,
+derives completion from fixed required/optional invariants, rejects future-step
+mutation and required-step skips, and exposes capability-scoped
+<code>snapshot</code>/<code>action</code>/<code>reset</code> RPCs through narrow Tauri commands. Required probes
+now prove authenticated daemon reachability, perform an ephemeral approved
+Secret Service/KWallet write-read-delete cycle on Linux, verify writable XDG
+support storage, and persist explicit telemetry/cloud-sync choices. Failed probes
+remain blocked with bounded diagnostics and can retry after restart; the WebView
+cache is non-authoritative and strict decoding rejects forged completion,
+reordered requirements, and prerequisite jumps. The full native Linux manifest
+passes 98 Swift XCTest selectors and 18 Rust tests; the desktop suite passes all
+400 TypeScript/React tests plus its production bundle verifier.</p>
+<p>This does <strong>not</strong> close GAP-008 or P-13. Provider account connection and real log
+scan, cloud authentication, portal permission readback, tray host verification,
+update-channel verification, chat-engine selection, and first-data confirmation
+are still explicit optional acknowledgements or separate workflows. Installed
+Ubuntu/Fedora keyboard, screen-reader, restart, denial, and repair evidence also
+remains required.</p>
 <ul>
 <li><strong>Difference:</strong> macOS onboarding connects providers, scans, requests system
 permissions, configures chat, and gates completion. Linux advances local state
@@ -2036,8 +2057,8 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-ONB-001</td>
 <td>LNX-SEC-001, LNX-RUN-001, LNX-CAP-001</td>
-<td>Transactional onboarding with readback and repair</td>
-<td>A clean user cannot finish required setup while prerequisites are missing</td>
+<td>Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes</td>
+<td>A clean user cannot finish required setup while any declared required prerequisite is missing</td>
 </tr>
 <tr>
 <td>LNX-AUTH-001</td>

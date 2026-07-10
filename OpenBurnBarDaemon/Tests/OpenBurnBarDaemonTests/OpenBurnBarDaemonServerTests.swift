@@ -36,6 +36,67 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: socketPath))
     }
 
+    func testLinuxOnboardingSnapshotActionAndResetRoundTripOverSocket() async throws {
+        let socketPath = makeSocketPath(name: "linux-onboarding")
+        let stateURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-onboarding-rpc-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("state.json", isDirectory: false)
+        let onboardingService = BurnBarLinuxOnboardingService(
+            stateURL: stateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            daemonProbe: { "daemon RPC verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerPathsProbe: { "provider paths verified" }
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            linuxOnboardingService: onboardingService
+        )
+
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let initial: BurnBarRPCResponseEnvelope<BurnBarLinuxOnboardingSnapshot> = try sendRequest(
+            BurnBarRPCRequestEnvelope(
+                id: "onboarding-snapshot",
+                method: .linuxOnboardingSnapshot,
+                authToken: "test-token"
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(initial.error)
+        XCTAssertEqual(initial.result?.currentStepID, .daemon)
+
+        let action: BurnBarRPCResponseEnvelope<BurnBarLinuxOnboardingSnapshot> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "onboarding-action",
+                method: .linuxOnboardingAction,
+                authToken: "test-token",
+                params: BurnBarLinuxOnboardingActionRequest(stepID: .daemon, action: .verify)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(action.error)
+        XCTAssertEqual(action.result?.currentStepID, .secretStore)
+        XCTAssertEqual(action.result?.steps.first?.state, .verified)
+
+        let reset: BurnBarRPCResponseEnvelope<BurnBarLinuxOnboardingSnapshot> = try sendRequest(
+            BurnBarRPCRequestEnvelope(
+                id: "onboarding-reset",
+                method: .linuxOnboardingReset,
+                authToken: "test-token"
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(reset.error)
+        XCTAssertEqual(reset.result?.currentStepID, .daemon)
+        XCTAssertEqual(reset.result?.steps.allSatisfy { $0.state == .pending }, true)
+    }
+
     func testDaemonRemovesStaleSocketBeforeBinding() async throws {
         let socketPath = makeSocketPath(name: "stale")
         let staleSocket = try makeStaleSocket(at: socketPath)
