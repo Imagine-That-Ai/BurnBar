@@ -45,6 +45,7 @@ public actor BurnBarDaemonServer {
     let phoneControlPinStore: DaemonPhoneKeyPinStore?
     let linuxOnboardingService: BurnBarLinuxOnboardingService
     let subscriptionService: BurnBarSubscriptionService
+    let providerExternalAuthService: any BurnBarProviderExternalAuthServing
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -90,7 +91,8 @@ public actor BurnBarDaemonServer {
         localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil,
         phoneControlPinStore: DaemonPhoneKeyPinStore? = nil,
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
-        subscriptionService: BurnBarSubscriptionService? = nil
+        subscriptionService: BurnBarSubscriptionService? = nil,
+        providerExternalAuthService: (any BurnBarProviderExternalAuthServing)? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -103,6 +105,7 @@ public actor BurnBarDaemonServer {
         self.subscriptionService = subscriptionService ?? BurnBarSubscriptionService(
             daemonVersion: configuration.daemonVersion
         )
+        self.providerExternalAuthService = providerExternalAuthService ?? BurnBarProviderExternalAuthService()
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -673,6 +676,7 @@ public actor BurnBarDaemonServer {
                 )
             case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
                  .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
+                 .providerExternalAuthStart, .providerExternalAuthStatus, .providerExternalAuthCancel,
                  .providerModelVariantUpsert, .providerModelVariantRemove,
                  .providerModelAliasUpsert, .providerModelAliasRemove,
                  .providerCustomModelUpsert, .providerCustomModelRemove,

@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 120,
+  "methodCount": 123,
   "methods": [
     {
       "id": "approval.respond",
@@ -870,6 +870,36 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
       "result": "Codable response for daemon.provider.custom_model.upsert",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.provider.external_auth.cancel",
+      "caseName": "providerExternalAuthCancel",
+      "domain": "config",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarProviderExternalAuthFlowRequest",
+      "result": "BurnBarProviderExternalAuthResponse",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.provider.external_auth.start",
+      "caseName": "providerExternalAuthStart",
+      "domain": "config",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarProviderExternalAuthStartRequest",
+      "result": "BurnBarProviderExternalAuthResponse",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.provider.external_auth.status",
+      "caseName": "providerExternalAuthStatus",
+      "domain": "config",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarProviderExternalAuthStatusRequest",
+      "result": "BurnBarProviderExternalAuthResponse",
       "error": "BurnBarRPCError"
     },
     {

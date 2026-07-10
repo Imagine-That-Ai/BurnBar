@@ -91,6 +91,32 @@ extension BurnBarDaemonServer {
                 result: BurnBarProviderCredentialSlotMutationResponse(snapshot: snapshot)
             )
             return encode(response)
+        case .providerExternalAuthStatus:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderExternalAuthStatusRequest>.self,
+                from: requestData
+            )
+            return await providerExternalAuthResponse(id: typedRequest.id) {
+                try await providerExternalAuthService.status(typedRequest.params)
+            }
+        case .providerExternalAuthStart:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderExternalAuthStartRequest>.self,
+                from: requestData
+            )
+            return encode(BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: await providerExternalAuthService.start(typedRequest.params)
+            ))
+        case .providerExternalAuthCancel:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderExternalAuthFlowRequest>.self,
+                from: requestData
+            )
+            return await providerExternalAuthResponse(id: typedRequest.id) {
+                try await providerExternalAuthService.cancel(typedRequest.params)
+            }
         case .providerModelVariantUpsert:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderModelVariantUpsertRequest>.self,
@@ -237,6 +263,31 @@ extension BurnBarDaemonServer {
             return encode(response)
         default:
             preconditionFailure("Unhandled config RPC method: \(method.rawValue)")
+        }
+    }
+
+    private func providerExternalAuthResponse(
+        id: String,
+        operation: () async throws -> BurnBarProviderExternalAuthResponse
+    ) async -> Data {
+        do {
+            return encode(BurnBarRPCResponseEnvelope(
+                id: id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await operation()
+            ))
+        } catch BurnBarProviderExternalAuthServiceError.invalidFlow {
+            return encodeErrorResponse(
+                id: id,
+                code: BurnBarRPCErrorCode.invalidParams,
+                message: "The provider sign-in flow is not active."
+            )
+        } catch {
+            return encodeErrorResponse(
+                id: id,
+                code: BurnBarRPCErrorCode.internalError,
+                message: "The provider sign-in operation failed."
+            )
         }
     }
 }

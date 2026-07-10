@@ -1166,6 +1166,18 @@ fn call_daemon_method(
 // is still completing a successful sign-in.
 const ACCOUNT_RPC_TIMEOUT: Duration = Duration::from_secs(100);
 const MEMBERSHIP_RPC_TIMEOUT: Duration = Duration::from_secs(100);
+const PROVIDER_EXTERNAL_AUTH_RPC_TIMEOUT: Duration = Duration::from_secs(15);
+
+async fn call_provider_external_auth_daemon_method(
+    method: &'static str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        call_daemon_method_with_timeout(method, Some(params), PROVIDER_EXTERNAL_AUTH_RPC_TIMEOUT)
+    })
+    .await
+    .map_err(|error| format!("provider_external_auth_rpc_join_failed:{error}"))?
+}
 
 async fn call_account_daemon_method(
     method: &'static str,
@@ -1551,6 +1563,66 @@ fn provider_credential_slot_remove(
     call_daemon_method(
         "daemon.provider.credential_slot.remove",
         Some(serde_json::json!({ "providerID": provider_id, "slotID": slot_id })),
+    )
+}
+
+#[tauri::command]
+async fn provider_external_auth_status(
+    provider_id: String,
+    auth_method_id: Option<String>,
+    flow_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let (method, params) = provider_external_auth_status_wire(provider_id, auth_method_id, flow_id);
+    call_provider_external_auth_daemon_method(method, params).await
+}
+
+fn provider_external_auth_status_wire(
+    provider_id: String,
+    auth_method_id: Option<String>,
+    flow_id: Option<String>,
+) -> (&'static str, serde_json::Value) {
+    (
+        "daemon.provider.external_auth.status",
+        serde_json::json!({
+            "providerID": provider_id,
+            "authMethodID": auth_method_id,
+            "flowID": flow_id
+        }),
+    )
+}
+
+#[tauri::command]
+async fn provider_external_auth_start(
+    provider_id: String,
+    auth_method_id: String,
+) -> Result<serde_json::Value, String> {
+    let (method, params) = provider_external_auth_start_wire(provider_id, auth_method_id);
+    call_provider_external_auth_daemon_method(method, params).await
+}
+
+fn provider_external_auth_start_wire(
+    provider_id: String,
+    auth_method_id: String,
+) -> (&'static str, serde_json::Value) {
+    (
+        "daemon.provider.external_auth.start",
+        serde_json::json!({
+            "providerID": provider_id,
+            "authMethodID": auth_method_id
+        }),
+    )
+}
+
+#[tauri::command]
+async fn provider_external_auth_cancel(flow_id: String) -> Result<serde_json::Value, String> {
+    let (method, params) = provider_external_auth_cancel_wire(flow_id);
+    call_provider_external_auth_daemon_method(method, params).await
+}
+
+fn provider_external_auth_cancel_wire(flow_id: String) -> (&'static str, serde_json::Value) {
+    (
+        "daemon.provider.external_auth.cancel",
+        serde_json::json!({ "flowID": flow_id }),
     )
 }
 
@@ -2650,6 +2722,9 @@ pub fn run() {
             config_update,
             provider_credential_slot_upsert,
             provider_credential_slot_remove,
+            provider_external_auth_status,
+            provider_external_auth_start,
+            provider_external_auth_cancel,
             provider_model_variant_upsert,
             provider_model_variant_remove,
             provider_model_alias_upsert,
@@ -2763,6 +2838,34 @@ mod tests {
         assert_eq!(method, "daemon.mission.cancel");
         assert_eq!(params["missionID"], "m-43");
         assert_eq!(params["actor"], "linux-shell");
+    }
+
+    #[test]
+    fn provider_external_auth_wire_contract_is_pinned() {
+        let (method, params) = provider_external_auth_status_wire(
+            "openai".into(),
+            Some("openai-codex-oauth".into()),
+            Some("flow-1".into()),
+        );
+        assert_eq!(method, "daemon.provider.external_auth.status");
+        assert_eq!(params["providerID"], "openai");
+        assert_eq!(params["authMethodID"], "openai-codex-oauth");
+        assert_eq!(params["flowID"], "flow-1");
+        assert!(params.get("providerId").is_none());
+
+        let (method, params) = provider_external_auth_start_wire(
+            "anthropic".into(),
+            "anthropic-claude-code-login".into(),
+        );
+        assert_eq!(method, "daemon.provider.external_auth.start");
+        assert_eq!(params["providerID"], "anthropic");
+        assert_eq!(params["authMethodID"], "anthropic-claude-code-login");
+
+        let (method, params) = provider_external_auth_cancel_wire("flow-1".into());
+        assert_eq!(method, "daemon.provider.external_auth.cancel");
+        assert_eq!(params["flowID"], "flow-1");
+        assert!(params.get("flowId").is_none());
+        assert!(PROVIDER_EXTERNAL_AUTH_RPC_TIMEOUT >= Duration::from_secs(10));
     }
 
     #[test]

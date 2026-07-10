@@ -54,6 +54,52 @@ describe('VAL-RPC-002 bridge behavior', () => {
     }
   };
 
+  const providerExternalAuthResponse = {
+    flow: {
+      flowID: 'provider-flow-1',
+      providerID: 'openai',
+      providerDisplayName: 'OpenAI',
+      authMethodID: 'openai-codex-oauth',
+      authMethodDisplayName: 'Sign in with ChatGPT',
+      cliDisplayName: 'Codex',
+      state: 'awaiting_user',
+      availability: 'available',
+      cliInstalled: true,
+      connected: false,
+      accountDescription: null,
+      problem: null,
+      startedAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:00:00Z',
+      expiresAt: '2026-07-10T12:05:00Z',
+      completedAt: null
+    }
+  };
+
+  it('provider external auth maps the frozen native commands without exposing raw daemon data', async () => {
+    invoke.mockResolvedValue(providerExternalAuthResponse);
+    const b = await bridge();
+    await expect(b.providerExternalAuthStatus?.({ providerId: 'openai' })).resolves.toMatchObject({
+      state: 'awaiting_user'
+    });
+    await b.providerExternalAuthStart?.({
+      providerId: 'openai',
+      authMethodId: 'openai-codex-oauth'
+    });
+    await b.providerExternalAuthCancel?.('provider-flow-1');
+    expect(invoke).toHaveBeenNthCalledWith(1, 'provider_external_auth_status', {
+      providerId: 'openai',
+      authMethodId: null,
+      flowId: null
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'provider_external_auth_start', {
+      providerId: 'openai',
+      authMethodId: 'openai-codex-oauth'
+    });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'provider_external_auth_cancel', {
+      flowId: 'provider-flow-1'
+    });
+  });
+
   it('account device auth maps the frozen native command and flow_id boundary', async () => {
     invoke.mockResolvedValue(pendingAccountResponse);
     const b = await bridge();

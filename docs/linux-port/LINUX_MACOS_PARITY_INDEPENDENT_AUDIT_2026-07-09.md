@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Account/auth foundation at `0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba`; stacked native-shell source through `132fdb9d5c2d2b4b225e32d9244bc5ec17094170` plus the current global-panic capture packet; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`. Source packets are validated but are not promoted by this text without exact-candidate environment evidence. |
+| Remediation evidence | Account/auth foundation at `0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba`; stacked native-shell source through global-panic capture commit `87288baa4b` plus the current provider external-auth packet; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`. Source packets are validated but are not promoted by this text without exact-candidate environment evidence. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -54,6 +54,13 @@ local sign-out, and a strict renderer-redacted account contract. Native Linux
 App Check attestation for protected cloud operations, membership/billing,
 cloud sync, and trusted devices remain open, so
 this implements the Linux sign-in foundation rather than closing `GAP-010`.
+The current provider-auth packet separately adds registry-validated,
+daemon-owned Codex and Claude external-login flows with typed
+start/status/cancel RPCs, a bounded private terminal launcher, local CLI auth
+verification, restart recovery, and a renderer contract that excludes tokens,
+callback URLs, paths, arguments, and terminal output. This closes the missing
+source workflow in `P-27`; installed provider-login certification and isolated
+multi-account profile switching remain open.
 The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
 signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
@@ -132,7 +139,7 @@ The correct release posture is therefore:
 | Accessibility | Route axe plus installed AT-SPI/Orca/keyboard/200% proof passed on aarch64 X11 | Repeat on GNOME Wayland, KDE Wayland, wlroots, x86_64, and high-contrast rows |
 | Performance/reliability | Matched harness, supervisor, percentiles, and nightly soak contracts implemented | Produce final same-hardware macOS/Linux candidate results and desktop-matrix runs |
 | Updates | Native signed-feed verification implemented; invalid endpoint fails honestly | Serve valid signed feed and prove package-manager update/rollback/data preservation |
-| Native shell | Single-instance/background launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, user XDG login start, fail-closed native-shell matrix evidence requirements, and verifier-produced `native-shell-evidence.json` are implemented | Certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, notification, cloud quick reply, provider external login, and lifecycle rows |
+| Native shell | Single-instance/background launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, user XDG login start, daemon-owned provider external login, fail-closed native-shell matrix evidence requirements, and verifier-produced `native-shell-evidence.json` are implemented | Certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, notification, cloud quick reply, provider external-login, and lifecycle rows |
 | Account auth | Purpose-bound device authorization, sealed custom-token delivery, daemon-owned refresh, keyring custody, renderer-redacted status, and local sign-out are source-implemented | Deploy and certify the callable/browser path; add native Linux App Check attestation for protected cloud operations, membership/billing, cloud sync, and trusted-device lifecycle |
 | Packaging | aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed `.deb` session passed | Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
 | Core product workflows | Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only | Complete onboarding, chat, sessions, account/cloud, and workspace depth |
@@ -296,7 +303,7 @@ required gates and were not made green by the Ed25519 result.
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 13 tabs; Model Proxy, Computer Use, Pets omitted; several controls read-only | Partial | Medium |
 | P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed availability check fails closed; valid public feed and package-manager install/restart/rollback proof remain open | Partial | High |
 | P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; matrix rows now require and can emit native-shell evidence; deterministic installed tray/status/deep-link/notification/login-start and XFCE/AppIndicator host-loss captures exist; account quick switch and full installed desktop matrix proof remain | Near parity | High |
-| P-27 | Notifications/deep links | Actionable notifications, provider external login, global commands, login start | Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, deterministic installed notification server/action/response/relaunch capture, and an installed X11 global panic chord reaching the daemon-wide kill path exist; cloud agent-reply listener/quick reply, provider CLI external-login workflow, rich desktop notification breadth, and cross-desktop shortcut proof remain | Partial | High |
+| P-27 | Notifications/deep links | Actionable notifications, provider external login, global commands, login start | Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, deterministic installed notification server/action/response/relaunch capture, an installed X11 global panic chord reaching the daemon-wide kill path, and a typed daemon-owned Codex/Claude external-login workflow exist; cloud agent-reply listener/quick reply, installed provider-login and rich notification breadth, multi-account provider switching, and cross-desktop shortcut proof remain | Partial | High |
 | P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed; real device outcomes remain unproven | Partial | High |
 | P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Preview-only in-app engine, plaintext localStorage, no normal composer hook | Substitute | High |
 | P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Route-contained point-cloud preview with optimistic capability detection | Partial | High |
@@ -815,9 +822,10 @@ parity.
 compact status window, source-level freedesktop notification action primitive,
 deterministic installed notification action capture, fail-closed native-shell
 matrix evidence requirements, and verifier-produced `native-shell-evidence.json`
-implemented; installed X11 global panic capture is now producer-backed; installed
-matrix certification, cloud quick reply, and provider external login remain
-open.** Rust now owns single-instance arbitration,
+implemented; installed X11 global panic capture is producer-backed; typed
+daemon-owned Codex/Claude external login is source-implemented; installed matrix
+certification, cloud quick reply, and provider-login certification remain open.**
+Rust now owns single-instance arbitration,
 background launch, an allowlisted `openburnbar://` parser,
 listener-race-safe delivery, window focus, live tray actions/facts, lazy compact
 status-window lifecycle, freedesktop notification capability/delivery commands,
@@ -841,6 +849,16 @@ rich notification-host, cross-desktop tray-host, or lifecycle certification. See
 `LINUX_NATIVE_SHELL_AUTHORITY.md` and
 `evidence/mission-003-native-shell/runtime-transcript.txt`.
 
+The provider workflow is registry-driven and admits only the Codex and Claude
+browser-login methods. The daemon owns a single five-minute flow, a private
+two-phase terminal handshake, whole-process-group cancellation, restart-safe
+verification grace, and local auth verification. Active renderer polling is
+bound to the exact provider, method, and flow. The renderer receives sanitized
+state and display metadata, never tokens, callback URLs, filesystem paths,
+arguments, stdout, or stderr.
+Default CLI credential directories are used; isolated multi-account profiles are
+not claimed by this packet.
+
 - **Difference:** macOS provides a rich menu-bar experience with live cost,
   quota, providers, quick switch, chat, freshness, and update state. Linux now
   exposes live cost/tokens, quota floor, provider count, freshness, a compact
@@ -848,16 +866,16 @@ rich notification-host, cross-desktop tray-host, or lifecycle certification. See
   membership/navigation links, source-level freedesktop notification actions,
   background launch, and a producer-backed certification gate for native-shell
   evidence. It still lacks account quick switch, cloud agent-reply quick reply,
-  installed notification breadth, cross-desktop tray-host breadth, and a
-  provider CLI external-login workflow.
+  installed notification and provider-login breadth, cross-desktop tray-host
+  breadth, and isolated provider multi-account switching.
 - **Why it matters:** repeated daily workflows, alerts, recovery, auth, and panic
   controls feel incomplete or cannot work outside the main window.
 - **Recommended solution:** certify the implemented tray, compact status
   window, typed deep links, source-level freedesktop notifications,
-  daemon-backed panic, and XDG startup across installed environments; then add
-  cloud agent-reply listener/quick reply, typed provider CLI external-login
-  start/status/cancel, and portal/global-shortcut coverage beyond the X11
-  fallback proof.
+  daemon-backed panic, XDG startup, and typed provider CLI external login across
+  installed environments; then add cloud agent-reply listener/quick reply,
+  durable isolated provider profiles/account switching, and portal/global-
+  shortcut coverage beyond the X11 fallback proof.
 - **Priority:** **High**.
 - **Implementation notes:** support GNOME's icon-only limitations; use shared
   live view models and freshness semantics; never depend on the tray as the sole
@@ -1215,7 +1233,7 @@ coverage.
 | LNX-EVT-001 | Implemented in source; installed certification pending | Bounded pull authority, restart/offline recovery, cancellation, and coalesced refresh | Native push and exact-candidate suspend/offline matrix |
 | LNX-ONB-001 | Partially implemented | Daemon-owned transactional state and required prerequisite probes | Provider scan, deployed auth, portal, tray, update, chat, and first-data readback |
 | LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, and local sign-out | Five child packets for deployment, App Check, membership, sync, and trusted devices |
-| LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, installed X11 global-panic capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud quick reply, provider external login, rich notification-host breadth, display-manager/package-manager breadth, and full installed desktop matrix evidence |
+| LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, installed X11 global-panic capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, daemon-owned typed provider external login, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud quick reply, installed provider-login and rich notification-host breadth, durable provider multi-account profiles, display-manager/package-manager breadth, and full installed desktop matrix evidence |
 | LNX-CAT-001, LNX-DIFF-001 | Open | Existing provider/path contracts retained | Shared catalog plus same-commit macOS/Linux differential proof |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
@@ -1284,7 +1302,7 @@ truth-sync, not the first time behavior is documented.
 | LNX-EVT-001 | LNX-CAP-001 | Bounded pull subscription authority, cadence, cancellation, restart/offline recovery, and coalesced route refresh are implemented; add native push and exact-candidate installed certification | Kill/stall/suspend/offline tests recover without stale or frozen UI |
 | LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes | A clean user cannot finish required setup while any declared required prerequisite is missing |
 | LNX-AUTH-001 | LNX-SEC-001, LNX-IPC-001 | Umbrella account outcome, delivered through the five child packets below; the source-level sign-in/sign-out foundation is implemented | Every auth child packet is accepted at one release head; full sign-in/out/keyring/device/backup/restore/checkout matrix passes without credential exposure |
-| LNX-NATIVE-001 | LNX-CAP-001 | Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, XDG startup, fail-closed native-shell matrix evidence requirements, and verifier-produced native-shell evidence JSON are implemented; add cloud quick reply, provider external login, and exact-candidate matrix certification | Repeated native workflows pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows |
+| LNX-NATIVE-001 | LNX-CAP-001 | Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, XDG startup, daemon-owned provider external login, fail-closed native-shell matrix evidence requirements, and verifier-produced native-shell evidence JSON are implemented; add cloud quick reply, durable provider multi-account profiles, and exact-candidate matrix certification | Repeated native workflows, including provider login success/cancel/timeout/missing-CLI/terminal-close/restart, pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows |
 | LNX-UPD-001 | LNX-PKG-001, LNX-CHANNEL-001, LNX-NATIVE-001 | Signed check, compatibility, package/channel-native install/restart/rollback UX | Tamper/replay/arch/version tests fail; prior-version update and rollback succeed for every declared channel |
 | LNX-CAT-001 | LNX-CAP-001 | Shared provider/model/parser/path manifest and golden fixtures | Equivalent normalized provider results on macOS/Linux |
 | LNX-DIFF-001 | LNX-CAT-001, LNX-CI-001 | Same-commit macOS/Linux binaries run one attested corpus and workflow suite | Mutations on either platform fail the normalized differential oracle |
@@ -1349,7 +1367,7 @@ accepted together.
 | 1 | **Trustworthy engineering baseline** | Complete in code; dual-architecture construction and aarch64 installed proof live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add installed x86_64 and prior-version package sessions without regressing strict gates |
 | 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
 | 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
-| 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, and account-auth foundations implemented; native Linux App Check attestation, membership/cloud/device depth, cloud quick reply, provider external login, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
+| 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, account-auth foundations, and typed provider external login implemented; native Linux App Check attestation, membership/cloud/device depth, cloud quick reply, provider-login installed certification/multi-account profiles, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Open/partial | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
 | 6 | **Browser automation parity** | Open/partial | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
@@ -1460,6 +1478,10 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   non-overlapping and loss-tolerant polling, persistence before signed-in
   publication, restart/refresh rotation, renderer redaction, backend-affinity
   tombstones, and atomic local sign-out.
+- [x] Source-level provider external-auth contracts admit only registry-approved
+  Codex/Claude methods, bound one flow to five minutes, preserve terminal state,
+  and redact tokens, callbacks, paths, arguments, and terminal output from the
+  renderer.
 - [ ] Sign-in/link/sign-out, state validation, expiry, refresh, local credential
   deletion, offline, and clock-skew cases pass.
 - [ ] Trusted-device and server-side credential revocation propagate securely.
@@ -1563,6 +1585,12 @@ Primary current evidence and implementation references:
 - Linux chat controls/state: `apps/linux-desktop/src/surfaces/chat/` and
   `apps/linux-desktop/src/state/chatStore.ts`
 - Linux Tauri capability/commands: `apps/linux-desktop/src-tauri/src/lib.rs`
+- Linux provider external-auth authority:
+  `docs/architecture/014-linux-provider-external-auth.md`,
+  `OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarProviderContracts.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarProviderExternalAuthService.swift`,
+  `apps/linux-desktop/src/state/providerExternalAuthStore.ts`, and
+  `apps/linux-desktop/src/surfaces/settings/ProviderExternalAuthPanel.tsx`
 - Linux Mercury runtime: `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/MercuryLinux*`,
   `apps/linux-desktop/src/state/mediaStore.ts`, and
   `apps/linux-desktop/src/surfaces/media/`

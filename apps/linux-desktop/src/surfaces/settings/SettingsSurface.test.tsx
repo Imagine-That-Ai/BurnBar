@@ -8,7 +8,10 @@ import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
 import type { LinuxShellBridge } from '../../tauriBridge.js';
+import { resetProviderExternalAuthStoreForTests } from '../../state/providerExternalAuthStore.js';
 import { SettingsSurface } from './SettingsSurface.js';
+import { SETTINGS_PROVIDER_STORAGE_KEY } from './providerSettingsNavigation.js';
+import { SETTINGS_TAB_STORAGE_KEY } from './settingsTabs.js';
 
 function resetStores(): void {
   localStorage.clear();
@@ -43,6 +46,7 @@ function resetStores(): void {
     busy: null,
     error: null
   });
+  resetProviderExternalAuthStoreForTests();
 }
 
 function bridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
@@ -282,6 +286,32 @@ describe('SettingsSurface', () => {
     fireEvent.change(screen.getByLabelText('Custom model ID'), { target: { value: 'linux-test-model' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add model' }));
     await waitFor(() => expect(providerCustomModelUpsert).toHaveBeenCalled());
+  });
+
+  it('restores quota Manage navigation to the selected provider and discovers its CLI login', async () => {
+    localStorage.setItem(SETTINGS_TAB_STORAGE_KEY, 'agents');
+    localStorage.setItem(SETTINGS_PROVIDER_STORAGE_KEY, 'openai');
+    const providerExternalAuthStatus = vi.fn(async () => ({
+      providerId: 'openai',
+      providerDisplayName: 'OpenAI',
+      authMethodId: 'openai-codex-oauth',
+      authMethodDisplayName: 'Sign in with OpenAI / Codex',
+      cliDisplayName: 'Codex',
+      state: 'idle' as const,
+      availability: 'available' as const,
+      cliInstalled: true,
+      connected: false,
+      updatedAt: '2026-07-10T12:00:00.000Z'
+    }));
+    useShellStore.setState({ bridge: bridge({ providerExternalAuthStatus }) });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+
+    render(<SettingsSurface />);
+
+    const select = await screen.findByRole('combobox', { name: /Provider/i });
+    expect((select as HTMLSelectElement).value).toBe('openai');
+    expect(await screen.findByRole('button', { name: 'Sign in with OpenAI / Codex' })).toBeTruthy();
+    expect(providerExternalAuthStatus).toHaveBeenCalledWith({ providerId: 'openai' });
   });
 
   it('wires notification config update and command RPCs', async () => {

@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux provider external login** - adds daemon-owned, registry-validated
+  start/status/cancel flows for Codex and Claude Code browser login. The Linux
+  settings UI now reports installed/connected state, opens the trusted CLI in an
+  allowlisted terminal, resumes and cancels bounded flows, refreshes provider
+  data after verified success, and routes quota Manage/Connect actions to the
+  matching provider. Tokens, callback URLs, auth files, executable/config paths,
+  argv, and terminal output never cross into renderer state.
 - **Linux native shell authority** - replaces the minimal three-command tray
   with live daemon freshness, daily cost/tokens, quota floor, connected-provider
   state, a singleton compact status window, dashboard/chat/provider/update/

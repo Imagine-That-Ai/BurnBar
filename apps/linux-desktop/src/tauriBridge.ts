@@ -160,6 +160,60 @@ export type ProviderSettings = {
   modelDisplayOverrides: ModelDisplayOverride[];
   customModels: CustomModel[];
 };
+export type ProviderExternalAuthState =
+  | 'idle'
+  | 'launching'
+  | 'awaiting_user'
+  | 'verifying'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out';
+export type ProviderExternalAuthAvailability = 'available' | 'unavailable';
+export type ProviderExternalAuthProblemCode =
+  | 'unsupported_provider'
+  | 'unsupported_auth_method'
+  | 'executable_not_found'
+  | 'terminal_unavailable'
+  | 'launch_failed'
+  | 'process_failed'
+  | 'verification_failed'
+  | 'timeout'
+  | 'cancelled'
+  | 'another_flow_active'
+  | 'daemon_restarted';
+export type ProviderExternalAuthProblem = {
+  code: ProviderExternalAuthProblemCode;
+  message: string;
+  recoverable: boolean;
+};
+export type ProviderExternalAuthStartRequest = {
+  providerId: string;
+  authMethodId: string;
+};
+export type ProviderExternalAuthStatusRequest = {
+  providerId: string;
+  authMethodId?: string;
+  flowId?: string;
+};
+export type ProviderExternalAuthFlowSnapshot = {
+  flowId?: string;
+  providerId: string;
+  providerDisplayName: string;
+  authMethodId: string;
+  authMethodDisplayName: string;
+  cliDisplayName: string;
+  state: ProviderExternalAuthState;
+  availability: ProviderExternalAuthAvailability;
+  cliInstalled: boolean;
+  connected: boolean;
+  accountDescription?: string;
+  problem?: ProviderExternalAuthProblem;
+  startedAt?: string;
+  updatedAt: string;
+  expiresAt?: string;
+  completedAt?: string;
+};
 export type DbStatus = {
   sqlcipherOk: boolean;
   migrationVersion: number;
@@ -713,6 +767,13 @@ export interface LinuxShellBridge {
     authMethodID?: string | null;
   }): Promise<ConfigSnapshot>;
   providerCredentialSlotRemove?(providerID: string, slotID: string): Promise<ConfigSnapshot>;
+  providerExternalAuthStatus?(
+    request: ProviderExternalAuthStatusRequest
+  ): Promise<ProviderExternalAuthFlowSnapshot>;
+  providerExternalAuthStart?(
+    request: ProviderExternalAuthStartRequest
+  ): Promise<ProviderExternalAuthFlowSnapshot>;
+  providerExternalAuthCancel?(flowId: string): Promise<ProviderExternalAuthFlowSnapshot>;
   providerModelVariantUpsert?(providerID: string, variant: ModelVariant): Promise<ConfigSnapshot>;
   providerModelVariantRemove?(providerID: string, variantID: string): Promise<ConfigSnapshot>;
   providerModelAliasUpsert?(providerID: string, alias: ModelAlias): Promise<ConfigSnapshot>;
@@ -1526,6 +1587,127 @@ function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
     pollIntervalSeconds: num(pick(raw, 'pollIntervalSeconds')),
     auditHash: str(pick(raw, 'auditHash')) || undefined
   };
+}
+
+const PROVIDER_EXTERNAL_AUTH_STATES: readonly ProviderExternalAuthState[] = [
+  'idle',
+  'launching',
+  'awaiting_user',
+  'verifying',
+  'succeeded',
+  'failed',
+  'cancelled',
+  'timed_out'
+];
+
+const PROVIDER_EXTERNAL_AUTH_PROBLEM_CODES: readonly ProviderExternalAuthProblemCode[] = [
+  'unsupported_provider',
+  'unsupported_auth_method',
+  'executable_not_found',
+  'terminal_unavailable',
+  'launch_failed',
+  'process_failed',
+  'verification_failed',
+  'timeout',
+  'cancelled',
+  'another_flow_active',
+  'daemon_restarted'
+];
+
+function optionalProviderAuthString(value: RawJsonValue, label: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requireString(value, label);
+}
+
+function requireProviderAuthTimestamp(value: RawJsonValue, label: string): string {
+  const timestamp = requireString(value, label);
+  if (!Number.isFinite(Date.parse(timestamp))) throw new Error(`${label} must be an ISO-8601 timestamp.`);
+  return timestamp;
+}
+
+function optionalProviderAuthTimestamp(value: RawJsonValue, label: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requireProviderAuthTimestamp(value, label);
+}
+
+function decodeProviderExternalAuthProblem(value: RawJsonValue): ProviderExternalAuthProblem | undefined {
+  if (value === undefined || value === null) return undefined;
+  const problem = requireObject(value, 'provider external auth problem');
+  const code = requireString(problem.code, 'provider external auth problem.code');
+  if (!PROVIDER_EXTERNAL_AUTH_PROBLEM_CODES.includes(code as ProviderExternalAuthProblemCode)) {
+    throw new Error('provider external auth problem.code is unsupported.');
+  }
+  return {
+    code: code as ProviderExternalAuthProblemCode,
+    message: requireString(problem.message, 'provider external auth problem.message'),
+    recoverable: requireBoolean(problem.recoverable, 'provider external auth problem.recoverable')
+  };
+}
+
+export function decodeProviderExternalAuthFlow(raw: RawJsonValue): ProviderExternalAuthFlowSnapshot {
+  const response = requireObject(raw, 'provider external auth response');
+  const flow = requireObject(response.flow, 'provider external auth flow');
+  const state = requireString(flow.state, 'provider external auth flow.state');
+  if (!PROVIDER_EXTERNAL_AUTH_STATES.includes(state as ProviderExternalAuthState)) {
+    throw new Error('provider external auth flow.state is unsupported.');
+  }
+  const availability = requireString(flow.availability, 'provider external auth flow.availability');
+  if (availability !== 'available' && availability !== 'unavailable') {
+    throw new Error('provider external auth flow.availability is unsupported.');
+  }
+
+  const snapshot: ProviderExternalAuthFlowSnapshot = {
+    flowId: optionalProviderAuthString(flow.flowID, 'provider external auth flow.flowID'),
+    providerId: requireString(flow.providerID, 'provider external auth flow.providerID'),
+    providerDisplayName: requireString(
+      flow.providerDisplayName,
+      'provider external auth flow.providerDisplayName'
+    ),
+    authMethodId: requireString(flow.authMethodID, 'provider external auth flow.authMethodID'),
+    authMethodDisplayName: requireString(
+      flow.authMethodDisplayName,
+      'provider external auth flow.authMethodDisplayName'
+    ),
+    cliDisplayName: requireString(flow.cliDisplayName, 'provider external auth flow.cliDisplayName'),
+    state: state as ProviderExternalAuthState,
+    availability,
+    cliInstalled: requireBoolean(flow.cliInstalled, 'provider external auth flow.cliInstalled'),
+    connected: requireBoolean(flow.connected, 'provider external auth flow.connected'),
+    accountDescription: optionalProviderAuthString(
+      flow.accountDescription,
+      'provider external auth flow.accountDescription'
+    ),
+    problem: decodeProviderExternalAuthProblem(flow.problem),
+    startedAt: optionalProviderAuthTimestamp(flow.startedAt, 'provider external auth flow.startedAt'),
+    updatedAt: requireProviderAuthTimestamp(flow.updatedAt, 'provider external auth flow.updatedAt'),
+    expiresAt: optionalProviderAuthTimestamp(flow.expiresAt, 'provider external auth flow.expiresAt'),
+    completedAt: optionalProviderAuthTimestamp(flow.completedAt, 'provider external auth flow.completedAt')
+  };
+
+  const activeStates: readonly ProviderExternalAuthState[] = ['launching', 'awaiting_user', 'verifying'];
+  const flowTerminalStates: readonly ProviderExternalAuthState[] = ['succeeded', 'cancelled', 'timed_out'];
+  if (state === 'idle' && snapshot.flowId) {
+    throw new Error('provider external auth idle state cannot carry a flowID.');
+  }
+  if ((activeStates.includes(snapshot.state) || flowTerminalStates.includes(snapshot.state)) && !snapshot.flowId) {
+    throw new Error('provider external auth non-idle state requires a flowID.');
+  }
+  if (activeStates.includes(snapshot.state) && (!snapshot.startedAt || !snapshot.expiresAt)) {
+    throw new Error('provider external auth active state requires start and expiry timestamps.');
+  }
+  if (flowTerminalStates.includes(snapshot.state) && !snapshot.completedAt) {
+    throw new Error('provider external auth terminal state requires a completion timestamp.');
+  }
+  if (snapshot.state === 'failed' && snapshot.flowId && !snapshot.completedAt) {
+    throw new Error('provider external auth failed flow requires a completion timestamp.');
+  }
+  if (snapshot.state === 'failed' && !snapshot.problem) {
+    throw new Error('provider external auth failed state requires a sanitized problem.');
+  }
+  if (snapshot.state === 'succeeded' && !snapshot.connected) {
+    throw new Error('provider external auth succeeded state requires a connected account.');
+  }
+  return snapshot;
 }
 
 function optionalAccountString(value: RawJsonValue, label: string): string | undefined {
@@ -2345,6 +2527,25 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     providerCredentialSlotRemove: async (providerID, slotID) => {
       const raw = await invoke<RawJsonValue>('provider_credential_slot_remove', { providerId: providerID, slotId: slotID });
       return snapshotFromMutation(raw);
+    },
+    providerExternalAuthStatus: async (request) => {
+      const raw = await invoke<RawJsonValue>('provider_external_auth_status', {
+        providerId: request.providerId,
+        authMethodId: request.authMethodId ?? null,
+        flowId: request.flowId ?? null
+      });
+      return decodeProviderExternalAuthFlow(raw);
+    },
+    providerExternalAuthStart: async (request) => {
+      const raw = await invoke<RawJsonValue>('provider_external_auth_start', {
+        providerId: request.providerId,
+        authMethodId: request.authMethodId
+      });
+      return decodeProviderExternalAuthFlow(raw);
+    },
+    providerExternalAuthCancel: async (flowId) => {
+      const raw = await invoke<RawJsonValue>('provider_external_auth_cancel', { flowId });
+      return decodeProviderExternalAuthFlow(raw);
     },
     providerModelVariantUpsert: async (providerID, variant) => {
       const raw = await invoke<RawJsonValue>('provider_model_variant_upsert', { providerId: providerID, variant });

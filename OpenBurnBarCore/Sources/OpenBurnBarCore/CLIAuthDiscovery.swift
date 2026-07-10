@@ -1,4 +1,9 @@
 import Foundation
+#if os(Linux)
+import Glibc
+#elseif os(macOS)
+import Darwin
+#endif
 
 // MARK: - CLI Auth State
 
@@ -71,10 +76,8 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
 /// When token-backed auth is present, only safe identity claims like name/email
 /// are extracted in-memory for UI labels.
 ///
-/// Platform note: this enum drives the Mac-side CLI auth panel. The active
-/// surface relies on Mac-only Foundation APIs (`Process`,
-/// `homeDirectoryForCurrentUser`) and the Mac-only `CLILaunchAdapter`. iOS
-/// builds (`OpenBurnBarMobile`) ship the type as a no-op so this file can
+/// Platform note: desktop builds discover local CLI state on macOS and Linux.
+/// iOS builds (`OpenBurnBarMobile`) ship the type as a no-op so this file can
 /// stay in the shared `OpenBurnBarCore` package.
 public enum CLIAuthDiscovery {
 
@@ -88,12 +91,12 @@ public enum CLIAuthDiscovery {
     /// Discovers auth state for a single CLI type.
     public static func discoverAuthState(
         for cliType: SwitcherCLIProfileType,
-        configDirectoryOverride: String? = nil
+        configDirectoryOverride: String? = nil,
+        executableURLOverride: URL? = nil
     ) -> CLIAuthInfo {
-        #if !os(macOS)
-        // iOS / non-Mac builds never run CLIs locally. Return an "unauthenticated"
-        // record so the iOS app can still surface CLI provider summaries
-        // without depending on AppKit-only Foundation APIs.
+        #if !(os(macOS) || os(Linux))
+        // Mobile builds never run CLIs locally. Return an "unauthenticated"
+        // record so the app can still surface CLI provider summaries.
         return CLIAuthInfo(
             cliType: cliType,
             isInstalled: false,
@@ -104,7 +107,7 @@ public enum CLIAuthDiscovery {
         )
         #else
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let executablePath = CLILaunchAdapter.executablePath(for: cliType)
+        let executablePath = executableURLOverride?.path ?? CLILaunchAdapter.executablePath(for: cliType)
 
         switch cliType {
         case .codex:
@@ -442,7 +445,7 @@ public enum CLIAuthDiscovery {
     }
 
     static func claudeStatusEnvironment(configDirectory: String) -> [String: String] {
-        #if os(macOS)
+        #if os(macOS) || os(Linux)
         let defaultDirectory = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude", isDirectory: true)
             .standardizedFileURL
@@ -688,24 +691,79 @@ public enum CLIAuthDiscovery {
         return json
     }
 
-    private static func runCommand(
+    private final class CommandOutputCapture: @unchecked Sendable {
+        private(set) var data = Data()
+
+        func drain(_ handle: FileHandle, limit: Int) {
+            var captured = Data()
+            while true {
+                let chunk: Data
+                do {
+                    guard let next = try handle.read(upToCount: 8 * 1_024), !next.isEmpty else { break }
+                    chunk = next
+                } catch {
+                    break
+                }
+                if captured.count < limit {
+                    captured.append(chunk.prefix(limit - captured.count))
+                }
+            }
+            data = captured
+        }
+    }
+
+    static func verificationCommandEnvironment(
+        overrides: [String: String],
+        ambient: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        let home = ambient["HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path
+        var environment: [String: String] = [
+            "HOME": home,
+            "PATH": CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: home)
+        ]
+        for key in ["LANG", "LC_ALL", "LC_CTYPE"] {
+            if let value = ambient[key], !value.isEmpty {
+                environment[key] = value
+            }
+        }
+        for key in ["CLAUDE_CONFIG_DIR", "CLAUDE_CONFIG_PATH"] {
+            if let value = overrides[key], !value.isEmpty {
+                environment[key] = value
+            }
+        }
+        return environment
+    }
+
+    static func runCommand(
         executablePath: String,
         arguments: [String],
         environment: [String: String] = [:],
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        linuxProcessGroupExecutablePath: String = "/usr/bin/setsid"
     ) -> Data? {
-        #if os(macOS)
+        #if os(macOS) || os(Linux)
         let process = Process()
+        #if os(Linux)
+        guard linuxProcessGroupExecutablePath == "/usr/bin/setsid",
+              FileManager.default.isExecutableFile(atPath: linuxProcessGroupExecutablePath) else {
+            return nil
+        }
+        let usesDedicatedProcessGroup = true
+        process.executableURL = URL(fileURLWithPath: linuxProcessGroupExecutablePath)
+        process.arguments = [executablePath] + arguments
+        #else
+        _ = linuxProcessGroupExecutablePath
+        let usesDedicatedProcessGroup = false
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
-        if !environment.isEmpty {
-            process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
-        }
+        #endif
+        process.environment = verificationCommandEnvironment(overrides: environment)
         process.standardInput = FileHandle.nullDevice
 
         let stdout = Pipe()
+        let stderr = Pipe()
         process.standardOutput = stdout
-        process.standardError = Pipe()
+        process.standardError = stderr
 
         let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { (_: Process) in
@@ -718,19 +776,105 @@ public enum CLIAuthDiscovery {
             return nil
         }
 
+        let drains = DispatchGroup()
+        let stdoutCapture = CommandOutputCapture()
+        let stderrCapture = CommandOutputCapture()
+        drains.enter()
+        DispatchQueue.global(qos: .utility).async {
+            stdoutCapture.drain(stdout.fileHandleForReading, limit: 64 * 1_024)
+            drains.leave()
+        }
+        drains.enter()
+        DispatchQueue.global(qos: .utility).async {
+            stderrCapture.drain(stderr.fileHandleForReading, limit: 0)
+            drains.leave()
+        }
+
         if semaphore.wait(timeout: .now() + timeout) == .timedOut {
-            process.terminate()
+            terminate(process, processGroup: usesDedicatedProcessGroup)
+            _ = semaphore.wait(timeout: .now() + 0.25)
+            #if os(Linux)
+            forceKillProcessGroup(process.processIdentifier)
+            #else
+            if process.isRunning {
+                forceKill(process.processIdentifier, processGroup: false)
+            }
+            #endif
+            _ = semaphore.wait(timeout: .now() + 1.0)
+            process.waitUntilExit()
+            if drains.wait(timeout: .now() + 0.5) == .timedOut {
+                try? stdout.fileHandleForReading.close()
+                try? stderr.fileHandleForReading.close()
+                _ = drains.wait(timeout: .now() + 0.5)
+            }
             return nil
         }
 
+        if drains.wait(timeout: .now() + 0.5) == .timedOut {
+            #if os(Linux)
+            if process.isRunning {
+                forceKill(process.processIdentifier, processGroup: usesDedicatedProcessGroup)
+            } else if usesDedicatedProcessGroup {
+                forceKillProcessGroup(process.processIdentifier)
+            }
+            #else
+            if process.isRunning {
+                forceKill(process.processIdentifier, processGroup: false)
+            }
+            #endif
+            try? stdout.fileHandleForReading.close()
+            try? stderr.fileHandleForReading.close()
+            guard drains.wait(timeout: .now() + 0.5) == .success else { return nil }
+        }
         guard process.terminationStatus == 0 else {
             return nil
         }
 
-        return stdout.fileHandleForReading.readDataToEndOfFile()
+        return stdoutCapture.data
         #else
-        // iOS / non-Mac targets do not run local CLIs.
+        // Mobile targets do not run local CLIs.
         return nil
+        #endif
+    }
+
+    private static func terminate(_ process: Process, processGroup: Bool) {
+        #if os(Linux)
+        if processGroup {
+            if Glibc.kill(-process.processIdentifier, SIGTERM) != 0 {
+                _ = Glibc.kill(process.processIdentifier, SIGTERM)
+            }
+        } else {
+            process.terminate()
+        }
+        #elseif os(macOS)
+        _ = processGroup
+        process.terminate()
+        #else
+        _ = process
+        _ = processGroup
+        #endif
+    }
+
+    private static func forceKill(_ processID: Int32, processGroup: Bool) {
+        #if os(Linux)
+        if processGroup, Glibc.kill(-processID, SIGKILL) == 0 {
+            return
+        }
+        _ = Glibc.kill(processID, SIGKILL)
+        #elseif os(macOS)
+        _ = processGroup
+        _ = Darwin.kill(processID, SIGKILL)
+        #else
+        _ = processID
+        _ = processGroup
+        #endif
+    }
+
+    private static func forceKillProcessGroup(_ processID: Int32) {
+        #if os(Linux)
+        _ = Glibc.kill(-processID, SIGKILL)
+        #else
+        _ = processID
         #endif
     }
 

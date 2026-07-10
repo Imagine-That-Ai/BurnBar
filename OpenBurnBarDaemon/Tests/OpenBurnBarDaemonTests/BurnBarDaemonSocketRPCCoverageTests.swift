@@ -53,4 +53,15 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             }
         }
     }
+
+    func testProviderExternalAuthMethodsUseConfigDomain() {
+        for method in [
+            BurnBarRPCMethod.providerExternalAuthStart,
+            .providerExternalAuthStatus,
+            .providerExternalAuthCancel
+        ] {
+            XCTAssertTrue(BurnBarDaemonSocketRPCCoverage.config.contains(method))
+            XCTAssertEqual(BurnBarDaemonSocketRPCCoverage.domain(for: method), "config")
+        }
+    }
 }

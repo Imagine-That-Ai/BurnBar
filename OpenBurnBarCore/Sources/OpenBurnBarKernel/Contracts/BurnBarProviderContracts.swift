@@ -1230,6 +1230,185 @@ public struct BurnBarProviderCredentialSlotMutationResponse: Codable, Hashable, 
     }
 }
 
+public struct BurnBarProviderExternalAuthStartRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let authMethodID: String
+
+    private enum CodingKeys: String, CodingKey {
+        case providerID
+        case authMethodID
+    }
+
+    public init(providerID: String, authMethodID: String) {
+        self.providerID = providerID
+        self.authMethodID = authMethodID
+    }
+}
+
+public struct BurnBarProviderExternalAuthStatusRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let authMethodID: String?
+    public let flowID: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case providerID
+        case authMethodID
+        case flowID
+    }
+
+    public init(providerID: String, authMethodID: String? = nil, flowID: String? = nil) {
+        self.providerID = providerID
+        self.authMethodID = authMethodID
+        self.flowID = flowID
+    }
+}
+
+public struct BurnBarProviderExternalAuthFlowRequest: Codable, Hashable, Sendable {
+    public let flowID: String
+
+    private enum CodingKeys: String, CodingKey {
+        case flowID
+    }
+
+    public init(flowID: String) {
+        self.flowID = flowID
+    }
+}
+
+public enum BurnBarProviderExternalAuthState: String, Codable, CaseIterable, Hashable, Sendable {
+    case idle
+    case launching
+    case awaitingUser = "awaiting_user"
+    case verifying
+    case succeeded
+    case failed
+    case cancelled
+    case timedOut = "timed_out"
+}
+
+public enum BurnBarProviderExternalAuthAvailability: String, Codable, CaseIterable, Hashable, Sendable {
+    case available
+    case unavailable
+}
+
+public enum BurnBarProviderExternalAuthProblemCode: String, Codable, CaseIterable, Hashable, Sendable {
+    case unsupportedProvider = "unsupported_provider"
+    case unsupportedAuthMethod = "unsupported_auth_method"
+    case executableNotFound = "executable_not_found"
+    case terminalUnavailable = "terminal_unavailable"
+    case launchFailed = "launch_failed"
+    case processFailed = "process_failed"
+    case verificationFailed = "verification_failed"
+    case timeout
+    case cancelled
+    case anotherFlowActive = "another_flow_active"
+    case daemonRestarted = "daemon_restarted"
+}
+
+public struct BurnBarProviderExternalAuthProblem: Codable, Hashable, Sendable {
+    public let code: BurnBarProviderExternalAuthProblemCode
+    public let message: String
+    public let recoverable: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case code
+        case message
+        case recoverable
+    }
+
+    public init(code: BurnBarProviderExternalAuthProblemCode, message: String, recoverable: Bool) {
+        self.code = code
+        self.message = message
+        self.recoverable = recoverable
+    }
+}
+
+public struct BurnBarProviderExternalAuthFlowSnapshot: Codable, Hashable, Sendable {
+    public let flowID: String?
+    public let providerID: String
+    public let providerDisplayName: String
+    public let authMethodID: String
+    public let authMethodDisplayName: String
+    public let cliDisplayName: String
+    public let state: BurnBarProviderExternalAuthState
+    public let availability: BurnBarProviderExternalAuthAvailability
+    public let cliInstalled: Bool
+    public let connected: Bool
+    public let accountDescription: String?
+    public let problem: BurnBarProviderExternalAuthProblem?
+    public let startedAt: String?
+    public let expiresAt: String?
+    public let completedAt: String?
+    public let updatedAt: String
+
+    private enum CodingKeys: String, CodingKey {
+        case flowID
+        case providerID
+        case providerDisplayName
+        case authMethodID
+        case authMethodDisplayName
+        case cliDisplayName
+        case state
+        case availability
+        case cliInstalled
+        case connected
+        case accountDescription
+        case problem
+        case startedAt
+        case expiresAt
+        case completedAt
+        case updatedAt
+    }
+
+    public init(
+        flowID: String? = nil,
+        providerID: String,
+        providerDisplayName: String,
+        authMethodID: String,
+        authMethodDisplayName: String,
+        cliDisplayName: String,
+        state: BurnBarProviderExternalAuthState,
+        availability: BurnBarProviderExternalAuthAvailability,
+        cliInstalled: Bool,
+        connected: Bool,
+        accountDescription: String? = nil,
+        problem: BurnBarProviderExternalAuthProblem? = nil,
+        startedAt: String? = nil,
+        expiresAt: String? = nil,
+        completedAt: String? = nil,
+        updatedAt: String
+    ) {
+        self.flowID = flowID
+        self.providerID = providerID
+        self.providerDisplayName = providerDisplayName
+        self.authMethodID = authMethodID
+        self.authMethodDisplayName = authMethodDisplayName
+        self.cliDisplayName = cliDisplayName
+        self.state = state
+        self.availability = availability
+        self.cliInstalled = cliInstalled
+        self.connected = connected
+        self.accountDescription = accountDescription
+        self.problem = problem
+        self.startedAt = startedAt
+        self.expiresAt = expiresAt
+        self.completedAt = completedAt
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct BurnBarProviderExternalAuthResponse: Codable, Hashable, Sendable {
+    public let flow: BurnBarProviderExternalAuthFlowSnapshot
+
+    private enum CodingKeys: String, CodingKey {
+        case flow
+    }
+
+    public init(flow: BurnBarProviderExternalAuthFlowSnapshot) {
+        self.flow = flow
+    }
+}
+
 public struct BurnBarProviderModelVariantUpsertRequest: Codable, Hashable, Sendable {
     public let providerID: String
     public let variant: BurnBarModelVariant

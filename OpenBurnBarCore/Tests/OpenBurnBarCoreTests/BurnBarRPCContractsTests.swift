@@ -23,6 +23,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .configUpdate: "daemon.config.update",
         .providerCredentialSlotUpsert: "daemon.provider.credential_slot.upsert",
         .providerCredentialSlotRemove: "daemon.provider.credential_slot.remove",
+        .providerExternalAuthStart: "daemon.provider.external_auth.start",
+        .providerExternalAuthStatus: "daemon.provider.external_auth.status",
+        .providerExternalAuthCancel: "daemon.provider.external_auth.cancel",
         .providerModelVariantUpsert: "daemon.provider.model_variant.upsert",
         .providerModelVariantRemove: "daemon.provider.model_variant.remove",
         .providerModelAliasUpsert: "daemon.provider.model_alias.upsert",
@@ -205,6 +208,138 @@ final class BurnBarRPCContractsTests: XCTestCase {
         XCTAssertNil(account["id_token"])
         XCTAssertNil(encodedSession["device_code"])
         XCTAssertNil(encodedSession["device_secret"])
+    }
+
+    func testProviderExternalAuthContractsUseStableRedactedCamelCaseWireKeys() throws {
+        let start = BurnBarProviderExternalAuthStartRequest(
+            providerID: "openai",
+            authMethodID: "openai-codex-oauth"
+        )
+        let status = BurnBarProviderExternalAuthStatusRequest(
+            providerID: "openai",
+            authMethodID: "openai-codex-oauth",
+            flowID: "123E4567-E89B-12D3-A456-426614174000"
+        )
+        let cancel = BurnBarProviderExternalAuthFlowRequest(
+            flowID: "123E4567-E89B-12D3-A456-426614174000"
+        )
+        let response = BurnBarProviderExternalAuthResponse(flow: BurnBarProviderExternalAuthFlowSnapshot(
+            flowID: cancel.flowID,
+            providerID: "openai",
+            providerDisplayName: "OpenAI",
+            authMethodID: "openai-codex-oauth",
+            authMethodDisplayName: "Sign in with OpenAI / Codex",
+            cliDisplayName: "Codex",
+            state: .awaitingUser,
+            availability: .available,
+            cliInstalled: true,
+            connected: false,
+            accountDescription: "OpenAI account",
+            startedAt: "2030-01-01T00:00:00Z",
+            expiresAt: "2030-01-01T00:05:00Z",
+            updatedAt: "2030-01-01T00:00:01Z"
+        ))
+
+        let encoder = JSONEncoder()
+        let startJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(start)) as? [String: Any]
+        )
+        let statusJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(status)) as? [String: Any]
+        )
+        let cancelJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(cancel)) as? [String: Any]
+        )
+        let responseJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoder.encode(response)) as? [String: Any]
+        )
+        let flowJSON = try XCTUnwrap(responseJSON["flow"] as? [String: Any])
+
+        XCTAssertEqual(startJSON["providerID"] as? String, "openai")
+        XCTAssertEqual(startJSON["authMethodID"] as? String, "openai-codex-oauth")
+        XCTAssertEqual(statusJSON["flowID"] as? String, cancel.flowID)
+        XCTAssertEqual(cancelJSON["flowID"] as? String, cancel.flowID)
+        XCTAssertEqual(flowJSON["state"] as? String, "awaiting_user")
+        XCTAssertEqual(flowJSON["availability"] as? String, "available")
+        XCTAssertEqual(flowJSON["cliInstalled"] as? Bool, true)
+        XCTAssertEqual(flowJSON["connected"] as? Bool, false)
+        XCTAssertEqual(flowJSON["updatedAt"] as? String, "2030-01-01T00:00:01Z")
+
+        let encodedText = String(decoding: try encoder.encode(response), as: UTF8.self).lowercased()
+        for forbidden in ["accesstoken", "refreshtoken", "secret", "executablepath", "configdirectory", "stdout", "stderr", "command", "arguments"] {
+            XCTAssertFalse(encodedText.contains(forbidden), "External-auth wire response leaked forbidden field: \(forbidden)")
+        }
+    }
+
+    func testProviderExternalAuthStatusOmitsAbsentSelectorsAndEnumsRejectUnknownValues() throws {
+        let status = BurnBarProviderExternalAuthStatusRequest(providerID: "anthropic")
+        let data = try JSONEncoder().encode(status)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(json["providerID"] as? String, "anthropic")
+        XCTAssertNil(json["authMethodID"])
+        XCTAssertNil(json["flowID"])
+        XCTAssertEqual(
+            BurnBarProviderExternalAuthState.allCases.map(\.rawValue),
+            ["idle", "launching", "awaiting_user", "verifying", "succeeded", "failed", "cancelled", "timed_out"]
+        )
+        XCTAssertEqual(
+            BurnBarProviderExternalAuthAvailability.allCases.map(\.rawValue),
+            ["available", "unavailable"]
+        )
+        XCTAssertEqual(
+            BurnBarProviderExternalAuthProblemCode.allCases.map(\.rawValue),
+            [
+                "unsupported_provider",
+                "unsupported_auth_method",
+                "executable_not_found",
+                "terminal_unavailable",
+                "launch_failed",
+                "process_failed",
+                "verification_failed",
+                "timeout",
+                "cancelled",
+                "another_flow_active",
+                "daemon_restarted"
+            ]
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                BurnBarProviderExternalAuthState.self,
+                from: Data(#""future_state""#.utf8)
+            )
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                BurnBarProviderExternalAuthProblemCode.self,
+                from: Data(#""future_problem""#.utf8)
+            )
+        )
+    }
+
+    func testProviderExternalAuthCanonPinsTypedConfigOwnedMethods() throws {
+        let expected: [String: (String, String)] = [
+            "daemon.provider.external_auth.start": (
+                "BurnBarProviderExternalAuthStartRequest",
+                "BurnBarProviderExternalAuthResponse"
+            ),
+            "daemon.provider.external_auth.status": (
+                "BurnBarProviderExternalAuthStatusRequest",
+                "BurnBarProviderExternalAuthResponse"
+            ),
+            "daemon.provider.external_auth.cancel": (
+                "BurnBarProviderExternalAuthFlowRequest",
+                "BurnBarProviderExternalAuthResponse"
+            )
+        ]
+
+        for (id, types) in expected {
+            let entry = try XCTUnwrap(BurnBarRPCIPCCanon.methods.first(where: { $0.id == id }))
+            XCTAssertEqual(entry.domain, "config")
+            XCTAssertEqual(entry.capability, "config")
+            XCTAssertEqual(entry.params, types.0)
+            XCTAssertEqual(entry.result, types.1)
+        }
     }
 
     func testControllerRuntimeSnapshotMethod_isAdditiveControllerNamespaceExtension() throws {

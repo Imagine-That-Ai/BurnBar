@@ -20,7 +20,7 @@ import AppKit
 /// - Build explicit argv from profile metadata and validated additional args
 /// - Propagate only allowlisted environment variables
 /// - Execute via Foundation Process with explicit executable and arguments
-#if os(macOS)
+#if os(macOS) || os(Linux)
 
 public enum CLILaunchAdapter {
     private struct ExecutableResolutionCacheKey: Hashable, Sendable {
@@ -935,6 +935,7 @@ public enum CLILaunchError: LocalizedError, Equatable, Sendable {
 /// A serial coordinator that ensures CLI launches are serialized,
 /// preventing duplicate committed launches under concurrent requests.
 /// Uses an actor to provide thread-safe serialization.
+#if os(macOS)
 public actor CLILaunchCoordinator {
     private var pendingLaunches: Set<String> = []
     private var lastLaunchedProfileID: String?
@@ -1739,6 +1740,7 @@ public struct CLILaunchOutcome: Equatable, Sendable {
             && lhs.attemptedProfileIDs == rhs.attemptedProfileIDs
     }
 }
+#endif
 
 // MARK: - Environment Redaction
 

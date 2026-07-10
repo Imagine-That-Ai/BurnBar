@@ -5,6 +5,7 @@ import { QuotaCard, QuotaListRow } from '../../components/QuotaCard.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useProvidersStore } from '../../state/providersStore.js';
+import { navigateToProviderSettings } from '../settings/providerSettingsNavigation.js';
 import { QuotaFilterRail } from './QuotaFilterRail.js';
 import { QuotaResetAtlas } from './QuotaResetAtlas.js';
 import { SubscriptionConstellationHero } from './SubscriptionConstellationHero.js';
@@ -145,8 +146,17 @@ export function QuotaWorkspaceSurface() {
               <ul>
                 {inactiveSlots.map((slot) => (
                   <li key={slot.id}>
-                    <span>{slot.providerLabel}</span>
-                    <span className="muted">Ready to connect</span>
+                    <span>
+                      <span>{slot.providerLabel}</span>
+                      <span className="muted">Ready to connect</span>
+                    </span>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => navigateToProviderSettings(slot.providerId)}
+                    >
+                      Connect
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -160,13 +170,21 @@ export function QuotaWorkspaceSurface() {
           ) : prefs.viewMode === 'list' ? (
             <div className="quota-list" role="list">
               {displayedEntries.map((entry) => (
-                <QuotaListRow key={entry.id} entry={entry} />
+                <QuotaListRow
+                  key={entry.id}
+                  entry={entry}
+                  onManage={() => navigateToProviderSettings(entry.providerId)}
+                />
               ))}
             </div>
           ) : (
             <div className="quota-card-grid">
               {displayedEntries.map((entry) => (
-                <QuotaCard key={entry.id} entry={entry} />
+                <QuotaCard
+                  key={entry.id}
+                  entry={entry}
+                  onManage={() => navigateToProviderSettings(entry.providerId)}
+                />
               ))}
             </div>
           )}
