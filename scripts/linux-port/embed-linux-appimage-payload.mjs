@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverBundleArtifacts, relative, repoRoot } from './lib/linux-release-common.mjs';
+import { findAppImageFilesystemOffset } from './lib/appimage-filesystem.mjs';
 
 export const requiredPayloadPaths = [
   'openburnbar-daemon',
@@ -83,9 +84,22 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
   const squash = path.join(work, 'openburnbar.squashfs');
   const candidate = `${image}.payload.tmp`;
   const appImageEnv = { ...env, APPIMAGE_EXTRACT_AND_RUN: '1' };
+  const runtimeProbe = env.OPENBURNBAR_APPIMAGE_RUNTIME_PROBE?.trim() || 'appimage';
+  if (!['appimage', 'extracted'].includes(runtimeProbe)) {
+    throw new Error(`invalid OPENBURNBAR_APPIMAGE_RUNTIME_PROBE: ${runtimeProbe}`);
+  }
   try {
-    run(image, ['--appimage-extract'], { cwd: work, env: appImageEnv });
+    const offset = findAppImageFilesystemOffset(image);
     const appDir = path.join(work, 'squashfs-root');
+    run('unsquashfs', [
+      '-quiet',
+      '-no-progress',
+      '-dest',
+      appDir,
+      '-offset',
+      String(offset),
+      image
+    ], { cwd: work, env: appImageEnv });
     requirePath(appDir, 'extracted AppImage root', 'directory');
 
     fs.mkdirSync(path.join(appDir, 'usr/bin'), { recursive: true });
@@ -106,9 +120,6 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
     });
     assertEmbeddedPayload(appDir);
 
-    const offsetText = run(image, ['--appimage-offset'], { cwd: work, env: appImageEnv }).trim();
-    const offset = Number.parseInt(offsetText, 10);
-    if (!Number.isSafeInteger(offset) || offset <= 0) throw new Error(`invalid AppImage filesystem offset: ${offsetText}`);
     run('mksquashfs', [appDir, squash, '-noappend', '-root-owned', '-comp', 'zstd', '-no-xattrs'], {
       cwd: work,
       env: appImageEnv
@@ -120,14 +131,33 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
     copyFileRange(squash, candidate);
     fs.chmodSync(candidate, 0o755);
 
-    run(candidate, ['--appimage-extract'], { cwd: verify, env: appImageEnv });
+    const candidateOffset = findAppImageFilesystemOffset(candidate);
+    if (candidateOffset !== offset) {
+      throw new Error(`AppImage runtime offset changed from ${offset} to ${candidateOffset}`);
+    }
     const verifiedRoot = path.join(verify, 'squashfs-root');
+    run('unsquashfs', [
+      '-quiet',
+      '-no-progress',
+      '-dest',
+      verifiedRoot,
+      '-offset',
+      String(candidateOffset),
+      candidate
+    ], { cwd: verify, env: appImageEnv });
     assertEmbeddedPayload(verifiedRoot);
     run(path.join(verifiedRoot, 'usr/libexec/openburnbar-daemon-launch'), ['--help'], {
       cwd: verify,
       env: { ...appImageEnv, APPDIR: verifiedRoot }
     });
-    run(candidate, ['--appimage-extract-and-run', '--version'], { cwd: verify, env: appImageEnv });
+    if (runtimeProbe === 'appimage') {
+      run(candidate, ['--appimage-extract-and-run', '--version'], { cwd: verify, env: appImageEnv });
+    } else {
+      run(path.join(verifiedRoot, 'AppRun'), ['--version'], {
+        cwd: verify,
+        env: { ...appImageEnv, APPDIR: verifiedRoot }
+      });
+    }
 
     fs.renameSync(candidate, image);
     return { appImage: image, size: fs.statSync(image).size, filesystemOffset: offset };

@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJson, releaseEvidenceDir, repoRoot, runStep, writeJson } from './lib/linux-release-common.mjs';
+import { findAppImageFilesystemOffset } from './lib/appimage-filesystem.mjs';
 
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir);
 const shardMode = process.argv.includes('--architecture-shard');
@@ -154,10 +155,33 @@ for (const artifact of closure.artifacts ?? []) {
     }
   } else if (artifact.type === 'appimage') {
     fs.chmodSync(full, 0o755);
-    const extract = runStep(full, ['--appimage-extract']);
-    steps.push(extract);
     const appDir = path.join(repoRoot, 'squashfs-root');
-    if (extract.exitCode === 0) {
+    fs.rmSync(appDir, { recursive: true, force: true });
+    let filesystemOffset = null;
+    try {
+      filesystemOffset = findAppImageFilesystemOffset(full);
+    } catch (error) {
+      steps.push({
+        command: `locate AppImage SquashFS filesystem ${artifact.architecture}`,
+        cwd: '.',
+        exitCode: 1,
+        stdout: '',
+        stderr: error.message
+      });
+    }
+    const extract = filesystemOffset === null
+      ? null
+      : runStep('unsquashfs', [
+        '-quiet',
+        '-no-progress',
+        '-dest',
+        appDir,
+        '-offset',
+        String(filesystemOffset),
+        full
+      ]);
+    if (extract) steps.push(extract);
+    if (extract?.exitCode === 0) {
       for (const requiredPath of [
         'usr/bin/openburnbar-daemon',
         'usr/libexec/openburnbar-daemon-launch',
@@ -180,9 +204,25 @@ for (const artifact of closure.artifacts ?? []) {
         }
       }));
     }
-    // --version fast-exits before any GTK init (see src-tauri run()), so it needs
-    // no display; --appimage-extract-and-run avoids the FUSE requirement in CI.
-    steps.push(runStep(full, ['--appimage-extract-and-run', '--version']));
+    // Native CI exercises the AppImage runtime. Cross-architecture local shards
+    // can explicitly probe the extracted AppRun while retaining byte-level
+    // SquashFS and payload verification above.
+    const runtimeProbe = process.env.OPENBURNBAR_APPIMAGE_RUNTIME_PROBE?.trim() || 'appimage';
+    if (runtimeProbe === 'appimage') {
+      steps.push(runStep(full, ['--appimage-extract-and-run', '--version']));
+    } else if (runtimeProbe === 'extracted' && extract?.exitCode === 0) {
+      steps.push(runStep(path.join(appDir, 'AppRun'), ['--version'], {
+        env: { ...runtimeProbeEnv(`appimage-runtime-${artifact.architecture}`), APPDIR: appDir }
+      }));
+    } else {
+      steps.push({
+        command: 'validate OPENBURNBAR_APPIMAGE_RUNTIME_PROBE',
+        cwd: '.',
+        exitCode: 1,
+        stdout: '',
+        stderr: `invalid or unavailable AppImage runtime probe: ${runtimeProbe}`
+      });
+    }
     // Remove the extraction dir so the release verifier's clean-worktree check
     // binds to the committed release commit.
     fs.rmSync(path.join(repoRoot, 'squashfs-root'), { recursive: true, force: true });
