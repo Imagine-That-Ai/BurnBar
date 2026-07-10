@@ -26,19 +26,26 @@ namespace OpenBurnBar.ComputerUse.Windows;
 
 /// <summary>Single-frame screenshot capturer backed by Windows.Graphics.Capture.</summary>
 [SupportedOSPlatform("windows10.0.19041.0")]
-public sealed class WindowsGraphicsCaptureScreenCapturer : IScreenCapturer
+public sealed class WindowsGraphicsCaptureScreenCapturer : IScreenCapturer, IDisposable
 {
     private readonly GraphicsCaptureItem _item;
     private readonly IDirect3DDevice _device;
+    private readonly bool _ownsResources;
+    private bool _disposed;
 
-    public WindowsGraphicsCaptureScreenCapturer(GraphicsCaptureItem item, IDirect3DDevice device)
+    public WindowsGraphicsCaptureScreenCapturer(
+        GraphicsCaptureItem item,
+        IDirect3DDevice device,
+        bool ownsResources = false)
     {
         _item = item ?? throw new ArgumentNullException(nameof(item));
         _device = device ?? throw new ArgumentNullException(nameof(device));
+        _ownsResources = ownsResources;
     }
 
     public async Task<ScreenCapture> CaptureAsync(CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var completion = new TaskCompletionSource<Direct3D11CaptureFrame>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -77,6 +84,20 @@ public sealed class WindowsGraphicsCaptureScreenCapturer : IScreenCapturer
         {
             framePool.FrameArrived -= OnFrameArrived;
             session.Dispose();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        if (_ownsResources)
+        {
+            (_device as IDisposable)?.Dispose();
         }
     }
 

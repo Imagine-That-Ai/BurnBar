@@ -232,6 +232,13 @@ public sealed class MacInputAction : ComputerUseAction
 
     public IReadOnlyList<string>? Modifiers { get; }
 
+    /// <summary>
+    /// True for actions whose effect must not be same-integrity bypassable. The
+    /// Windows dispatcher requires a signed virtual-HID route for these.
+    /// </summary>
+    public bool RequiresSignedDriver => ActionKind is
+        Kind.Click or Kind.Type or Kind.Key or Kind.Shortcut or Kind.DragDrop or Kind.PointerClick;
+
     public override ActionCategory Category => ActionCategory.MacInput;
 
     public override string AuditKind => $"mac.input.{KindWire(ActionKind)}";

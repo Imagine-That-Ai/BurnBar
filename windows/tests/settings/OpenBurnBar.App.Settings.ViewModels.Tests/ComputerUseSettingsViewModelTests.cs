@@ -16,6 +16,26 @@ public sealed class ComputerUseSettingsViewModelTests
         public AuditActionResult Notarize(string sessionId) => AuditActionResult.Fail("ots down");
     }
 
+    private sealed class RecordingSessionService(bool succeeds = true) : IComputerUseSessionService
+    {
+        public bool SupportsNonBypassableInput => true;
+
+        public int Starts { get; private set; }
+        public int Ends { get; private set; }
+        public ComputerUseTrustMode? TrustMode { get; private set; }
+
+        public ComputerUseSessionStartResult StartSession(ComputerUseTrustMode trustMode, DateTimeOffset startedAt)
+        {
+            Starts++;
+            TrustMode = trustMode;
+            return succeeds
+                ? ComputerUseSessionStartResult.Started("windows-session-1")
+                : ComputerUseSessionStartResult.Fail("host unavailable");
+        }
+
+        public void EndSession() => Ends++;
+    }
+
     [Fact]
     public void Defaults_MatchTheSwiftSurface()
     {
@@ -101,14 +121,35 @@ public sealed class ComputerUseSettingsViewModelTests
     public void StartSession_RecordsTheInjectedClock()
     {
         var when = new DateTimeOffset(2026, 7, 6, 12, 0, 0, TimeSpan.Zero);
-        var vm = new ComputerUseSettingsViewModel(now: () => when);
+        var session = new RecordingSessionService();
+        var vm = new ComputerUseSettingsViewModel(session: session, now: () => when)
+        {
+            LiveTrustMode = ComputerUseTrustMode.Step,
+        };
         vm.StartSession();
         Assert.True(vm.IsSessionActive);
         Assert.Equal(when, vm.SessionStartedAt);
+        Assert.Equal("windows-session-1", vm.ActiveSessionId);
+        Assert.Equal(ComputerUseTrustMode.Step, session.TrustMode);
 
         vm.EndSession();
         Assert.False(vm.IsSessionActive);
         Assert.Null(vm.SessionStartedAt);
+        Assert.Null(vm.ActiveSessionId);
+        Assert.Equal(1, session.Ends);
+    }
+
+    [Fact]
+    public void StartSession_DoesNotShowActiveWhenPlatformHostFails()
+    {
+        var session = new RecordingSessionService(succeeds: false);
+        var vm = new ComputerUseSettingsViewModel(session: session);
+
+        vm.StartSession();
+
+        Assert.False(vm.IsSessionActive);
+        Assert.Null(vm.ActiveSessionId);
+        Assert.Equal("host unavailable", vm.SessionStatusMessage);
     }
 
     [Fact]

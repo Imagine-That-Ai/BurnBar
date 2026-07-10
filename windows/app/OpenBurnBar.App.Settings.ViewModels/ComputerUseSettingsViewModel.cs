@@ -76,6 +76,37 @@ public sealed class NoopComputerUseAuditService : IComputerUseAuditService
     public AuditActionResult Notarize(string sessionId) => AuditActionResult.Ok("Audit chain notarized.");
 }
 
+/// <summary>Result of asking the platform host to open a real Computer Use session.</summary>
+public sealed record ComputerUseSessionStartResult(bool Success, string? SessionId, string Message)
+{
+    public static ComputerUseSessionStartResult Started(string sessionId) => new(true, sessionId, "Session started.");
+
+    public static ComputerUseSessionStartResult Fail(string message) => new(false, null, message);
+}
+
+/// <summary>Owns the platform adapters and audit lifecycle for a live system session.</summary>
+public interface IComputerUseSessionService
+{
+    bool SupportsNonBypassableInput { get; }
+
+    ComputerUseSessionStartResult StartSession(ComputerUseTrustMode trustMode, DateTimeOffset startedAt);
+
+    void EndSession();
+}
+
+/// <summary>In-memory success host used by portable view-model tests.</summary>
+public sealed class NoopComputerUseSessionService : IComputerUseSessionService
+{
+    public bool SupportsNonBypassableInput => true;
+
+    public ComputerUseSessionStartResult StartSession(ComputerUseTrustMode trustMode, DateTimeOffset startedAt) =>
+        ComputerUseSessionStartResult.Started("in-memory-session");
+
+    public void EndSession()
+    {
+    }
+}
+
 /// <summary>Persists the Computer Use permissions-onboarding completion flag.</summary>
 public interface IComputerUsePermissionsStore
 {
@@ -94,6 +125,7 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     private readonly IAccessibilityProbe _accessibility;
     private readonly IComputerUseAuditService _audit;
     private readonly IComputerUsePermissionsStore _permissions;
+    private readonly IComputerUseSessionService _session;
     private readonly Func<DateTimeOffset> _now;
 
     private ComputerUseSettingsSection _section = ComputerUseSettingsSection.Setup;
@@ -101,6 +133,8 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     private ComputerUseTrustMode _liveTrustMode = ComputerUseTrustMode.Manual;
     private bool _isSessionActive;
     private DateTimeOffset? _sessionStartedAt;
+    private string? _activeSessionId;
+    private string _sessionStatusMessage = string.Empty;
 
     private string _auditSessionId = string.Empty;
     private bool _auditIncludeScreenshots = true;
@@ -112,11 +146,13 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
         IAccessibilityProbe? accessibility = null,
         IComputerUseAuditService? audit = null,
         IComputerUsePermissionsStore? permissions = null,
+        IComputerUseSessionService? session = null,
         Func<DateTimeOffset>? now = null)
     {
         _accessibility = accessibility ?? new StaticAccessibilityProbe(false);
         _audit = audit ?? new NoopComputerUseAuditService();
         _permissions = permissions ?? new InMemoryComputerUsePermissionsStore();
+        _session = session ?? new NoopComputerUseSessionService();
         _now = now ?? (() => DateTimeOffset.UtcNow);
         RefreshReadiness();
     }
@@ -136,7 +172,10 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     }
 
     /// <summary>Whether the tab considers Computer Use ready to run on this machine.</summary>
-    public bool IsReady => _accessibilityTrusted;
+    public bool IsReady => _accessibilityTrusted && _session.SupportsNonBypassableInput;
+
+    /// <summary>Whether a signed virtual-HID input route is installed and available.</summary>
+    public bool SupportsNonBypassableInput => _session.SupportsNonBypassableInput;
 
     /// <summary>Whether the permissions onboarding has been completed at least once.</summary>
     public bool PermissionsOnboardingCompleted => _permissions.OnboardingCompleted;
@@ -173,6 +212,16 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     /// <summary>When the active session started (null when idle).</summary>
     public DateTimeOffset? SessionStartedAt => _sessionStartedAt;
 
+    /// <summary>The host-generated audit session id while a session is active.</summary>
+    public string? ActiveSessionId => _activeSessionId;
+
+    /// <summary>Last platform session lifecycle result for the settings surface.</summary>
+    public string SessionStatusMessage
+    {
+        get => _sessionStatusMessage;
+        private set => Set(ref _sessionStatusMessage, value);
+    }
+
     /// <summary>Start a Computer Use session (records the start time from the injected clock).</summary>
     public void StartSession()
     {
@@ -181,7 +230,17 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
             return;
         }
 
-        _sessionStartedAt = _now();
+        DateTimeOffset startedAt = _now();
+        ComputerUseSessionStartResult result = _session.StartSession(_liveTrustMode, startedAt);
+        SessionStatusMessage = result.Message;
+        if (!result.Success)
+        {
+            return;
+        }
+
+        _sessionStartedAt = startedAt;
+        _activeSessionId = result.SessionId;
+        OnPropertyChanged(nameof(ActiveSessionId));
         IsSessionActive = true;
     }
 
@@ -193,7 +252,11 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
             return;
         }
 
+        _session.EndSession();
         _sessionStartedAt = null;
+        _activeSessionId = null;
+        OnPropertyChanged(nameof(ActiveSessionId));
+        SessionStatusMessage = "Session ended.";
         IsSessionActive = false;
     }
 

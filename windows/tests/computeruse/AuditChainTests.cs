@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Text;
 using OpenBurnBar.ComputerUse.Core.Audit;
 using OpenBurnBar.ComputerUse.Core.Crypto;
@@ -224,5 +225,45 @@ public sealed class AuditChainTests : IDisposable
 
         var ex = Assert.Throws<ComputerUseAuditLogger.AuditLoggerException>(() => logger.Append(badParent));
         Assert.Equal(ComputerUseAuditLogger.AuditLoggerError.ParentHashMismatch, ex.Reason);
+    }
+
+    [Fact]
+    public void ArchiveValidationPinsHeadAndExportExcludesScreenshotsByDefault()
+    {
+        var (_, _, _, logger) = BuildChain(2);
+        string screenshot = Path.Combine(logger.Directory, "screenshots", "private.png");
+        File.WriteAllBytes(screenshot, new byte[] { 1, 2, 3 });
+        var archiveService = new ComputerUseAuditArchive(_dir);
+
+        AuditArchiveResult validation = archiveService.Validate("sess-1");
+        AuditArchiveResult exported = archiveService.Export("sess-1", includeScreenshots: false);
+
+        Assert.True(validation.Success, validation.Message);
+        Assert.Equal(2, validation.EntryCount);
+        Assert.True(exported.Success, exported.Message);
+        Assert.NotNull(exported.ArtifactPath);
+        using ZipArchive archive = ZipFile.OpenRead(exported.ArtifactPath!);
+        Assert.Contains(archive.Entries, entry => entry.FullName == "manifest.json");
+        Assert.Contains(archive.Entries, entry => entry.FullName == "chain.jsonl");
+        Assert.DoesNotContain(archive.Entries, entry => entry.FullName.StartsWith("screenshots/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArchiveValidationRejectsLastEntryTamperAndPathTraversal()
+    {
+        var (_, _, _, logger) = BuildChain(2);
+        string chainPath = Path.Combine(logger.Directory, "chain.jsonl");
+        File.WriteAllText(
+            chainPath,
+            File.ReadAllText(chainPath).Replace("sum-1", "SUM-1", StringComparison.Ordinal));
+        var archiveService = new ComputerUseAuditArchive(_dir);
+
+        AuditArchiveResult tampered = archiveService.Validate("sess-1");
+        AuditArchiveResult traversal = archiveService.Validate("../sess-1");
+
+        Assert.False(tampered.Success);
+        Assert.Contains("HeadHashMismatch", tampered.Message, StringComparison.Ordinal);
+        Assert.False(traversal.Success);
+        Assert.Contains("invalid", traversal.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

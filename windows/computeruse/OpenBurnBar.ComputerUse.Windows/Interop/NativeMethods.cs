@@ -24,6 +24,7 @@ internal static class NativeMethods
     internal const uint MouseEventFLeftUp = 0x0004;
     internal const uint MouseEventFRightDown = 0x0008;
     internal const uint MouseEventFRightUp = 0x0010;
+    internal const uint MouseEventFHWheel = 0x01000;
     internal const uint MouseEventFWheel = 0x0800;
     internal const uint MouseEventFAbsolute = 0x8000;
     internal const uint MouseEventFVirtualDesk = 0x4000;
@@ -31,6 +32,8 @@ internal static class NativeMethods
     internal const uint KeyEventFKeyUp = 0x0002;
     internal const uint KeyEventFUnicode = 0x0004;
 
+    internal const int SmXVirtualScreen = 76;
+    internal const int SmYVirtualScreen = 77;
     internal const int SmCxVirtualScreen = 78;
     internal const int SmCyVirtualScreen = 79;
     internal const int WheelDelta = 120;
@@ -92,4 +95,7 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    internal static extern short VkKeyScanW(char ch);
 }

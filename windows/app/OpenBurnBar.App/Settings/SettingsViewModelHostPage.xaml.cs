@@ -26,7 +26,7 @@ public sealed partial class SettingsViewModelHostPage : Page
     private static readonly HashSet<string> CommandNames = new(StringComparer.Ordinal)
     {
         "CopyEndpoint", "SubmitEmail", "ClearError", "UpgradeToPremium", "SignOut",
-        "DeleteAccount", "TriggerBackup", "Summon", "StartSession", "StopSession",
+        "DeleteAccount", "TriggerBackup", "Summon", "StartSession", "EndSession",
         "RefreshReadiness", "SaveDraft", "CancelDraft", "NewDraft",
     };
 

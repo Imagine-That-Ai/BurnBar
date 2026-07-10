@@ -152,6 +152,8 @@
     <ProjectReference Include="../../pal/overlay/OpenBurnBar.Pal.Overlay.csproj" />
     <ProjectReference Include="../../pal/ipc/OpenBurnBar.Pal.Ipc.csproj" />
     <ProjectReference Include="../../pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj" />
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Windows/OpenBurnBar.ComputerUse.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>
