@@ -31,6 +31,18 @@ Linux is a distinct, permanently lower-assurance principal:
   App Check presence does not authorize high-risk operations by itself. Those
   operations still require a trusted-device step-up and a fresh, single-use
   high-risk nonce.
+- Every callable is classified in the generated endpoint authorization catalog
+  and enforced centrally before its handler runs. Linux is admitted to 29
+  audited low-risk operations, two attestation/nonce prerequisites, and 14
+  mutations that already require nonce consumption, trusted-device action
+  proof, and mandatory audit persistence. The other 73 App Check-required
+  callables reject Linux by default; unknown app IDs and missing catalog rows
+  also fail closed.
+- Standard browser trust is an exact-ID registry, not a `:web:` syntax
+  inference. `APP_CHECK_STANDARD_WEB_APP_IDS` must contain the production
+  website/console Firebase app ID and must remain disjoint from current and
+  retired Linux/Windows IDs. Rotation or allow-list removal therefore cannot
+  promote a desktop token into the standard Web trust class.
 - Acquisition is a two-step protocol. `issueLinuxAppCheckChallenge` creates a
   cryptographically random, two-minute challenge. `mintLinuxAppCheckToken`
   consumes the challenge and accepts only a verifier decision with the exact
@@ -115,10 +127,14 @@ Until those exist, protected cloud operations remain unavailable and Linux stays
 5. Enable minting for the ring, then advance only after the installed matrix and
    endpoint decision logs meet the acceptance criteria below.
 
-Rollback sets `LINUX_APP_CHECK_MINT_ENABLED=false` or removes the Linux app ID
-from the allow-list. Protected cloud mutations then fail closed, while local
-SQLite, local account sign-out, and other local product data remain available.
-Rotate the verifier key or policy ID to revoke an affected attestation cohort;
+Rollback sets `LINUX_APP_CHECK_MINT_ENABLED=false` and removes the Linux app ID
+from the allow-list. Classified Functions callables deny the ID immediately.
+Direct owner-scoped Firestore/Storage rules cannot classify the app ID and may
+continue accepting an already minted token until its fixed 30-minute TTL
+expires. Production readiness must inventory and explicitly accept that bounded
+surface or route the affected Linux cloud operations through classified
+callables. Local SQLite, local account sign-out, and other local product data
+remain available. Rotate the verifier key or policy ID to revoke future minting;
 do not extend token TTL or enable mock verification as an outage workaround.
 
 ## Verification

@@ -70,6 +70,11 @@ const { configMock } = vi.hoisted(() => ({
     requireHighRiskNonce: false,
     linuxAppCheckAppID: "1:000000000000:linux:0000000000000000placeholder",
     windowsAppCheckAppID: "1:000000000000:windows:0000000000000000placeholder",
+    allowedAppCheckAppIDs: [
+      "1:000000000000:linux:0000000000000000placeholder",
+      "1:000000000000:windows:0000000000000000placeholder",
+    ],
+    standardWebAppCheckAppIDs: ["1:123:web:abc"],
   },
 }));
 vi.mock("../config.js", () => ({ getConfig: () => configMock }));

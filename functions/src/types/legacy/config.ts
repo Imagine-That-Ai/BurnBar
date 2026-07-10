@@ -96,6 +96,9 @@ export interface EnvConfig {
    */
   allowedAppCheckAppIDs: string[];
 
+  /** Explicit Firebase Web app ids permitted to use standard Web App Check trust. */
+  standardWebAppCheckAppIDs: string[];
+
   /**
    * Placeholder / non-prod Firebase App Check app id used by the Windows port
    * until the real Windows app id is provisioned (AC-012/AC-013). Never a prod id.

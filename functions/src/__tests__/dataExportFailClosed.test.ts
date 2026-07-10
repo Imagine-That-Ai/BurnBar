@@ -54,7 +54,7 @@ import { exportUserData } from "../callables/dataExport.js";
 function authedRequest() {
   return {
     auth: { uid: "u1", token: {} },
-    app: { appId: "test-app" },
+    app: { appId: "1:1234567890:ios:openburnbar-test" },
     rawRequest: { headers: {} },
     data: { domains: [] },
   };

@@ -1777,6 +1777,23 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  registerDevicePushEndpoint: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   registerEscrowDevice: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",

@@ -43,6 +43,13 @@ the staging project and gated behind a `staging` GitHub Environment.
    (`deploy-firestore.yml` deploys rules/indexes/storage on push) and cut a `v*`
    release tag (`deploy-production.yml` deploys functions).
 
+The staging Functions config must set `APP_CHECK_STANDARD_WEB_APP_IDS` to the
+exact staging browser Firebase app ID shipped through
+`NEXT_PUBLIC_FIREBASE_APP_ID` / `PUBLIC_FIREBASE_APP_ID`. Do not reuse the
+production ID or any Linux/Windows desktop ID. Until
+`functions/.env.burnbar-staging.example` is copied, filled, reviewed, and
+renamed, the staging lane remains intentionally unavailable.
+
 The point: **the diff you promote to prod is the diff you already proved in
 staging.** Same source files, same pipeline shape, different project + creds.
 

@@ -13,6 +13,9 @@ installed matrix described below are complete.
   environments; production minting rejects it.
 - The backend classifies the Linux app ID as `linux_lower_trust`; it is not an
   Apple App Attest, Android Play Integrity, or web reCAPTCHA principal.
+- Standard browser trust is reserved for exact IDs in
+  `APP_CHECK_STANDARD_WEB_APP_IDS`. Never add a current or retired desktop ID to
+  that registry; a generic Firebase Web ID is unknown by default.
 - Low-risk read/sync callables must use an explicit trust-class allow-list.
 - High-risk actions must not pass from Linux App Check presence alone. They must
   consume a fresh `issueHighRiskActionNonce` nonce and route through a
@@ -65,6 +68,7 @@ Functions production configuration:
 | `LINUX_APP_CHECK_MINT_ENABLED` | `true` only after the production readiness gate passes; defaults to false |
 | `LINUX_APP_CHECK_APP_ID` | Dedicated real Firebase Web app ID (`1:<project>:web:<id>`) |
 | `APP_CHECK_ALLOWED_APP_IDS` | Includes that exact Linux app ID and no placeholder |
+| `APP_CHECK_STANDARD_WEB_APP_IDS` | Exact production website/console Firebase Web app IDs only; disjoint from every current or retired desktop ID |
 | `LINUX_APP_CHECK_POLICY_ID` | Versioned attestation policy; default source value is `openburnbar-linux-tpm2-ima-v1` |
 | `LINUX_APP_CHECK_VERIFIER_URL` | Exact HTTPS remote verifier endpoint |
 | `LINUX_APP_CHECK_VERIFIER_PUBLIC_KEY_BASE64` | DER/SPKI Ed25519 public key, base64 encoded |
@@ -113,7 +117,8 @@ not silently use mock evidence or downgrade a protected mutation to auth-only.
 - `LINUX_APP_CHECK_MINT_ENABLED=false` is the primary Linux mint kill switch and
   the default. It makes production challenge acquisition fail closed.
 - Removing the Linux ID from `APP_CHECK_ALLOWED_APP_IDS` is the second containment
-  boundary. Keep Apple/Android/Web app IDs unchanged.
+  boundary. It denies Functions callables immediately. Keep Apple/Android and
+  `APP_CHECK_STANDARD_WEB_APP_IDS` unchanged.
 - An incomplete verifier configuration, placeholder app ID, unknown evidence
   kind, verifier outage, invalid verdict, replay, or binding mismatch fails
   closed. There is no production mock fallback.
@@ -124,11 +129,16 @@ small TPM-backed broker ring; run all negative vectors and installed matrix
 checks; enable minting for the ring; then advance only with release-head-bound
 evidence. Keep high-risk step-up enforcement enabled throughout.
 
-To roll back, set `LINUX_APP_CHECK_MINT_ENABLED=false` or remove the Linux app ID
-from the allow-list. Protected cloud mutations become unavailable, but local
-SQLite data and local account workflows remain intact. Rotate the verifier key
-or policy ID to revoke an affected cohort. Never lengthen the 30-minute TTL or
-enable mock attestation to work around an outage.
+To roll back, set `LINUX_APP_CHECK_MINT_ENABLED=false` and remove the Linux app ID
+from the allow-list. Classified Functions callables deny the ID immediately,
+but an already minted token can remain valid for direct owner-scoped
+Firestore/Storage rules access until its fixed 30-minute TTL expires because
+Firebase Rules do not inspect the app ID. Treat containment as a maximum
+30-minute drain unless the affected direct-product surface is separately
+revoked. Local SQLite data and local account workflows remain intact. Rotate
+the verifier key or policy ID to revoke future minting. Never lengthen the TTL
+or enable mock attestation to work around an outage. See
+[`FIREBASE_APP_CHECK_ENFORCEMENT.md`](../FIREBASE_APP_CHECK_ENFORCEMENT.md).
 
 ## SecretStore Setup
 

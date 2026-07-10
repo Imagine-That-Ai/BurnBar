@@ -43,6 +43,10 @@ const TOUCHED = [
   "APP_STORE_ENV",
   "APP_STORE_APPLE_APP_ID",
   "APP_STORE_BUNDLE_ID",
+  "WINDOWS_APP_CHECK_APP_ID",
+  "LINUX_APP_CHECK_APP_ID",
+  "APP_CHECK_ALLOWED_APP_IDS",
+  "APP_CHECK_STANDARD_WEB_APP_IDS",
 ] as const;
 
 describe("buildConfig characterization (via getConfig)", () => {
@@ -72,6 +76,7 @@ describe("buildConfig characterization (via getConfig)", () => {
     expect(cfg.kmsKeyName).toBe("");
     expect(cfg.enforceAppCheck).toBe(true);
     expect(cfg.requireHighRiskNonce).toBe(false);
+    expect(cfg.standardWebAppCheckAppIDs).toEqual([]);
 
     // Numeric defaults.
     expect(cfg.maxCredentialLength).toBe(8192);
@@ -139,6 +144,15 @@ describe("buildConfig characterization (via getConfig)", () => {
     expect(cfg.appStore.enableOnlineChecks).toBe(true);
     expect(cfg.appStore.autoFallbackEnvironment).toBe(true);
     expect(cfg.appStore.asc).toEqual({ issuerId: "", keyId: "", privateKeyP8: "" });
+  });
+
+  it("rejects overlap between standard Web and lower-trust desktop app ids", async () => {
+    process.env.GCLOUD_PROJECT = "demo-project";
+    process.env.LINUX_APP_CHECK_APP_ID = "1:123456:web:linux";
+    process.env.APP_CHECK_ALLOWED_APP_IDS = "1:123456:web:linux";
+    process.env.APP_CHECK_STANDARD_WEB_APP_IDS = "1:123456:web:linux";
+    const { getConfig } = await import("../config.js");
+    expect(() => getConfig()).toThrow(/cannot be both standard Web and lower-trust desktop/u);
   });
 
   it("throws the fail-closed Error for a production project with App Check disabled", async () => {

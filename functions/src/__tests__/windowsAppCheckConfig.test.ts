@@ -18,6 +18,7 @@ const TOUCHED = [
   "WINDOWS_APP_CHECK_APP_ID",
   "LINUX_APP_CHECK_APP_ID",
   "APP_CHECK_ALLOWED_APP_IDS",
+  "APP_CHECK_STANDARD_WEB_APP_IDS",
   "ALLOW_MOCK_APP_CHECK_ATTESTATION",
   "APP_STORE_APPLE_APP_ID",
   "APP_STORE_ENV",
@@ -42,9 +43,8 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
 
   it("defaults the desktop app ids to clearly non-prod placeholders and allowlists them", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
-    const { getConfig, PLACEHOLDER_LINUX_APP_CHECK_APP_ID, PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } = await import(
-      "../config.js"
-    );
+    const { getConfig, PLACEHOLDER_LINUX_APP_CHECK_APP_ID, PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } =
+      await import("../config.js");
     const cfg = getConfig();
     expect(cfg.windowsAppCheckAppID).toBe(PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID);
     expect(cfg.linuxAppCheckAppID).toBe(PLACEHOLDER_LINUX_APP_CHECK_APP_ID);
@@ -60,8 +60,12 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
 
   it("ACCEPTS the allowlisted placeholder app id and REJECTS a non-allowlisted one", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
-    const { getConfig, isAppCheckAppIdAllowed, PLACEHOLDER_LINUX_APP_CHECK_APP_ID, PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } =
-      await import("../config.js");
+    const {
+      getConfig,
+      isAppCheckAppIdAllowed,
+      PLACEHOLDER_LINUX_APP_CHECK_APP_ID,
+      PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID,
+    } = await import("../config.js");
     const cfg = getConfig();
     expect(isAppCheckAppIdAllowed(PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID, cfg)).toBe(true);
     expect(isAppCheckAppIdAllowed(PLACEHOLDER_LINUX_APP_CHECK_APP_ID, cfg)).toBe(true);
@@ -81,6 +85,14 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
     expect(cfg.allowedAppCheckAppIDs).toContain(PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID);
     expect(cfg.allowedAppCheckAppIDs).toContain("1:000000000000:linux:0000000000000000placeholder");
     expect(cfg.allowedAppCheckAppIDs.filter((id) => id === "1:123:windows:realwin")).toHaveLength(1);
+  });
+
+  it("parses and deduplicates the explicit standard Web app-id registry", async () => {
+    process.env.GCLOUD_PROJECT = "demo-project";
+    process.env.APP_CHECK_STANDARD_WEB_APP_IDS = "1:123:web:browser, 1:123:web:browser\n1:123:web:console";
+    const { getConfig } = await import("../config.js");
+
+    expect(getConfig().standardWebAppCheckAppIDs).toEqual(["1:123:web:browser", "1:123:web:console"]);
   });
 
   it("requires a real Linux app id to be independently operator-allowlisted", async () => {

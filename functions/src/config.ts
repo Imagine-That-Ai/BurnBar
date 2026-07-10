@@ -88,7 +88,11 @@ function resolveAppCheckAppIdSurface(
   looksProd: boolean,
 ): Pick<
   EnvConfig,
-  "allowedAppCheckAppIDs" | "windowsAppCheckAppID" | "linuxAppCheckAppID" | "allowMockAppCheckAttestation"
+  | "allowedAppCheckAppIDs"
+  | "standardWebAppCheckAppIDs"
+  | "windowsAppCheckAppID"
+  | "linuxAppCheckAppID"
+  | "allowMockAppCheckAttestation"
 > {
   const windowsAppCheckAppID =
     process.env.WINDOWS_APP_CHECK_APP_ID ??
@@ -105,9 +109,23 @@ function resolveAppCheckAppIdSurface(
   const configured = parseStringList(
     process.env.APP_CHECK_ALLOWED_APP_IDS ?? configString(openburnbar, "app_check_allowed_app_ids"),
   );
-  const linuxFixtureIDs =
-    linuxAppCheckAppID === PLACEHOLDER_LINUX_APP_CHECK_APP_ID ? [linuxAppCheckAppID] : [];
+  const linuxFixtureIDs = linuxAppCheckAppID === PLACEHOLDER_LINUX_APP_CHECK_APP_ID ? [linuxAppCheckAppID] : [];
   const allowedAppCheckAppIDs = [...new Set([windowsAppCheckAppID, ...linuxFixtureIDs, ...configured])];
+  const standardWebAppCheckAppIDs = [
+    ...new Set(
+      parseStringList(
+        process.env.APP_CHECK_STANDARD_WEB_APP_IDS ?? configString(openburnbar, "app_check_standard_web_app_ids"),
+      ),
+    ),
+  ];
+  const trustClassOverlap = standardWebAppCheckAppIDs.filter(
+    (appId) => allowedAppCheckAppIDs.includes(appId) || appId === linuxAppCheckAppID || appId === windowsAppCheckAppID,
+  );
+  if (trustClassOverlap.length > 0) {
+    throw new Error(
+      `[security] App Check app ids cannot be both standard Web and lower-trust desktop: ${trustClassOverlap.join(", ")}`,
+    );
+  }
 
   // Fail-closed fence: the mock verifier can NEVER be enabled in production, no
   // matter what an operator sets. In non-prod it defaults on (local dev / CI) but
@@ -122,7 +140,13 @@ function resolveAppCheckAppIdSurface(
       true,
     );
 
-  return { allowedAppCheckAppIDs, windowsAppCheckAppID, linuxAppCheckAppID, allowMockAppCheckAttestation };
+  return {
+    allowedAppCheckAppIDs,
+    standardWebAppCheckAppIDs,
+    windowsAppCheckAppID,
+    linuxAppCheckAppID,
+    allowMockAppCheckAttestation,
+  };
 }
 
 /**
