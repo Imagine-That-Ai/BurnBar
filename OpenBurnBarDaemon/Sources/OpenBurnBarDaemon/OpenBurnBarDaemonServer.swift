@@ -57,6 +57,7 @@ public actor BurnBarDaemonServer {
     let mediaService: MercuryLinuxMediaSessionController
     #endif
     let missionControlService: any BurnBarMissionControlServing
+    let accountService: any BurnBarAccountServing
     let membershipService: any BurnBarMembershipServing
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
@@ -81,6 +82,7 @@ public actor BurnBarDaemonServer {
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
+        accountService: (any BurnBarAccountServing)? = nil,
         membershipService: (any BurnBarMembershipServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
@@ -214,7 +216,24 @@ public actor BurnBarDaemonServer {
             },
             executionReadinessGate: executionReadinessGate
         )
-        self.membershipService = membershipService ?? BurnBarMembershipService()
+        let resolvedAccountService = accountService ?? BurnBarAccountAuthService.production()
+        let accountTokenProvider = resolvedAccountService as? any BurnBarAccountTokenProviding
+        self.accountService = resolvedAccountService
+        self.membershipService = membershipService ?? BurnBarMembershipService(
+            cloudClient: EnvironmentBurnBarMembershipCloudClient(
+                idTokenProvider: {
+                    guard let accountTokenProvider else {
+                        throw BurnBarMembershipServiceError.unauthenticated
+                    }
+                    return try await accountTokenProvider.validIDToken()
+                }
+            ),
+            accountUIDProvider: {
+                let status = await resolvedAccountService.status().account
+                guard status.state == .signedIn else { return nil }
+                return status.uid
+            }
+        )
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false,
@@ -673,6 +692,13 @@ public actor BurnBarDaemonServer {
                  .quotaSignalsRecent, .quotaSignalsClear,
                  .perfMeasure:
                 return try await handleObservabilityRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .accountStatus, .accountDeviceAuthStart, .accountDeviceAuthPoll,
+                 .accountDeviceAuthCancel, .accountSignOut:
+                return try await handleAccountRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

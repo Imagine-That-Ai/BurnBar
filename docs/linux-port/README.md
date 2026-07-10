@@ -3,7 +3,14 @@
 This directory tracks the Linux desktop peer release work. The Linux lane is
 implemented as reviewable infrastructure, not a public availability claim.
 
-Current parity status as of 2026-07-09:
+Install the small documentation tool package with
+`npm ci --prefix scripts/linux-port --ignore-scripts` before running
+`node scripts/linux-port/check-linux-docs.mjs` or regenerating the browser-ready
+parity audit.
+
+Parity audit baseline: 2026-07-09. Remediation evidence was refreshed on
+2026-07-10; source-implemented work remains distinct from deployed and
+environment-certified parity:
 
 - A public signed aarch64 prerelease exists at `linux-v0.1.0`.
 - Full macOS parity is not complete. See
@@ -18,7 +25,7 @@ Current parity status as of 2026-07-09:
 - The 2026-07-05 release notes below are historical context and should not be
   read as the current live GitHub release state.
 
-Current active-checkout status as of 2026-07-05:
+Historical active-checkout snapshot captured on 2026-07-05:
 
 - V24 foundation and V23 surface validation passed from
   `$WORKSPACE` at
@@ -26,7 +33,7 @@ Current active-checkout status as of 2026-07-05:
 - The checkout later moved to `1af805eb1878cc5af8821ee35cac838c5ac473ee`;
   release closure must rerun the active-checkout validators at that head or
   restore the sealed head before claiming current release readiness.
-- The current evidence pointer is
+- The evidence pointer for that snapshot is
   [`evidence/mission-001-release/active-checkout-v23-v24-evidence.json`](evidence/mission-001-release/active-checkout-v23-v24-evidence.json).
 - Public Linux release promotion is still blocked by release-package, update,
   signing/provenance, nightly-matrix artifact, and clean-release-commit evidence.
@@ -63,6 +70,10 @@ Primary files:
   single-instance launch/deep-link handling, live tray facts and actions,
   user-scoped XDG login start, package ownership, and remaining native-shell
   certification.
+- [`LINUX_ACCOUNT_AUTH_AUTHORITY.md`](LINUX_ACCOUNT_AUTH_AUTHORITY.md) -
+  purpose-bound device authorization, sealed credential delivery, daemon-owned
+  Firebase refresh, keyring custody, redacted desktop state, local sign-out,
+  browser approval order, and remaining account/cloud parity blockers.
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.
@@ -100,6 +111,7 @@ Computer Use input and panic:
 Fast local checks:
 
 ```bash
+node scripts/linux-port/render-linux-parity-audit-html.mjs --check
 node scripts/linux-port/validate-linux-release-config.mjs
 node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
 node scripts/linux-port/check-linux-docs.mjs

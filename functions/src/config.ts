@@ -549,6 +549,8 @@ function buildConfig(): EnvConfig {
 
   return {
     projectId,
+    firebaseWebAPIKey:
+      process.env.OPENBURNBAR_FIREBASE_WEB_API_KEY ?? configString(openburnbar, "firebase_web_api_key") ?? "",
     kmsKeyName,
     enforceAppCheck,
     requireHighRiskNonce,

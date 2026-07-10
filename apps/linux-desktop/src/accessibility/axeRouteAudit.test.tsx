@@ -7,7 +7,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { App } from '../app/App.js';
 import { ROUTES, type ShellRoute } from '../routes.js';
 import { useShellStore } from '../state/shellStore.js';
-import { makeAvailableRuntimeCapabilityManifest } from '../testing/bridgeStubs.js';
+import { resetAccountStoreForTests, useAccountStore } from '../state/accountStore.js';
+import { bridgeStubDefaults, makeAvailableRuntimeCapabilityManifest } from '../testing/bridgeStubs.js';
 import type { LinuxShellBridge } from '../tauriBridge.js';
 
 type AuditRow = {
@@ -118,6 +119,34 @@ describe('axe route accessibility audit', () => {
       fixtureMode: false
     });
     auditRows.push(await auditState('capability-degraded', 'pet'));
+
+    const pendingAccount = {
+      state: 'authorization_pending' as const,
+      signedIn: false,
+      trustClass: 'linux-lower-trust' as const,
+      syncState: 'local-only' as const,
+      updatedAt: new Date().toISOString(),
+      session: {
+        flowId: 'axe-flow',
+        userCode: 'ABCD-EFGH',
+        verificationUrl: 'https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH',
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        pollIntervalSeconds: 5
+      }
+    };
+    resetShell('account');
+    useAccountStore.setState({ data: pendingAccount, authPhase: 'pending', authSession: pendingAccount.session });
+    useShellStore.setState({
+      bridge: {
+        ...bridgeStubDefaults,
+        accountStatus: async () => pendingAccount,
+        accountDeviceAuthPoll: async () => pendingAccount
+      } as unknown as LinuxShellBridge,
+      runtimeCapabilities: makeAvailableRuntimeCapabilityManifest(),
+      fixtureMode: false
+    });
+    auditRows.push(await auditState('account-authorization-pending', 'account'));
+    resetAccountStoreForTests();
 
     const failures = auditRows.filter((row) => row.violationCount > 0);
     expect(failures, JSON.stringify(failures, null, 2)).toEqual([]);

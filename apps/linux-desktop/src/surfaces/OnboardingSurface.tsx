@@ -9,6 +9,9 @@ import {
   type LinuxOnboardingSnapshot
 } from '../onboardingStore.js';
 import { useShellStore } from '../state/shellStore.js';
+import { useAccountStore } from '../state/accountStore.js';
+import { useLaneLoad } from '../state/useLaneLoad.js';
+import { DeviceAuthPanel } from './account/DeviceAuthPanel.js';
 import './onboarding.css';
 
 const OPENBURNBAR_LOGO = '/provider-logos/openburnbar.png';
@@ -29,6 +32,11 @@ export function OnboardingSurface() {
   const bridge = useShellStore((state) => state.bridge);
   const bridgeReady = useShellStore((state) => state.bridgeReady);
   const setRoute = useShellStore((state) => state.setRoute);
+  const account = useAccountStore((state) => state.data);
+  const accountAuthPhase = useAccountStore((state) => state.authPhase);
+  const loadAccount = useAccountStore((state) => state.load);
+
+  useLaneLoad(loadAccount);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,8 +159,17 @@ export function OnboardingSurface() {
   const canGoBack = stepIndex > 0;
   const progressFraction = (stepIndex + 1) / ONBOARDING_STEPS.length;
   const isPrivacy = step.id === 'privacy';
+  const isCloudIdentity = step.id === 'cloud_identity';
+  const authBusy =
+    accountAuthPhase === 'starting' ||
+    accountAuthPhase === 'pending' ||
+    accountAuthPhase === 'cancelling' ||
+    accountAuthPhase === 'signing-out';
+  const interactionBusy = busy || authBusy;
   const primaryLabel = isPrivacy
     ? 'Save choices'
+    : isCloudIdentity && account?.signedIn
+      ? 'Continue'
     : step.requirement === 'required'
       ? stepSnapshot.state === 'blocked' ? 'Retry verification' : 'Verify and continue'
       : 'Acknowledge and continue';
@@ -216,6 +233,15 @@ export function OnboardingSurface() {
           </div>
           <h3 id="onboarding-step-title">{step.title}</h3>
           <p className="onboarding-step-body">{step.body}</p>
+          {isCloudIdentity ? (
+            account?.signedIn ? (
+              <Banner tone="ok" role="status">
+                Signed in as {account.identityLabel ?? account.uid ?? 'OpenBurnBar user'}. Cloud sync still waits for your privacy choice.
+              </Banner>
+            ) : (
+              <DeviceAuthPanel compact />
+            )
+          ) : null}
           {isPrivacy ? (
             <fieldset className="onboarding-privacy-choices">
               <legend>Privacy choices</legend>
@@ -254,7 +280,7 @@ export function OnboardingSurface() {
               <button
                 type="button"
                 className="onboarding-btn-ghost"
-                disabled={busy}
+                disabled={interactionBusy}
                 onClick={() => void perform({ stepID: ONBOARDING_STEPS[stepIndex - 1].id, action: 'navigate' })}
               >
                 Back
@@ -264,15 +290,15 @@ export function OnboardingSurface() {
               <button
                 type="button"
                 className="onboarding-btn-ghost"
-                disabled={busy}
+                disabled={interactionBusy}
                 onClick={() => void perform({ stepID: step.id, action: 'skip' })}
               >
                 Skip for now
               </button>
             ) : null}
           </div>
-          <button type="button" className="onboarding-btn-primary" disabled={busy} onClick={advance}>
-            <span>{busy ? 'Checking…' : primaryLabel}</span>
+          <button type="button" className="onboarding-btn-primary" disabled={interactionBusy} onClick={advance}>
+            <span>{interactionBusy ? 'Checking…' : primaryLabel}</span>
           </button>
         </div>
       </section>

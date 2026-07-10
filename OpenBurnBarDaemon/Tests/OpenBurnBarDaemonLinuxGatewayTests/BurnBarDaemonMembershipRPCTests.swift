@@ -30,7 +30,11 @@ final class BurnBarDaemonMembershipRPCTests: XCTestCase {
 
     func testLocalCacheBackedStatusStatesSatisfyLinuxMembershipMapper() async throws {
         let cacheURL = try temporaryCacheURL()
-        let service = BurnBarMembershipService(cacheURL: cacheURL, cloudClient: StubCloudClient())
+        let service = BurnBarMembershipService(
+            cacheURL: cacheURL,
+            cloudClient: StubCloudClient(),
+            accountUIDProvider: { "account-a" }
+        )
 
         let active = snapshot(
             state: .active,
@@ -53,7 +57,7 @@ final class BurnBarDaemonMembershipRPCTests: XCTestCase {
             renewsAt: "2099-01-01T00:00:00Z",
             restoreAvailable: true
         )
-        try await service.replaceCachedSnapshot(active)
+        try await service.replaceCachedSnapshot(active, forAccountUID: "account-a")
         var status = await service.status()
         XCTAssertEqual(status.membership.tier, "pro")
         XCTAssertEqual(status.membership.entitlementIds, ["burnbar_pro", "hosted_quota_sync"])
@@ -62,7 +66,10 @@ final class BurnBarDaemonMembershipRPCTests: XCTestCase {
         XCTAssertEqual(status.membership.cacheEvent, "membership.entitlement_cache.updated")
 
         for state in [BurnBarMembershipState.cancelled, .paymentFailed] {
-            try await service.replaceCachedSnapshot(snapshot(state: state, restoreAvailable: true))
+            try await service.replaceCachedSnapshot(
+                snapshot(state: state, restoreAvailable: true),
+                forAccountUID: "account-a"
+            )
             status = await service.status()
             XCTAssertEqual(status.membership.tier, "free")
             XCTAssertEqual(status.membership.entitlementIds, [])
@@ -78,6 +85,43 @@ final class BurnBarDaemonMembershipRPCTests: XCTestCase {
         XCTAssertEqual(status.membership.error?.code, .offline)
     }
 
+    func testMembershipCacheNeverCrossesAccountIdentity() async throws {
+        let cacheURL = try temporaryCacheURL()
+        let accountA = BurnBarMembershipService(
+            cacheURL: cacheURL,
+            cloudClient: StubCloudClient(),
+            accountUIDProvider: { "account-a" }
+        )
+        try await accountA.replaceCachedSnapshot(
+            snapshot(
+                state: .active,
+                tier: "pro",
+                entitlementIds: ["burnbar_pro"],
+                restoreAvailable: true
+            ),
+            forAccountUID: "account-a"
+        )
+        let accountAStatus = await accountA.status()
+        XCTAssertEqual(accountAStatus.membership.tier, "pro")
+
+        let accountB = BurnBarMembershipService(
+            cacheURL: cacheURL,
+            cloudClient: StubCloudClient(),
+            accountUIDProvider: { "account-b" }
+        )
+        let accountBStatus = await accountB.status()
+        XCTAssertEqual(accountBStatus.membership.tier, "free")
+        XCTAssertEqual(accountBStatus.membership.state, .offline)
+
+        let signedOut = BurnBarMembershipService(
+            cacheURL: cacheURL,
+            cloudClient: StubCloudClient(),
+            accountUIDProvider: { nil }
+        )
+        let signedOutStatus = await signedOut.status()
+        XCTAssertEqual(signedOutStatus.membership.tier, "free")
+    }
+
     func testCheckoutAndRestoreUseTypedErrorsWithoutNetworkOrFakeURLs() async throws {
         let unauthenticatedClient = EnvironmentBurnBarMembershipCloudClient(
             environment: ["OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT": "https://example.com/membership/checkout"]
@@ -91,7 +135,8 @@ final class BurnBarDaemonMembershipRPCTests: XCTestCase {
 
         let service = BurnBarMembershipService(
             cacheURL: try temporaryCacheURL(),
-            cloudClient: StubCloudClient(restoreError: .cloudUnavailable("Firebase callable auth is unavailable in this environment."))
+            cloudClient: StubCloudClient(restoreError: .cloudUnavailable("Firebase callable auth is unavailable in this environment.")),
+            accountUIDProvider: { "account-a" }
         )
         let restore = await service.restore()
         XCTAssertFalse(restore.ok)

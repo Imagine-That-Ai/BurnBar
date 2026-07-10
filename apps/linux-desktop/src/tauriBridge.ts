@@ -244,11 +244,38 @@ export type DatabaseIndexActionResult = {
 
 // ─────────────────────────── P08: account ─────────────────────────────────
 
+export type AccountState = 'signed_out' | 'authorization_pending' | 'signed_in';
+export type AccountProblemCode =
+  | 'secret_store_unavailable'
+  | 'network_unavailable'
+  | 'reauthentication_required'
+  | 'authorization_expired';
+export type AccountProblem = {
+  code: AccountProblemCode;
+  message: string;
+  recoverable: boolean;
+};
+export type AccountDeviceAuthSession = {
+  flowId: string;
+  userCode: string;
+  verificationUrl: string;
+  expiresAt: string;
+  pollIntervalSeconds: number;
+};
 export type AccountStatus = {
+  state: AccountState;
   signedIn: boolean;
+  uid?: string;
+  email?: string;
+  displayName?: string;
+  photoUrl?: string;
   identityLabel?: string;
   trustClass: 'linux-lower-trust';
   syncState: 'local-only' | 'paused' | 'active';
+  credentialBackend?: string;
+  session?: AccountDeviceAuthSession;
+  problem?: AccountProblem;
+  updatedAt: string;
   lastSyncAt?: string;
 };
 
@@ -623,6 +650,11 @@ export interface LinuxShellBridge {
   databaseIndexProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   databaseWatchProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   accountStatus(): Promise<AccountStatus>;
+  accountDeviceAuthStart?(): Promise<AccountStatus>;
+  accountDeviceAuthPoll?(flowId: string): Promise<AccountStatus>;
+  accountDeviceAuthCancel?(flowId: string): Promise<AccountStatus>;
+  accountSignOut?(): Promise<AccountStatus>;
+  openAccountAuthUrl?(url: string): Promise<void>;
   membershipStatus?(): Promise<MembershipStatus>;
   membershipCheckoutUrl?(): Promise<string>;
   openExternalUrl?(url: string): Promise<void>;
@@ -1385,23 +1417,148 @@ function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
   };
 }
 
-function mapAccountStatus(raw: RawJsonValue): AccountStatus {
-  // Derived from daemon.config.get — no daemon.account.* RPC exists.
-  const snap = pick(raw, 'snapshot', 'config') ?? raw;
-  const cloud = pick(snap, 'cloud', 'sync', 'account');
-  const signedIn = Boolean(pick(cloud, 'signedIn', 'signed_in', 'authenticated'));
-  const syncStateRaw = str(pick(cloud, 'syncState', 'sync_state', 'status'), 'local-only');
-  const syncState: AccountStatus['syncState'] = syncStateRaw.includes('active')
-    ? 'active'
-    : syncStateRaw.includes('pause')
-      ? 'paused'
-      : 'local-only';
+function optionalAccountString(value: RawJsonValue, label: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requireString(value, label);
+}
+
+function requireAccountTimestamp(value: RawJsonValue, label: string): string {
+  const timestamp = requireString(value, label);
+  if (!Number.isFinite(Date.parse(timestamp))) throw new Error(`${label} must be an ISO-8601 timestamp.`);
+  return timestamp;
+}
+
+function decodeAccountState(value: RawJsonValue): AccountState {
+  if (value === 'signed_out' || value === 'authorization_pending' || value === 'signed_in') return value;
+  throw new Error('account.state is unsupported.');
+}
+
+function decodeAccountSyncState(value: RawJsonValue): AccountStatus['syncState'] {
+  if (value === 'local_only') return 'local-only';
+  if (value === 'paused' || value === 'active') return value;
+  throw new Error('account.sync_state is unsupported.');
+}
+
+function decodeAccountProblem(value: RawJsonValue): AccountProblem | undefined {
+  if (value === undefined || value === null) return undefined;
+  const problem = requireObject(value, 'account.problem');
+  const code = requireString(problem.code, 'account.problem.code');
+  if (![
+    'secret_store_unavailable',
+    'network_unavailable',
+    'reauthentication_required',
+    'authorization_expired'
+  ].includes(code)) {
+    throw new Error('account.problem.code is unsupported.');
+  }
   return {
-    signedIn,
-    identityLabel: str(pick(cloud, 'identityLabel', 'email', 'label')) || undefined,
+    code: code as AccountProblemCode,
+    message: requireString(problem.message, 'account.problem.message'),
+    recoverable: requireBoolean(problem.recoverable, 'account.problem.recoverable')
+  };
+}
+
+const ACCOUNT_USER_CODE_PATTERN = /^[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$/;
+
+function decodeAccountUserCode(value: RawJsonValue): string {
+  const userCode = requireString(value, 'account.session.user_code');
+  if (!ACCOUNT_USER_CODE_PATTERN.test(userCode)) {
+    throw new Error('account.session.user_code is not a canonical BurnBar user code.');
+  }
+  return userCode;
+}
+
+function decodeAccountAuthUrl(value: RawJsonValue, expectedUserCode: string): string {
+  const rawUrl = requireString(value, 'account.session.verification_url');
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error('account.session.verification_url must be a valid URL.');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== 'burnbar.ai' ||
+    url.port !== '' ||
+    url.pathname !== '/link' ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.hash !== ''
+  ) {
+    throw new Error('account.session.verification_url is outside the desktop auth boundary.');
+  }
+  const queryItems = [...url.searchParams.entries()];
+  const flows = queryItems.filter(([key]) => key === 'flow').map(([, item]) => item);
+  const codes = queryItems.filter(([key]) => key === 'code').map(([, item]) => item);
+  if (
+    queryItems.length !== 2 ||
+    flows.length !== 1 ||
+    flows[0] !== 'desktop_auth' ||
+    codes.length !== 1 ||
+    !ACCOUNT_USER_CODE_PATTERN.test(codes[0] ?? '') ||
+    codes[0] !== expectedUserCode
+  ) {
+    throw new Error('account.session.verification_url must contain only the matching canonical code and desktop auth flow.');
+  }
+  return url.toString();
+}
+
+function decodeAccountSession(value: RawJsonValue): AccountDeviceAuthSession | undefined {
+  if (value === undefined || value === null) return undefined;
+  const session = requireObject(value, 'account.session');
+  const pollIntervalSeconds = requireSequence(
+    session.poll_interval_seconds,
+    'account.session.poll_interval_seconds'
+  );
+  if (pollIntervalSeconds < 1 || pollIntervalSeconds > 300) {
+    throw new Error('account.session.poll_interval_seconds must be between 1 and 300.');
+  }
+  const userCode = decodeAccountUserCode(session.user_code);
+  return {
+    flowId: requireString(session.flow_id, 'account.session.flow_id'),
+    userCode,
+    verificationUrl: decodeAccountAuthUrl(session.verification_url, userCode),
+    expiresAt: requireAccountTimestamp(session.expires_at, 'account.session.expires_at'),
+    pollIntervalSeconds
+  };
+}
+
+export function decodeAccountStatus(raw: RawJsonValue): AccountStatus {
+  const response = requireObject(raw, 'account response');
+  const account = requireObject(response.account, 'account');
+  const state = decodeAccountState(account.state);
+  const uid = optionalAccountString(account.uid, 'account.uid');
+  const email = optionalAccountString(account.email, 'account.email');
+  const displayName = optionalAccountString(account.display_name, 'account.display_name');
+  const photoUrl = optionalAccountString(account.photo_url, 'account.photo_url');
+  const credentialBackend = optionalAccountString(account.credential_backend, 'account.credential_backend');
+  const session = decodeAccountSession(account.session);
+  if (account.trust_class !== 'linux_lower_trust') {
+    throw new Error('account.trust_class is unsupported.');
+  }
+  if (state === 'authorization_pending' && !session) {
+    throw new Error('account.session is required while authorization is pending.');
+  }
+  if (state !== 'authorization_pending' && session) {
+    throw new Error('account.session is only allowed while authorization is pending.');
+  }
+  if (state === 'signed_in' && !uid) {
+    throw new Error('account.uid is required while signed in.');
+  }
+  return {
+    state,
+    signedIn: state === 'signed_in',
+    uid,
+    email,
+    displayName,
+    photoUrl,
+    identityLabel: displayName ?? email ?? uid,
     trustClass: 'linux-lower-trust',
-    syncState,
-    lastSyncAt: str(pick(cloud, 'lastSyncAt', 'last_sync_at')) || undefined
+    syncState: decodeAccountSyncState(account.sync_state),
+    credentialBackend,
+    session,
+    problem: decodeAccountProblem(account.problem),
+    updatedAt: requireAccountTimestamp(account.updated_at, 'account.updated_at')
   };
 }
 
@@ -2166,11 +2323,28 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('database_watch_project', { projectPath });
       return mapDatabaseIndexAction(raw);
     },
-    // P08 — derived from daemon.config.get (cloud/sync subtree)
+    // P08 — daemon-owned Linux cloud identity. Tokens never cross this boundary.
     accountStatus: async () => {
       const raw = await invoke<RawJsonValue>('account_status');
-      return mapAccountStatus(raw);
+      return decodeAccountStatus(raw);
     },
+    accountDeviceAuthStart: async () => {
+      const raw = await invoke<RawJsonValue>('account_device_auth_start');
+      return decodeAccountStatus(raw);
+    },
+    accountDeviceAuthPoll: async (flowId) => {
+      const raw = await invoke<RawJsonValue>('account_device_auth_poll', { flowId });
+      return decodeAccountStatus(raw);
+    },
+    accountDeviceAuthCancel: async (flowId) => {
+      const raw = await invoke<RawJsonValue>('account_device_auth_cancel', { flowId });
+      return decodeAccountStatus(raw);
+    },
+    accountSignOut: async () => {
+      const raw = await invoke<RawJsonValue>('account_sign_out');
+      return decodeAccountStatus(raw);
+    },
+    openAccountAuthUrl: (url) => invoke<void>('open_account_auth_url', { url }),
     // P10 — daemon-owned membership data; fail closed if absent.
     membershipStatus: async () => {
       const raw = await invoke<RawJsonValue>('membership_status');

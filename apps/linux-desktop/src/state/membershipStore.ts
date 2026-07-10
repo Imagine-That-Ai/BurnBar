@@ -30,6 +30,7 @@ export type MembershipState = {
 const entitlementCache = new EntitlementCache<MembershipStatus>();
 const CACHE_KEY = 'membership-status';
 const CACHE_TTL_MS = 60_000;
+let membershipGeneration = 0;
 
 function isCapabilityAbsent(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '');
@@ -54,11 +55,16 @@ export const useMembershipStore = create<MembershipState>()((set, get) => ({
   checkoutUrl: null,
 
   async load() {
+    const generation = membershipGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     if (fixtureMode) {
       const data = fixtureMembershipStatus(fixtureState());
       cacheStatus(data);
-      set({ data, phase: data.state === 'offline' ? 'offline' : 'idle', error: null });
+      set({
+        data,
+        phase: data.state === 'offline' ? 'offline' : 'idle',
+        error: null
+      });
       return;
     }
     if (!bridge?.membershipStatus) {
@@ -77,9 +83,15 @@ export const useMembershipStore = create<MembershipState>()((set, get) => ({
     set({ phase: 'loading', error: null });
     try {
       const data = await bridge.membershipStatus();
+      if (generation !== membershipGeneration) return;
       cacheStatus(data);
-      set({ data, phase: data.state === 'offline' ? 'offline' : 'idle', error: null });
+      set({
+        data,
+        phase: data.state === 'offline' ? 'offline' : 'idle',
+        error: null
+      });
     } catch (e) {
+      if (generation !== membershipGeneration) return;
       if (isCapabilityAbsent(e)) {
         set({
           data: null,
@@ -88,19 +100,27 @@ export const useMembershipStore = create<MembershipState>()((set, get) => ({
         });
         return;
       }
-      set({ data: null, phase: 'error', error: e instanceof Error ? e.message : 'Membership request failed' });
+      set({
+        data: null,
+        phase: 'error',
+        error: e instanceof Error ? e.message : 'Membership request failed'
+      });
     }
   },
 
   async startCheckout() {
+    const generation = membershipGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     set({ phase: 'checkout-in-flight', error: null });
     try {
       const url = fixtureMode ? fixtureMembershipCheckoutUrl() : await bridge?.membershipCheckoutUrl?.();
+      if (generation !== membershipGeneration) return;
       if (!url) throw new Error('Packaged shell required for Stripe checkout.');
       if (bridge?.openExternalUrl) await bridge.openExternalUrl(url);
+      if (generation !== membershipGeneration) return;
       set({ checkoutUrl: url, phase: 'checkout-in-flight', error: null });
     } catch (e) {
+      if (generation !== membershipGeneration) return;
       if (isCapabilityAbsent(e)) {
         set({
           phase: 'capability-absent',
@@ -108,11 +128,15 @@ export const useMembershipStore = create<MembershipState>()((set, get) => ({
         });
         return;
       }
-      set({ phase: 'error', error: e instanceof Error ? e.message : 'Checkout failed' });
+      set({
+        phase: 'error',
+        error: e instanceof Error ? e.message : 'Checkout failed'
+      });
     }
   },
 
   async restore() {
+    const generation = membershipGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     set({ phase: 'restore-in-flight', error: null });
     try {
@@ -120,8 +144,10 @@ export const useMembershipStore = create<MembershipState>()((set, get) => ({
         if (!bridge?.membershipRestore) throw new Error('This daemon build does not expose membership restore yet.');
         await bridge.membershipRestore();
       }
+      if (generation !== membershipGeneration) return;
       await get().load();
     } catch (e) {
+      if (generation !== membershipGeneration) return;
       if (isCapabilityAbsent(e)) {
         set({
           phase: 'capability-absent',
@@ -129,7 +155,10 @@ export const useMembershipStore = create<MembershipState>()((set, get) => ({
         });
         return;
       }
-      set({ phase: 'error', error: e instanceof Error ? e.message : 'Restore failed' });
+      set({
+        phase: 'error',
+        error: e instanceof Error ? e.message : 'Restore failed'
+      });
     }
   }
 }));
@@ -138,6 +167,13 @@ export function useEntitlement(id: string): boolean {
   return useMembershipStore((s) => Boolean(s.data?.entitlements.includes(id)));
 }
 
-export function clearMembershipEntitlementCache(): void {
+export function resetMembershipForIdentityChange(): void {
+  membershipGeneration += 1;
   entitlementCache.clear();
+  useMembershipStore.setState({
+    data: null,
+    phase: 'idle',
+    error: null,
+    checkoutUrl: null
+  });
 }

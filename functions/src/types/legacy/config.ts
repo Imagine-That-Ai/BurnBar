@@ -59,7 +59,11 @@ export interface ProviderAdapter {
   testCredential(credential: string, accountContext?: ProviderAccountConnectContext): Promise<CredentialTestResult>;
 
   /** Fetch current quota using the decrypted credential. */
-  fetchQuota(credential: string, sourceId: string, accountContext?: ProviderAccountConnectContext): Promise<QuotaRefreshResult>;
+  fetchQuota(
+    credential: string,
+    sourceId: string,
+    accountContext?: ProviderAccountConnectContext,
+  ): Promise<QuotaRefreshResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +73,9 @@ export interface ProviderAdapter {
 export interface EnvConfig {
   /** GCP project id. */
   projectId: string;
+
+  /** Public Firebase Web API key paired with projectId for desktop custom-token exchange. */
+  firebaseWebAPIKey: string;
 
   /** KMS key name for envelope encryption (projects/…/locations/…/keyRings/…/cryptoKeys/…). */
   kmsKeyName: string;

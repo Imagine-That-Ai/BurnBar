@@ -35,6 +35,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case quotaSignalsRecent = "daemon.quota.signals.recent"
     case quotaSignalsClear = "daemon.quota.signals.clear"
     case perfMeasure = "perf.measure"
+    case accountStatus = "daemon.account.status"
+    case accountDeviceAuthStart = "daemon.account.device_auth.start"
+    case accountDeviceAuthPoll = "daemon.account.device_auth.poll"
+    case accountDeviceAuthCancel = "daemon.account.device_auth.cancel"
+    case accountSignOut = "daemon.account.sign_out"
     case membershipStatus = "daemon.membership.status"
     case membershipCheckoutURL = "daemon.membership.checkoutUrl"
     case membershipRestore = "daemon.membership.restore"
@@ -230,6 +235,135 @@ public struct BurnBarPerfMeasureResponse: Codable, Hashable, Sendable {
         self.ok = ok
         self.source = source
         self.detail = detail
+    }
+}
+
+public enum BurnBarAccountState: String, Codable, Hashable, Sendable {
+    case signedOut = "signed_out"
+    case authorizationPending = "authorization_pending"
+    case signedIn = "signed_in"
+}
+
+public enum BurnBarAccountProblemCode: String, Codable, Hashable, Sendable {
+    case secretStoreUnavailable = "secret_store_unavailable"
+    case networkUnavailable = "network_unavailable"
+    case reauthenticationRequired = "reauthentication_required"
+    case authorizationExpired = "authorization_expired"
+}
+
+public struct BurnBarAccountProblem: Codable, Hashable, Sendable {
+    public let code: BurnBarAccountProblemCode
+    public let message: String
+    public let recoverable: Bool
+
+    public init(code: BurnBarAccountProblemCode, message: String, recoverable: Bool) {
+        self.code = code
+        self.message = message
+        self.recoverable = recoverable
+    }
+}
+
+public struct BurnBarAccountDeviceAuthSession: Codable, Hashable, Sendable {
+    public let flowID: String
+    public let userCode: String
+    public let verificationURL: String
+    public let expiresAt: String
+    public let pollIntervalSeconds: Int
+
+    enum CodingKeys: String, CodingKey {
+        case flowID = "flow_id"
+        case userCode = "user_code"
+        case verificationURL = "verification_url"
+        case expiresAt = "expires_at"
+        case pollIntervalSeconds = "poll_interval_seconds"
+    }
+
+    public init(
+        flowID: String,
+        userCode: String,
+        verificationURL: String,
+        expiresAt: String,
+        pollIntervalSeconds: Int
+    ) {
+        self.flowID = flowID
+        self.userCode = userCode
+        self.verificationURL = verificationURL
+        self.expiresAt = expiresAt
+        self.pollIntervalSeconds = pollIntervalSeconds
+    }
+}
+
+public struct BurnBarAccountSnapshot: Codable, Hashable, Sendable {
+    public let state: BurnBarAccountState
+    public let uid: String?
+    public let email: String?
+    public let displayName: String?
+    public let photoURL: String?
+    public let trustClass: String
+    public let syncState: String
+    public let credentialBackend: String?
+    public let session: BurnBarAccountDeviceAuthSession?
+    public let problem: BurnBarAccountProblem?
+    public let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case uid
+        case email
+        case displayName = "display_name"
+        case photoURL = "photo_url"
+        case trustClass = "trust_class"
+        case syncState = "sync_state"
+        case credentialBackend = "credential_backend"
+        case session
+        case problem
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        state: BurnBarAccountState,
+        uid: String? = nil,
+        email: String? = nil,
+        displayName: String? = nil,
+        photoURL: String? = nil,
+        trustClass: String = "linux_lower_trust",
+        syncState: String = "local_only",
+        credentialBackend: String? = nil,
+        session: BurnBarAccountDeviceAuthSession? = nil,
+        problem: BurnBarAccountProblem? = nil,
+        updatedAt: String
+    ) {
+        self.state = state
+        self.uid = uid
+        self.email = email
+        self.displayName = displayName
+        self.photoURL = photoURL
+        self.trustClass = trustClass
+        self.syncState = syncState
+        self.credentialBackend = credentialBackend
+        self.session = session
+        self.problem = problem
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct BurnBarAccountStatusResponse: Codable, Hashable, Sendable {
+    public let account: BurnBarAccountSnapshot
+
+    public init(account: BurnBarAccountSnapshot) {
+        self.account = account
+    }
+}
+
+public struct BurnBarAccountFlowRequest: Codable, Hashable, Sendable {
+    public let flowID: String
+
+    enum CodingKeys: String, CodingKey {
+        case flowID = "flow_id"
+    }
+
+    public init(flowID: String) {
+        self.flowID = flowID
     }
 }
 

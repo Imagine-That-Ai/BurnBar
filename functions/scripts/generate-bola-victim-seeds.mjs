@@ -31,6 +31,7 @@ const PROBE = {
   connectionId: "bob-conn",
   eventId: "bob-event",
   code: "ABCDEFGHJKMN",
+  userCode: "ABCD-EFGH",
   transferId: `ct_${"b".repeat(24)}`,
   deviceCode: "bob-device-code",
   docID: "bob-doc",
@@ -90,7 +91,7 @@ function seedsForEndpoint(entry) {
 
   if (name === "pollCliLink" || name === "completeCliLink" || ids.has("deviceCode")) {
     push(globalPath(`cli_link_sessions/${PROBE.deviceCode}`), {
-      userCode: PROBE.code,
+      userCode: PROBE.userCode,
       status: "approved",
       ownerUid: "BOB_UID",
     });

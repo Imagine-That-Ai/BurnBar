@@ -255,7 +255,7 @@
 </tr>
 <tr>
 <td>Remediation evidence</td>
-<td>Stacked implementation through <code>codex/linux-parity-native</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code></td>
+<td>Stacked source implementation through <code>codex/linux-parity-auth</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>. The auth stack is source-validated but not deployed or environment-certified.</td>
 </tr>
 </tbody></table>
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
@@ -275,11 +275,17 @@ frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
 and a runtime probe that exposes the route only when the daemon can support it.
 It is still <strong>unproven as a parity outcome</strong> until a real Linux-to-macOS/mobile
 two-device matrix passes. The largest remaining functional gaps are complete
-system Computer Use capture/execution, provider/auth/portal completion inside
-transactional onboarding, account/cloud/device workflows, chat and session
+system Computer Use capture/execution, provider/portal completion inside
+transactional onboarding, account membership/cloud/device workflows, chat and session
 depth, global text expansion, and freedesktop notification/status-window depth.
 Linux now has a single-instance native launch boundary, validated deep links,
 background startup, live tray facts/actions, and user-owned XDG login start.
+The current auth packet also adds purpose-bound in-app device authorization,
+daemon-owned Firebase token exchange and refresh, writable-keyring preflight,
+local sign-out, and a strict renderer-redacted account contract. Native Linux
+App Check attestation for protected cloud operations, membership/billing,
+cloud sync, and trusted devices remain open, so
+this implements the Linux sign-in foundation rather than closing <code>GAP-010</code>.
 The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
 signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
@@ -305,8 +311,9 @@ requested 200% zoom passed;</li>
 <li>10-sample p95 results were 349.2 ms process start, 61.85 ms tray reopen, and
 112.55 ms daemon health round-trip.</li>
 </ul>
-<p>The current integration branch adds measured source and package evidence beyond
-that historical installed baseline:</p>
+<p>The last complete native integration sweep, before the current auth packet,
+recorded this measured source and package evidence beyond that historical
+installed baseline:</p>
 <ul>
 <li><strong>100</strong> fail-closed Swift Core/security/daemon tests passed across XDG paths, provider
 discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;</li>
@@ -322,7 +329,12 @@ blockers, and <strong>28/28</strong> package-smoke steps passed;</li>
 construction rather than relabeling ARM output. A native hosted runner and an
 exact installed x86_64 user session remain required.</li>
 </ul>
-<p>Promotion remains blocked for three explicit reasons: no previous same-architecture
+<p>The current auth packet separately passed <strong>30/30</strong> Linux security tests,
+<strong>8/8</strong> RPC contract tests, <strong>15/15</strong> daemon auth tests, the full <strong>64-file / 457-test</strong>
+desktop suite, <strong>26/26</strong> Tauri Rust tests, <strong>34/34</strong> focused Functions auth/grant
+tests, and <strong>44/44</strong> website tests. A deployed GNOME/KDE browser-to-keyring run
+remains pending; these source results do not certify the production auth outcome.</p>
+<p>Promotion remains blocked by several explicit conditions: no previous same-architecture
 Linux package exists to prove update, rollback, and data preservation; no x86_64
 installed architecture session has been produced; and the minimum compositor,
 desktop, keyring, and portal matrix is not green. The public update endpoint also
@@ -385,6 +397,11 @@ exercised in installed packages.</li>
 <td>Native shell</td>
 <td>Single-instance/background launch, typed deep links, live tray facts/actions, and user XDG login start are implemented</td>
 <td>Add actionable freedesktop notifications and status window; certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, and lifecycle rows</td>
+</tr>
+<tr>
+<td>Account auth</td>
+<td>Purpose-bound device authorization, sealed custom-token delivery, daemon-owned refresh, keyring custody, renderer-redacted status, and local sign-out are source-implemented</td>
+<td>Deploy and certify the callable/browser path; add native Linux App Check attestation for protected cloud operations, membership/billing, cloud sync, and trusted-device lifecycle</td>
 </tr>
 <tr>
 <td>Packaging</td>
@@ -460,11 +477,12 @@ oracle. Generated evidence was accepted only when the underlying mechanism and
 live product state were independently reproducible.</p>
 <h3>Verification performed</h3>
 <ul>
-<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>62 files, 419 tests passed</strong>.</li>
+<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>64 files, 457 tests passed</strong>.</li>
 <li><code>npm run build --prefix apps/linux-desktop</code>: <strong>passed</strong>; the main JavaScript
-chunk is <strong>662.74 kB</strong> minified and Vite reports a chunk-size warning.</li>
+chunk is <strong>678.93 kB</strong> minified and Vite reports a chunk-size warning.</li>
 <li><code>cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml</code>:
-<strong>24/24 passed</strong>, including native deep-link/autostart, capability-catalog,
+<strong>26/26 passed</strong>, including native deep-link/autostart, account-network,
+capability-catalog,
 Mercury-probe, update-feed, URL, gateway, panic-shortcut, and wire-contract
 coverage.</li>
 <li>ARM64 Ubuntu 24.04 GNOME X11 native-shell pass: production-protocol ELF
@@ -743,7 +761,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-13</td>
 <td>Onboarding</td>
 <td>Provider connection, scan, permissions, chat engine, recovery, completion gates</td>
-<td>Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete</td>
+<td>Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, onboarding integration with deployed account/provider auth, portal, tray, update, and first-data readback remain incomplete</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -759,7 +777,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-15</td>
 <td>Account and billing</td>
 <td>Sign-in/link/sign-out, membership, subscription, recovery</td>
-<td>Status/checkout projection; browser auth must happen elsewhere; preview actions inert</td>
+<td>Purpose-bound in-app device auth, daemon token refresh/keyring custody, renderer-redacted status, and local sign-out are source-implemented; production deployment proof, native Linux App Check attestation for protected cloud operations, membership restore/checkout, and entitlement recovery remain</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -1109,7 +1127,7 @@ package-smoke steps. Promotion remains blocked until an installed x86_64
 session, native hosted x86_64 run, final signed aggregate, valid public feed,
 and prior-version update/rollback/data-preservation proof all exist.</p>
 <ul>
-<li><strong>Difference:</strong> macOS release confidence comes from a signed product and a
+<li><strong>Baseline difference (2026-07-09):</strong> macOS release confidence comes from a signed product and a
 delivery path that can be exercised. Linux&#39;s four public Ed25519 artifact pairs
 pass, but the mission-002 local closure diverges and all four local pairs fail.
 <code>verify-linux-release.mjs</code> checks only recorded signature entries and still
@@ -1148,7 +1166,7 @@ routes produced nonblack installed-app screenshots. This closes the observed
 deleted-binary/duplicate-daemon baseline for that package session, but not the
 x86_64, prior-version, suspend/resume, or compositor matrix.</p>
 <ul>
-<li><strong>Difference:</strong> macOS owns its daemon lifecycle, startup recovery, and app
+<li><strong>Baseline difference (2026-07-09):</strong> macOS owns its daemon lifecycle, startup recovery, and app
 executable. One inspected mutable UTM guest had a running deleted executable,
 two daemons, no detected <code>systemd --user</code> unit, and completely black desktop
 and window captures. The live process/service observation was not captured as
@@ -1179,7 +1197,7 @@ bearer; Rust performs bounded authenticated HTTP/SSE proxying. The remaining wor
 is live GNOME/KDE/headless verification for locked, missing, rotate, recovery,
 and diagnostics-redaction states.</p>
 <ul>
-<li><strong>Difference:</strong> macOS uses Keychain-backed secret stores and keeps privileged
+<li><strong>Baseline difference (2026-07-09):</strong> macOS uses Keychain-backed secret stores and keeps privileged
 credentials in native code. Linux provider and connector services still
 default to Apple Keychain implementations whose non-Security paths can throw,
 while Tauri returns a gateway bearer token into WebView JavaScript.</li>
@@ -1218,7 +1236,7 @@ hosted x86_64 workflow run, installed x86_64 session, and the GNOME Wayland,
 KDE Wayland, and wlroots certification rows remain open. GAP-004 and P-37 are
 therefore not closed.</p>
 <ul>
-<li><strong>Difference:</strong> the audited baseline Linux release workflow produced ARM64 artifacts
+<li><strong>Baseline difference (2026-07-09):</strong> the audited baseline Linux release workflow produced ARM64 artifacts
 only, and live evidence covers Ubuntu 24.04 GNOME ARM64. macOS parity is being
 claimed without x86_64, KDE Wayland, GNOME Wayland, or wlroots proof.</li>
 <li><strong>Why it matters:</strong> most desktop Linux users cannot install the current build,
@@ -1242,7 +1260,7 @@ prevents the route from offering a guaranteed-failure action. Browser Computer
 Use remains the supported Linux mode. Full browser action/result E2E and a real
 portal/PipeWire/AT-SPI/libei or constrained X11 system adapter are still required.</p>
 <ul>
-<li><strong>Difference:</strong> macOS ships Browser, Agent Watch, and Mac System behavior with
+<li><strong>Baseline difference (2026-07-09):</strong> macOS ships Browser, Agent Watch, and Mac System behavior with
 approval, audit, and panic paths. Linux presents browser, agent-watch, and
 system choices, but the daemon rejects non-browser modes, the surface has no
 real target/action/result workflow, and no Linux capture/input adapter exists.</li>
@@ -1326,17 +1344,18 @@ Secret Service/KWallet write-read-delete cycle on Linux, verify writable XDG
 support storage, and persist explicit telemetry/cloud-sync choices. Failed probes
 remain blocked with bounded diagnostics and can retry after restart; the WebView
 cache is non-authoritative and strict decoding rejects forged completion,
-reordered requirements, and prerequisite jumps. The full native Linux manifest
-passes 98 Swift XCTest selectors and 18 Rust tests; the desktop suite passes all
-400 TypeScript/React tests plus its production bundle verifier.</p>
+reordered requirements, and prerequisite jumps. At that onboarding packet&#39;s
+commit, the native Linux manifest passed 98 Swift XCTest selectors and 18 Rust
+tests; the desktop suite passed all 400 TypeScript/React tests plus its production
+bundle verifier.</p>
 <p>This does <strong>not</strong> close GAP-008 or P-13. Provider account connection and real log
-scan, cloud authentication, portal permission readback, tray host verification,
-update-channel verification, chat-engine selection, and first-data confirmation
-are still explicit optional acknowledgements or separate workflows. Installed
-Ubuntu/Fedora keyboard, screen-reader, restart, denial, and repair evidence also
-remains required.</p>
+scan, onboarding integration with deployed account/provider authentication,
+portal permission readback, tray host verification, update-channel verification,
+chat-engine selection, and first-data confirmation are still explicit optional
+acknowledgements or separate workflows. Installed Ubuntu/Fedora keyboard,
+screen-reader, restart, denial, and repair evidence also remains required.</p>
 <ul>
-<li><strong>Difference:</strong> macOS onboarding connects providers, scans, requests system
+<li><strong>Baseline difference (2026-07-09):</strong> macOS onboarding connects providers, scans, requests system
 permissions, configures chat, and gates completion. Linux advances local state
 with Continue/Skip; only daemon retry is active and prerequisite acknowledgments
 are never established by real readback.</li>
@@ -1377,25 +1396,55 @@ cancel/retry, offline/reconnect, restart, pop-out/rejoin, export, and large
 transcript performance.</li>
 </ul>
 <h3>GAP-010 - Complete account, cloud, billing, and trusted devices</h3>
+<p><strong>Implementation update (2026-07-10): Linux account-auth foundation
+implemented; broader account/cloud parity remains open.</strong> The Linux desktop now
+starts a single daemon-owned <code>desktop_auth</code> device flow, opens only the exact
+allowlisted HTTPS approval URL, polls without overlap, exchanges a sealed
+custom token inside the daemon, persists only the refresh token in an approved
+writable Secret Service/KWallet backend, refreshes before use, projects a
+redacted profile, and signs out locally and idempotently. The website approval
+path now initializes App Check, authenticates with Google or Apple, binds the
+attestation claim, refreshes the ID token, obtains a high-risk nonce, and
+completes the exact requested purpose. The server stores no plaintext
+credential; credential material is limited to a verifier and sealed envelope
+alongside bounded non-secret link metadata. It enforces purpose/flow binding and
+supports secret-authenticated cancellation. The renderer and Rust bridge never
+receive device secrets or Firebase credentials. Token-bearing daemon requests
+refuse redirects and require an exact final endpoint URL. A durable keyring
+affinity marker binds restore, rotation, preflight, and sign-out to one backend;
+the retained signed-out tombstone keeps stale secondary-keyring credentials
+inert. This work does not claim
+native Linux App Check attestation for protected cloud operations,
+membership/billing, backup/sync, or trusted-device
+parity.</p>
 <ul>
 <li><strong>Difference:</strong> macOS can sign in/link/sign out, manage membership, cloud
-backup, conflicts, remote access, and trusted devices. Linux mostly projects
-status and checkout; auth must be completed elsewhere, cloud mutations are
-absent, and trusted-device mutation is explicitly unavailable.</li>
+backup, conflicts, remote access, and trusted devices. Linux now implements
+the source-level sign-in/link/local-sign-out foundation, but its deployed
+outcome is unproven; membership and billing are incomplete, native Linux App
+Check attestation for protected cloud operations is unavailable, cloud
+mutations are absent, and trusted-device
+mutation is explicitly unavailable.</li>
 <li><strong>Why it matters:</strong> cross-device continuity, entitlements, remote workflows,
 recovery, and paid product behavior cannot be completed in the app.</li>
-<li><strong>Recommended solution:</strong> add daemon-owned PKCE/device-code auth with validated
-callbacks, secure refresh-token custody, sign-out/revocation, App Check,
-membership, backup/conflict state, trusted-device lifecycle, remote MCP, and
-safe web billing restore.</li>
+<li><strong>Recommended solution:</strong> retain the implemented daemon-owned device auth,
+validated approval origin, secure refresh-token custody, and local sign-out;
+complete <code>LNX-AUTH-DEPLOY-001</code>, <code>LNX-APPCHECK-001</code>,
+<code>LNX-MEMBERSHIP-001</code>, <code>LNX-SYNC-001</code>, and <code>LNX-DEVICE-001</code> in that dependency
+order; keep Remote MCP and safe web billing restore inside their existing
+purpose and entitlement boundaries.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
-<li><strong>Implementation notes:</strong> external URLs must be HTTPS allowlisted; deep links
-must validate scheme/host/state; secrets stay native; define conflict and
-offline semantics before UI; surface Apple-only history honestly.</li>
-<li><strong>QA verification:</strong> auth success/cancel/state mismatch/expiry, malicious
-redirect rejection, restart, sign-out revocation, device add/revoke/transfer,
-backup/restore/conflict/offline, checkout/restore, entitlement refresh, and
-clock skew.</li>
+<li><strong>Implementation notes:</strong> preserve the <code>desktop_auth</code> purpose boundary and v2
+P-256/AES-GCM flow binding; keep custom/device/ID tokens memory-only and the
+refresh token in an approved writable native backend; external URLs must be
+exact HTTPS allowlisted; do not substitute all-device Admin revocation for
+ordinary local sign-out; define conflict and offline semantics before UI;
+surface Apple-only history honestly.</li>
+<li><strong>QA verification:</strong> deploy-time auth success, cancel, purpose/state mismatch,
+expiry, malicious redirect rejection, replay/tamper rejection, restart,
+refresh rotation, locked/missing keyring, local sign-out, device
+add/revoke/transfer, backup/restore/conflict/offline, checkout/restore,
+entitlement refresh, and clock skew.</li>
 </ul>
 <h3>GAP-011 - Replace activity and memory substitutes with true domain state</h3>
 <ul>
@@ -1562,7 +1611,7 @@ package-manager-owned install/rollback lifecycle, signed public feed,
 two-architecture artifacts, and prior-version upgrade/rollback evidence remain
 open; this row is therefore still <strong>Partial</strong>, not closed.</p>
 <ul>
-<li><strong>Difference:</strong> macOS exposes version, automatic checks, channel, install, and
+<li><strong>Baseline difference (2026-07-09):</strong> macOS exposes version, automatic checks, channel, install, and
 restart behavior. Linux appropriately delegates installation to package
 mechanisms but cannot check signed availability or present reliable
 compatibility, restart, and rollback state.</li>
@@ -1642,7 +1691,7 @@ keyboard-only traversal, and requested 200% zoom. The full shell verifier
 rejects missing or synthetic accessibility artifacts. GNOME/KDE matrix breadth
 remains tracked under GAP-004 rather than keeping this implementation gap open.</p>
 <ul>
-<li><strong>Difference:</strong> macOS has broad semantic labels/actions and targeted tests.
+<li><strong>Baseline difference (2026-07-09):</strong> macOS has broad semantic labels/actions and targeted tests.
 Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
 reduced-motion CSS, but its automated scan returns hardcoded rows and its
 purported AT-SPI proof contains only bus/window properties, not accessible
@@ -1708,7 +1757,7 @@ stay in Rust, and production builds replace daemon fixtures with a fail-closed
 module whose activation is unavailable. Mutation tests cover the IPC, URL,
 fixture, and production-bundle boundaries.</p>
 <ul>
-<li><strong>Difference:</strong> macOS uses narrow native service APIs. Linux has CSP, but still
+<li><strong>Baseline difference (2026-07-09):</strong> macOS uses narrow native service APIs. Linux has CSP, but still
 grants broad <code>shell:default</code>; the support UI exposes a persistent daemon
 fixture toggle in normal product UI; sensitive operations are not uniformly
 typed and allowlisted.</li>
@@ -1759,7 +1808,7 @@ both commit-bound sessions pass. Workflow mutation tests protect this wiring.
 The remaining proof is a real hosted two-architecture candidate run with a prior
 version and final signing/publication credentials.</p>
 <ul>
-<li><strong>Difference:</strong> macOS release automation has mature behavioral gates. Linux PR
+<li><strong>Baseline difference (2026-07-09):</strong> macOS release automation has mature behavioral gates. Linux PR
 CI builds Swift targets without running their behavior tests; the
 <code>--allow-blocked</code> verifier mode can return success for unrelated failures; the
 Make release target swallows strict verifier failure; PR artifact paths point
@@ -1927,10 +1976,40 @@ queueing, locked keyring, and redaction.</li>
 <td>Valid feed plus deb/rpm/AppImage update, rollback, and data preservation</td>
 </tr>
 <tr>
-<td>LNX-CHANNEL-001 through LNX-DIFF-001</td>
-<td>Open/partial</td>
-<td>Existing package/channel/product foundations retained</td>
-<td>Daily-use platform foundation and current macOS/Linux differential proof</td>
+<td>LNX-CHANNEL-001</td>
+<td>Open</td>
+<td>Package construction exists</td>
+<td>Signed apt/rpm metadata, AUR/Flatpak truth, and channel install lifecycle</td>
+</tr>
+<tr>
+<td>LNX-EVT-001</td>
+<td>Implemented in source; installed certification pending</td>
+<td>Bounded pull authority, restart/offline recovery, cancellation, and coalesced refresh</td>
+<td>Native push and exact-candidate suspend/offline matrix</td>
+</tr>
+<tr>
+<td>LNX-ONB-001</td>
+<td>Partially implemented</td>
+<td>Daemon-owned transactional state and required prerequisite probes</td>
+<td>Provider scan, deployed auth, portal, tray, update, chat, and first-data readback</td>
+</tr>
+<tr>
+<td>LNX-AUTH-001 family</td>
+<td>Source foundation implemented; deployment and product depth open</td>
+<td>Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, and local sign-out</td>
+<td>Five child packets for deployment, App Check, membership, sync, and trusted devices</td>
+</tr>
+<tr>
+<td>LNX-NATIVE-001</td>
+<td>Partially implemented</td>
+<td>Single-instance launch, typed deep links, live tray facts/actions, and XDG login start</td>
+<td>Notifications, status window, provider OAuth return, and installed desktop matrix</td>
+</tr>
+<tr>
+<td>LNX-CAT-001, LNX-DIFF-001</td>
+<td>Open</td>
+<td>Existing provider/path contracts retained</td>
+<td>Shared catalog plus same-commit macOS/Linux differential proof</td>
 </tr>
 <tr>
 <td>Phase 2 core workflows</td>
@@ -1986,7 +2065,8 @@ evidence, environment, artifact hash, and target commit.</li>
 <h3>Dependency graph</h3>
 <pre><code class="language-text">truth gates + installed baseline
   -&gt; secret custody + narrow IPC + capability manifest
-    -&gt; auth/cloud + provider catalog + native shell + updates
+    -&gt; auth deploy -&gt; Linux App Check -&gt; membership -&gt; sync -&gt; trusted devices
+    -&gt; provider catalog + native shell + updates
       -&gt; sessions/chat/memory + operational workspaces
         -&gt; Computer Use + Mercury + SmartHub + text expansion + pet
           -&gt; accessibility/performance/matrix certification
@@ -2097,8 +2177,8 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-AUTH-001</td>
 <td>LNX-SEC-001, LNX-IPC-001</td>
-<td>PKCE/device auth, membership, App Check, sync, trusted devices, safe billing callbacks</td>
-<td>Full sign-in/out/device/backup/restore/checkout matrix passes</td>
+<td>Umbrella account outcome, delivered through the five child packets below; the source-level sign-in/sign-out foundation is implemented</td>
+<td>Every auth child packet is accepted at one release head; full sign-in/out/keyring/device/backup/restore/checkout matrix passes without credential exposure</td>
 </tr>
 <tr>
 <td>LNX-NATIVE-001</td>
@@ -2123,6 +2203,63 @@ truth-sync, not the first time behavior is documented.</p>
 <td>LNX-CAT-001, LNX-CI-001</td>
 <td>Same-commit macOS/Linux binaries run one attested corpus and workflow suite</td>
 <td>Mutations on either platform fail the normalized differential oracle</td>
+</tr>
+</tbody></table>
+<h4>LNX-AUTH-001 child packets</h4>
+<p>All five packets bind their proof to the same release head under
+<code>docs/linux-port/evidence/auth/&lt;release-head&gt;/&lt;task-id&gt;/</code>. An individual packet
+may merge independently, but <code>LNX-AUTH-001</code> remains open until all five are
+accepted together.</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Depends on</th>
+<th>Engineering work</th>
+<th>Required evidence</th>
+<th>Rollback/containment</th>
+<th>Acceptance criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>LNX-AUTH-DEPLOY-001</td>
+<td>LNX-SEC-001, LNX-IPC-001</td>
+<td>Deploy the reviewed Functions and website revisions; certify the exact approval origin, purpose-bound callable, daemon exchange, keyring persistence, restart, and local sign-out</td>
+<td>Source/deployment revision binding, CSP and endpoint checks, Google and Apple approval transcripts, GNOME Secret Service and KDE KWallet runs, captured IPC/DOM/log redaction scan</td>
+<td>Roll back Functions and website to their prior revisions; keep the Linux client local-only and surface auth as unavailable without deleting local product data</td>
+<td>Google and Apple sign-in, cancel, expiry, retry, restart, refresh rotation, locked/missing keyring, and double sign-out pass through production endpoints with no credential exposure</td>
+</tr>
+<tr>
+<td>LNX-APPCHECK-001</td>
+<td>LNX-AUTH-DEPLOY-001, LNX-CAP-001</td>
+<td>Select and document a production Linux attestation trust model; implement native token acquisition and server verification bound to app, device, version, nonce, expiry, and replay state</td>
+<td>Threat model/ADR, attestation vectors, replay/revocation/clock-skew/offline tests, server decision logs, and GNOME/KDE/headless capability results</td>
+<td>A server kill switch makes protected cloud mutations fail closed; local account and SQLite workflows continue without claiming cloud availability</td>
+<td>Forged, replayed, expired, revoked, wrong-app, and wrong-version attestations fail; valid supported environments renew without exposing the token to the renderer</td>
+</tr>
+<tr>
+<td>LNX-MEMBERSHIP-001</td>
+<td>LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-NATIVE-001</td>
+<td>Add daemon-ID-token membership reads, Linux-safe checkout/manage endpoints, validated browser return, restore, entitlement refresh, and recovery; do not use Apple JWS as a Linux substitute</td>
+<td>Free/Pro and stale/offline fixtures, checkout/return/restore transcripts, signed webhook/entitlement receipts, restart recovery, and malicious-return tests</td>
+<td>Disable billing mutations and retain read-only entitlement/local mode; never erase local data or fabricate Pro state during outage</td>
+<td>Free, Pro, checkout, manage, cancel, restore, renewal, expiry, refund, offline, and callback-tamper cases converge on server-authoritative entitlement state across restart</td>
+</tr>
+<tr>
+<td>LNX-SYNC-001</td>
+<td>LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-EVT-001, LNX-SEC-001</td>
+<td>Implement daemon-owned encrypted backup, append/merge replication, offline journal, restore, conflict policy, remote access, and explicit sync status while preserving local authority</td>
+<td>Two-device encrypted payload inspection, deterministic conflict fixtures, offline/reconnect/retry transcripts, corruption/partial-failure recovery, and 10k-record performance</td>
+<td>Pause remote replication and preserve local data plus the durable pending journal; never resolve uncertainty by deleting or overwriting the local authority</td>
+<td>Backup, incremental sync, restore, conflict, duplicate retry, offline recovery, corruption recovery, account switch, and entitlement loss complete without plaintext or local data loss</td>
+</tr>
+<tr>
+<td>LNX-DEVICE-001</td>
+<td>LNX-APPCHECK-001, LNX-SYNC-001, LNX-SEC-001</td>
+<td>Add trusted-device list/add/approve/revoke/forget/transfer and encrypted credential-transfer lifecycle with daemon-owned authorization and audit</td>
+<td>Linux-to-macOS/iOS/Android two-device matrix, approval/revocation races, transfer readback, stolen/replayed invitation tests, audit trail, and restart/offline recovery</td>
+<td>Disable new pairing and transfers server-side while preserving revocation/audit records and local credentials; a revoked device remains denied</td>
+<td>Add, reject, approve, revoke, forget, replace, and transfer are idempotent, survive restart, propagate across devices, and prevent revoked or replayed peers from reading new data</td>
 </tr>
 </tbody></table>
 <h3>Phase 2 - Core workflow parity</h3>
@@ -2220,7 +2357,7 @@ truth-sync, not the first time behavior is documented.</p>
 </tr>
 <tr>
 <td>LNX-MEDIA-001</td>
-<td>LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-EVT-001</td>
+<td>LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-NATIVE-001, LNX-EVT-001</td>
 <td>Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle</td>
 <td>Real two-device matrix green on supported desktops</td>
 </tr>
@@ -2332,21 +2469,21 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>4</td>
 <td><strong>Daily-use native foundation</strong></td>
-<td>In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, and XDG login-start foundations implemented; notifications/auth and installed matrix pending</td>
-<td>LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001</td>
-<td>Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green</td>
+<td>In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, XDG login-start, and account-auth foundations implemented; native Linux App Check attestation, membership/cloud/device depth, notifications, and installed matrix remain</td>
+<td>LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001</td>
+<td>Setup, deployed auth, data freshness, alerts/tray, update lifecycle, and current provider diff green</td>
 </tr>
 <tr>
 <td>5</td>
 <td><strong>Core product workflows</strong></td>
-<td>Pending</td>
+<td>Open/partial</td>
 <td>LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001</td>
 <td>No synthetic state; every primary workspace and privacy workflow completes</td>
 </tr>
 <tr>
 <td>6</td>
 <td><strong>Browser automation parity</strong></td>
-<td>Pending</td>
+<td>Open/partial</td>
 <td>LNX-CU-BROWSER-001</td>
 <td>Real actions, approval, panic, audit, restart recovery</td>
 </tr>
@@ -2384,6 +2521,8 @@ truth-sync, not the first time behavior is documented.</p>
 contracts are frozen:</p>
 <ul>
 <li>delivery: package architectures, update provider, release verification;</li>
+<li>auth and cloud: deploy, native attestation, membership, sync, and trusted
+devices; keep those five child packets sequential inside this lane;</li>
 <li>product data: provider catalog, sessions, projects, missions, insights;</li>
 <li>native shell: tray, notifications, deep links, startup, global shortcuts;</li>
 <li>high-complexity platform: Computer Use and Mercury as separate lanes;</li>
@@ -2472,8 +2611,14 @@ routing, and failover.</li>
 correlated route/action pairs after the renderer listener is installed.</li>
 <li><input checked="" disabled="" type="checkbox"> Settings and tray share one atomically written, package-pinned user XDG
 login-start entry with source and packaging drift tests.</li>
-<li><input disabled="" type="checkbox"> Sign-in/link/sign-out, state validation, expiry, refresh, revocation, offline,
-and clock-skew cases pass.</li>
+<li><input checked="" disabled="" type="checkbox"> Source-level account contracts cover purpose/flow binding, sealed-envelope
+tamper rejection, exact approval URLs and response endpoints, redirect refusal,
+non-overlapping and loss-tolerant polling, persistence before signed-in
+publication, restart/refresh rotation, renderer redaction, backend-affinity
+tombstones, and atomic local sign-out.</li>
+<li><input disabled="" type="checkbox"> Sign-in/link/sign-out, state validation, expiry, refresh, local credential
+deletion, offline, and clock-skew cases pass.</li>
+<li><input disabled="" type="checkbox"> Trusted-device and server-side credential revocation propagate securely.</li>
 <li><input disabled="" type="checkbox"> Trusted device add/revoke/transfer and credential transfer are secure.</li>
 <li><input disabled="" type="checkbox"> Backup, restore, conflict resolution, remote access, checkout, restore, and
 entitlement refresh work across restart.</li>

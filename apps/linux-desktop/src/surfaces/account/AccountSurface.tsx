@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { FailureStateList } from '../../components/FailureStateList.js';
@@ -8,6 +8,7 @@ import { useAccountStore } from '../../state/accountStore.js';
 import type { AccountStatus } from '../../tauriBridge.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { accountPlanTier } from './accountPlanTier.js';
+import { DeviceAuthPanel } from './DeviceAuthPanel.js';
 import { MembershipSection } from './membership/MembershipSection.js';
 import { SyncStateCard } from './SyncStateCard.js';
 import { TrustBadge } from './TrustBadge.js';
@@ -35,10 +36,12 @@ const ACCOUNT_CASES = [
 
 function signedOutStatus(): AccountStatus {
   return {
+    state: 'signed_out',
     signedIn: false,
     identityLabel: undefined,
     trustClass: 'linux-lower-trust',
     syncState: 'local-only',
+    updatedAt: new Date(0).toISOString(),
     lastSyncAt: undefined
   };
 }
@@ -48,22 +51,34 @@ export function AccountSurface() {
   const data = useAccountStore((s) => s.data);
   const loading = useAccountStore((s) => s.loading);
   const error = useAccountStore((s) => s.error);
+  const authPhase = useAccountStore((s) => s.authPhase);
+  const authError = useAccountStore((s) => s.authError);
+  const signOut = useAccountStore((s) => s.signOut);
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
   const daemonStatus = useDaemonStatusCopy();
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   useLaneLoad(load);
 
   const offline = !fixtureMode && !bridge && !loading && !data && Boolean(error);
   const statusForCard = data ?? (offline || error ? signedOutStatus() : null);
+  const authBusy = authPhase === 'starting' || authPhase === 'pending' || authPhase === 'cancelling' || authPhase === 'signing-out';
 
   const politeSummary = useMemo(() => {
+    if (authPhase === 'starting') return 'Starting secure browser sign-in.';
+    if (authPhase === 'pending') return 'Browser sign-in is waiting for approval.';
+    if (authPhase === 'cancelling') return 'Cancelling browser sign-in.';
+    if (authPhase === 'expired') return 'The browser sign-in code expired.';
+    if (authPhase === 'cancelled') return 'Browser sign-in cancelled.';
+    if (authPhase === 'signing-out') return 'Signing out.';
+    if (authPhase === 'error' && authError) return `Account action failed: ${authError}`;
     if (loading) return 'Loading account and sync status.';
     if (error) return `Account status unavailable: ${error}`;
     if (!data) return 'Account status not loaded.';
     if (!data.signedIn) return 'Signed out. Local-first mode is supported.';
     return `Signed in as ${data.identityLabel ?? 'Linux identity'}. Sync ${data.syncState}.`;
-  }, [loading, error, data]);
+  }, [authError, authPhase, loading, error, data]);
 
   return (
     <div className="account-stack">
@@ -81,6 +96,10 @@ export function AccountSurface() {
         <Banner tone="degraded" role="alert">
           {error}
         </Banner>
+      ) : null}
+
+      {authError && data?.signedIn && authPhase === 'error' ? (
+        <Banner tone="degraded" role="alert">{authError}</Banner>
       ) : null}
 
       {offline ? (
@@ -115,8 +134,9 @@ export function AccountSurface() {
                 <h3>Local-first is a supported mode</h3>
                 <p className="muted">
                   You can work entirely on this machine. Sign-in happens in your browser through the daemon when you
-                  choose—this shell never collects credentials.
+                  choose; this shell never collects credentials.
                 </p>
+                {!offline ? <DeviceAuthPanel /> : null}
               </div>
             ) : (
               <p className="muted account-identity">
@@ -125,6 +145,30 @@ export function AccountSurface() {
             )}
             <TrustBadge planTier={accountPlanTier(statusForCard)} />
             <SyncStateCard status={statusForCard} />
+            {statusForCard.signedIn ? (
+              <div className="account-signout">
+                {confirmingSignOut ? (
+                  <div className="account-signout-confirm" role="group" aria-label="Confirm sign out">
+                    <p>Sign out of OpenBurnBar Cloud? Local SQLite data stays on this machine.</p>
+                    <div className="actions">
+                      <button
+                        type="button"
+                        className="danger"
+                        disabled={authPhase === 'signing-out'}
+                        onClick={() => void signOut().finally(() => setConfirmingSignOut(false))}
+                      >
+                        {authPhase === 'signing-out' ? 'Signing out…' : 'Confirm sign out'}
+                      </button>
+                      <button type="button" className="ghost" disabled={authPhase === 'signing-out'} onClick={() => setConfirmingSignOut(false)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="ghost" onClick={() => setConfirmingSignOut(true)}>Sign out</button>
+                )}
+              </div>
+            ) : null}
           </div>
         </SurfaceCard>
       ) : null}
@@ -132,14 +176,10 @@ export function AccountSurface() {
       <MembershipSection />
 
       <div className="actions">
-        <button type="button" className="primary" disabled={loading} onClick={() => void load()}>
+        <button type="button" className="primary" disabled={loading || authBusy} onClick={() => void load()}>
           {loading ? 'Checking…' : 'Check again'}
         </button>
       </div>
-
-      <p className="muted account-signin-hint">
-        To sign in, complete browser-mediated auth from your daemon workflow, then use Check again.
-      </p>
 
       <FailureStateList cases={ACCOUNT_CASES} />
     </div>

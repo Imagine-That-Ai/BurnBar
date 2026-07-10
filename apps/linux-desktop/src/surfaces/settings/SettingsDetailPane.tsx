@@ -9,6 +9,7 @@ import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { CopyPathButton } from '../system/CopyPathButton.js';
+import { useAccountStore } from '../../state/accountStore.js';
 import { VersionGrid } from '../support/VersionGrid.js';
 import { OnboardingSurface } from '../OnboardingSurface.js';
 import { TextExpansionSurface } from '../TextExpansionSurface.js';
@@ -573,16 +574,62 @@ function NotificationsDetail({ mode }: { mode: 'alerts' | 'notifications' }) {
   );
 }
 
+function AccountDetail() {
+  const account = useAccountStore((state) => state.data);
+  const authPhase = useAccountStore((state) => state.authPhase);
+  const startDeviceAuth = useAccountStore((state) => state.startDeviceAuth);
+  const waiting =
+    authPhase === 'starting' ||
+    authPhase === 'pending' ||
+    authPhase === 'cancelling' ||
+    authPhase === 'signing-out';
+  const status = !account
+    ? 'Checking daemon account status'
+    : account.signedIn
+      ? `Signed in as ${account.identityLabel ?? account.uid ?? 'OpenBurnBar user'}`
+      : waiting ? 'Waiting for browser approval' : 'Signed out';
+  return (
+    <SettingGroup title="Account" sectionHeader hideTitle>
+      <SettingRow
+        iconGlyph="◎"
+        label="OpenBurnBar identity"
+        description={`${status}. Credentials remain in the daemon-owned Linux secret store.`}
+        control={account?.signedIn ? (
+          <a className="system-danger-link settings-drill-link" href="#/account">Manage</a>
+        ) : (
+          <button type="button" className="ghost" disabled={waiting} onClick={() => void startDeviceAuth()}>
+            {waiting ? 'Waiting…' : 'Sign in'}
+          </button>
+        )}
+      />
+      <SettingsDrillRow
+        as="div"
+        iconGlyph="⇒"
+        iconTint="var(--color-brass-bright)"
+        title="Account & cloud"
+        subtitle="Membership, trust limits, and browser sign-in details"
+        trailing={<a className="system-danger-link settings-drill-link" href="#/account">Open Account</a>}
+      />
+    </SettingGroup>
+  );
+}
+
 function DevicesAndSyncDetail({ config, onSelectTab }: { config: ConfigSnapshot; onSelectTab: (tab: SettingsTabId) => void }) {
+  const account = useAccountStore((state) => state.data);
+  const syncDescription = !account
+    ? 'Checking daemon account status.'
+    : account.signedIn
+      ? `Daemon account sync is ${account.syncState}. Local SQLite remains canonical.`
+      : 'Signed out. Local SQLite remains canonical.';
   return (
     <SettingGroup title="Devices & Sync" sectionHeader hideTitle>
       <p className="muted settings-tab-lede">
-        Linux sync status is derived from daemon.config.get/account posture. No trusted-device mutation RPC is available in this lane.
+        Account identity is daemon-owned. No trusted-device mutation RPC is available in this lane.
       </p>
       <SettingRow
         iconGlyph="⊞"
         label="Cloud sync source"
-        description={`Local SQLite remains canonical. Provider rows: ${(config.providers ?? []).length}.`}
+        description={`${syncDescription} Provider rows: ${(config.providers ?? []).length}.`}
         control={<button type="button" className="ghost" onClick={() => onSelectTab('account')}>Open Account</button>}
       />
       <SettingRow
@@ -767,22 +814,7 @@ export function SettingsDetailPane({
         content = <AgentsDetail config={config} />;
         break;
       case 'account':
-        content = (
-          <SettingGroup title="Account" sectionHeader hideTitle>
-            <SettingsDrillRow
-              as="div"
-              iconGlyph="◎"
-              iconTint="var(--color-brass-bright)"
-              title="Account & cloud"
-              subtitle="BurnBar session, entitlements, and optional cloud mirror"
-              trailing={
-                <a className="system-danger-link settings-drill-link" href="#/account">
-                  Open Account
-                </a>
-              }
-            />
-          </SettingGroup>
-        );
+        content = <AccountDetail />;
         break;
       case 'cloud':
         content = (

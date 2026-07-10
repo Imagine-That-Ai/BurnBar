@@ -37,6 +37,11 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .proxyRouteLogClear: "daemon.proxy.route_log.clear",
         .quotaSignalsRecent: "daemon.quota.signals.recent",
         .quotaSignalsClear: "daemon.quota.signals.clear",
+        .accountStatus: "daemon.account.status",
+        .accountDeviceAuthStart: "daemon.account.device_auth.start",
+        .accountDeviceAuthPoll: "daemon.account.device_auth.poll",
+        .accountDeviceAuthCancel: "daemon.account.device_auth.cancel",
+        .accountSignOut: "daemon.account.sign_out",
         .connectorPlaneGet: "daemon.connector.plane.get",
         .connectorConfigUpdate: "daemon.connector.config.update",
         .connectorAction: "daemon.connector.action",
@@ -170,6 +175,36 @@ final class BurnBarRPCContractsTests: XCTestCase {
         XCTAssertThrowsError(try JSONDecoder().decode([BurnBarRPCMethod].self, from: unknown)) { error in
             XCTAssertTrue(error is DecodingError, "Expected DecodingError, got \(error)")
         }
+    }
+
+    func testAccountSnapshotUsesRedactedStableWireKeys() throws {
+        let session = BurnBarAccountDeviceAuthSession(
+            flowID: "123E4567-E89B-12D3-A456-426614174000",
+            userCode: "ABCD-EFGH",
+            verificationURL: "https://burnbar.ai/link?code=ABCD-EFGH&flow=desktop_auth",
+            expiresAt: "2030-01-01T00:00:00Z",
+            pollIntervalSeconds: 5
+        )
+        let response = BurnBarAccountStatusResponse(account: BurnBarAccountSnapshot(
+            state: .authorizationPending,
+            trustClass: "linux_lower_trust",
+            syncState: "local_only",
+            credentialBackend: "org.freedesktop.secrets",
+            session: session,
+            updatedAt: "2030-01-01T00:00:00Z"
+        ))
+        let encoded = try JSONEncoder().encode(response)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let account = try XCTUnwrap(json["account"] as? [String: Any])
+        let encodedSession = try XCTUnwrap(account["session"] as? [String: Any])
+
+        XCTAssertEqual(account["state"] as? String, "authorization_pending")
+        XCTAssertEqual(account["credential_backend"] as? String, "org.freedesktop.secrets")
+        XCTAssertEqual(encodedSession["flow_id"] as? String, session.flowID)
+        XCTAssertNil(account["refresh_token"])
+        XCTAssertNil(account["id_token"])
+        XCTAssertNil(encodedSession["device_code"])
+        XCTAssertNil(encodedSession["device_secret"])
     }
 
     func testControllerRuntimeSnapshotMethod_isAdditiveControllerNamespaceExtension() throws {

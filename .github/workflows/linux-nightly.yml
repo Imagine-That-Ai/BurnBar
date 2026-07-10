@@ -104,7 +104,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/linux-desktop/package-lock.json
+          cache-dependency-path: |
+            apps/linux-desktop/package-lock.json
+            scripts/linux-port/package-lock.json
 
       - name: Record blocked environment row
         if: matrix.mode == 'blocked'
@@ -122,6 +124,10 @@ jobs:
       - name: Install Linux desktop dependencies
         if: matrix.mode == 'runnable'
         run: npm ci --prefix apps/linux-desktop
+
+      - name: Install Linux documentation tool dependencies
+        if: matrix.mode == 'runnable'
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
 
       - name: Build mission Linux toolchain image
         if: matrix.mode == 'runnable'

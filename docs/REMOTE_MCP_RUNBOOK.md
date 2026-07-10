@@ -62,6 +62,16 @@ upsert signer secrets unless `OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true`
 is set, so normal production deploys cannot rotate token-signing material as an
 accidental side effect.
 
+## Grant issuance atomicity
+
+Device-code approval commits the Remote MCP client, grant, audit event, sealed
+credential envelope, and consumed approval state in one Firestore transaction.
+An aborted or retried transaction therefore cannot leave an orphan client or
+grant, and a committed response remains pollable until the short link-session
+TTL if the first HTTP response is lost. Refresh credentials remain either
+hashed in the grant record or sealed to the polling client's delivery key; they
+are never stored in plaintext on the link session.
+
 ## Domain Mapping
 
 The launch target is `mcp.burnbar.ai`. The older `mcp.openburnbar.com` target is

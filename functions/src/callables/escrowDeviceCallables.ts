@@ -18,6 +18,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import {
+  APP_CHECK_ATTESTATION_MAX_AGE_MS,
   bindAppCheckAttestationForUid,
   enforceHighRiskComputerUseCallable,
   enforceHighRiskComputerUseCallableWithNonce,
@@ -69,7 +70,7 @@ export const bindAppCheckAttestation = onCall(
       ok: true,
       appId: claim.appId,
       boundAtMillis: claim.boundAtMillis,
-      maxAgeMillis: 30 * 24 * 60 * 60 * 1000,
+      maxAgeMillis: APP_CHECK_ATTESTATION_MAX_AGE_MS,
     };
   }),
 );

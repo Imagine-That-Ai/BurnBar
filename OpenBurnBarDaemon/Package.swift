@@ -208,7 +208,8 @@ var packageTargets: [Target] = [
             .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
-            .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore")
+            .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore"),
+            .product(name: "OpenBurnBarLinuxSecurity", package: "OpenBurnBarCore")
         ],
         // Socket-level Linux gateway harness stays Swift 5 to avoid
         // region-isolation noise around POSIX buffers in XCTest helpers.

@@ -1,0 +1,11 @@
+{
+  "name": "@openburnbar/linux-port-tools",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "marked": "13.0.3"
+  }
+}

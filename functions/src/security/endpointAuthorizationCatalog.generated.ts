@@ -397,11 +397,12 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   {
     exportedName: "completeCliLink",
     trigger: "callable",
-    authMethod: "Firebase Auth with callable-level ownership checks",
+    authMethod: "Firebase Auth plus App Check binding and single-use high-risk nonce",
     appCheck: "required",
-    tenantSource: "request.auth.uid",
-    objectIdsFromClient: ["pairingId", "code", "sessionId"],
-    ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
+    tenantSource: "request.auth.uid is the sole subject of issued credentials",
+    objectIdsFromClient: ["userCode"],
+    ownershipCheck:
+      "handler resolves a pending server-only session by normalized userCode, binds the displayed expectedPurpose, and derives the Firebase custom-token or Remote MCP subject only from request.auth.uid",
     handlerModule: "callables/cliLink.ts",
     bolaCoverage: [
       {
@@ -1692,7 +1693,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "cli_link_sessions/{deviceCode} resolved server-side",
     objectIdsFromClient: ["deviceCode"],
     ownershipCheck:
-      "poll requires a matching device-secret verifier for the deviceCode session and returns only a client-sealed credential envelope",
+      "poll and cancel require a matching device-secret verifier for the deviceCode session; approved polls return only purpose plus a client-sealed credential envelope",
     handlerModule: "callables/cliLink.ts",
     bolaCoverage: [
       {
@@ -2942,7 +2943,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "server-generated deviceCode",
     objectIdsFromClient: [],
     ownershipCheck:
-      "creates ephemeral cli_link_sessions with a verifier hash and credential-delivery public key; no cross-tenant reads",
+      "creates ephemeral purpose-bound cli_link_sessions with a verifier hash and credential-delivery public key; desktop_auth additionally requires an opaque 128-bit flow binding",
     handlerModule: "callables/cliLink.ts",
     bolaCoverage: [
       {

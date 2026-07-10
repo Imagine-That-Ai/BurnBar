@@ -24,6 +24,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case config
     /// Usage + proxy-route observability reads/writes.
     case observability
+    /// Linux account sign-in, refresh-token authority, and sign-out.
+    case account
     /// Local membership cache reads plus Stripe checkout/restore handoff.
     case membership
     /// Connector-plane + browser tooling actions.
@@ -74,6 +76,9 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .proxyRouteLogRecent, .proxyRouteLogClear,
              .quotaSignalsRecent, .perfMeasure:
             return .observability
+        case .accountStatus, .accountDeviceAuthStart, .accountDeviceAuthPoll,
+             .accountDeviceAuthCancel, .accountSignOut:
+            return .account
         case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
             return .membership
         case .connectorPlaneGet, .connectorConfigUpdate, .connectorAction,

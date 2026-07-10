@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccountStatus } from '../../tauriBridge.js';
 import { useAccountStore } from '../../state/accountStore.js';
@@ -8,7 +8,15 @@ import { accountPlanTier } from './accountPlanTier.js';
 import { AccountSurface } from './AccountSurface.js';
 
 function resetStores(): void {
-  useAccountStore.setState({ data: null, loading: false, error: null });
+  useAccountStore.setState({
+    data: null,
+    loading: false,
+    error: null,
+    authPhase: 'idle',
+    authSession: null,
+    authError: null,
+    browserError: null
+  });
   useShellStore.setState({
     fixtureMode: false,
     bridge: null,
@@ -29,24 +37,32 @@ function setAccount(
 }
 
 const signedOut: AccountStatus = {
+  state: 'signed_out',
   signedIn: false,
   trustClass: 'linux-lower-trust',
-  syncState: 'local-only'
+  syncState: 'local-only',
+  updatedAt: '2026-07-10T00:00:00Z'
 };
 
 const signedInActive: AccountStatus = {
+  state: 'signed_in',
   signedIn: true,
+  uid: 'test-user',
   identityLabel: 'user@example.com',
   trustClass: 'linux-lower-trust',
   syncState: 'active',
+  updatedAt: '2026-07-10T00:00:00Z',
   lastSyncAt: new Date(Date.now() - 3_600_000).toISOString()
 };
 
 const signedInPaused: AccountStatus = {
+  state: 'signed_in',
   signedIn: true,
+  uid: 'test-user',
   identityLabel: 'user@example.com',
   trustClass: 'linux-lower-trust',
-  syncState: 'paused'
+  syncState: 'paused',
+  updatedAt: '2026-07-10T00:00:00Z'
 };
 
 describe('accountPlanTier', () => {
@@ -132,6 +148,53 @@ describe('AccountSurface', () => {
     render(<AccountSurface />);
     fireEvent.click(screen.getByRole('button', { name: /Check again/i }));
     expect(load).toHaveBeenCalled();
+  });
+
+  it('starts browser sign-in from the signed-out account card', () => {
+    const startDeviceAuth = vi.fn(async () => {});
+    useAccountStore.setState({ data: signedOut, startDeviceAuth });
+    render(<AccountSurface />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Sign in with browser/i })[0]!);
+    expect(startDeviceAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the pending code with accessible copy, reopen, and cancel actions', async () => {
+    const reopenDeviceAuth = vi.fn(async () => {});
+    const cancelDeviceAuth = vi.fn(async () => {});
+    const writeText = vi.fn(async () => {});
+    Object.assign(navigator, { clipboard: { writeText } });
+    useAccountStore.setState({
+      data: signedOut,
+      authPhase: 'pending',
+      authSession: {
+        flowId: 'flow-1',
+        userCode: 'ABCD-EFGH',
+        verificationUrl: 'https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH',
+        expiresAt: '2026-07-10T12:10:00Z',
+        pollIntervalSeconds: 5
+      },
+      reopenDeviceAuth,
+      cancelDeviceAuth
+    });
+    render(<AccountSurface />);
+    expect(screen.getByRole('heading', { name: /Finish sign-in in your browser/i })).toBeTruthy();
+    expect(screen.getByLabelText(/One-time sign-in code ABCD-EFGH/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Copy code/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('ABCD-EFGH'));
+    fireEvent.click(screen.getByRole('button', { name: /Open browser again/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Cancel sign-in/i }));
+    expect(reopenDeviceAuth).toHaveBeenCalledTimes(1);
+    expect(cancelDeviceAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms sign-out and states that local data stays on the machine', async () => {
+    const signOut = vi.fn(async () => {});
+    useAccountStore.setState({ data: signedInActive, signOut });
+    render(<AccountSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Sign out$/i }));
+    expect(screen.getByText(/Local SQLite data stays on this machine/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Confirm sign out/i }));
+    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
   });
 
   it('trust disclosure toggles aria-expanded and runbook link', () => {

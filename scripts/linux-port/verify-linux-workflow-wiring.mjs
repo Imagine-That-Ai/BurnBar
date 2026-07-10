@@ -50,6 +50,8 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
+  requireText(input.pr, 'npm ci --prefix scripts/linux-port --ignore-scripts', 'PR Linux docs tool install');
+  requireText(input.nightly, 'npm ci --prefix scripts/linux-port --ignore-scripts', 'nightly Linux docs tool install');
   for (const command of [
     'macos-matched-performance',
     'run-matched-performance.mjs',

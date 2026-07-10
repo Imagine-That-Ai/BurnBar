@@ -199,6 +199,36 @@
       "source": "functions/src/callables/credentialTransfer.ts"
     },
     {
+      "collectionGroup": "cli_link_sessions",
+      "path": "cli_link_sessions/{sessionId}",
+      "category": "security-ephemeral",
+      "growth": "One document per CLI, Remote MCP, or desktop-auth device-code handshake.",
+      "mechanism": "firestore-ttl-field",
+      "ttlField": "expiresAt",
+      "retentionSeconds": 600,
+      "retention": "10 minutes (CLI link session lifetime)",
+      "indexDeclared": true,
+      "status": "active",
+      "operatorAction": "Verify live via scripts/ci/verify-firestore-ttl-state.mjs.",
+      "rationale": "Device-link sessions contain verifier hashes, delivery public keys, and transient sealed credential envelopes; abandoned sessions must self-expire.",
+      "source": "functions/src/callables/cliLink.ts"
+    },
+    {
+      "collectionGroup": "high_risk_action_nonces",
+      "path": "users/{uid}/high_risk_action_nonces/{nonce}",
+      "category": "security-ephemeral",
+      "growth": "One document per high-risk callable approval attempt.",
+      "mechanism": "firestore-ttl-field",
+      "ttlField": "expireAt",
+      "retentionSeconds": 120,
+      "retention": "2 minutes (HIGH_RISK_NONCE_TTL_MS)",
+      "indexDeclared": true,
+      "status": "active",
+      "operatorAction": "Verify live via scripts/ci/verify-firestore-ttl-state.mjs.",
+      "rationale": "Single-use replay-defense nonces are useful only inside their two-minute approval window and must not accumulate.",
+      "source": "functions/src/appCheckAttestation.ts"
+    },
+    {
       "collectionGroup": "hermes_gateway_device_sessions",
       "path": "hermes_gateway_device_sessions/{sessionId}",
       "category": "security-ephemeral",

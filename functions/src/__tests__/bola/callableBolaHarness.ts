@@ -31,6 +31,7 @@ function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<stri
     connectionId: "bob-conn",
     eventId: "bob-event",
     code: "ABCDEFGHJKMN",
+    userCode: "ABCD-EFGH",
     transferId: `ct_${"b".repeat(24)}`,
     docID: "bob-doc",
     documentID: "bob-doc",

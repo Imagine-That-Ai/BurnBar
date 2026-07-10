@@ -1003,6 +1003,55 @@ fn validate_external_url(raw_url: &str) -> Result<String, String> {
     Ok(url.to_string())
 }
 
+fn validate_account_auth_url(raw_url: &str) -> Result<String, String> {
+    if raw_url.len() > 2_048 {
+        return Err("account_auth_url_too_long".to_string());
+    }
+    let url = reqwest::Url::parse(raw_url).map_err(|_| "account_auth_url_invalid".to_string())?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(url.port(), None | Some(443))
+        || url.host_str() != Some("burnbar.ai")
+        || url.path() != "/link"
+        || url.fragment().is_some()
+    {
+        return Err("account_auth_url_origin_refused".to_string());
+    }
+    let query_items = url.query_pairs().collect::<Vec<_>>();
+    if query_items.len() != 2 {
+        return Err("account_auth_url_query_refused".to_string());
+    }
+    let flows = query_items
+        .iter()
+        .filter_map(|(key, value)| (key == "flow").then_some(value.as_ref()))
+        .collect::<Vec<_>>();
+    let codes = query_items
+        .iter()
+        .filter_map(|(key, value)| (key == "code").then_some(value.as_ref()))
+        .collect::<Vec<_>>();
+    if flows.as_slice() != ["desktop_auth"]
+        || codes.len() != 1
+        || !is_canonical_account_user_code(codes[0])
+    {
+        return Err("account_auth_url_query_refused".to_string());
+    }
+    Ok(url.to_string())
+}
+
+fn is_canonical_account_user_code(code: &str) -> bool {
+    let bytes = code.as_bytes();
+    bytes.len() == 9
+        && bytes[4] == b'-'
+        && bytes.iter().enumerate().all(|(index, byte)| {
+            index == 4
+                || matches!(
+                    byte,
+                    b'A'..=b'H' | b'J'..=b'K' | b'M'..=b'N' | b'P'..=b'Z' | b'2'..=b'9'
+                )
+        })
+}
+
 #[tauri::command]
 fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
     let validated = validate_external_url(&url)?;
@@ -1011,6 +1060,16 @@ fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
     app.shell()
         .open(validated, None)
         .map_err(|_| "external_url_open_failed".to_string())
+}
+
+#[tauri::command]
+fn open_account_auth_url(app: AppHandle, url: String) -> Result<(), String> {
+    let validated = validate_account_auth_url(&url)?;
+    // reason: tauri-plugin-shell retains this Tauri 2 API while the app keeps URL validation native.
+    #[allow(deprecated)]
+    app.shell()
+        .open(validated, None)
+        .map_err(|_| "account_auth_url_open_failed".to_string())
 }
 
 #[tauri::command]
@@ -1096,6 +1155,35 @@ fn call_daemon_method(
     params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     call_daemon_method_with_timeout(method, params, Duration::from_secs(5))
+}
+
+// Approved polling can perform three sequential 30-second cloud operations:
+// device poll, custom-token exchange, and profile lookup. The shell timeout must
+// remain outside that daemon budget so it never reports failure while the daemon
+// is still completing a successful sign-in.
+const ACCOUNT_RPC_TIMEOUT: Duration = Duration::from_secs(100);
+const MEMBERSHIP_RPC_TIMEOUT: Duration = Duration::from_secs(100);
+
+async fn call_account_daemon_method(
+    method: &'static str,
+    params: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        call_daemon_method_with_timeout(method, params, ACCOUNT_RPC_TIMEOUT)
+    })
+    .await
+    .map_err(|error| format!("account_rpc_join_failed:{error}"))?
+}
+
+async fn call_membership_daemon_method(
+    method: &'static str,
+    params: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        call_daemon_method_with_timeout(method, params, MEMBERSHIP_RPC_TIMEOUT)
+    })
+    .await
+    .map_err(|error| format!("membership_rpc_join_failed:{error}"))?
 }
 
 fn request_computer_use_panic_halt(
@@ -1669,41 +1757,69 @@ fn database_watch_project(project_path: Option<String>) -> Result<serde_json::Va
     )
 }
 
-// ───────────────── P08: account status ─────────────────
-// Derived from daemon.config.get (cloud/sync subtree) — no daemon.account.* RPC.
+// ───────────────── P08: account status and browser authorization ─────────────────
 #[tauri::command]
-fn account_status() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.config.get", None)
+async fn account_status() -> Result<serde_json::Value, String> {
+    call_account_daemon_method("daemon.account.status", None).await
+}
+
+#[tauri::command]
+async fn account_device_auth_start() -> Result<serde_json::Value, String> {
+    call_account_daemon_method("daemon.account.device_auth.start", None).await
+}
+
+#[tauri::command]
+async fn account_device_auth_poll(flow_id: String) -> Result<serde_json::Value, String> {
+    call_account_daemon_method(
+        "daemon.account.device_auth.poll",
+        Some(serde_json::json!({ "flow_id": flow_id })),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn account_device_auth_cancel(flow_id: String) -> Result<serde_json::Value, String> {
+    call_account_daemon_method(
+        "daemon.account.device_auth.cancel",
+        Some(serde_json::json!({ "flow_id": flow_id })),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn account_sign_out() -> Result<serde_json::Value, String> {
+    call_account_daemon_method("daemon.account.sign_out", None).await
 }
 
 // ───────────────── P10: membership status ─────────────────
 // Proposed wire: daemon.membership.status. Older daemons reject it; the TS
 // store treats unknown-method errors as capability-absent, not fatal UI spam.
 #[tauri::command]
-fn membership_status() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.membership.status", None)
+async fn membership_status() -> Result<serde_json::Value, String> {
+    call_membership_daemon_method("daemon.membership.status", None).await
 }
 
 // ───────────────── P10: membership checkout URL ─────────────────
 // Proposed wire: daemon.membership.checkoutUrl. Tier-C StoreKit substitute:
 // the daemon mints the Stripe URL; the React layer opens it externally.
 #[tauri::command]
-fn membership_checkout_url() -> Result<serde_json::Value, String> {
-    call_daemon_method(
+async fn membership_checkout_url() -> Result<serde_json::Value, String> {
+    call_membership_daemon_method(
         "daemon.membership.checkoutUrl",
         Some(serde_json::json!({
             "success_url": "openburnbar://membership/success",
             "cancel_url": "openburnbar://membership/cancel"
         })),
     )
+    .await
 }
 
 // ───────────────── P10: membership restore ─────────────────
 // Proposed wire: daemon.membership.restore. Older daemons reject it; the UI
 // presents the membership capability as absent and keeps fixture mode usable.
 #[tauri::command]
-fn membership_restore() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.membership.restore", None)
+async fn membership_restore() -> Result<serde_json::Value, String> {
+    call_membership_daemon_method("daemon.membership.restore", None).await
 }
 
 // ───────────────── P09: app version info ─────────────────
@@ -2422,6 +2538,7 @@ pub fn run() {
             gateway_chat_stream,
             gateway_chat_cancel,
             open_external_url,
+            open_account_auth_url,
             open_update_url,
             open_dashboard,
             quit_app,
@@ -2473,6 +2590,10 @@ pub fn run() {
             database_index_project,
             database_watch_project,
             account_status,
+            account_device_auth_start,
+            account_device_auth_poll,
+            account_device_auth_cancel,
+            account_sign_out,
             membership_status,
             membership_checkout_url,
             membership_restore,
@@ -2634,6 +2755,42 @@ mod tests {
             "javascript:alert(1)",
         ] {
             assert!(validate_external_url(refused).is_err(), "{refused}");
+        }
+    }
+
+    #[test]
+    fn account_rpc_timeout_exceeds_three_daemon_network_hops() {
+        assert!(ACCOUNT_RPC_TIMEOUT > Duration::from_secs(90));
+        assert!(MEMBERSHIP_RPC_TIMEOUT > Duration::from_secs(90));
+    }
+
+    #[test]
+    fn account_auth_url_validation_is_exact_origin_path_flow_and_code() {
+        assert_eq!(
+            validate_account_auth_url("https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH")
+                .unwrap(),
+            "https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH"
+        );
+        for refused in [
+            "http://burnbar.ai/link?flow=desktop_auth",
+            "https://www.burnbar.ai/link?flow=desktop_auth",
+            "https://burnbar.ai.evil.example/link?flow=desktop_auth",
+            "https://user@burnbar.ai/link?flow=desktop_auth",
+            "https://burnbar.ai:444/link?flow=desktop_auth",
+            "https://burnbar.ai/other?flow=desktop_auth",
+            "https://burnbar.ai/link?flow=desktop_auth",
+            "https://burnbar.ai/link?flow=remote_mcp",
+            "https://burnbar.ai/link?flow=desktop_auth&flow=desktop_auth",
+            "https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH&next=https%3A%2F%2Fexample.com",
+            "https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH&code=JKMN-PQRS",
+            "https://burnbar.ai/link?flow=desktop_auth&code=ABCI-EFGH",
+            "https://burnbar.ai/link?flow=desktop_auth&code=abcd-efgh",
+            "https://burnbar.ai/link?flow=desktop_auth&code=ABCDEFGH",
+            "https://burnbar.ai/link?flow=desktop_auth#fragment",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+        ] {
+            assert!(validate_account_auth_url(refused).is_err(), "{refused}");
         }
     }
 

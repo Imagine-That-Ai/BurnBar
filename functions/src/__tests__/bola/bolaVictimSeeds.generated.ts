@@ -467,29 +467,13 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     {
       path: "cli_link_sessions/bob-device-code",
       data: {
-        userCode: "ABCDEFGHJKMN",
+        userCode: "ABCD-EFGH",
         status: "approved",
         ownerUid: "BOB_UID",
       },
     },
     {
-      path: "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/sessionId/bob-session",
+      path: "users/__BOB_UID__/bola_victim/userCode/ABCD-EFGH",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -1367,7 +1351,7 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     {
       path: "cli_link_sessions/bob-device-code",
       data: {
-        userCode: "ABCDEFGHJKMN",
+        userCode: "ABCD-EFGH",
         status: "approved",
         ownerUid: "BOB_UID",
       },

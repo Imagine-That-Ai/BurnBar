@@ -333,6 +333,28 @@ public struct LinuxSecretCustodian: Sendable {
         }
     }
 
+    public func requireWritableHighValueSecretBackend(
+        for secretClass: LinuxHighValueSecretClass
+    ) throws -> String {
+        var lastError: Error?
+        for backend in backends where backend.supportsMutations {
+            guard backend.trustLevel.approvedForHighValueSecrets else {
+                throw LinuxSecretStoreError.trustLevelRefused(
+                    secretClass: secretClass,
+                    trustLevel: backend.trustLevel
+                )
+            }
+            do {
+                try backend.healthCheck()
+                return backend.backendName
+            } catch {
+                lastError = error
+            }
+        }
+        if let lastError { throw lastError }
+        throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+    }
+
     public static func setupMessage(for error: LinuxSecretStoreError) -> String {
         switch error {
         case .missingSecret:
@@ -486,7 +508,27 @@ public enum LinuxAuthError: Error, Equatable {
     case missingCode
 }
 
+public struct LinuxAuthTokenDeletionOutcome: Codable, Equatable, Sendable {
+    public var authoritativeBackend: String?
+    public var credentialWasPresent: Bool
+    public var legacySweep: Bool
+
+    public init(
+        authoritativeBackend: String?,
+        credentialWasPresent: Bool,
+        legacySweep: Bool
+    ) {
+        self.authoritativeBackend = authoritativeBackend
+        self.credentialWasPresent = credentialWasPresent
+        self.legacySweep = legacySweep
+    }
+}
+
 public struct LinuxAuthTokenStore: Sendable {
+    private static let refreshTokenID = "firebase-refresh-token"
+    private static let backendAffinityID = "firebase-refresh-token-backend-affinity-v1"
+    private static let backendAffinityPrefix = "openburnbar-auth-backend-v1:"
+
     public var custodian: LinuxSecretCustodian
 
     public init(custodian: LinuxSecretCustodian) {
@@ -494,23 +536,256 @@ public struct LinuxAuthTokenStore: Sendable {
     }
 
     public func restoreRefreshToken() throws -> LinuxSecretMetadata {
-        try custodian.requireHighValueSecret(id: "firebase-refresh-token", secretClass: .refreshToken).metadata
+        try loadRefreshToken().metadata
+    }
+
+    public func loadRefreshToken() throws -> LinuxSecretRecord {
+        if let backend = try authoritativeBackend() {
+            guard let record = try backend.readSecret(
+                id: Self.refreshTokenID,
+                secretClass: .refreshToken
+            ) else {
+                throw LinuxSecretStoreError.missingSecret(Self.refreshTokenID)
+            }
+            return try validatedRecord(record, from: backend)
+        }
+
+        let legacy = try custodian.requireHighValueSecret(
+            id: Self.refreshTokenID,
+            secretClass: .refreshToken
+        )
+        guard let backend = mutableApprovedBackend(named: legacy.metadata.backend) else {
+            return legacy
+        }
+
+        // Migrate a pre-affinity token before returning it. A failed migration
+        // must not leave later restarts free to select a different stale token.
+        _ = try backend.storeSecret(
+            affinityValue(for: backend.backendName),
+            id: Self.backendAffinityID,
+            secretClass: .refreshToken
+        )
+        return try validatedRecord(legacy, from: backend)
+    }
+
+    public func requireWritableBackend() throws -> String {
+        if let backend = try authoritativeBackend() {
+            try backend.healthCheck()
+            return backend.backendName
+        }
+        return try custodian.requireWritableHighValueSecretBackend(for: .refreshToken)
     }
 
     @discardableResult
     public func storeRefreshToken(_ token: String) throws -> LinuxSecretMetadata {
-        try custodian.storeHighValueSecret(
-            token,
-            id: "firebase-refresh-token",
-            secretClass: .refreshToken
-        )
+        guard let normalized = token.trimmedNonEmpty else {
+            throw LinuxSecretStoreError.missingSecret(Self.refreshTokenID)
+        }
+
+        if let backend = try authoritativeBackend() {
+            try backend.healthCheck()
+            return try storeRefreshToken(normalized, in: backend)
+        }
+
+        var lastHealthError: Error?
+        for backend in custodian.backends where backend.supportsMutations {
+            guard backend.trustLevel.approvedForHighValueSecrets else {
+                throw LinuxSecretStoreError.trustLevelRefused(
+                    secretClass: .refreshToken,
+                    trustLevel: backend.trustLevel
+                )
+            }
+            do {
+                try backend.healthCheck()
+            } catch {
+                lastHealthError = error
+                continue
+            }
+            return try storeRefreshToken(normalized, in: backend)
+        }
+        if let lastHealthError { throw lastHealthError }
+        throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
     }
 
-    public func clearRefreshToken() throws {
-        try custodian.deleteHighValueSecret(
-            id: "firebase-refresh-token",
+    @discardableResult
+    public func clearRefreshToken() throws -> LinuxAuthTokenDeletionOutcome {
+        if let backend = try authoritativeBackend() {
+            let existed = try backend.readSecret(
+                id: Self.refreshTokenID,
+                secretClass: .refreshToken
+            ) != nil
+            if existed {
+                try backend.deleteSecret(id: Self.refreshTokenID, secretClass: .refreshToken)
+            }
+            return LinuxAuthTokenDeletionOutcome(
+                authoritativeBackend: backend.backendName,
+                credentialWasPresent: existed,
+                legacySweep: false
+            )
+        }
+
+        var writableBackends: [any LinuxSecretStoreBackend] = []
+        for backend in custodian.backends where backend.supportsMutations {
+            guard backend.trustLevel.approvedForHighValueSecrets else { continue }
+            writableBackends.append(backend)
+            guard try backend.readSecret(
+                id: Self.refreshTokenID,
+                secretClass: .refreshToken
+            ) != nil else { continue }
+
+            _ = try backend.storeSecret(
+                affinityValue(for: backend.backendName),
+                id: Self.backendAffinityID,
+                secretClass: .refreshToken
+            )
+            try backend.deleteSecret(id: Self.refreshTokenID, secretClass: .refreshToken)
+            return LinuxAuthTokenDeletionOutcome(
+                authoritativeBackend: backend.backendName,
+                credentialWasPresent: true,
+                legacySweep: true
+            )
+        }
+
+        guard writableBackends.isEmpty == false else {
+            throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+        }
+
+        var lastHealthError: Error?
+        for backend in writableBackends {
+            do {
+                try backend.healthCheck()
+            } catch {
+                lastHealthError = error
+                continue
+            }
+            _ = try backend.storeSecret(
+                affinityValue(for: backend.backendName),
+                id: Self.backendAffinityID,
+                secretClass: .refreshToken
+            )
+            return LinuxAuthTokenDeletionOutcome(
+                authoritativeBackend: backend.backendName,
+                credentialWasPresent: false,
+                legacySweep: true
+            )
+        }
+        if let lastHealthError { throw lastHealthError }
+        throw LinuxSecretStoreError.mutationUnavailable("no healthy approved backend")
+    }
+
+    private func authoritativeBackend() throws -> (any LinuxSecretStoreBackend)? {
+        var declaredBackend: String?
+        var firstReadError: Error?
+        for backend in custodian.backends where backend.supportsMutations {
+            guard backend.trustLevel.approvedForHighValueSecrets else { continue }
+            let record: LinuxSecretRecord?
+            do {
+                record = try backend.readSecret(
+                    id: Self.backendAffinityID,
+                    secretClass: .refreshToken
+                )
+            } catch {
+                if firstReadError == nil { firstReadError = error }
+                continue
+            }
+            guard let record else { continue }
+            let expectedPrefix = Self.backendAffinityPrefix
+            guard record.secret.hasPrefix(expectedPrefix) else {
+                throw LinuxSecretStoreError.invalidSecretValue("invalid auth backend authority marker")
+            }
+            let value = String(record.secret.dropFirst(expectedPrefix.count))
+            guard value.isEmpty == false,
+                  value == record.metadata.backend,
+                  mutableApprovedBackend(named: value) != nil else {
+                throw LinuxSecretStoreError.invalidSecretValue(
+                    "auth backend authority does not name its configured backend"
+                )
+            }
+            if let declaredBackend, declaredBackend != value {
+                throw LinuxSecretStoreError.invalidSecretValue(
+                    "conflicting auth backend authority markers"
+                )
+            }
+            declaredBackend = value
+        }
+        guard let declaredBackend else {
+            if let firstReadError { throw firstReadError }
+            return nil
+        }
+        return mutableApprovedBackend(named: declaredBackend)
+    }
+
+    private func mutableApprovedBackend(named name: String) -> (any LinuxSecretStoreBackend)? {
+        custodian.backends.first {
+            $0.backendName == name
+                && $0.supportsMutations
+                && $0.trustLevel.approvedForHighValueSecrets
+        }
+    }
+
+    private func storeRefreshToken(
+        _ token: String,
+        in backend: any LinuxSecretStoreBackend
+    ) throws -> LinuxSecretMetadata {
+        let previousAffinity = try backend.readSecret(
+            id: Self.backendAffinityID,
             secretClass: .refreshToken
         )
+        _ = try backend.storeSecret(
+            affinityValue(for: backend.backendName),
+            id: Self.backendAffinityID,
+            secretClass: .refreshToken
+        )
+        do {
+            let metadata = try backend.storeSecret(
+                token,
+                id: Self.refreshTokenID,
+                secretClass: .refreshToken
+            )
+            guard metadata.backend == backend.backendName else {
+                throw LinuxSecretStoreError.invalidSecretValue(
+                    "the selected backend returned mismatched authority metadata"
+                )
+            }
+            return metadata
+        } catch {
+            do {
+                if let previousAffinity {
+                    _ = try backend.storeSecret(
+                        previousAffinity.secret,
+                        id: Self.backendAffinityID,
+                        secretClass: .refreshToken
+                    )
+                } else {
+                    try backend.deleteSecret(
+                        id: Self.backendAffinityID,
+                        secretClass: .refreshToken
+                    )
+                }
+            } catch {
+                throw LinuxSecretStoreError.backendUnavailable(
+                    "\(backend.backendName) could not restore auth backend authority after a failed token write"
+                )
+            }
+            throw error
+        }
+    }
+
+    private func validatedRecord(
+        _ record: LinuxSecretRecord,
+        from backend: any LinuxSecretStoreBackend
+    ) throws -> LinuxSecretRecord {
+        guard record.metadata.backend == backend.backendName,
+              record.metadata.trustLevel.approvedForHighValueSecrets else {
+            throw LinuxSecretStoreError.invalidSecretValue(
+                "the authoritative backend returned mismatched token metadata"
+            )
+        }
+        return record
+    }
+
+    private func affinityValue(for backendName: String) -> String {
+        Self.backendAffinityPrefix + backendName
     }
 }
 
@@ -547,7 +822,7 @@ public struct LinuxAuthSessionController: Sendable {
         do {
             try await revokeRemoteSession(metadata)
         } catch {
-            try? tokenStore.clearRefreshToken()
+            _ = try? tokenStore.clearRefreshToken()
             throw error
         }
         try tokenStore.clearRefreshToken()
