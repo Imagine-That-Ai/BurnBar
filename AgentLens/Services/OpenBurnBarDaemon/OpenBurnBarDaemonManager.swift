@@ -309,6 +309,9 @@ final class OpenBurnBarDaemonManager {
     let usageSyncService: OpenBurnBarDaemonUsageSyncService
     let settingsManager: SettingsManager
     let daemonSocketAuthTokenStore: KeychainStore
+    let computerUseBudgetStatusStore: ComputerUseBudgetStatusStore
+    let computerUseQuotaUsageStore: ComputerUseQuotaUsageStore
+    let computerUseCloudMeteringRecorder: any ComputerUseCloudMeteringRecording
     weak var dataStore: DataStore?
     private var uploadPendingUsageAfterImport: (() async -> Void)?
     let computerUseCapabilityPublisherInstanceID = UUID().uuidString
@@ -337,7 +340,10 @@ final class OpenBurnBarDaemonManager {
         dependencies: OpenBurnBarDaemonDependencies = .live(),
         usageSyncService: OpenBurnBarDaemonUsageSyncService? = nil,
         daemonSocketAuthTokenStore: KeychainStore = OpenBurnBarDaemonManager.controllerRuntimeSecrets,
-        uploadPendingUsageAfterImport: (() async -> Void)? = nil
+        uploadPendingUsageAfterImport: (() async -> Void)? = nil,
+        computerUseBudgetStatusStore: ComputerUseBudgetStatusStore = ComputerUseBudgetStatusStore(),
+        computerUseQuotaUsageStore: ComputerUseQuotaUsageStore = ComputerUseQuotaUsageStore(),
+        computerUseCloudMeteringRecorder: any ComputerUseCloudMeteringRecording = ComputerUseCloudMeteringService()
     ) {
         self.settingsManager = settingsManager
         self.paths = paths
@@ -345,6 +351,9 @@ final class OpenBurnBarDaemonManager {
         self.usageSyncService = usageSyncService ?? OpenBurnBarDaemonUsageSyncService(paths: paths)
         self.daemonSocketAuthTokenStore = daemonSocketAuthTokenStore
         self.uploadPendingUsageAfterImport = uploadPendingUsageAfterImport
+        self.computerUseBudgetStatusStore = computerUseBudgetStatusStore
+        self.computerUseQuotaUsageStore = computerUseQuotaUsageStore
+        self.computerUseCloudMeteringRecorder = computerUseCloudMeteringRecorder
     }
 
     /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the main actor or the UI hangs.

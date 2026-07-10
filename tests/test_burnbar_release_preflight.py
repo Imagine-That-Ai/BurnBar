@@ -155,8 +155,11 @@ def test_release_workflow_uses_bounded_release_critical_app_gate():
     assert "timeout-minutes: 180" not in app_step
     assert "run: ./scripts/test-openburnbar-app.sh" not in body
 
-    assert "source \"$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh\"" in smoke
-    assert 'OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}"' in smoke
+    assert 'source "$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh"' in smoke
+    assert (
+        'OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}"'
+        in smoke
+    )
 
     for required_filter in (
         "OpenBurnBarTests/DirectDownloadReleaseMetadataTests",
@@ -196,9 +199,9 @@ def test_release_workflow_keeps_quiet_xcode_build_alive():
     assert "xcodebuild_pid" in app_build_step
     assert "xcodebuild Release .app still running" in app_build_step
     assert "xcodebuild Release .app recent output" in app_build_step
-    assert "tail -n 40 \"$xcodebuild_log\"" in app_build_step
-    assert "tail -n 200 \"$xcodebuild_log\"" in app_build_step
-    assert "wait \"$xcodebuild_pid\"" in app_build_step
+    assert 'tail -n 40 "$xcodebuild_log"' in app_build_step
+    assert 'tail -n 200 "$xcodebuild_log"' in app_build_step
+    assert 'wait "$xcodebuild_pid"' in app_build_step
 
 
 def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
@@ -213,7 +216,7 @@ def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
     assert prepare_start < lockfile_index < resolve_index < app_build_index
     assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
     assert 'SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"' in prepare_step
-    assert "CARGO_BUILD_JOBS: \"2\"" in prepare_step
+    assert 'CARGO_BUILD_JOBS: "2"' in prepare_step
     assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
 
 
@@ -397,11 +400,7 @@ def test_app_test_wrapper_supports_multiple_normalized_filters():
         check=True,
     )
 
-    filters = [
-        line
-        for line in result.stdout.splitlines()
-        if line.startswith("OpenBurnBarTests")
-    ]
+    filters = [line for line in result.stdout.splitlines() if line.startswith("OpenBurnBarTests")]
     assert filters == [
         "OpenBurnBarTests/Foo",
         "OpenBurnBarTests/Bar",
@@ -410,19 +409,17 @@ def test_app_test_wrapper_supports_multiple_normalized_filters():
     ]
 
 
-def test_firestore_deploy_uses_rest_rules_release_field_mask():
+def test_firestore_deploy_matches_firebase_tools_release_patch_shape():
     body = (ROOT / ".github/workflows/deploy-firestore.yml").read_text(encoding="utf-8")
     deployer = (ROOT / "scripts/ci/deploy-firebase-rules-releases.mjs").read_text(encoding="utf-8")
     assert "--only firestore:indexes,storage" in body
     assert "firestore:rules" not in body
     assert "deploy-firebase-rules-releases.mjs" in body
-    assert 'updateMask: "rulesetName"' in deployer
-    assert "Firebase Rules PATCH updates only rulesetName" in deployer
+    assert 'updateMask: "rulesetName"' not in deployer
+    assert "supplying updateMask currently causes" in deployer
     assert "rulesSourceForDeploy" in deployer
 
-    drift_checker = (ROOT / "scripts/ci/check-firestore-deploy-drift.mjs").read_text(
-        encoding="utf-8"
-    )
+    drift_checker = (ROOT / "scripts/ci/check-firestore-deploy-drift.mjs").read_text(encoding="utf-8")
     assert "rulesSourceForDeploy" in drift_checker
 
 
@@ -464,9 +461,7 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     assert 'git checkout --detach "$RELEASE_COMMIT"' in body
     assert 'echo "release_commit=$release_commit"' in body
     assert "RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}" in body
-    assert (
-        "RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}" in body
-    )
+    assert "RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}" in body
     assert '"tag": os.environ["RELEASE_TAG"]' in body
     assert '"commit": release_commit' in body
     assert '"ref": os.environ["RELEASE_REF"]' in body
@@ -606,7 +601,10 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
 def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     script = (ROOT / "scripts/sign-openburnbar-local.sh").read_text(encoding="utf-8")
 
-    assert 'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"' in script
+    assert (
+        'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"'
+        in script
+    )
     assert 'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"' in script
     assert '"com.openburnbar.privileged-input-execution"' in script
     assert '"com.openburnbar.virtual-hid-bridge"' in script
@@ -617,7 +615,7 @@ def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.daemon"' in script
     assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "com.openburnbar.cli"' in script
     assert (
-        'assert_peer_signature \\\n'
+        "assert_peer_signature \\\n"
         '  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputExecution" \\\n'
         '  "com.openburnbar.privileged-input-execution"'
     ) in script
@@ -638,7 +636,7 @@ def test_daemon_token_file_arguments_override_inherited_environment():
 
     assert 'var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]' in daemon_main
     assert 'var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]' in daemon_main
-    assert 'gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
-    assert 'socketAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
+    assert "gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)" in daemon_main
+    assert "socketAuthToken = try readTokenFile(arguments[index], argument: argument)" in daemon_main
     assert "if gatewayAuthToken == nil" not in daemon_main
     assert "if socketAuthToken == nil" not in daemon_main

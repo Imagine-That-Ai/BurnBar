@@ -221,7 +221,7 @@ extension OpenBurnBarDaemonManager {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         Task { @MainActor in
             do {
-                try await computerUseCloudMeteringService.recordSessionStart(
+                try await self.computerUseCloudMeteringRecorder.recordSessionStart(
                     userID: userID,
                     request: request,
                     response: response,
@@ -243,7 +243,7 @@ extension OpenBurnBarDaemonManager {
         guard let userID = Auth.auth().currentUser?.uid else { return }
         Task { @MainActor in
             do {
-                try await computerUseCloudMeteringService.recordAction(
+                try await self.computerUseCloudMeteringRecorder.recordAction(
                     userID: userID,
                     invocation: request.invocation,
                     response: response
@@ -265,7 +265,7 @@ extension OpenBurnBarDaemonManager {
         let reason = Self.computerUseEndReason(for: request.source)
         Task { @MainActor in
             do {
-                try await computerUseCloudMeteringService.recordSessionEnd(
+                try await self.computerUseCloudMeteringRecorder.recordSessionEnd(
                     userID: userID,
                     sessionID: response.sessionId,
                     endedAt: response.endedAt,

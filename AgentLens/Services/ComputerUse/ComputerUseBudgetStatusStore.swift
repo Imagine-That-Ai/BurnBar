@@ -198,9 +198,6 @@ final class ComputerUseBudgetStatusStore {
     }
 }
 
-@MainActor
-let computerUseBudgetStatusStore = ComputerUseBudgetStatusStore()
-
 /// Live mirror of the server-reconciled daily Computer Use counters at
 /// `users/{uid}/computer_use_quota_usage/{YYYY-MM-DD}`.
 ///
@@ -385,6 +382,3 @@ final class ComputerUseQuotaUsageStore {
         return formatter.string(from: now)
     }
 }
-
-@MainActor
-let computerUseQuotaUsageStore = ComputerUseQuotaUsageStore()

@@ -22,6 +22,7 @@ final class ComputerUseRuntimeController: ObservableObject {
 
     private let accountManager: AccountManager
     private let settingsManager: SettingsManager
+    private let daemonManager: OpenBurnBarDaemonManager
     private weak var relayHostService: HermesRelayHostService?
     private var panicCoordinator: ComputerUsePanicHaltCoordinator?
     private var escrowRevocationWatcher: EscrowRevocationWatcher?
@@ -33,15 +34,18 @@ final class ComputerUseRuntimeController: ObservableObject {
     init(
         accountManager: AccountManager,
         settingsManager: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager,
         relayHostService: HermesRelayHostService? = nil,
         chatController: ChatSessionController? = nil
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
+        self.daemonManager = daemonManager
         self.relayHostService = relayHostService
         self.coordinator = Self.makeCoordinator(
             accountManager: accountManager,
-            settingsManager: settingsManager
+            settingsManager: settingsManager,
+            cloudMeteringRecorder: daemonManager.computerUseCloudMeteringRecorder
         )
         self.coordinator.chatController = chatController
         configurePanelModel()
@@ -51,22 +55,24 @@ final class ComputerUseRuntimeController: ObservableObject {
     }
 
     private func bindBudgetStatusListener() {
-        computerUseBudgetStatusStore.onEnvelopeChanged = { [weak self] envelope in
+        let budgetStore = daemonManager.computerUseBudgetStatusStore
+        let quotaStore = daemonManager.computerUseQuotaUsageStore
+        budgetStore.onEnvelopeChanged = { [weak self] envelope in
             self?.coordinator.updateBudgetEnvelope(envelope)
             self?.publishDaemonCapabilityState()
         }
-        computerUseBudgetStatusStore.onAvailabilityChanged = { [weak self] in
+        budgetStore.onAvailabilityChanged = { [weak self] in
             self?.publishDaemonCapabilityState()
         }
-        computerUseBudgetStatusStore.startListening()
-        computerUseQuotaUsageStore.onStateChanged = { [weak self] in
+        budgetStore.startListening()
+        quotaStore.onStateChanged = { [weak self] in
             guard let self else { return }
-            if let usage = computerUseQuotaUsageStore.currentUsage {
+            if let usage = self.daemonManager.computerUseQuotaUsageStore.currentUsage {
                 self.coordinator.updateQuotaUsage(usage)
             }
             self.publishDaemonCapabilityState()
         }
-        computerUseQuotaUsageStore.startListening()
+        quotaStore.startListening()
     }
 
     func attach(relayHostService: HermesRelayHostService) {
@@ -383,7 +389,7 @@ final class ComputerUseRuntimeController: ObservableObject {
         let concurrentSessionActive = hasActiveSessionForDaemonBridge()
         Task { @MainActor in
             do {
-                _ = try await OpenBurnBarDaemonManager.shared.publishComputerUseCapabilityState(
+                _ = try await daemonManager.publishComputerUseCapabilityState(
                     concurrentSessionActive: concurrentSessionActive,
                     authorizationRevoked: authorizationRevoked
                 )
@@ -398,7 +404,8 @@ final class ComputerUseRuntimeController: ObservableObject {
 
     private static func makeCoordinator(
         accountManager: AccountManager,
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        cloudMeteringRecorder: any ComputerUseCloudMeteringRecording
     ) -> ComputerUseSessionCoordinator {
         let supportDirectory = OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
         let auditDirectory = supportDirectory.appendingPathComponent("computer-use-audit", isDirectory: true)
@@ -427,7 +434,7 @@ final class ComputerUseRuntimeController: ObservableObject {
             quotaLedger: ComputerUseLocalQuotaLedger(
                 directory: ComputerUseLocalQuotaLedger.defaultDirectory()
             ),
-            cloudMeteringRecorder: computerUseCloudMeteringService,
+            cloudMeteringRecorder: cloudMeteringRecorder,
             scopeRulesProvider: { ComputerUseDenyRegistry.builtInRules },
             approvalPresenter: { request, screenshot in
                 await ComputerUseRuntimeController.presentApproval(request, screenshot: screenshot)

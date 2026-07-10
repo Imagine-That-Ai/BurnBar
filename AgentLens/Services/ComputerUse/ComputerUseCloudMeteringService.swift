@@ -193,7 +193,4 @@ final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
 private enum ComputerUseCloudMeteringError: Error {
     case missingAuthenticatedUser
 }
-
-@MainActor
-let computerUseCloudMeteringService = ComputerUseCloudMeteringService()
 #endif

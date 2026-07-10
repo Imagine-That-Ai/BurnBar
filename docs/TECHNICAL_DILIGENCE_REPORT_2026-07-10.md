@@ -195,18 +195,20 @@ delivery over documentation polish.
 
 - Functions: lint/build, 1,176 passing Vitest cases (4 skipped), and the account-deletion retry
   harness passed.
-- Rules: Computer Use **25/25** and Storage **19/19**; account-erasure barrier passed.
+- Rules: Computer Use **25/25**, encrypted session logs **24/24**, and Storage **19/19**;
+  account-erasure barrier passed.
 - Native: focused Core/app/daemon tests and stable-Xcode macOS build passed.
 - Android: JVM suite and detekt passed.
 - Gate integrity: 36 Node policy cases, 15 Linux verifier tests, Actionlint, no-suppression,
   diff-coverage self-tests, RPC canon, migration catalog, repair provenance, and deploy-auth passed.
 - Duplication: 3,666 Swift/Kotlin/TypeScript files analyzed; 4.51% duplication.
-- Linux: manifest/graph validation passed. The first amd64-container run passed Core **14/14**,
-  Security **11/11**, Data **6/6**, and Vectors **5/5** before exposing and stopping on a daemon
-  cross-platform compile defect. After that defect was fixed, the daemon compiled and passed
-  **14/14** in a targeted container run. A single all-target rerun is locally blocked by a
-  reproducible async XCTest hang under amd64-on-arm64 QEMU; the hosted arm64 lane remains the
-  authoritative end-to-end proof.
+- Linux: manifest/graph validation passed. The first hosted ARM64 PR run passed Core **14/14**,
+  Security **11/11**, Data **6/6**, Vectors **5/5**, and the first **13/14** daemon cases. The final
+  combined daemon case timed out; its unmarked second phase used a synthetic RST plus false-
+  `Content-Length` truncation fixture. The original fixture passed six consecutive native ARM64
+  focused runs, demonstrating environment-sensitive behavior. The fixture now uses a standards-based
+  incomplete chunked response; its focused case and the full daemon target passed locally, including
+  **14/14** daemon cases. Replacement hosted ARM64 CI remains authoritative.
 
 ### Bottom line
 

@@ -423,22 +423,22 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
 
         switch response {
         case .openAIChatStream:
-            let contentLength = dropsAfterFirstChunk ? "Content-Length: 10000\r\n" : ""
+            let transferEncoding = dropsAfterFirstChunk ? "Transfer-Encoding: chunked\r\n" : ""
             let head = "HTTP/1.1 200 OK\r\n"
                 + "Content-Type: text/event-stream\r\n"
                 + "Cache-Control: no-cache\r\n"
-                + contentLength
+                + transferEncoding
                 + "Connection: close\r\n"
                 + "\r\n"
             _ = try? LinuxSocketSupport.sendAll(Data(head.utf8), to: clientFD)
 
             let firstChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}"# + "\n\n"
-            _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
             if dropsAfterFirstChunk {
-                var resetLinger = linger(l_onoff: 1, l_linger: 0)
-                setsockopt(clientFD, SOL_SOCKET, SO_LINGER, &resetLinger, socklen_t(MemoryLayout<linger>.size))
+                let incompleteChunkedBody = "\(String(firstChunk.utf8.count, radix: 16))\r\n\(firstChunk)\r\n"
+                _ = try? LinuxSocketSupport.sendAll(Data(incompleteChunkedBody.utf8), to: clientFD)
                 return
             }
+            _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
             Glibc.usleep(50_000)
             let usageChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"#
                 + #""usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"

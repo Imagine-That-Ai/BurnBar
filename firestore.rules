@@ -718,9 +718,38 @@ service cloud.firestore {
         && value.aad == cloudVaultAADContext(userId, "session_logs", logId, field);
     }
 
+    function sessionLogPostWriteHasNoPlaintextFields(data) {
+      return !data.keys().hasAny([
+        "body",
+        "payloadCiphertext",
+        "ciphertext",
+        "data",
+        "text",
+        "title",
+        "snippet",
+        "terms",
+        "projectName",
+        "workingDirectory",
+        "userPrompt",
+        "summary",
+        "command",
+        "keystrokes",
+        "clipboard",
+        "transcript",
+        "messages",
+        "lastAssistantMessage",
+        "keyCommands",
+        "keyFiles",
+        "keyTools",
+        "url",
+        "selector",
+        "screenshot"
+      ]);
+    }
+
     function validSessionLogManifestCore(userId, logId) {
       return validSessionLogManifestKeys()
-        && (!("inferredTaskTitle" in request.resource.data) || request.resource.data.inferredTaskTitle == "Encrypted session")
+        && request.resource.data.get("inferredTaskTitle", "Encrypted session") == "Encrypted session"
         && (!("sealedTitle" in request.resource.data) || validSessionLogSealedTextAt(userId, logId, "sealedTitle", request.resource.data.sealedTitle))
         && (!("sealedBodyPreview" in request.resource.data) || validSessionLogSealedTextAt(userId, logId, "sealedBodyPreview", request.resource.data.sealedBodyPreview))
         && (!("encryption" in request.resource.data) || request.resource.data.encryption is map)
@@ -729,8 +758,11 @@ service cloud.firestore {
     }
 
     function validSessionLogLifecycleFields(data) {
-      return (!("deletedAt" in data) || data.deletedAt is timestamp)
-        && (!("version" in data) || (data.version is int && data.version >= 1));
+      let deletedAt = data.get("deletedAt", request.time);
+      let version = data.get("version", 1);
+      return deletedAt is timestamp
+        && version is int
+        && version >= 1;
     }
 
     function sessionLogTombstoneIsSticky() {
@@ -776,6 +808,7 @@ service cloud.firestore {
     function ownerWritableSessionLogManifestRefresh(userId) {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogRefreshKeys()
+        && sessionLogPostWriteHasNoPlaintextFields(request.resource.data)
         && validSessionLogLifecycleFields(request.resource.data)
         && sessionLogTombstoneIsSticky()
         && validSessionLogFacets(request.resource.data);
@@ -786,14 +819,15 @@ service cloud.firestore {
     // light so legitimate encrypted manifests stay within Firestore's rule
     // evaluator budget.
     function validOptionalInt(data, field) {
-      return !(field in data) || (data[field] is int && data[field] >= 0);
+      let value = data.get(field, 0);
+      return value is int && value >= 0;
     }
 
     function validSessionLogToolTags(data) {
-      return !("toolTags" in data) || (
-        data.toolTags is list
-        && data.toolTags.size() <= 12
-        && data.toolTags.hasOnly([
+      let toolTags = data.get("toolTags", []);
+      return toolTags is list
+        && toolTags.size() <= 12
+        && toolTags.hasOnly([
           "apply_patch",
           "bash",
           "edit",
@@ -808,16 +842,19 @@ service cloud.firestore {
           "sed",
           "shell",
           "write"
-        ])
-      );
+        ]);
     }
 
     function validSessionLogFacets(data) {
-      return (!("model" in data) || (data.model is string && data.model.size() <= 200))
-        && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
-        && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
+      let model = data.get("model", "");
+      let provider = data.get("provider", "");
+      let sourceType = data.get("sourceType", "");
+      let costUSD = data.get("costUSD", 0);
+      return model is string && model.size() <= 200
+        && provider is string && provider.size() <= 80
+        && sourceType is string && sourceType.size() <= 80
         && validSessionLogToolTags(data)
-        && (!("costUSD" in data) || (data.costUSD is number && data.costUSD >= 0))
+        && costUSD is number && costUSD >= 0
         && validOptionalInt(data, "inputTokens")
         && validOptionalInt(data, "outputTokens")
         && validOptionalInt(data, "cacheCreationTokens")

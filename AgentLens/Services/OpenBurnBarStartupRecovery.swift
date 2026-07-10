@@ -492,6 +492,7 @@ final class OpenBurnBarRuntimeContext {
             controller = ComputerUseRuntimeController(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
+                daemonManager: daemonManager,
                 relayHostService: explicitRelayHostService ?? hermesRelayHostService,
                 chatController: chatController
             )

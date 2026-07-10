@@ -41,7 +41,7 @@ document or local test can waive protected CI and production proof.
 | #7 Android PR floor | Added required path-aware compile, detekt, JVM test, JaCoCo, and aggregate gate workflow. `make test` no longer swallows Android failures. | Android detekt and the full JVM suite passed locally. | First `ubuntu-latest` gate run. |
 | #11/#21 migrator and rollback drift | Added a normalized 55-migration body/order contract, dependency fingerprints, generated docs agreement, and complete rollback catalog. | 12 migration verifier tests plus the live verifier passed. | Keep the gate required; single-sourcing remains later work. |
 | #13 vacuous jscpd | Replaced malformed configuration with explicit language formats/ignores and added a fail-closed analyzed-files verifier. | Positive/negative controls passed; a clean full scan analyzed 3,666 Swift/Kotlin/TypeScript files at 4.51% duplication. | Protected code-quality result on the submitted commit. |
-| #14 Linux tests never run on Linux | Added a manifest-backed, graph-checked, isolated direct-XCTest runner to PR and nightly Linux toolchain jobs. | Python contract tests passed. Across container runs, Core **14/14**, Security **11/11**, Data **6/6**, Vectors **5/5**, and post-fix Daemon **14/14** passed; a single all-target rerun is locally blocked by an amd64-on-arm64 QEMU XCTest hang. | Protected arm64 Linux runner result. |
+| #14 Linux tests never run on Linux | Added a manifest-backed, graph-checked, isolated direct-XCTest runner to PR and nightly Linux toolchain jobs. | Python contract tests passed. Hosted ARM64 executed **49/50** cases before the final combined daemon case timed out; its unmarked second phase used a synthetic RST fixture that passed six consecutive native ARM64 focused runs. The fixture now uses a deterministic incomplete chunked response; its focused case and Daemon **14/14** passed locally. | Green replacement protected ARM64 Linux runner result. |
 | #16 standing P0 alert fatigue | Added a 72-hour one-time escalation with named-blocker suppression. | 7 escalation policy tests passed. | Repository labels/notification path must be observed live. |
 | #22 Windows skeleton | Replaced echo placeholders with restore, transitive NuGet audit, x64 build, test, and artifact enforcement in PR and harness lanes. | Workflow/provenance policy checks passed. | `windows-latest` execution is authoritative. |
 | #23/#24 dependency blind spots | Added NuGet, console, website, and remaining ecosystem coverage to Dependabot/supply-chain gates. | Workflow policy validation passed locally. | Dependabot and hosted audits must run. |
@@ -538,8 +538,8 @@ requires factory/CI/deploy evidence before the findings can be closed on main.
 
 - Functions lint/build passed; the full unit suite passed **1,176** cases with 4 skipped, and the
   fail-closed account-deletion retry harness passed.
-- Firestore Computer Use rules passed **25/25**; account-erasure barrier tests passed; Storage
-  rules passed **19/19**.
+- Firestore Computer Use rules passed **25/25**, encrypted session-log rules passed **24/24**,
+  account-erasure barrier tests passed, and Storage rules passed **19/19**.
 - Core local-quota ledger tests, app cloud-metering tests, daemon replay/idempotency tests, and a
   stable-Xcode macOS app build passed.
 - Android's complete JVM suite and detekt passed.
@@ -548,11 +548,12 @@ requires factory/CI/deploy evidence before the findings can be closed on main.
   production deploy-auth fixtures, Actionlint, and the no-suppressions gate.
 - A clean jscpd scan analyzed **3,666** Swift/Kotlin/TypeScript files at **4.51%** duplication and
   passed the non-vacuity verifier.
-- Linux manifest/graph validation passed. The first amd64-container run passed Core **14/14**,
-  Security **11/11**, Data **6/6**, and Vectors **5/5** before the daemon exposed a cross-platform
-  compile defect. After the fix, Daemon compiled and passed **14/14** in a targeted run. A single
-  all-target rerun is locally blocked by a reproducible async XCTest hang under amd64-on-arm64 QEMU;
-  the hosted arm64 lane is the authoritative end-to-end proof.
+- Linux manifest/graph validation passed. Hosted ARM64 passed Core **14/14**, Security **11/11**,
+  Data **6/6**, Vectors **5/5**, and the first **13/14** daemon cases. The final combined case timed
+  out; its unmarked second phase used a synthetic RST plus false-`Content-Length` truncation fixture.
+  The original fixture passed six consecutive native ARM64 focused runs. It now models an interrupted
+  chunked stream; the revised focused case and the full Daemon target passed locally, including
+  **14/14** daemon cases. Replacement hosted ARM64 CI is authoritative.
 
 ### Still required before closing this audit on main
 
