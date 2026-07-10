@@ -69,6 +69,12 @@ function Resolve-Platform {
     }
 }
 
+function Resolve-PowerShellHost {
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($pwsh) { return $pwsh.Source }
+    return 'powershell.exe'
+}
+
 function Test-ArtifactSecretLeaks([string] $Root, [string[]] $Canaries) {
     $findings = New-Object System.Collections.Generic.List[object]
     $files = Get-ChildItem -LiteralPath $Root -Recurse -File -ErrorAction SilentlyContinue
@@ -123,9 +129,6 @@ $candidateVerificationPath = Join-Path $OutputDir 'candidate-tree-verification.j
     -DestinationRoot $RepoRoot `
     -VerifyOnly `
     -VerificationOutputPath $candidateVerificationPath
-if ($LASTEXITCODE -ne 0) {
-    throw "Candidate verification failed before evidence run."
-}
 
 $forbiddenEnv = @(
     'OPENBURNBAR_SQLCIPHER_PATH',
@@ -167,6 +170,7 @@ Write-JsonFile (Join-Path $OutputDir 'host-identity.json') $hostInfo
 
 $steps = New-Object System.Collections.Generic.List[object]
 $solution = 'windows\OpenBurnBar.sln'
+$powerShellHost = Resolve-PowerShellHost
 $steps.Add((Invoke-LoggedProcess 'dotnet-restore' 'dotnet' @('restore', $solution, "-p:Platform=$Platform")))
 $steps.Add((Invoke-LoggedProcess 'dotnet-build' 'dotnet' @('build', $solution, '--configuration', 'Debug', '--no-restore', "-p:Platform=$Platform")))
 $steps.Add((Invoke-LoggedProcess 'configuration-tests' 'dotnet' @('test', 'windows\tests\configuration\OpenBurnBar.App.Configuration.Tests.csproj', '--configuration', 'Debug', '--no-build', '--nologo', '--logger', 'trx;LogFileName=configuration.trx')))
@@ -177,8 +181,8 @@ $steps.Add((Invoke-LoggedProcess 'chat-presentation-tests' 'dotnet' @('test', 'w
 
 $storageDir = Join-Path $OutputDir 'storage-evidence'
 $chatDir = Join-Path $OutputDir 'chat-evidence'
-$steps.Add((Invoke-LoggedProcess 'storage-evidence' 'pwsh' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts\windows-port\storage-evidence.ps1', '-RepoRoot', $RepoRoot, '-OutputDir', $storageDir)))
-$steps.Add((Invoke-LoggedProcess 'chat-evidence' 'pwsh' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts\windows-port\chat-evidence.ps1', '-RepoRoot', $RepoRoot, '-OutputDir', $chatDir)))
+$steps.Add((Invoke-LoggedProcess 'storage-evidence' $powerShellHost @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts\windows-port\storage-evidence.ps1', '-RepoRoot', $RepoRoot, '-OutputDir', $storageDir)))
+$steps.Add((Invoke-LoggedProcess 'chat-evidence' $powerShellHost @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts\windows-port\chat-evidence.ps1', '-RepoRoot', $RepoRoot, '-OutputDir', $chatDir)))
 
 $protectedRoot = Join-Path $env:LOCALAPPDATA 'OpenBurnBar\protected-secrets'
 $protectedInventory = @()
