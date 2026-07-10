@@ -93,7 +93,7 @@ function Test-ArtifactSecretLeaks([string] $Root, [string[]] $Canaries) {
         $text = Get-Content -Raw -LiteralPath $file.FullName -ErrorAction SilentlyContinue
         if ($null -eq $text) { continue }
         foreach ($canary in $Canaries) {
-            if ($text.Contains($canary, [StringComparison]::Ordinal)) {
+            if ($text.IndexOf($canary, [StringComparison]::Ordinal) -ge 0) {
                 $findings.Add([ordered]@{
                     path = $file.FullName
                     kind = 'exact-canary'
@@ -101,7 +101,7 @@ function Test-ArtifactSecretLeaks([string] $Root, [string[]] $Canaries) {
                 })
             }
             $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($canary))
-            if ($text.Contains($encoded, [StringComparison]::Ordinal)) {
+            if ($text.IndexOf($encoded, [StringComparison]::Ordinal) -ge 0) {
                 $findings.Add([ordered]@{
                     path = $file.FullName
                     kind = 'base64-canary'
