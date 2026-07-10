@@ -22,7 +22,9 @@
     xmlns:conv="using:OpenBurnBar.App.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="chat.surface"
+    AutomationProperties.Name="Chat">
 
     <UserControl.Resources>
         <!-- Bool→Visibility converters (declared per-view, matching the landed pattern). -->
@@ -119,6 +121,7 @@
                         VerticalAlignment="Center"
                         Spacing="8"
                         Padding="24"
+                        AutomationProperties.AutomationId="chat.emptyState"
                         Visibility="{x:Bind ViewModel.ShowEmptyState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <FontIcon Glyph="&#xE8BD;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
                           FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
@@ -139,6 +142,7 @@
                         Spacing="10"
                         Padding="24"
                         MaxWidth="620"
+                        AutomationProperties.AutomationId="chat.history.degraded"
                         Visibility="{x:Bind ViewModel.HasHistoryDegradedState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <FontIcon Glyph="&#xE783;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
                           FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
@@ -146,26 +150,35 @@
                            FontSize="16"
                            FontWeight="SemiBold"
                            HorizontalAlignment="Center"
+                           AutomationProperties.AutomationId="chat.history.title"
                            Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                 <TextBlock Text="{x:Bind ViewModel.HistoryStateMessage, Mode=OneWay}"
                            TextWrapping="Wrap"
                            TextAlignment="Center"
+                           AutomationProperties.AutomationId="chat.history.message"
                            Foreground="{StaticResource PensieveColorTextMuteBrush}" />
                 <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                     <Button Content="Retry"
                             Command="{x:Bind ViewModel.RetryHistoryCommand}"
+                            AutomationProperties.AutomationId="chat.history.retry"
+                            AutomationProperties.Name="Retry chat history"
                             Visibility="{x:Bind ViewModel.CanRetryHistory, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                     <Button Content="Restart recovery"
                             Command="{x:Bind ViewModel.RestartRecoveryCommand}"
+                            AutomationProperties.AutomationId="chat.history.restartRecovery"
+                            AutomationProperties.Name="Restart chat history recovery"
                             Visibility="{x:Bind ViewModel.CanRestartHistory, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                 </StackPanel>
             </StackPanel>
 
             <ScrollViewer x:Name="MessageScroller"
+                          AutomationProperties.AutomationId="chat.messages"
+                          AutomationProperties.Name="Chat messages"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollMode="Disabled"
                           Visibility="{x:Bind ViewModel.ShowMessageList, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <ItemsRepeater x:Name="MessagesRepeater"
+                               AutomationProperties.AutomationId="chat.messageList"
                                ItemsSource="{x:Bind ViewModel.Messages}"
                                ItemTemplate="{StaticResource MessageSelector}" />
             </ScrollViewer>
@@ -178,19 +191,23 @@
                     BorderThickness="1"
                     BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
                     Background="{StaticResource PensieveColorGlassBgBrush}"
+                    AutomationProperties.AutomationId="chat.executable.setup"
                     Visibility="{x:Bind ViewModel.RequiresExecutableSetup, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="{x:Bind ViewModel.ExecutableSetupTitle, Mode=OneWay}"
                                FontWeight="SemiBold"
                                TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="chat.executable.setupTitle"
                                Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                     <TextBlock Text="{x:Bind ViewModel.ExecutableSetupMessage, Mode=OneWay}"
                                TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="chat.executable.setupMessage"
                                Foreground="{StaticResource PensieveColorTextMuteBrush}" />
                     <TextBlock Text="{x:Bind ViewModel.ApprovedExecutableSummary, Mode=OneWay}"
                                Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
                                TextWrapping="Wrap"
                                FontSize="11"
+                               AutomationProperties.AutomationId="chat.executable.summary"
                                Foreground="{StaticResource PensieveColorTextMuteBrush}" />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
@@ -201,16 +218,24 @@
                         </Grid.ColumnDefinitions>
                         <TextBox x:Name="ExecutablePathBox"
                                  Grid.Column="0"
+                                 AutomationProperties.AutomationId="chat.executable.path"
+                                 AutomationProperties.Name="Chat executable path"
                                  PlaceholderText="C:\Program Files\Claude\claude.exe" />
                         <Button Grid.Column="1"
                                 Content="Approve"
+                                AutomationProperties.AutomationId="chat.executable.approve"
+                                AutomationProperties.Name="Approve chat executable"
                                 Click="OnApproveChatExecutable" />
                         <Button Grid.Column="2"
                                 Content="Rotate"
+                                AutomationProperties.AutomationId="chat.executable.rotate"
+                                AutomationProperties.Name="Rotate chat executable"
                                 Click="OnRotateChatExecutable"
                                 Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                         <Button Grid.Column="3"
                                 Content="Remove"
+                                AutomationProperties.AutomationId="chat.executable.remove"
+                                AutomationProperties.Name="Remove chat executable"
                                 Command="{x:Bind ViewModel.RemoveApprovedExecutableCommand}"
                                 Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
                     </Grid>
@@ -221,6 +246,7 @@
                     BorderThickness="1"
                     BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
                     Background="{StaticResource PensieveColorGlassBgBrush}"
+                    AutomationProperties.AutomationId="chat.failure"
                     Visibility="{x:Bind ViewModel.HasFailure, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <TextBlock Text="{x:Bind ViewModel.FailureText, Mode=OneWay}"
                            TextWrapping="Wrap"
@@ -231,6 +257,7 @@
                     BorderThickness="1"
                     BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
                     Background="{StaticResource PensieveColorGlassBgBrush}"
+                    AutomationProperties.AutomationId="chat.persistence.warning"
                     Visibility="{x:Bind ViewModel.HasPersistenceWarning, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <TextBlock Text="{x:Bind ViewModel.PersistenceWarning, Mode=OneWay}"
                            TextWrapping="Wrap"
@@ -253,10 +280,13 @@
                            Visibility="{x:Bind ViewModel.HasPendingAttachments, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
                            TextWrapping="Wrap"
                            FontSize="11"
+                           AutomationProperties.AutomationId="chat.attachments.pending"
                            Foreground="{StaticResource PensieveColorTextMuteBrush}" />
 
                 <TextBox x:Name="InputBox" Grid.Row="1" Grid.Column="0"
                          PlaceholderText="Message OpenBurnBar…"
+                         AutomationProperties.AutomationId="chat.input"
+                         AutomationProperties.Name="Message OpenBurnBar"
                          Text="{x:Bind ViewModel.InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          AcceptsReturn="False"
                          AllowDrop="True"
@@ -267,12 +297,16 @@
 
                 <Button x:Name="RegenerateButton" Grid.Row="1" Grid.Column="1"
                         Command="{x:Bind ViewModel.RegenerateCommand}"
+                        AutomationProperties.AutomationId="chat.regenerate"
+                        AutomationProperties.Name="Regenerate last response"
                         ToolTipService.ToolTip="Regenerate last response">
                     <FontIcon Glyph="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
                 </Button>
 
                 <Button x:Name="SendButton" Grid.Row="1" Grid.Column="2"
                         Command="{x:Bind ViewModel.SendCommand}"
+                        AutomationProperties.AutomationId="chat.send"
+                        AutomationProperties.Name="Send message"
                         Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource NegatedBoolToVisibility}, Mode=OneWay}"
                         Style="{StaticResource AccentButtonStyle}">
                     <FontIcon Glyph="&#xE724;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
@@ -280,6 +314,8 @@
 
                 <Button x:Name="StopButton" Grid.Row="1" Grid.Column="2"
                         Command="{x:Bind ViewModel.StopCommand}"
+                        AutomationProperties.AutomationId="chat.stop"
+                        AutomationProperties.Name="Stop generating"
                         Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
                         ToolTipService.ToolTip="Stop generating">
                     <FontIcon Glyph="&#xE71A;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
