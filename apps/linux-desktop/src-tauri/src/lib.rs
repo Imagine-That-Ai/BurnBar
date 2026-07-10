@@ -1835,16 +1835,6 @@ fn media_file_send(path: String, peer_id: Option<String>) -> Result<serde_json::
     )
 }
 
-#[tauri::command]
-fn computer_use_panic_halt(
-    session_id: Option<String>,
-    source: Option<String>,
-) -> Result<serde_json::Value, String> {
-    let session_id = session_id.unwrap_or_else(|| "*".to_string());
-    let source = source.unwrap_or_else(|| "hotkey".to_string());
-    request_computer_use_panic_halt(session_id, source)
-}
-
 fn media_session_source(value: &serde_json::Value) -> &serde_json::Value {
     value
         .get("session")

@@ -12,7 +12,7 @@ run_xctest_attempt() {
     output_file="$(mktemp)"
 
     set +e
-    timeout 20 "$binary" "$selector" 2>&1 | tee "$output_file"
+    timeout --signal=TERM --kill-after=5 30 "$binary" "$selector" 2>&1 | tee "$output_file"
     status=$?
     set -e
 
@@ -31,7 +31,7 @@ run_xctest_case() {
 
     # Let libdispatch tear down the previous Linux XCTest process before the
     # next Swift concurrency runtime initializes in the same PID namespace.
-    sleep 0.05
+    sleep 0.25
     set +e
     run_xctest_attempt "$binary" "$selector"
     status=$?
@@ -44,8 +44,43 @@ run_xctest_case() {
         return "$status"
     fi
 
-    echo "Linux XCTest runner timed out for $selector; retrying once in a fresh process." >&2
-    run_xctest_attempt "$binary" "$selector"
+    local retry
+    for retry in 1 2; do
+        echo "Linux XCTest runner timed out for $selector; retrying in a fresh process ($retry/2)." >&2
+        sleep 1
+        set +e
+        run_xctest_attempt "$binary" "$selector"
+        status=$?
+        set -e
+        if [[ $status -eq 0 ]]; then
+            return 0
+        fi
+        if [[ $status -ne 124 ]]; then
+            return "$status"
+        fi
+    done
+    return 124
+}
+
+assert_xctest_suite_coverage() {
+    local binary="$1"
+    local test_module="$2"
+    shift 2
+    local tests=("$@")
+    local expected_file
+    local discovered_file
+
+    expected_file="$(mktemp)"
+    discovered_file="$(mktemp)"
+    printf '%s\n' "${tests[@]}" | sed "s|^|$test_module.|" | sort > "$expected_file"
+    "$binary" --list-tests | awk -v prefix="$test_module." 'index($0, prefix) == 1' | sort > "$discovered_file"
+
+    if ! diff -u "$expected_file" "$discovered_file"; then
+        echo "Linux native test manifest is stale for $test_module; include every discovered test." >&2
+        rm -f "$expected_file" "$discovered_file"
+        return 65
+    fi
+    rm -f "$expected_file" "$discovered_file"
 }
 
 run_swift_suite() {
@@ -83,6 +118,7 @@ run_swift_suite() {
         echo "Unable to locate the XCTest binary under $scratch_path." >&2
         return 1
     fi
+    assert_xctest_suite_coverage "$binary" "$test_module" "${tests[@]}"
 
     # Swift 6.0 XCTest on Linux can deadlock while advancing between cases in a
     # mounted Docker worktree. Every remaining case runs in a fresh, bounded
@@ -114,6 +150,9 @@ linux_security_tests=(
     OpenBurnBarLinuxSecurityTests/testCloudSyncLocalStagingTransportRetryConflictAndWatermarkEvidence
     OpenBurnBarLinuxSecurityTests/testCloudSyncPrivacyBOLASealedPayloadsAndWatermarkCommitBoundary
     OpenBurnBarLinuxSecurityTests/testDeletingSecretSkipsWritableBackendsWithoutTheItem
+    OpenBurnBarLinuxSecurityTests/testDesktopOwnerLocalAuthenticationFailsClosedForDeniedAndUnavailablePaths
+    OpenBurnBarLinuxSecurityTests/testDesktopOwnerLocalAuthenticationFallsBackToPAMWhenPolkitUnavailable
+    OpenBurnBarLinuxSecurityTests/testDesktopOwnerLocalAuthenticationUsesPolkitAllowUserInteraction
     OpenBurnBarLinuxSecurityTests/testFirebaseAuthProtocolFixturesAndBrowserLaunchAreRedacted
     OpenBurnBarLinuxSecurityTests/testHeadlessSecretStoreReadsEnvAndSystemdCredentialMetadata
     OpenBurnBarLinuxSecurityTests/testHeadlessEnvironmentSecretsRequireExplicitTestOrDevOptIn
@@ -149,7 +188,44 @@ daemon_linux_tests=(
     BurnBarProjectCodeMemoryStoreLinuxInotifyTests/testLinuxInotifyStreamDeleteSelfRebuildsOnceAndContinuesWatching
     BurnBarProjectCodeMemoryStoreLinuxInotifyTests/testLinuxInotifyStreamQueueOverflowRebuildsAndContinuesWatching
     BurnBarProjectCodeMemoryStoreLinuxInotifyTests/testLinuxInotifyStreamRewatchDoesNotLeakFileDescriptors
+    DaemonLinuxLocalAuthProofVerifierTests/testLinuxFilePinBackingRoundTripsIntoLocalAuthProofVerifier
+    DaemonLinuxLocalAuthProofVerifierTests/testLinuxVerifierRejectsBindingMismatchWithPersistedPin
+    LinuxComputerUseInputAdapterTests/testAtspiClickPlanUsesPythonWhenSessionBusIsAvailable
+    LinuxComputerUseServiceSystemInputTests/testConcurrentLinuxSystemSessionDeniesBeforeDispatch
+    LinuxComputerUseInputAdapterTests/testDenyRegionInspectorChecksAbsolutePointerMoveTarget
+    LinuxComputerUseInputAdapterTests/testDenyRegionInspectorFailsClosedWhenTargetIsUninspectable
+    LinuxComputerUseInputAdapterTests/testDenyRegionInspectorMapsPasswordRoleAtPoint
+    LinuxComputerUseInputAdapterTests/testDenyRegionInspectorUsesFocusedAccessibleForKeyboardInput
+    LinuxComputerUseInputAdapterTests/testKillSwitchFlagBlocksDispatchBeforeCommandRuns
+    LinuxComputerUseServiceSystemInputTests/testLinuxKillSwitchProviderDeniesBeforeDispatch
+    LinuxComputerUseServiceSystemInputTests/testPasswordFieldDenyRegionRejectsBeforeLinuxDispatchAndAudits
+    LinuxComputerUseInputAdapterTests/testRuntimeDirectoryKillSwitchFlagBlocksDispatchByDefault
+    LinuxComputerUseServiceSystemInputTests/testSystemSessionApprovesAndDispatchesThroughInjectedLinuxInput
+    LinuxComputerUseInputAdapterTests/testUnavailableInputAdapterFailsClosed
+    LinuxComputerUseServiceSystemInputTests/testUninspectableLinuxRegionFailsClosedBeforeDispatch
+    LinuxComputerUseServiceSystemInputTests/testWildcardPanicHaltActivatesLinuxKillFlag
+    LinuxComputerUseInputAdapterTests/testX11FallbackDispatchDoesNotEchoTypedSecretInResult
     LinuxNativeSecretStoreWiringTests/testProviderAndConnectorStoresUseInjectedLinuxCustodianForCRUD
+    LinuxSwitcherAndPensieveTests/testPensieveWatcherWritesPrivateManifestAndStopsIdempotently
+    LinuxSwitcherAndPensieveTests/testShimInstallerQuotesExecutablePathAndSetsExecutableMode
+    LinuxSwitcherAndPensieveTests/testSwitcherExecutesFromInjectedPathAndStripsDaemonSecrets
+    MercuryLinuxMediaTests/testAcceptWithoutSealKeyFailsClosedBeforeCaptureStarts
+    MercuryLinuxMediaTests/testCapabilityModelRepresentsUnknownWhenMediaBackendUnavailable
+    MercuryLinuxMediaTests/testCapabilityProbeReportsMediaBackendTruth
+    MercuryLinuxMediaTests/testCaptureFrameHandoffIsBoundedAndOrdered
+    MercuryLinuxMediaTests/testCaptureFrameQueueBuffersNewestAndPreservesRetainedOrder
+    MercuryLinuxMediaTests/testCapturePipelineEndedTransitionsToCooldown
+    MercuryLinuxMediaTests/testCapturedFrameWithoutSealKeyFailsClosedAndDoesNotEgressPlaintext
+    MercuryLinuxMediaTests/testCollisionSafeDownloadNaming
+    MercuryLinuxMediaTests/testFileOfferAcceptDownloadsToCollisionSafePathAndAcknowledges
+    MercuryLinuxMediaTests/testFileOfferDeclineSendsRejectedAckWithoutFetch
+    MercuryLinuxMediaTests/testFileTransferErrorTaxonomy
+    MercuryLinuxMediaTests/testMediaChannelWritesLengthPrefixedShellFrames
+    MercuryLinuxMediaTests/testPortalAdapterRejectsNonLiveGrantBeforeCapture
+    MercuryLinuxMediaTests/testPortalAdapterStartsCaptureFromLivePortalGrant
+    MercuryLinuxMediaTests/testRPCDecodeAndDispatchForMediaMethods
+    MercuryLinuxMediaTests/testSessionForwardsCapturedFramesSealed
+    MercuryLinuxMediaTests/testSessionPhaseTransitionsAndAckEmission
     OpenBurnBarHTTPGatewayServerLinuxTests/testProxiesAnthropicMessagesThroughConfiguredProviderAndRecordsUsage
     OpenBurnBarHTTPGatewayServerLinuxTests/testProxiesResponsesThroughConfiguredProviderAndRecordsUsage
     OpenBurnBarHTTPGatewayServerLinuxTests/testRejectsMalformedChatCompletionsRequestBeforeRouting

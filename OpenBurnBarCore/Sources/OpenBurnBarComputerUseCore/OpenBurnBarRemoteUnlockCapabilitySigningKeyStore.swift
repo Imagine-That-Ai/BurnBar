@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 public protocol RemoteUnlockCapabilityPrivateKeyStoring: Sendable {
     func data() throws -> Data?
@@ -18,12 +18,12 @@ public final class OpenBurnBarRemoteUnlockCapabilitySigningKeyStore: @unchecked 
     public struct KeyMaterial: Sendable {
         public var keyId: String
         public var publicKey: PlatformEd25519PublicKey
-        public var privateKey: PlatformEd25519PrivateKey
+        public var privateKey: PlatformEd25519SigningMaterial
 
         public init(
             keyId: String,
             publicKey: PlatformEd25519PublicKey,
-            privateKey: PlatformEd25519PrivateKey
+            privateKey: PlatformEd25519SigningMaterial
         ) {
             self.keyId = keyId
             self.publicKey = publicKey
@@ -70,7 +70,7 @@ public final class OpenBurnBarRemoteUnlockCapabilitySigningKeyStore: @unchecked 
         guard data.count == 32 else {
             throw RemoteUnlockCapabilitySigningKeyStoreError.invalidStoredKey
         }
-        let privateKey: PlatformEd25519PrivateKey
+        let privateKey: PlatformEd25519SigningMaterial
         do {
             privateKey = try PlatformCrypto.ed25519PrivateKey(rawRepresentation: data)
         } catch {

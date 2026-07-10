@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 #if os(Linux)
 import Glibc
@@ -372,10 +372,10 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
     private func writeBytes(_ data: Data, to url: URL, mode: mode_t) throws {
         let fd = Glibc.open(url.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, mode)
         guard fd >= 0 else { throw LinuxSecretFileStoreError.posix(errno) }
-        var closeError: Int32 = 0
+        var shouldClose = true
         defer {
-            if Glibc.close(fd) != 0 {
-                closeError = errno
+            if shouldClose {
+                _ = Glibc.close(fd)
             }
         }
 
@@ -393,8 +393,10 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
         if Glibc.fchmod(fd, mode) != 0 {
             throw LinuxSecretFileStoreError.posix(errno)
         }
-        if closeError != 0 {
-            throw LinuxSecretFileStoreError.posix(closeError)
+        let closeStatus = Glibc.close(fd)
+        shouldClose = false
+        if closeStatus != 0 {
+            throw LinuxSecretFileStoreError.posix(errno)
         }
     }
 

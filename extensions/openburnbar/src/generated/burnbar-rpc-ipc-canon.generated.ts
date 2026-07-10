@@ -442,6 +442,106 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.media.call.accept",
+    "caseName": "daemonMediaCallAccept",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "DaemonMediaCallAcceptRequest",
+    "result": "DaemonMediaCallActionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.call.decline",
+    "caseName": "daemonMediaCallDecline",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "DaemonMediaCallDeclineRequest",
+    "result": "DaemonMediaCallActionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.call.end",
+    "caseName": "daemonMediaCallEnd",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "DaemonMediaCallEndRequest",
+    "result": "DaemonMediaCallActionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.capability.get",
+    "caseName": "daemonMediaCapabilityGet",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "DaemonMediaCapabilityResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.file.accept",
+    "caseName": "daemonMediaFileAccept",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "DaemonMediaFileAcceptRequest",
+    "result": "DaemonMediaFileActionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.file.decline",
+    "caseName": "daemonMediaFileDecline",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "DaemonMediaFileDeclineRequest",
+    "result": "DaemonMediaFileActionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.file.offer.list",
+    "caseName": "daemonMediaFileOfferList",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "DaemonMediaFileOfferListResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.file.send",
+    "caseName": "daemonMediaFileSend",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "DaemonMediaFileSendRequest",
+    "result": "DaemonMediaFileActionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.session.state",
+    "caseName": "daemonMediaSessionState",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "DaemonMediaSessionStateResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.media.status",
+    "caseName": "daemonMediaStatus",
+    "domain": "media",
+    "capability": "media",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "DaemonMediaStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.membership.checkoutUrl",
     "caseName": "membershipCheckoutURL",
     "domain": "membership",

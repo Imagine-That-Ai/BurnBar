@@ -22,6 +22,7 @@ const KNOWN_EVALUATORS = new Set([
   'secret-service',
   'kwallet',
   'portal',
+  'media',
   'tray',
   'x11-overlay',
   'unavailable'
