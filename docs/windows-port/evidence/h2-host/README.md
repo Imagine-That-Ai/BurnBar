@@ -1,6 +1,8 @@
-# H2 host validation evidence (pre-VM scaffolding)
+# H2 host validation evidence
 
-**Status:** Output directories prepared before Win11 VM access (master plan §18.4 / H2).
+**Status:** Host lanes are populated independently as exact-candidate evidence
+becomes available. Computer Use ARM64 evidence passed on 2026-07-10; unpopulated
+directories remain scaffolding, not proof.
 **Runner:** `pwsh scripts/windows-port/vm-validate.ps1 -RepoRoot <checkout>`
 **Rule:** Do not promote host-gated ledger rows to `Real` without files committed here (or linked from the certification bundle) that name the proof that passed.
 
@@ -16,7 +18,7 @@
 | `cloudvault/` | Live Windows-seal → Mac-open E2EE | C5 round-trip receipt |
 | `ffi/` | Rust/MSVC native FFI loopback | cargo/msvc build logs |
 | `particles/` | Win2D/ARM64 frame timing | fps measurement notes |
-| `computer-use/` | SendInput / UIA / WGC / kill-switch smoke | adapter smoke checklist |
+| `computer-use/` | SendInput / UIA / WGC / audit / kill-switch | exact-candidate receipt, host summary, WGC frame |
 
 ## Capture conventions
 

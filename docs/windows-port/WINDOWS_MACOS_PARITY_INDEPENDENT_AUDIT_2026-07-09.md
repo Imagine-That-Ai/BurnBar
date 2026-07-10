@@ -82,6 +82,23 @@ Authenticode and RFC 3161 timestamping, the production Ed25519 update feed,
 physical-device install/update/rollback, and Store/winget/Chocolatey publication
 remain open. No artifact from this rehearsal is a public release candidate.
 
+## Computer Use Host Update - 2026-07-10
+
+Exact candidate `08e425a0dec6` passed history-independent import verification on
+the Windows 11 ARM64 UTM host (`10,265 / 10,265` files, zero mismatches), an
+ARM64 WinUI application build, and all 15 interactive Computer Use checks. The
+live run covered normal/password UIA targets, every implemented `SendInput`
+path, Windows Graphics Capture, the watchdog kill/clear sequence, secure-field
+denial, signed-driver gating, and pinned-head audit-chain verification.
+
+The compact receipt, content-addressed host summary, and nonblank WGC frame are
+under `docs/windows-port/evidence/h2-host/computer-use/`. The app now owns the
+runtime from launch and Settings consumes its actual readiness state. The
+current unsigned input adapter remains advisory: signed-driver-required actions
+are denied with `SignatureFailure`, so this proof does not claim secure-desktop
+or lock-screen injection, a signed virtual HID driver, or physical x64/ARM64
+device certification.
+
 ## Executive Summary
 
 Windows is a substantial code port, but it is not at macOS product parity or
@@ -134,7 +151,7 @@ treated as end-to-end product parity evidence.
 | Onboarding and permissions | macOS probes and refreshes real permissions. Windows system permissions are informational and chat gateway health is a placeholder. See windows/app/OpenBurnBar.App/Onboarding/Steps/SystemPermissionsStepPage.xaml.cs:6-22 and ChatEngineStepPage.xaml.cs:142-146. | Add Windows-native probes for notification registration, storage/log access, runtime dependencies, UI Automation, screen capture, and optional input components. Use Windows terminology, not copied TCC labels. | High | In a clean VM, deny, grant, revoke, restart, and recover each capability. Onboarding must never falsely report readiness. |
 | Notifications, background behavior, and tray resilience | Windows has a tray foundation and a toast adapter, but live tray data, session/digest delivery, activation routing, preference persistence, Explorer restart recovery, and richer context actions are not proven or composed. See windows/app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs:24-71. | Compose a notification router with the runtime. Add dedupe/rate limits, deep links, OS-disabled status, background cadence, TaskbarCreated re-registration, and Dashboard/Settings/Update tray actions. | High | Test app open/hidden/closed, sleep/wake, reboot, Explorer restart, disabled notifications, toast click/cold activation, and multi-monitor DPI. |
 | Packaging, updater, URI/file/startup activation | MSIX declares protocol, file associations, startup, and toast activation, but app launch only handles route smoke then creates the tray. The updater core is unreferenced and required MSIX images are absent. See windows/packaging/msix/Package.appxmanifest:102-167 and windows/app/OpenBurnBar.App/App.xaml.cs:44-76. | Wire activation/update services, generate package assets, sign MSIX and portable artifacts, implement startup and single-instance handoff, and publish Windows release metadata/SBOM/attestations. | Critical | Clean x64 and ARM64 install; URI/file activation warm and cold; startup toggle; valid update, tampered-feed rejection, rollback, uninstall, and reinstall. |
-| Computer Use, Mercury, and file transfer | macOS has approvals, audit, kill paths, media permissions, calls, mirroring, and guarded file transfer/quarantine. Windows has cores/adapters but not an end-to-end main-app capability. | After the runtime foundation, compose Windows UIA/SendInput/WGC capability checks, audit archive, kill switch/watchdog, secure-desktop denial, media permission UI, immutable outbound snapshots, and Defender/MOTW-aware inbound quarantine. | High | On physical x64 and ARM64 devices, test protected-target denial, panic halt, capture consent, Windows-to-Mac transfer/call/share, and malicious-file handling. |
+| Computer Use, Mercury, and file transfer | Windows now composes the lower-privilege Computer Use runtime in the main app and has exact-candidate ARM64 VM proof for UIA/SendInput/WGC, audit, kill switch/watchdog, and signed-driver denial. It still lacks the signed virtual HID/physical-device certification boundary, while Mercury/media/file transfer retain their separate end-to-end gaps. | Keep the unsigned Computer Use subset explicitly labeled and fail signed-driver-required actions closed; complete signed virtual HID and physical x64/ARM64 certification. Separately compose media permission UI, immutable outbound snapshots, and Defender/MOTW-aware inbound quarantine. | High | On physical x64 and ARM64 devices, test protected-target denial, panic halt, capture consent, signed input route, Windows-to-Mac transfer/call/share, and malicious-file handling. |
 | Navigation and command palette | The Windows shell is broad, but Ctrl+K has three fabricated recent sessions rather than live search/deep links. See windows/app/OpenBurnBar.App/Shell/CommandPalette.xaml.cs:80-90. | Add cancellable FTS/recency search over actual sessions/projects/memory, ranking, loading/no-results/error states, and direct record navigation. | Medium | Keyboard-only tests for populated, empty, slow, cancelled, and failing queries; verify each selected record opens. |
 | Visual polish and responsiveness | Windows has Mica/Acrylic, WebView2/Win2D fallbacks, and semantic styling, but data-backed layouts and performance are unverified; no runtime screenshot/performance release gate exists. See windows/app/OpenBurnBar.App/Dashboard/DashboardPage.xaml.cs:38-82. | Establish shared semantic design tokens and loading/empty/error/offline/partial state components. Tune density, resizing, motion, and GPU fallbacks against macOS intent rather than copying macOS chrome. | High | Screenshot and pixel-diff baselines at 100/150/200% DPI, narrow/wide windows, light/dark/high-contrast, reduced motion/transparency, and disabled WebView2/Win2D. Capture frame/input/memory budgets. |
 | Accessibility and keyboard | macOS has extensive annotations and Cmd shortcuts. Windows currently has limited automation metadata and mostly Ctrl+K; no UIA/Narrator interaction suite proves real accessibility. | Define accessible names/values/help, focus order, live-region announcements, Ctrl/Alt shortcuts, visible focus, high-contrast/reduced-motion behavior, and Windows UI Automation tests. | High | Narrator/manual keyboard protocol plus automated UIA tests for tray, onboarding, dashboard, settings, dialogs, palette, errors, and panic behavior. |
@@ -204,6 +221,9 @@ and release acceptance fixtures between Swift and C#.
   screenshot tests run in CI.
 - [ ] Performance is measured on real x64 and ARM64 hardware with GPU/WebView2
   fallback coverage.
+- [x] Computer Use lower-privilege UIA/SendInput/WGC/audit/watchdog loop passes
+  exact-candidate Windows ARM64 VM certification and signed-driver-required
+  actions fail closed.
 - [ ] Computer Use, media, and file-transfer safety tests cover deny paths,
   permissions, panic kill, quarantine, and audit integrity.
 - [ ] Release evidence contains signed artifacts, hashes, SBOM/attestations,
@@ -213,7 +233,8 @@ and release acceptance fixtures between Swift and C#.
 
 The audit now has a concrete Windows foundation implementation covering the
 live data plane, settings/onboarding, activation/updater composition, package
-assets, tray recovery, diagnostics, and exact-candidate host evidence. A parity
-release must still satisfy every applicable QA item with signed artifacts and
-independent Windows-host or physical-device evidence; source composition and a
-single VM run do not lower that bar.
+assets, tray recovery, diagnostics, accessibility, unsigned distribution, and
+the lower-privilege Computer Use host loop. A parity release must still satisfy
+every applicable QA item with signed artifacts and independent Windows-host or
+physical-device evidence; source composition and bounded VM runs do not lower
+that bar.

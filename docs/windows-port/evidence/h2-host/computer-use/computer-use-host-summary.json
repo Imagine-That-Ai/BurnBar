@@ -1,0 +1,92 @@
+{
+  "Passed": true,
+  "GeneratedAtUtc": "2026-07-10T23:03:18.7624154+00:00",
+  "MachineName": "WIN-MIGC91I3AKQ",
+  "OsVersion": "Microsoft Windows NT 10.0.26200.0",
+  "OsArchitecture": "Arm64",
+  "ProcessArchitecture": "Arm64",
+  "Framework": ".NET 10.0.9",
+  "Hwnd": 11272990,
+  "AdapterRoutesThroughSignedDriver": false,
+  "AuditSessionId": "host-certification-20260710T230318171Z-a5b4faeeab1941f48c5fa7b64dacf823",
+  "AuditHeadHash": "2b36e7ec6daa58299cb4a799c464b4b199e0e0f6e2661c3bb43cdce1859f0cab",
+  "CaptureFile": "computer-use-wgc.png",
+  "HarnessSha256": "514789bbded6ad7d4868115a3ed9b911a70f7b910f254cc4e3223015ad1ee876",
+  "Checks": [
+    {
+      "Name": "uia-normal-target",
+      "Passed": true,
+      "Detail": "process=OpenBurnBar.ComputerUse.HostHarness.exe; password=False"
+    },
+    {
+      "Name": "uia-password-target",
+      "Passed": true,
+      "Detail": "process=OpenBurnBar.ComputerUse.HostHarness.exe; password=True; deny=SecureTextField"
+    },
+    {
+      "Name": "sendinput-focus",
+      "Passed": true,
+      "Detail": "adapter=click; focused=True"
+    },
+    {
+      "Name": "sendinput-type",
+      "Passed": true,
+      "Detail": "adapter=type; observed=True"
+    },
+    {
+      "Name": "sendinput-shortcut",
+      "Passed": true,
+      "Detail": "shortcut=shortcut; replacement=True"
+    },
+    {
+      "Name": "sendinput-key",
+      "Passed": true,
+      "Detail": "key=key; observed=True"
+    },
+    {
+      "Name": "sendinput-click",
+      "Passed": true,
+      "Detail": "adapter=click; observed=True"
+    },
+    {
+      "Name": "sendinput-pointer",
+      "Passed": true,
+      "Detail": "move=pointer_move; click=pointer_click; observed=True"
+    },
+    {
+      "Name": "sendinput-drag",
+      "Passed": true,
+      "Detail": "adapter=drag_drop; observed=True"
+    },
+    {
+      "Name": "sendinput-scroll",
+      "Passed": true,
+      "Detail": "adapter=scroll; injectedWheelEvents=1; controlBefore=0; controlAfter=0; controlEvents=0"
+    },
+    {
+      "Name": "runtime-signed-driver-gate",
+      "Passed": true,
+      "Detail": "deny=SignatureFailure; detail=signed_input_driver_required; textUnchanged=True"
+    },
+    {
+      "Name": "runtime-secure-field-deny",
+      "Passed": true,
+      "Detail": "deny=DenyRegion; detail=SecureTextField"
+    },
+    {
+      "Name": "watchdog-kill-and-clear",
+      "Passed": true,
+      "Detail": "activate={\u0022ok\u0022:true,\u0022detail\u0022:\u0022activated\u0022}; health={\u0022ok\u0022:true,\u0022detail\u0022:\u0022active\u0022}; clear={\u0022ok\u0022:true,\u0022detail\u0022:\u0022cleared\u0022}; denied=KillSwitch; afterClear=True"
+    },
+    {
+      "Name": "audit-chain",
+      "Passed": true,
+      "Detail": "success=True; entries=4; head=2b36e7ec6daa58299cb4a799c464b4b199e0e0f6e2661c3bb43cdce1859f0cab; message=Audit chain verified (4 entries)."
+    },
+    {
+      "Name": "windows-graphics-capture",
+      "Passed": true,
+      "Detail": "bytes=13202; hash=d563ec6ad466505376e2ecc8271162a57f13c885454bb248301ca9f0afe0f46d; png=True"
+    }
+  ]
+}

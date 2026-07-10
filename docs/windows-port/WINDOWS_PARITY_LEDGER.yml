@@ -439,17 +439,20 @@ rows:
   macos_route: computerUse
   macos_capability: Computer Use desktop loop
   windows_route: computerUse
-  windows_capability: ComputerUseDesktopLoop + SendInput adapter seam
+  windows_capability: WindowsComputerUseRuntimeHost + UIA/SendInput/WGC/audit/watchdog runtime
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-cu/desktop-loop.md
+  - docs/windows-port/evidence/h2-host/computer-use/README.md
   tests:
   - windows/tests/computeruse/DesktopLoopTests.cs
   - windows/tests/computeruse
+  - windows/tests/computeruse-host
   blocking_paths:
   - windows/computeruse/OpenBurnBar.ComputerUse.Core/Loop/ComputerUseDesktopLoop.cs
+  - windows/app/OpenBurnBar.App/ComputerUse/WindowsComputerUseRuntimeHost.cs
   owner_lane: wave-5-pet-native-os
-  notes: Production dispatch loop Real; full session UI residual.
+  notes: Lower-privilege runtime passed exact-candidate ARM64 host proof; signed virtual HID and physical-device certification remain operational residuals.
 - id: daemon-strategy
   macos_route: daemon
   macos_capability: Daemon capability disposition
