@@ -105,7 +105,8 @@
     "js-yaml": "^4.2.0",
     "uuid": "11.1.1",
     "@opentelemetry/core": "2.8.0",
-    "hono": "4.12.25"
+    "hono": "4.12.25",
+    "morgan": "1.11.0"
   },
   "private": true,
   "license": "AGPL-3.0-only"
