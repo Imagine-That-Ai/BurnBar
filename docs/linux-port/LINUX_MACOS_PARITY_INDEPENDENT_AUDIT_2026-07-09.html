@@ -228,7 +228,8 @@
   </header>
   <div class="report-layout">
     <nav class="toc" aria-label="Report contents"><div class="toc-title">Contents</div></nav>
-    <main id="report"><h1>Linux/macOS Parity Independent Audit</h1>
+    <main id="report">
+<h1>Linux/macOS Parity Independent Audit</h1>
 <table>
 <thead>
 <tr>
@@ -254,34 +255,39 @@
 </tr>
 <tr>
 <td>Remediation evidence</td>
-<td><code>codex/linux-macos-parity-implementation</code> package build at <code>9886a6ac0b</code></td>
+<td><code>codex/linux-parity-final</code> at this report HEAD; clean aarch64 release shard at <code>c4e85dbbd0</code></td>
 </tr>
 </tbody></table>
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
 <h2>Executive Summary</h2>
-<p>The Linux app has a substantial foundation: a 19-route Tauri shell, six
-dashboard layouts, shared daemon RPC access, live usage/quota data, missions,
-database indexing, a Computer Use control surface, and AppImage/deb/rpm release
-construction. The remediation wave also replaced the false-green certification
-baseline, added Linux-native secret custody, moved gateway authentication behind
-native proxies, introduced a runtime capability manifest, added installed-app
-accessibility and matched-performance gates, and implemented a signed update-feed
-verifier plus two-architecture release assembly.</p>
-<p>That work materially improves security, reliability, and auditability. It does
-not make Linux fully equivalent to macOS. The largest remaining functional gaps
-are Mercury media, full Computer Use execution, transactional onboarding,
-account/cloud/device workflows, chat and session depth, global text expansion,
-and richer Linux-native shell integrations. The largest remaining certification
-gaps are a complete x86_64 installed session, a prior-version update/rollback
-baseline, a valid public signed feed, and real GNOME Wayland/KDE/wlroots proof.</p>
+<p>The Linux app now has a substantial production implementation: a 19-route Tauri
+shell, all six persisted dashboard layouts, shared daemon RPC access, canonical
+XDG path handling, live usage/quota data, missions, durable memory decisions,
+database indexing/watch recovery, Browser Computer Use plus guarded system input,
+and AppImage/deb/rpm construction. The remediation wave also replaced the false-
+green certification baseline, added Linux-native secret custody, moved gateway
+authentication behind native proxies, introduced a runtime capability manifest,
+added installed-app accessibility and matched-performance gates, and implemented
+a signed update-feed verifier plus two-architecture release assembly.</p>
+<p>Mercury is no longer a missing code path: Linux now has daemon-owned iroh session
+control, inbound and outbound file transfer, call/mirror state, sealed media
+frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
+and a runtime probe that exposes the route only when the daemon can support it.
+It is still <strong>unproven as a parity outcome</strong> until a real Linux-to-macOS/mobile
+two-device matrix passes. The largest remaining functional gaps are complete
+system Computer Use capture/execution, transactional onboarding, account/cloud/
+device workflows, chat and session depth, global text expansion, and richer
+Linux-native shell integrations. The largest certification gaps are an x86_64
+installed session, a prior-version update/rollback baseline, a valid public
+signed feed, and real GNOME Wayland/KDE/wlroots proof.</p>
 <p>The old parity claim is now disabled. The generated product ledger contains all
 40 audited requirements, reports <strong>0 ready / 40 blocked</strong>, and cannot promote a
 stale or incomplete claim. Release verification now checks artifact bytes,
 detached signatures, provenance, source/SBOM/VEX inputs, architecture sessions,
 and signed-feed closure. This fixes the audit mechanism; it does not turn blocked
 product rows into parity.</p>
-<p>The strongest current product evidence is an installed aarch64 <code>.deb</code> session
-from commit <code>9886a6ac0b</code>:</p>
+<p>The strongest installed-product baseline remains an aarch64 <code>.deb</code> session from
+commit <code>9886a6ac0b</code>:</p>
 <ul>
 <li>exact package GUI and daemon binaries launched from <code>/usr/bin</code>;</li>
 <li>shell version <code>OpenBurnBar 0.1.0</code> and daemon version <code>0.1.0</code> matched;</li>
@@ -293,6 +299,21 @@ requested 200% zoom passed;</li>
 <li>28 package-smoke steps passed with zero failures;</li>
 <li>10-sample p95 results were 349.2 ms process start, 61.85 ms tray reopen, and
 112.55 ms daemon health round-trip.</li>
+</ul>
+<p>The current integration branch adds measured source and package evidence beyond
+that historical installed baseline:</p>
+<ul>
+<li><strong>49</strong> focused Swift Core/daemon tests passed across XDG paths, provider
+discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;</li>
+<li><strong>59 files / 394 tests</strong> passed in the Linux desktop suite, including every
+route under axe, six-layout state, provider-path parity, durable memory, and
+real Mercury RPC decoding;</li>
+<li><strong>17/17</strong> Tauri Rust tests, <strong>3/3</strong> media-crate tests, <strong>13/13</strong> extension
+daemon-client tests, and <strong>60/60</strong> release-contract tests passed;</li>
+<li>a clean native aarch64 shard at <code>c4e85dbbd0</code> produced AppImage, deb, rpm, and
+daemon artifacts with SHA-256 closure and zero shard blockers;</li>
+<li>the current x86_64 toolchain is independently constructed rather than relabeling
+an aarch64 image. Exact installed-session evidence remains required.</li>
 </ul>
 <p>Promotion remains blocked for three explicit reasons: no previous same-architecture
 Linux package exists to prove update, rollback, and data preservation; no x86_64
@@ -360,13 +381,13 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Core product workflows</td>
-<td>Existing Linux surfaces remain mixed parity/substitute/read-only</td>
-<td>Complete onboarding, chat, sessions, memory, account/cloud, and workspace depth</td>
+<td>Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only</td>
+<td>Complete onboarding, chat, sessions, account/cloud, and workspace depth</td>
 </tr>
 <tr>
 <td>Advanced platform features</td>
-<td>Unsupported modes are capability-gated</td>
-<td>Implement Mercury, system Computer Use, SmartHub devices, IBus/Fcitx, and companion overlay</td>
+<td>Mercury implementation and guarded Linux input/panic paths exist; unsupported outcomes remain capability-gated</td>
+<td>Certify Mercury; complete system CU capture, SmartHub devices, IBus/Fcitx, and companion overlay</td>
 </tr>
 </tbody></table>
 <h3>What &quot;full parity&quot; means</h3>
@@ -427,11 +448,16 @@ oracle. Generated evidence was accepted only when the underlying mechanism and
 live product state were independently reproducible.</p>
 <h3>Verification performed</h3>
 <ul>
-<li><code>npm test --prefix apps/linux-desktop</code>: <strong>52 files, 375 tests passed</strong>.</li>
+<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>59 files, 394 tests passed</strong>.</li>
 <li><code>npm run build --prefix apps/linux-desktop</code>: <strong>passed</strong>; the main JavaScript
-chunk is <strong>621.05 kB</strong> minified and Vite reports a chunk-size warning.</li>
+chunk is <strong>641.12 kB</strong> minified and Vite reports a chunk-size warning.</li>
 <li><code>cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml</code>:
-<strong>passed</strong>, but contains only <strong>one</strong> Rust unit test.</li>
+<strong>17/17 passed</strong>, including capability-catalog, Mercury-probe, update-feed,
+URL, gateway, panic-shortcut, and wire-contract coverage.</li>
+<li>Focused OpenBurnBar Core/daemon Linux suites: <strong>49/49 passed</strong>.</li>
+<li>Linux media crate capability/capture/decode suite: <strong>3/3 passed</strong>.</li>
+<li>Extension daemon-client suite: <strong>13/13 passed</strong>.</li>
+<li>Linux release/config/packaging/matrix contract suites: <strong>60/60 passed</strong>.</li>
 <li>Current source comparison of macOS routes, settings, chat, parser registry,
 daemon lifecycle, cloud/account, Computer Use, Mercury, SmartHub, text
 expansion, accessibility, and recovery behavior.</li>
@@ -602,8 +628,8 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-08</td>
 <td>Mercury media</td>
 <td>File transfer, calls, screen share, mirroring, presence, consent</td>
-<td>Tauri reports <code>capabilityAvailable: false</code>; status-only UI</td>
-<td>Missing</td>
+<td>Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open</td>
+<td>Partial</td>
 <td>Critical</td>
 </tr>
 <tr>
@@ -618,16 +644,16 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-10</td>
 <td>Dashboard layouts</td>
 <td>Six dense layouts with real live content and persisted state</td>
-<td>Six React layouts and unit tests exist; installed route proof is nonblank, but the six-layout packaged visual matrix remains incomplete</td>
-<td>Partial</td>
+<td>All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete</td>
+<td>Near parity</td>
 <td>Medium</td>
 </tr>
 <tr>
 <td>P-11</td>
 <td>Usage ingestion</td>
 <td>27 parser registrations, API/quota aggregation, recount, projections, cloud mirror</td>
-<td>Linux UI path registry has 15 rows; shared-parser wiring and full Linux path coverage are inconsistent/unproven, not proven absent</td>
-<td>Unproven</td>
+<td>One 15-row Linux path registry now drives shell discovery copy and is contract-tested against Swift; the full macOS/Linux normalized parser corpus remains unproven</td>
+<td>Partial</td>
 <td>High</td>
 </tr>
 <tr>
@@ -682,8 +708,8 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-18</td>
 <td>Memory review</td>
 <td>Quarantined candidates, approve/reject, durable state, audit</td>
-<td>Recalled durable memories are labeled approved; review state partly localStorage</td>
-<td>Substitute</td>
+<td>Approve/reject/forget now use idempotent daemon RPCs and survive reload; Linux still lacks a proven first-class quarantine feed and cross-device review matrix</td>
+<td>Partial</td>
 <td>High</td>
 </tr>
 <tr>
@@ -834,8 +860,8 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-37</td>
 <td>Linux matrix</td>
 <td>N/A; macOS supported versions are exercised</td>
-<td>aarch64 X11/XFCE package session passed; GNOME Wayland, KDE Wayland, wlroots, x86_64, and real portal/keyring rows remain open</td>
-<td>Missing</td>
+<td>Environment-bound fail-closed harness exists and aarch64 X11/XFCE passed; GNOME Wayland, KDE Wayland, wlroots, x86_64, and real portal/keyring rows remain open</td>
+<td>Partial</td>
 <td>Critical</td>
 </tr>
 <tr>
@@ -1157,21 +1183,33 @@ tampering, lock/sleep, portal revocation, daemon crash, and panic latency on
 GNOME/KDE/Sway Wayland and X11.</li>
 </ul>
 <h3>GAP-006 - Build the Mercury Linux media host</h3>
+<p><strong>Implementation update (2026-07-10): core implementation closed; parity
+certification open.</strong> Linux now owns Mercury sessions in the daemon, handles
+call/mirror control, inbound and outbound files, portal/PipeWire capture,
+GStreamer codec probing, bounded frame queues, sealed outbound frames, consent
+and revocation, and exposes the resulting state through typed daemon/Tauri/UI
+contracts. The shell capability catalog now probes the real daemon rather than
+hard-disabling the route.</p>
 <ul>
-<li><strong>Difference:</strong> macOS supports Mercury file transfer, calls, screen share,
-mirroring, presence, consent, and partner preferences. Linux reports the media
-capability as absent and renders a status-only surface.</li>
-<li><strong>Why it matters:</strong> an entire first-class product family is missing.</li>
-<li><strong>Recommended solution:</strong> define shared daemon media contracts over existing
-iroh/remote-access components; implement PipeWire portal capture, a supported
-codec pipeline, device presence, and complete consent/session controls.</li>
+<li><strong>Difference:</strong> macOS has production-proven Mercury behavior across supported
+Apple/mobile peers. Linux now implements the same core outcomes, but no current
+installed two-device/compositor matrix proves calls, mirroring, and transfers
+end to end against the exact candidate.</li>
+<li><strong>Why it matters:</strong> media failures are permission-, portal-, codec-, network-,
+and peer-dependent; source and unit tests alone cannot certify the user outcome.</li>
+<li><strong>Recommended solution:</strong> preserve the current daemon-owned architecture, then
+close the installed Linux-to-macOS/iOS/Android matrix and feed any observed
+portal, codec-negotiation, notification, or lifecycle defects back into the
+shared contracts.</li>
 <li><strong>Priority:</strong> <strong>Critical</strong>.</li>
-<li><strong>Implementation notes:</strong> separate transport, media engine, portal capture,
-codec negotiation, and UI state; allow system-installed codecs where licensing
-requires it; expose reasoned capability states rather than a Boolean.</li>
+<li><strong>Implementation notes:</strong> transport, media engine, portal capture, codec probe,
+sealed-frame boundary, file service, and UI state are separate. Runtime
+capability is available/degraded/unavailable with a reason; absence of the
+daemon probe fails closed. Keep fixture paths disabled in production.</li>
 <li><strong>QA verification:</strong> Linux-to-macOS/iOS/Android pair/unpair, file send/receive,
 call, screen share, cancel/reject, packet loss, reconnect, suspend, permission
-denial/revocation, cleanup, and multi-monitor selection.</li>
+denial/revocation, codec absence, cleanup, and multi-monitor selection on each
+supported compositor and architecture.</li>
 </ul>
 <h3>GAP-007 - Make usage/provider coverage authoritative</h3>
 <ul>
@@ -1261,14 +1299,14 @@ clock skew.</li>
 <h3>GAP-011 - Replace activity and memory substitutes with true domain state</h3>
 <ul>
 <li><strong>Difference:</strong> macOS exposes indexed session transcripts and a real memory
-review queue. Linux wraps recent usage as session entries and maps recalled
-durable memories to approved rows, while some review decisions live in
-localStorage.</li>
+review queue. Linux still wraps recent usage as session entries. Memory
+approve/reject/forget decisions are now daemon-authoritative and idempotent,
+but recalled durable memories do not yet prove a first-class quarantine feed.</li>
 <li><strong>Why it matters:</strong> users cannot inspect or resume actual work, and the memory
 UI describes semantics the backend does not provide.</li>
 <li><strong>Recommended solution:</strong> add session list/body/search/source/resume/export RPCs
-and a daemon-owned memory quarantine/approve/reject/forget/audit model. Until
-then, rename recalled memory as durable memory and remove review claims.</li>
+and complete the daemon-owned memory quarantine source and cross-device audit
+model; retain the implemented durable decision path.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> preserve exact source/session/project IDs; support
 local/cloud conflict and missing-body recovery; make review decisions
@@ -1519,14 +1557,12 @@ uses 100,000 rows and a 30-minute soak. The renderer now has a single-flight,
 lifecycle-aware daemon supervisor with bounded exponential backoff. See
 <code>performance-reliability-validation.md</code>.</p>
 <ul>
-<li><strong>Difference:</strong> macOS has cadence, supervisor, startup recovery, prewarming,
-migration, and frame-budget coverage. Many Linux surfaces refresh on mount or
-manual action; <code>apps/linux-desktop/src/state/shellStore.ts:170</code> runs required
-daemon performance probes during boot; the Rust suite currently executes one
-unit test; and the built main chunk is 621.05 kB minified. The daemon probes in
-<code>OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCObservability.swift:76-139</code>
-serialize small hardcoded/in-memory payloads rather than real user workloads,
-and current evidence has no matched macOS p95/p99 or resource baseline.</li>
+<li><strong>Difference:</strong> Linux now has a bounded supervisor, packaged startup/reopen/
+reconnect percentiles, a matched Swift workload harness, 17 Rust tests, and a
+30-minute soak contract. The built main chunk is 641.12 kB minified and still
+triggers the Vite size warning. Exact-candidate suspend/portal/keyring recovery,
+comparable-hardware macOS/Linux p95/p99, and the full desktop matrix remain
+unproven.</li>
 <li><strong>Why it matters:</strong> UI stalls, stale data, daemon death, suspend/resume, leaks,
 and renderer failures will escape the current unit suite.</li>
 <li><strong>Recommended solution:</strong> add daemon event subscriptions, lifecycle-aware
@@ -1661,8 +1697,8 @@ coverage.</p>
 and implements six React dashboard layouts with unit tests. macOS additionally
 provides provider/model deep navigation, mature multi-window/pop-out behavior,
 persisted live layout state, and proven dense content. Linux&#39;s current six-
-layout visual evidence is a static contract board; installed runtime captures
-are black.</li>
+layout visual evidence is incomplete; installed route captures are now
+nonblank, but do not cover every layout/state/viewport combination.</li>
 <li><strong>Why it matters:</strong> source and JSDOM tests do not prove that users can see,
 navigate, resize, restore, deep-link, or use the real packaged dashboard.</li>
 <li><strong>Recommended solution:</strong> complete typed deep links and Linux-native secondary
@@ -1783,9 +1819,9 @@ queueing, locked keyring, and redaction.</li>
 </tr>
 <tr>
 <td>Phase 3 native features</td>
-<td>Open</td>
-<td>Unsupported behavior is honestly capability-gated</td>
-<td>Linux-native Computer Use, Mercury, SmartHub, IBus/Fcitx, pet adapters</td>
+<td>In progress</td>
+<td>Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated</td>
+<td>Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters</td>
 </tr>
 <tr>
 <td>Phase 4 certification/promotion</td>
@@ -2196,7 +2232,7 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>7</td>
 <td><strong>Media and system integration</strong></td>
-<td>Pending</td>
+<td>In progress; Mercury code complete</td>
 <td>LNX-CU-SYSTEM-001, LNX-MEDIA-001</td>
 <td>Supported compositor safety and two-device media proof</td>
 </tr>
@@ -2397,14 +2433,24 @@ limitations, and operator runbooks match live behavior.</li>
 <li>Linux chat controls/state: <code>apps/linux-desktop/src/surfaces/chat/</code> and
 <code>apps/linux-desktop/src/state/chatStore.ts</code></li>
 <li>Linux Tauri capability/commands: <code>apps/linux-desktop/src-tauri/src/lib.rs</code></li>
+<li>Linux Mercury runtime: <code>OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/MercuryLinux*</code>,
+<code>apps/linux-desktop/src/state/mediaStore.ts</code>, and
+<code>apps/linux-desktop/src/surfaces/media/</code></li>
+<li>Canonical Linux paths/provider registry:
+<code>OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/OpenBurnBarLinuxPaths.swift</code>
+and <code>apps/linux-desktop/src/providerPathRegistry.ts</code></li>
 <li>Linux daemon secret stores: <code>OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/</code></li>
 <li>Current ledger: <code>docs/linux-port/parity-ledger.json</code> and
 <code>docs/linux-port/parity-ledger.md</code></li>
 <li>Ledger validator: <code>scripts/linux-port/lib/parity-ledger-validate.mjs</code></li>
 <li>Release verifier: <code>scripts/linux-port/verify-linux-release.mjs</code></li>
+<li>Environment-bound matrix harness: <code>scripts/linux-port/run-linux-matrix-harness.mjs</code></li>
+<li>Packaging path drift gate: <code>scripts/linux-port/check-packaging-path-sync.mjs</code></li>
 <li>Release evidence: <code>docs/linux-port/evidence/mission-002-reanchor/</code></li>
 <li>Current aarch64 installed-session audit summary:
 <code>docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json</code></li>
+<li>Current clean aarch64 package closure:
+<code>docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-c4e85dbbd0-architecture-closure.json</code></li>
 <li>Existing implementation plan and accepted substitutions:
 <code>docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md</code></li>
 <li>Public prerelease: <code>https://github.com/Imagine-That-Ai/BurnBar/releases/tag/linux-v0.1.0</code></li>
