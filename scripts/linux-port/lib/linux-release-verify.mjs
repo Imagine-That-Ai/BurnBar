@@ -187,6 +187,8 @@ export function verifyLinuxReleaseCandidate(input) {
     'provenancePredicate',
     'sourceArchive',
     'parityAttestation',
+    'architectureSessions',
+    'packageSmoke',
     'updateFeed',
     'updateFeedSignature'
   ];
@@ -206,6 +208,19 @@ export function verifyLinuxReleaseCandidate(input) {
       fail(`${kind} sidecar checksum drifted.`);
     }
     if (sidecar.size !== bytes.length) fail(`${kind} sidecar size drifted.`);
+  }
+  for (const kind of ['architectureSessions', 'packageSmoke']) {
+    const closureRecord = normalizeSidecar(closure?.sidecars?.[kind]);
+    const provenanceRecord = normalizeSidecar(provenance?.[kind]);
+    if (
+      !closureRecord
+      || !provenanceRecord
+      || closureRecord.file !== provenanceRecord.file
+      || closureRecord.sha256 !== provenanceRecord.sha256
+      || closureRecord.size !== provenanceRecord.size
+    ) {
+      fail(`${kind} is not identically bound by the package closure and attested provenance.`);
+    }
   }
 
   const checksumBytes = sidecarBytes.get('checksums');
@@ -258,6 +273,18 @@ export function verifyLinuxReleaseCandidate(input) {
       fail('update feed Ed25519 signature must be 64 bytes.');
     } else if (!crypto.verify(null, updateFeedBytes, publicKey, updateFeedSignatureBytes)) {
       fail('update feed detached Ed25519 signature verification failed.');
+    }
+  }
+
+  const packageSmokeBytes = sidecarBytes.get('packageSmoke');
+  if (packageSmokeBytes) {
+    try {
+      const boundSmoke = JSON.parse(packageSmokeBytes.toString('utf8'));
+      if (JSON.stringify(boundSmoke) !== JSON.stringify(smokeSummary)) {
+        fail('parsed package smoke summary does not equal the hash-bound sidecar.');
+      }
+    } catch {
+      fail('hash-bound package smoke summary is invalid JSON.');
     }
   }
 

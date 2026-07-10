@@ -2338,9 +2338,19 @@ pub fn run() {
                 println!("OpenBurnBar {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
             }
+            "--daemon-health" => {
+                let health = probe_daemon_health();
+                println!(
+                    "{}",
+                    serde_json::to_string(&health).unwrap_or_else(|error| {
+                        format!(r#"{{"ok":false,"error":"health serialization failed: {error}"}}"#)
+                    })
+                );
+                std::process::exit(if health.ok { 0 } else { 1 });
+            }
             "--help" | "-h" => {
                 println!(
-                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--version] [--help]"
+                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--version] [--daemon-health] [--help]"
                 );
                 std::process::exit(0);
             }
