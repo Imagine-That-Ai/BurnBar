@@ -144,6 +144,21 @@ public sealed class ChatConversationStoreTests : IDisposable
     }
 
     [Fact]
+    public void ChatSurfaceViewModel_ReadyExecutableKeepsManagementControlsVisible()
+    {
+        var viewModel = new ChatSurfaceViewModel(
+            new EmptyChatStreamDriver(),
+            store: new NoopChatConversationStore(),
+            executableInventory: ReadyExecutableInventory.CurrentProcess());
+
+        Assert.True(viewModel.HasApprovedExecutable);
+        Assert.True(viewModel.IsExecutableReady);
+        Assert.False(viewModel.RequiresExecutableSetup);
+        Assert.True(viewModel.ShowExecutableControls);
+        Assert.Contains("test-process", viewModel.ApprovedExecutableSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ChatSurfaceViewModel_RestartRehydratesDurableThread()
     {
         using TestProfile profile = TestProfile.Create();

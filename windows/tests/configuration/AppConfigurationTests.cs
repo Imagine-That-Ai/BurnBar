@@ -1,6 +1,7 @@
 using Xunit;
 using OpenBurnBar.App.Configuration;
 using System.Text;
+using System.IO.Compression;
 
 namespace OpenBurnBar.App.Configuration.Tests;
 
@@ -241,6 +242,56 @@ public sealed class AppConfigurationTests
         Assert.DoesNotContain("OPENBURNBAR_SQLCIPHER_PASSPHRASE", env.Keys);
         Assert.DoesNotContain("WINDOWS_UPDATE_SIGNING_KEY", env.Keys);
         Assert.DoesNotContain("DIAGNOSTIC_CANARY_SECRET", env.Keys);
+    }
+
+    [Fact]
+    public void Support_bundle_redacts_text_and_skips_secret_envelopes_and_databases()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "obb-support-test-" + Guid.NewGuid().ToString("N"));
+        string source = Path.Combine(dir, "OpenBurnBar");
+        string logs = Path.Combine(source, "logs");
+        string protectedSecrets = Path.Combine(source, "protected-secrets");
+        Directory.CreateDirectory(logs);
+        Directory.CreateDirectory(protectedSecrets);
+
+        string secret = "support-bundle-canary-secret-1234567890";
+        SecretRedactor.Shared.Register(secret);
+        File.WriteAllText(Path.Combine(logs, "winui-crash.log"), "token=" + secret + Environment.NewLine);
+        File.WriteAllText(Path.Combine(source, "app_config.json"), """{"firebaseIdToken":"support-bundle-canary-secret-1234567890"}""");
+        File.WriteAllText(Path.Combine(protectedSecrets, "deadbeef.secret.json"), secret);
+        File.WriteAllBytes(Path.Combine(source, "openburnbar.sqlite"), Encoding.UTF8.GetBytes(secret));
+        File.WriteAllText(Path.Combine(source, "openburnbar.sqlite.recovery.log"), "recovered");
+
+        try
+        {
+            string bundle = Path.Combine(dir, "bundle.zip");
+            SupportBundleResult result = SupportBundleBuilder.Create(bundle, new[] { source });
+
+            Assert.True(File.Exists(bundle));
+            Assert.Contains(result.IncludedArtifacts, artifact => artifact.EndsWith("winui-crash.log", StringComparison.Ordinal));
+            Assert.Contains(result.IncludedArtifacts, artifact => artifact.EndsWith("app_config.json", StringComparison.Ordinal));
+            Assert.Contains(result.IncludedArtifacts, artifact => artifact.EndsWith("openburnbar.sqlite.recovery.log", StringComparison.Ordinal));
+            Assert.Contains(result.SkippedArtifacts, artifact => artifact.Contains("protected secret", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(result.SkippedArtifacts, artifact => artifact.Contains("database file", StringComparison.OrdinalIgnoreCase));
+
+            using ZipArchive archive = ZipFile.OpenRead(bundle);
+            string combined = string.Join(
+                Environment.NewLine,
+                archive.Entries.Select(entry =>
+                {
+                    using Stream stream = entry.Open();
+                    using var reader = new StreamReader(stream, Encoding.UTF8);
+                    return reader.ReadToEnd();
+                }));
+
+            Assert.DoesNotContain(secret, combined, StringComparison.Ordinal);
+            Assert.Contains("[REDACTED]", combined, StringComparison.Ordinal);
+            Assert.Contains("recovered", combined, StringComparison.Ordinal);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
     }
 
     private sealed class ThrowingSecretStore : IAppSecretStore

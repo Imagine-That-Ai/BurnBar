@@ -89,12 +89,31 @@ function Stop-ProcessTree([System.Diagnostics.Process] $Process) {
     try {
         $killer = [System.Diagnostics.Process]::Start('taskkill.exe', "/PID $($Process.Id) /T /F")
         if ($null -ne $killer) {
-            [void]$killer.WaitForExit(10000)
+            if (-not $killer.WaitForExit(10000)) {
+                try { $killer.Kill() } catch { }
+            }
             $killer.Dispose()
         }
     } catch {
         try { $Process.Kill() } catch { }
     }
+    if (-not $Process.HasExited) {
+        try { $Process.Kill() } catch { }
+    }
+}
+
+function Wait-ForRouteSmokeResult([string] $Path, [System.Diagnostics.Process] $Process, [int] $TimeoutMs) {
+    $deadline = [DateTimeOffset]::UtcNow.AddMilliseconds($TimeoutMs)
+    while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            return $true
+        }
+        if ($null -ne $Process -and $Process.HasExited) {
+            return $false
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return (Test-Path -LiteralPath $Path -PathType Leaf)
 }
 
 function Resolve-AppExe([string] $Requested) {
@@ -373,19 +392,29 @@ function Invoke-RouteScenario {
         }
     }
 
-    if (-not $process.WaitForExit(30000 + [Math]::Max(0, $HoldMilliseconds))) {
+    $routeResult = Join-Path $routeOut "$Route-result.json"
+    $routeCompleted = Wait-ForRouteSmokeResult $routeResult $process (45000 + [Math]::Max(0, $HoldMilliseconds))
+    if (-not $process.HasExited) {
         Stop-ProcessTree $process
     }
-    $exitCode = if ($process.HasExited) { $process.ExitCode } else { 124 }
+    if (-not $process.HasExited) {
+        [void]$process.WaitForExit(5000)
+    }
 
-    $routeResult = Join-Path $routeOut "$Route-result.json"
+    $routeExitCode = $null
     if (Test-Path -LiteralPath $routeResult) {
         $artifacts += $routeResult
+        try {
+            $routeExitCode = [int]((Get-Content -Raw -LiteralPath $routeResult | ConvertFrom-Json).ExitCode)
+        } catch {
+            $routeExitCode = $null
+        }
     }
     $routePng = Join-Path $routeOut "$Route.png"
     if (Test-Path -LiteralPath $routePng) {
         $artifacts += $routePng
     }
+    $exitCode = if ($null -ne $routeExitCode) { $routeExitCode } elseif ($process.HasExited) { $process.ExitCode } elseif ($routeCompleted) { 0 } else { 124 }
 
     return [ordered]@{
         id = $Id
@@ -413,6 +442,44 @@ function Initialize-ProfileStorage([string] $LocalAppData) {
     return $db
 }
 
+$script:CollectorScenarios = $null
+$script:CollectorStartedAt = (Get-Date).ToUniversalTime().ToString('o')
+trap {
+    $errorText = $_ | Out-String
+    try {
+        try {
+            $failureDir = Resolve-FullPath $OutputDir
+        } catch {
+            $failureDir = $OutputDir
+        }
+        New-Item -ItemType Directory -Force -Path $failureDir | Out-Null
+        $failurePath = Join-Path $failureDir 'interactive-result.json'
+        $errorPath = Join-Path $failureDir 'collector-error.txt'
+        Set-Content -Encoding UTF8 -LiteralPath $errorPath -Value $errorText
+        Write-JsonFile $failurePath ([ordered]@{
+            schema = 'openburnbar.windows.foundation-interactive-uia.v1'
+            status = 'failed'
+            startedAtUtc = $script:CollectorStartedAt
+            completedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            repoRoot = $RepoRoot
+            appExe = $script:ResolvedAppExe
+            actor = [ordered]@{
+                identitySha256 = Get-StringSha256 ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+                sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+                isSession0 = ([System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0)
+            }
+            error = $errorText
+            scenarios = $(if ($null -ne $script:CollectorScenarios) { $script:CollectorScenarios } else { @() })
+            artifacts = @($errorPath)
+        })
+    } catch {
+        try {
+            Set-Content -Encoding UTF8 -LiteralPath (Join-Path $OutputDir 'collector-error-fallback.txt') -Value (($_ | Out-String) + [Environment]::NewLine + $errorText)
+        } catch { }
+    }
+    exit 99
+}
+
 $RepoRoot = Resolve-FullPath $RepoRoot
 $OutputDir = Resolve-FullPath $OutputDir
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -420,7 +487,8 @@ Initialize-Uia
 $script:ResolvedAppExe = Resolve-AppExe $AppExe
 
 $scenarios = New-Object System.Collections.Generic.List[object]
-$started = (Get-Date).ToUniversalTime().ToString('o')
+$script:CollectorScenarios = $scenarios
+$started = $script:CollectorStartedAt
 
 $scenarios.Add((Invoke-RouteScenario -Id 'chat.executable.setup' -Route 'chat' -RequiredAutomationIds @(
     'chat.surface', 'chat.executable.setup', 'chat.executable.path', 'chat.executable.approve'

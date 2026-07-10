@@ -236,5 +236,49 @@ assert.doesNotMatch(
   /\.Kill\(\$true\)/,
   "interactive collector must not use the .NET Core-only Kill(entireProcessTree) overload",
 );
+assert.match(
+  collectorScript,
+  /Wait-ForRouteSmokeResult/,
+  "interactive collector must bound route-smoke waits on the emitted result file",
+);
+assert.match(
+  collectorScript,
+  /\$routeExitCode/,
+  "interactive collector must trust route-smoke result JSON instead of requiring app process exit",
+);
+assert.match(
+  collectorScript,
+  /collector-error\.txt/,
+  "interactive collector must leave a structured failure artifact on terminating errors",
+);
+
+const runnerScript = readFileSync(
+  join(SCRIPT_DIR, "windows-port/run-foundation-host-evidence.ps1"),
+  "utf8",
+);
+const candidateVerificationBlock = runnerScript.slice(
+  runnerScript.indexOf("$candidateVerification ="),
+  runnerScript.indexOf("$forbiddenEnv ="),
+);
+assert.match(
+  candidateVerificationBlock,
+  /candidateVerificationResult\.status\s+-ne\s+'passed'/,
+  "candidate verification must inspect the emitted fail-closed result",
+);
+assert.doesNotMatch(
+  candidateVerificationBlock,
+  /LASTEXITCODE/,
+  "PowerShell script invocation must not trust a stale native LASTEXITCODE",
+);
+assert.doesNotMatch(
+  runnerScript,
+  /\$pid\s*=/i,
+  "runner must not assign PowerShell's read-only PID automatic variable",
+);
+assert.match(
+  runnerScript,
+  /Wait-ForJsonOrProcessExit/,
+  "runner must fail closed when the interactive collector exits before writing its result",
+);
 
 console.log("windows foundation host evidence validator tests passed");

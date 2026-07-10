@@ -10,7 +10,10 @@ using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Presentation.Dashboard;
 using OpenBurnBar.App.Presentation.Flyout;
 using OpenBurnBar.App.Shell;
+using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.UsageRuntime;
+using OpenBurnBar.Storage;
 using Windows.Graphics;
 using Windows.UI;
 
@@ -55,6 +58,8 @@ public sealed partial class FlyoutWindow : Window
 
         ViewModel = new FlyoutViewModel(persistence);
         ApplySnapshot(LoadSnapshot());
+        WindowsUsageRuntimeHost.SnapshotChanged += OnUsageSnapshotChanged;
+        WindowsUsageRuntimeHost.StatusChanged += OnUsageStatusChanged;
 
         Activated += OnActivated;
         Closed += OnClosed;
@@ -89,7 +94,7 @@ public sealed partial class FlyoutWindow : Window
     private static FlyoutTraySnapshot LoadSnapshot() =>
         RuntimeDataMode.SampleModeEnabled
             ? FlyoutTraySampleData.Snapshot()
-            : FlyoutTraySnapshot.Empty;
+            : WindowsUsageRuntimeHost.FlyoutSnapshot();
 
     private void ApplySnapshot(FlyoutTraySnapshot snap)
     {
@@ -323,8 +328,12 @@ public sealed partial class FlyoutWindow : Window
     private void OnGlassPreferencesChanged(object? sender, EventArgs e) =>
         LiquidGlassWindowBlend.ApplyScrim(WindowBlendScrim, LiquidGlassEnvironment.Current);
 
-    private void OnClosed(object sender, WindowEventArgs args) =>
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
         LiquidGlassEnvironment.PreferencesChanged -= OnGlassPreferencesChanged;
+        WindowsUsageRuntimeHost.SnapshotChanged -= OnUsageSnapshotChanged;
+        WindowsUsageRuntimeHost.StatusChanged -= OnUsageStatusChanged;
+    }
 
     private void OpenFull_Click(object sender, RoutedEventArgs e)
     {
@@ -339,10 +348,34 @@ public sealed partial class FlyoutWindow : Window
         App.Current.MainWindowShell?.Navigate("settings");
     }
 
-    private void Scan_Click(object sender, RoutedEventArgs e)
+    private async void Scan_Click(object sender, RoutedEventArgs e)
     {
-        // Scan is a no-op until the Windows aggregator is wired; keep the control for parity.
-        FreshnessText.Text = "Scanning…";
+        Button? scanButton = sender as Button;
+        if (scanButton is not null) scanButton.IsEnabled = false;
+        FreshnessText.Text = "Scanning...";
+        try
+        {
+            await WindowsUsageRuntimeHost.ScanAsync();
+            ApplySnapshot(LoadSnapshot());
+        }
+        catch (Exception ex)
+        {
+            OpenBurnBar.App.Diagnostics.AppDiagnostics.LogException("usage-runtime.manual-scan", ex);
+            FreshnessText.Text = "Scan failed - open Settings for recovery";
+        }
+        finally
+        {
+            if (scanButton is not null) scanButton.IsEnabled = true;
+        }
+    }
+
+    private void OnUsageSnapshotChanged(object? sender, TokenUsageAggregateSnapshot snapshot) =>
+        DispatcherQueue.TryEnqueue(() => ApplySnapshot(LoadSnapshot()));
+
+    private void OnUsageStatusChanged(object? sender, UsageRuntimeStatus status)
+    {
+        if (!status.IsBusy && status.Phase != UsageRuntimePhase.Failed) return;
+        DispatcherQueue.TryEnqueue(() => FreshnessText.Text = status.Message);
     }
 
     private void Quit_Click(object sender, RoutedEventArgs e) => App.Current.Exit();

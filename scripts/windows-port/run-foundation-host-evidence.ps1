@@ -17,6 +17,7 @@ param(
     [string] $ExpectedCandidate = '',
     [string] $VmUuid = '',
     [ValidateSet('', 'x64', 'ARM64', 'x86')] [string] $Platform = '',
+    [string] $CollectorScriptPath = '',
     [switch] $SkipFocusedEvidence
 )
 
@@ -356,11 +357,14 @@ function Start-InteractiveCollector([string] $CollectorScript, [string] $Collect
     $escaped = ($args | ForEach-Object {
         if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
     }) -join ' '
-    $pid = [OpenBurnBar.FoundationEvidence.InteractiveLauncher]::Launch([uint32]$activeSession, $ps, $escaped, $RepoRoot)
+    # PowerShell variable names are case-insensitive; $PID is a built-in,
+    # read-only automatic variable. Keep the child id in a distinct name so
+    # this path works under Windows PowerShell 5.1 as well as pwsh.
+    $collectorProcessId = [OpenBurnBar.FoundationEvidence.InteractiveLauncher]::Launch([uint32]$activeSession, $ps, $escaped, $RepoRoot)
     return [ordered]@{
         method = 'WTSQueryUserToken/CreateProcessAsUser'
         activeConsoleSessionId = [int]$activeSession
-        processId = $pid
+        processId = $collectorProcessId
         powershell = $ps
     }
 }
@@ -374,6 +378,21 @@ function Wait-ForJson([string] $Path, [int] $TimeoutSeconds = 240) {
         Start-Sleep -Seconds 2
     }
     throw "Timed out waiting for $Path"
+}
+
+function Wait-ForJsonOrProcessExit([string] $Path, [int] $ProcessId, [int] $TimeoutSeconds = 240) {
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            return
+        }
+        if ($null -eq $process -or $process.HasExited) {
+            throw "Interactive UIA collector exited before writing $Path (pid=$ProcessId)."
+        }
+        Start-Sleep -Seconds 2
+    }
+    throw "Timed out waiting for $Path (collector pid=$ProcessId)"
 }
 
 function New-RedactedDiagnostics([string] $Dir) {
@@ -476,6 +495,11 @@ function Find-FirstArtifact([string[]] $Candidates) {
 
 $RepoRoot = Resolve-FullPath $RepoRoot
 $ManifestPath = Resolve-FullPath $ManifestPath
+$collectorScript = if ([string]::IsNullOrWhiteSpace($CollectorScriptPath)) {
+    Join-Path $RepoRoot 'scripts\windows-port\foundation-host-uia-collector.ps1'
+} else {
+    Resolve-FullPath $CollectorScriptPath
+}
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $RepoRoot ('docs\windows-port\evidence\foundation-host\' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 }
@@ -508,8 +532,11 @@ $candidateVerification = Join-Path $OutputDir 'candidate-tree-verification.json'
     -DestinationRoot $RepoRoot `
     -VerifyOnly `
     -VerificationOutputPath $candidateVerification
-if ($LASTEXITCODE -ne 0) {
-    throw "Candidate verification failed."
+$candidateVerificationResult = Get-Content -Raw -LiteralPath $candidateVerification | ConvertFrom-Json
+if ($candidateVerificationResult.status -ne 'passed' `
+    -or [int]$candidateVerificationResult.checkedFiles -ne [int]$candidateVerificationResult.expectedFiles `
+    -or @($candidateVerificationResult.mismatches).Count -ne 0) {
+    throw "Candidate verification failed. See $candidateVerification"
 }
 $artifactRefs.Add((New-ArtifactRef $candidateVerification 'candidate.verify' 'candidate-import-verification'))
 
@@ -598,10 +625,10 @@ $appExe = Resolve-AppExe
 $interactiveDir = Join-Path $OutputDir 'interactive-uia'
 New-Item -ItemType Directory -Force -Path $interactiveDir | Out-Null
 $collectorLaunch = Start-InteractiveCollector `
-    -CollectorScript (Join-Path $RepoRoot 'scripts\windows-port\foundation-host-uia-collector.ps1') `
+    -CollectorScript $collectorScript `
     -CollectorOutputDir $interactiveDir `
     -AppExe $appExe
-Wait-ForJson (Join-Path $interactiveDir 'interactive-result.json')
+Wait-ForJsonOrProcessExit -Path (Join-Path $interactiveDir 'interactive-result.json') -ProcessId ([int]$collectorLaunch.processId)
 $interactiveResult = Get-Content -Raw -LiteralPath (Join-Path $interactiveDir 'interactive-result.json') | ConvertFrom-Json
 if ($interactiveResult.actor.isSession0 -eq $true -or [int]$interactiveResult.actor.sessionId -eq 0) {
     throw 'Interactive UIA collector ran in session 0.'

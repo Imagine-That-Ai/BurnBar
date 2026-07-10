@@ -154,6 +154,8 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
 
     public bool RequiresExecutableSetup => !IsExecutableReady;
 
+    public bool ShowExecutableControls => RequiresExecutableSetup || HasApprovedExecutable;
+
     public string ExecutableSetupTitle => _executableSnapshot.Status.Title;
 
     public string ExecutableSetupMessage => _executableSnapshot.Status.Message;
@@ -508,6 +510,7 @@ public sealed class ChatSurfaceViewModel : INotifyPropertyChanged
         Raise(nameof(HasApprovedExecutable));
         Raise(nameof(IsExecutableReady));
         Raise(nameof(RequiresExecutableSetup));
+        Raise(nameof(ShowExecutableControls));
         Raise(nameof(ExecutableSetupTitle));
         Raise(nameof(ExecutableSetupMessage));
         Raise(nameof(ApprovedExecutableSummary));

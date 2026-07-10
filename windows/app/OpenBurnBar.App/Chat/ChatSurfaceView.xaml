@@ -192,7 +192,8 @@
                     BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
                     Background="{StaticResource PensieveColorGlassBgBrush}"
                     AutomationProperties.AutomationId="chat.executable.setup"
-                    Visibility="{x:Bind ViewModel.RequiresExecutableSetup, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                    AutomationProperties.AccessibilityView="Control"
+                    Visibility="{x:Bind ViewModel.ShowExecutableControls, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="{x:Bind ViewModel.ExecutableSetupTitle, Mode=OneWay}"
                                FontWeight="SemiBold"
