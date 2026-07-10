@@ -42,7 +42,7 @@ struct CommunityView: View {
         .onChange(of: communityStore.selectedWindow) { _, _ in
             Task {
                 if let uid = authStore?.currentIdentity?.uid {
-                    await communityStore.fetchLeaderboards(uid: uid)
+                    await communityStore.fetchLeaderboards()
                 }
             }
         }

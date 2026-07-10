@@ -82,7 +82,7 @@ final class CommunityStore {
         defer { isLoading = false }
 
         startListening(uid: uid)
-        await fetchLeaderboards(uid: uid)
+        await fetchLeaderboards()
     }
 
     func stopListening() {
@@ -127,7 +127,7 @@ final class CommunityStore {
                 )
                 self.profile = decodedProfile
                 if decodedProfile != nil {
-                    await self.fetchLeaderboards(uid: uid)
+                    await self.fetchLeaderboards()
                 } else {
                     self.leaderboards = [:]
                 }
@@ -150,7 +150,7 @@ final class CommunityStore {
         })
     }
 
-    func fetchLeaderboards(uid: String) async {
+    func fetchLeaderboards() async {
         guard let profile else {
             leaderboards = [:]
             return
