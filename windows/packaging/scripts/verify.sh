@@ -33,6 +33,35 @@ for f in \
   if xmllint --noout "$f" 2>/tmp/obb_xmllint.err; then ok "$(basename "$f")"; else err "$(basename "$f"): $(cat /tmp/obb_xmllint.err)"; fi
 done
 
+echo "== WAP project-reference property isolation =="
+python3 - "$pkg_root" <<'PY' || fail=1
+import pathlib
+import sys
+import xml.etree.ElementTree as ET
+
+project = pathlib.Path(sys.argv[1]) / "msix" / "OpenBurnBar.Packaging.wapproj"
+namespace = {"msb": "http://schemas.microsoft.com/developer/msbuild/2003"}
+root = ET.parse(project).getroot()
+reference = root.find(".//msb:ProjectReference", namespace)
+if reference is None:
+    raise SystemExit("FAIL WAP app ProjectReference is missing")
+removed = reference.find("msb:GlobalPropertiesToRemove", namespace)
+values = set((removed.text if removed is not None and removed.text else "").split(";"))
+required = {
+    "GenerateAppxPackageOnBuild",
+    "AppxPackageDir",
+    "AppxPackageSigningEnabled",
+    "AppxBundle",
+    "AppxBundlePlatforms",
+    "UapAppxPackageBuildMode",
+    "AppxSymbolPackageEnabled",
+}
+missing = sorted(required - values)
+if missing:
+    raise SystemExit(f"FAIL WAP ProjectReference leaks package globals: {', '.join(missing)}")
+print("OK   WAP package globals do not propagate into the unpackaged WinUI project")
+PY
+
 echo "== JSON parse (portable layout + schema) =="
 python3 - "$pkg_root" <<'PY' || fail=1
 import json, sys

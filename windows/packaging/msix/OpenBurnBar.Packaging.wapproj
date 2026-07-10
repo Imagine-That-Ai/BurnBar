@@ -68,7 +68,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\app\OpenBurnBar.App\OpenBurnBar.App.csproj" />
+    <ProjectReference Include="..\..\app\OpenBurnBar.App\OpenBurnBar.App.csproj">
+      <!--
+        These WAP-only command-line properties are global MSBuild properties. Without this
+        boundary they propagate into the referenced unpackaged WinUI project, where
+        GenerateAppxPackageOnBuild=true correctly conflicts with WindowsPackageType=None.
+        WAP owns package generation; the app reference continues to publish unpackaged files
+        for Desktop Bridge to place into the MSIX.
+      -->
+      <GlobalPropertiesToRemove>GenerateAppxPackageOnBuild;AppxPackageDir;AppxPackageSigningEnabled;AppxBundle;AppxBundlePlatforms;UapAppxPackageBuildMode;AppxSymbolPackageEnabled</GlobalPropertiesToRemove>
+    </ProjectReference>
   </ItemGroup>
 
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.targets" />
