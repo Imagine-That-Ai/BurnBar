@@ -280,6 +280,12 @@ public enum LinuxSecretStoreFactory {
         environment: [String: String],
         fileManager: FileManager
     ) -> URL? {
+        #if os(Windows)
+        _ = name
+        _ = environment
+        _ = fileManager
+        return nil
+        #else
         _ = environment
         for directory in ["/usr/bin", "/usr/local/bin", "/bin"] {
             let candidate = URL(fileURLWithPath: directory, isDirectory: true)
@@ -294,6 +300,7 @@ public enum LinuxSecretStoreFactory {
             return candidate
         }
         return nil
+        #endif
     }
 }
 
@@ -327,8 +334,10 @@ public enum LinuxSecretProcess {
         if completion.wait(timeout: .now() + 10) == .timedOut {
             process.terminate()
             if completion.wait(timeout: .now() + 2) == .timedOut {
+                #if !os(Windows)
                 _ = kill(process.processIdentifier, SIGKILL)
                 _ = completion.wait(timeout: .now() + 2)
+                #endif
             }
             throw LinuxSecretStoreError.backendUnavailable(
                 "secret-store command timed out: \(executableURL.lastPathComponent)"
