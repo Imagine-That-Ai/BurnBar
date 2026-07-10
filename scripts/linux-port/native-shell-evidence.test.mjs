@@ -100,8 +100,15 @@ function writeCompleteNativeArtifacts(root) {
   });
   writeJson(root, 'tray-host-loss-recovery.json', {
     passed: true,
+    hostLost: true,
     recovered: true,
-    staleActions: false
+    staleActions: false,
+    processCount: 1,
+    actionAfterRecovery: {
+      passed: true,
+      route: 'chat',
+      action: 'open-chat'
+    }
   });
 }
 
@@ -177,6 +184,39 @@ test('partial login-start lifecycle artifact remains blocked', () => {
     assert.ok(evidence.missing.includes('login-start'));
     const loginCheck = evidence.checks.find((check) => check.id === 'login-start');
     assert.match(loginCheck?.detail ?? '', /missing complete login-start lifecycle proof/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('tray host recovery artifact rejects stale or duplicate actions', () => {
+  const root = tempDir();
+  try {
+    writeCompleteNativeArtifacts(root);
+    writeJson(root, 'tray-host-loss-recovery.json', {
+      passed: false,
+      recovered: true,
+      staleActions: true,
+      hostLossObserved: true,
+      recoveryRegistered: true,
+      recoveredAction: true,
+      registeredItemCountAfterRecovery: 2,
+      processCount: 1,
+      windowCount: 1
+    });
+
+    const evidence = buildNativeShellEvidence({
+      evidenceDir: root,
+      commit: 'def456',
+      environmentId: 'fedora-kde-wayland-x86_64',
+      generatedAt: '2026-07-10T00:00:00.000Z'
+    });
+
+    assert.equal(evidence.passed, false);
+    assert.equal(evidence.nativeShell.trayHostLossRecovery, false);
+    assert.ok(evidence.missing.includes('tray-host-loss-recovery'));
+    const recoveryCheck = evidence.checks.find((check) => check.id === 'tray-host-loss-recovery');
+    assert.match(recoveryCheck?.detail ?? '', /missing tray host loss recovery proof/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

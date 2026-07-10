@@ -292,7 +292,12 @@ function evaluateLoginStart(evidenceDir) {
 
 function evaluateTrayHostLossRecovery(evidenceDir) {
   const recovery = fileJson(evidenceDir, 'tray-host-loss-recovery.json');
-  const passed = jsonPass(recovery) && recovery?.recovered === true && recovery?.staleActions === false;
+  const passed = jsonPass(recovery) &&
+    recovery?.hostLost === true &&
+    recovery?.recovered === true &&
+    recovery?.staleActions === false &&
+    recovery?.actionAfterRecovery?.passed === true &&
+    recovery?.processCount === 1;
   return result(
     'tray-host-loss-recovery',
     passed,
