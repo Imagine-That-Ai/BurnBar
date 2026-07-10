@@ -726,6 +726,7 @@ function leaderboardRecord(board: CommunityLeaderboardDoc): Record<string, unkno
     window: board.window,
     tier: board.tier,
     geoKey: board.geoKey,
+    kThreshold: board.kThreshold,
     cohortSize: board.cohortSize,
     belowThreshold: board.belowThreshold,
     entries: board.entries.map((entry) => ({
@@ -752,18 +753,8 @@ async function writeLeaderboard(db: CommunityFirestore, board: CommunityLeaderbo
   const docPath = CommunityPaths.leaderboard(board.window, board.tier, board.geoKey);
   await db.doc(docPath).set(leaderboardRecord(board));
 }
-
 // ---------------------------------------------------------------------------
 // Test exports (pure functions for unit testing)
 // ---------------------------------------------------------------------------
-
-export {
-  computePercentiles,
-  groupByGeoTier,
-  buildLeaderboard,
-  collectValidParticipants,
-  loadPreviousRanksForBoards,
-  loadPreviousRanks,
-  cleanupStaleLeaderboards,
-};
+export { computePercentiles, groupByGeoTier, buildLeaderboard, leaderboardRecord, collectValidParticipants, loadPreviousRanksForBoards, loadPreviousRanks, cleanupStaleLeaderboards };
 export type { Participant, PreviousBoardHistory };

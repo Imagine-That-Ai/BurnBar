@@ -86,6 +86,13 @@ public sealed class ModelPurposeClassifierGoldenTests
         Assert.Equal(expected, ModelPurposeClassifier.SignalFingerprint(signals));
     }
 
+    [Fact]
+    public void Fingerprint_NormalizesExtensionCase()
+    {
+        var signals = new ClassifierSignals(FileExtensions: new[] { "TS", "Swift" });
+        Assert.Equal("ext:swift,ts", ModelPurposeClassifier.SignalFingerprint(signals));
+    }
+
     private static JsonElement FindGolden(string name)
     {
         foreach (var c in LoadGoldens())

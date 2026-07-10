@@ -26,6 +26,11 @@ enum class ConsentTriState {
         DECLINED -> "declined"
     }
 
+    fun callableWireValue(): String = when (this) {
+        GRANTED -> "granted"
+        UNSET, DECLINED -> "declined"
+    }
+
     companion object {
         fun fromWire(value: String?): ConsentTriState = when (value?.lowercase()) {
             "granted" -> GRANTED
@@ -49,20 +54,20 @@ data class CommunityConsentDraft(
 ) {
     fun toJoinPayload(handle: String? = null, countryCode: String? = null, regionKey: String? = null, cityKey: String? = resolvedCityKey): Map<String, Any?> {
         val payload = mutableMapOf<String, Any?>(
-            "l1Analytics" to l1Analytics.wireValue(),
-            "l2Rankings" to l2Rankings.wireValue(),
-            "l2World" to l2World.wireValue(),
-            "l2Country" to l2Country.wireValue(),
-            "l2Region" to l2Region.wireValue(),
-            "l2City" to l2City.wireValue(),
-            "l3LookingGlass" to l3LookingGlass.wireValue(),
-            "locationConsent" to locationConsent.wireValue(),
+            "l1Analytics" to l1Analytics.callableWireValue(),
+            "l2Rankings" to l2Rankings.callableWireValue(),
+            "l2World" to l2World.callableWireValue(),
+            "l2Country" to l2Country.callableWireValue(),
+            "l2Region" to l2Region.callableWireValue(),
+            "l2City" to l2City.callableWireValue(),
+            "l3LookingGlass" to l3LookingGlass.callableWireValue(),
+            "locationConsent" to locationConsent.callableWireValue(),
             "timezone" to TimeZone.getDefault().id,
             "locale" to Locale.getDefault().toLanguageTag(),
         )
         if (!handle.isNullOrBlank()) payload["handle"] = handle.trim()
-        if (!countryCode.isNullOrBlank()) payload["countryCode"] = countryCode
-        if (!regionKey.isNullOrBlank()) payload["regionKey"] = regionKey
+        if (l2Country == ConsentTriState.GRANTED && !countryCode.isNullOrBlank()) payload["countryCode"] = countryCode
+        if (l2Region == ConsentTriState.GRANTED && !regionKey.isNullOrBlank()) payload["regionKey"] = regionKey
         if (
             l2City == ConsentTriState.GRANTED &&
             locationConsent == ConsentTriState.GRANTED &&

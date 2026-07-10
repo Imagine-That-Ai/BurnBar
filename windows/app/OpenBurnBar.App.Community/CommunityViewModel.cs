@@ -172,6 +172,7 @@ public sealed class CommunityViewModel : INotifyPropertyChanged
             PercentileStrip = new(0, 0, 0, 0);
             PeerCohortTokens = Array.Empty<double>();
             PurposeBreakdown = Array.Empty<PurposeSlice>();
+            StatusMessage = string.Empty;
             return;
         }
 

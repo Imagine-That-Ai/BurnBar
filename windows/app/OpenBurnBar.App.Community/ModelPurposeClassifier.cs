@@ -165,7 +165,7 @@ public static class ModelPurposeClassifier
         var parts = new List<string>();
         if (signals.FileExtensions is { Count: > 0 })
         {
-            var sorted = signals.FileExtensions.OrderBy(e => e, StringComparer.Ordinal).ToArray();
+            var sorted = signals.FileExtensions.Select(e => e.ToLowerInvariant()).OrderBy(e => e, StringComparer.Ordinal).ToArray();
             parts.Add($"ext:{string.Join(",", sorted)}");
         }
 

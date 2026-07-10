@@ -100,4 +100,23 @@ public sealed class CommunityViewModelTests
         Assert.Empty(vm.PeerCohortTokens);
         Assert.All(vm.Leaderboards, card => Assert.Empty(card.Entries));
     }
+
+    [Fact]
+    public void OptingOutL2_ClearsStaleStatusMessage()
+    {
+        var store = new CommunityConsentStore(Path.Combine(Path.GetTempPath(), $"obb-community-{Guid.NewGuid():N}.json"));
+        store.Replace(store.State with
+        {
+            L2Rankings = ConsentTriState.Granted,
+            L2Tiers = new CommunityTierConsent(World: ConsentTriState.Granted),
+        });
+        var vm = new CommunityViewModel(store);
+        Assert.NotEmpty(vm.StatusMessage);
+
+        vm.CycleL2Rankings();
+        vm.CycleL2Rankings();
+
+        Assert.True(vm.ShowInviteEmptyState);
+        Assert.Equal(string.Empty, vm.StatusMessage);
+    }
 }

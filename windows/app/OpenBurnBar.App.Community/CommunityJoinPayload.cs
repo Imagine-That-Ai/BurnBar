@@ -3,7 +3,7 @@ using System.Globalization;
 namespace OpenBurnBar.App.Community;
 
 /// <summary>
-/// Builds join/updateCommunityProfile callable payloads including device timezone and locale.
+/// Builds joinCommunity callable payloads including device timezone and locale.
 /// </summary>
 public static class CommunityJoinPayload
 {
@@ -44,16 +44,6 @@ public static class CommunityJoinPayload
         }
 
         return BuildJoinPayload(state, handle, countryCode, regionKey, cityKey);
-    }
-
-    public static Dictionary<string, object?> BuildUpdateProfileGeoPayload()
-    {
-        var (timezone, locale) = DeviceGeoKeys();
-        return new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["timezone"] = timezone,
-            ["locale"] = locale,
-        };
     }
 
     private static Dictionary<string, object?> BuildJoinPayloadCore(

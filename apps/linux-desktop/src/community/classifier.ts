@@ -172,7 +172,7 @@ function zeroScores(): Record<ModelPurposeCategory, number> {
 export function signalFingerprint(signals: ClassifierSignals): string {
   const parts: string[] = [];
   if (signals.fileExtensions) {
-    parts.push(`ext:${[...signals.fileExtensions].sort().join(',')}`);
+    parts.push(`ext:${signals.fileExtensions.map((extension) => extension.toLowerCase()).sort().join(',')}`);
   }
   if (signals.appSurface) parts.push(`surf:${signals.appSurface}`);
   if (signals.hasCodeExecution) parts.push('exec');

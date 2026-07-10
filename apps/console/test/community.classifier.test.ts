@@ -28,4 +28,10 @@ describe("community classifier (console port)", () => {
       }
     });
   }
+
+  it("normalizes extension case in correction fingerprints", () => {
+    expect(signalFingerprint({ fileExtensions: ["TS", "Swift"] })).toBe(
+      "ext:swift,ts",
+    );
+  });
 });

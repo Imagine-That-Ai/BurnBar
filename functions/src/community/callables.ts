@@ -15,7 +15,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { appendAuditEventRequired, AUDIT_ACTIONS, auditActorLabel } from "../callables/auditLog.js";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, type Firestore, type Transaction } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -40,17 +40,6 @@ const COMMUNITY_CALLABLE_OPTS = {
   enforceAppCheck: getConfig().enforceAppCheck,
   timeoutSeconds: 60,
   memory: "256MiB" as const,
-};
-
-type HandleClaimTransaction<TRef> = {
-  get(ref: TRef): Promise<unknown>;
-  set(ref: TRef, data: Record<string, unknown>): unknown;
-  delete(ref: TRef): unknown;
-};
-
-type HandleClaimFirestore<TRef> = {
-  doc(path: string): TRef;
-  runTransaction(fn: (tx: HandleClaimTransaction<TRef>) => Promise<void>): Promise<unknown>;
 };
 
 function isRecordValue(value: unknown): value is Record<string, unknown> {
@@ -118,58 +107,6 @@ export function isValidHandle(handle: string): boolean {
   if (!HANDLE_PATTERN.test(handle)) return false;
   const lower = handle.toLowerCase();
   return !PROFANITY_BLOCKLIST.some((word) => lower.includes(word));
-}
-
-/**
- * Atomically claim a handle via a dedicated community_handles/{handleLower}
- * document inside a Firestore transaction. The doc ID IS the lowercased
- * handle, so uniqueness is enforced by Firestore's document-ID constraint —
- * no collectionGroup scan, no index, no TOCTOU race.
- *
- * `oldHandleLower` (if any) is released in the same transaction so a handle
- * change is atomic.
- */
-async function claimHandleTransaction<TRef>(
-  db: HandleClaimFirestore<TRef>,
-  uid: string,
-  newHandleLower: string,
-  oldHandleLower: string | null,
-): Promise<void> {
-  await db.runTransaction(async (tx) => {
-    const claimRef = db.doc(CommunityPaths.handleClaim(newHandleLower));
-    const claimSnap = await tx.get(claimRef);
-
-    if (handleClaimExists(claimSnap)) {
-      const owner = handleClaimOwner(claimSnap);
-      if (owner !== uid) {
-        throw new HttpsError("already-exists", "That handle is taken.");
-      }
-      // Same owner re-claiming — no-op, allow.
-    } else {
-      tx.set(claimRef, { uid, createdAt: new Date().toISOString() });
-    }
-
-    // Release the old handle in the same transaction.
-    if (oldHandleLower && oldHandleLower !== newHandleLower) {
-      tx.delete(db.doc(CommunityPaths.handleClaim(oldHandleLower)));
-    }
-  });
-}
-
-/** Release a handle claim — used when clearing the handle or revoking. */
-async function claimHandleRelease<TRef>(
-  db: HandleClaimFirestore<TRef>,
-  uid: string,
-  handleLower: string,
-): Promise<void> {
-  await db.runTransaction(async (tx) => {
-    const ref = db.doc(CommunityPaths.handleClaim(handleLower));
-    const snap = await tx.get(ref);
-    // Only delete if it belongs to this user (defensive).
-    if (handleClaimExists(snap) && handleClaimOwner(snap) === uid) {
-      tx.delete(ref);
-    }
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -262,7 +199,7 @@ function buildConsentDoc(data: JoinCommunityInput, now: string): CommunityConsen
   };
 }
 
-function applyJoinGeo(profileDoc: CommunityProfileDoc & { handleLower?: string }, data: JoinCommunityInput): void {
+function applyJoinGeo(profileDoc: Partial<CommunityProfileDoc> & Record<string, unknown>, data: JoinCommunityInput): void {
   const geo = deriveGeoKeys(data.timezone ?? "", data.locale ?? "");
   populateGeoKeys(profileDoc, geo, {
     country: data.l2Country === "granted",
@@ -282,6 +219,53 @@ function applyJoinGeo(profileDoc: CommunityProfileDoc & { handleLower?: string }
     const normalized = normalizeGeoKey(data.cityKey);
     if (normalized) profileDoc.cityKey = normalized;
   }
+}
+
+async function applyJoinHandleClaimInTransaction(
+  tx: Transaction,
+  db: Firestore,
+  uid: string,
+  finalHandleLower: string | undefined,
+  existingHandleLower: string | null,
+  now: string,
+): Promise<void> {
+  if (finalHandleLower) {
+    const claimRef = db.doc(CommunityPaths.handleClaim(finalHandleLower));
+    const claimSnap = await tx.get(claimRef);
+    if (claimSnap.exists && claimSnap.data()?.uid !== uid) {
+      throw new HttpsError("already-exists", "That handle is taken.");
+    }
+    if (!claimSnap.exists) tx.set(claimRef, { uid, createdAt: now });
+  }
+  if (existingHandleLower && existingHandleLower !== finalHandleLower) {
+    tx.delete(db.doc(CommunityPaths.handleClaim(existingHandleLower)));
+  }
+}
+
+function buildJoinProfileDoc(
+  data: JoinCommunityInput,
+  anonId: string,
+  finalHandle: string | undefined,
+  existingCityKey: string | undefined,
+  now: string,
+): Partial<CommunityProfileDoc> & Record<string, unknown> {
+  const profileDoc: Partial<CommunityProfileDoc> & Record<string, unknown> = {
+    anonId,
+    schemaVersion: COMMUNITY_SCHEMA_VERSION,
+    updatedAt: now,
+  };
+  if (finalHandle) {
+    profileDoc.handle = finalHandle;
+    profileDoc.handleLower = finalHandle.toLowerCase();
+  }
+  applyJoinGeo(profileDoc, data);
+  if (data.l2City === "granted" && data.locationConsent === "granted" && !profileDoc.cityKey && existingCityKey) {
+    profileDoc.cityKey = existingCityKey;
+  }
+  if (data.l2Country !== "granted") profileDoc.countryCode = null;
+  if (data.l2Region !== "granted") profileDoc.regionKey = null;
+  if (data.l2City !== "granted" || data.locationConsent !== "granted") profileDoc.cityKey = null;
+  return profileDoc;
 }
 
 /**
@@ -319,35 +303,12 @@ export const joinCommunity = onCallProduction(
 
         const finalHandle = requestedHandle ?? existingHandle;
         const finalHandleLower = finalHandle?.toLowerCase();
-        if (finalHandleLower) {
-          const claimRef = db.doc(CommunityPaths.handleClaim(finalHandleLower));
-          const claimSnap = await tx.get(claimRef);
-          if (claimSnap.exists) {
-            const owner = claimSnap.data()?.uid;
-            if (owner !== uid) {
-              throw new HttpsError("already-exists", "That handle is taken.");
-            }
-          } else {
-            tx.set(claimRef, { uid, createdAt: now });
-          }
-        }
-        if (existingHandleLower && existingHandleLower !== finalHandleLower) {
-          tx.delete(db.doc(CommunityPaths.handleClaim(existingHandleLower)));
-        }
-
-        const profileDoc: CommunityProfileDoc & { handleLower?: string } = {
-          anonId,
-          schemaVersion: COMMUNITY_SCHEMA_VERSION,
-          updatedAt: now,
-        };
-        if (finalHandle) {
-          profileDoc.handle = finalHandle;
-          profileDoc.handleLower = finalHandle.toLowerCase();
-        }
-        applyJoinGeo(profileDoc, data);
+        await applyJoinHandleClaimInTransaction(tx, db, uid, finalHandleLower, existingHandleLower, now);
+        const existingCityKey = typeof oldProfile?.cityKey === "string" ? oldProfile.cityKey : undefined;
+        const profileDoc = buildJoinProfileDoc(data, anonId, finalHandle, existingCityKey, now);
 
         tx.set(consentRef, consentDoc);
-        tx.set(profileRef, profileDoc);
+        tx.set(profileRef, profileDoc, { merge: true });
       }),
     );
 
@@ -417,33 +378,6 @@ function communityTierGrants(consent: Record<string, unknown>): CommunityTierGra
   return out;
 }
 
-async function applyProfileHandleUpdate<TRef>(
-  db: HandleClaimFirestore<TRef>,
-  uid: string,
-  handle: string | undefined,
-  oldHandleLower: string | null,
-  updates: Record<string, unknown>,
-): Promise<void> {
-  if (handle === undefined) return;
-
-  const trimmed = handle.trim();
-  if (!trimmed) {
-    if (oldHandleLower) await claimHandleRelease(db, uid, oldHandleLower);
-    updates.handle = null;
-    updates.handleLower = null;
-    return;
-  }
-
-  if (!isValidHandle(trimmed)) {
-    throw new HttpsError("invalid-argument", "Handle must be 3-24 chars, alphanumeric + _-.");
-  }
-
-  const newLower = trimmed.toLowerCase();
-  await claimHandleTransaction(db, uid, newLower, oldHandleLower);
-  updates.handle = trimmed;
-  updates.handleLower = newLower;
-}
-
 function setNormalizedGeoUpdate(
   updates: Record<string, unknown>,
   field: "countryCode" | "regionKey" | "cityKey",
@@ -471,6 +405,41 @@ function applyProfileGeoUpdates(
   setNormalizedGeoUpdate(updates, "cityKey", data.cityKey, tiers.city === "granted" && tiers.location === "granted");
 }
 
+async function applyProfileHandleUpdateInTransaction(
+  tx: Transaction,
+  db: Firestore,
+  uid: string,
+  handle: string | undefined,
+  oldHandleLower: string | null,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  if (handle === undefined) return;
+  const trimmed = handle.trim();
+  if (!trimmed) {
+    if (oldHandleLower) {
+      const oldClaimRef = db.doc(CommunityPaths.handleClaim(oldHandleLower));
+      const oldClaimSnap = await tx.get(oldClaimRef);
+      if (handleClaimExists(oldClaimSnap) && handleClaimOwner(oldClaimSnap) === uid) tx.delete(oldClaimRef);
+    }
+    updates.handle = null;
+    updates.handleLower = null;
+    return;
+  }
+  if (!isValidHandle(trimmed)) {
+    throw new HttpsError("invalid-argument", "Handle must be 3-24 chars, alphanumeric + _-.");
+  }
+  const newLower = trimmed.toLowerCase();
+  const claimRef = db.doc(CommunityPaths.handleClaim(newLower));
+  const claimSnap = await tx.get(claimRef);
+  if (handleClaimExists(claimSnap) && handleClaimOwner(claimSnap) !== uid) {
+    throw new HttpsError("already-exists", "That handle is taken.");
+  }
+  if (!handleClaimExists(claimSnap)) tx.set(claimRef, { uid, createdAt: new Date().toISOString() });
+  if (oldHandleLower && oldHandleLower !== newLower) tx.delete(db.doc(CommunityPaths.handleClaim(oldHandleLower)));
+  updates.handle = trimmed;
+  updates.handleLower = newLower;
+}
+
 /**
  * Updates the community profile. Handle changes go through uniqueness +
  * profanity validation. Geo key updates require the corresponding tier consent.
@@ -486,21 +455,24 @@ export const updateCommunityProfile = onCallProduction(
 
     const data = parseUpdateProfileInput(request.data);
     const db = getFirestore();
-    const consentDoc = await db.doc(CommunityPaths.consent(uid)).get();
-    if (!consentDoc.exists) {
-      throw new HttpsError("failed-precondition", "Join the community before updating your profile.");
-    }
-
-    const profileSnap = await db.doc(CommunityPaths.profile(uid)).get();
-    const oldProfile = profileSnap.data();
-    const oldHandleLower = typeof oldProfile?.handleLower === "string" ? oldProfile.handleLower : null;
-    const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
-
-    await applyProfileHandleUpdate(db, uid, data.handle, oldHandleLower, updates);
-    applyProfileGeoUpdates(data, communityTierGrants(consentDoc.data() ?? {}), updates);
 
     await firestoreWithResilience("community-profile-update", () =>
-      db.doc(CommunityPaths.profile(uid)).set(updates, { merge: true }),
+      db.runTransaction(async (tx) => {
+        const consentRef = db.doc(CommunityPaths.consent(uid));
+        const profileRef = db.doc(CommunityPaths.profile(uid));
+        const consentDoc = await tx.get(consentRef);
+        if (!consentDoc.exists) {
+          throw new HttpsError("failed-precondition", "Join the community before updating your profile.");
+        }
+
+        const profileSnap = await tx.get(profileRef);
+        const oldProfile = profileSnap.data();
+        const oldHandleLower = typeof oldProfile?.handleLower === "string" ? oldProfile.handleLower : null;
+        const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+        await applyProfileHandleUpdateInTransaction(tx, db, uid, data.handle, oldHandleLower, updates);
+        applyProfileGeoUpdates(data, communityTierGrants(consentDoc.data() ?? {}), updates);
+        tx.set(profileRef, updates, { merge: true });
+      }),
     );
     await refreshCommunityShareSnapshotForUser(db, uid);
 

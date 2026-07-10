@@ -7,6 +7,7 @@ import {
   collectValidParticipants,
   computePercentiles,
   groupByGeoTier,
+  leaderboardRecord,
   type Participant,
   type PreviousBoardHistory,
 } from "../community/aggregation.js";
@@ -464,6 +465,10 @@ describe("groupByGeoTier and window totals", () => {
     expect(board.belowThreshold).toBe(true);
     expect(board.entries).toEqual([]);
   });
+
+  it("persists kThreshold in leaderboard records for canary and client rendering", () => {
+    expect(leaderboardRecord(buildLeaderboard("today", "world", "world", [], new Map())).kThreshold).toBe(10);
+  });
 });
 
 describe("computePercentiles", () => {
@@ -547,6 +552,34 @@ describe("handle validation and claims", () => {
     const run = callableRunner(joinCommunity);
     const { app: _app, ...withoutAppCheck } = callableRequest(ALICE_UID, { l2World: "granted" });
     await expect(run(withoutAppCheck)).rejects.toMatchObject({ code: "unauthenticated" });
+  });
+
+  it("joinCommunity preserves existing cityKey when city consent stays granted", async () => {
+    seedDoc(store, CommunityPaths.profile(ALICE_UID), { anonId: "anon-existing-city", cityKey: "US-CA-san-francisco" });
+    const run = callableRunner(joinCommunity);
+    await run(
+      callableRequest(ALICE_UID, {
+        l2Rankings: "granted",
+        l2World: "granted",
+        l2City: "granted",
+        locationConsent: "granted",
+      }),
+    );
+    expect(store.get(CommunityPaths.profile(ALICE_UID))?.cityKey).toBe("US-CA-san-francisco");
+  });
+
+  it("joinCommunity clears existing cityKey when city or location consent is declined", async () => {
+    seedDoc(store, CommunityPaths.profile(ALICE_UID), { anonId: "anon-existing-city", cityKey: "US-CA-san-francisco" });
+    const run = callableRunner(joinCommunity);
+    await run(
+      callableRequest(ALICE_UID, {
+        l2Rankings: "granted",
+        l2World: "granted",
+        l2City: "declined",
+        locationConsent: "declined",
+      }),
+    );
+    expect(store.get(CommunityPaths.profile(ALICE_UID))?.cityKey).toBeNull();
   });
 });
 

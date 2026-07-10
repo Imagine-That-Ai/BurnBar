@@ -57,7 +57,6 @@ struct CommunityView: View {
     private var taskRefreshKey: String {
         [
             selectedTimeRange.rawValue,
-            viewModel.selectedWindow.rawValue,
             String(accountManager.isSignedIn),
             service.remoteConsent?.updatedAt ?? "no-consent",
             service.profile?.updatedAt ?? "no-profile"
