@@ -28,9 +28,7 @@ FORBIDDEN_PLACEHOLDER_SOURCES = {
     "OBBSignalSessionTransportUnavailableTests.swift",
 }
 
-XCTEST_PASS_PATTERN = re.compile(
-    r"Test Case '[^']+' passed \(([0-9.]+) seconds\)"
-)
+XCTEST_PASS_PATTERN = re.compile(r"Test Case '[^']+' passed \(([0-9.]+) seconds\)")
 
 
 def load_manifest(root: Path) -> dict:
@@ -79,7 +77,11 @@ def validate_contract(root: Path, manifest: dict) -> dict:
     seen_ids: set[str] = set()
     total_minimum = 0
     for suite in suites:
-        missing = [key for key in ("id", "packagePath", "target", "filter", "minimumExecutedTests", "scratchPath") if not suite.get(key)]
+        missing = [
+            key
+            for key in ("id", "packagePath", "target", "filter", "minimumExecutedTests", "scratchPath")
+            if not suite.get(key)
+        ]
         if missing:
             failures.append(f"suite {suite.get('id', '<unknown>')} is missing: {', '.join(missing)}")
             continue
@@ -120,8 +122,7 @@ def validate_contract(root: Path, manifest: dict) -> dict:
         actual_count = declared_test_count(excluded_file)
         if actual_count != exclusion["declaredTests"]:
             failures.append(
-                f"excluded source {excluded_file} test count drifted "
-                f"({actual_count} != {exclusion['declaredTests']})"
+                f"excluded source {excluded_file} test count drifted ({actual_count} != {exclusion['declaredTests']})"
             )
         package_source = (root / exclusion["packagePath"] / "Package.swift").read_text(encoding="utf-8")
         if f'"{exclusion["file"]}"' not in package_source:
@@ -130,7 +131,9 @@ def validate_contract(root: Path, manifest: dict) -> dict:
     runner_path = root / "scripts/linux-port/run-linux-swift-tests.sh"
     runner_source = runner_path.read_text(encoding="utf-8") if runner_path.is_file() else ""
     if "swift test" in runner_source:
-        failures.append("Linux Swift test runner must not delegate execution to SwiftPM's deadlocking XCTest coordinator")
+        failures.append(
+            "Linux Swift test runner must not delegate execution to SwiftPM's deadlocking XCTest coordinator"
+        )
     if "--build-tests" not in runner_source or "verify_linux_swift_tests.py execute" not in runner_source:
         failures.append("Linux Swift test runner must build once and execute the XCTest binary per test")
     if 'timeout --kill-after="${TERMINATION_GRACE_SECONDS}s"' not in runner_source:
@@ -152,7 +155,9 @@ def validate_contract(root: Path, manifest: dict) -> dict:
     }
 
 
-def run_bounded_process(command: list[str], timeout_seconds: float, termination_grace_seconds: float) -> tuple[int, str, bool]:
+def run_bounded_process(
+    command: list[str], timeout_seconds: float, termination_grace_seconds: float
+) -> tuple[int, str, bool]:
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -216,8 +221,7 @@ def run_xctest_process(
                 output.extend(chunk)
                 transcript = output.decode("utf-8", errors="replace")
                 expected_summary = (
-                    f"Executed {expected_test_count} test"
-                    f"{'s' if expected_test_count != 1 else ''}, with 0 failures"
+                    f"Executed {expected_test_count} test{'s' if expected_test_count != 1 else ''}, with 0 failures"
                 )
                 if (
                     verified_at is None
@@ -253,10 +257,7 @@ def run_xctest_process(
         os.close(master)
 
     transcript = output.decode("utf-8", errors="replace").replace("\r\n", "\n")
-    expected_summary = (
-        f"Executed {expected_test_count} test"
-        f"{'s' if expected_test_count != 1 else ''}, with 0 failures"
-    )
+    expected_summary = f"Executed {expected_test_count} test{'s' if expected_test_count != 1 else ''}, with 0 failures"
     verified = bool(
         XCTEST_PASS_PATTERN.search(transcript)
         and expected_summary in transcript
@@ -284,9 +285,7 @@ def execute_xctest_suite(
     if list_timed_out or list_status != 0:
         raise VerificationError(f"failed to enumerate XCTest binary {xctest_binary}:\n{list_output}")
     tests = sorted(
-        line.strip()
-        for line in list_output.splitlines()
-        if "/" in line and line.strip().startswith(test_filter)
+        line.strip() for line in list_output.splitlines() if "/" in line and line.strip().startswith(test_filter)
     )
     if not tests:
         raise VerificationError(f"XCTest filter {test_filter!r} selected zero tests from {xctest_binary}")
@@ -380,8 +379,7 @@ def verify_active_graph(manifest: dict, descriptions_dir: Path) -> dict:
         unexpected = sorted(active_targets.keys() - expected_targets)
         if missing:
             failures.append(
-                f"package {package_path} omits manifest test targets from its active Linux graph: "
-                f"{', '.join(missing)}"
+                f"package {package_path} omits manifest test targets from its active Linux graph: {', '.join(missing)}"
             )
         if unexpected:
             failures.append(
@@ -397,11 +395,13 @@ def verify_active_graph(manifest: dict, descriptions_dir: Path) -> dict:
                     f"package {package_path} target {target_name} contains placeholder-only sources: "
                     f"{', '.join(placeholders)}"
                 )
-            rows.append({
-                "packagePath": package_path,
-                "target": target_name,
-                "sources": sorted(sources),
-            })
+            rows.append(
+                {
+                    "packagePath": package_path,
+                    "target": target_name,
+                    "sources": sorted(sources),
+                }
+            )
 
     report = {
         "passed": not failures,
@@ -430,13 +430,9 @@ def verify_results(manifest: dict, results_dir: Path, write_summary: bool = True
             continue
 
         testcases = [element for element in document.iter() if element.tag.rsplit("}", 1)[-1] == "testcase"]
-        skipped = sum(
-            any(child.tag.rsplit("}", 1)[-1] == "skipped" for child in testcase)
-            for testcase in testcases
-        )
+        skipped = sum(any(child.tag.rsplit("}", 1)[-1] == "skipped" for child in testcase) for testcase in testcases)
         failed = sum(
-            any(child.tag.rsplit("}", 1)[-1] in {"failure", "error"} for child in testcase)
-            for testcase in testcases
+            any(child.tag.rsplit("}", 1)[-1] in {"failure", "error"} for child in testcase) for testcase in testcases
         )
         executed = len(testcases) - skipped
         row = {
@@ -452,8 +448,7 @@ def verify_results(manifest: dict, results_dir: Path, write_summary: bool = True
         rows.append(row)
         if executed < suite["minimumExecutedTests"]:
             failures.append(
-                f"suite {suite['id']} executed {executed} tests; "
-                f"minimum is {suite['minimumExecutedTests']}"
+                f"suite {suite['id']} executed {executed} tests; minimum is {suite['minimumExecutedTests']}"
             )
         if failed:
             failures.append(f"suite {suite['id']} xUnit output records {failed} failed tests")

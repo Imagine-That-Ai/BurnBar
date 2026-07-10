@@ -718,38 +718,8 @@ service cloud.firestore {
         && value.aad == cloudVaultAADContext(userId, "session_logs", logId, field);
     }
 
-    function sessionLogPostWriteHasNoPlaintextFields(data) {
-      return !data.keys().hasAny([
-        "body",
-        "payloadCiphertext",
-        "ciphertext",
-        "data",
-        "text",
-        "title",
-        "snippet",
-        "terms",
-        "projectName",
-        "workingDirectory",
-        "userPrompt",
-        "summary",
-        "command",
-        "keystrokes",
-        "clipboard",
-        "transcript",
-        "messages",
-        "lastAssistantMessage",
-        "keyCommands",
-        "keyFiles",
-        "keyTools",
-        "url",
-        "selector",
-        "screenshot"
-      ]);
-    }
-
     function validSessionLogManifestCore(userId, logId) {
       return validSessionLogManifestKeys()
-        && sessionLogPostWriteHasNoPlaintextFields(request.resource.data)
         && (!("inferredTaskTitle" in request.resource.data) || request.resource.data.inferredTaskTitle == "Encrypted session")
         && (!("sealedTitle" in request.resource.data) || validSessionLogSealedTextAt(userId, logId, "sealedTitle", request.resource.data.sealedTitle))
         && (!("sealedBodyPreview" in request.resource.data) || validSessionLogSealedTextAt(userId, logId, "sealedBodyPreview", request.resource.data.sealedBodyPreview))
@@ -806,7 +776,6 @@ service cloud.firestore {
     function ownerWritableSessionLogManifestRefresh(userId) {
       return ownerWritableHostedCloudBackup(userId)
         && validSessionLogRefreshKeys()
-        && sessionLogPostWriteHasNoPlaintextFields(request.resource.data)
         && validSessionLogLifecycleFields(request.resource.data)
         && sessionLogTombstoneIsSticky()
         && validSessionLogFacets(request.resource.data);

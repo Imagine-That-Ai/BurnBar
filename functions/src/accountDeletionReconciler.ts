@@ -39,8 +39,9 @@ function errorCode(reason: unknown): string {
 
 function incompleteEraseCode(result: unknown): string | undefined {
   if (result == null || typeof result !== "object") return undefined;
-  const record = result as Record<string, unknown>;
-  return record.cloudDataDeleted === false || record.retryRequired === true ? "external_cleanup_incomplete" : undefined;
+  return Reflect.get(result, "cloudDataDeleted") === false || Reflect.get(result, "retryRequired") === true
+    ? "external_cleanup_incomplete"
+    : undefined;
 }
 
 function priorAttemptCount(document: PendingErasureTombstone): number {

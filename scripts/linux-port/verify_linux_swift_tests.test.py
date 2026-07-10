@@ -22,19 +22,23 @@ class LinuxSwiftTestVerifierTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.results = Path(self.temp.name)
         self.manifest = {
-            "suites": [{
-                "id": "fixture",
-                "packagePath": "FixturePackage",
-                "target": "FixtureTests",
-                "minimumExecutedTests": 2,
-            }]
+            "suites": [
+                {
+                    "id": "fixture",
+                    "packagePath": "FixturePackage",
+                    "target": "FixtureTests",
+                    "minimumExecutedTests": 2,
+                }
+            ]
         }
 
     def tearDown(self) -> None:
         self.temp.cleanup()
 
     def write_xunit(self, body: str) -> None:
-        (self.results / "fixture.xml").write_text(f"<testsuites><testsuite>{body}</testsuite></testsuites>", encoding="utf-8")
+        (self.results / "fixture.xml").write_text(
+            f"<testsuites><testsuite>{body}</testsuite></testsuites>", encoding="utf-8"
+        )
 
     def write_graph(self, targets: list[dict]) -> None:
         path = self.results / VERIFIER.package_description_filename("FixturePackage")
@@ -71,7 +75,7 @@ class LinuxSwiftTestVerifierTests(unittest.TestCase):
             VERIFIER.verify_results(self.manifest, self.results, write_summary=False)
 
     def test_direct_executor_runs_each_exact_test_and_writes_xunit(self) -> None:
-        binary = self.write_fake_xctest(r'''
+        binary = self.write_fake_xctest(r"""
 if [ "${1:-}" = "--list-tests" ]; then
   echo "Listing 2 tests in debug.xctest:"
   echo "FixtureTests.Case/testOne"
@@ -83,7 +87,7 @@ echo "Test Suite 'Selected tests' started"
 echo "Test Case 'Case.${name}' passed (0.001 seconds)"
 echo "Test Suite 'Selected tests' passed"
 echo " Executed 1 test, with 0 failures (0 unexpected)"
-''')
+""")
         xunit = self.results / "direct.xml"
         report = VERIFIER.execute_xctest_suite(
             "fixture",
@@ -97,13 +101,13 @@ echo " Executed 1 test, with 0 failures (0 unexpected)"
         self.assertEqual(len(list(ET.parse(xunit).iter("testcase"))), 2)
 
     def test_direct_executor_fails_closed_on_per_test_timeout(self) -> None:
-        binary = self.write_fake_xctest(r'''
+        binary = self.write_fake_xctest(r"""
 if [ "${1:-}" = "--list-tests" ]; then
   echo "FixtureTests.Case/testNeverReturns"
   exit 0
 fi
 sleep 5
-''')
+""")
         xunit = self.results / "timeout.xml"
         with self.assertRaisesRegex(VERIFIER.VerificationError, "timed out"):
             VERIFIER.execute_xctest_suite(
@@ -117,11 +121,15 @@ sleep 5
         self.assertEqual(len(list(ET.parse(xunit).iter("error"))), 1)
 
     def test_accepts_exact_active_linux_graph(self) -> None:
-        self.write_graph([{
-            "name": "FixtureTests",
-            "type": "test",
-            "sources": ["RealTests.swift"],
-        }])
+        self.write_graph(
+            [
+                {
+                    "name": "FixtureTests",
+                    "type": "test",
+                    "sources": ["RealTests.swift"],
+                }
+            ]
+        )
         report = VERIFIER.verify_active_graph(self.manifest, self.results)
         self.assertEqual(report["activeTestTargets"], 1)
 
@@ -131,31 +139,40 @@ sleep 5
             VERIFIER.verify_active_graph(self.manifest, self.results)
 
     def test_rejects_untracked_active_test_target(self) -> None:
-        self.write_graph([
-            {"name": "FixtureTests", "type": "test", "sources": ["RealTests.swift"]},
-            {"name": "ForgottenTests", "type": "test", "sources": ["ForgottenTests.swift"]},
-        ])
+        self.write_graph(
+            [
+                {"name": "FixtureTests", "type": "test", "sources": ["RealTests.swift"]},
+                {"name": "ForgottenTests", "type": "test", "sources": ["ForgottenTests.swift"]},
+            ]
+        )
         with self.assertRaisesRegex(VERIFIER.VerificationError, "absent from the runner manifest"):
             VERIFIER.verify_active_graph(self.manifest, self.results)
 
     def test_rejects_placeholder_source_in_manifest_target(self) -> None:
-        self.write_graph([{
-            "name": "FixtureTests",
-            "type": "test",
-            "sources": ["LinuxEmptyTests.swift"],
-        }])
+        self.write_graph(
+            [
+                {
+                    "name": "FixtureTests",
+                    "type": "test",
+                    "sources": ["LinuxEmptyTests.swift"],
+                }
+            ]
+        )
         with self.assertRaisesRegex(VERIFIER.VerificationError, "placeholder-only sources"):
             VERIFIER.verify_active_graph(self.manifest, self.results)
 
     def test_real_repository_contract_is_complete(self) -> None:
         root = MODULE_PATH.parents[2]
         report = VERIFIER.validate_contract(root, VERIFIER.load_manifest(root))
-        self.assertEqual(report, {
-            "suiteCount": 5,
-            "minimumExecutedTests": 50,
-            "executionStrategy": "direct-xctest-isolated-per-test",
-            "perTestTimeoutSeconds": 300,
-        })
+        self.assertEqual(
+            report,
+            {
+                "suiteCount": 5,
+                "minimumExecutedTests": 50,
+                "executionStrategy": "direct-xctest-isolated-per-test",
+                "perTestTimeoutSeconds": 300,
+            },
+        )
 
     def test_real_runner_uses_direct_isolated_xctest_execution(self) -> None:
         root = MODULE_PATH.parents[2]
