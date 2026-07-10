@@ -404,8 +404,44 @@ jobs:
             fi
             local safe
             safe="$(basename "$path" | tr -c 'A-Za-z0-9._-' '_')"
+            local predicate="$prov/${safe}.predicate.json"
+            python3 - "$path" "$predicate" <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          artifact = Path(sys.argv[1])
+          predicate = Path(sys.argv[2])
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          payload = {
+              "schemaVersion": 1,
+              "predicateType": os.environ["PREDICATE_TYPE"],
+              "artifact": {
+                  "fileName": artifact.name,
+                  "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                  "sizeBytes": artifact.stat().st_size,
+              },
+              "release": {
+                  "version": os.environ["VERSION"],
+                  "commit": commit,
+                  "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+                  "ref": os.environ.get("GITHUB_REF", ""),
+                  "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+                  "runID": os.environ.get("GITHUB_RUN_ID", ""),
+                  "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+              },
+              "runner": {
+                  "environment": os.environ.get("GITHUB_ACTIONS", "") == "true" and "github-hosted" or "local",
+              },
+          }
+          predicate.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
             cosign attest-blob --yes \
               --type "$PREDICATE_TYPE" \
+              --predicate "$predicate" \
               --bundle "$prov/${safe}.sigstore.json" \
               "$path"
             if [[ ! -s "$prov/${safe}.sigstore.json" ]]; then

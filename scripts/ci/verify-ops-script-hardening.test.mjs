@@ -59,6 +59,14 @@ assert.match(
   /windows\/packaging\/msix\/New-MsixPackage\.ps1/,
   "Windows release workflow must package the already-published app through the reviewed MSIX script",
 );
+assert.ok(
+  windowsReleaseWorkflow.includes('predicate.write_text(json.dumps(payload'),
+  "Windows release attestations must generate a per-artifact Sigstore predicate",
+);
+assert.ok(
+  windowsReleaseWorkflow.includes('--predicate "$predicate"'),
+  "Windows release attestations must generate and pass a per-artifact Sigstore predicate",
+);
 assert.match(
   read("windows/packaging/msix/New-MsixPackage.ps1"),
   /SetAttribute\("Version", "\$Version\.0"\)[\s\S]*SetAttribute\("ProcessorArchitecture", \$Architecture\)/,
