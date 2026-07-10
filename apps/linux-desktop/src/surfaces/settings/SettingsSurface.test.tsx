@@ -211,6 +211,36 @@ describe('SettingsSurface', () => {
     expect(await screen.findByText(/Step 1 of/i)).toBeTruthy();
   });
 
+  it('General pane writes the user-owned XDG login-start setting', async () => {
+    const nativeShellSetLoginStart = vi.fn(async (enabled: boolean) => ({
+      loginStartEnabled: enabled,
+      loginStartPath: '/home/alice/.config/autostart/dev.openburnbar.OpenBurnBar.desktop',
+      backgroundLaunch: false,
+      rejectedDeepLinks: 0
+    }));
+    useShellStore.setState({
+      fixtureMode: true,
+      bridge: bridge({
+        nativeShellSnapshot: async () => ({
+          loginStartEnabled: false,
+          loginStartPath: '/home/alice/.config/autostart/dev.openburnbar.OpenBurnBar.desktop',
+          backgroundLaunch: false,
+          rejectedDeepLinks: 0
+        }),
+        nativeShellSetLoginStart,
+        onNativeShellState: async () => () => {}
+      }),
+      bridgeReady: true
+    });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^General/i }));
+    const toggle = await screen.findByRole('checkbox', { name: 'Start OpenBurnBar at login' });
+    await waitFor(() => expect((toggle as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(toggle);
+    await waitFor(() => expect(nativeShellSetLoginStart).toHaveBeenCalledWith(true));
+  });
+
   it('sidebar search filters sections', () => {
     useShellStore.setState({ fixtureMode: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });

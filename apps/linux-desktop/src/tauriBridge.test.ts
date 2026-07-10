@@ -3,7 +3,9 @@ import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
   decodeDaemonSubscriptionResponse,
-  decodeDaemonSubscriptionStopResponse
+  decodeDaemonSubscriptionStopResponse,
+  decodeNativeDeepLink,
+  decodeNativeShellSnapshot
 } from './tauriBridge';
 
 describe('computeCacheHitRatePct', () => {
@@ -103,5 +105,32 @@ describe('daemon subscription wire decoding', () => {
       stopped: true,
       last_seq: 8
     })).toEqual({ subscriptionId: 'sub-data', stopped: true, lastSeq: 8 });
+  });
+});
+
+describe('native shell wire decoding', () => {
+  it('accepts only supported route and action pairs', () => {
+    expect(decodeNativeDeepLink({ route: 'account', action: 'membership-success' })).toEqual({
+      route: 'account',
+      action: 'membership-success'
+    });
+    expect(() => decodeNativeDeepLink({ route: 'account', action: 'open-chat' })).toThrow(
+      'route/action pair'
+    );
+  });
+
+  it('strictly validates snapshot state and bounded rejected-link counts', () => {
+    expect(decodeNativeShellSnapshot({
+      loginStartEnabled: true,
+      loginStartPath: '/home/alice/.config/autostart/dev.openburnbar.OpenBurnBar.desktop',
+      backgroundLaunch: false,
+      rejectedDeepLinks: 2,
+      degradedReason: null
+    })).toMatchObject({ loginStartEnabled: true, rejectedDeepLinks: 2 });
+    expect(() => decodeNativeShellSnapshot({
+      loginStartEnabled: 'true',
+      backgroundLaunch: false,
+      rejectedDeepLinks: 0
+    })).toThrow('loginStartEnabled');
   });
 });

@@ -1,4 +1,5 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import type { DaemonHealth } from './daemonClient.js';
 import {
   decodeRuntimeCapabilityManifest,
@@ -547,6 +548,35 @@ export type DaemonSubscriptionStopResponse = {
   lastSeq: number;
 };
 
+export type NativeDeepLinkAction =
+  | 'open-dashboard'
+  | 'open-search'
+  | 'open-chat'
+  | 'open-insights'
+  | 'open-providers'
+  | 'open-updates'
+  | 'reconnect-daemon'
+  | 'membership-success'
+  | 'membership-cancel';
+export type NativeDeepLink = {
+  route: 'overview' | 'activity' | 'chat' | 'insights' | 'providers' | 'updates' | 'support' | 'account';
+  action: NativeDeepLinkAction;
+};
+export type NativeShellSnapshot = {
+  loginStartEnabled: boolean;
+  loginStartPath: string;
+  backgroundLaunch: boolean;
+  rejectedDeepLinks: number;
+  degradedReason?: string;
+};
+export type NativeTraySnapshot = {
+  todayCostUsd: number;
+  todayTokens: number;
+  connectedProviders: number;
+  quotaFloorRemainingPercent?: number;
+  freshness: 'live' | 'stale' | 'offline' | 'unavailable';
+};
+
 // ─────────────────────────── Bridge contract ──────────────────────────────
 
 export interface LinuxShellBridge {
@@ -567,6 +597,12 @@ export interface LinuxShellBridge {
   subscriptionStart(request: DaemonSubscriptionStartRequest): Promise<DaemonSubscriptionResponse>;
   subscriptionResume(request: DaemonSubscriptionResumeRequest): Promise<DaemonSubscriptionResponse>;
   subscriptionStop(request: DaemonSubscriptionStopRequest): Promise<DaemonSubscriptionStopResponse>;
+  nativeShellReady(): Promise<NativeDeepLink[]>;
+  nativeShellSnapshot(): Promise<NativeShellSnapshot>;
+  nativeShellSetLoginStart(enabled: boolean): Promise<NativeShellSnapshot>;
+  nativeTrayUpdate(snapshot: NativeTraySnapshot): Promise<void>;
+  onNativeDeepLink(handler: (link: NativeDeepLink) => void): Promise<() => void>;
+  onNativeShellState(handler: (snapshot: NativeShellSnapshot) => void): Promise<() => void>;
 
   // P01–P11 lane extensions — each maps the raw daemon `result` JSON to a typed shape.
   usageSummary(): Promise<UsageSummary>;
@@ -774,6 +810,71 @@ export function decodeDaemonSubscriptionStopResponse(raw: RawJsonValue): DaemonS
     subscriptionId: requireString(source.subscription_id, 'subscription stop.subscription_id'),
     stopped: requireBoolean(source.stopped, 'subscription stop.stopped'),
     lastSeq: requireSequence(source.last_seq, 'subscription stop.last_seq')
+  };
+}
+
+const NATIVE_DEEP_LINK_ROUTES = [
+  'overview',
+  'activity',
+  'chat',
+  'insights',
+  'providers',
+  'updates',
+  'support',
+  'account'
+] as const;
+const NATIVE_DEEP_LINK_ACTIONS: NativeDeepLinkAction[] = [
+  'open-dashboard',
+  'open-search',
+  'open-chat',
+  'open-insights',
+  'open-providers',
+  'open-updates',
+  'reconnect-daemon',
+  'membership-success',
+  'membership-cancel'
+];
+const NATIVE_DEEP_LINK_PAIRS = new Set([
+  'overview:open-dashboard',
+  'activity:open-search',
+  'chat:open-chat',
+  'insights:open-insights',
+  'providers:open-providers',
+  'updates:open-updates',
+  'support:reconnect-daemon',
+  'account:membership-success',
+  'account:membership-cancel'
+]);
+
+export function decodeNativeDeepLink(raw: RawJsonValue): NativeDeepLink {
+  const source = requireObject(raw, 'native deep link');
+  const route = requireString(source.route, 'native deep link.route');
+  const action = requireString(source.action, 'native deep link.action');
+  if (!NATIVE_DEEP_LINK_ROUTES.includes(route as typeof NATIVE_DEEP_LINK_ROUTES[number])) {
+    throw new Error('native deep link.route is unsupported.');
+  }
+  if (!NATIVE_DEEP_LINK_ACTIONS.includes(action as NativeDeepLinkAction)) {
+    throw new Error('native deep link.action is unsupported.');
+  }
+  if (!NATIVE_DEEP_LINK_PAIRS.has(`${route}:${action}`)) {
+    throw new Error('native deep link route/action pair is unsupported.');
+  }
+  return { route, action } as NativeDeepLink;
+}
+
+export function decodeNativeShellSnapshot(raw: RawJsonValue): NativeShellSnapshot {
+  const source = requireObject(raw, 'native shell snapshot');
+  const rejectedDeepLinks = requireSequence(source.rejectedDeepLinks, 'native shell.rejectedDeepLinks');
+  const degradedReason = source.degradedReason;
+  if (degradedReason !== undefined && degradedReason !== null && typeof degradedReason !== 'string') {
+    throw new Error('native shell.degradedReason must be a string when present.');
+  }
+  return {
+    loginStartEnabled: requireBoolean(source.loginStartEnabled, 'native shell.loginStartEnabled'),
+    loginStartPath: typeof source.loginStartPath === 'string' ? source.loginStartPath : '',
+    backgroundLaunch: requireBoolean(source.backgroundLaunch, 'native shell.backgroundLaunch'),
+    rejectedDeepLinks,
+    degradedReason: typeof degradedReason === 'string' ? degradedReason : undefined
   };
 }
 
@@ -1882,6 +1983,24 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     subscriptionStop: async (request) =>
       decodeDaemonSubscriptionStopResponse(
         await invoke<RawJsonValue>('subscription_stop', { request })
+      ),
+    nativeShellReady: async () => {
+      const raw = await invoke<RawJsonValue[]>('native_shell_ready');
+      if (!Array.isArray(raw)) throw new Error('native shell pending links must be an array.');
+      return raw.map(decodeNativeDeepLink);
+    },
+    nativeShellSnapshot: async () =>
+      decodeNativeShellSnapshot(await invoke<RawJsonValue>('native_shell_snapshot')),
+    nativeShellSetLoginStart: async (enabled) =>
+      decodeNativeShellSnapshot(
+        await invoke<RawJsonValue>('native_shell_set_login_start', { enabled })
+      ),
+    nativeTrayUpdate: (snapshot) => invoke<void>('native_tray_update', { snapshot }),
+    onNativeDeepLink: async (handler) =>
+      listen<RawJsonValue>('native-deep-link', (event) => handler(decodeNativeDeepLink(event.payload))),
+    onNativeShellState: async (handler) =>
+      listen<RawJsonValue>('native-shell-state', (event) =>
+        handler(decodeNativeShellSnapshot(event.payload))
       ),
 
     // P01 — daemon.usage.recent → aggregated summary

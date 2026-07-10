@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
-import type { ConfigSnapshot, NotificationConfig, ProviderSettings } from '../../tauriBridge.js';
+import type { ConfigSnapshot, LinuxShellBridge, NotificationConfig, ProviderSettings } from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
@@ -17,6 +17,7 @@ import { SettingGroup } from './SettingGroup.js';
 import { SettingRow } from './SettingRow.js';
 import { ReadOnlyToggle } from './ReadOnlyToggle.js';
 import { SettingsHomeView } from './SettingsHomeView.js';
+import { NativeShellSettings } from './NativeShellSettings.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
 import { SettingsDrillRow } from './SettingsDrillRow.js';
 import { settingsTabMeta, type SettingsTabId } from './settingsTabs.js';
@@ -627,7 +628,7 @@ export function SettingsDetailPane({
   activeTab: SettingsTabId;
   config: ConfigSnapshot | null;
   fixtureMode: boolean;
-  bridge: unknown;
+  bridge: LinuxShellBridge | null;
   status: DaemonStatusCopy;
   loading: boolean;
   error: string | null;
@@ -683,6 +684,9 @@ export function SettingsDetailPane({
             </SettingGroup>
             <SettingGroup title="Data refresh" sectionHeader hideTitle>
               <ConfigRefreshRow onRefresh={onRefreshConfig} busy={refreshBusy} />
+            </SettingGroup>
+            <SettingGroup title="Native shell" sectionHeader hideTitle>
+              <NativeShellSettings bridge={bridge} />
             </SettingGroup>
             <SettingGroup title="First-run setup" sectionHeader hideTitle>
               <p className="muted settings-tab-lede">

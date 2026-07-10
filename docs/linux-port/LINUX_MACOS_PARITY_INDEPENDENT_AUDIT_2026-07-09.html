@@ -255,7 +255,7 @@
 </tr>
 <tr>
 <td>Remediation evidence</td>
-<td><code>codex/linux-parity-final</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code></td>
+<td>Stacked implementation through <code>codex/linux-parity-native</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code></td>
 </tr>
 </tbody></table>
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
@@ -276,8 +276,11 @@ and a runtime probe that exposes the route only when the daemon can support it.
 It is still <strong>unproven as a parity outcome</strong> until a real Linux-to-macOS/mobile
 two-device matrix passes. The largest remaining functional gaps are complete
 system Computer Use capture/execution, provider/auth/portal completion inside
-transactional onboarding, account/cloud/device workflows, chat and session depth, global text expansion, and richer
-Linux-native shell integrations. The largest certification gaps are an x86_64
+transactional onboarding, account/cloud/device workflows, chat and session
+depth, global text expansion, and freedesktop notification/status-window depth.
+Linux now has a single-instance native launch boundary, validated deep links,
+background startup, live tray facts/actions, and user-owned XDG login start.
+The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
 signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
 now green for both architectures, but that does not substitute for those live
@@ -305,12 +308,12 @@ requested 200% zoom passed;</li>
 <p>The current integration branch adds measured source and package evidence beyond
 that historical installed baseline:</p>
 <ul>
-<li><strong>95</strong> focused Swift Core/daemon tests passed across XDG paths, provider
+<li><strong>100</strong> fail-closed Swift Core/security/daemon tests passed across XDG paths, provider
 discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;</li>
-<li><strong>59 files / 394 tests</strong> passed in the Linux desktop suite, including every
+<li><strong>62 files / 418 tests</strong> passed in the Linux desktop suite, including every
 route under axe, six-layout state, provider-path parity, durable memory, and
-real Mercury RPC decoding;</li>
-<li><strong>17/17</strong> Tauri Rust tests, <strong>3/3</strong> media-crate tests, <strong>40/40</strong> extension
+real Mercury RPC decoding plus native-shell lifecycle and settings coverage;</li>
+<li><strong>24/24</strong> Tauri Rust tests, <strong>3/3</strong> media-crate tests, <strong>40/40</strong> extension
 daemon-client tests, and <strong>78/78</strong> release/workflow contract tests passed;</li>
 <li>clean aarch64 and architecture-correct x86_64 shards at <code>391fe2847d</code> each
 produced AppImage, deb, rpm, and daemon artifacts with SHA-256 closure, zero
@@ -377,6 +380,11 @@ exercised in installed packages.</li>
 <td>Updates</td>
 <td>Native signed-feed verification implemented; invalid endpoint fails honestly</td>
 <td>Serve valid signed feed and prove package-manager update/rollback/data preservation</td>
+</tr>
+<tr>
+<td>Native shell</td>
+<td>Single-instance/background launch, typed deep links, live tray facts/actions, and user XDG login start are implemented</td>
+<td>Add actionable freedesktop notifications and status window; certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, and lifecycle rows</td>
 </tr>
 <tr>
 <td>Packaging</td>
@@ -452,12 +460,13 @@ oracle. Generated evidence was accepted only when the underlying mechanism and
 live product state were independently reproducible.</p>
 <h3>Verification performed</h3>
 <ul>
-<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>61 files, 411 tests passed</strong>.</li>
+<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>62 files, 418 tests passed</strong>.</li>
 <li><code>npm run build --prefix apps/linux-desktop</code>: <strong>passed</strong>; the main JavaScript
-chunk is <strong>655.47 kB</strong> minified and Vite reports a chunk-size warning.</li>
+chunk is <strong>662.37 kB</strong> minified and Vite reports a chunk-size warning.</li>
 <li><code>cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml</code>:
-<strong>19/19 passed</strong>, including capability-catalog, Mercury-probe, update-feed,
-URL, gateway, panic-shortcut, and wire-contract coverage.</li>
+<strong>24/24 passed</strong>, including native deep-link/autostart, capability-catalog,
+Mercury-probe, update-feed, URL, gateway, panic-shortcut, and wire-contract
+coverage.</li>
 <li>Fail-closed OpenBurnBar Core/security/daemon Linux manifest: <strong>100/100 passed</strong>.</li>
 <li>Linux media crate capability/capture/decode suite: <strong>3/3 passed</strong>.</li>
 <li>Extension daemon-client suite: <strong>40/40 passed</strong>.</li>
@@ -697,7 +706,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-09</td>
 <td>Navigation and shell</td>
 <td>Dashboard, insights, deep provider/model routes, multi-window flows</td>
-<td>All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner</td>
+<td>All 19 installed routes activate through AT-SPI; validated single-instance dashboard/search/chat/insights/membership deep links now route through typed native events; provider/model depth and native multi-window behavior remain thinner</td>
 <td>Near parity</td>
 <td>Medium</td>
 </tr>
@@ -833,16 +842,16 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-26</td>
 <td>Tray and native shell</td>
 <td>Rich live menu-bar status, quick switch, chat, quota, update state</td>
-<td>Open/Reconnect/Quit tray only</td>
-<td>Partial</td>
+<td>Live cost/tokens, quota floor, provider count, freshness, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; account quick switch, status window, host-loss behavior, and installed matrix remain</td>
+<td>Near parity</td>
 <td>High</td>
 </tr>
 <tr>
 <td>P-27</td>
 <td>Notifications/deep links</td>
 <td>Actionable notifications, OAuth return, global commands, login start</td>
-<td>No complete freedesktop notification, deep-link, shortcut, or autostart adapter</td>
-<td>Missing</td>
+<td>Single-instance validated deep links, membership return, background launch, XDG login start, and daemon-backed panic shortcut exist; freedesktop actionable notifications, provider OAuth callback contract, and installed shortcut/desktop matrix remain</td>
+<td>Partial</td>
 <td>High</td>
 </tr>
 <tr>
@@ -1503,16 +1512,26 @@ persistence/restart, policy conflicts, telemetry opt-out at emission source,
 unavailable capability copy, and migration from existing localStorage keys.</li>
 </ul>
 <h3>GAP-014 - Build native tray, notifications, deep links, shortcuts, and startup</h3>
+<p><strong>Implementation update (2026-07-10): native launch/tray/startup foundation
+implemented; notification and installed certification remain open.</strong> Rust now
+owns single-instance arbitration, background launch, an allowlisted
+<code>openburnbar://</code> parser, listener-race-safe delivery, window focus, live tray
+actions/facts, and atomic user XDG autostart mutation. The renderer accepts only
+correlated typed route/action pairs. deb, rpm, AppImage, and AUR packaging share
+the canonical autostart entry. See <code>LINUX_NATIVE_SHELL_AUTHORITY.md</code>.</p>
 <ul>
 <li><strong>Difference:</strong> macOS provides a rich menu-bar experience with live cost,
-quota, providers, quick switch, chat, freshness, and update state. Linux has an
-Open/Reconnect/Quit tray and lacks a complete notification, OAuth deep-link,
-global shortcut, and login-start integration.</li>
+quota, providers, quick switch, chat, freshness, and update state. Linux now
+exposes live cost/tokens, quota floor, provider count, freshness, primary
+navigation/reconnect/login-start actions, validated membership/navigation
+links, and background launch. It still lacks account quick switch, the compact
+status window, actionable notifications, and a provider OAuth callback matrix.</li>
 <li><strong>Why it matters:</strong> repeated daily workflows, alerts, recovery, auth, and panic
 controls feel incomplete or cannot work outside the main window.</li>
-<li><strong>Recommended solution:</strong> implement StatusNotifier/AppIndicator plus a compact
-status window, freedesktop notifications, validated deep links, portal/global
-shortcuts with X11 fallback, and systemd/XDG startup controls.</li>
+<li><strong>Recommended solution:</strong> certify the implemented tray, typed deep links,
+daemon-backed panic, and XDG startup across installed environments; then add
+the compact status window, freedesktop notification actions, dedicated OAuth
+callback validation, and portal/global shortcut coverage with X11 fallback.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> support GNOME&#39;s icon-only limitations; use shared
 live view models and freshness semantics; never depend on the tray as the sole
@@ -1651,7 +1670,7 @@ backoff and coalesced mounted-route reloads. See
 <li><strong>Difference:</strong> Linux now has daemon-owned bounded pull subscriptions, a
 single-flight data supervisor, packaged startup/reopen/reconnect percentiles,
 a matched Swift workload harness, Rust boundary tests, and a 30-minute soak
-contract. It still lacks a native push stream. The built main chunk is 655.47
+contract. It still lacks a native push stream. The built main chunk is 662.37
 kB minified and still triggers the Vite size warning. Exact-candidate
 suspend/portal/keyring recovery, comparable-hardware macOS/Linux p95/p99, and
 the full desktop matrix remain unproven.</li>
@@ -2075,8 +2094,8 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-NATIVE-001</td>
 <td>LNX-CAP-001</td>
-<td>Tray/status window, notifications, deep links, shortcuts, startup</td>
-<td>Repeated native workflows pass on GNOME/KDE and icon-only fallback</td>
+<td>Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, and XDG startup are implemented; add notifications, provider OAuth return, status window, and exact-candidate matrix certification</td>
+<td>Repeated native workflows pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows</td>
 </tr>
 <tr>
 <td>LNX-UPD-001</td>
@@ -2304,7 +2323,7 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>4</td>
 <td><strong>Daily-use native foundation</strong></td>
-<td>In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending</td>
+<td>In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, and XDG login-start foundations implemented; notifications/auth and installed matrix pending</td>
 <td>LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001</td>
 <td>Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green</td>
 </tr>
@@ -2440,6 +2459,10 @@ routing, and failover.</li>
 </ul>
 <h3>Account, cloud, and native shell</h3>
 <ul>
+<li><input checked="" disabled="" type="checkbox"> Native launch arguments and secondary instances deliver only allowlisted,
+correlated route/action pairs after the renderer listener is installed.</li>
+<li><input checked="" disabled="" type="checkbox"> Settings and tray share one atomically written, package-pinned user XDG
+login-start entry with source and packaging drift tests.</li>
 <li><input disabled="" type="checkbox"> Sign-in/link/sign-out, state validation, expiry, refresh, revocation, offline,
 and clock-skew cases pass.</li>
 <li><input disabled="" type="checkbox"> Trusted device add/revoke/transfer and credential transfer are secure.</li>

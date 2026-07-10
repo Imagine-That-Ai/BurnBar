@@ -13,6 +13,8 @@ import {
   DaemonSubscriptionSupervisor,
   installDaemonSubscriptionLifecycle
 } from './state/daemonSubscriptionSupervisor.js';
+import { useMembershipStore } from './state/membershipStore.js';
+import { NativeShellSupervisor } from './state/nativeShellSupervisor.js';
 import { useShellStore } from './state/shellStore.js';
 
 async function boot(): Promise<void> {
@@ -55,8 +57,34 @@ async function boot(): Promise<void> {
   }
   end();
 
+  const nativeShellSupervisor = bridge
+    ? new NativeShellSupervisor(
+        bridge,
+        async (link) => {
+          useShellStore.getState().setRoute(link.route);
+          if (link.action === 'membership-success' || link.action === 'membership-cancel') {
+            await useMembershipStore.getState().load();
+          } else if (link.action === 'reconnect-daemon') {
+            await useShellStore.getState().refreshHealth();
+          }
+        },
+        {
+          status: () => {
+            const state = useShellStore.getState();
+            return {
+              daemonOk: state.health?.ok === true,
+              online: navigator.onLine,
+              lastDaemonEventAt: state.lastDaemonEventAt
+            };
+          }
+        }
+      )
+    : null;
+  if (nativeShellSupervisor) await nativeShellSupervisor.start();
+
   const healthSupervisor = new DaemonHealthSupervisor(async () => {
     await useShellStore.getState().refreshHealth();
+    await nativeShellSupervisor?.refresh();
     return useShellStore.getState().health?.ok === true;
   });
   const uninstallHealthLifecycle = installDaemonHealthLifecycle(healthSupervisor);
@@ -68,6 +96,7 @@ async function boot(): Promise<void> {
           if (response.firstSnapshot || response.recoveredAfterRestart) {
             await useShellStore.getState().refreshHealth();
           }
+          await nativeShellSupervisor?.refresh();
         },
         {
           onStatus: (subscriptionStatus) =>
@@ -79,6 +108,7 @@ async function boot(): Promise<void> {
     ? installDaemonSubscriptionLifecycle(subscriptionSupervisor)
     : () => {};
   window.addEventListener('beforeunload', () => {
+    nativeShellSupervisor?.stop();
     uninstallSubscriptionLifecycle();
     uninstallHealthLifecycle();
   }, { once: true });

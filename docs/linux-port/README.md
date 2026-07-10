@@ -59,6 +59,10 @@ Primary files:
 - [`LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md`](LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md) -
   daemon start/resume/stop cursors, desktop cadence and cancellation, recovery
   behavior, honest degraded-pull status, and remaining installed certification.
+- [`LINUX_NATIVE_SHELL_AUTHORITY.md`](LINUX_NATIVE_SHELL_AUTHORITY.md) -
+  single-instance launch/deep-link handling, live tray facts and actions,
+  user-scoped XDG login start, package ownership, and remaining native-shell
+  certification.
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.
