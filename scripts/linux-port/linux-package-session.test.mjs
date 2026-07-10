@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import {
   aggregateArchitectureLifecycle,
@@ -54,5 +58,60 @@ test('cross-commit, duplicate, and version drift are rejected', () => {
   });
   for (const pattern of [/duplicate/, /version does not match/, /commit does not match/, /missing or extra/]) {
     assert.ok(failures.some((failure) => pattern.test(failure)), pattern);
+  }
+});
+
+test('architecture finalizer consumes the architecture smoke report', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'openburnbar-linux-session-'));
+  const sessionDir = path.join(root, 'session');
+  const smokeDir = path.join(root, 'smoke');
+  mkdirSync(sessionDir, { recursive: true });
+  mkdirSync(smokeDir, { recursive: true });
+  const json = (file, value) => writeFileSync(file, `${JSON.stringify(value)}\n`);
+
+  try {
+    json(path.join(root, 'architecture-closure.json'), {
+      schemaVersion: 1,
+      architecture: 'aarch64',
+      version,
+      git: { commit }
+    });
+    json(path.join(smokeDir, 'architecture-smoke.json'), { passed: true });
+    json(path.join(sessionDir, 'linux-desktop-session-report.json'), {
+      profile: 'test',
+      package: {
+        uninstallVerified: true,
+        executable: '/usr/bin/openburnbar-linux-desktop',
+        shellVersionReadback: `OpenBurnBar ${version}`
+      },
+      accessibility: { keyboardFocus: { pass: true }, zoom: { pass: true } }
+    });
+    json(path.join(sessionDir, 'daemon-session-oracle.json'), {
+      status: 'ready',
+      daemonBinary: '/usr/bin/openburnbar-daemon',
+      mode: 'openburnbar-daemon-af-unix'
+    });
+    json(path.join(sessionDir, 'daemon-health-readback.json'), {
+      passed: true,
+      response: { result: { daemonVersion: version } }
+    });
+    json(path.join(sessionDir, 'package-update-rollback.json'), {
+      lifecycle: Object.fromEntries(
+        ['update', 'rollback', 'dataPreservation'].map((step) => [step, { status: 'passed' }])
+      )
+    });
+
+    const result = spawnSync(
+      process.execPath,
+      [path.resolve('scripts/linux-port/finalize-linux-architecture-session.mjs')],
+      { encoding: 'utf8', env: { ...process.env, OPENBURNBAR_LINUX_RELEASE_OUT: root } }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(readFileSync(path.join(root, 'architecture-session.json'), 'utf8'));
+    assert.equal(report.packageSmokePassed, true);
+    assert.equal(report.passed, true);
+    assert.deepEqual(report.blockers, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

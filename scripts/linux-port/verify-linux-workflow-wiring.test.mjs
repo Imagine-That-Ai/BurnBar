@@ -8,6 +8,7 @@ function valid() {
       'bash scripts/linux-port/run-linux-native-tests.sh',
       'verify-linux-release.test.mjs',
       'assemble-linux-release.test.mjs',
+      'linux-package-session.test.mjs',
       'render-parity-ledger.mjs --check',
       'macos-matched-performance',
       'run-matched-performance.mjs',
@@ -185,6 +186,12 @@ test('architecture matrix, aggregate closure, and feed publication cannot be rem
     input.release = input.release.replace(marker, '');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
+});
+
+test('package lifecycle finalizer regression suite cannot be removed', () => {
+  const input = valid();
+  input.pr = input.pr.replace('linux-package-session.test.mjs', '');
+  assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
 });
 
 test('attestation and publish order drift fails', () => {

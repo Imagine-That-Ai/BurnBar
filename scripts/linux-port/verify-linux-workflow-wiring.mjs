@@ -48,6 +48,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'bash scripts/linux-port/run-linux-native-tests.sh', 'PR native behavior gate');
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
+  requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
   for (const command of [
     'macos-matched-performance',
